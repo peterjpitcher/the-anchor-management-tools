@@ -28,7 +28,7 @@ vi.mock('@/lib/guest/guest-short-link', () => ({
   buildGuestShortLink: vi.fn(async () => ({ url: 'https://l.the-anchor.pub/food1', shortened: true })),
 }))
 vi.mock('@/lib/table-bookings/preorder', () => ({
-  PREORDER_BOOKER_REMINDER_DAYS: 7,
+  PREORDER_BOOKER_REMINDER_DAYS: 10,
   isPreorderEnabled: vi.fn(async () => true),
   decidePreorderChases: vi.fn(() => ['booker_reminder']),
   describePreorderGaps: vi.fn(() => '2 main courses'),

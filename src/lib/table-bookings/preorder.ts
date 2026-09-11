@@ -304,8 +304,13 @@ export function summariseOrderAddons(
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
-/** How many days before the booking the booker is asked for their choices. Spec section 7. */
-export const PREORDER_BOOKER_REMINDER_DAYS = 7
+/**
+ * How many days before the booking the booker is asked for their choices. 10, not the 7 of spec
+ * section 7 (owner decision, 11 September 2026): with the Christmas pre-order closing at noon seven
+ * days before, a 7-day reminder landed the minute the form locked, so the guest was asked for
+ * something they could no longer do. At 10 days they have three days to answer.
+ */
+export const PREORDER_BOOKER_REMINDER_DAYS = 10
 
 export type PreorderCutoff = {
   /**
@@ -377,16 +382,16 @@ export type PreorderChaseInput = {
  *
  * THE ESCALATION NEVER RIDES ALONG WITH THE FIRST REMINDER. The booker is asked at
  * `PREORDER_BOOKER_REMINDER_DAYS` and the manager is told at `preorder_cutoff_days`, and that column
- * ships defaulted to 7. Left to the raw thresholds, the default configuration fires both in the same
- * sweep: the guest is asked for their choices and, in the same minute, a manager is told to ring them
- * for not having given any. Fixing that by asking someone to set the two numbers apart is not a fix,
- * because nothing stops the next person setting them back.
+ * ships defaulted to 7. When the two thresholds meet, the same sweep would ask the guest for their
+ * choices and, in the same minute, tell a manager to ring them for not having given any. Fixing that
+ * by asking someone to set the two numbers apart is not a fix, because nothing stops the next person
+ * setting them back.
  *
  * So the escalation is gated on the booker having actually had their reminder on an EARLIER day. A
- * reminder claimed today has not been acted on yet by definition, so the manager waits for tomorrow's
- * sweep. At the shipped default that means the booker is asked seven days out and, if nothing has
- * arrived by the next sweep, the manager is told six days out. Slipping an internal email by a day
- * costs nothing; asking a guest and dobbing them in simultaneously costs the pub's manners.
+ * reminder claimed today has not been acted on yet by definition, so the manager waits for a later
+ * sweep. With the shipped cutoff of 7, the booker is asked ten days out and, if nothing has arrived by
+ * the cutoff, the manager is told seven days out. Slipping an internal email by a day costs nothing;
+ * asking a guest and dobbing them in simultaneously costs the pub's manners.
  *
  * A BOOKING WHOSE FORM HAS ALREADY LOCKED is never sent the booker reminder. The reminder says
  * "choose here" and links to the manage page, and once the cutoff has passed that page will not take
