@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendChaseEmail, sendPortalInviteEmail } from '@/lib/email/employee-invite-emails';
+import { reportCronFailure } from '@/lib/cron/alerting';
 
 // This builds chase-email links, so the fallback must resolve.
 // `manage.the-anchor.pub` does not; `management.orangejelly.co.uk` is the live domain.
@@ -90,6 +91,26 @@ export async function GET(request: NextRequest) {
         } catch (emailError: any) {
           result.errors.push(`Day 6 chase failed for ${row.email}: ${emailError.message}`);
         }
+      }
+    }
+
+    // A chase whose email failed is not stamped, so the next run tries it again. Nobody would
+    // otherwise know the provider is refusing: a run that sent nothing looks exactly like a quiet
+    // one, and the reminders these emails carry are what get a new starter onboarded.
+    if (result.errors.length > 0) {
+      try {
+        await reportCronFailure(
+          'employee-invite-chase',
+          new Error(`${result.errors.length} invite chase email(s) did not go`),
+          {
+            failures: result.errors,
+            day3_chases_sent: result.day3ChasesSent,
+            day6_chases_sent: result.day6ChasesSent,
+            outcome: 'The chases that failed are not recorded as sent, so the next run tries them again.',
+          }
+        );
+      } catch (alertError) {
+        console.error('[employee-invite-chase] Failed to raise the chase failure alert:', alertError);
       }
     }
 

@@ -1,3 +1,22 @@
+# Employee invites report a failed email, 12 September 2026
+
+Branch `fix/employee-invite-email-outcome` (worktree `.worktrees/employee-invite-outcome`, from `origin/main` `a1ba68db`). Local commits only; no push, merge or deploy without the owner's yes. No database change. Same defect class as the private booking payment link (`fix/pb-payment-link-outcome`).
+
+Verified in the code first: `sendWelcomeEmail`, `sendPortalInviteEmail`, `sendChaseEmail` and `sendOnboardingCompleteEmail` returned `sendEmail`'s `{ success: false }` and never threw, while every caller only had a try/catch. So a failed invite email read as sent: staff saw "Invite sent", the clean-up that removes the part-made employee record never ran, a resend expired the employee's older links anyway, and the chase cron stamped a chase that never went. Reproduced by running the new tests against `origin/main`: `inviteEmployee` returned `type: 'success'`.
+
+- [x] 1. The four helpers throw the provider's reason when the email does not go, as `sendSeparationStartedEmail` in the same file always has.
+- [x] 2. `inviteEmployee`: the clean-up now runs, staff are told the reason, and the message says whether the part-made record was removed.
+- [x] 3. `sendPortalInvite` and `resendInvite`: the new token is deleted, older links are left working, staff are told the reason.
+- [x] 4. Audit rows: an invite attempt is recorded as a failure with its reason instead of a success; `resendInvite` gained the audit row it never had.
+- [x] 5. Chase cron: a failed chase is not stamped, so the next run tries again, and the run raises `reportCronFailure` (silent before).
+- [x] 6. `sendOnboardingCompleteEmail` at `submitOnboardingProfile` stays best effort: it is our own notification, so a failure must not fail the employee's submission. Its caller already catches and logs.
+- [x] 7. Tests: helper contract (throws or resolves), all three actions end to end with a failing provider (real helpers, faked provider only), the cron's unstamped chase and alert, and the invite modal showing the reason on screen. All ten new assertions fail on `origin/main`.
+- [x] 8. Swept the same area: `beginSeparation` already rolls back when its email fails; the event ticket and payment link senders are checked by their callers; no other staff send in employees or recruitment reports success blind.
+- [x] 9. Gates: lint, uncached tsc, `npm test`, `npm run test:utc`, uncached build.
+- [ ] 10. Push, merge and deploy: needs the owner's yes.
+
+Decisions: throwing rather than returning a result, because the callers were already written for it and the file's separation email works that way; `inviteRecruitmentCandidateAsEmployeeAction` needs no change, since it already turns an invite error into a failed hire handoff.
+
 # "Open now" past midnight, for the 1am New Year's Eve close, 11 September 2026
 
 Branch `fix/hours-open-now-past-midnight-2026-09-11`. Code only: no database change, no deploy. Unblocks item 12 below (the 31 December special hours row moving from 22:00 to 01:00), which stays a separate, owner-approved data change after this is live.
