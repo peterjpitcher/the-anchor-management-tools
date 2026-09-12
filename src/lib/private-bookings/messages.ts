@@ -9,8 +9,12 @@ function name(raw: string | null | undefined): string {
 }
 
 function money(n: number): string {
-  // £ prefix, no decimals unless non-whole.
-  return Number.isInteger(n) ? `£${n}` : `£${n.toFixed(2)}`
+  // £ prefix, no decimals unless non-whole, and thousands grouped: a four-figure balance read as
+  // "£1234.50" (review PB-BR-5).
+  return `£${new Intl.NumberFormat('en-GB', {
+    minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(n)}`
 }
 
 /**
@@ -104,10 +108,21 @@ export function depositReminder1DayMessage(input: {
   )
 }
 
+/**
+ * `bookingConfirmed` is false when the SOP gate has held the booking back as a draft even though
+ * the deposit has been taken (space conflict, capacity, risk review or GM approval). The date is
+ * not the guest's yet, so the text must not say it is (review PB-2).
+ */
 export function depositReceivedMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
+  bookingConfirmed?: boolean
 }): string {
+  if (input.bookingConfirmed === false) {
+    return cap(
+      `Hi ${name(input.customerFirstName)}, deposit received, thank you. We're just finishing our checks and we'll confirm your booking shortly.`
+    )
+  }
   return cap(
     `Hi ${name(input.customerFirstName)}, deposit received. ${input.eventDate} is yours. We'll be in touch closer to the time.`
   )

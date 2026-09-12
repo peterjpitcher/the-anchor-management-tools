@@ -69,6 +69,17 @@ function formatEventDate(eventDate: string | null | undefined, booking?: { date_
     : ''
 }
 
+/**
+ * A total worth showing, or null.
+ *
+ * Deposits are often taken to hold a date before anything is priced, and the emails printed the
+ * unpriced booking as "Total event cost £0.00, Event balance due £0.00" (review PB-7).
+ */
+function positiveTotal(value: unknown): number | null {
+  const amount = toNumber(value)
+  return amount > 0 ? amount : null
+}
+
 function summarizeSmsResult(
   triggerType: string,
   templateKey: string,
@@ -121,8 +132,15 @@ async function sendDepositReceivedSideEffects(input: {
   method: string
   performedByUserId?: string
   calculatedTotal?: number | null
+  /**
+   * True when the SOP gate held the booking back: the deposit is recorded but the booking stays a
+   * draft (space conflict, capacity, outstanding risk review or GM approval). The guest still gets
+   * a receipt, but neither the email nor the text may say the booking is confirmed (review PB-2).
+   */
+  confirmationBlocked?: boolean
 }): Promise<PrivateBookingSmsSideEffectSummary[]> {
   const { db, booking, updatedBooking, amount, method, performedByUserId, calculatedTotal } = input
+  const bookingConfirmed = input.confirmationBlocked !== true
   const bookingId = booking.id
   const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
@@ -152,6 +170,7 @@ async function sendDepositReceivedSideEffects(input: {
     const smsMessage = depositReceivedMessage({
       customerFirstName: booking.customer_first_name,
       eventDate,
+      bookingConfirmed,
     });
 
     let smsResult: any
@@ -179,8 +198,9 @@ async function sendDepositReceivedSideEffects(input: {
           booking,
           firstName: booking.customer_first_name,
           depositAmount: amount,
-          totalAmount: calculatedTotal ?? booking.total_amount ?? null,
+          totalAmount: positiveTotal(calculatedTotal ?? booking.total_amount),
           balanceDueDate: booking.balance_due_date ?? null,
+          bookingConfirmed,
         }),
         windowKey: 'deposit',
         // From the row as the payment left it: `booking` was read before the deposit was recorded.
@@ -209,11 +229,15 @@ async function sendDepositReceivedSideEffects(input: {
       event_type: booking.event_type,
       start_time: booking.start_time,
       end_time: booking.end_time,
+      end_time_next_day: booking.end_time_next_day,
       guest_count: booking.guest_count,
       deposit_amount: amount,
       deposit_payment_method: method,
       balance_due_date: booking.balance_due_date,
-      total_amount: calculatedTotal ?? booking.total_amount,
+      // Null, not zero: a deposit taken before anything is priced printed "Total event cost
+      // £0.00" (review PB-7).
+      total_amount: positiveTotal(calculatedTotal ?? booking.total_amount),
+      bookingConfirmed,
     }).catch(e =>
       logger.error('Failed to send deposit received email', { error: e instanceof Error ? e : new Error(String(e)) })
     );
@@ -581,6 +605,8 @@ async function finalizeDepositPaymentWithClient(
     method,
     performedByUserId,
     calculatedTotal,
+    // The gate kept the booking a draft, so the receipt must not call it confirmed (review PB-2).
+    confirmationBlocked,
   })
 
   return smsSideEffects.length > 0
@@ -635,7 +661,9 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
   // Fetch booking upfront -- needed for SMS context and calendar sync regardless of outcome.
   const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, total_amount, date_tbd, internal_notes')
+    // invoice_deposit_treatment: a deposit applied to the invoice is not a refundable bond, so the
+    // balance-paid email must not promise to return it (review PB-8).
+    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, total_amount, invoice_deposit_treatment, date_tbd, internal_notes')
     .eq('id', bookingId)
     .single();
 
@@ -732,8 +760,10 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
         email: () => buildBalancePaidMessageEmail({
           booking,
           firstName: booking.customer_first_name,
-          totalAmount: balanceCalculatedTotal ?? booking.total_amount ?? null,
+          totalAmount: positiveTotal(balanceCalculatedTotal ?? booking.total_amount),
           depositAmount: booking.deposit_amount ?? null,
+          depositPaidDate: booking.deposit_paid_date ?? null,
+          invoiceDepositTreatment: (booking as { invoice_deposit_treatment?: string | null }).invoice_deposit_treatment ?? null,
         }),
         windowKey: 'final-payment',
         facts: buildPrivateBookingMessageFacts('final_payment_received', booking),
@@ -793,8 +823,10 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
       customer_name: booking.customer_name,
       event_date: balanceEmailDate,
       event_type: booking.event_type,
-      total_amount: balanceCalculatedTotal ?? booking.total_amount,
+      total_amount: positiveTotal(balanceCalculatedTotal ?? booking.total_amount),
       deposit_amount: booking.deposit_amount,
+      deposit_paid_date: booking.deposit_paid_date,
+      invoice_deposit_treatment: (booking as { invoice_deposit_treatment?: string | null }).invoice_deposit_treatment ?? null,
     }).catch(e =>
       logger.error('Failed to send balance paid email', { error: e instanceof Error ? e : new Error(String(e)) })
     );

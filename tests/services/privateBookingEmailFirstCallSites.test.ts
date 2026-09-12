@@ -210,7 +210,7 @@ describe('private booking call sites, email first', () => {
     const email = mockedSendEmail.mock.calls[0][0]
     expect(email.commType).toBe('private_booking_deposit_received')
     expect(email.text).toContain('Deposit paid: £250')
-    expect(email.text).toContain('Total event cost: £1440')
+    expect(email.text).toContain('Total event cost: £1,440')
 
     // The delivery states the deposit as recorded, so a bounce after staff delete it is a changed booking.
     const paidAt = state.db.tables.private_bookings[0].deposit_paid_date
