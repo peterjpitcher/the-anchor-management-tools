@@ -1,87 +1,87 @@
+/**
+ * The performer-interest route is retired.
+ *
+ * Open mic nights are discontinued, and nothing has posted here since 11 August 2026. The
+ * route was still accepting a performer's name, phone number, email and act description, and
+ * still replying with a confirmation that promised "we'll be in touch when we're booking
+ * acts" and gave a start time for a night that no longer runs.
+ *
+ * This suite used to test the fail-closed guards around the rate-limit lookup. Those guards
+ * have gone with the code they protected: there is nothing left to look up, insert, or email.
+ */
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/api/auth', () => ({
-  withApiAuth: vi.fn(async (handler: (request: Request) => Promise<Response>, _permissions: string[], request: Request) =>
-    handler(request)
-  ),
+  withApiAuth: vi.fn(),
   createApiResponse: vi.fn((data: unknown, status = 200) =>
     Response.json({ success: true, data }, { status })
   ),
   createErrorResponse: vi.fn((error: string, code: string, status = 400) =>
     Response.json({ success: false, error, code }, { status })
   ),
+  createCorsPreflightResponse: vi.fn(() => new Response(null, { status: 204 })),
 }))
 
-vi.mock('@/lib/api/idempotency', () => ({
-  claimIdempotencyKey: vi.fn().mockResolvedValue({ state: 'claimed' }),
-  computeIdempotencyRequestHash: vi.fn().mockReturnValue('request-hash'),
-  getIdempotencyKey: vi.fn().mockReturnValue(null),
-  persistIdempotencyResponse: vi.fn(),
-  releaseIdempotencyClaim: vi.fn(),
-}))
+const sendEmail = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/email/emailService', () => ({ sendEmail }))
 
-vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: vi.fn(),
-}))
+const createAdminClient = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient }))
 
-vi.mock('@/lib/email/emailService', () => ({
-  sendEmail: vi.fn(),
-}))
-
-import { createAdminClient } from '@/lib/supabase/admin'
+import { withApiAuth } from '@/lib/api/auth'
 import { POST } from '@/app/api/external/performer-interest/route'
 
-describe('external performer-interest route fail-closed guards', () => {
+function submission() {
+  return new Request('http://localhost/api/external/performer-interest', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'user-agent': 'vitest' },
+    body: JSON.stringify({
+      fullName: 'Pat Example',
+      email: 'pat@example.com',
+      phone: '+447700900123',
+      bio: 'Singer songwriter',
+      consentDataStorage: true,
+    }),
+  })
+}
+
+describe('retired performer-interest route', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('returns a 500 error when rate-limit lookup fails instead of processing submission', async () => {
-    const rateLimitGte = vi.fn().mockResolvedValue({
-      count: null,
-      error: { message: 'rate-limit lookup unavailable' },
-    })
-    const rateLimitEq = vi.fn().mockReturnValue({ gte: rateLimitGte })
-    const rateLimitSelect = vi.fn().mockReturnValue({ eq: rateLimitEq })
-    const submissionInsert = vi.fn()
-
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
-      from: vi.fn((table: string) => {
-        if (table === 'performer_submissions') {
-          return {
-            select: rateLimitSelect,
-            insert: submissionInsert,
-          }
-        }
-        throw new Error(`Unexpected table: ${table}`)
-      }),
-    })
-
-    const request = new Request('http://localhost/api/external/performer-interest', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-forwarded-for': '203.0.113.11',
-      },
-      body: JSON.stringify({
-        fullName: 'Pat Example',
-        email: 'pat@example.com',
-        phone: '+447700900123',
-        bio: 'Singer songwriter',
-        consentDataStorage: true,
-        honeypot: '',
-      }),
-    })
-
-    const response = await POST(request as any)
+  it('answers 410 Gone and says why', async () => {
+    const response = await POST(submission() as any)
     const payload = await response.json()
 
-    expect(response.status).toBe(500)
-    expect(payload).toEqual({
-      success: false,
-      error: 'Failed to process submission',
-      code: 'DATABASE_ERROR',
-    })
-    expect(submissionInsert).not.toHaveBeenCalled()
+    expect(response.status).toBe(410)
+    expect(payload.code).toBe('ENDPOINT_RETIRED')
+    expect(payload.error).toContain('Open mic nights are no longer running')
+    // A guest who reaches a closed form still needs a way to reach a person.
+    expect(payload.error).toContain('01753 682707')
+  })
+
+  it('stores nothing and emails nobody', async () => {
+    await POST(submission() as any)
+
+    expect(createAdminClient).not.toHaveBeenCalled()
+    expect(sendEmail).not.toHaveBeenCalled()
+  })
+
+  it('no longer promises open mic nights', async () => {
+    const payload = await (await POST(submission() as any)).json()
+
+    expect(JSON.stringify(payload).toLowerCase()).not.toContain('booking acts')
+    expect(JSON.stringify(payload)).not.toContain('8pm')
+  })
+
+  it('does not read the submitted body, so retiring the form records nothing', async () => {
+    const request = submission()
+    await POST(request as any)
+
+    // Untouched: the route never asked for it.
+    expect(request.bodyUsed).toBe(false)
+    expect(withApiAuth).not.toHaveBeenCalled()
   })
 })
