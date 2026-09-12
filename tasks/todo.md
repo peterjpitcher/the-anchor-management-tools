@@ -1,3 +1,12 @@
+# Retired quiz and Music Bingo claims, 12 September 2026 (applied to production)
+
+The owner confirmed on 11 and 12 September: the quiz has five rounds with one interactive round in the middle, one phone per player, and prizes for first place (a £25 bar voucher) and second from last (a bottle of wine) only. Music Bingo winners get a £25 voucher; fancy dress earns extra points. Cash Bingo does have free drink rounds and £10 food vouchers, so its copy stands.
+
+- [x] `20260912090000_campaign_quiz_prize_claims.sql` (sha256 `3ff52e0f...`) applied as `20260912080836 campaign_quiz_prize_claims`: six scheduled campaigns, content and content_hash together. Every stored hash was reproduced from its stored content first, so the fingerprint keeps meaning what it says. After: no scheduled campaign claims spot prizes or free-drink questions, the six sit at their reviewed hashes, and their status and send times are unchanged (14 and 18 September, 30 September, 28 October, 6 November, 4 December).
+- [x] `20260912091000_charity_quiz_one_phone_per_player.sql` (sha256 `bed96518...`) applied as `20260912080853 charity_quiz_one_phone_per_player`: the 25 September record now says one phone per player.
+- [x] Repo campaign sources, the one-off charity quiz script and four new house-style error rules (spot-prizes, free-drink-question, phone-per-team, quiz-league-table) so a future campaign carrying them is refused at schedule time.
+- Earlier the same evening: `20260911200535 quiz_prize_claims` took the same claims off the five upcoming quiz records.
+
 # "Open now" past midnight, for the 1am New Year's Eve close, 11 September 2026
 
 Branch `fix/hours-open-now-past-midnight-2026-09-11`. Code only: no database change, no deploy. Unblocks item 12 below (the 31 December special hours row moving from 22:00 to 01:00), which stays a separate, owner-approved data change after this is live.
