@@ -1,16 +1,23 @@
 -- Opting back in clears the old opt-out, 12 September 2026.
 --
--- NOT YET APPLIED. Drafted and validated against a throwaway local Postgres on 12 September
--- 2026. It has not been run against production, and it must not be until the owner says so.
+-- APPLIED to production project tfcasgxopxegwrabvwat on 12 September 2026 as migration version
+-- 20260912191542 (name: consent_opt_in_clears_opt_out), after validation against a throwaway
+-- local Postgres. Verified after apply with a smoke test that rolled itself back: a throwaway
+-- customer opted out, then opted back in, finished with marketing_email_opt_in true and
+-- marketing_email_opted_out_at NULL, the ledger kept both events, an unknown customer id still
+-- raised P0002, and nothing was left behind. Rollback:
+-- supabase/rollbacks/20260912130000_consent_opt_in_clears_opt_out.sql
 --
 -- WHY
 --
 -- `record_customer_consent` sets the opt-in flag and the opt-in timestamp when somebody opts
--- in, and never clears the matching `*_opted_out_at` column. The marketing audience requires
--- BOTH `marketing_email_opt_in` true AND `marketing_email_opted_out_at IS NULL`
--- (`src/lib/notifications/notify.ts` line 209, `src/lib/sms/event-promo-policy.ts` line 671),
--- so a guest who unsubscribed and later ticked the box reads as opted in on every screen and
--- is never actually sent to. They would never know, and neither would we.
+-- in, and never clears the matching `*_opted_out_at` column. `marketing_email_opted_out_at`
+-- is an absolute gate on the marketing audience: a set value excludes the guest whatever else
+-- is true of them, including the opt-in flag and the soft opt-in a prior booking gives them
+-- (`src/lib/notifications/notify.ts` line 209, `src/lib/sms/event-promo-policy.ts` line 671
+-- and the campaign SQL they describe). So a guest who unsubscribed and later ticked the box
+-- reads as opted in on every screen and is never actually sent to. They would never know, and
+-- neither would we.
 --
 -- Only the guest email-capture link cleared it, inline in its own UPDATE, which is why the
 -- defect was invisible: the one path anybody tested worked.
@@ -226,19 +233,22 @@ GRANT EXECUTE ON FUNCTION public.record_customer_consent(
 
 -- ROLLBACK
 --
--- Re-run the body from 20260708000012_customer_consent_audit.sql, which is identical apart
+-- supabase/rollbacks/20260912130000_consent_opt_in_clears_opt_out.sql holds the previous body
+-- verbatim, copied from 20260708000012_customer_consent_audit.sql, which is identical apart
 -- from the three cleared columns. No table, column, index, policy or grant is touched, so
 -- there is nothing else to undo.
 --
 -- APPLY NOTE
 --
--- Safe to apply while the app is running: CREATE OR REPLACE FUNCTION takes a short lock on
--- the function only, and an in-flight call finishes on the old body. It backfills nothing.
+-- Applied while the app was running, which is safe: CREATE OR REPLACE FUNCTION takes a short
+-- lock on the function only, and an in-flight call finishes on the old body. It backfills
+-- nothing.
 --
--- THE BACKFILL IS A SEPARATE OWNER DECISION, and there is nothing to backfill today: 0 rows
--- currently have marketing_email_opt_in = true with marketing_email_opted_out_at set. If any
--- appear before this is applied, the question of whether those guests should be treated as
--- opted in is the owner's, not this migration's:
+-- THE BACKFILL IS A SEPARATE OWNER DECISION, and there was nothing to backfill when this ran:
+-- 0 customers had marketing_email_opt_in = true with marketing_email_opted_out_at set, on any
+-- of the three marketing channels, so no summary row was rewritten by the apply itself. From
+-- here the function keeps that state from recurring. If rows ever appear, the question of
+-- whether those guests should be treated as opted in is the owner's, not this migration's:
 --
 --   SELECT count(*) FROM public.customers
 --   WHERE marketing_email_opt_in IS TRUE AND marketing_email_opted_out_at IS NOT NULL;

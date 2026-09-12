@@ -1,8 +1,8 @@
 # Guest email review fixes, 12 September 2026
 
 The 11 September review of every guest-facing email put ten questions to the owner. He answered them
-on 12 September and asked for the whole list built, gated and deployed. Applied to production and
-merged; the report is a private artifact.
+on 12 September and asked for the whole list built, gated and deployed. Six migrations are applied
+to production; the report is a private artifact.
 
 - [x] Campaign copy, round one (applied as `campaign_copy_owner_answers`): four fire claims out of the
       October and November round-ups, New Year's Eve at 1am in both December round-ups, the 3 October
@@ -14,6 +14,16 @@ merged; the report is a private artifact.
       to both November round-ups from its event record.
 - [x] Legacy consent recorded (applied as `legacy_email_marketing_consent_attestation`): 290 rows,
       labelled as the owner's declaration rather than a captured tick, opted-out guests excluded.
+- [x] Bounce-derived opt-outs corrected (applied as `correct_bounce_derived_marketing_opt_outs`,
+      version 20260912190904): 9 compensating rows, 0 left uncorrected, 55 opt-out flags untouched,
+      reachable audience unchanged at 253. Recorded in the repo as
+      `supabase/migrations/20260912210000_correct_bounce_derived_marketing_opt_outs.sql`.
+- [x] Voucher reminders carry `requires_booking` (applied as `voucher_reminder_requires_booking`,
+      version 20260912191510). Verified against the four reminders pending at the time: the two
+      music bingo vouchers resolve true, the £25 and house wine vouchers false.
+- [x] Opting back in clears the old opt-out (applied as `consent_opt_in_clears_opt_out`, version
+      20260912191542), on all three marketing channels. 0 customers were in the broken state when
+      it ran, so it rewrote no summary row; the smoke test rolled itself back and left nothing.
 - [x] Shared foundation: `sendEmail` derives a plain-text part when a caller sends HTML alone and
       logs what the guest received; one contact block for every guest email.
 - [x] Event emails: the reschedule time read as a London wall time (email, text, the hold write and
@@ -35,7 +45,8 @@ merged; the report is a private artifact.
       staff one-off emails show consent, the open mic intake retired.
 - [x] Gates on the merged tree: lint clean, `tsc --noEmit` clean, `npm test` and `npm run test:utc`
       869 files with 8,295 passed and 2 skipped, cold `npm run build` passes.
-- [x] Merged to main and deployed.
+- [ ] Merged to main and deployed. (Gates green on the merged tree; PR open, awaiting the merge and
+      the Vercel production deployment. This line gets the deployment id when it is verified.)
 
 Owner calls taken on his standing recommendations, with him away: walk-ins get no booking
 confirmation; a guest who books by replying to a text gets both the text and the email; the booking
