@@ -262,12 +262,20 @@ async function unsubscribe(
     return incompleteLinkPage()
   }
 
-  // Generous, because mail clients legitimately fire the one-click POST and may retry,
-  // and because the worst case for a real guest here is being told to phone us.
+  // KEYED ON THE TOKEN, NOT THE IP. Gmail and Yahoo fire the RFC 8058 one-click POST from
+  // shared outbound servers, so the opt-outs from one campaign arrive from a handful of
+  // addresses. Thirty per ten minutes per IP would have thrown away everything past the
+  // thirtieth, which is precisely the opt-out we are legally obliged to honour. Repeated use
+  // of the SAME token is the only thing worth limiting, and a mail client retrying its own
+  // POST is exactly that.
+  //
+  // Hashed, because the identifier becomes part of a Redis key and the raw token is the
+  // whole authorisation for this route.
   const rateLimited = await applyDistributedRateLimit(request, {
     prefix: 'email-unsubscribe',
     window: '10 m',
     max: 30,
+    identifier: createHash('sha256').update(rawToken).digest('hex'),
   })
   if (rateLimited) {
     return rateLimitedPage()
@@ -276,12 +284,25 @@ async function unsubscribe(
   const supabase = createAdminClient()
   const lookup = await lookupUnsubscribeToken(supabase, rawToken)
 
-  // A bad token and a valid one are told the same story, so probing reveals nothing and a
-  // guest with a mangled link is not left thinking they are still subscribed.
+  // TELL THE TRUTH. This used to say "you are not on the marketing list" for both an
+  // unmatched token and a database failure, while saving nothing at all. On a failure that is
+  // a flat lie: the guest is still subscribed, now believes they are not, and hears from us
+  // again next month. Neither reply reveals whether any address is on the list.
   if (!lookup.ok) {
+    if (lookup.reason === 'unavailable') {
+      return page(
+        'That did not work',
+        `<p>Something went wrong at our end and nothing has changed, so you may still get marketing emails from us.</p>
+<p>Please try the link again in a few minutes. If it still will not go through, ring us on <a href="tel:01753682707">${CONTACT_PHONE}</a> and we will take you off the list ourselves.</p>`,
+        503
+      )
+    }
+
     return page(
-      'You will not get marketing emails from us',
-      '<p>We could not match that link, which usually means it has already been used. Either way you are not on the marketing list. If you do keep hearing from us, ring us and we will sort it.</p>'
+      'We could not use that link',
+      `<p>Nothing has been changed, because we could not match that link. It may have been cut short by your email app, or it may already have been used.</p>
+<p>If you are still getting marketing emails from us, use the unsubscribe link in the most recent one, or ring us on <a href="tel:01753682707">${CONTACT_PHONE}</a> and we will take you off the list.</p>`,
+      404
     )
   }
 

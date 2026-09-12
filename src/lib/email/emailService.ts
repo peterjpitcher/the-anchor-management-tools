@@ -91,6 +91,23 @@ type EmailSendResult = {
   suppressionCheckUnavailable?: boolean;
 };
 
+/**
+ * The one-click unsubscribe headers, identical on both provider paths.
+ *
+ * HTTPS ONLY, NO MAILTO. RFC 8058 one-click needs the HTTPS entry and
+ * `List-Unsubscribe-Post`, and that is what Gmail and Yahoo act on. The mailto entry that
+ * used to be appended pointed at `EMAIL_REPLY_TO`, the venue manager's mailbox, where
+ * nothing reads it and nothing acts on it. Every client that chose the mailto over the link
+ * produced an opt-out request that reached a human inbox and was never honoured, which is
+ * worse than offering one route that works.
+ */
+export function UNSUBSCRIBE_HEADERS(unsubscribeUrl: string): Record<string, string> {
+  return {
+    'List-Unsubscribe': `<${unsubscribeUrl}>`,
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+  };
+}
+
 let cachedResendClient: Resend | null = null;
 
 function getEmailProvider(): EmailProvider {
@@ -289,13 +306,7 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
     }
 
     if (options.unsubscribeUrl) {
-      const mailto = process.env.EMAIL_REPLY_TO
-        ? `, <mailto:${process.env.EMAIL_REPLY_TO}?subject=unsubscribe>`
-        : '';
-      resendPayload.headers = {
-        'List-Unsubscribe': `<${options.unsubscribeUrl}>${mailto}`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-      };
+      resendPayload.headers = UNSUBSCRIBE_HEADERS(options.unsubscribeUrl);
     }
 
     const { data, error } = options.idempotencyKey
@@ -421,13 +432,8 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
     // disappears from every message whenever EMAIL_PROVIDER is graph, and the opt-out the
     // soft opt-in basis depends on would exist on only one of the two send paths.
     if (options.unsubscribeUrl) {
-      const mailto = process.env.EMAIL_REPLY_TO
-        ? `, <mailto:${process.env.EMAIL_REPLY_TO}?subject=unsubscribe>`
-        : '';
-      message.internetMessageHeaders = [
-        { name: 'List-Unsubscribe', value: `<${options.unsubscribeUrl}>${mailto}` },
-        { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
-      ];
+      message.internetMessageHeaders = Object.entries(UNSUBSCRIBE_HEADERS(options.unsubscribeUrl))
+        .map(([name, value]) => ({ name, value }));
     }
 
     if (ccRecipients.length > 0) {

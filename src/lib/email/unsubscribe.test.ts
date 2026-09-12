@@ -10,7 +10,9 @@ import { buildUnsubscribeUrl, getOrCreateUnsubscribeUrl, lookupUnsubscribeToken 
  * every email already sitting in somebody's inbox.
  */
 
-type Row = { token: string; customer_id: string }
+// `customer_id` is optional so a test can build the row a CHECK constraint should make
+// impossible: a token belonging to neither a customer nor a business contact.
+type Row = { token: string; customer_id?: string }
 
 function fakeSupabase(rows: Row[], opts: { insertFails?: boolean } = {}) {
   const inserted: Row[] = []
@@ -108,16 +110,45 @@ describe('lookupUnsubscribeToken', () => {
     })
   })
 
-  it('rejects an unknown token without saying why', async () => {
+  it('rejects an unknown token without saying whose it was', async () => {
     await expect(
       lookupUnsubscribeToken(fakeSupabase([]), 'nope-aaaaaaaaaaaaaaaaaaaaaaaaaa')
-    ).resolves.toEqual({ ok: false })
+    ).resolves.toEqual({ ok: false, reason: 'not_found' })
   })
 
   it.each(['', '   ', 'short'])('rejects obvious junk (%j) before touching the database', async (token) => {
     const supabase = { from: vi.fn() } as never
-    await expect(lookupUnsubscribeToken(supabase, token)).resolves.toEqual({ ok: false })
+    await expect(lookupUnsubscribeToken(supabase, token)).resolves.toEqual({
+      ok: false,
+      reason: 'not_found',
+    })
     expect((supabase as { from: ReturnType<typeof vi.fn> }).from).not.toHaveBeenCalled()
+  })
+
+  // A database failure is NOT "not on the list". The route has to say so, because telling a
+  // guest they are unsubscribed when nothing was saved is the one answer that cannot be
+  // recovered from: they stop looking, and they hear from us again next month.
+  it('separates a database failure from a miss', async () => {
+    const supabase = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: { message: 'connection reset' } }),
+          }),
+        }),
+      }),
+    } as never
+
+    await expect(
+      lookupUnsubscribeToken(supabase, 'real-token-aaaaaaaaaaaaaaaaaaaaaaaa')
+    ).resolves.toEqual({ ok: false, reason: 'unavailable' })
+  })
+
+  it('treats a row with no subject as unactioned rather than as a miss', async () => {
+    const rows: Row[] = [{ token: 'real-token-aaaaaaaaaaaaaaaaaaaaaaaa' }]
+    await expect(
+      lookupUnsubscribeToken(fakeSupabase(rows), 'real-token-aaaaaaaaaaaaaaaaaaaaaaaa')
+    ).resolves.toEqual({ ok: false, reason: 'unavailable' })
   })
 })
 
