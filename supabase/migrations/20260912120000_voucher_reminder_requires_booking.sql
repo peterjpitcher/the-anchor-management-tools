@@ -1,7 +1,12 @@
 -- Voucher reminders: tell the sender whether the voucher needs booking, 12 September 2026.
 --
--- NOT YET APPLIED. Drafted and validated against a throwaway local Postgres on 12 September
--- 2026; it has not been run against production. See the note at the foot of this file.
+-- APPLIED to production project tfcasgxopxegwrabvwat on 12 September 2026 as migration version
+-- 20260912191510 (name: voucher_reminder_requires_booking), after validation against a throwaway
+-- local Postgres. Verified after apply: the definition carries the key, grants are postgres and
+-- service_role only, a past date returns an empty claim, a null date returns VALIDATION_ERROR,
+-- and the flag resolves correctly for the four reminders pending at the time (two music bingo
+-- vouchers true, the £25 and house wine vouchers false). Rollback:
+-- supabase/rollbacks/20260912120000_voucher_reminder_requires_booking.sql
 --
 -- WHY
 --
@@ -139,12 +144,13 @@ grant execute on function public.voucher_reminders_claim_due(date, integer) to s
 
 -- ROLLBACK
 --
--- Re-run the body from 20260802000003_voucher_reminder_cadence.sql, which is identical apart
--- from the requires_booking key. Nothing else changes: no table, column, index or grant is
--- touched, and dropping the key back out cannot lose data because the sender falls back to
+-- supabase/rollbacks/20260912120000_voucher_reminder_requires_booking.sql holds the previous
+-- body verbatim, copied from 20260802000003_voucher_reminder_cadence.sql, which is identical
+-- apart from the requires_booking key. Nothing else changes: no table, column, index or grant
+-- is touched, and dropping the key back out cannot lose data because the sender falls back to
 -- its own lookup when the key is absent.
 --
 -- APPLY NOTE
 --
--- Safe to apply at any time, including while the cron is running: CREATE OR REPLACE FUNCTION
--- takes a short lock on the function only, and an in-flight call finishes on the old body.
+-- Applied while the cron was live, which is safe: CREATE OR REPLACE FUNCTION takes a short
+-- lock on the function only, and an in-flight call finishes on the old body.
