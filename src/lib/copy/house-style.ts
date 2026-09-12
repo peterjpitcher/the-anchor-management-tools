@@ -178,6 +178,45 @@ const BANNED_CLAIMS: Rule[] = [
       '"released closer to the time" line is retired, SSOT §7 and §14.',
   },
   {
+    rule: 'spot-prizes',
+    severity: 'error',
+    // Only a claim. "There are no spot prizes" is the honest sentence and must pass.
+    pattern:
+      /(?<!\b(?:no|not|never|don't|do not|doesn't|does not|without)\b[^.!?]{0,40})\bspot prizes?\b/gi,
+    message:
+      'We do not run spot prizes (owner, 11 September 2026). Quiz night pays out twice: a £25 bar ' +
+      'voucher for first place and a bottle of wine for second from last. Music Bingo pays a £25 ' +
+      'voucher to the winners. Cash Bingo has free drink rounds and £10 food vouchers, so write ' +
+      'those instead of inventing a spot prize.',
+  },
+  {
+    rule: 'free-drink-question',
+    severity: 'error',
+    // The quiz phrasing only. Cash Bingo genuinely has free drink rounds, so plain "free drinks"
+    // stays legal and must not be swept up here.
+    pattern:
+      /(?<!\b(?:no|not|never|don't|do not|doesn't|does not|without)\b[^.!?]{0,40})\bfree[\s-]drink questions?\b/gi,
+    message:
+      'Quiz night has no free-drink questions (owner, 11 September 2026). It is five rounds, one ' +
+      'of which is an interactive round in the middle played on a phone.',
+  },
+  {
+    rule: 'phone-per-team',
+    severity: 'error',
+    pattern: /\bphones? per team\b/gi,
+    message:
+      'The interactive middle round is one phone per player, not one per team (owner, ' +
+      '11 September 2026).',
+  },
+  {
+    rule: 'quiz-league-table',
+    severity: 'error',
+    // Scoped to the quiz on purpose: a darts or pool league table is a different thing.
+    pattern: /quiz[^.!?\n]{0,80}league table|league table[^.!?\n]{0,80}quiz/gi,
+    message:
+      'There is no quiz league table (owner, 11 September 2026). Each quiz stands on its own night.',
+  },
+  {
     rule: 'anchor-pub-conversational',
     severity: 'warning',
     pattern: /\bThe Anchor Pub\b/g,
