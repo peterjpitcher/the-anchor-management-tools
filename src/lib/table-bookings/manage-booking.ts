@@ -3,6 +3,8 @@ import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
 import { formatCancellationReason } from './cancellation-reasons'
+import { isChristmasBookingType } from './christmas'
+import { guestCancellationRefundNotice } from './deposit-terms'
 import { applyPartySizeDepositTransition } from './staff-deposit-transitions'
 
 export type TableManagePreviewResult = {
@@ -45,15 +47,27 @@ function resolveAppBaseUrl(appBaseUrl?: string): string {
   return (appBaseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '')
 }
 
+/**
+ * When a manage or confirm link stops working: the booking start plus 48 hours.
+ *
+ * There used to be a `now + 30 days` cap on top of that, which silently broke the links on every
+ * booking taken more than a month ahead. A 5 December sitting booked on 11 September went out with
+ * a link that died on 11 October, seven weeks before the guest needed it, and six confirmations in
+ * the last 90 days did exactly that. The cap protected nothing: the token is per booking, hashed,
+ * single-customer and useless once the sitting is over, and the 48 hours past the start is what
+ * stops it lingering.
+ *
+ * `now + 60 minutes` is the floor, so a booking taken for tonight still gets a usable link, and a
+ * booking with no readable start falls back to 14 days rather than never expiring.
+ */
 function computeManageTokenExpiry(bookingStartIso?: string | null): string {
   const now = Date.now()
-  const capMs = now + 30 * 24 * 60 * 60 * 1000
   const bookingPlus48Ms = bookingStartIso ? Date.parse(bookingStartIso) + 48 * 60 * 60 * 1000 : Number.NaN
   const fallbackMs = now + 14 * 24 * 60 * 60 * 1000
 
   const resolvedMs = Number.isFinite(bookingPlus48Ms)
-    ? Math.min(Math.max(bookingPlus48Ms, now + 60 * 60 * 1000), capMs)
-    : Math.min(fallbackMs, capMs)
+    ? Math.max(bookingPlus48Ms, now + 60 * 60 * 1000)
+    : fallbackMs
 
   return new Date(resolvedMs).toISOString()
 }
@@ -114,11 +128,22 @@ async function findTableAssignment(
  */
 type ManageTokenActionType = 'manage' | 'booking_confirm'
 
+/**
+ * An expired link is told apart from a link that never worked.
+ *
+ * Both used to answer `invalid_token`, so a guest whose link had simply run out was told it "is
+ * not valid", which reads as "you have the wrong link" and sends them looking for another email
+ * instead of picking up the telephone.
+ */
+type ManageTokenLookup =
+  | { ok: true; customer_id: string; table_booking_id: string }
+  | { ok: false; reason: 'invalid_token' | 'expired_token' }
+
 async function getTableManageTokenRow(
   supabase: SupabaseClient<any, 'public', any>,
   rawToken: string,
   allowedActionTypes: readonly ManageTokenActionType[] = ['manage']
-): Promise<{ customer_id: string; table_booking_id: string } | null> {
+): Promise<ManageTokenLookup> {
   const tokenHash = hashGuestToken(rawToken)
 
   const { data: tokenRow } = await supabase.from('guest_tokens')
@@ -128,19 +153,23 @@ async function getTableManageTokenRow(
     .maybeSingle()
 
   if (!tokenRow || !tokenRow.table_booking_id || !tokenRow.customer_id) {
-    return null
+    return { ok: false, reason: 'invalid_token' }
   }
 
   if (tokenRow.consumed_at) {
-    return null
+    return { ok: false, reason: 'invalid_token' }
   }
 
   const expiresAtMs = Date.parse(tokenRow.expires_at || '')
-  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
-    return null
+  if (!Number.isFinite(expiresAtMs)) {
+    return { ok: false, reason: 'invalid_token' }
+  }
+  if (expiresAtMs <= Date.now()) {
+    return { ok: false, reason: 'expired_token' }
   }
 
   return {
+    ok: true,
     customer_id: tokenRow.customer_id,
     table_booking_id: tokenRow.table_booking_id
   }
@@ -331,8 +360,8 @@ export async function getTableManagePreviewByRawToken(
   allowedActionTypes: readonly ManageTokenActionType[] = ['manage']
 ): Promise<TableManagePreviewResult> {
   const tokenRow = await getTableManageTokenRow(supabase, rawToken, allowedActionTypes)
-  if (!tokenRow) {
-    return { state: 'blocked', reason: 'invalid_token' }
+  if (!tokenRow.ok) {
+    return { state: 'blocked', reason: tokenRow.reason }
   }
 
   const { data: booking } = await supabase.from('table_bookings')
@@ -386,6 +415,41 @@ export async function getTableManagePreviewByRawToken(
     can_cancel: canCancel,
     can_edit: canEdit
   }
+}
+
+/**
+ * The refund terms the guest cancel page shows before the guest confirms.
+ *
+ * Read here rather than added to the preview: that preview is serialised straight to the page and
+ * must not start carrying the venue's payment state. The two facts this needs are terms, not
+ * money: the booking type and the cutoff the booking was sold on.
+ *
+ * A read that fails says nothing about days. Guessing bands for a seasonal booking is how a guest
+ * is told their Christmas deposit is half refundable when it is all or nothing.
+ */
+export async function getGuestCancellationRefundNotice(
+  supabase: SupabaseClient<any, 'public', any>,
+  tableBookingId: string
+): Promise<string> {
+  const { data, error } = await supabase.from('table_bookings')
+    .select('booking_type, deposit_refund_cutoff_days')
+    .eq('id', tableBookingId)
+    .maybeSingle()
+
+  if (error || !data) {
+    if (error) {
+      logger.warn('Could not read the cancellation refund terms for the guest manage page', {
+        metadata: { tableBookingId, error: error.message }
+      })
+    }
+    return 'If you paid a deposit, call us and we will sort it out with you.'
+  }
+
+  const cutoff = Number(data.deposit_refund_cutoff_days)
+  return guestCancellationRefundNotice({
+    isChristmas: isChristmasBookingType(data.booking_type ?? null),
+    refundCutoffDays: Number.isFinite(cutoff) ? cutoff : null
+  })
 }
 
 export async function updateTableBookingByRawToken(
@@ -482,7 +546,7 @@ export async function updateTableBookingByRawToken(
       })
       .eq('id', bookingId)
       .eq('status', 'confirmed')
-      .select('id')
+      .select('id, booking_reference, booking_date')
       .maybeSingle()
 
     if (cancelError) {
@@ -512,6 +576,35 @@ export async function updateTableBookingByRawToken(
           customerId,
           error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
         }
+      })
+    }
+
+    // Refund the deposit and tell the guest, exactly as the three staff cancel routes do.
+    //
+    // This path used to set the status and stop there. Nothing refunded the deposit and nothing
+    // told anybody, so a Christmas guest cancelling thirty days out lost a deposit that SSOT
+    // section 7 says comes back in full, and the pub heard about it from the guest. No cron or
+    // trigger covered it either: `refundAndNotifyOnCancel` was called from the staff routes alone.
+    //
+    // Never allowed to fail the cancellation. The booking is already cancelled by the time we get
+    // here, and the helper writes its own audit row with `action_needed` when a refund throws, so
+    // money still owed is queryable rather than invisible.
+    try {
+      // Imported here rather than at the top of the file: cancel-notify imports bookings, which
+      // imports this module, so a module-scope import would close a cycle and leave one of the
+      // three half-built depending on which was loaded first.
+      const { refundAndNotifyOnCancel } = await import('./cancel-notify')
+      await refundAndNotifyOnCancel(supabase, {
+        bookingId,
+        bookingReference: cancelledBooking.booking_reference || '',
+        bookingDate: cancelledBooking.booking_date || '',
+        customerId,
+        source: 'guest_manage_link'
+      })
+    } catch (notifyError) {
+      logger.error('Guest cancellation saved but the refund and notice path threw', {
+        error: notifyError instanceof Error ? notifyError : new Error(String(notifyError)),
+        metadata: { bookingId, customerId }
       })
     }
 
