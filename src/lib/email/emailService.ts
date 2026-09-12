@@ -4,6 +4,7 @@ import { ClientSecretCredential } from '@azure/identity';
 import { getErrorMessage } from '@/lib/errors';
 import { Resend } from 'resend';
 import { getEmailSuppressionStatus, recordEmailMessage } from '@/lib/email/logging';
+import { htmlToPlainText } from '@/lib/email/plain-text';
 import { currentEmailSuspensionReason, EMAIL_SUSPENSION_SWITCHES } from '@/lib/email/suspension';
 
 export interface EmailOptions {
@@ -135,7 +136,8 @@ async function recordEmailOutcome(
     fromAddress: input.fromAddress ?? null,
     commType: options.commType ?? null,
     subject: options.subject,
-    bodyText: options.text ?? null,
+    // The derived text is what the guest received, so it is what the log should hold.
+    bodyText: resolveTextPart(options) ?? null,
     bodyHtml: options.html ?? null,
     attachments,
     resendMessageId: input.messageId ?? null,
@@ -223,6 +225,20 @@ export async function sendEmail(options: EmailOptions): Promise<EmailSendResult>
   return sendEmailViaGraph(options);
 }
 
+/**
+ * The text part the guest receives.
+ *
+ * A caller's own text always wins. When a template sends HTML alone the text is derived, rather
+ * than sending none: twelve guest templates did that, which reads as an empty message in a
+ * text-only client, scores worse with spam filters and left `body_text` null in the send log.
+ */
+function resolveTextPart(options: EmailOptions): string | undefined {
+  if (options.text) return options.text;
+  if (!options.html) return undefined;
+  const derived = htmlToPlainText(options.html);
+  return derived || undefined;
+}
+
 async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResult> {
   const fromAddress = options.from ?? process.env.EMAIL_FROM_ADDRESS;
   const client = getResendClient();
@@ -264,10 +280,11 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
     if (options.html) {
       resendPayload.html = options.html;
     }
-    if (options.text) {
-      resendPayload.text = options.text;
+    const textPart = resolveTextPart(options);
+    if (textPart) {
+      resendPayload.text = textPart;
     }
-    if (!options.html && !options.text) {
+    if (!options.html && !textPart) {
       resendPayload.text = '';
     }
 
