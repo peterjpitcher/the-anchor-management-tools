@@ -84,6 +84,25 @@ describe('the corrected Wellington', () => {
   })
 })
 
+describe('the emoji rule, owner decision 12 September 2026', () => {
+  // The marker line was live in the Facebook prompt, and the whats-on emails carry the heart.
+  const CALENDAR = String.fromCodePoint(0x1f4c5)
+  const SPARKLE = String.fromCodePoint(0x2728)
+
+  it('flags an emoji wherever this checker looks, because none of it is a social post', () => {
+    expect(checkHouseStyle(`${CALENDAR} Date: Friday 3 October`).map((f) => f.rule)).toContain('emoji')
+    expect(checkHouseStyle(`Quiz night, back again ${SPARKLE}`).map((f) => f.rule)).toContain('emoji')
+  })
+
+  it('keeps it a warning, so a smiley can never block a send', () => {
+    expect(houseStyleErrors(`${CALENDAR} Date: Friday 3 October`)).toEqual([])
+  })
+
+  it('leaves ordinary punctuation and the pound sign alone', () => {
+    expect(checkHouseStyle('Tickets are £8, or £10 on the night.').map((f) => f.rule)).not.toContain('emoji')
+  })
+})
+
 describe('prose checks', () => {
   it('flags a sentence over 25 words', () => {
     const long = `We ${'really '.repeat(26)}mean it.`
@@ -93,6 +112,22 @@ describe('prose checks', () => {
   it('allows one exclamation mark and objects to two', () => {
     expect(checkHouseStyle('Come along!').map((f) => f.rule)).not.toContain('exclamation-marks')
     expect(checkHouseStyle('Come along! Really!').map((f) => f.rule)).toContain('exclamation-marks')
+  })
+
+  it('treats a line break as the end of a sentence', () => {
+    // The real shape of a marketing email, cut down. None of these three lines ends in a full
+    // stop, and before 12 September 2026 the checker read all of them as one 30-word sentence.
+    const email = [
+      'THE ANCHOR Stanwell Moor Village, since 1751',
+      'Save your seats: https://www.the-anchor.pub/events/cash-bingo-2026-11-18',
+      'See everything on this month at the pub, from the quiz to the last cash bingo of the year',
+    ].join('\n')
+    expect(checkHouseStyle(email).map((f) => f.rule)).not.toContain('long-sentence')
+  })
+
+  it('still catches a genuinely long sentence inside one line', () => {
+    const line = `We ${'really '.repeat(26)}mean it.\nShort line after.`
+    expect(checkHouseStyle(line).map((f) => f.rule)).toContain('long-sentence')
   })
 
   it('can be turned off for a fragment like a dish name', () => {
