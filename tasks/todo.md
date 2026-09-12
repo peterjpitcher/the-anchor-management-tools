@@ -44,7 +44,10 @@ to production; the report is a private artifact.
       Orange Jelly Limited, the unsubscribe page stops lying, one-click limits keyed on the token,
       staff one-off emails show consent, the open mic intake retired.
 - [x] Gates on the merged tree: lint clean, `tsc --noEmit` clean, `npm test` and `npm run test:utc`
-      869 files with 8,295 passed and 2 skipped, cold `npm run build` passes.
+      869 files with 8,295 passed and 2 skipped, cold `npm run build` exit 0 (compiled in 31s,
+      155/155 static pages, 427 routes). The build needs
+      `NODE_OPTIONS=--max-old-space-size=8192` on this machine; see the 12 September entry in
+      `tasks/lessons.md` for why, and for the piped-exit-code trap that hid it the first time.
 - [ ] Merged to main and deployed. (Gates green on the merged tree; PR open, awaiting the merge and
       the Vercel production deployment. This line gets the deployment id when it is verified.)
 
