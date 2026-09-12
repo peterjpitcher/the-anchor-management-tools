@@ -9,6 +9,7 @@ import { processEventRefund, type EventRefundResult } from '@/lib/events/manage-
 import { sendEventBookingCancelledEmail } from '@/lib/email/event-ticket-emails';
 import { logger } from '@/lib/logger';
 import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/events/pricing';
+import { formatEventWhenCompactLondon, resolveEventStartIso } from '@/lib/events/event-when';
 import { buildEventBookingStats } from '@/lib/events/stats';
 
 function sanitizeEventSearchTerm(value: string): string {
@@ -1237,12 +1238,15 @@ export class EventService {
         sms_status: string | null
       }
       const refundResult = refundResults.get(booking.id)
+      // A booking with no payment row took no money, so it gets no refund sentence at all.
+      // Passing 0 here is what told guests who had never paid "Refund amount: £0.00".
       await sendEventBookingCancelledEmail(db, {
         bookingId: booking.id,
-        refundStatus: refundResult?.status ?? 'none',
-        refundAmount: refundResult?.amount ?? 0,
+        refundStatus: refundResult?.status ?? null,
+        refundAmount: refundResult?.amount ?? null,
         currency: 'GBP',
-        reason: 'event_cancelled'
+        reason: 'event_cancelled',
+        paymentTaken: Boolean(refundResult)
       })
 
       if (!customer?.sms_status || customer.sms_status !== 'active' || !customer.mobile_number) continue
@@ -1302,19 +1306,18 @@ export class EventService {
   }
 }
 
-/** Format event date/time for SMS display in London timezone. */
+/**
+ * Format event date/time for SMS display in London timezone.
+ *
+ * The date and time columns hold a London wall clock reading, so they are resolved with
+ * `whenLondonClockReaches` rather than parsed. `new Date('2026-09-16T19:00:00')` is read as UTC
+ * on the production server, which told guests a British Summer Time event ran an hour later
+ * than it does.
+ */
 function formatEventDateForSms(date: string, time: string): string {
   try {
-    const iso = `${date}T${time || '00:00'}:00`
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-      hourCycle: 'h12'
-    }).format(new Date(iso))
+    const iso = resolveEventStartIso({ date, time })
+    return formatEventWhenCompactLondon(iso) ?? 'the scheduled date'
   } catch {
     return 'the scheduled date'
   }
