@@ -1,3 +1,74 @@
+# Guest email review fixes, 12 September 2026
+
+The 11 September review of every guest-facing email put ten questions to the owner. He answered them
+on 12 September and asked for the whole list built, gated and deployed. Six migrations are applied
+to production; the report is a private artifact.
+
+- [x] Campaign copy, round one (applied as `campaign_copy_owner_answers`): four fire claims out of the
+      October and November round-ups, New Year's Eve at 1am in both December round-ups, the 3 October
+      Halloween save the date cancelled, the gap between guest campaigns from 2 days to 4.
+- [x] Campaign copy, round two (applied as `campaign_copy_owner_answers_round_two`): 15 campaigns.
+      The "festive nights are booked" preview, the January kitchen footnote, all three Snowball
+      figures, "attended" to "played at", dabbers as £1 cash only, the October night count, "horror
+      singalong", the business scarcity claim, contractions, and the 20 November tasting night added
+      to both November round-ups from its event record.
+- [x] Legacy consent recorded (applied as `legacy_email_marketing_consent_attestation`): 290 rows,
+      labelled as the owner's declaration rather than a captured tick, opted-out guests excluded.
+- [x] Bounce-derived opt-outs corrected (applied as `correct_bounce_derived_marketing_opt_outs`,
+      version 20260912190904): 9 compensating rows, 0 left uncorrected, 55 opt-out flags untouched,
+      reachable audience unchanged at 253. Recorded in the repo as
+      `supabase/migrations/20260912210000_correct_bounce_derived_marketing_opt_outs.sql`.
+- [x] Voucher reminders carry `requires_booking` (applied as `voucher_reminder_requires_booking`,
+      version 20260912191510). Verified against the four reminders pending at the time: the two
+      music bingo vouchers resolve true, the £25 and house wine vouchers false.
+- [x] Opting back in clears the old opt-out (applied as `consent_opt_in_clears_opt_out`, version
+      20260912191542), on all three marketing channels. 0 customers were in the broken state when
+      it ran, so it rewrote no summary row; the smoke test rolled itself back and left nothing.
+- [x] Shared foundation: `sendEmail` derives a plain-text part when a caller sends HTML alone and
+      logs what the guest received; one contact block for every guest email.
+- [x] Event emails: the reschedule time read as a London wall time (email, text, the hold write and
+      the cancelled-event text), a confirmation email for free and pay-on-the-night bookings, no
+      "£0.00" lines, what changed on a change email, arrival times, refund terms, contact details.
+- [x] Table emails: online cancellation refunds and notifies, manage links live to the booking, the
+      deposit request says deposit and states the terms, "still confirmed" only when true, 15+ and
+      Christmas website bookings get their email, the Christmas food-choice deadline, the pre-order
+      chase reworded, the review request only after a guest was seated and only 9am to 9pm.
+- [x] Private booking emails: the deposit receipt no longer claims a confirmation the gate blocked,
+      no invite for a booking with no date, split refunds report the real position, the internal
+      reason stays internal, no £0.00 totals, the balance email promises only a refund that exists,
+      hold deadlines that match what enforces them, a way to pay in every deposit email, the
+      calendar invite rebuilt to the standard, and every dash and unescaped value gone.
+- [x] Plumbing: a temporary bounce no longer blocks an address for ever, a bounce is no longer
+      recorded as the guest opting out, a corrected address is emailable again, the refund email
+      names its booking, voucher reminders tell booking-only holders to book, invoices come from
+      Orange Jelly Limited, the unsubscribe page stops lying, one-click limits keyed on the token,
+      staff one-off emails show consent, the open mic intake retired.
+- [x] Gates on the merged tree: lint clean, `tsc --noEmit` clean, `npm test` and `npm run test:utc`
+      869 files with 8,295 passed and 2 skipped, cold `npm run build` exit 0 (compiled in 31s,
+      155/155 static pages, 427 routes). The build needs
+      `NODE_OPTIONS=--max-old-space-size=8192` on this machine; see the 12 September entry in
+      `tasks/lessons.md` for why, and for the piped-exit-code trap that hid it the first time.
+- [ ] Merged to main and deployed. (Gates green on the merged tree; PR open, awaiting the merge and
+      the Vercel production deployment. This line gets the deployment id when it is verified.)
+
+Owner calls taken on his standing recommendations, with him away: walk-ins get no booking
+confirmation; a guest who books by replying to a text gets both the text and the email; the booking
+reference is the first 8 characters of the id, as the staff page shows; the contract's trader name
+change applies to new contracts only.
+
+Still needing the owner:
+
+- [ ] The 9 `customer_consents` rows that recorded a bounce as a marketing opt-out: a compensating
+      row was added to each, and their `marketing_email_opted_out_at` was deliberately left set, so
+      nothing resumed sending. Whether those guests should be marketable again is his call.
+- [ ] `fix/nye-after-midnight` (7 commits, 39 files): the app half of the 1am close. It also rewrites
+      the FOH floor screen, walk-ins, booking time moves and cash-up detection, so it wants a
+      deliberate landing rather than a Saturday-evening deploy. The website half is merged and falls
+      back to the old copy until this ships.
+- [ ] A manual (cash or bank transfer) refund still tells the guest nothing.
+- [ ] A partial deposit refund that is the final position gets no closing statement.
+- [ ] The review request by email and its PECR position (the funnel itself stays, per his answer).
+
 # Retired quiz and Music Bingo claims, 12 September 2026 (applied to production)
 
 The owner confirmed on 11 and 12 September: the quiz has five rounds with one interactive round in the middle, one phone per player, and prizes for first place (a £25 bar voucher) and second from last (a bottle of wine) only. Music Bingo winners get a £25 voucher; fancy dress earns extra points. Cash Bingo does have free drink rounds and £10 food vouchers, so its copy stands.

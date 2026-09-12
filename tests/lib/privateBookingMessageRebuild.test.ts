@@ -163,7 +163,7 @@ describe('Send Now: tryEmailForApprovedPrivateBookingText', () => {
       now: NOW,
     })
     expect(outcome).toMatchObject({ status: 'sent' })
-    expect(mockedSendEmail.mock.calls[0][0].text).toContain('£1234.50')
+    expect(mockedSendEmail.mock.calls[0][0].text).toContain('£1,234.50')
   })
 
   it('emails an approved retention cancellation with the amounts the queued text states', async () => {
@@ -243,8 +243,9 @@ describe('bounce fallback for a private booking email (P4 with P6)', () => {
       customerFirstName: 'Alex',
       eventDate: '3 October 2026',
       depositAmount: 250,
-      // 25 Sept 22:30 UTC is 5.56 days after 20 Sept 09:00 UTC, which the reminder rounds up.
-      daysRemaining: 6,
+      // 20 September to 25 September is 5 London calendar days, which is what the reminder says
+      // beside the date it prints (review PB-BR-1).
+      daysRemaining: 5,
       holdExpiry: '25 September 2026',
     })
     expect(mockedSendSMS).toHaveBeenCalledWith('+447700900123', expected, expect.objectContaining({ customerId: 'customer-1' }))

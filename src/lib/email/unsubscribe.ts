@@ -125,16 +125,30 @@ export async function getOrCreateContactUnsubscribeUrl(
   }
 }
 
+/**
+ * Why a lookup did not produce a subject.
+ *
+ * 'not_found': the token is not one of ours, or no longer is.
+ * 'unavailable': the database could not answer, so we do not know either way.
+ *
+ * THE DIFFERENCE MATTERS TO THE GUEST, not to a prober. Both used to collapse into a single
+ * `{ ok: false }`, and the route then told everybody "you are not on the marketing list"
+ * while saving nothing. On a database wobble that is a flat lie: the guest is still
+ * subscribed, believes they are not, and hears from us again next month. Neither reply says
+ * anything about whether an address is on the list, so probing still learns nothing.
+ */
+export type UnsubscribeLookupFailure = 'not_found' | 'unavailable'
+
 export type UnsubscribeLookup =
   | { ok: true; subjectType: 'customer'; customerId: string; businessContactId: null }
   | { ok: true; subjectType: 'business_contact'; customerId: null; businessContactId: string }
-  | { ok: false }
+  | { ok: false; reason: UnsubscribeLookupFailure }
 
 /**
  * Resolve a raw token to its subject, which is either a customer or a business contact.
  *
- * Says nothing about why a token failed. Somebody probing tokens learns the same from
- * every miss, and a guest sees the same page either way.
+ * Says nothing about WHICH token failed or whose it was. Somebody probing tokens learns the
+ * same from every miss.
  */
 export async function lookupUnsubscribeToken(
   supabase: SupabaseClient<any, 'public', any>,
@@ -142,7 +156,7 @@ export async function lookupUnsubscribeToken(
 ): Promise<UnsubscribeLookup> {
   // A short or absent token cannot be one of ours: 32 random bytes is 43 base64url
   // characters. Rejecting early keeps obvious junk off the database.
-  if (!rawToken || rawToken.length < 20) return { ok: false }
+  if (!rawToken || rawToken.length < 20) return { ok: false, reason: 'not_found' }
 
   const { data, error } = await supabase
     .from('email_unsubscribe_tokens')
@@ -150,7 +164,8 @@ export async function lookupUnsubscribeToken(
     .eq('token', rawToken)
     .maybeSingle()
 
-  if (error || !data) return { ok: false }
+  if (error) return { ok: false, reason: 'unavailable' }
+  if (!data) return { ok: false, reason: 'not_found' }
 
   if (data.customer_id) {
     return {
@@ -170,7 +185,10 @@ export async function lookupUnsubscribeToken(
     }
   }
 
-  return { ok: false }
+  // A row with neither subject should not exist: a CHECK constraint requires exactly one.
+  // Treated as unavailable rather than not found, because it means the data is wrong and the
+  // guest's request genuinely has not been actioned.
+  return { ok: false, reason: 'unavailable' }
 }
 
 /** Best-effort usage stamp. Never blocks the opt-out itself. */

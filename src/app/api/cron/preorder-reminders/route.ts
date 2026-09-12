@@ -89,10 +89,19 @@ type CandidateBooking = {
   booking_reference: string
   booking_date: string
   booking_time: string | null
+  start_datetime: string | null
   party_size: number | null
   customer_id: string | null
   booking_period_id: string | null
   booking_period_name: string | null
+  /** The course tier each guest is on, which decides what is still owed. */
+  christmas_course_counts: number[] | null
+}
+
+/** The deadline this booking is being chased against, for the wording of the chase. */
+type PreorderDeadline = {
+  cutoffDays: number | null
+  closesAtIso: string | null
 }
 
 type Booker = {
@@ -118,6 +127,7 @@ function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: string }).code === '23505'
 }
 
+/** Still needed by the manager escalation below, which is written out here. */
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -125,6 +135,35 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+}
+
+/**
+ * The chase, as both paths send it.
+ *
+ * The wording comes from the course tiers on the booking rather than from a fixed sentence. The
+ * old line, "Every guest needs to choose a main course. A starter and a dessert are optional.",
+ * contradicted the rule the sweep was chasing: a two or three course cover is only complete when
+ * every one of its courses is chosen, so a guest who read it and picked a main was still
+ * incomplete and still being escalated to the manager.
+ */
+function buildPreorderReminderEmail(
+  booking: CandidateBooking,
+  booker: Booker,
+  manageUrl: string,
+  deadline: PreorderDeadline,
+) {
+  return buildTableBookingPreorderReminderEmail({
+    firstName: booker.firstName,
+    bookingReference: booking.booking_reference,
+    bookingDate: booking.booking_date,
+    bookingTime: booking.booking_time,
+    partySize: booking.party_size,
+    manageLink: manageUrl,
+    periodName: booking.booking_period_name,
+    courseCounts: booking.christmas_course_counts,
+    preorderCutoffDays: deadline.cutoffDays,
+    preorderClosesAtIso: deadline.closesAtIso,
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -180,8 +219,8 @@ export async function GET(request: NextRequest) {
     const { data: bookingRows, error: bookingError } = await supabase
       .from('table_bookings')
       .select(
-        'id, booking_reference, booking_date, booking_time, party_size, customer_id, ' +
-          'booking_period_id, booking_period_name',
+        'id, booking_reference, booking_date, booking_time, start_datetime, party_size, customer_id, ' +
+          'booking_period_id, booking_period_name, christmas_course_counts',
       )
       .gte('booking_date', today)
       .lte('booking_date', windowEnd)
@@ -242,15 +281,21 @@ export async function GET(request: NextRequest) {
         ? cutoffByPeriod.get(booking.booking_period_id) ?? null
         : null
 
+      // The same rule the manage page uses to lock the form, so a guest is never texted a link to
+      // a form that will refuse them, and the same instant the chase quotes as its deadline.
+      const cutoff = getPreorderCutoff({ bookingDate: booking.booking_date, preorderCutoffDays: cutoffDays })
+      const deadline: PreorderDeadline = {
+        cutoffDays,
+        closesAtIso: cutoff.closesAt ? cutoff.closesAt.toISOString() : null,
+      }
+
       const due: PreorderReminderKind[] = decidePreorderChases({
         daysUntilBooking: days,
         cutoffDays,
         bookerReminderSentOn: sentOn.get(`${booking.id}:booker_reminder`) ?? null,
         managerEscalationSent: sentOn.has(`${booking.id}:manager_escalation`),
         todayIso: today,
-        // The same rule the manage page uses to lock the form, so a guest is never texted a link to
-        // a form that will refuse them.
-        preorderClosed: getPreorderCutoff({ bookingDate: booking.booking_date, preorderCutoffDays: cutoffDays }).closed,
+        preorderClosed: cutoff.closed,
       })
 
       if (due.length === 0) {
@@ -282,8 +327,8 @@ export async function GET(request: NextRequest) {
         try {
           if (kind === 'booker_reminder') {
             const reminder = bookerReminderEmailFirst
-              ? await sendBookerReminderEmailFirst(supabase, booking, booker)
-              : await sendBookerReminder(supabase, booking, booker)
+              ? await sendBookerReminderEmailFirst(supabase, booking, booker, deadline)
+              : await sendBookerReminder(supabase, booking, booker, deadline)
             result.bookerReminders++
             if (reminder.shortLinkFallback) result.shortLinkFallbacks++
           } else {
@@ -374,11 +419,17 @@ async function loadBooker(
  * The SMS goes through the jobs queue, which owns retries, rate limits and the outbound message log.
  * The email goes direct, because the queue has no email job type and adding one for two messages a
  * booking is the sort of new delivery subsystem this design exists to avoid.
+ *
+ * The email is built by the shared template, exactly as the email-first path builds it, so the
+ * two cannot say different things. It used to be written out here with no text part and a
+ * "please give us a ring" line that named no number whenever the contact-phone variable was
+ * unset.
  */
 async function sendBookerReminder(
   supabase: ReturnType<typeof createAdminClient>,
   booking: CandidateBooking,
   booker: Booker | null,
+  deadline: PreorderDeadline,
 ): Promise<{ shortLinkFallback: boolean }> {
   if (!booker) throw new Error('Booking has no customer to chase')
   if (!booker.phone && !booker.email) throw new Error('Booker has neither a mobile number nor an email')
@@ -386,7 +437,9 @@ async function sendBookerReminder(
   const token = await createTableManageToken(supabase, {
     customerId: booker.id,
     tableBookingId: booking.id,
-    bookingStartIso: null,
+    // The booking's own start, so the link lives until the sitting rather than for a flat
+    // fortnight from the chase.
+    bookingStartIso: booking.start_datetime,
     appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
   })
 
@@ -397,9 +450,6 @@ async function sendBookerReminder(
     customerId: booker.id,
     tableBookingId: booking.id,
   })
-
-  const bookingMoment = formatDateWithTimeForSms(booking.booking_date, booking.booking_time)
-  const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || null
 
   if (booker.phone && booker.smsActive) {
     const message = buildPreorderReminderText({
@@ -426,21 +476,13 @@ async function sendBookerReminder(
   }
 
   if (booker.email) {
-    const html = [
-      `<p>Hello ${escapeHtml(booker.firstName)},</p>`,
-      `<p>We still need the food choices for your booking at The Anchor on ` +
-        `${escapeHtml(bookingMoment)} (reference ${escapeHtml(booking.booking_reference)}).</p>`,
-      '<p>Every guest needs to choose a main course. A starter and a dessert are optional.</p>',
-      `<p><a href="${escapeHtml(manage.url)}">Choose your food here</a></p>`,
-      contactPhone
-        ? `<p>Prefer to do it over the telephone? Ring us on ${escapeHtml(contactPhone)}.</p>`
-        : '<p>Prefer to do it over the telephone? Please give us a ring.</p>',
-    ].join('')
+    const email = buildPreorderReminderEmail(booking, booker, manage.url, deadline)
 
     const emailResult = await sendEmail({
       to: booker.email,
-      subject: `Your food choices for ${booking.booking_reference}`,
-      html,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
       customerId: booker.id,
       tableBookingId: booking.id,
     })
@@ -466,6 +508,7 @@ async function sendBookerReminderEmailFirst(
   supabase: ReturnType<typeof createAdminClient>,
   booking: CandidateBooking,
   booker: Booker | null,
+  deadline: PreorderDeadline,
 ): Promise<{ shortLinkFallback: boolean }> {
   if (!booker) throw new Error('Booking has no customer to chase')
 
@@ -482,7 +525,9 @@ async function sendBookerReminderEmailFirst(
   const token = await createTableManageToken(supabase, {
     customerId: booker.id,
     tableBookingId: booking.id,
-    bookingStartIso: null,
+    // The booking's own start, so the link lives until the sitting rather than for a flat
+    // fortnight from the chase.
+    bookingStartIso: booking.start_datetime,
     appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
   })
 
@@ -501,14 +546,7 @@ async function sendBookerReminderEmailFirst(
     templateKey,
     tableBookingId: booking.id,
     customer,
-    email: buildTableBookingPreorderReminderEmail({
-      firstName: booker.firstName,
-      bookingReference: booking.booking_reference,
-      bookingDate: booking.booking_date,
-      bookingTime: booking.booking_time,
-      partySize: booking.party_size,
-      manageLink: manage.url,
-    }),
+    email: buildPreorderReminderEmail(booking, booker, manage.url, deadline),
     sms: {
       to: booker.phone,
       // Today's text, word for word.

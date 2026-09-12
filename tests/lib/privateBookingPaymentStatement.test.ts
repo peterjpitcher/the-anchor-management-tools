@@ -135,7 +135,7 @@ describe('balance reminder email with the payments made', () => {
     expect(email.text).toContain('12 August 2026: Deposit by card, £250 (put towards your bill)')
     expect(email.text).toContain('1 September 2026: Payment by invoice, £99.99')
     expect(email.text).toContain('Paid towards your bill so far: £349.99')
-    expect(email.text).toContain('Balance due: £1150.01')
+    expect(email.text).toContain('Balance due: £1,150.01')
     expect(email.text).toContain('Date: Saturday, 3 October 2026')
     expect(email.text).not.toContain('held separately')
   })
@@ -163,7 +163,7 @@ describe('balance reminder email with the payments made', () => {
       balanceDueDate: '19 September 2026',
       payments: statement,
     })
-    expect(email.text).toContain('Balance due: £1000')
+    expect(email.text).toContain('Balance due: £1,000')
     expect(email.text).not.toContain('Payments received')
     expect(email.text).not.toContain('£1150.01')
   })

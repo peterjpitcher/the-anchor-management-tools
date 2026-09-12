@@ -4,7 +4,10 @@ import { POST } from './route'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import { recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
-import { sendTableBookingCreatedSmsIfAllowed } from '@/lib/table-bookings/bookings'
+import {
+  sendManagerTableBookingCreatedEmailIfAllowed,
+  sendTableBookingCreatedSmsIfAllowed,
+} from '@/lib/table-bookings/bookings'
 import {
   FOH_BOOKING_CLIENT_CONTRACT,
   FOH_BOOKING_CLIENT_HEADER,
@@ -500,6 +503,55 @@ describe('POST /api/foh/bookings: failed walk-ins and kitchen-hours refusals', (
     expect(res.status).toBe(400)
     await expect(res.json()).resolves.toEqual({ error: KITCHEN_NOT_SERVING.message })
     expect(customerDeletes(db)).toHaveLength(1)
+  })
+})
+
+describe('POST /api/foh/bookings: walk-ins are not sent a booking confirmation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('sends no guest notice for a walk-in entered with a phone number', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    // A walk-in with a number used to get "your table booking is confirmed" and a link to
+    // change or cancel it, while being shown to a table. One entered without a number was
+    // already silent, which is the only reason this case existed.
+    const res = await POST(
+      makeRequest({
+        walk_in: true,
+        phone: '07700900000',
+        date: '2026-08-01',
+        time: '18:00',
+        party_size: 2,
+        purpose: 'food',
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(sendTableBookingCreatedSmsIfAllowed).not.toHaveBeenCalled()
+    // The manager still hears about it.
+    expect(sendManagerTableBookingCreatedEmailIfAllowed).toHaveBeenCalled()
+  })
+
+  it('still sends the guest notice for an ordinary booking taken by telephone', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({
+        phone: '07700900000',
+        first_name: 'Sam',
+        date: '2026-08-01',
+        time: '18:00',
+        party_size: 2,
+        purpose: 'food',
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalled()
   })
 })
 

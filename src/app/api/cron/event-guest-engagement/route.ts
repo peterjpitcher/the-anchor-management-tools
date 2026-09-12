@@ -22,6 +22,8 @@ import {
 } from '@/lib/sms/event-promo-policy'
 import type { MessagingFlagsReadFailure } from '@/lib/messaging/flags'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
+import { formatTimeInLondon } from '@/lib/dateUtils'
+import { hasBeenSeated, isWithinReviewSendWindow } from '@/lib/table-bookings/review-window'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { reportCronFailure } from '@/lib/cron/alerting'
@@ -124,6 +126,8 @@ type TableBookingWithCustomer = {
   status: string
   booking_type: string | null
   start_datetime: string | null
+  /** Set when the party was actually shown to their table. No seating, no review request. */
+  seated_at?: string | null
   review_sms_sent_at?: string | null
   review_suppressed_at?: string | null
   customer: {
@@ -803,6 +807,7 @@ async function loadTableBookingsForEngagement(
       status,
       booking_type,
       start_datetime,
+      seated_at,
       review_sms_sent_at,
       review_suppressed_at,
       customer:customers(
@@ -1346,10 +1351,25 @@ async function processTableReviewFollowups(
   const now = Date.now()
   const maxAgeMs = TABLE_ENGAGEMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+
+  // Quiet hours. The request fires four hours after the sitting starts, so an evening table used
+  // to be asked for a review at one in the morning. The sweep runs every quarter of an hour, so
+  // waiting costs a booking nothing but the wait.
+  if (!isWithinReviewSendWindow(new Date(now))) {
+    logger.info('Table review requests held outside the sending window', {
+      metadata: { candidates: tableBookings.length, londonTime: formatTimeInLondon(new Date(now)) },
+    })
+    return { sent: 0, skipped: tableBookings.length, suppressed: 0, shortLinkFallbacks: 0 }
+  }
+
   const reviewLinkTarget = await getGoogleReviewLink(supabase)
 
   const eligibleBookings = tableBookings.filter((booking) => {
     if (booking.status !== 'confirmed' || booking.review_sms_sent_at) return false
+    // No record of the party being seated, no review request. 40 of the last 110 went to
+    // bookings nobody ever sat, which asks "how was your visit?" of someone who may not have
+    // arrived. `seated_at` is the only evidence we hold that they did.
+    if (!hasBeenSeated(booking)) return false
     const startMs = Date.parse(booking.start_datetime || '')
     if (!Number.isFinite(startMs)) return false
     return now >= startMs + 4 * 60 * 60 * 1000 && now - startMs <= maxAgeMs

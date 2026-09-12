@@ -2,6 +2,7 @@ import { readBookingPaymentLedger } from '@/lib/private-bookings/payment-ledger'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { daysUntilHoldExpiry } from '@/lib/private-bookings/hold-deadline'
 import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
 import {
   depositReminder7DayMessage,
@@ -191,8 +192,8 @@ export async function getBookingScheduledSms(
     depositAmount > 0 &&
     !(await isDepositReminderPausedForConfirmation(db, bookingId, booking))
   ) {
-    const holdExpiry = new Date(booking.hold_expiry)
-    const daysUntilExpiry = diffDaysCeil(holdExpiry, now)
+    // London calendar days, as the reminder words themselves are (see hold-deadline.ts).
+    const daysUntilExpiry = daysUntilHoldExpiry(booking.hold_expiry, now) ?? 0
     const holdExpiryReadable = formatReadableDate(booking.hold_expiry)
     const holdExpiryWindowKey = toIsoDateSlice(booking.hold_expiry)
     // Same classifier as the cron — the preview must only advertise sends

@@ -55,7 +55,7 @@ import { GET } from '@/app/api/cron/event-guest-engagement/route'
 
 const SHORT_URL = 'https://l.the-anchor.pub/rev123'
 
-function buildSupabase() {
+function buildSupabase(bookingOverrides: Record<string, unknown> = {}) {
   const bookingStartIso = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString()
 
   // Same permissive chain as tableReviewSuppressUncontactable.test.ts: the sweep
@@ -83,6 +83,8 @@ function buildSupabase() {
     status: 'confirmed',
     booking_type: 'regular',
     start_datetime: bookingStartIso,
+    // The party was seated: the sweep only asks for a review from a booking somebody sat at.
+    seated_at: bookingStartIso,
     review_sms_sent_at: null,
     review_suppressed_at: null,
     customer: {
@@ -94,6 +96,7 @@ function buildSupabase() {
       email_status: 'active',
       email_deactivated_at: null,
     },
+    ...bookingOverrides,
   }
 
   return {
@@ -133,8 +136,8 @@ function buildSupabase() {
   }
 }
 
-async function run() {
-  ;(createAdminClient as unknown as vi.Mock).mockReturnValue(buildSupabase())
+async function run(bookingOverrides: Record<string, unknown> = {}) {
+  ;(createAdminClient as unknown as vi.Mock).mockReturnValue(buildSupabase(bookingOverrides))
 
   const request: any = new Request('http://localhost/api/cron/event-guest-engagement')
   request.nextUrl = new URL('http://localhost')
@@ -198,6 +201,25 @@ describe('table review email: link shortening', () => {
     // An expiry would send a late tapper to the venue homepage instead of the
     // review funnel, so the row must not carry one.
     expect(payload.expires_at).toBeUndefined()
+  })
+
+  // Two gates from the 11 September review. 40 of the last 110 review requests went to
+  // bookings nobody was ever recorded as seating, and the ask fires four hours after the
+  // sitting starts, which for an evening table is the middle of the night.
+  it('asks nobody for a review when the party was never recorded as seated', async () => {
+    await run({ seated_at: null })
+
+    expect(reviewEmailCall()).toBeUndefined()
+  })
+
+  it('holds the ask outside 09:00 to 21:00 London', async () => {
+    // 01:30 London, which is when a 9pm sitting used to be asked.
+    vi.setSystemTime(new Date('2026-02-15T01:30:00.000Z'))
+
+    const { payload } = await run()
+
+    expect(reviewEmailCall()).toBeUndefined()
+    expect(payload.tableReviews.sent).toBe(0)
   })
 
   // The character saving is worth less than the review. If the short link cannot

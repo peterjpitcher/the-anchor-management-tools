@@ -288,19 +288,33 @@ export async function PATCH(
     additional_info: { action: 'admin_booking_edit' },
   }).catch(() => {})
 
-  // Confirm the amended booking to the customer whenever the date, time, or duration
-  // actually changed. Note: the `windowChanged` flag above compares the stored
-  // seconds-precision time ('18:00:00') against the form's 'HH:MM', so it is true on
-  // almost every save — fine for the idempotent high-chair re-grant, but it must NOT
-  // gate a customer message. Re-derive a normalised comparison so editing only notes,
-  // dietary requirements, etc. never messages the guest. Never fails the edit — the
-  // helper swallows its own errors.
-  const windowActuallyChanged =
+  // Confirm the amended booking to the customer whenever the date or the time actually changed.
+  //
+  // Note: the `windowChanged` flag above compares the stored seconds-precision time ('18:00:00')
+  // against the form's 'HH:MM', so it is true on almost every save. That is fine for the
+  // idempotent high-chair re-grant, but it must NOT gate a customer message. This comparison is
+  // normalised, so editing only notes or dietary requirements never messages the guest.
+  //
+  // Duration is deliberately not in it. How long the table is held is a floor decision the guest
+  // never sees, and an email restating the same date, time and party size is noise that teaches
+  // guests to ignore the ones that matter. The old start goes with the call so the email can say
+  // what the booking was as well as what it is now. Never fails the edit: the helper swallows its
+  // own errors.
+  const guestVisibleWindowChanged =
     existing.booking_date !== parsed.data.booking_date ||
-    (existing.booking_time ?? '').slice(0, 5) !== parsed.data.booking_time ||
-    existing.duration_minutes !== parsed.data.duration_minutes
-  if (windowActuallyChanged) {
-    await sendTableBookingRescheduledNotificationIfAllowed(auth.supabase, { tableBookingId: id })
+    (existing.booking_time ?? '').slice(0, 5) !== parsed.data.booking_time
+  if (guestVisibleWindowChanged) {
+    const previousWindow = existing.booking_date && existing.booking_time
+      ? computeBookingWindow(
+          existing.booking_date,
+          (existing.booking_time ?? '').slice(0, 5),
+          existing.duration_minutes ?? parsed.data.duration_minutes
+        )
+      : null
+    await sendTableBookingRescheduledNotificationIfAllowed(auth.supabase, {
+      tableBookingId: id,
+      previous: { startDateTime: previousWindow?.startIso ?? null },
+    })
   }
 
   revalidatePath('/table-bookings')

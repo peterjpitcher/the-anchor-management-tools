@@ -117,8 +117,9 @@ describe('Confirm deposit', () => {
 
     expect(outcome).toMatchObject({ status: 'sent', channel: 'email', amount: 300, emailError: null })
     // No hold was set, so the creation rule: 14 days from now (25 September), well before the
-    // balance deadline of 7 November.
-    expect(outcome.status === 'sent' && outcome.holdExpiry).toBe('2026-09-25T09:00:00.000Z')
+    // balance deadline of 7 November. The whole of the 25th counts, because 25 September is the
+    // date the guest is given (review PB-BR-1).
+    expect(outcome.status === 'sent' && outcome.holdExpiry).toBe('2026-09-25T22:59:59.000Z')
     expect(outcome.status === 'sent' && outcome.message).toBe(
       'Deposit confirmed at £300, due by 25 September 2026. The deposit request was emailed to the guest.'
     )
@@ -126,7 +127,7 @@ describe('Confirm deposit', () => {
       deposit_confirmed_at: NOW.toISOString(),
       deposit_confirmed_by: 'user-1',
       deposit_amount: 300,
-      hold_expiry: '2026-09-25T09:00:00.000Z',
+      hold_expiry: '2026-09-25T22:59:59.000Z',
       // An order made for the old amount is dropped, as editing the amount does.
       paypal_deposit_order_id: null,
     })
@@ -282,13 +283,13 @@ describe('Confirm deposit', () => {
     it('replaces a hold that has run out while the deposit waited', async () => {
       seed(bookingRow({ hold_expiry: '2026-09-05T22:59:59.999Z' }))
       const outcome = await confirmDeposit({ bookingId: 'booking-1', amount: 250, confirmedBy: 'user-1', now: NOW })
-      expect(outcome.status === 'sent' && outcome.holdExpiry).toBe('2026-09-25T09:00:00.000Z')
+      expect(outcome.status === 'sent' && outcome.holdExpiry).toBe('2026-09-25T22:59:59.000Z')
     })
 
-    it('inside the balance window: 48 hours, as at booking time', async () => {
+    it('inside the balance window: to the end of the second day, as at booking time', async () => {
       seed(bookingRow({ event_date: '2026-09-20', balance_due_date: '2026-09-11' }))
       const outcome = await confirmDeposit({ bookingId: 'booking-1', amount: 250, confirmedBy: 'user-1', now: NOW })
-      expect(outcome.status === 'sent' && outcome.holdExpiry).toBe('2026-09-13T09:00:00.000Z')
+      expect(outcome.status === 'sent' && outcome.holdExpiry).toBe('2026-09-13T22:59:59.000Z')
     })
 
     it('a date still to be confirmed gets no deadline, and the request says none', async () => {

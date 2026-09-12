@@ -54,10 +54,13 @@ const BOOKING = {
   booking_reference: 'TB-XMAS1',
   booking_date: '2026-12-12',
   booking_time: '19:00:00',
+  start_datetime: '2026-12-12T19:00:00.000Z',
   party_size: 6,
   customer_id: 'cust-7',
   booking_period_id: 'period-xmas',
   booking_period_name: 'Christmas 2026',
+  // Four on one course, one on two and one on three: what is still owed depends on the tier.
+  christmas_course_counts: [1, 1, 1, 1, 2, 3],
 }
 
 const ALEX = {
@@ -129,14 +132,14 @@ describe('pre-order booker reminder, email first (flag on)', () => {
     expect(email).toEqual(
       expect.objectContaining({
         to: 'alex@example.com',
-        subject: 'Your food choices for TB-XMAS1',
+        subject: 'Christmas 2026 food choices for Saturday 12 December 2026',
         // Both missing from the old direct email.
         commType: 'table_booking_preorder_reminder',
         idempotencyKey: 'table_booking_preorder_reminder:xmas-1',
         tableBookingId: 'xmas-1',
       })
     )
-    expect(email.text).toContain('Choose your food here: https://l.the-anchor.pub/food1')
+    expect(email.text).toContain('Choose your food: https://l.the-anchor.pub/food1')
   })
 
   it('texts today\'s words when the email fails, and records both attempts', async () => {
@@ -206,8 +209,11 @@ describe('pre-order booker reminder with the flag off: exactly today', () => {
     })
     expect(sendEmail).toHaveBeenCalledTimes(1)
     const email = vi.mocked(sendEmail).mock.calls[0][0]
-    expect(email.subject).toBe('Your food choices for TB-XMAS1')
+    expect(email.subject).toBe('Christmas 2026 food choices for Saturday 12 December 2026')
     expect(email.commType).toBeUndefined()
+    // The flag-off email is built by the same template, so it carries a text part and the
+    // venue's number rather than "please give us a ring".
+    expect(email.text).toContain('01753 682707')
     expect(sendSMS).not.toHaveBeenCalled()
   })
 })
@@ -224,13 +230,23 @@ describe('pre-order reminder email renders', () => {
       bookingTime,
       partySize: 6,
       manageLink: 'https://l.the-anchor.pub/food1',
+      periodName: 'Christmas 2026',
+      courseCounts: [1, 2, 3, 3, 3, 3],
+      preorderCutoffDays: 7,
     })
 
     assertCleanRender(email)
+    expect(email.subject).toBe(`Christmas 2026 food choices for ${expectedLongDate(bookingDate)}`)
     expect(email.text).toContain(
       `Hi Alex, we still need the food choices for your booking at The Anchor on ${expectedLongDate(bookingDate)} at ${time} (reference TB-XMAS1).`
     )
-    expect(email.text).toContain('Every guest needs to choose a main course.')
+    // Worded from the tiers on the booking, not the old "a starter and a dessert are optional",
+    // which was false for every cover on two or three courses.
+    expect(email.text).toContain('Every guest on three courses needs a starter, a main and a dessert chosen.')
+    expect(email.text).toContain('Every guest on two courses needs a main and one other course chosen.')
+    expect(email.text).toContain('Guests on one course have nothing to pre-order.')
+    expect(email.text).not.toContain('A starter and a dessert are optional')
+    expect(email.text).toContain("Two and three courses need everyone's choices 7 days before your booking.")
     expect(email.text).toContain('Party size: 6 people')
     expect(email.text).toContain('Prefer to do it over the telephone? Ring us on 01753 682707.')
     expect(email.html).toContain('href="https://l.the-anchor.pub/food1"')

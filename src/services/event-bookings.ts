@@ -9,7 +9,7 @@ import { createEventManageToken } from '@/lib/events/manage-booking'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { logger } from '@/lib/logger'
-import { sendEventPaymentLinkEmail } from '@/lib/email/event-ticket-emails'
+import { sendEventBookingConfirmedEmail, sendEventPaymentLinkEmail } from '@/lib/email/event-ticket-emails'
 import type { TicketSelectionInput } from '@/lib/events/ticket-types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -841,13 +841,12 @@ export class EventBookingService {
         })
       }
 
-      if (shouldSendSms && normalizedPhone) {
-        tasks.push({
-          label: 'sms:booking_created',
-          promise: sendBookingSmsIfAllowed(
+      const runBookingSms = async (): Promise<void> => {
+        try {
+          smsMeta = await sendBookingSmsIfAllowed(
             supabase,
             customerId,
-            normalizedPhone,
+            normalizedPhone!,
             rpcResult,
             seats,
             nextStepUrl,
@@ -855,20 +854,66 @@ export class EventBookingService {
             logTag,
             firstName
           )
-            .then((meta) => {
-              smsMeta = meta
-            })
-            .catch((smsError) => {
-              const message = smsError instanceof Error ? smsError.message : String(smsError)
-              logger.warn(`${logTagCap} SMS task rejected unexpectedly`, {
+        } catch (smsError) {
+          const message = smsError instanceof Error ? smsError.message : String(smsError)
+          logger.warn(`${logTagCap} SMS task rejected unexpectedly`, {
+            metadata: {
+              bookingId: rpcResult.booking_id,
+              state: resolvedState,
+              error: message
+            }
+          })
+          smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
+        }
+      }
+
+      /**
+       * Confirmation goes by email where the guest has a usable address, and by text otherwise
+       * (owner decision, 12 September 2026). Thirteen of the fifteen events on the books are free
+       * or paid on the night, and their guests used to get a text and nothing else, while the
+       * booking form made an email address compulsory "so we can send your confirmation".
+       *
+       * Two exceptions, both about where the guest is standing when the booking is made:
+       *  - a walk-in is booked in at the venue by staff, and is already in the room, so there is
+       *    nothing to confirm to them in writing;
+       *  - a guest who booked by replying to a text is mid-conversation, so the text still goes
+       *    and the email goes as well rather than instead.
+       *
+       * The text also covers an email that does not go out, so a booking is never confirmed to
+       * nobody.
+       */
+      const confirmedBookingId =
+        resolvedState === 'confirmed' && source !== 'walk-in' ? rpcResult.booking_id : null
+      const emailReplacesText = source !== 'sms_reply'
+      if (confirmedBookingId) {
+        tasks.push({
+          label: 'email:event_booking_confirmed',
+          promise: (async () => {
+            let emailed = false
+            try {
+              const emailResult = await sendEventBookingConfirmedEmail(supabase, {
+                bookingId: confirmedBookingId,
+                appBaseUrl
+              })
+              emailed = emailResult.success === true
+            } catch (emailError) {
+              logger.warn(`${logTagCap} confirmation email rejected unexpectedly`, {
                 metadata: {
-                  bookingId: rpcResult.booking_id,
-                  state: resolvedState,
-                  error: message
+                  bookingId: confirmedBookingId,
+                  error: emailError instanceof Error ? emailError.message : String(emailError)
                 }
               })
-              smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
-            })
+            }
+
+            if (!(emailed && emailReplacesText) && shouldSendSms && normalizedPhone) {
+              await runBookingSms()
+            }
+          })()
+        })
+      } else if (shouldSendSms && normalizedPhone) {
+        tasks.push({
+          label: 'sms:booking_created',
+          promise: runBookingSms()
         })
       }
 

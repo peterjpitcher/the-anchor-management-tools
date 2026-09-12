@@ -195,6 +195,10 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`)
       ? emailBody
       : withInvoicePaymentLink(emailBody, invoice)
 
+    // Owner decision 2026-08-28: an invoice comes from Orange Jelly Limited, never from the
+    // venue. Passing no sender let all 80 invoices and receipts in the last 120 days go out
+    // as "The Anchor" while signing off as Orange Jelly in the body. See `invoice-sender.ts`.
+    const { invoiceReplyToAddress, invoiceSenderIdentity } = await import('@/lib/email/invoice-sender')
     const { sendEmail } = await import('@/lib/email/emailService')
     const result = await sendEmail({
       to: recipientEmail,
@@ -202,6 +206,8 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`)
       text: bodyWithPaymentLink,
       cc: ccRecipients,
       attachments,
+      from: invoiceSenderIdentity(),
+      replyTo: invoiceReplyToAddress(),
       commType: isRemittanceAdvice ? 'invoice_receipt' : 'invoice',
       invoiceId: invoice.id,
       metadata: {
@@ -264,12 +270,16 @@ ${CONTACT_PHONE}
 
 P.S. The quote is attached as a PDF for your convenience.`
 
+    // A quote is the same document class as an invoice, and the same owner decision applies.
+    const { invoiceReplyToAddress, invoiceSenderIdentity } = await import('@/lib/email/invoice-sender')
     const { sendEmail } = await import('@/lib/email/emailService')
     const result = await sendEmail({
       to: recipientEmail,
       subject: emailSubject,
       text: emailBody,
       cc: ccRecipients,
+      from: invoiceSenderIdentity(),
+      replyTo: invoiceReplyToAddress(),
       attachments: [
         {
           name: `quote-${quote.quote_number}.pdf`,

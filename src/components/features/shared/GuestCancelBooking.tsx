@@ -28,10 +28,17 @@ export function GuestCancelBooking({
   actionUrl,
   confirmCancel,
   manageUrl,
+  refundNotice = null,
 }: {
   actionUrl: string
   confirmCancel: boolean
   manageUrl: string
+  /**
+   * What happens to the deposit, shown at the confirmation step. Cancelling from this page
+   * refunds the deposit under the booking's own terms, so the guest is told those terms before
+   * they confirm rather than finding out from their bank.
+   */
+  refundNotice?: string | null
 }) {
   if (!confirmCancel) {
     return (
@@ -58,6 +65,11 @@ export function GuestCancelBooking({
         <p className="mt-1 font-anchor-body text-[13px] leading-[1.55] text-guest-text">
           This cannot be undone.
         </p>
+        {refundNotice && (
+          <p className="mt-2 font-anchor-body text-[13px] leading-[1.55] text-guest-text">
+            {refundNotice}
+          </p>
+        )}
 
         <form method="post" action={actionUrl} className="mt-4">
           <input type="hidden" name="action" value="cancel" />

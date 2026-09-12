@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils';
+import { emailAddressResetFields, isEmailAddressChange } from '@/lib/email/address-reset';
 import { createHash } from 'node:crypto';
 import type { 
   CreateCustomerInput, 
@@ -288,6 +289,19 @@ export class CustomerService {
     }
     if (input.email !== undefined) {
       payload.email = sanitizeEmail(input.email);
+
+      // A new address inherits none of the old one's delivery history. Without this a bounce
+      // from a mistyped address kept `email_deactivated_at` set, `isEmailUsable` kept saying
+      // no, and the corrected address was never emailed again. See `address-reset.ts`.
+      const { data: before } = await supabase
+        .from('customers')
+        .select('email')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (isEmailAddressChange(before?.email, payload.email as string | null)) {
+        Object.assign(payload, emailAddressResetFields());
+      }
     }
     if (input.first_name !== undefined) {
       payload.first_name = sanitizeFirstName(input.first_name);

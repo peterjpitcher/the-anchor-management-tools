@@ -661,7 +661,7 @@ describe('rebuilt texts from fixture bookings, either side of the 25 October 202
     expectCleanText(outside.sms.body)
     expect(outside.sms.body).toContain('your outside booking for 16 people')
     expect(outside.sms.body).toContain('Outside seating (weather permitting).')
-    expect(outside.sms.body).toContain('Christmas courses: 1 x 1 course, 2 x 3 courses. One course needs no pre-order.')
+    expect(outside.sms.body).toContain('Christmas courses: 1 x 1 course, 2 x 3 courses. Guests on one course have nothing to pre-order.')
   })
 })
 
