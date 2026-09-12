@@ -229,9 +229,10 @@ describe.each(EVENT_DATES)('private booking email versions for an event on %s', 
     for (const [stage, sms] of cases) {
       const email = buildBalanceReminderEmail({ booking: b, firstName: 'Alex', stage, balanceAmount: 1234.5, balanceDueDate: dueDate, payments })
       expectSound(email, eventDate, sms)
-      expect(email.text).toContain('Event total: £1780.20')
+      // Thousands grouped: a four-figure balance read as "£1234.50" (review PB-BR-5).
+      expect(email.text).toContain('Event total: £1,780.20')
       expect(email.text).toContain('Paid towards your bill so far: £545.70')
-      expect(email.text).toContain('Balance due: £1234.50')
+      expect(email.text).toContain('Balance due: £1,234.50')
       expect(email.text).toContain('Payments received\n12 August 2026: Deposit by PayPal, £250 (held separately from your bill)\n1 September 2026: Payment by cash, £300\n25 October 2026: Payment by bank transfer, £245.70')
       expect(email.text).toContain("held separately from your bill and refunded after the event")
       expect(email.html).toContain('Payments received')

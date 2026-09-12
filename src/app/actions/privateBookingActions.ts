@@ -46,6 +46,7 @@ import { isStaffEmailOptionOn } from '@/lib/messaging/staff-email-option'
 import { resolvePrivateBookingEmailRecipient } from '@/lib/private-bookings/email-recipient'
 import { sendBookingCalendarInvite, sendDepositPaymentLinkEmail } from '@/lib/email/private-booking-emails'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
 import {
   confirmDeposit,
@@ -79,6 +80,23 @@ function amountsMatch(actual: number, expected: number): boolean {
 
 function normalizeActionError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
+}
+
+/**
+ * The line that appears on the guest's PayPal receipt.
+ *
+ * "Deposit for Birthday Party on 2026-09-20" put a raw ISO date in front of a customer, and a
+ * booking whose date is still to be confirmed showed the placeholder date it was created with.
+ */
+function paypalDepositDescription(booking: {
+  event_type?: string | null
+  event_date?: string | null
+  date_tbd?: boolean | null
+  internal_notes?: string | null
+}): string {
+  const label = booking.event_type || 'Private Booking'
+  if (!booking.event_date || isBookingDateTbd(booking)) return `Deposit for ${label}`
+  return `Deposit for ${label} on ${formatDateInLondon(booking.event_date, { day: 'numeric', month: 'long', year: 'numeric' })}`
 }
 
 function logPrivateBookingActionError(
@@ -2259,7 +2277,7 @@ export async function createDepositPaymentOrder(
     const result = await createSimplePayPalOrder({
       customId: `pb-deposit-${bookingId}`,
       reference: bookingId,
-      description: `Deposit for ${booking.event_type || 'Private Booking'} on ${booking.event_date}`,
+      description: paypalDepositDescription(booking),
       amount: depositAmount,
       returnUrl: `${appUrl}/private-bookings/${bookingId}?paypal_return=deposit`,
       cancelUrl: `${appUrl}/private-bookings/${bookingId}?paypal_cancel=deposit`,
@@ -2461,7 +2479,7 @@ export async function resendCalendarInvite(
   const { data: booking, error: fetchError } = await admin
     .from('private_bookings')
     .select(
-      'id, customer_id, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, event_type, guest_count, status'
+      'id, customer_id, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, event_type, guest_count, status, date_tbd, internal_notes, updated_at'
     )
     .eq('id', bookingId)
     .single()
@@ -2478,11 +2496,25 @@ export async function resendCalendarInvite(
     return { error: 'Calendar invites can only be sent for confirmed or completed bookings' }
   }
 
+  // Staff pressed a button, so they are told what actually happened. This used to report success
+  // whatever the send did, because the sender swallowed its own failures (review PB-11).
+  let inviteResult: Awaited<ReturnType<typeof sendBookingCalendarInvite>>
   try {
-    await sendBookingCalendarInvite(booking)
+    inviteResult = await sendBookingCalendarInvite(booking)
   } catch (e) {
     logPrivateBookingActionError('Error sending calendar invite', e, { bookingId })
-    return { error: 'Failed to send the calendar invite — please try again' }
+    return { error: 'Failed to send the calendar invite. Please try again.' }
+  }
+
+  if (!inviteResult.sent) {
+    if (inviteResult.reason === 'date_to_be_confirmed') {
+      return { error: "This booking has no date yet, so there is nothing to put in the guest's calendar. Set the date first." }
+    }
+    if (inviteResult.reason === 'no_email') {
+      return { error: 'This booking has no contact email address' }
+    }
+    logPrivateBookingActionError('Calendar invite email failed', new Error(inviteResult.error), { bookingId })
+    return { error: 'The calendar invite was not sent. Please try again.' }
   }
 
   try {
@@ -2679,7 +2711,9 @@ export async function sendDepositPaymentLink(
   const admin = createAdminClient()
   const { data: booking, error: fetchError } = await admin
     .from('private_bookings')
-    .select('id, customer_id, deposit_amount, deposit_paid_date, status, event_date, event_type, customer_first_name, customer_name, contact_email')
+    // date_tbd and internal_notes: a booking with no date yet must not be emailed the placeholder
+    // date it was created with (review PB-1).
+    .select('id, customer_id, deposit_amount, deposit_paid_date, status, event_date, event_type, customer_first_name, customer_name, contact_email, date_tbd, internal_notes')
     .eq('id', bookingId)
     .maybeSingle()
 
@@ -2723,7 +2757,7 @@ export async function sendDepositPaymentLink(
     const result = await createSimplePayPalOrder({
       customId: `pb-deposit-${bookingId}`,
       reference: bookingId,
-      description: `Deposit for ${booking.event_type || 'Private Booking'} on ${booking.event_date}`,
+      description: paypalDepositDescription(booking),
       amount: depositAmount,
       returnUrl: `${portalUrl}?payment_pending=1`,
       cancelUrl: `${portalUrl}`,
@@ -2742,7 +2776,17 @@ export async function sendDepositPaymentLink(
     // The portal page must never create an order just because an email scanner
     // opened its link. The customer creates/reuses the order with an explicit
     // button press on the portal instead.
-    await sendDepositPaymentLinkEmail(booking, result.approveUrl, portalUrl)
+    const emailResult = await sendDepositPaymentLinkEmail(booking, result.approveUrl, portalUrl)
+
+    // Money path, so it fails closed: staff were told "Payment link sent to customer" while the
+    // send had failed, the guest had no link and the hold ran down (review PB-11).
+    if (!emailResult.sent) {
+      logger.error('Deposit payment link email was not sent', {
+        error: new Error(emailResult.error),
+        metadata: { bookingId, orderId: result.orderId },
+      })
+      return { error: 'The payment link email was not sent. Please try again, or send the booking portal link by hand.' }
+    }
 
     logger.info('Deposit payment link sent to customer', { metadata: { bookingId, orderId: result.orderId } })
     return { success: true }
