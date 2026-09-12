@@ -14,6 +14,7 @@ import {
 import { isCommunicationBodyMediaCaptureEnabled } from '@/lib/communications/capture'
 import { ConsentService } from '@/services/consent'
 import { enqueueDelayedFallbackForEmailEvent } from '@/lib/notifications/delayed-fallback/enqueue'
+import { classifyBounceSeverity } from '@/lib/email/bounce-classification'
 
 export const runtime = 'nodejs'
 
@@ -361,14 +362,23 @@ async function handleReceivedEmailEvent(adminClient: any, resend: Resend, event:
   return { success: true, emailMessageId }
 }
 
-function suppressionReason(type: string): 'bounce' | 'complaint' | 'suppression' | null {
-  if (type === 'email.bounced') {
-    return 'bounce'
+/**
+ * Why an address would go on the suppression list, or null when it should not.
+ *
+ * A TEMPORARY BOUNCE RETURNS NULL. Suppression is for ever and nothing used to clear it, so
+ * a full inbox or a general transient bounce used to block a working address permanently. The
+ * event is still recorded on the message and still raises the customer's delivery-failure
+ * count; it just does not condemn the mailbox. See `bounce-classification.ts` for the
+ * measured numbers. Permanent bounces behave exactly as they always have.
+ */
+function suppressionReason(event: ResendEmailEvent): 'bounce' | 'complaint' | 'suppression' | null {
+  if (event.type === 'email.bounced') {
+    return classifyBounceSeverity(event.data?.bounce) === 'permanent' ? 'bounce' : null
   }
-  if (type === 'email.complained') {
+  if (event.type === 'email.complained') {
     return 'complaint'
   }
-  if (type === 'email.suppressed') {
+  if (event.type === 'email.suppressed') {
     return 'suppression'
   }
   return null
@@ -514,6 +524,31 @@ function isUniqueViolation(error: { code?: string } | null | undefined): boolean
   return error?.code === '23505'
 }
 
+/**
+ * How long a 'processing' claim may sit before a replay is allowed to take it over.
+ *
+ * A claim is written before the work and only ever moved to 'processed' or 'failed'
+ * afterwards, so a row that is still 'processing' means the process died mid-event: a
+ * function timeout, a deploy, an out-of-memory kill. One such row exists in the 12,641 Resend
+ * webhook logs, stuck since the event that made it, and the old code treated it as a
+ * duplicate for ever. The event was never processed and never would be.
+ *
+ * Fifteen minutes is well beyond any real run of this handler (a few hundred milliseconds,
+ * seconds at worst when it downloads attachments) and well inside Svix's retry schedule,
+ * which keeps retrying for days. Long enough that two live workers can never both claim the
+ * same event, short enough that a retry still arrives to rescue it.
+ */
+const STALE_CLAIM_MS = 15 * 60 * 1000
+
+function isStaleProcessingClaim(row: { status?: string | null; processed_at?: string | null }): boolean {
+  if (row.status !== 'processing') return false
+  const startedAt = row.processed_at ? Date.parse(row.processed_at) : Number.NaN
+  // No timestamp at all cannot be aged, so treat it as stale rather than leaving the event
+  // unprocessable for ever.
+  if (!Number.isFinite(startedAt)) return true
+  return Date.now() - startedAt >= STALE_CLAIM_MS
+}
+
 async function claimResendWebhook(adminClient: any, svixId: string, event: ResendEmailEvent) {
   const params = {
     svix_id: svixId,
@@ -538,7 +573,7 @@ async function claimResendWebhook(adminClient: any, svixId: string, event: Resen
   }
 
   const { data: existing, error: existingError } = await (adminClient.from('webhook_logs') as any)
-    .select('id, status')
+    .select('id, status, processed_at')
     .eq('webhook_type', 'resend')
     .contains('params', { svix_id: svixId })
     .maybeSingle()
@@ -547,8 +582,11 @@ async function claimResendWebhook(adminClient: any, svixId: string, event: Resen
     throw new Error(`Failed to load Resend webhook claim: ${existingError.message}`)
   }
 
-  if (existing?.status === 'failed') {
-    const { error: retryError } = await (adminClient.from('webhook_logs') as any)
+  const stale = existing ? isStaleProcessingClaim(existing) : false
+
+  if (existing?.status === 'failed' || stale) {
+    const previousStatus = existing.status as string
+    const { data: retaken, error: retryError } = await (adminClient.from('webhook_logs') as any)
       .update({
         status: 'processing',
         error_message: null,
@@ -557,10 +595,23 @@ async function claimResendWebhook(adminClient: any, svixId: string, event: Resen
       })
       .eq('webhook_type', 'resend')
       .contains('params', { svix_id: svixId })
-      .eq('status', 'failed')
+      // Conditional on the status we just read, so two replays arriving together cannot both
+      // take the claim: the second matches nothing and is told it is a duplicate.
+      .eq('status', previousStatus)
+      .select('id')
 
     if (retryError) {
       throw new Error(`Failed to retry Resend webhook claim: ${retryError.message}`)
+    }
+
+    if ((retaken ?? []).length === 0) {
+      return { claimed: false, duplicate: true }
+    }
+
+    if (stale) {
+      logger.warn('Reprocessing a Resend webhook event whose claim was left processing', {
+        metadata: { svixId, type: event.type, startedAt: existing.processed_at ?? null },
+      })
     }
 
     return { claimed: true, duplicate: false }
@@ -683,15 +734,23 @@ async function updateCustomerEmailHealth(
     return
   }
 
-  const reason = suppressionReason(event.type)
-  if (!reason && event.type !== 'email.failed') {
+  const reason = suppressionReason(event)
+  const transientBounce =
+    event.type === 'email.bounced' && classifyBounceSeverity(event.data?.bounce) === 'transient'
+
+  if (!reason && !transientBounce && event.type !== 'email.failed') {
     return
   }
 
   const nextFailures = Number(customer.email_delivery_failures ?? 0) + 1
+  // A temporary bounce gets no status and no deactivation stamp. It is a delivery failure,
+  // counted and reasoned like any other, and the address stays usable: `isEmailUsable` reads
+  // both of those fields, so setting either would take the guest off email for good.
   const status =
     event.type === 'email.bounced'
-      ? 'bounced'
+      ? transientBounce
+        ? undefined
+        : 'bounced'
       : event.type === 'email.complained'
         ? 'complained'
         : event.type === 'email.suppressed'
@@ -711,25 +770,37 @@ async function updateCustomerEmailHealth(
     logger.warn('Failed to update customer email failure state', {
       metadata: { customerId: customer.id, email: normalizedEmail, error: error.message },
     })
-  } else if (status && (event.type === 'email.bounced' || event.type === 'email.complained' || event.type === 'email.suppressed')) {
-    try {
-      await ConsentService.recordOptOut(customer.id, 'email', 'direct_message', {
-        captureMethod: 'provider_event',
-        metadata: {
-          resend_event_type: event.type,
-          reason: errorFromEvent(event) ?? event.type,
-          email: normalizedEmail,
-        },
-      })
-    } catch (consentError) {
-      logger.warn('Failed to record email opt-out consent audit from Resend event', {
-        metadata: {
-          customerId: customer.id,
-          email: normalizedEmail,
-          error: consentError instanceof Error ? consentError.message : String(consentError),
-        },
-      })
-    }
+    return
+  }
+
+  // ONLY A COMPLAINT IS A CHOICE. Marking spam is the guest saying stop, so it belongs in the
+  // consent ledger as an opt-out. A bounce is not: it is what the receiving server did with a
+  // message, and the guest may never have seen it. Nine rows in `customer_consents` say
+  // guests opted out of marketing when all they did was bounce, which is a false record of a
+  // decision they never made. Provider suppression is the same kind of fact, so it is out too.
+  // Delivery state for those lives on the customer row, written above, which is where the
+  // sending code reads it from anyway.
+  if (event.type !== 'email.complained') {
+    return
+  }
+
+  try {
+    await ConsentService.recordOptOut(customer.id, 'email', 'direct_message', {
+      captureMethod: 'provider_event',
+      metadata: {
+        resend_event_type: event.type,
+        reason: errorFromEvent(event) ?? event.type,
+        email: normalizedEmail,
+      },
+    })
+  } catch (consentError) {
+    logger.warn('Failed to record email opt-out consent audit from Resend event', {
+      metadata: {
+        customerId: customer.id,
+        email: normalizedEmail,
+        error: consentError instanceof Error ? consentError.message : String(consentError),
+      },
+    })
   }
 }
 
@@ -870,7 +941,7 @@ export async function POST(request: Request) {
       await recordEmailLinkClick(adminClient, event, emailId, resolvedMessageId)
     }
 
-    const reason = suppressionReason(event.type)
+    const reason = suppressionReason(event)
     if (reason && recipient) {
       const { error: suppressionError } = await (adminClient.from('email_suppressions') as any)
         .upsert({
@@ -888,10 +959,17 @@ export async function POST(request: Request) {
       }
     }
 
-    if (recipient && (event.type === 'email.bounced' || event.type === 'email.complained')) {
+    // Same rule as the guest side: `marketing_do_not_contact` is a durable objection that
+    // survives re-import, so a full inbox must not earn one. A complaint always does, and a
+    // permanent bounce still does.
+    const blocksB2BMarketing =
+      event.type === 'email.complained' ||
+      (event.type === 'email.bounced' && classifyBounceSeverity(event.data?.bounce) === 'permanent')
+
+    if (recipient && blocksB2BMarketing) {
       await syncBusinessContactDeliveryFailure(
         adminClient,
-        event.type,
+        event.type as 'email.bounced' | 'email.complained',
         recipient,
         existingMessage?.business_contact_id ?? null,
       )
