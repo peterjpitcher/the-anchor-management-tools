@@ -10,32 +10,31 @@
  * Year's Eve closes at 10pm. Marketing sends the copy stored on the campaign row, so the fix is a
  * data change, not a repo change.
  *
- * Read only. It reads each row, proves it can reproduce the stored content_hash from the stored
- * content (so the fingerprint still means what it says), applies the exact replacements, recomputes
- * the hash, and writes a migration file plus a human-readable diff. Applying is a separate step and
- * needs the owner's go-ahead.
+ * The SQL it writes is surgical: one `jsonb_set` per string, at the exact path that string sits on,
+ * guarded on the value found there now, on the campaign's content_hash and on its status. Pasting
+ * whole rewritten documents would have meant a 43 KB migration nobody could read, and the same
+ * pattern the Christmas minimum used (edit in place, assert the result) is both smaller and easier
+ * to check. The new content_hash is computed here, from the edited content, and verified against the
+ * stored row after the apply by `--verify`.
  *
- * Usage: npx tsx --tsconfig tsconfig.json scripts/one-off/generate-campaign-copy-owner-answers-2026-09-12.ts
+ * Read only. Applying is a separate step and needs the owner's go-ahead.
+ *
+ * Usage:
+ *   npx tsx --tsconfig tsconfig.json scripts/one-off/generate-campaign-copy-owner-answers-2026-09-12.ts
+ *   npx tsx --tsconfig tsconfig.json scripts/one-off/generate-campaign-copy-owner-answers-2026-09-12.ts --verify
  */
 import { config } from 'dotenv'
 
 config({ path: '.env.local' })
 
-import { createHash } from 'crypto'
 import { writeFileSync } from 'fs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { computeContentHash } from '@/services/marketing-campaigns'
 
 const OUT_DIR = process.env.COPY_FIX_OUT_DIR ?? '.'
+const VERIFY = process.argv.includes('--verify')
 
-/** One replacement, with the campaigns it applies to and why it is being made. */
-type Replacement = {
-  id: string
-  from: string
-  to: string
-  campaigns: string[]
-  reason: string
-}
+type Replacement = { id: string; from: string; to: string; campaigns: string[] }
 
 const REPLACEMENTS: Replacement[] = [
   {
@@ -43,200 +42,218 @@ const REPLACEMENTS: Replacement[] = [
     from: 'The lights go on, the fire gets going, and suddenly a Wednesday feels like an occasion.',
     to: "The lights go on, it's warm inside, and suddenly a Wednesday feels like an occasion.",
     campaigns: ['october-2026-roundup-guests', 'october-2026-roundup-business'],
-    reason: 'No fire anywhere in the pub (owner-confirmed 12 September 2026).',
   },
   {
     id: 'oct-fire-pint',
     from: 'a quiet pint by the fire',
     to: 'a quiet pint somewhere warm',
     campaigns: ['october-2026-roundup-guests', 'october-2026-roundup-business'],
-    reason: 'No fire anywhere in the pub (owner-confirmed 12 September 2026).',
   },
   {
     id: 'nov-fire-preheader',
     from: 'Fires lit, three cracking nights out, and Christmas tables up for grabs.',
     to: 'A warm pub, three cracking nights out, and Christmas tables up for grabs.',
     campaigns: ['november-2026-roundup-guests', 'november-2026-roundup-business'],
-    reason: 'No fire anywhere in the pub (owner-confirmed 12 September 2026).',
   },
   {
     id: 'nov-fire-justify',
     from: 'cold enough to justify the fire',
     to: 'cold enough to stay put',
     campaigns: ['november-2026-roundup-guests', 'november-2026-roundup-business'],
-    reason: 'No fire anywhere in the pub (owner-confirmed 12 September 2026).',
-  },
-  {
-    id: 'dec-nye-hours',
-    from: '12pm to 10pm',
-    to: '12pm to 1am',
-    campaigns: ['december-2026-roundup-guests', 'december-2026-roundup-business'],
-    reason:
-      "New Year's Eve closes at 1am (owner-confirmed; special_hours corrected 11 September 2026). Only the New Year's Eve row is touched: see the guard below.",
   },
 ]
 
-/** The New Year's Eve replacement must not touch any other date's hours row. */
-const NYE_ROW_MARKER = 'Thu 31 Dec'
+/** The New Year's Eve hours row: found by its own date, never by matching "12pm to 10pm". */
+const NYE = {
+  campaigns: ['december-2026-roundup-guests', 'december-2026-roundup-business'],
+  dateLabel: 'Thu 31 Dec',
+  fromHours: '12pm to 10pm',
+  toHours: '12pm to 1am',
+}
 
-function sqlLiteral(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`
+const UTMS = [
+  'october-2026-roundup-guests',
+  'october-2026-roundup-business',
+  'november-2026-roundup-guests',
+  'november-2026-roundup-business',
+  'december-2026-roundup-guests',
+  'december-2026-roundup-business',
+]
+
+const SAVE_THE_DATE = 'house-of-horrors-halloween-party-save-the-date-2026-10-03'
+
+const lit = (v: string) => `'${v.replace(/'/g, "''")}'`
+/** A jsonb path literal, as Postgres wants it: '{blocks,3,data,body,0}'. */
+const pathLit = (path: (string | number)[]) => lit(`{${path.join(',')}}`)
+
+/** Every string in the document, with the path it sits on. */
+function walkStrings(node: unknown, path: (string | number)[] = []): { path: (string | number)[]; value: string }[] {
+  if (typeof node === 'string') return [{ path, value: node }]
+  if (Array.isArray(node)) return node.flatMap((child, i) => walkStrings(child, [...path, i]))
+  if (node && typeof node === 'object') {
+    return Object.entries(node as Record<string, unknown>).flatMap(([key, child]) => walkStrings(child, [...path, key]))
+  }
+  return []
+}
+
+function setAtPath(root: unknown, path: (string | number)[], value: string): void {
+  let node: any = root
+  for (const key of path.slice(0, -1)) node = node[key]
+  node[path[path.length - 1] as never] = value
 }
 
 async function main(): Promise<void> {
   const db = createAdminClient()
-  const utms = [
-    'october-2026-roundup-guests',
-    'october-2026-roundup-business',
-    'november-2026-roundup-guests',
-    'november-2026-roundup-business',
-    'december-2026-roundup-guests',
-    'december-2026-roundup-business',
-  ]
-
   const { data: rows, error } = await db
     .from('marketing_campaigns')
     .select('id, name, utm_campaign, status, scheduled_for, subject, preheader, content, content_hash')
-    .in('utm_campaign', utms)
+    .in('utm_campaign', UTMS)
 
   if (error) throw new Error(`Could not read the campaigns: ${error.message}`)
-  if (!rows || rows.length !== utms.length) {
-    throw new Error(`Expected ${utms.length} campaigns, read ${rows?.length ?? 0}`)
-  }
+  if (!rows || rows.length !== UTMS.length) throw new Error(`Expected ${UTMS.length} campaigns, read ${rows?.length ?? 0}`)
 
-  const statements: string[] = []
-  const rollbackStatements: string[] = []
-  const report: string[] = []
-  let changedCampaigns = 0
-
-  for (const utm of utms) {
-    const row = rows.find((r) => r.utm_campaign === utm)!
-    if (row.status !== 'scheduled') {
-      throw new Error(`${utm} is ${row.status}, not scheduled: stop and re-check before changing it`)
-    }
-
-    // The fingerprint has to mean what it says before it is replaced.
-    const reproduced = computeContentHash(row.content as never)
-    if (reproduced !== row.content_hash) {
-      throw new Error(
-        `${utm}: stored content does not reproduce its stored hash (stored ${row.content_hash}, computed ${reproduced}). Stop.`,
+  if (VERIFY) {
+    // After the apply: every stored hash must be reproducible from its stored content, no fire
+    // claim may survive, and both December round-ups must carry the 1am close.
+    let problems = 0
+    for (const row of rows) {
+      const reproduced = computeContentHash(row.content as never)
+      const text = JSON.stringify(row.content)
+      const fire = /the fire|Fires lit/i.test(text) || /Fires lit/i.test(row.preheader ?? '')
+      const nyeOk = !row.utm_campaign!.startsWith('december') || text.includes(NYE.toHours)
+      const hashOk = reproduced === row.content_hash
+      if (!hashOk || fire || !nyeOk) problems += 1
+      console.log(
+        `${row.utm_campaign}: hash ${hashOk ? 'reproduces' : `MISMATCH (stored ${row.content_hash}, computed ${reproduced})`}` +
+          `, fire claim ${fire ? 'STILL PRESENT' : 'gone'}${row.utm_campaign!.startsWith('december') ? `, 1am ${nyeOk ? 'present' : 'MISSING'}` : ''}`,
       )
     }
+    const { data: std } = await db.from('marketing_campaigns').select('status').eq('utm_campaign', SAVE_THE_DATE).maybeSingle()
+    const { data: settings } = await db.from('marketing_settings').select('frequency_cap_days').maybeSingle()
+    console.log(`save the date: ${std?.status}`)
+    console.log(`campaign gap: ${settings?.frequency_cap_days} days`)
+    if (std?.status !== 'cancelled') problems += 1
+    if (settings?.frequency_cap_days !== 4) problems += 1
+    console.log(problems === 0 ? 'ALL CHECKS PASS' : `${problems} CHECK(S) FAILED`)
+    process.exit(problems === 0 ? 0 : 1)
+  }
 
-    let text = JSON.stringify(row.content)
+  const forward: string[] = []
+  const back: string[] = []
+  const report: string[] = []
+
+  for (const utm of UTMS) {
+    const row = rows.find((r) => r.utm_campaign === utm)!
+    if (row.status !== 'scheduled') throw new Error(`${utm} is ${row.status}, not scheduled: stop`)
+
+    const reproduced = computeContentHash(row.content as never)
+    if (reproduced !== row.content_hash) {
+      throw new Error(`${utm}: stored content does not reproduce its stored hash. Stop.`)
+    }
+
+    const edited = JSON.parse(JSON.stringify(row.content))
+    const sets: string[] = []
+    const guards: string[] = []
+    const unsets: string[] = []
     const applied: string[] = []
 
     for (const replacement of REPLACEMENTS) {
       if (!replacement.campaigns.includes(utm)) continue
-      const needle = JSON.stringify(replacement.from).slice(1, -1)
-      const swap = JSON.stringify(replacement.to).slice(1, -1)
-
-      if (replacement.id === 'dec-nye-hours') {
-        // Both December round-ups list several festive dates, and more than one closes at 10pm.
-        // Only the row whose date is Thu 31 Dec may change, so the match is anchored to that row.
-        const rowPattern = new RegExp(
-          `(${JSON.stringify(NYE_ROW_MARKER).slice(1, -1)}[\\s\\S]{0,200}?)${needle}`,
-          'g',
-        )
-        const before = text
-        text = text.replace(rowPattern, (_m, prefix) => `${prefix}${swap}`)
-        const hits = before === text ? 0 : 1
-        if (hits === 0) throw new Error(`${utm}: could not find the New Year's Eve hours row to correct`)
-        applied.push(`${replacement.id} (anchored to "${NYE_ROW_MARKER}")`)
-        if (text.includes(`${JSON.stringify(NYE_ROW_MARKER).slice(1, -1)}`) && !text.includes('12pm to 1am')) {
-          throw new Error(`${utm}: the New Year's Eve correction did not take`)
-        }
-        continue
+      const hits = walkStrings(edited).filter((s) => s.value.includes(replacement.from))
+      if (hits.length === 0) throw new Error(`${utm}: "${replacement.from}" is no longer in the stored copy`)
+      for (const hit of hits) {
+        const next = hit.value.split(replacement.from).join(replacement.to)
+        guards.push(`content #>> ${pathLit(hit.path)} = ${lit(hit.value)}`)
+        sets.push([pathLit(hit.path), lit(next)])
+        unsets.push([pathLit(hit.path), lit(hit.value)])
+        setAtPath(edited, hit.path, next)
+        applied.push(`${replacement.id} at ${hit.path.join('.')}`)
       }
-
-      const occurrences = text.split(needle).length - 1
-      if (occurrences === 0) {
-        throw new Error(`${utm}: expected text not found, so the stored copy has moved on: "${replacement.from}"`)
-      }
-      text = text.split(needle).join(swap)
-      applied.push(`${replacement.id} (${occurrences} occurrence${occurrences === 1 ? '' : 's'})`)
     }
 
-    const nextContent = JSON.parse(text)
-    const nextHash = computeContentHash(nextContent)
+    if (NYE.campaigns.includes(utm)) {
+      // Find the hours row whose date is Thu 31 Dec, and change that row's hours alone.
+      const dateHit = walkStrings(edited).find((s) => s.value === NYE.dateLabel)
+      if (!dateHit) throw new Error(`${utm}: no "${NYE.dateLabel}" row in the stored copy`)
+      const hoursPath = [...dateHit.path.slice(0, -1), 'hours']
+      let node: any = edited
+      for (const key of hoursPath.slice(0, -1)) node = node[key]
+      const current = node.hours
+      if (current !== NYE.fromHours) throw new Error(`${utm}: the New Year's Eve row says "${current}", not "${NYE.fromHours}"`)
+      guards.push(`content #>> ${pathLit(dateHit.path)} = ${lit(NYE.dateLabel)}`)
+      guards.push(`content #>> ${pathLit(hoursPath)} = ${lit(NYE.fromHours)}`)
+      sets.push([pathLit(hoursPath), lit(NYE.toHours)])
+      unsets.push([pathLit(hoursPath), lit(NYE.fromHours)])
+      setAtPath(edited, hoursPath, NYE.toHours)
+      applied.push(`New Year's Eve hours at ${hoursPath.join('.')}`)
+    }
 
-    // The row keeps its own subject and preheader columns beside the content, and the send reads
-    // those. The November preheader carries a fire claim, so the same replacements run over both
-    // columns: a first draft changed only the content and the end-state check caught it.
-    let nextSubject = row.subject as string | null
+    const nextHash = computeContentHash(edited)
+
+    // The subject and preheader columns sit beside the content and the send reads them, so the
+    // same replacements run over both. The November preheader carries a fire claim; a first draft
+    // changed only the content and the end-state assertion caught it.
     let nextPreheader = row.preheader as string | null
     for (const replacement of REPLACEMENTS) {
-      if (!replacement.campaigns.includes(utm)) continue
-      if (replacement.id === 'dec-nye-hours') continue // hours live in the content only
-      if (nextSubject) nextSubject = nextSubject.split(replacement.from).join(replacement.to)
-      if (nextPreheader) nextPreheader = nextPreheader.split(replacement.from).join(replacement.to)
+      if (!replacement.campaigns.includes(utm) || !nextPreheader) continue
+      nextPreheader = nextPreheader.split(replacement.from).join(replacement.to)
     }
-    const subjectChanged = nextSubject !== row.subject
     const preheaderChanged = nextPreheader !== row.preheader
 
-    if (nextHash === row.content_hash && !subjectChanged && !preheaderChanged) {
-      report.push(`${utm}: nothing to change`)
-      continue
+    const buildUpdate = (
+      pairs: [string, string][],
+      hashFrom: string,
+      hashTo: string,
+      preheaderFrom: string | null,
+      preheaderTo: string | null,
+      label: string,
+    ) => {
+      const expr = pairs.reduce((acc, [p, v]) => `jsonb_set(${acc}, ${p}, to_jsonb(${v}::text))`, 'content')
+      return [
+        `  -- ${row.name}: ${label}`,
+        `  update public.marketing_campaigns set`,
+        `    content = ${expr},`,
+        `    content_hash = ${lit(hashTo)},`,
+        ...(preheaderChanged ? [`    preheader = ${lit(preheaderTo ?? '')},`] : []),
+        `    updated_at = now()`,
+        `  where utm_campaign = ${lit(utm)}`,
+        `    and status = 'scheduled'`,
+        `    and content_hash = ${lit(hashFrom)}`,
+        ...(preheaderChanged ? [`    and preheader = ${lit(preheaderFrom ?? '')}`] : []),
+        ...guards.map((g) => `    and ${g}`),
+        `  ;`,
+        `  if not found then`,
+        `    raise exception '% is not in the state this change was reviewed against, so nothing was changed', ${lit(utm)};`,
+        `  end if;`,
+      ].join('\n')
     }
 
-    changedCampaigns += 1
-    const nextJson = JSON.stringify(nextContent)
-    if (subjectChanged) applied.push('subject column')
-    if (preheaderChanged) applied.push('preheader column')
-
-    // Guarded: matched on the campaign's own utm_campaign and the hash the review saw, so a
-    // campaign someone else has edited since is left alone and the apply fails loudly instead.
-    statements.push(
-      [
-        `-- ${row.name}: ${applied.join('; ')}`,
-        `update public.marketing_campaigns`,
-        `set content = ${sqlLiteral(nextJson)}::jsonb,`,
-        `    content_hash = ${sqlLiteral(nextHash)},`,
-        ...(subjectChanged ? [`    subject = ${sqlLiteral(nextSubject ?? '')},`] : []),
-        ...(preheaderChanged ? [`    preheader = ${sqlLiteral(nextPreheader ?? '')},`] : []),
-        `    updated_at = now()`,
-        `where utm_campaign = ${sqlLiteral(utm)}`,
-        `  and status = 'scheduled'`,
-        `  and content_hash = ${sqlLiteral(row.content_hash)};`,
-        `if not found then`,
-        `  raise exception 'Campaign % did not match its reviewed hash %, so nothing was changed', ${sqlLiteral(utm)}, ${sqlLiteral(row.content_hash)};`,
-        `end if;`,
-      ].join('\n'),
+    forward.push(
+      buildUpdate(sets as [string, string][], row.content_hash as string, nextHash, row.preheader as string, nextPreheader, applied.join('; ')),
     )
+    // The way back guards on the state the change leaves behind, so it cannot undo a later edit.
+    const backGuards = sets.map(([p, v]) => `content #>> ${p} = ${v}`)
+    const backUpdate = [
+      `  -- ${row.name}: back to the copy of 12 September 2026`,
+      `  update public.marketing_campaigns set`,
+      `    content = ${(unsets as [string, string][]).reduce((acc, [p, v]) => `jsonb_set(${acc}, ${p}, to_jsonb(${v}::text))`, 'content')},`,
+      `    content_hash = ${lit(row.content_hash as string)},`,
+      ...(preheaderChanged ? [`    preheader = ${lit((row.preheader as string) ?? '')},`] : []),
+      `    updated_at = now()`,
+      `  where utm_campaign = ${lit(utm)}`,
+      `    and content_hash = ${lit(nextHash)}`,
+      ...backGuards.map((g) => `    and ${g}`),
+      `  ;`,
+      `  if not found then`,
+      `    raise exception '% is not on the copy this rollback undoes, so it was left alone', ${lit(utm)};`,
+      `  end if;`,
+    ].join('\n')
+    back.push(backUpdate)
 
-    // The exact way back: the content, hash and columns this review read, matched on the hash the
-    // change put there, so a rollback cannot undo someone else's later edit.
-    rollbackStatements.push(
-      [
-        `-- ${row.name}: back to the copy of 12 September 2026`,
-        `update public.marketing_campaigns`,
-        `set content = ${sqlLiteral(JSON.stringify(row.content))}::jsonb,`,
-        `    content_hash = ${sqlLiteral(row.content_hash as string)},`,
-        ...(subjectChanged ? [`    subject = ${sqlLiteral((row.subject as string) ?? '')},`] : []),
-        ...(preheaderChanged ? [`    preheader = ${sqlLiteral((row.preheader as string) ?? '')},`] : []),
-        `    updated_at = now()`,
-        `where utm_campaign = ${sqlLiteral(utm)}`,
-        `  and content_hash = ${sqlLiteral(nextHash)};`,
-        `if not found then`,
-        `  raise exception 'Campaign % is not on the hash this rollback undoes (%), so it was left alone', ${sqlLiteral(utm)}, ${sqlLiteral(nextHash)};`,
-        `end if;`,
-      ].join('\n'),
-    )
-
-    report.push(
-      [
-        `## ${row.name} (${utm})`,
-        `sends: ${row.scheduled_for}`,
-        `applied: ${applied.join('; ')}`,
-        `hash: ${row.content_hash} -> ${nextHash}`,
-        ...REPLACEMENTS.filter((r) => r.campaigns.includes(utm)).map(
-          (r) => `  "${r.from}"\n    becomes "${r.to}"\n    because ${r.reason}`,
-        ),
-      ].join('\n'),
-    )
+    report.push(`${utm}: ${applied.join('; ')} | hash ${row.content_hash} -> ${nextHash}${preheaderChanged ? ' | preheader column too' : ''}`)
   }
 
-  const migration = [
+  const header = [
     `-- The owner's answers of 12 September 2026, from the guest email review.`,
     `--`,
     `-- 1. There is no fire anywhere in the pub, so four fire claims come out of the October and`,
@@ -244,43 +261,39 @@ async function main(): Promise<void> {
     `-- 2. New Year's Eve closes at 1am, so both December round-ups stop telling their list 10pm.`,
     `--    The 31 December special-hours row was corrected to 01:00 on 11 September 2026.`,
     `-- 3. The 3 October Halloween save the date is cancelled: the round-up on 1 October makes the`,
-    `--    same ask 48 hours earlier.`,
+    `--    same ask 48 hours earlier. Cancelled, not deleted, so the record survives.`,
     `-- 4. The minimum gap between guest campaigns goes from 2 days to 4. Unsubscribes ran at 7.1%`,
     `--    on the first campaign and 0.8% to 3.5% since, against a norm well under 0.5%.`,
     `--`,
-    `-- Every campaign edit is matched on the content_hash this review read, so a campaign someone`,
-    `-- else has changed since is left untouched and the whole statement raises instead. Nothing`,
-    `-- here sends an email or changes a send time.`,
+    `-- Each string is changed at the exact path it sits on, guarded on the value found there now,`,
+    `-- on the campaign's reviewed content_hash and on its status, so a campaign anyone has edited`,
+    `-- since is left alone and the whole statement raises. Nothing here sends an email or moves a`,
+    `-- send time. The new content_hash values were computed from the edited content by`,
+    `-- scripts/one-off/generate-campaign-copy-owner-answers-2026-09-12.ts, whose --verify pass`,
+    `-- re-reads every row afterwards and reproduces each hash from the stored content.`,
     ``,
-    `do $$`,
-    `begin`,
-    `  if current_setting('request.jwt.claims', true) is null and current_database() not in ('postgres') then`,
-    `    raise notice 'Not the expected production database; statements still run guarded.';`,
-    `  end if;`,
+  ]
+
+  const tail = [
     ``,
-    ...statements.map((s) => s.split('\n').map((line) => `  ${line}`).join('\n')),
-    ``,
-    `  -- The save the date: cancelled, not deleted, so the record of what was approved survives.`,
-    `  update public.marketing_campaigns`,
-    `  set status = 'cancelled',`,
-    `      cancelled_at = now(),`,
-    `      updated_at = now()`,
-    `  where utm_campaign = 'house-of-horrors-halloween-party-save-the-date-2026-10-03'`,
+    `  update public.marketing_campaigns set`,
+    `    status = 'cancelled',`,
+    `    cancelled_at = now(),`,
+    `    updated_at = now()`,
+    `  where utm_campaign = ${lit(SAVE_THE_DATE)}`,
     `    and status = 'scheduled';`,
     `  if not found then`,
     `    raise exception 'The Halloween save the date was not scheduled, so nothing was cancelled';`,
     `  end if;`,
     ``,
-    `  -- The gap between guest campaigns.`,
-    `  update public.marketing_settings`,
-    `  set frequency_cap_days = 4,`,
-    `      updated_at = now()`,
+    `  update public.marketing_settings set`,
+    `    frequency_cap_days = 4,`,
+    `    updated_at = now()`,
     `  where frequency_cap_days = 2;`,
     `  if not found then`,
     `    raise exception 'The frequency cap was not 2 days, so it was left alone';`,
     `  end if;`,
     ``,
-    `  -- End state, asserted in the same statement that made it.`,
     `  if exists (`,
     `    select 1 from public.marketing_campaigns`,
     `    where status = 'scheduled'`,
@@ -292,58 +305,50 @@ async function main(): Promise<void> {
     `  if exists (`,
     `    select 1 from public.marketing_campaigns`,
     `    where status = 'scheduled' and utm_campaign like 'december-2026-roundup-%'`,
-    `      and content::text not like '%12pm to 1am%'`,
+    `      and content::text not like ${lit(`%${NYE.toHours}%`)}`,
     `  ) then`,
     `    raise exception 'A December round-up does not carry the 1am New Year''s Eve close';`,
     `  end if;`,
-    `end $$;`,
-    ``,
-  ].join('\n')
+  ]
 
-  const rollback = [
-    `-- Undoes 20260912180000_campaign_copy_owner_answers.sql.`,
-    `--`,
-    `-- Puts back the copy, hashes, subject and preheader columns this review read on 12 September`,
-    `-- 2026, re-schedules the Halloween save the date and returns the campaign gap to 2 days. Each`,
-    `-- campaign is matched on the hash the change put there, so a campaign edited since is left`,
-    `-- alone and the statement raises instead of quietly reverting someone else's work.`,
-    ``,
-    `do $$`,
-    `begin`,
-    ...rollbackStatements.map((s) => s.split('\n').map((line) => `  ${line}`).join('\n')),
-    ``,
-    `  update public.marketing_campaigns`,
-    `  set status = 'scheduled',`,
-    `      cancelled_at = null,`,
-    `      updated_at = now()`,
-    `  where utm_campaign = 'house-of-horrors-halloween-party-save-the-date-2026-10-03'`,
-    `    and status = 'cancelled';`,
-    `  if not found then`,
-    `    raise exception 'The Halloween save the date was not cancelled, so it was left alone';`,
-    `  end if;`,
-    ``,
-    `  update public.marketing_settings`,
-    `  set frequency_cap_days = 2,`,
-    `      updated_at = now()`,
-    `  where frequency_cap_days = 4;`,
-    `  if not found then`,
-    `    raise exception 'The frequency cap was not 4 days, so it was left alone';`,
-    `  end if;`,
-    `end $$;`,
-    ``,
-  ].join('\n')
-
-  writeFileSync(`${OUT_DIR}/campaign-copy-owner-answers-2026-09-12.sql`, migration)
-  writeFileSync(`${OUT_DIR}/campaign-copy-owner-answers-2026-09-12.rollback.sql`, rollback)
   writeFileSync(
-    `${OUT_DIR}/campaign-copy-owner-answers-2026-09-12.report.md`,
-    [`# What this changes`, ``, ...report, ``, `Campaigns changed: ${changedCampaigns} of ${utms.length}.`].join('\n') + '\n',
+    `${OUT_DIR}/campaign-copy-owner-answers-2026-09-12.sql`,
+    [...header, `do $$`, `begin`, ...forward, ...tail, `end $$;`, ``].join('\n'),
+  )
+  writeFileSync(
+    `${OUT_DIR}/campaign-copy-owner-answers-2026-09-12.rollback.sql`,
+    [
+      `-- Undoes 20260912180000_campaign_copy_owner_answers.sql: the copy, hashes and preheader`,
+      `-- columns of 12 September 2026, the save the date back to scheduled, the gap back to 2 days.`,
+      `-- Each campaign is guarded on the copy the change left, so a later edit is never reverted.`,
+      ``,
+      `do $$`,
+      `begin`,
+      ...back,
+      ``,
+      `  update public.marketing_campaigns set`,
+      `    status = 'scheduled',`,
+      `    cancelled_at = null,`,
+      `    updated_at = now()`,
+      `  where utm_campaign = ${lit(SAVE_THE_DATE)}`,
+      `    and status = 'cancelled';`,
+      `  if not found then`,
+      `    raise exception 'The Halloween save the date was not cancelled, so it was left alone';`,
+      `  end if;`,
+      ``,
+      `  update public.marketing_settings set`,
+      `    frequency_cap_days = 2,`,
+      `    updated_at = now()`,
+      `  where frequency_cap_days = 4;`,
+      `  if not found then`,
+      `    raise exception 'The frequency cap was not 4 days, so it was left alone';`,
+      `  end if;`,
+      `end $$;`,
+      ``,
+    ].join('\n'),
   )
 
-  console.log(`Campaigns read: ${rows.length}. Every stored hash reproduced from its stored content.`)
-  console.log(`Campaigns to change: ${changedCampaigns}.`)
-  console.log(`SQL: ${OUT_DIR}/campaign-copy-owner-answers-2026-09-12.sql`)
-  console.log(`Report: ${OUT_DIR}/campaign-copy-owner-answers-2026-09-12.report.md`)
+  console.log(report.join('\n'))
   console.log('Nothing was written to the database.')
 }
 
