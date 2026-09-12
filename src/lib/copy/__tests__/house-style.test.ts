@@ -148,6 +148,52 @@ describe('access wording and the Sunday menu, 11 September 2026', () => {
   })
 })
 
+describe('quiz and Music Bingo prize claims, 11 September 2026', () => {
+  it.each([
+    // Every string here was live, in scheduled marketing emails and in event records.
+    ['Expect general knowledge, music, TV and film, free-drink questions and spot prizes.', 'spot-prizes'],
+    ['Expect general knowledge, music, TV and film, free-drink questions and spot prizes.', 'free-drink-question'],
+    ['Expect quick games, spot prizes, a few surprises and plenty of singing along.', 'spot-prizes'],
+    ['A closest-wins free drink question in every round.', 'free-drink-question'],
+    ['A quick interactive middle game using one phone per team', 'phone-per-team'],
+    ['Win the quiz often enough and you climb the league table.', 'quiz-league-table'],
+  ])('treats "%s" as an error', (text, rule) => {
+    expect(houseStyleErrors(text).map((f) => f.rule)).toContain(rule)
+  })
+
+  it('leaves the approved replacements alone', () => {
+    expect(
+      houseStyleErrors(
+        'Expect general knowledge, music, TV and film, plus one round in the middle that you play on your phone.'
+      )
+    ).toEqual([])
+    expect(houseStyleErrors('Expect quick games, a few surprises and plenty of singing along.')).toEqual([])
+    expect(
+      houseStyleErrors('A mini challenge using one phone per player and plenty of friendly rivalry.')
+    ).toEqual([])
+  })
+
+  it('leaves the two real quiz prizes and the Music Bingo voucher alone', () => {
+    expect(
+      houseStyleErrors(
+        'First prize is a £25 bar voucher, valid on food or drink for one month. Second-to-last place wins a bottle of wine.'
+      )
+    ).toEqual([])
+    expect(houseStyleErrors('Music Bingo winners get a £25 voucher to spend with us.')).toEqual([])
+  })
+
+  it('leaves Cash Bingo alone, which really does have free drink rounds and food vouchers', () => {
+    expect(
+      houseStyleErrors('Ten games, a mixture of prizes, free drink rounds and £10 food vouchers to be won.')
+    ).toEqual([])
+  })
+
+  it('lets us say plainly that we do not run these things', () => {
+    expect(houseStyleErrors('There are no spot prizes.')).toEqual([])
+    expect(houseStyleErrors('We do not run free-drink questions.')).toEqual([])
+  })
+})
+
 describe('the checker itself', () => {
   it('says nothing about empty text', () => {
     expect(checkHouseStyle('')).toEqual([])
