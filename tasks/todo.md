@@ -48,8 +48,11 @@ to production; the report is a private artifact.
       155/155 static pages, 427 routes). The build needs
       `NODE_OPTIONS=--max-old-space-size=8192` on this machine; see the 12 September entry in
       `tasks/lessons.md` for why, and for the piped-exit-code trap that hid it the first time.
-- [ ] Merged to main and deployed. (Gates green on the merged tree; PR open, awaiting the merge and
-      the Vercel production deployment. This line gets the deployment id when it is verified.)
+- [x] Merged to main and deployed. PR #139, merged as `d694a909` after CI passed (build-and-lint,
+      database-contract, and the Vercel preview). Production deployment
+      `oj-anchor-management-tools-be65xbzk5` reached Ready at 20:55 on 12 September, and
+      management.orangejelly.co.uk serves it (same static chunk hashes as the deployment URL;
+      `/auth/login` and `/api/business/hours` both 200).
 
 Owner calls taken on his standing recommendations, with him away: walk-ins get no booking
 confirmation; a guest who books by replying to a text gets both the text and the email; the booking
