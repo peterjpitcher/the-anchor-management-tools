@@ -46,6 +46,22 @@ interface Rule {
 }
 
 /**
+ * The words that turn a claim into an honest no. Several rules below police a claim and have to
+ * let its denial through, because saying "we don't do that" is the house way of saying no (SSOT
+ * §1). Most spell the list out inline; `sunday-preorder` needs it in four places, so it is named
+ * here instead of repeated.
+ */
+const DENIAL_WORDS = "no|not|never|don't|do not|doesn't|does not|without"
+
+/** A denial in the few words before the phrase: "no Saturday cutoff". */
+const AFTER_A_DENIAL = `\\b(?:${DENIAL_WORDS})\\b[^.!?]{0,40}`
+
+/** Up to `limit` characters of the same sentence, none of them a denial. */
+function withoutDenial(limit: number): string {
+  return `(?:(?!\\b(?:${DENIAL_WORDS})\\b)[^.]){0,${limit}}`
+}
+
+/**
  * Claims the SSOT bans outright. Every one of these has a recorded reason and most have a
  * recorded incident.
  */
@@ -124,7 +140,17 @@ const BANNED_CLAIMS: Rule[] = [
   {
     rule: 'sunday-preorder',
     severity: 'error',
-    pattern: /(saturday[^.]{0,40}cutoff|pre-?order[^.]{0,30}sunday roast|sunday roast[^.]{0,30}pre-?order)/gi,
+    // Only a claim. Saying we retired it is the honest sentence and must pass, and the denial
+    // turns up in two places: before the phrase ("no Saturday cutoff") and inside it ("Sunday
+    // roast, no pre-order needed"), so the lookbehind alone is not enough and the gap between
+    // the two words has to refuse a denial too. Both of those were live in the September
+    // what's-on email and the checker called them faults.
+    pattern: new RegExp(
+      `(?<!${AFTER_A_DENIAL})(?:saturday${withoutDenial(40)}cutoff` +
+        `|pre-?order${withoutDenial(30)}sunday roast` +
+        `|sunday roast${withoutDenial(30)}pre-?order)`,
+      'gi',
+    ),
     message: 'Sunday roast pre-order and the Saturday cutoff were retired at the 2026-05-17 walk-in launch.',
   },
   {
