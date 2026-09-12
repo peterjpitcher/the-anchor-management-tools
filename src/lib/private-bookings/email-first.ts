@@ -126,6 +126,8 @@ export async function attemptPrivateBookingEmail(input: {
     subject: input.content.subject,
     html: input.content.html,
     text: input.content.text,
+    // Only the cancellation carries one: the .ics that takes the event out of the guest's calendar.
+    ...(input.content.attachments ? { attachments: input.content.attachments } : {}),
     commType: input.templateKey,
     customerId: input.booking.customer_id ?? null,
     privateBookingId: input.booking.id,

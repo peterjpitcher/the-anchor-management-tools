@@ -6,7 +6,8 @@ import { PAYPAL_DEFAULT_CURRENCY, refundPayPalPayment } from '@/lib/paypal'
 import { sendRefundNotification } from '@/lib/refund-notifications'
 import {
   sendDepositRefundEmail,
-  sendDepositRefundWithDeductionsEmail,
+  sendDepositPartRefundEmail,
+  sendPrivateBookingRefundSentEmail,
 } from '@/lib/email/private-booking-emails'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -296,55 +297,88 @@ async function updateRefundStatus(
 }
 
 /**
- * Post-event deposit refund notice (SOP §25.7–8): itemised email with any
- * deduction explained. Cancellation refunds are covered by the cancellation
- * email, so this only fires for completed bookings. Fire-and-forget.
+ * Tell the guest what has happened to their money.
+ *
+ * A completed booking gets the post-event deposit notice (SOP §25.7-8). A cancelled booking gets
+ * the confirmation its cancellation email promised ("we'll refund £150 within 10 working days and
+ * confirm once it's on the way"), which nothing used to send, least of all for a cash or bank
+ * transfer refund (review PB-BR-4).
+ *
+ * Every figure comes from the completed refunds on the booking, not from the payment in front of
+ * it. A £250 deposit returned as £100 then £150 produced two emails, one claiming £150 of
+ * deductions and the next £100, when the guest had the whole £250 back (review PB-4).
+ *
+ * The staff reason is not passed on: the refund dialog labels it "internal only" and it was being
+ * emailed verbatim and unescaped (review PB-6).
+ *
+ * Returns true when the guest was emailed, so the generic refund notice can stand down
+ * (review PB-19). Fire-and-forget: a failure here never fails the refund.
  */
 async function sendPrivateBookingRefundEmailSideEffect(
   db: ReturnType<typeof createAdminClient>,
   sourceType: SourceType,
   sourceId: string,
   refundAmount: number,
-  reason: string,
-): Promise<void> {
-  if (sourceType !== 'private_booking') return
+  refundMethod: string,
+): Promise<boolean> {
+  if (sourceType !== 'private_booking') return false
   try {
     const { data: pb } = await db
       .from('private_bookings')
-      .select('id, status, customer_id, contact_email, customer_first_name, customer_name, event_date, event_type, deposit_amount')
+      .select('id, status, customer_id, contact_email, customer_first_name, customer_name, event_date, event_type, deposit_amount, date_tbd, internal_notes')
       .eq('id', sourceId)
       .maybeSingle()
-    if (!pb?.contact_email || pb.status !== 'completed') return
+    if (!pb?.contact_email) return false
+    if (pb.status !== 'completed' && pb.status !== 'cancelled') return false
+
+    const { data: refunds, error: refundsError } = await db
+      .from('payment_refunds')
+      .select('amount')
+      .eq('source_type', 'private_booking')
+      .eq('source_id', sourceId)
+      .eq('status', 'completed')
+    // Without the full picture the email would have to guess at the deductions, which is the bug
+    // this replaces. Say nothing rather than guess; the refund itself is unaffected.
+    if (refundsError) return false
+    const totalRefunded =
+      Math.round((refunds ?? []).reduce((sum: number, r: { amount: unknown }) => sum + Number(r.amount), 0) * 100) / 100
+
+    const guest = {
+      id: pb.id,
+      customer_id: pb.customer_id,
+      contact_email: pb.contact_email,
+      customer_first_name: pb.customer_first_name,
+      customer_name: pb.customer_name,
+      event_date: pb.event_date,
+      event_type: pb.event_type,
+      date_tbd: (pb as { date_tbd?: boolean | null }).date_tbd ?? null,
+      internal_notes: (pb as { internal_notes?: string | null }).internal_notes ?? null,
+    }
+
+    if (pb.status === 'cancelled') {
+      await sendPrivateBookingRefundSentEmail({ ...guest, refund_amount: refundAmount, refund_method: refundMethod })
+      return true
+    }
 
     const deposit = Number(pb.deposit_amount ?? 0)
-    if (deposit > 0 && refundAmount + 0.005 < deposit) {
-      await sendDepositRefundWithDeductionsEmail({
-        id: pb.id,
-        customer_id: pb.customer_id,
-        contact_email: pb.contact_email,
-        customer_first_name: pb.customer_first_name,
-        customer_name: pb.customer_name,
-        event_date: pb.event_date,
-        event_type: pb.event_type,
+    if (deposit > 0 && totalRefunded + 0.005 < deposit) {
+      await sendDepositPartRefundEmail({
+        ...guest,
         deposit_amount: deposit,
-        deduction_amount: Math.round((deposit - refundAmount) * 100) / 100,
-        deduction_reason: reason,
         refund_amount: refundAmount,
+        total_refunded: totalRefunded,
       })
     } else {
       await sendDepositRefundEmail({
-        id: pb.id,
-        customer_id: pb.customer_id,
-        contact_email: pb.contact_email,
-        customer_first_name: pb.customer_first_name,
-        customer_name: pb.customer_name,
-        event_date: pb.event_date,
-        event_type: pb.event_type,
+        ...guest,
         refund_amount: refundAmount,
+        total_refunded: totalRefunded > 0 ? totalRefunded : refundAmount,
       })
     }
+    return true
   } catch {
     // Fire-and-forget: email failure must never fail the refund itself.
+    return false
   }
 }
 
@@ -482,10 +516,15 @@ export async function processPayPalRefund(
       }
 
       await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
-      void sendPrivateBookingRefundEmailSideEffect(db, sourceType, sourceId, amount, reason)
+      const bookingEmailSent = await sendPrivateBookingRefundEmailSideEffect(db, sourceType, sourceId, amount, 'paypal')
 
       let notificationStatus: string | null = null
-      if (booking.customerName) {
+      if (bookingEmailSent) {
+        // The booking's own email has gone, with the booking's details, the venue's number and the
+        // guest's first name. The generic notice had none of those and was logged against no
+        // booking, so two emails arrived saying different things (review PB-19).
+        notificationStatus = 'email_sent'
+      } else if (booking.customerName) {
         notificationStatus = await sendRefundNotification({
           customerId: booking.customerId,
           customerName: booking.customerName,
@@ -695,7 +734,7 @@ export async function processManualRefund(
 
   // 6. Update booking refund status
   await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
-  void sendPrivateBookingRefundEmailSideEffect(db, sourceType, sourceId, amount, reason)
+  await sendPrivateBookingRefundEmailSideEffect(db, sourceType, sourceId, amount, refundMethod)
 
   // 7. Audit
   await logAuditEvent({

@@ -15,7 +15,10 @@ export const CONTRACT_DOCUMENTS_BUCKET = 'private-booking-documents'
 // §30 business details — single source shared by the on-demand route and the
 // send-contract action.
 export const CONTRACT_COMPANY_DETAILS = {
-  name: 'Orange Jelly Limited trading as The Anchor Pub',
+  // The venue is "The Anchor", never "The Anchor Pub" (website SSOT §14). The contract named the
+  // trader one way and every email named it the other (review PB-22). The legal entity is
+  // unchanged: only the trading name is corrected.
+  name: 'Orange Jelly Limited trading as The Anchor',
   registrationNumber: '10537179',
   vatNumber: 'GB 315 2036 47',
   address: 'The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ',

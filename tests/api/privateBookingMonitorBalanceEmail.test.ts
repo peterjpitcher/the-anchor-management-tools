@@ -173,7 +173,7 @@ describe('balance reminders by email, with the payments made', () => {
     expect(email.to).toBe('host@example.com')
     expect(email.commType).toBe('private_booking_balance_reminder_21day')
     expect(email.text).toContain('Your £900 balance and your final details (numbers, menus, suppliers) are due by 26 September 2026')
-    expect(email.text).toContain('Event total: £1200')
+    expect(email.text).toContain('Event total: £1,200')
     expect(email.text).toContain('Paid towards your bill so far: £300')
     expect(email.text).toContain('Balance due: £900')
     expect(email.text).toContain('Payments received\n12 August 2026: Deposit by PayPal, £250 (held separately from your bill)\n1 September 2026: Payment by cash, £300')
