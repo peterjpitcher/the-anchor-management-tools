@@ -372,6 +372,37 @@ describe('event guest emails', () => {
       expect(sent.subject).toContain(expectedLongDate('2026-11-20').split(' ').slice(0, 3).join(' '))
       expect(sent.metadata.amount_due).toBe(40)
     })
+
+    it('reads the hold and the event at London time on a British Summer Time date', async () => {
+      await sendEventPaymentLinkEmail(
+        buildSupabase({ booking: { status: 'pending_payment' } }) as any,
+        {
+          bookingId: '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70',
+          paymentLink: 'https://management.orangejelly.co.uk/g/pay-token/event-payment',
+          holdExpiresAt: '2026-09-15T18:00:00.000Z',
+        }
+      )
+
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain(`2 tickets are held for Quiz Night on ${QUIZ_WHEN}.`)
+      expect(sent.text).toContain(`We can hold them until ${expectedLongDate('2026-09-15')} at 7pm.`)
+    })
+
+    it('reads a hold that runs out just after midnight', async () => {
+      await sendEventPaymentLinkEmail(
+        buildSupabase({ event: AFTER_MIDNIGHT_EVENT, booking: { status: 'pending_payment' } }) as any,
+        {
+          bookingId: '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70',
+          paymentLink: 'https://management.orangejelly.co.uk/g/pay-token/event-payment',
+          holdExpiresAt: '2026-11-01T00:15:00.000Z',
+        }
+      )
+
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain(`We can hold them until ${expectedLongDate('2026-11-01')} at 12:15am.`)
+    })
   })
 
   describe('payment confirmation', () => {
@@ -563,6 +594,26 @@ describe('event guest emails', () => {
       expect(sent.text).toContain(`We've had to cancel Quiz Night on ${QUIZ_WHEN}, and we are sorry for the disappointment.`)
       expect(sent.text).not.toContain('has been cancelled (2 tickets)')
       expect(sent.text.match(/sorry/g)?.length ?? 0).toBe(1)
+    })
+
+    it('names the cancelled night at London time on a GMT date and after midnight', async () => {
+      await sendEventBookingCancelledEmail(buildSupabase({ event: TASTING_EVENT }) as any, {
+        bookingId: '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70',
+        reason: 'event_cancelled',
+        paymentTaken: false,
+      })
+      let sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain(`${expectedLongDate('2026-11-20')} at 7pm`)
+
+      await sendEventBookingCancelledEmail(buildSupabase({ event: AFTER_MIDNIGHT_EVENT }) as any, {
+        bookingId: '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70',
+        reason: 'event_cancelled',
+        paymentTaken: false,
+      })
+      sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain(`${expectedLongDate('2026-11-01')} at 12:15am`)
     })
 
     it('promises a cancelled night back in full when money was taken', async () => {
