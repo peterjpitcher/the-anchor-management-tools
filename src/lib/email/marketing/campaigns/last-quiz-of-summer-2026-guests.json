@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "title": "The Last Quiz of Summer is this Wednesday",
-  "preheader": "£3 entry · teams up to six · free-drink questions · spot prizes · food from 4pm",
+  "preheader": "£3 entry · teams up to six · a phone round in the middle · food from 4pm",
   "blocks": [
     {
       "type": "masthead_green",
@@ -31,7 +31,7 @@
       "type": "note_bar",
       "data": {
         "label": "What to expect.",
-        "body": "Music · TV · Film · Random knowledge · Free-drink questions · Spot prizes"
+        "body": "Music · TV · Film · Random knowledge · A phone round in the middle"
       }
     },
     {

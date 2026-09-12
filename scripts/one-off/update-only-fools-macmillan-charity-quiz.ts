@@ -24,13 +24,13 @@ const shortDescription =
 
 const longDescription = `The Anchor is partnering with the Stanwell Moor Community Wellbeing Garden for a special Only Fools and Horses charity quiz night in aid of Macmillan Cancer Support. Join us on Friday 25 September from 7pm to 9.30pm for classic quotes, themed questions, plenty of laughs and a good cause at the heart of the night. Every penny from the £3 quiz entry fee will be donated to Macmillan Cancer Support.
 
-Expect four themed rounds with ten questions in each, covering iconic moments, favourite characters, classic catchphrases and deeper cuts for proper fans. There will also be a quick interactive game using one phone per team. Quizmaster Peter Pitcher will keep the questions moving and the atmosphere lively, whether you know every episode or simply fancy a fun Friday night with friends.
+Expect four themed rounds with ten questions in each, covering iconic moments, favourite characters, classic catchphrases and deeper cuts for proper fans. There will also be a quick interactive game using one phone per player. Quizmaster Peter Pitcher will keep the questions moving and the atmosphere lively, whether you know every episode or simply fancy a fun Friday night with friends.
 
 Arrive from 6.45pm, be seated by 6.55pm and get ready for a 7pm sharp start. The pub is open from 12pm, and our full dinner menu is available from 4pm to 9pm, so come early, order some food and settle in before the first round. Food and drinks are ordered at the bar.
 
 Teams can have up to six players. Entry is £3 per person, paid in cash on arrival, while the bar takes card as usual. Booking is strongly recommended because this event is expected to be busy. Walk-ins are welcome where space allows, and we will do our best to help solo players and pairs join a team.
 
-The winning team will receive a £25 bar voucher, second-to-last place will receive a bottle of wine, and there will be spot prizes and free drinks during the night. All prizes are provided separately, so no quiz entry fees will be used to pay for them.
+The winning team will receive a £25 bar voucher, and second-to-last place will receive a bottle of wine. All prizes are provided separately, so no quiz entry fees will be used to pay for them.
 
 The Anchor is in Stanwell Moor, close to Staines and Heathrow, with free on-site parking. Dress-up is welcome but not required. The pub is dog-friendly, and the ground floor has step-free access and an accessible toilet.
 
@@ -71,7 +71,7 @@ The pub is open from **12pm**. Our **full dinner menu is available from 4pm to 9
 ## What to expect
 
 - Four Only Fools and Horses themed rounds with 10 questions per round
-- A quick interactive middle game using one phone per team
+- A quick interactive middle game using one phone per player
 - A mix of easy wins, classic moments, quotes, characters and trickier questions for proper fans
 - A relaxed, lively atmosphere where the aim is to have a laugh, not sit an exam
 - Dress-up is encouraged but not required
@@ -98,7 +98,6 @@ Dodgy deals, side characters, festive specials, family history and deeper detail
 
 - **1st place:** £25 bar voucher, valid on food or drink at The Anchor for one month
 - **Second-to-last place:** bottle of wine
-- Spot prizes and free drinks during the night
 
 All prizes are provided separately. **Every quiz entry fee will be donated to Macmillan Cancer Support.**
 
