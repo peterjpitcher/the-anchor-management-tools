@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "title": "Quiz Night on Wednesday 16 September",
-  "preheader": "£3 cash entry · teams up to six · free-drink questions · spot prizes · food from 4pm",
+  "preheader": "£3 cash entry · teams up to six · a phone round in the middle · food from 4pm",
   "blocks": [
     {
       "type": "masthead_green",
@@ -21,7 +21,7 @@
         "kicker": "Wednesday 16 September · 7pm",
         "headline": "Round up the team. Quiz Night is back.",
         "body": [
-          "Bring your smartest mate, your best guesser and the one who always knows the song intro. Our Autumn Kick-Off Quiz Night is packed with lively rounds, free-drink questions, spot prizes and plenty of friendly competition."
+          "Bring your smartest mate, your best guesser and the one who always knows the song intro. Our Autumn Kick-Off Quiz Night is packed with lively rounds, one round in the middle that you play on your phone, and plenty of friendly competition."
         ],
         "cta_label": "Book your quiz table",
         "cta_url": "https://www.the-anchor.pub/events/autumn-kick-off-quiz-night-2026-09-16"
@@ -31,7 +31,7 @@
       "type": "note_bar",
       "data": {
         "label": "What to expect.",
-        "body": "General knowledge · Music · TV and film · Pictures · Random facts · Free-drink questions"
+        "body": "General knowledge · Music · TV and film · Pictures · Random facts · A phone round in the middle"
       }
     },
     {
@@ -52,7 +52,7 @@
           },
           {
             "label": "Prizes",
-            "value": "£25 bar voucher for first place, plus free drinks and spot prizes"
+            "value": "£25 bar voucher for first place, bottle of wine for second from last"
           }
         ]
       }
