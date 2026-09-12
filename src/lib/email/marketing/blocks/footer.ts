@@ -39,8 +39,8 @@ export type FooterData = z.infer<typeof footerSchema>
  * us last year.
  */
 export const B2B_REASON_FOR_CONTACT =
-  'You are receiving this because you enquired about a booking or an event with us, ' +
-  'or because you may be close to us and we thought this information would be helpful to you.'
+  "You're getting this either because you enquired about a booking or an event with us, " +
+  "or because you're close by. We thought it would be helpful."
 
 export const footer = defineBlock<FooterData>({
   type: 'footer',

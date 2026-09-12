@@ -108,12 +108,6 @@
       "expected_rows": 5
     },
     {
-      "reason": "The Snowball projection caveat ran to 29 words.",
-      "from": "That projection depends on it staying unclaimed at the earlier Cash Bingo nights, and if it is won the amount and the number target are updated before this one.",
-      "to": "That projection assumes it stays unclaimed at the earlier Cash Bingo nights. If it’s won, the amount and the number target are updated before this one.",
-      "expected_rows": 2
-    },
-    {
       "reason": "The quiz description ran to 27 words.",
       "from": "It is our usual mix of general knowledge, music, TV and film, with a few seasonal questions along the way rather than a fully themed Christmas quiz.",
       "to": "It’s our usual mix of general knowledge, music, TV and film. Expect a few seasonal questions along the way, rather than a fully themed Christmas quiz.",
