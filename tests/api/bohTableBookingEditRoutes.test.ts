@@ -141,7 +141,7 @@ describe('BOH table booking edit routes', () => {
     // Date/time changed → the customer is notified of the amended booking.
     expect(sendTableBookingRescheduledNotificationIfAllowed).toHaveBeenCalledWith(
       supabase,
-      { tableBookingId: BOOKING_ID },
+      { tableBookingId: BOOKING_ID, previous: { startDateTime: expect.any(String) } },
     )
   })
 
