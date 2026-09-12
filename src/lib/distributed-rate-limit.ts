@@ -9,6 +9,18 @@ type RateLimitOptions = {
   max: number
   message?: string
   localWindowMs?: number
+  /**
+   * What to count against, instead of the caller's IP.
+   *
+   * Added for the one-click unsubscribe endpoint. Gmail and Yahoo send those POSTs from
+   * shared outbound servers, so a burst of opt-outs after a campaign all arrive from a
+   * handful of addresses and an IP budget throws the rest away. The thing worth limiting
+   * there is repeated use of the same token, not repeated use of the same mail provider.
+   *
+   * Only pass a value that is not the subject's own secret in plain form: it becomes part of
+   * a Redis key. Hash it first, as the unsubscribe route does.
+   */
+  identifier?: string
 }
 
 const limiterCache = new Map<string, Ratelimit>()
@@ -51,7 +63,7 @@ export async function applyDistributedRateLimit(
   options: RateLimitOptions
 ): Promise<NextResponse | null> {
   const message = options.message ?? 'Too many requests. Please try again later.'
-  const identifier = getClientIp(request)
+  const identifier = options.identifier?.trim() || getClientIp(request)
   const limiter = getUpstashLimiter(options)
 
   if (!limiter) {
