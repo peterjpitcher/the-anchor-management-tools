@@ -85,7 +85,9 @@ export async function loadPrivateBookingMessageContext(input: {
   if (input.triggerType === 'review_request') {
     context.reviewLink = await getGoogleReviewLink(input.client as any)
   }
-  if (input.triggerType === 'deposit_request') {
+  // The deposit request and the reminders all ask for the deposit, so all of them carry the link
+  // to the page that takes it (review PB-BR-2).
+  if (input.triggerType === 'deposit_request' || input.triggerType.startsWith('deposit_reminder_')) {
     context.paymentLink = buildPrivateBookingPortalUrl(input.bookingId)
   }
 

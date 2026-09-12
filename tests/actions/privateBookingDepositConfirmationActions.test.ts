@@ -50,7 +50,7 @@ vi.mock('@/lib/email/private-booking-emails', async () => {
   const actual = await vi.importActual<typeof import('@/lib/email/private-booking-emails')>('@/lib/email/private-booking-emails')
   return {
     ...actual,
-    sendDepositPaymentLinkEmail: vi.fn(async () => undefined),
+    sendDepositPaymentLinkEmail: vi.fn(async () => ({ sent: true })),
     sendBookingCalendarInvite: vi.fn(async () => undefined),
   }
 })
