@@ -40,13 +40,21 @@ export function formatLondonDateTime(isoDateTime?: string | null): string {
   }
 }
 
+/**
+ * "Christmas courses: 2 x 3 courses, 1 x 1 course. Guests on one course have nothing to
+ * pre-order."
+ *
+ * The closing sentence used to read "One course needs no pre-order.", which a guest reads as an
+ * instruction about their booking rather than about the one-course tier: it can be taken as "you
+ * only need to pre-order one course". It now says who it applies to.
+ */
 export function describeChristmasCourseCounts(counts?: number[] | null): string {
   if (!counts?.length) return ''
   const summary = [1, 2, 3].map(course => {
     const guests = counts.filter(count => count === course).length
     return guests ? `${guests} x ${course} course${course === 1 ? '' : 's'}` : null
   }).filter(Boolean).join(', ')
-  return `Christmas courses: ${summary}. One course needs no pre-order.`
+  return `Christmas courses: ${summary}. Guests on one course have nothing to pre-order.`
 }
 
 // ---------------------------------------------------------------------------

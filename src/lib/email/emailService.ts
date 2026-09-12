@@ -4,6 +4,7 @@ import { ClientSecretCredential } from '@azure/identity';
 import { getErrorMessage } from '@/lib/errors';
 import { Resend } from 'resend';
 import { getEmailSuppressionStatus, recordEmailMessage } from '@/lib/email/logging';
+import { htmlToPlainText } from '@/lib/email/plain-text';
 import { currentEmailSuspensionReason, EMAIL_SUSPENSION_SWITCHES } from '@/lib/email/suspension';
 
 export interface EmailOptions {
@@ -90,6 +91,23 @@ type EmailSendResult = {
   suppressionCheckUnavailable?: boolean;
 };
 
+/**
+ * The one-click unsubscribe headers, identical on both provider paths.
+ *
+ * HTTPS ONLY, NO MAILTO. RFC 8058 one-click needs the HTTPS entry and
+ * `List-Unsubscribe-Post`, and that is what Gmail and Yahoo act on. The mailto entry that
+ * used to be appended pointed at `EMAIL_REPLY_TO`, the venue manager's mailbox, where
+ * nothing reads it and nothing acts on it. Every client that chose the mailto over the link
+ * produced an opt-out request that reached a human inbox and was never honoured, which is
+ * worse than offering one route that works.
+ */
+export function UNSUBSCRIBE_HEADERS(unsubscribeUrl: string): Record<string, string> {
+  return {
+    'List-Unsubscribe': `<${unsubscribeUrl}>`,
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+  };
+}
+
 let cachedResendClient: Resend | null = null;
 
 function getEmailProvider(): EmailProvider {
@@ -135,7 +153,8 @@ async function recordEmailOutcome(
     fromAddress: input.fromAddress ?? null,
     commType: options.commType ?? null,
     subject: options.subject,
-    bodyText: options.text ?? null,
+    // The derived text is what the guest received, so it is what the log should hold.
+    bodyText: resolveTextPart(options) ?? null,
     bodyHtml: options.html ?? null,
     attachments,
     resendMessageId: input.messageId ?? null,
@@ -223,6 +242,20 @@ export async function sendEmail(options: EmailOptions): Promise<EmailSendResult>
   return sendEmailViaGraph(options);
 }
 
+/**
+ * The text part the guest receives.
+ *
+ * A caller's own text always wins. When a template sends HTML alone the text is derived, rather
+ * than sending none: twelve guest templates did that, which reads as an empty message in a
+ * text-only client, scores worse with spam filters and left `body_text` null in the send log.
+ */
+function resolveTextPart(options: EmailOptions): string | undefined {
+  if (options.text) return options.text;
+  if (!options.html) return undefined;
+  const derived = htmlToPlainText(options.html);
+  return derived || undefined;
+}
+
 async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResult> {
   const fromAddress = options.from ?? process.env.EMAIL_FROM_ADDRESS;
   const client = getResendClient();
@@ -264,21 +297,16 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
     if (options.html) {
       resendPayload.html = options.html;
     }
-    if (options.text) {
-      resendPayload.text = options.text;
+    const textPart = resolveTextPart(options);
+    if (textPart) {
+      resendPayload.text = textPart;
     }
-    if (!options.html && !options.text) {
+    if (!options.html && !textPart) {
       resendPayload.text = '';
     }
 
     if (options.unsubscribeUrl) {
-      const mailto = process.env.EMAIL_REPLY_TO
-        ? `, <mailto:${process.env.EMAIL_REPLY_TO}?subject=unsubscribe>`
-        : '';
-      resendPayload.headers = {
-        'List-Unsubscribe': `<${options.unsubscribeUrl}>${mailto}`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-      };
+      resendPayload.headers = UNSUBSCRIBE_HEADERS(options.unsubscribeUrl);
     }
 
     const { data, error } = options.idempotencyKey
@@ -404,13 +432,8 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
     // disappears from every message whenever EMAIL_PROVIDER is graph, and the opt-out the
     // soft opt-in basis depends on would exist on only one of the two send paths.
     if (options.unsubscribeUrl) {
-      const mailto = process.env.EMAIL_REPLY_TO
-        ? `, <mailto:${process.env.EMAIL_REPLY_TO}?subject=unsubscribe>`
-        : '';
-      message.internetMessageHeaders = [
-        { name: 'List-Unsubscribe', value: `<${options.unsubscribeUrl}>${mailto}` },
-        { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
-      ];
+      message.internetMessageHeaders = Object.entries(UNSUBSCRIBE_HEADERS(options.unsubscribeUrl))
+        .map(([name, value]) => ({ name, value }));
     }
 
     if (ccRecipients.length > 0) {

@@ -44,3 +44,25 @@ export const GUEST_WHATSAPP_SERVICE_LABEL =
 
 export const GUEST_MARKETING_WHATSAPP_LABEL =
   'Send me WhatsApp updates on what is on, new menus, offers, and any changes.'
+
+// The tick box on the guest email-capture page (`/g/[token]/email-capture`), which offers to
+// stop marketing texts now that the guest has given an address.
+//
+// VERSIONED SEPARATELY, and not under GUEST_COMMS_CONSENT_TEXT_VERSION. That constant is
+// mirrored in the website repo and covers the labels the website also shows; this box exists
+// only in AMS, so bumping the shared version for it would put the two repos out of step over
+// wording the website has never displayed.
+//
+// v1 IS A CORRECTION, NOT A NEW ASK. Until 12 September 2026 the box, and therefore the
+// consent text stored with it, promised "Your booking confirmations and reminders will still
+// come by text." Email-first made that untrue: a booking confirmation now goes by email when
+// the address is usable, and only falls back to a text. The new wording names no channel,
+// because the promise that matters to the guest is that the message reaches them.
+//
+// Rows already in `customer_consents` keep the old text and the old
+// `guest-comms-consent-v5` stamp. They record what that guest was actually shown, which is
+// the entire point of storing the text, so they are never rewritten.
+export const GUEST_MARKETING_SMS_STOP_LABEL_VERSION = 'guest-sms-stop-label-v1'
+
+export const GUEST_MARKETING_SMS_STOP_LABEL =
+  'Email is enough, stop sending me marketing texts. Your booking confirmations and reminders will still reach you.'

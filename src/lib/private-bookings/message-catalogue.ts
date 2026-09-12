@@ -1,5 +1,6 @@
 import { formatDateInLondon, isValidIsoDate, parseLondonDateTimeLocal, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { daysUntilHoldExpiry } from '@/lib/private-bookings/hold-deadline'
 import {
   balanceReminder15DayMessage,
   balanceReminder16DayMessage,
@@ -326,13 +327,14 @@ export function renderPrivateBookingMessage(triggerType: string, ctx: CatalogueC
   switch (triggerType) {
     case 'booking_created': {
       const holdExpiry = b.hold_expiry ? formatPrivateBookingSmsDate(new Date(b.hold_expiry)) : null
+      const depositAmount = toNumber(b.deposit_amount)
       return {
         ...base,
         templateKey: 'private_booking_created',
         smsBody: privateBookingCreatedMessage({
           customerFirstName: b.customer_first_name,
           eventDate: smsEventDateTbdAware(b),
-          depositAmount: toNumber(b.deposit_amount),
+          depositAmount,
           holdExpiry,
         }),
         facts: facts(),
@@ -365,7 +367,8 @@ export function renderPrivateBookingMessage(triggerType: string, ctx: CatalogueC
       const eventDate = formatPrivateBookingSmsDate(b.event_date)
       const holdExpiry = formatPrivateBookingSmsDate(b.hold_expiry)
       const depositAmount = toNumber(b.deposit_amount)
-      const daysRemaining = Math.ceil((new Date(b.hold_expiry).getTime() - ctx.now.getTime()) / (1000 * 60 * 60 * 24))
+      // London calendar days, so "expires in 6 days" and the date it names agree (review PB-BR-1).
+      const daysRemaining = daysUntilHoldExpiry(b.hold_expiry, ctx.now) ?? 0
       const stage = triggerType === 'deposit_reminder_7day' ? '7day' : triggerType === 'deposit_reminder_3day' ? '3day' : '1day'
       const smsBody =
         stage === '7day'
@@ -378,7 +381,15 @@ export function renderPrivateBookingMessage(triggerType: string, ctx: CatalogueC
         templateKey: `private_booking_${triggerType}`,
         smsBody,
         email: () =>
-          buildDepositReminderEmail({ booking: b, firstName: b.customer_first_name, stage, depositAmount, holdExpiry, daysRemaining }),
+          buildDepositReminderEmail({
+            booking: b,
+            firstName: b.customer_first_name,
+            stage,
+            depositAmount,
+            holdExpiry,
+            daysRemaining,
+            ...(ctx.paymentLink !== undefined ? { paymentLink: ctx.paymentLink } : {}),
+          }),
         facts: facts(),
       }
     }
@@ -387,7 +398,13 @@ export function renderPrivateBookingMessage(triggerType: string, ctx: CatalogueC
       return {
         ...base,
         templateKey: 'private_booking_deposit_received',
-        smsBody: depositReceivedMessage({ customerFirstName: b.customer_first_name, eventDate: smsEventDateTbdAware(b) }),
+        smsBody: depositReceivedMessage({
+          customerFirstName: b.customer_first_name,
+          eventDate: smsEventDateTbdAware(b),
+          // A booking still in draft after its deposit was taken is one the SOP gate held back,
+          // so the rebuilt text must not call the date theirs either (review PB-2).
+          bookingConfirmed: b.status !== 'draft',
+        }),
         facts: facts(),
       }
 
@@ -479,7 +496,7 @@ export function renderPrivateBookingMessage(triggerType: string, ctx: CatalogueC
         templateKey: 'private_booking_event_reminder_1d',
         smsBody: eventReminder1DayMessage({
           customerFirstName: b.customer_first_name || b.customer_name?.split(' ')[0],
-          guestPart: b.guest_count ? `for your ${b.guest_count} guests` : '',
+          guestPart: b.guest_count ? `for your ${b.guest_count} ${b.guest_count === 1 ? 'guest' : 'guests'}` : '',
         }),
         facts: facts(),
       }

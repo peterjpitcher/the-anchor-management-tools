@@ -117,9 +117,17 @@ export async function runCommunicationsHealthCheck(): Promise<CommunicationHealt
     countRows('unmatched_communications', (query) =>
       query.eq('status', 'unmatched')
     ),
+    // WINDOWED ON `updated_at`, NOT `created_at`. `fallback_sent` is written when the text
+    // goes out, which for the delayed fallback is hours after the delivery row was created;
+    // past 24 hours the row falls out of a created_at window entirely and the fallback it
+    // records is never counted. The `failed` counter below already windows on `updated_at`
+    // for exactly this reason, and this one was left behind, which is how the fallback-rate
+    // alert came to be structurally unable to fire.
     countRows('notification_deliveries', (query) =>
-      query.eq('final_status', 'fallback_sent').gte('created_at', last24h)
+      query.eq('final_status', 'fallback_sent').gte('updated_at', last24h)
     ),
+    // The denominator stays on `created_at`: it is "deliveries attempted in the last day",
+    // and every delivery row is created when the attempt starts.
     countRows('notification_deliveries', (query) =>
       query.gte('created_at', last24h)
     ),

@@ -148,7 +148,7 @@ export function PreorderSection({
         </h2>
         <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
           {order.covers.some(cover => cover.courseCount != null)
-            ? `Guests having two or three courses from the ${menuName} menu choose their dishes in advance. One course needs no pre-order.`
+            ? `Guests having two or three courses from the ${menuName} menu choose their dishes in advance. Guests on one course have nothing to pre-order.`
             : `Everyone eating from the ${menuName} menu chooses their main course in advance so the kitchen can prepare it. A starter and a pudding are optional.`}
         </p>
       </div>

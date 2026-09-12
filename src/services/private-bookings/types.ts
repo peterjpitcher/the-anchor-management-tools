@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { toLocalIsoDate } from '@/lib/dateUtils';
+import { endOfLondonDayUtc, toLocalIsoDate } from '@/lib/dateUtils';
 import type {
   BookingStatus,
   BookingLayout,
@@ -108,8 +108,14 @@ export function computeBalanceDueDateIso(eventDate: string | Date, now: Date = n
  * SOP §10: a hold must never run past the balance & final-details deadline
  * (14 calendar days before the event).
  * - Booking created inside that window (short notice): 48 hours from now,
- *   capped at event start — and everything is due immediately.
+ *   capped at event start, and everything is due immediately.
  * - Otherwise: 14 days from now, capped at the balance due date.
+ *
+ * A cap lands on the last instant of its London day, not its first. `new Date('2026-10-04')` is
+ * midnight UTC, so subtracting 14 days gave 2026-09-20T00:00:00Z: the guest was told "a £250
+ * deposit secures it by 20 September" and the expire-holds cron cancelled the booking at 07:00
+ * that morning, before the pub had opened (review PB-BR-1). The manual path already used
+ * `endOfLondonDayUtc` for exactly this reason.
  */
 export function computeHoldExpiry(eventDate: Date, now: Date): Date {
   const dueMoment = balanceDueMoment(eventDate);
@@ -118,13 +124,20 @@ export function computeHoldExpiry(eventDate: Date, now: Date): Date {
     // Short notice: 48 hours from now, capped at event start
     const shortNoticeExpiry = new Date(now);
     shortNoticeExpiry.setDate(shortNoticeExpiry.getDate() + SHORT_NOTICE_HOLD_DAYS);
-    return shortNoticeExpiry.getTime() > eventDate.getTime() ? eventDate : shortNoticeExpiry;
+    if (shortNoticeExpiry.getTime() > eventDate.getTime()) return eventDate;
+    const endOfDay = endOfHoldDay(shortNoticeExpiry);
+    return endOfDay.getTime() > eventDate.getTime() ? eventDate : endOfDay;
   }
 
   // Normal: 14 days from now, capped at the balance & final-details due date
   const standardExpiry = new Date(now);
   standardExpiry.setDate(standardExpiry.getDate() + STANDARD_HOLD_DAYS);
-  return standardExpiry.getTime() > dueMoment.getTime() ? dueMoment : standardExpiry;
+  return endOfHoldDay(standardExpiry.getTime() > dueMoment.getTime() ? dueMoment : standardExpiry);
+}
+
+/** The last instant of the London day a hold deadline falls on, so the whole day is honoured. */
+function endOfHoldDay(moment: Date): Date {
+  return endOfLondonDayUtc(moment) ?? moment;
 }
 
 // ---------------------------------------------------------------------------

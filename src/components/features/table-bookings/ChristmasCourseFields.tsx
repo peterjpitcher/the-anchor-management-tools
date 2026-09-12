@@ -34,7 +34,7 @@ export function ChristmasCourseFields({ bookingId, partySize, onChange }: Christ
   if (!counts) return null
   const next = Array.from({ length: Math.min(20, Math.max(0, partySize || 0)) }, (_, index) => counts[index] ?? 0)
   return <fieldset className="space-y-2"><legend className="text-sm font-medium">Christmas courses for each guest</legend>
-    <p className="text-sm">One course needs no pre-order. Two or three courses need food choices by the pre-order deadline.</p>
+    <p className="text-sm">Guests on one course have nothing to pre-order. Two or three courses need food choices by the pre-order deadline.</p>
     {next.map((count, index) => <label key={index} className="flex items-center gap-3 text-sm">
       Guest {index + 1}
       <select value={count} className="rounded-md border border-gray-300 p-2"

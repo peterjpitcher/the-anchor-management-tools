@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   recordAnalyticsEvent: vi.fn(),
+  refundAndNotifyOnCancel: vi.fn(async () => ({
+    refundResult: { refunded: true, amountPence: 4000, refundId: 're_1', tier: 'full' },
+    notified: true,
+    notification: { status: 'sent', channel: 'email', fallbackUsed: false, error: null },
+  })),
   logger: {
     error: vi.fn(),
     warn: vi.fn(),
@@ -12,6 +17,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/analytics/events', () => ({
   recordAnalyticsEvent: mocks.recordAnalyticsEvent,
+}))
+
+vi.mock('@/lib/table-bookings/cancel-notify', () => ({
+  refundAndNotifyOnCancel: mocks.refundAndNotifyOnCancel,
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -77,7 +86,9 @@ function buildSupabaseForLateCancellation() {
   const bookingSelect = vi.fn().mockReturnValue({ eq: bookingPreviewEq })
 
   const cancelMaybeSingle = vi.fn().mockResolvedValue({
-    data: { id: 'booking-1' },
+    // The cancelling UPDATE returns the reference and the date, which is what the refund and
+    // notice path needs to refund the deposit and word the guest's email.
+    data: { id: 'booking-1', booking_reference: 'TB-1', booking_date: '2026-06-04' },
     error: null,
   })
   const cancelSelect = vi.fn().mockReturnValue({ maybeSingle: cancelMaybeSingle })
@@ -143,6 +154,43 @@ describe('table manage cancellation side effects', () => {
       charge_amount: null,
     })
     expect(spies.bookingUpdate).toHaveBeenCalled()
+  })
+
+  it('refunds the deposit and tells the guest, on the same path the staff cancel uses', async () => {
+    const { supabase } = buildSupabaseForLateCancellation()
+
+    await updateTableBookingByRawToken(supabase as any, {
+      rawToken: 'raw-token',
+      action: 'cancel',
+      appBaseUrl: 'https://example.com',
+    })
+
+    // This is the P0 from the 11 September review: the guest path set the status and stopped,
+    // so a Christmas guest cancelling thirty days out lost a refundable deposit and nobody was
+    // told. `refundAndNotifyOnCancel` is the one path that refunds, audits and messages.
+    expect(mocks.refundAndNotifyOnCancel).toHaveBeenCalledWith(supabase, {
+      bookingId: 'booking-1',
+      bookingReference: 'TB-1',
+      bookingDate: '2026-06-04',
+      customerId: 'customer-1',
+      source: 'guest_manage_link',
+    })
+  })
+
+  it('still cancels when the refund and notice path throws', async () => {
+    mocks.refundAndNotifyOnCancel.mockRejectedValueOnce(new Error('Stripe is down'))
+    const { supabase } = buildSupabaseForLateCancellation()
+
+    const result = await updateTableBookingByRawToken(supabase as any, {
+      rawToken: 'raw-token',
+      action: 'cancel',
+      appBaseUrl: 'https://example.com',
+    })
+
+    // The booking is already cancelled by then, so the guest must not see an error, and the
+    // failure has to be loud in the logs rather than silent.
+    expect(result.state).toBe('cancelled')
+    expect(mocks.logger.error).toHaveBeenCalled()
   })
 
   it('reads neither the fee setting nor the charge_requests table', async () => {

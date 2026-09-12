@@ -78,6 +78,8 @@ function buildSupabase(options: { capture: { update?: Record<string, unknown> } 
     status: 'confirmed',
     booking_type: 'regular',
     start_datetime: bookingStartIso,
+    // The party was seated: the sweep only asks for a review from a booking somebody sat at.
+    seated_at: bookingStartIso,
     review_sms_sent_at: null,
     review_suppressed_at: null,
     customer: {

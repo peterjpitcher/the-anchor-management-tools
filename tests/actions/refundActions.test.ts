@@ -23,7 +23,8 @@ vi.mock('@/lib/paypal', () => ({
 vi.mock('@/lib/refund-notifications', () => ({ sendRefundNotification: vi.fn().mockResolvedValue('sent') }))
 vi.mock('@/lib/email/private-booking-emails', () => ({
   sendDepositRefundEmail: vi.fn().mockResolvedValue(undefined),
-  sendDepositRefundWithDeductionsEmail: vi.fn().mockResolvedValue(undefined),
+  sendDepositPartRefundEmail: vi.fn().mockResolvedValue(undefined),
+  sendPrivateBookingRefundSentEmail: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: vi.fn() }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn().mockResolvedValue(undefined) }))

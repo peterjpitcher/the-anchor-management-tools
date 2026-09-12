@@ -1621,6 +1621,18 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
       facts: buildPrivateBookingMessageFacts('date_changed', updatedBooking, { includeBalanceDueDate: Boolean(balanceDueReadable) }),
     })
     captureSmsSideEffect('date_changed', 'private_booking_date_changed', result)
+
+    // A confirmed booking that moves needs a fresh invite, or the guest's calendar keeps the old
+    // day for ever: nothing re-sent it, and SEQUENCE never rose (review PB-12). The new invite
+    // carries a higher SEQUENCE, derived from updated_at, so the client replaces the entry.
+    if (Boolean(dateChanged) && updatedBooking.status === 'confirmed' && updatedBooking.contact_email) {
+      sendBookingCalendarInvite(updatedBooking).catch(e =>
+        logger.error('Failed to re-send calendar invite after a date change', {
+          error: e instanceof Error ? e : new Error(String(e)),
+          metadata: { bookingId: updatedBooking.id },
+        })
+      );
+    }
   }
 
   // Corrective SMS when the deadline moved on its own (no event-date change
@@ -1871,6 +1883,31 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
         emailFirst,
       })
       captureSmsSideEffect(variant.triggerType, variant.templateKey, result)
+
+      // Cancelling from the edit form used to send the text and nothing else, so a guest with no
+      // mobile heard nothing at all (review PB-18). `cancelBooking` has always emailed as well.
+      if (!emailFirst && updatedBooking.contact_email) {
+        void sendBookingCancelledEmail({
+          id: updatedBooking.id,
+          customer_id: updatedBooking.customer_id,
+          contact_email: updatedBooking.contact_email,
+          customer_first_name: updatedBooking.customer_first_name,
+          customer_name: updatedBooking.customer_name,
+          event_date: updatedBooking.event_date,
+          event_type: updatedBooking.event_type,
+          refund_amount: variant.refundAmount,
+          retained_amount: variant.retainedAmount,
+          deduction_amount: variant.deductionAmount,
+          variant: variant.templateKey,
+          date_tbd: (updatedBooking as { date_tbd?: boolean | null }).date_tbd ?? null,
+          internal_notes: updatedBooking.internal_notes,
+        }).catch((emailError) => {
+          logger.error('Private booking cancellation email background task failed', {
+            error: emailError instanceof Error ? emailError : new Error(String(emailError)),
+            metadata: { bookingId: updatedBooking.id },
+          })
+        })
+      }
     }
 
     if (!abortSmsSideEffects && updatedBooking.status === 'completed' && !completedStatusAlreadyMessaged) {
@@ -2322,8 +2359,13 @@ export async function cancelBooking(
       event_type: booking.event_type,
       refund_amount: variant.refundAmount,
       retained_amount: variant.retainedAmount,
+      deduction_amount: variant.deductionAmount,
       retention_reason: retentionDecision?.reason ?? null,
-      outcome: variant.outcome,
+      // The variant the text uses, not the financial outcome: `gm_review_required` is the outcome
+      // both before and after the manager decides, so keying on it hid the decision (review PB-5).
+      variant: variant.templateKey,
+      date_tbd: (booking as { date_tbd?: boolean | null }).date_tbd ?? null,
+      internal_notes: booking.internal_notes,
     }).catch((emailError) => {
       logger.error('Private booking cancellation email background task failed', {
         error: emailError instanceof Error ? emailError : new Error(String(emailError)),
@@ -2523,7 +2565,7 @@ export async function extendHold(
   const newExpiry = new Date(baseDate);
   newExpiry.setDate(newExpiry.getDate() + days);
 
-  // Cap at the balance & final-details due date — a hold must never run past
+  // Cap at the balance & final-details due date: a hold must never run past
   // it (SOP §10). Extensions inside the 14-day window cap at the event start.
   // The cap is reported back so staff learn the granted expiry differs from
   // the days they picked; the customer SMS below already quotes the capped date.
@@ -2537,6 +2579,12 @@ export async function extendHold(
       capped = true;
     }
   }
+
+  // The whole of the day the guest is given, not its first instant: the extension email quotes
+  // "New deadline: 20 September", and a midnight-UTC expiry let the cron cancel the booking at
+  // 07:00 that morning (review PB-BR-1).
+  const endOfExpiryDay = endOfLondonDayUtc(newExpiry);
+  if (endOfExpiryDay) newExpiry.setTime(endOfExpiryDay.getTime());
 
   const newExpiryIso = newExpiry.toISOString();
 

@@ -348,7 +348,8 @@ describe('PATCH /api/foh/bookings/[id]/time', () => {
       await PATCH(makeRequest({ time: '18:00' }), makeParams())
       expect(sendTableBookingRescheduledNotificationIfAllowed).toHaveBeenCalledWith(
         expect.anything(),
-        { tableBookingId: VALID_UUID },
+        // The old start goes with it, so the guest email can say what the booking was.
+        { tableBookingId: VALID_UUID, previous: { startDateTime: expect.any(String) } },
       )
     })
 

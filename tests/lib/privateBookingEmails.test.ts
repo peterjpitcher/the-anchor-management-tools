@@ -98,7 +98,7 @@ describe('contract email deposit wording', () => {
     await sendContractEmailToCustomer(booking({ deposit_amount: 0, deposit_paid_date: null }), contract)
 
     const html = bodyOf()
-    expect(html).toContain("Please have a read and let us know that you're happy")
+    expect(html).toContain('Please have a read and let us know you are happy with everything')
     expect(html).not.toContain('booking and damage deposit')
   })
 })
