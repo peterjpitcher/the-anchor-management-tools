@@ -1,4 +1,4 @@
-import { formatDateTime } from '@/lib/dateUtils'
+import { formatDateTime, formatTimeInLondon } from '@/lib/dateUtils'
 import type { TextLandingDay } from '@/lib/sms/landing-day'
 import type { ParkingBooking } from '@/types/parking'
 
@@ -53,9 +53,11 @@ export function buildPaymentReminderSmsForStage(
   booking: ParkingNotificationBooking,
   stage: 'week_before_expiry' | 'day_before_expiry' | 'overdue',
   paymentUrl?: string,
-  // The day-before text names the day the offer expires as the customer reads it. Quiet hours
-  // hold a late send until 09:00, which can be the day it expires (see resolveTextLandingDay).
-  expiresOn: TextLandingDay = 'tomorrow'
+  // When the offer expires, for the day-before text: the day as the customer reads it (quiet
+  // hours hold a late send until 09:00, which can be the day it expires; see
+  // resolveTextLandingDay) and the London time. "Tomorrow" on its own read as all day when the
+  // deadline was in the morning. Without it the text says "tomorrow" and no time.
+  expiry?: { day: TextLandingDay; at: Date }
 ) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
 
@@ -66,7 +68,8 @@ export function buildPaymentReminderSmsForStage(
   }
 
   if (stage === 'day_before_expiry') {
-    return `The Anchor: ${booking.customer_first_name}! Your parking offer expires ${expiresOn}, £${amount.toFixed(2)} for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}. Last chance:${urlPart}`
+    const when = expiry ? `${expiry.day} at ${formatTimeInLondon(expiry.at)}` : 'tomorrow'
+    return `The Anchor: ${booking.customer_first_name}! Your parking offer expires ${when}, £${amount.toFixed(2)} for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}. Last chance:${urlPart}`
   }
 
   // overdue
