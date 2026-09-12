@@ -119,6 +119,9 @@ describe('refund notification routing', () => {
 
   it('sends only the itemised private booking email, not the generic one as well', async () => {
     const { db } = buildDb({
+      // The whole £250 deposit is back, so the ledger says so: the email's figures come from the
+      // completed refunds on the booking, not from the payment in front of it (review PB-4).
+      completedRefunds: [{ amount: 250 }],
       privateBooking: {
         id: 'booking-1',
         status: 'completed',
