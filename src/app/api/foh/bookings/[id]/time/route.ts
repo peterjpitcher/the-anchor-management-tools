@@ -307,7 +307,13 @@ export async function PATCH(
     // Every time change is confirmed to the guest. Awaited rather than fire-and-forget so the send
     // completes before this serverless function is frozen; the helper swallows its own errors and
     // never fails the move.
-    await sendTableBookingRescheduledNotificationIfAllowed(auth.supabase, { tableBookingId: bookingId })
+    //
+    // The old start goes with it, so the email can say what the booking was as well as what it is
+    // now. An email that shows only the new time cannot be checked by the person reading it.
+    await sendTableBookingRescheduledNotificationIfAllowed(auth.supabase, {
+      tableBookingId: bookingId,
+      previous: { startDateTime: bookingStart.toISOString() },
+    })
 
     return NextResponse.json({
       success: true,
