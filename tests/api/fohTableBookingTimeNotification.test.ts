@@ -98,9 +98,11 @@ describe('FOH table-booking time move — customer notification', () => {
     })
 
     expect(response.status).toBe(200)
+    // The old start goes with it, so the email can say what the booking was as well as what it
+    // is now.
     expect(sendTableBookingRescheduledNotificationIfAllowed).toHaveBeenCalledWith(
       supabase,
-      { tableBookingId: BOOKING_ID },
+      { tableBookingId: BOOKING_ID, previous: { startDateTime: expect.any(String) } },
     )
   })
 

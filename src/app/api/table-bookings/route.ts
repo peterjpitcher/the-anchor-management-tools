@@ -704,14 +704,21 @@ export async function POST(request: NextRequest) {
         let smsSendResult: Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>> | null = null
 
         const [smsOutcome, emailOutcome] = await Promise.allSettled([
-          (payload.skip_customer_sms && bookingResult.state === 'pending_payment')
-            ? Promise.resolve({ sms: null } as Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>>)
-            : sendTableBookingCreatedSmsIfAllowed(supabase, {
-                customerId: customerResolution.customerId,
-                normalizedPhone,
-                bookingResult,
-                nextStepUrl
-              }),
+          // `skip_customer_sms` suppresses the TEXT, not the whole notice.
+          //
+          // The website sets it for a booking it is handing straight to PayPal, so the guest is
+          // not texted a payment link while a payment screen is already open. Skipping this call
+          // entirely suppressed the email as well, so every website booking of 15 or more and
+          // every website Christmas booking was taken with no confirmation of any kind: no
+          // deposit terms, no pay-by time, and nothing to come back to if the payment screen was
+          // abandoned. The email now goes on its own.
+          sendTableBookingCreatedSmsIfAllowed(supabase, {
+            customerId: customerResolution.customerId,
+            normalizedPhone,
+            bookingResult,
+            nextStepUrl,
+            skipCustomerSms: payload.skip_customer_sms === true && bookingResult.state === 'pending_payment'
+          }),
           // Defer manager email for website bookings awaiting deposit payment —
           // it will be sent in the capture-order route once payment is confirmed.
           (payload.skip_customer_sms && bookingResult.state === 'pending_payment')

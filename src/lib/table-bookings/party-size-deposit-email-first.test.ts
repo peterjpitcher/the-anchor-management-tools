@@ -154,7 +154,7 @@ describe('party-size deposit request, email first (flag on)', () => {
     )
     expect(email.text).toContain('Pay your deposit: https://l.the-anchor.pub/pay1')
     // Friday 4 December 2026, 18:00 GMT: when the hold, and so the link, runs out.
-    expect(email.text).toContain('This payment link works until Friday 4 December 2026 at 6pm.')
+    expect(email.text).toContain('Please pay by Friday 4 December 2026 at 6pm, which is when the hold on your table runs out.')
   })
 
   it('texts the same words when the email fails, records both attempts, and says it went by text', async () => {
@@ -279,7 +279,7 @@ describe('deposit request email renders', () => {
     expect(email.text).toContain('A Sunday lunch deposit of £160.00 (16 x GBP 10) is now required to secure your booking.')
     expect(email.text).toContain('Deposit: £160.00')
     expect(email.text).toContain('Party size: 16 people')
-    expect(email.text).toContain(`This payment link works until ${payByLabel}.`)
+    expect(email.text).toContain(`Please pay by ${payByLabel}, which is when the hold on your table runs out.`)
     expect(email.html).toContain('href="https://l.the-anchor.pub/pay1"')
   })
 })

@@ -1672,17 +1672,37 @@ async function createFohTableBooking(
       bookingResult.state === 'pending_payment'
     )
   ) {
-    const smsSendResult = await sendTableBookingCreatedSmsIfAllowed(auth.supabase, {
-      customerId,
-      normalizedPhone,
-      bookingResult,
-      nextStepUrl
-    })
+    // A walk-in is standing at the bar. Sending them "your table booking is confirmed" with a
+    // link to change or cancel it, while they are being shown to a table, reads as a message
+    // about a future booking they have not made. Walk-ins entered without a number were already
+    // silent; one entered WITH a number was not, which is the only reason this case existed.
+    //
+    // The manager email still goes (it skips walk-ins by source), the analytics events below
+    // still record, and the booking itself is untouched: only the guest notice is dropped.
+    const guestNoticeApplies = payload.walk_in !== true
+    const smsSendResult = guestNoticeApplies
+      ? await sendTableBookingCreatedSmsIfAllowed(auth.supabase, {
+          customerId,
+          normalizedPhone,
+          bookingResult,
+          nextStepUrl
+        })
+      : null
+
+    if (!guestNoticeApplies) {
+      logger.info('Walk-in booking created, so no guest booking confirmation was sent', {
+        metadata: {
+          userId: auth.userId,
+          tableBookingId: bookingResult.table_booking_id || null,
+          state: bookingResult.state
+        }
+      })
+    }
 
     if (
       bookingResult.state === 'pending_payment' &&
       bookingResult.table_booking_id &&
-      smsSendResult.scheduledFor
+      smsSendResult?.scheduledFor
     ) {
       holdExpiresAt =
         (await alignTablePaymentHoldToScheduledSend(auth.supabase, {

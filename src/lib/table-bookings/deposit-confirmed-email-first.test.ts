@@ -307,7 +307,7 @@ describe('deposit confirmation email renders', () => {
   })
 
   it('handles an outside Christmas booking on the day the clocks go back', () => {
-    const summary = 'Christmas courses: 2 x 3 courses, 1 x 1 course. One course needs no pre-order.'
+    const summary = 'Christmas courses: 2 x 3 courses, 1 x 1 course. Guests on one course have nothing to pre-order.'
     const email = buildTableBookingDepositConfirmedEmail({
       firstName: 'Pat',
       bookingReference: 'TB-XMAS',

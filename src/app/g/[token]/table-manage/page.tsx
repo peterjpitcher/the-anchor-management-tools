@@ -2,7 +2,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
-import { getTableManagePreviewByRawToken } from '@/lib/table-bookings/manage-booking'
+import {
+  getGuestCancellationRefundNotice,
+  getTableManagePreviewByRawToken,
+} from '@/lib/table-bookings/manage-booking'
 import {
   DetailRow,
   GuestAlert,
@@ -91,6 +94,10 @@ function mapBlockedReason(reason?: string): string {
   switch (reason) {
     case 'invalid_token':
       return 'This manage booking link is not valid.'
+    case 'expired_token':
+      // Told apart from an invalid link on purpose. "Not valid" sends a guest whose link has
+      // simply run out looking for another email instead of ringing us.
+      return 'This manage booking link has expired. Call us and we will change or cancel your booking for you.'
     case 'booking_not_found':
       return 'This booking was not found.'
     case 'token_customer_mismatch':
@@ -359,6 +366,14 @@ export default async function TableManageBookingPage({
             actionUrl={actionUrl}
             confirmCancel={confirmCancel}
             manageUrl={manageUrl}
+            // Read only at the confirmation step, which is the one place a guest is deciding
+            // whether the money comes back. Cancelling here now refunds the deposit, so the terms
+            // belong in front of them before they press the button.
+            refundNotice={
+              confirmCancel && preview.table_booking_id
+                ? await getGuestCancellationRefundNotice(supabase, preview.table_booking_id)
+                : null
+            }
           />
         )}
       </section>
