@@ -59,7 +59,7 @@ Operational scripts in `scripts/` are dry-run by default; a mutation only happen
 | Service | Used for | Where |
 |---|---|---|
 | Twilio | SMS and WhatsApp; inbound webhook with signature validation | `src/lib/twilio.ts`, `src/lib/sms/`, `api/webhooks/twilio` |
-| Microsoft Graph | Email for Orange Jelly invoices and quotes; fallback email provider | `src/lib/microsoft-graph.ts` |
+| Microsoft Graph | Email transport for Orange Jelly invoices, receipts and quotes | `src/lib/microsoft-graph.ts` |
 | Resend | Venue email and all B2B marketing email; delivery webhook | `src/lib/email/`, `api/webhooks/resend` |
 | PayPal | Every live payment: table-booking deposits, event bookings, private bookings, parking, invoices | `src/lib/paypal.ts`; one webhook route and `PAYPAL_*_WEBHOOK_ID` per surface under `api/webhooks/paypal/*`; four reconciliation crons |
 | Stripe | Historical only (see Domain rules) | `src/lib/payments/stripe.ts`, `api/stripe/webhook` |
@@ -70,7 +70,9 @@ Operational scripts in `scripts/` are dry-run by default; a mutation only happen
 | Upstash Redis | Distributed rate limiting for public endpoints; without it limits are per-instance memory | `src/lib/distributed-rate-limit.ts` |
 | GitHub | In-app bug reporter raises issues | `src/lib/bug-reporter` |
 
-Email transport: `EMAIL_PROVIDER` (`graph` or `resend`) wins; if unset, Resend is used when both `RESEND_API_KEY` and `EMAIL_FROM_ADDRESS` are set, otherwise Graph. Marketing never falls back to Graph (it needs idempotency keys and delivery webhooks). `sendEmail(options)` in `src/lib/email/emailService.ts` takes one options object.
+Email transport: **one provider per send, and no fallback.** `sendEmail` picks Graph or Resend once and stays with it; if that provider fails, the send fails, and nothing retries on the other. `EMAIL_PROVIDER` (`graph` or `resend`) wins; if unset, Resend is used when both `RESEND_API_KEY` and `EMAIL_FROM_ADDRESS` are set, otherwise Graph. A caller may pin a provider per send: marketing pins Resend, because it needs idempotency keys and delivery webhooks that Graph does not give us. `sendEmail(options)` in `src/lib/email/emailService.ts` takes one options object.
+
+Invoices, receipts and quotes go out as Orange Jelly Limited, never as the venue (owner decision, 28 August 2026). `src/lib/email/invoice-sender.ts` resolves that identity; see `INVOICE_EMAIL_FROM_ADDRESS` in `.env.example`.
 
 SMS safety (`src/lib/sms/`): idempotency claims, global and per-recipient hourly and daily limits, and quiet hours 21:00 to 09:00 London. Kill switches are read at send time and are off unless set to `true`:
 

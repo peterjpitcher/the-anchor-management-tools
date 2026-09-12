@@ -17,7 +17,10 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { lookupEmailCaptureToken } from '@/lib/guest/email-capture-token'
-import { GUEST_MARKETING_EMAIL_LABEL } from '@/lib/consent/constants'
+import {
+  GUEST_MARKETING_EMAIL_LABEL,
+  GUEST_MARKETING_SMS_STOP_LABEL,
+} from '@/lib/consent/constants'
 import {
   GuestShell,
   GuestCard,
@@ -78,7 +81,7 @@ export default async function EmailCapturePage({ params, searchParams }: PagePro
         */}
         {sms === 'stopped' ? (
           <GuestAlert tone="success" title="We have stopped the marketing texts">
-            Your booking confirmations and reminders will still come by text.
+            Your booking confirmations and reminders will still reach you.
           </GuestAlert>
         ) : null}
       </GuestShell>
@@ -205,6 +208,12 @@ export default async function EmailCapturePage({ params, searchParams }: PagePro
 
             Unticked by default. A pre-ticked box would quietly shrink the SMS list on the
             venue's behalf rather than on the guest's, which is not a choice at all.
+
+            THE WORDING COMES FROM THE CONSENT CONSTANT, not from here. It is stored verbatim
+            in the consent ledger, so the page and the record can never say two different
+            things. It stopped naming a channel on 12 September 2026: email-first means a
+            booking confirmation now goes by email when the address works, so promising it
+            "by text" was untrue for exactly the guests who tick this box.
           */}
           <label className="flex items-start gap-3 font-anchor-body text-[14px] leading-[1.6] text-guest-text">
             <input
@@ -213,10 +222,7 @@ export default async function EmailCapturePage({ params, searchParams }: PagePro
               value="yes"
               className="mt-[3px] h-[18px] w-[18px] flex-shrink-0 rounded border-guest-line accent-anchor-green"
             />
-            <span>
-              Email is enough, stop sending me marketing texts. Your booking confirmations and
-              reminders will still come by text.
-            </span>
+            <span>{GUEST_MARKETING_SMS_STOP_LABEL}</span>
           </label>
 
           {/*
