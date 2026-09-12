@@ -26,13 +26,13 @@ const longDescription = `The Anchor is partnering with the Stanwell Moor Communi
 
 Expect four themed rounds with ten questions in each, covering iconic moments, favourite characters, classic catchphrases and deeper cuts for proper fans. There will also be a quick interactive game using one phone per player. Quizmaster Peter Pitcher will keep the questions moving and the atmosphere lively, whether you know every episode or simply fancy a fun Friday night with friends.
 
-Arrive from 6.45pm, be seated by 6.55pm and get ready for a 7pm sharp start. The pub is open from 12pm, and our full dinner menu is available from 4pm to 9pm, so come early, order some food and settle in before the first round. Food and drinks are ordered at the bar.
+Arrive from 6:30pm for a 7pm start. The pub is open from 12pm, and our full dinner menu is available from 4pm to 9pm, so come early, order some food and settle in before the first round. Food and drinks are ordered at the bar.
 
 Teams can have up to six players. Entry is £3 per person, paid in cash on arrival, while the bar takes card as usual. Booking is strongly recommended because this event is expected to be busy. Walk-ins are welcome where space allows, and we will do our best to help solo players and pairs join a team.
 
 The winning team will receive a £25 bar voucher, and second-to-last place will receive a bottle of wine. All prizes are provided separately, so no quiz entry fees will be used to pay for them.
 
-The Anchor is in Stanwell Moor, close to Staines and Heathrow, with free on-site parking. Dress-up is welcome but not required. The pub is dog-friendly, and the ground floor has step-free access and an accessible toilet.
+The Anchor is in Stanwell Moor, close to Staines and Heathrow, with free on-site parking. Dress-up is welcome but not required. The pub is dog-friendly, and the bar and dining area are step-free from the car park.
 
 This is an independently organised fundraising event in aid of Macmillan Cancer Support and is not organised by Macmillan. It is a themed fan quiz and is not an official Only Fools and Horses event. Macmillan Cancer Support is a registered charity in England and Wales (261017), Scotland (SC039907) and the Isle of Man (604).`
 
@@ -51,8 +51,7 @@ Most importantly, **every penny from the £3 quiz entry fee will be donated to M
 
 ## Key information
 
-- Arrive from: **6.45pm**
-- Please be seated by: **6.55pm**
+- Arrive from 6:30pm for a 7pm start.
 - Quiz starts: **7pm sharp**
 - Ends: around **9.30pm**
 - Teams: **up to 6 people**
@@ -110,7 +109,7 @@ All prizes are provided separately. **Every quiz entry fee will be donated to Ma
 
 ## Good to know
 
-The Anchor has free on-site parking, is dog-friendly and offers step-free access across the ground floor with an accessible toilet.
+The Anchor has free on-site parking, is dog-friendly and offers step-free access to the bar and dining area from the car park.
 
 This is an independently organised fundraising event in aid of Macmillan Cancer Support and is not organised by Macmillan. It is a themed fan quiz and is not an official Only Fools and Horses event.
 
@@ -174,7 +173,7 @@ const eventUpdate = {
   social_copy_whatsapp:
     'Lovely Jubbly! Join our Only Fools and Horses charity quiz on Friday 25 September, 7pm, in partnership with the Stanwell Moor Community Wellbeing Garden in aid of Macmillan Cancer Support. £3 cash per person and every entry fee is donated. Teams of up to 6. Book: the-anchor.pub/book-table',
   attendance_note:
-    '£3 cash per person. Every quiz entry fee will be donated to Macmillan Cancer Support. Teams of up to 6. Arrive from 6:45pm and be seated by 6:55pm.',
+    '£3 cash per person. Every quiz entry fee will be donated to Macmillan Cancer Support. Teams of up to 6. Arrive from 6:30pm for a 7pm start.',
   cancellation_policy:
     'There is no cancellation charge. If you can no longer attend, please cancel your table so it can be offered to another team. Entry is paid in cash on arrival, so there are no advance entry fees to refund.',
   facebook_event_name: EVENT_NAME,
@@ -188,7 +187,7 @@ const eventUpdate = {
 const faqs = [
   {
     question: 'What time does the quiz start?',
-    answer: 'The quiz starts at 7pm sharp. Please arrive from 6.45pm and be seated by 6.55pm so your team is ready for the first round.',
+    answer: 'Arrive from 6:30pm for a 7pm start.',
   },
   {
     question: 'How much is entry and where does the money go?',
@@ -204,7 +203,8 @@ const faqs = [
   },
   {
     question: 'Is the venue accessible?',
-    answer: 'Yes. The Anchor has step-free access throughout the ground floor and an accessible toilet. Call 01753 682707 if you have specific requirements.',
+    answer:
+      "Getting in from the car park is step free, and so are the bar and the dining area. The beer garden is step free straight from the car park. From inside, there's one step between the bar and the garden, and we'll put our ramp out for it if you ask. We don't have an accessible toilet. If you'd like to check what will work best for you, give us a call on 01753 682707 and we'll help. Assistance dogs are always welcome.",
   },
 ] as const
 
