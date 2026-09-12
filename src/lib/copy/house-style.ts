@@ -17,7 +17,7 @@
  * retired dish, a gravy we do not serve. These are facts and they are not a matter of taste.
  * Nothing carrying one should ship.
  *
- * `warning` is voice: menu-cliche openers, flourish words, filler, long sentences. Worth
+ * `warning` is voice: menu-cliche openers, flourish words, filler, emojis, long sentences. Worth
  * fixing, never worth blocking a send over, and deliberately not enforced as failure because
  * a checker that cries wolf about "premium" on a premium spirit tasting gets switched off.
  *
@@ -257,6 +257,18 @@ const VOICE_RULES: Rule[] = [
     pattern: new RegExp(String.fromCharCode(8212), 'g'),
     message: 'No em dashes in customer-facing copy. Use a comma, a shorter sentence or brackets.',
   },
+  {
+    rule: 'emoji',
+    severity: 'warning',
+    // A warning, not an error, on purpose. Everything this checker reads (menu rows, event
+    // records, marketing emails) is a surface the emoji rule says "none" to, so an emoji here
+    // is always wrong. It still must not block a 7am send over a smiley, which is what an
+    // error would do.
+    pattern: /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{20E3}]/gu,
+    message:
+      'No emojis on the website, in emails or in texts (SSOT §1, owner decision 12 September ' +
+      '2026). A social post may carry one or two; nothing this checker reads is a social post.',
+  },
 ]
 
 const ALL_RULES = [...BANNED_CLAIMS, ...VOICE_RULES]
@@ -310,7 +322,12 @@ export function checkHouseStyle(text: string, options: HouseStyleOptions = {}): 
       })
     }
 
-    for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+    // A line break ends a sentence too. Without this the check is nonsense on anything laid
+    // out in lines: a marketing email's masthead, a bare URL and the paragraph under it all
+    // end without punctuation, so they were read as one 108-word sentence. That produced 64
+    // false warnings across 20 campaigns on 12 September 2026, which is how a checker gets
+    // ignored. Split on lines first, then on sentence endings inside each line.
+    for (const sentence of text.split(/\n+/).flatMap((line) => line.split(/(?<=[.!?])\s+/))) {
       const words = sentence.trim().split(/\s+/).filter(Boolean)
       if (words.length > SENTENCE_REVIEW_LENGTH) {
         findings.push({
