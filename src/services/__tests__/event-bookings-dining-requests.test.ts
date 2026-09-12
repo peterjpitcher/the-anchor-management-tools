@@ -10,7 +10,10 @@ vi.mock('@/lib/events/event-payments', () => ({ createEventPaymentToken: vi.fn()
 vi.mock('@/lib/events/manage-booking', () => ({ createEventManageToken: vi.fn() }))
 vi.mock('@/lib/analytics/events', () => ({ recordAnalyticsEvent: vi.fn() }))
 vi.mock('@/lib/google-calendar-events', () => ({ syncPubOpsEventCalendarByEventId: vi.fn() }))
-vi.mock('@/lib/email/event-ticket-emails', () => ({ sendEventPaymentLinkEmail: vi.fn() }))
+vi.mock('@/lib/email/event-ticket-emails', () => ({
+  sendEventPaymentLinkEmail: vi.fn(),
+  sendEventBookingConfirmedEmail: vi.fn().mockResolvedValue({ success: true }),
+}))
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
