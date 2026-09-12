@@ -272,3 +272,23 @@ ships, check it describes something the reader will feel rather than something w
 and that there is a picture in it. If a sentence is a list of operational facts, it belongs
 in a table; the prose beside the table is where the warmth goes. The facts themselves are
 never warmed: times, prices and hours stay exactly as the records have them.
+
+## 12 September 2026: a piped build reports the pipe's exit code, not the build's
+
+**Mistake:** I gated the guest email work with `npm run build 2>&1 | tail -12; echo "EXIT: $?"`
+and read the resulting `EXIT: 0` as a passing build. `$?` after a pipeline is the exit status of
+the last command in it, which was `tail`, and `tail` always succeeds. The build had actually died
+with `FATAL ERROR: Ineffective mark-compacts near heap limit` during the type-check phase, and the
+only sign of it was a V8 stack trace above my own "EXIT: 0" line. I nearly pushed on that.
+
+**Rule:** Never read `$?` through a pipe. Capture the command's own status first
+(`npm run build > log 2>&1; echo "EXIT=$?"`), or use `set -o pipefail`, and grep the log for
+`FATAL`, `Failed to compile` and `signal: SIG` rather than trusting a number. A gate that cannot
+fail is not a gate.
+
+**The real finding underneath it:** a cold `next build` of this app no longer fits in Node's
+default heap on this machine (4192 MB), and it OOMs in "Linting and checking validity of types".
+`NODE_OPTIONS="--max-old-space-size=8192" npm run build` passes: compiled in 31s, 155/155 static
+pages, 427 routes, exit 0. Use that locally. Deliberately NOT added to the `build` script, because
+that script also runs on Vercel, where asking for an 8 GB heap inside an 8 GB container invites the
+container to kill the build instead. Vercel's own production builds are passing as they are.
