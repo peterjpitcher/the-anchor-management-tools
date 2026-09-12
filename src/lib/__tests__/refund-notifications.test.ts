@@ -32,7 +32,10 @@ describe('sendRefundNotification', () => {
     expect(result).toBe('email_sent')
     expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: 'jane@example.com',
-      subject: 'Refund Confirmation \u2014 The Anchor',
+      // The old subject was "Refund Confirmation", joined to the venue name by a banned em
+      // dash, and it named no booking. Copy detail lives in
+      // tests/lib/refundNotificationCopy.test.ts.
+      subject: 'Refund of \u00a325.50 from The Anchor',
       html: expect.stringContaining('\u00a325.50'),
       requireLog: true,
       commType: 'refund_confirmation',
