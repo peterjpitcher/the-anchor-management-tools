@@ -7,6 +7,7 @@ import {
   getCanonicalDeposit,
   requiresDeposit,
 } from '@/lib/table-bookings/deposit'
+import { depositPerPerson } from '@/lib/table-bookings/deposit-terms'
 import {
   buildPartySizeDepositText,
   describePartySizeDeposit,
@@ -124,7 +125,7 @@ async function sendPartySizeDepositRequestEmailFirst(
       supabase.from('customers').select(GUEST_CHANNEL_COLUMNS).eq('id', input.customerId).maybeSingle(),
       supabase
         .from('table_bookings')
-        .select('booking_reference, booking_date, booking_time, start_datetime')
+        .select('booking_reference, booking_date, booking_time, start_datetime, deposit_refund_cutoff_days')
         .eq('id', tableBookingId)
         .maybeSingle(),
     ])
@@ -177,6 +178,11 @@ async function sendPartySizeDepositRequestEmailFirst(
       breakdownNote: input.wording.breakdownNote,
       paymentLink: payment.url,
       payByIso: input.holdExpiresAt,
+      // What the deposit is, and what comes back if the booking is cancelled. The request used to
+      // state an amount and nothing else, so it never said the money came off the bill.
+      isChristmas: isChristmasBookingType(input.booking.booking_type),
+      perPersonGbp: depositPerPerson(input.depositAmount, input.newPartySize),
+      refundCutoffDays: bookingRow?.deposit_refund_cutoff_days ?? null,
     })
 
     return await notifyTableBookingGuestEmailFirst({

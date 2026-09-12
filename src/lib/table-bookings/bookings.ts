@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fromZonedTime } from 'date-fns-tz'
+import { toLocalIsoDate } from '@/lib/dateUtils'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
 import { queueManagerReportEmail } from '@/lib/manager-report/queue'
@@ -32,8 +33,13 @@ import {
 } from '@/lib/table-bookings/guest-notify'
 import {
   buildTableBookingCancelledEmail,
+  buildTableBookingConfirmedEmail,
+  buildTableBookingDepositAtBookingEmail,
   buildTableBookingDepositConfirmedEmail,
+  buildTableBookingRescheduledEmail,
 } from '@/lib/table-bookings/guest-emails'
+import { depositPerPerson } from '@/lib/table-bookings/deposit-terms'
+import { getPreorderCutoff } from '@/lib/table-bookings/preorder'
 import {
   buildDepositConfirmedText,
   buildTableBookingCancelledText,
@@ -347,163 +353,6 @@ function formatBookingTimeLabel(booking: TableBookingNotificationRow): string {
   }
 
   return 'Unknown time'
-}
-
-function buildTableBookingCustomerEmail(input: {
-  firstName: string
-  bookingMoment: string
-  partySize: number
-  seatWord: string
-  bookingReference?: string | null
-  state: TableBookingState
-  manageLink?: string | null
-  paymentLink?: string | null
-  depositLabel?: string | null
-  christmasCourseSummary?: string
-  highChairCount?: number | null
-  isOutsideSeating?: boolean | null
-}): { subject: string; html: string; text: string } {
-  const safeFirstName = escapeHtml(input.firstName)
-  const safeBookingMoment = escapeHtml(input.bookingMoment)
-  const safePartySize = escapeHtml(String(input.partySize))
-  const safeSeatWord = escapeHtml(input.seatWord)
-  const safeReference = input.bookingReference ? escapeHtml(input.bookingReference) : null
-  const isPendingPayment = input.state === 'pending_payment'
-  const isOutside = Boolean(input.isOutsideSeating)
-  const grantedHighChairs = Math.max(0, Number(input.highChairCount ?? 0))
-  // Outside bookings hold no indoor table — never tell the guest their "table" is held/confirmed.
-  const bookingNoun = isOutside ? 'outside booking' : 'table'
-  const subject = isPendingPayment
-    ? isOutside
-      ? 'Secure your outside booking at The Anchor'
-      : 'Secure your table at The Anchor'
-    : isOutside
-      ? 'Your outside booking at The Anchor is confirmed'
-      : 'Your table booking at The Anchor is confirmed'
-
-  const intro = isPendingPayment
-    ? `Hi ${safeFirstName}, please pay your ${escapeHtml(input.depositLabel || 'deposit')} to secure your ${bookingNoun}.`
-    : `Hi ${safeFirstName}, your ${bookingNoun} is confirmed.`
-
-  const cta = isPendingPayment
-    ? input.paymentLink
-      ? `<p><a href="${escapeHtml(input.paymentLink)}">Pay now</a></p>`
-      : '<p>We will send your payment link shortly.</p>'
-    : input.manageLink
-      ? `<p><a href="${escapeHtml(input.manageLink)}">Manage your booking</a></p>`
-      : ''
-
-  const html = [
-    '<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">',
-    `<p>${intro}</p>`,
-    '<ul>',
-    safeReference ? `<li><strong>Reference:</strong> ${safeReference}</li>` : '',
-    `<li><strong>When:</strong> ${safeBookingMoment}</li>`,
-    `<li><strong>Party size:</strong> ${safePartySize} ${safeSeatWord}</li>`,
-    grantedHighChairs > 0
-      ? `<li><strong>High chair reserved:</strong> &times;${escapeHtml(String(grantedHighChairs))}</li>`
-      : '',
-    isOutside ? '<li><strong>Outside seating</strong> (weather permitting)</li>' : '',
-    '</ul>',
-    input.christmasCourseSummary ? `<p>${escapeHtml(input.christmasCourseSummary)}</p>` : '',
-    cta,
-    '<p>If you need to change anything, reply to this email or call the pub.</p>',
-    '<p>The Anchor</p>',
-    '</div>',
-  ].join('')
-
-  const textLines = [
-    isPendingPayment
-      ? `Hi ${input.firstName}, please pay your ${input.depositLabel || 'deposit'} to secure your ${bookingNoun}.`
-      : `Hi ${input.firstName}, your ${bookingNoun} is confirmed.`,
-    input.bookingReference ? `Reference: ${input.bookingReference}` : null,
-    `When: ${input.bookingMoment}`,
-    `Party size: ${input.partySize} ${input.seatWord}`,
-    input.christmasCourseSummary || null,
-    grantedHighChairs > 0 ? `High chair reserved x${grantedHighChairs}` : null,
-    isOutside ? 'Outside seating (weather permitting)' : null,
-    isPendingPayment
-      ? input.paymentLink
-        ? `Pay now: ${input.paymentLink}`
-        : 'We will send your payment link shortly.'
-      : input.manageLink
-        ? `Manage booking: ${input.manageLink}`
-        : null,
-    'If you need to change anything, reply to this email or call the pub.',
-    'The Anchor',
-  ].filter((line): line is string => Boolean(line))
-
-  return {
-    subject,
-    html,
-    text: textLines.join('\n'),
-  }
-}
-
-// Customer email confirming an amended booking (date, time, or duration change).
-// Kept deliberately calm and factual — it restates the latest details rather than
-// shouting about a change, and works whether or not the visible time actually moved.
-function buildTableBookingRescheduledEmail(input: {
-  firstName: string
-  bookingMoment: string
-  partySize: number
-  seatWord: string
-  bookingReference?: string | null
-  manageLink?: string | null
-  highChairCount?: number | null
-  isOutsideSeating?: boolean | null
-}): { subject: string; html: string; text: string } {
-  const safeFirstName = escapeHtml(input.firstName)
-  const safeBookingMoment = escapeHtml(input.bookingMoment)
-  const safePartySize = escapeHtml(String(input.partySize))
-  const safeSeatWord = escapeHtml(input.seatWord)
-  const safeReference = input.bookingReference ? escapeHtml(input.bookingReference) : null
-  const isOutside = Boolean(input.isOutsideSeating)
-  const grantedHighChairs = Math.max(0, Number(input.highChairCount ?? 0))
-  const bookingNoun = isOutside ? 'outside booking' : 'table booking'
-  const subject = 'Your booking at The Anchor has been updated'
-
-  const cta = input.manageLink
-    ? `<p><a href="${escapeHtml(input.manageLink)}">Manage your booking</a></p>`
-    : ''
-
-  const html = [
-    '<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">',
-    `<p>Hi ${safeFirstName}, your ${bookingNoun} has been updated. Here are the latest details:</p>`,
-    '<ul>',
-    safeReference ? `<li><strong>Reference:</strong> ${safeReference}</li>` : '',
-    `<li><strong>When:</strong> ${safeBookingMoment}</li>`,
-    `<li><strong>Party size:</strong> ${safePartySize} ${safeSeatWord}</li>`,
-    grantedHighChairs > 0
-      ? `<li><strong>High chair reserved:</strong> &times;${escapeHtml(String(grantedHighChairs))}</li>`
-      : '',
-    isOutside ? '<li><strong>Outside seating</strong> (weather permitting)</li>' : '',
-    '</ul>',
-    `<p>Your ${bookingNoun} is still confirmed.</p>`,
-    cta,
-    '<p>If this does not look right, reply to this email or call the pub.</p>',
-    '<p>The Anchor</p>',
-    '</div>',
-  ].join('')
-
-  const textLines = [
-    `Hi ${input.firstName}, your ${bookingNoun} has been updated. Here are the latest details:`,
-    input.bookingReference ? `Reference: ${input.bookingReference}` : null,
-    `When: ${input.bookingMoment}`,
-    `Party size: ${input.partySize} ${input.seatWord}`,
-    grantedHighChairs > 0 ? `High chair reserved x${grantedHighChairs}` : null,
-    isOutside ? 'Outside seating (weather permitting)' : null,
-    `Your ${bookingNoun} is still confirmed.`,
-    input.manageLink ? `Manage booking: ${input.manageLink}` : null,
-    'If this does not look right, reply to this email or call the pub.',
-    'The Anchor',
-  ].filter((line): line is string => Boolean(line))
-
-  return {
-    subject,
-    html,
-    text: textLines.join('\n'),
-  }
 }
 
 export async function sendManagerTableBookingCreatedEmailIfAllowed(
@@ -967,6 +816,62 @@ export async function createTableCheckoutSessionByRawToken(
   }
 }
 
+/**
+ * What the deposit works out at per person, for the wording that says what it is.
+ *
+ * `per_booking` is not a per-person rate, so it answers null and the copy drops the sentence
+ * rather than dividing a flat fee by the party and inventing a rate nobody charges.
+ */
+function depositPerPersonForBooking(
+  bookingResult: TableBookingRpcResult,
+  depositAmount: number,
+  partySize: number
+): number | null {
+  if (bookingResult.deposit_basis === 'per_booking') return null
+  const rate = Number(bookingResult.deposit_rate)
+  if (Number.isFinite(rate) && rate > 0) return rate
+  return depositPerPerson(depositAmount, partySize)
+}
+
+/**
+ * The seasonal pre-order deadline for a freshly created booking: the period's cutoff in days and
+ * the instant the form locks. Both null when the period cannot be read, so the confirmation says
+ * nothing about a deadline rather than naming one the form will not honour.
+ */
+async function loadBookingPreorderDeadline(
+  supabase: SupabaseClient<any, 'public', any>,
+  bookingResult: TableBookingRpcResult
+): Promise<{ cutoffDays: number | null; closesAtIso: string | null }> {
+  const periodId = bookingResult.booking_period_id
+  const startIso = bookingResult.start_datetime
+  if (!periodId || !startIso) return { cutoffDays: null, closesAtIso: null }
+
+  try {
+    const { data, error } = await supabase
+      .from('booking_periods')
+      .select('preorder_cutoff_days')
+      .eq('id', periodId)
+      .maybeSingle()
+
+    if (error || !data) return { cutoffDays: null, closesAtIso: null }
+
+    const days = Number((data as { preorder_cutoff_days: number | null }).preorder_cutoff_days)
+    if (!Number.isFinite(days) || days < 0) return { cutoffDays: null, closesAtIso: null }
+
+    const bookingDate = toLocalIsoDate(new Date(startIso))
+    const cutoff = getPreorderCutoff({ bookingDate, preorderCutoffDays: days })
+    return { cutoffDays: days, closesAtIso: cutoff.closesAt ? cutoff.closesAt.toISOString() : null }
+  } catch (error) {
+    logger.warn('Could not read the seasonal pre-order deadline for a booking confirmation', {
+      metadata: {
+        tableBookingId: bookingResult.table_booking_id ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    })
+    return { cutoffDays: null, closesAtIso: null }
+  }
+}
+
 export async function sendTableBookingCreatedSmsIfAllowed(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
@@ -974,6 +879,16 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     normalizedPhone: string
     bookingResult: TableBookingRpcResult
     nextStepUrl?: string | null
+    /**
+     * Suppresses the TEXT, and only the text.
+     *
+     * The website sets this for a booking it is about to hand to PayPal, so the guest is not
+     * texted a payment link while a payment screen is already in front of them. The caller used
+     * to skip this whole function for those bookings, which suppressed the email as well: every
+     * website booking of 15 or more, and every website Christmas booking, was taken with no
+     * confirmation of any kind, no deposit terms and no pay-by time. They get the email now.
+     */
+    skipCustomerSms?: boolean
   }
 ): Promise<{
   notificationChannel?: TableBookingNotificationChannel
@@ -1058,6 +973,19 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   const highChairSuffix = grantedHighChairs > 0 ? ` High chair reserved x${grantedHighChairs}.` : ''
   const outsideSuffix = isOutside ? ' Outside seating (weather permitting).' : ''
 
+  // A booking on a seasonal menu that needs choices is told so on both channels, and the link is
+  // named for the job rather than for the screen it opens. "Manage booking" reads as an
+  // amend-or-cancel link, so a Christmas guest who needs to pick three courses has no reason to
+  // open it, and the first they would hear of it is the chase ten days out. That is late for the
+  // kitchen and it makes the reminder do work the confirmation should already have done.
+  // Only when the guest actually accepted the seasonal menu. Someone who declined it is on the
+  // ordinary menu and has nothing to choose in advance, so pointing them at a food form would be
+  // a job they cannot do.
+  const needsFoodChoices =
+    Boolean(input.bookingResult.booking_period_id) &&
+    input.bookingResult.booking_period_requires_preorder === true &&
+    input.bookingResult.booking_period_answer === true
+
   let smsBody: string
   if (input.bookingResult.state === 'pending_payment') {
     const depositKindLabel = input.bookingResult.sunday_lunch
@@ -1069,18 +997,6 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     smsBody = `${base}${highChairSuffix}${outsideSuffix} ${cta}`
   } else {
     const bookingNoun = isOutside ? 'outside booking' : 'table booking'
-    // A booking on a seasonal menu that needs choices gets told so here, and the link is named for
-    // the job rather than for the screen it opens. "Manage booking" reads as an amend-or-cancel link,
-    // so a Christmas guest who needs to pick three courses has no reason to open it, and the first
-    // they would hear of it is the chase seven days out. That is late for the kitchen and it makes
-    // the reminder do work the confirmation should already have done.
-    // Only when the guest actually accepted the seasonal menu. Someone who declined it is on the
-    // ordinary menu and has nothing to choose in advance, so pointing them at a food form would be
-    // a job they cannot do.
-    const needsFoodChoices =
-      Boolean(input.bookingResult.booking_period_id) &&
-      input.bookingResult.booking_period_requires_preorder === true &&
-      input.bookingResult.booking_period_answer === true
     const linkSuffix = manageLink
       ? needsFoodChoices
         ? ` Choose your food: ${manageLink}`
@@ -1095,20 +1011,54 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   const templateKey = input.bookingResult.state === 'pending_payment'
     ? 'table_booking_pending_payment'
     : 'table_booking_confirmed'
-  const emailContent = buildTableBookingCustomerEmail({
-    firstName,
-    bookingMoment,
-    partySize,
-    seatWord,
-    bookingReference: input.bookingResult.booking_reference || null,
-    state: input.bookingResult.state,
-    manageLink,
-    paymentLink,
-    depositLabel,
-    christmasCourseSummary,
-    highChairCount: grantedHighChairs,
-    isOutsideSeating: isOutside,
-  })
+
+  // When the pre-order form locks for this booking, for the deadline the confirmation states.
+  // Read only for a booking that owes choices, and a failed read leaves the sentence out rather
+  // than guessing a date the form will not honour.
+  const preorder = needsFoodChoices
+    ? await loadBookingPreorderDeadline(supabase, input.bookingResult)
+    : { cutoffDays: null, closesAtIso: null }
+
+  const emailContent =
+    input.bookingResult.state === 'pending_payment'
+      ? buildTableBookingDepositAtBookingEmail({
+          firstName,
+          bookingReference: input.bookingResult.booking_reference || null,
+          bookingDate: null,
+          startDateTime: input.bookingResult.start_datetime || null,
+          partySize,
+          depositKindLabel: input.bookingResult.sunday_lunch
+            ? 'Sunday lunch deposit'
+            : isOutside ? 'deposit' : 'table deposit',
+          depositLabel,
+          breakdownNote: ` (${partySize} x GBP ${DEPOSIT_PER_PERSON_GBP})`,
+          paymentLink,
+          isOutsideSeating: isOutside,
+          highChairCount: grantedHighChairs,
+          isChristmas: isChristmasBookingType(input.bookingResult.booking_type),
+          perPersonGbp: depositPerPersonForBooking(input.bookingResult, depositAmount, partySize),
+          refundCutoffDays: input.bookingResult.deposit_refund_cutoff_days ?? null,
+          payByIso: input.bookingResult.hold_expires_at || null,
+        })
+      : buildTableBookingConfirmedEmail({
+          firstName,
+          bookingReference: input.bookingResult.booking_reference || null,
+          bookingDate: null,
+          startDateTime: input.bookingResult.start_datetime || null,
+          partySize,
+          manageLink,
+          christmasCourseSummary: christmasCourseSummary || null,
+          highChairCount: grantedHighChairs,
+          isOutsideSeating: isOutside,
+          needsFoodChoices,
+          christmasCourseCounts: input.bookingResult.christmas_course_counts ?? null,
+          preorderCutoffDays: preorder.cutoffDays,
+          preorderClosesAtIso: preorder.closesAtIso,
+        })
+
+  // Email only when the caller is suppressing the text, so the notice still goes out on the
+  // channel that is left rather than not at all.
+  const channelPolicy = input.skipCustomerSms === true ? 'email_only' : 'email_first'
 
   let notificationResult: Awaited<ReturnType<typeof notifyCustomer>>
   try {
@@ -1116,7 +1066,7 @@ export async function sendTableBookingCreatedSmsIfAllowed(
       supabase,
       customerId: input.customerId,
       customer,
-      policy: 'email_first',
+      policy: channelPolicy,
       urgency: 'standard',
       category: 'transactional',
       email: {
@@ -1129,7 +1079,7 @@ export async function sendTableBookingCreatedSmsIfAllowed(
         metadata: {
           table_booking_id: input.bookingResult.table_booking_id,
           template_key: templateKey,
-          channel_policy: 'email_first',
+          channel_policy: channelPolicy,
         },
       },
       sms: {
@@ -1996,23 +1946,41 @@ async function sendTableBookingCancelledTextOnly(
   }
 }
 
-// Confirm an amended booking to the customer after a date, time, or duration change.
-// Re-reads the booking fresh (post-update) and dispatches via notifyCustomer with an
-// email_first policy, so the customer gets one confirmation on their best channel
-// (email if on file, else SMS) with the same opt-in / suppression / rate-limit guards
-// as every other booking message. Never rethrows — a notification failure must not
-// affect the edit/move operation that triggered it. Only fired for live bookings and
-// on genuine time-window changes; internal table reassignments do NOT call this.
+/**
+ * Confirm an amended booking to the guest, after a change to the date, the time or the party size.
+ *
+ * Re-reads the booking fresh (post-update) and dispatches via notifyCustomer with an email_first
+ * policy, so the guest gets one confirmation on their best channel with the same opt-in,
+ * suppression and rate-limit guards as every other booking message. Never rethrows: a
+ * notification failure must not affect the edit or move that triggered it. Internal table
+ * reassignments do NOT call this.
+ *
+ * Two rules this used to get wrong:
+ *
+ *  - It said "still confirmed" whatever the status was. The floor may re-time a
+ *    `pending_payment` booking, and that guest still owes a deposit whose hold is ticking, so
+ *    telling them their table was confirmed is how a hold lapses on somebody who thought they
+ *    were done. They now get the deposit, the pay-by time and the payment link instead.
+ *  - It fired on a duration change, which the guest never sees, and it showed only the new time,
+ *    which the guest cannot check. `params.previous` is what the booking said before, so the
+ *    email can say what it was, and nothing is sent when the date, the time and the party size
+ *    are all unchanged.
+ */
 export async function sendTableBookingRescheduledNotificationIfAllowed(
   supabase: SupabaseClient<any, 'public', any>,
   params: {
     tableBookingId: string
+    /** What the booking said before the change. Optional: an older caller simply says less. */
+    previous?: {
+      startDateTime?: string | null
+      partySize?: number | null
+    }
   }
 ): Promise<void> {
   try {
     const { data: bookingRaw } = await supabase
       .from('table_bookings')
-      .select('id, customer_id, booking_reference, start_datetime, party_size, status, high_chair_count, is_outside_seating')
+      .select('id, customer_id, booking_reference, booking_date, booking_time, start_datetime, party_size, status, payment_status, booking_type, high_chair_count, is_outside_seating, deposit_amount, deposit_amount_locked, deposit_waived, deposit_rate, deposit_basis, deposit_refund_cutoff_days, hold_expires_at')
       .eq('id', params.tableBookingId)
       .maybeSingle()
 
@@ -2024,16 +1992,44 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       id: string
       customer_id: string
       booking_reference: string | null
+      booking_date: string | null
+      booking_time: string | null
       start_datetime: string | null
       party_size: number | null
       status: string | null
+      payment_status: string | null
+      booking_type: string | null
       high_chair_count: number | null
       is_outside_seating: boolean | null
+      deposit_amount: number | string | null
+      deposit_amount_locked: number | string | null
+      deposit_waived: boolean | null
+      deposit_rate: number | null
+      deposit_basis: string | null
+      deposit_refund_cutoff_days: number | null
+      hold_expires_at: string | null
     }
 
-    // Only confirm changes for live bookings — never message cancelled/closed ones.
+    // Only confirm changes for live bookings. Never message cancelled or closed ones.
     const status = (booking.status || '').toLowerCase()
     if (['cancelled', 'no_show', 'completed'].includes(status)) {
+      return
+    }
+
+    // Nothing the guest can see has moved, so there is nothing to tell them. A duration change
+    // reaches this function and must not produce an email that restates the same booking.
+    const previousStartIso = params.previous?.startDateTime ?? null
+    const previousPartySize = params.previous?.partySize ?? null
+    const startUnchanged =
+      previousStartIso !== null &&
+      booking.start_datetime !== null &&
+      Date.parse(previousStartIso) === Date.parse(booking.start_datetime)
+    const partySizeUnchanged =
+      previousPartySize === null || Math.max(1, Number(previousPartySize)) === Math.max(1, Number(booking.party_size ?? 1))
+    if (startUnchanged && partySizeUnchanged) {
+      logger.info('Table booking amendment changed nothing the guest can see, so no notice was sent', {
+        metadata: { tableBookingId: booking.id },
+      })
       return
     }
 
@@ -2076,20 +2072,102 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
       manageLink = null
     }
 
+    // A booking that still owes a deposit is not confirmed, whatever the amendment did. Its
+    // payment link is minted again here, because the one the guest was sent names the same hold
+    // and that hold is what the deposit is racing.
+    const isConfirmed = status === 'confirmed'
+    const depositAmount = getCanonicalDeposit({
+      party_size: partySize,
+      deposit_amount: booking.deposit_amount,
+      deposit_amount_locked: booking.deposit_amount_locked,
+      status: booking.status,
+      payment_status: booking.payment_status,
+      deposit_waived: booking.deposit_waived,
+      booking_type: booking.booking_type,
+    })
+    const holdIsLive = booking.hold_expires_at ? Date.parse(booking.hold_expires_at) > Date.now() : false
+
+    let depositPaymentLink: string | null = null
+    if (!isConfirmed && depositAmount > 0 && holdIsLive && booking.hold_expires_at) {
+      try {
+        const paymentToken = await createTablePaymentToken(supabase, {
+          customerId: customer.id,
+          tableBookingId: booking.id,
+          holdExpiresAt: booking.hold_expires_at,
+          appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+        })
+        const shortenedPayment = await buildGuestShortLink({
+          longUrl: paymentToken.url,
+          linkKind: 'table_payment',
+          customerId: customer.id,
+          tableBookingId: booking.id,
+        })
+        depositPaymentLink = shortenedPayment.url
+        if (!shortenedPayment.shortened) shortLinkFallback = true
+      } catch (paymentLinkError) {
+        depositPaymentLink = null
+        logger.warn('Could not mint a payment link for an amended booking that still owes a deposit', {
+          metadata: {
+            tableBookingId: booking.id,
+            error: paymentLinkError instanceof Error ? paymentLinkError.message : String(paymentLinkError),
+          },
+        })
+      }
+    }
+
+    const depositLabel =
+      depositAmount > 0
+        ? new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(depositAmount)
+        : null
+    const depositFacts =
+      !isConfirmed && depositLabel
+        ? {
+            depositLabel,
+            paymentLink: depositPaymentLink,
+            isChristmas: isChristmasBookingType(booking.booking_type),
+            perPersonGbp:
+              booking.deposit_basis === 'per_booking'
+                ? null
+                : Number.isFinite(Number(booking.deposit_rate)) && Number(booking.deposit_rate) > 0
+                  ? Number(booking.deposit_rate)
+                  : depositPerPerson(depositAmount, partySize),
+            refundCutoffDays: booking.deposit_refund_cutoff_days ?? null,
+            payByIso: holdIsLive ? booking.hold_expires_at : null,
+          }
+        : null
+
     const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
     const highChairSuffix = grantedHighChairs > 0 ? ` High chair reserved x${grantedHighChairs}.` : ''
     const outsideSuffix = isOutside ? ' Outside seating (weather permitting).' : ''
-    const smsBody = `The Anchor: Hi ${firstName}, your ${bookingNoun} has been updated to ${bookingMoment} for ${partySize} ${seatWord}. It's still confirmed.${highChairSuffix}${outsideSuffix}${manageLink ? ` Manage booking: ${manageLink}` : ''}`
+    const previousMomentForSms = previousStartIso ? formatLondonDateTime(previousStartIso) : null
+    const wasSuffix =
+      previousMomentForSms && previousMomentForSms !== bookingMoment ? ` It was ${previousMomentForSms}.` : ''
+    const statusSuffix = isConfirmed
+      ? " It's still confirmed."
+      : depositFacts
+        ? ` It is not confirmed yet: we still need your deposit of ${depositFacts.depositLabel}.`
+        : ' It is not confirmed yet.'
+    const linkSuffix = !isConfirmed && depositPaymentLink
+      ? ` Pay your deposit: ${depositPaymentLink}`
+      : manageLink
+        ? ` Manage booking: ${manageLink}`
+        : ''
+    const smsBody = `The Anchor: Hi ${firstName}, your ${bookingNoun} has been updated to ${bookingMoment} for ${partySize} ${seatWord}.${wasSuffix}${statusSuffix}${highChairSuffix}${outsideSuffix}${linkSuffix}`
 
     const emailContent = buildTableBookingRescheduledEmail({
       firstName,
-      bookingMoment,
-      partySize,
-      seatWord,
       bookingReference: booking.booking_reference,
+      bookingDate: booking.booking_date,
+      bookingTime: booking.booking_time,
+      startDateTime: booking.start_datetime,
+      partySize,
+      status,
       manageLink,
       highChairCount: grantedHighChairs,
       isOutsideSeating: isOutside,
+      previousStartDateTime: previousStartIso,
+      previousPartySize,
+      deposit: depositFacts,
     })
 
     const templateKey = 'table_booking_rescheduled'
