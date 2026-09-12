@@ -972,12 +972,20 @@ export async function updateRecruitmentCandidateProfile(
       ? null
       : undefined
 
+  const phone = nullIfBlank(parsed.phone)
+  // phone_e164 is what SMS sends to and what duplicate matching compares, so it follows the
+  // phone the caller sent: a supplied phone_e164 wins (the talent pool form has that input),
+  // otherwise it is derived from the phone, the same expression a candidate is created with.
+  // The application-view edit form has no phone_e164 input, so it arrives as null, which used
+  // to clear the column on every save of an otherwise unrelated field.
+  const phoneE164 = nullIfBlank(parsed.phone_e164) ?? normalizePhoneForLookup(phone)
+
   const updatePayload: Record<string, unknown> = {
     first_name: normalizeRecruitmentName(parsed.first_name),
     last_name: normalizeRecruitmentName(parsed.last_name),
     email: normalizeEmail(parsed.email),
-    phone: nullIfBlank(parsed.phone),
-    phone_e164: nullIfBlank(parsed.phone_e164),
+    phone,
+    phone_e164: phoneE164,
     location: nullIfBlank(parsed.location),
     notes: nullIfBlank(parsed.notes),
   }
