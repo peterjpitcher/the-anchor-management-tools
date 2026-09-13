@@ -9,8 +9,8 @@ import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours'
  * called tomorrow. Anything that names a day relative to a deadline or a start time should be
  * worded with resolveTextLandingDay.
  *
- * The one-day event reminder on branch fix/event-reminder-landing-day (resolveEventReminderDay)
- * works this out the same way; once both are merged it should call this.
+ * Used by the parking offer expiry reminder and, through resolveEventReminderDay, by the
+ * one-day event reminder, so both name the day by the same rule.
  */
 
 /** The day a text names for a moment, as seen on the London day the customer reads it. */
