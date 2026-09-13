@@ -1,4 +1,4 @@
-import { sendEmail } from './emailService';
+import { sendEmail, type EmailOptions } from './emailService';
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils';
 
 const MANAGER_EMAIL = process.env.MANAGER_EMAIL || 'manager@the-anchor.pub';
@@ -154,24 +154,41 @@ export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) 
   return { subject, text: sections.join('\n'), cc: uniqueEmails([MANAGER_EMAIL, BILLY_EMAIL]) };
 }
 
+/**
+ * Sends one of these emails and throws if it did not go.
+ *
+ * sendEmail catches its own errors and returns { success: false }, so a helper that handed that
+ * result back left every caller unable to tell a send from a failure: the invite actions reported
+ * "Invite sent" on a failed email, and the chase cron stamped a chase that never went (found 11
+ * September 2026). Throwing is the contract the callers were already written for, and the one
+ * sendSeparationStartedEmail has always used.
+ */
+async function sendInviteEmailOrThrow(options: EmailOptions, whatFailed: string) {
+  const result = await sendEmail(options);
+  if (!result.success) {
+    throw new Error(result.error || `Failed to send ${whatFailed}.`);
+  }
+  return result;
+}
+
 export async function sendPortalInviteEmail(email: string, onboardingUrl: string) {
   const { subject, text } = buildPortalInviteEmail(email, onboardingUrl);
-  return sendEmail({ to: email, subject, text });
+  return sendInviteEmailOrThrow({ to: email, subject, text }, 'the portal invite email');
 }
 
 export async function sendWelcomeEmail(email: string, onboardingUrl: string) {
   const { subject, text } = buildWelcomeEmail(email, onboardingUrl);
-  return sendEmail({ to: email, subject, text });
+  return sendInviteEmailOrThrow({ to: email, subject, text }, 'the invite email');
 }
 
 export async function sendChaseEmail(email: string, onboardingUrl: string, dayNumber: number) {
   const { subject, text } = buildChaseEmail(email, onboardingUrl, dayNumber);
-  return sendEmail({ to: email, subject, text });
+  return sendInviteEmailOrThrow({ to: email, subject, text }, 'the reminder email');
 }
 
 export async function sendOnboardingCompleteEmail(employeeName: string, employeeEmail: string) {
   const { subject, text } = buildOnboardingCompleteEmail(employeeName, employeeEmail);
-  return sendEmail({ to: MANAGER_EMAIL, subject, text });
+  return sendInviteEmailOrThrow({ to: MANAGER_EMAIL, subject, text }, 'the onboarding complete email');
 }
 
 export async function sendSeparationStartedEmail(input: SeparationStartedEmailInput) {
