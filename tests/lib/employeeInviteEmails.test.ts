@@ -1,10 +1,58 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Mock } from 'vitest'
 
 vi.mock('@/lib/email/emailService', () => ({
   sendEmail: vi.fn(),
 }))
 
-import { buildSeparationStartedEmail } from '@/lib/email/employee-invite-emails'
+import { sendEmail } from '@/lib/email/emailService'
+import {
+  buildSeparationStartedEmail,
+  sendChaseEmail,
+  sendOnboardingCompleteEmail,
+  sendPortalInviteEmail,
+  sendWelcomeEmail,
+} from '@/lib/email/employee-invite-emails'
+
+const mockedSendEmail = sendEmail as unknown as Mock
+
+/**
+ * sendEmail catches its own errors and returns { success: false }. These helpers used to hand that
+ * result back, so their callers could not tell a send from a failure: the invite actions reported
+ * "Invite sent" and the chase cron stamped a chase that never went.
+ */
+describe('employee invite emails say when a send failed', () => {
+  const sends: Array<[string, () => Promise<unknown>]> = [
+    ['the welcome invite', () => sendWelcomeEmail('new-starter@example.com', 'https://example.com/onboarding/token')],
+    ['the portal invite', () => sendPortalInviteEmail('staff@example.com', 'https://example.com/onboarding/token')],
+    ['a chase reminder', () => sendChaseEmail('staff@example.com', 'https://example.com/onboarding/token', 3)],
+    ['the onboarding complete note', () => sendOnboardingCompleteEmail('Alex Rowe', 'staff@example.com')],
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it.each(sends)('%s throws the provider reason when the email does not go', async (_label, send) => {
+    mockedSendEmail.mockResolvedValue({ success: false, error: 'Resend 503' })
+
+    await expect(send()).rejects.toThrow('Resend 503')
+  })
+
+  it.each(sends)('%s resolves when the provider accepts it', async (_label, send) => {
+    mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1' })
+
+    await expect(send()).resolves.toMatchObject({ success: true })
+  })
+
+  it('names what failed when the provider gives no reason', async () => {
+    mockedSendEmail.mockResolvedValue({ success: false })
+
+    await expect(sendWelcomeEmail('new-starter@example.com', 'https://example.com/onboarding/token')).rejects.toThrow(
+      'Failed to send the invite email.'
+    )
+  })
+})
 
 describe('employee separation emails', () => {
   it('builds a future-dated separation email with remaining shifts and process guidance', () => {
