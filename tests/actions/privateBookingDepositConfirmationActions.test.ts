@@ -294,3 +294,127 @@ describe('Send payment link while the deposit is to be confirmed', () => {
     expect(sendDepositPaymentLinkEmail).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('Send payment link, what gets recorded', () => {
+  const mockedDepositLinkEmail = sendDepositPaymentLinkEmail as unknown as Mock
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // Off, so the action runs its own path rather than being turned away at the confirmation gate.
+    state.depositConfirmation = false
+    mockedPermission.mockImplementation(async () => true)
+    mockedDepositLinkEmail.mockResolvedValue({ sent: true })
+  })
+
+  it('records a sent link in the audit log and on the booking timeline', async () => {
+    seed(booking())
+
+    const result = await sendDepositPaymentLink(BOOKING_ID)
+
+    expect(result).toEqual({ success: true })
+    expect(logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: 'user-1',
+        operation_type: 'update',
+        resource_type: 'private_booking',
+        resource_id: BOOKING_ID,
+        operation_status: 'success',
+        additional_info: expect.objectContaining({
+          action: 'send_deposit_payment_link',
+          outcome: 'sent',
+          channel: 'email',
+          amount: 250,
+          paypal_order_id: 'order-1',
+        }),
+      })
+    )
+
+    const timeline = state.db.tables.private_booking_audit
+    expect(timeline).toHaveLength(1)
+    expect(timeline[0]).toMatchObject({
+      booking_id: BOOKING_ID,
+      action: 'email_sent',
+      field_name: 'email',
+      new_value: 'private_booking_deposit_payment_link',
+      performed_by: 'user-1',
+    })
+    expect(timeline[0].metadata).toMatchObject({
+      trigger: 'staff_send_deposit_payment_link',
+      paypal_order_id: 'order-1',
+      error: null,
+    })
+  })
+
+  it('records a failed link too, so a guest left without one can be traced', async () => {
+    seed(booking())
+    mockedDepositLinkEmail.mockResolvedValue({ sent: false, error: 'Resend 503' })
+
+    const result = await sendDepositPaymentLink(BOOKING_ID)
+
+    // Still fails closed: staff are told, and success is never reported (review PB-11).
+    expect(result.success).toBeUndefined()
+    expect(result.error).toBe(
+      'The payment link email was not sent. Please try again, or send the booking portal link by hand.'
+    )
+    expect(logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource_id: BOOKING_ID,
+        operation_status: 'failure',
+        additional_info: expect.objectContaining({
+          action: 'send_deposit_payment_link',
+          outcome: 'not_sent',
+          paypal_order_id: 'order-1',
+          email_error: 'Resend 503',
+        }),
+      })
+    )
+
+    const timeline = state.db.tables.private_booking_audit
+    expect(timeline).toHaveLength(1)
+    expect(timeline[0]).toMatchObject({
+      booking_id: BOOKING_ID,
+      action: 'email_failed',
+      field_name: 'email',
+      new_value: 'private_booking_deposit_payment_link',
+      performed_by: 'user-1',
+    })
+    expect(timeline[0].metadata.error).toBe('Resend 503')
+    expect(timeline[0].metadata.description).toContain('Resend 503')
+  })
+
+  it.each([
+    ['a sent link', { sent: true }],
+    ['a failed link', { sent: false, error: 'Resend 503' }],
+  ])('keeps the guest out of both payloads for %s', async (_label, emailOutcome) => {
+    seed(booking())
+    mockedDepositLinkEmail.mockResolvedValue(emailOutcome)
+
+    await sendDepositPaymentLink(BOOKING_ID)
+
+    // The address and the name are already on the booking and in the email log. The audit trail
+    // does not repeat them.
+    const auditPayload = JSON.stringify((logAuditEvent as unknown as Mock).mock.calls)
+    const timelinePayload = JSON.stringify(state.db.tables.private_booking_audit)
+    for (const payload of [auditPayload, timelinePayload]) {
+      expect(payload).not.toContain('host@example.com')
+      expect(payload).not.toContain('Alex')
+      expect(payload).not.toContain('+447700900123')
+    }
+  })
+
+  it('still reports a delivered email when the audit writes fail', async () => {
+    seed(booking())
+    state.db.failures.push({
+      table: 'private_booking_audit',
+      op: 'insert',
+      error: { code: '08006', message: 'connection failure' },
+    })
+    ;(logAuditEvent as unknown as Mock).mockRejectedValueOnce(new Error('audit_logs unavailable'))
+
+    const result = await sendDepositPaymentLink(BOOKING_ID)
+
+    // A broken audit trail is worth an alert, never a false failure: the guest has the link.
+    expect(result).toEqual({ success: true })
+    expect(state.db.tables.private_booking_audit).toHaveLength(0)
+  })
+})
