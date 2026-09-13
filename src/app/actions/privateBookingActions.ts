@@ -2694,6 +2694,79 @@ export async function confirmPrivateBookingDeposit(
 }
 
 /**
+ * Record a deposit payment link send, whichever way it went.
+ *
+ * Both places the neighbouring actions write to, so the send is visible where staff already look:
+ * `audit_logs` through logAuditEvent, as confirmPrivateBookingDeposit does, and a
+ * `private_booking_audit` row so it appears on the booking timeline, as sendPrivateBookingEmail
+ * does. A failed send is recorded too: a guest with no payment link and a hold running down is
+ * exactly the state someone will need to reconstruct later (review PB-11).
+ *
+ * No personal data in either payload. The address is already on the booking and in the email log,
+ * so the row carries the order id and the amount, and on a failure the provider's error, the same
+ * fields the neighbours keep.
+ *
+ * Never throws. An audit write that fails must not turn a delivered email into a reported failure,
+ * so both writes are logged and swallowed, as the neighbours do.
+ */
+async function recordDepositPaymentLinkSend(input: {
+  admin: ReturnType<typeof createAdminClient>
+  bookingId: string
+  userId: string
+  orderId: string
+  amount: number
+  sent: boolean
+  error?: string
+}): Promise<void> {
+  const { admin, bookingId, userId, orderId, amount, sent, error } = input
+
+  try {
+    await logAuditEvent({
+      user_id: userId,
+      operation_type: 'update',
+      resource_type: 'private_booking',
+      resource_id: bookingId,
+      operation_status: sent ? 'success' : 'failure',
+      additional_info: {
+        action: 'send_deposit_payment_link',
+        outcome: sent ? 'sent' : 'not_sent',
+        channel: 'email',
+        amount,
+        paypal_order_id: orderId,
+        ...(sent ? {} : { email_error: error ?? 'Unknown email error' }),
+      },
+    })
+  } catch (auditError) {
+    logger.error('Failed to log audit event for sendDepositPaymentLink', {
+      error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+      metadata: { bookingId, orderId },
+    })
+  }
+
+  const { error: timelineError } = await admin.from('private_booking_audit').insert({
+    booking_id: bookingId,
+    action: sent ? 'email_sent' : 'email_failed',
+    field_name: 'email',
+    new_value: 'private_booking_deposit_payment_link',
+    metadata: {
+      description: sent
+        ? 'Sent the deposit payment link by email.'
+        : `The deposit payment link email failed (${error ?? 'unknown error'}), so the guest has no link.`,
+      trigger: 'staff_send_deposit_payment_link',
+      paypal_order_id: orderId,
+      error: sent ? null : error ?? 'Unknown email error',
+    },
+    performed_by: userId,
+  })
+  if (timelineError) {
+    logger.error('Deposit payment link timeline row not written', {
+      error: new Error(timelineError.message),
+      metadata: { bookingId, orderId },
+    })
+  }
+}
+
+/**
  * Create a PayPal deposit payment order and email the approve link directly to the customer.
  * Staff-initiated, not automated.
  */
@@ -2785,10 +2858,28 @@ export async function sendDepositPaymentLink(
         error: new Error(emailResult.error),
         metadata: { bookingId, orderId: result.orderId },
       })
+      await recordDepositPaymentLinkSend({
+        admin,
+        bookingId,
+        userId: user.id,
+        orderId: result.orderId,
+        amount: depositAmount,
+        sent: false,
+        error: emailResult.error,
+      })
       return { error: 'The payment link email was not sent. Please try again, or send the booking portal link by hand.' }
     }
 
     logger.info('Deposit payment link sent to customer', { metadata: { bookingId, orderId: result.orderId } })
+    await recordDepositPaymentLinkSend({
+      admin,
+      bookingId,
+      userId: user.id,
+      orderId: result.orderId,
+      amount: depositAmount,
+      sent: true,
+    })
+    revalidatePath(`/private-bookings/${bookingId}`)
     return { success: true }
   } catch (error: unknown) {
     logger.error('Error sending deposit payment link', {
