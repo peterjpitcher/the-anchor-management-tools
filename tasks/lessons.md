@@ -296,3 +296,22 @@ default heap on this machine (4192 MB), and it OOMs in "Linting and checking val
 pages, 427 routes, exit 0. Use that locally. Deliberately NOT added to the `build` script, because
 that script also runs on Vercel, where asking for an 8 GB heap inside an 8 GB container invites the
 container to kill the build instead. Vercel's own production builds are passing as they are.
+
+## 2026-09-13: A bare CREATE OR REPLACE FUNCTION silently drops the pinned search_path
+
+**Mistake:** `20260913101234_remove_paid_advertising_event_todo` rewrote
+`auto_close_past_event_tasks()` with `CREATE OR REPLACE FUNCTION ... SECURITY DEFINER` and no
+`SET search_path`. Postgres holds that setting in `pg_proc.proconfig` and clears it on any replace
+that does not restate it, so the pin
+`20260527062350_security_hardening_2026_05_27` put there in May was gone the moment the migration
+ran. Nothing failed and no test noticed: it was found only by reading `proconfig` in production,
+where the function was the only one of 247 SECURITY DEFINER functions in `public` with a NULL.
+The same thing had already happened once, in `20260817150000`.
+
+**Rule:** Any `CREATE OR REPLACE FUNCTION` on a SECURITY DEFINER function restates
+`SECURITY DEFINER`, its `SET search_path`, and its grants in the same statement, exactly as the
+live definition has them. Derive the new body from `pg_get_functiondef()` rather than from an
+older migration file, because the file predates every setting applied since. After applying, read
+`prosecdef` and `proconfig` back: the check
+`select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname =
+'public' and p.prosecdef and p.proconfig is null` must return 0.
