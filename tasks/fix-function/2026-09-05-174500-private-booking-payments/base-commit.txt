@@ -1,0 +1,17 @@
+759f1471357ae3a7d5e5b59f51bc4593e8aba2c8
+ M src/app/(authenticated)/table-bookings/boh/BohBookingsClient.tsx
+ M src/app/api/cron/oj-projects-billing/route.ts
+ M tasks/todo.md
+?? docs/design/brief-orange-jelly.md
+?? docs/design/brief-the-anchor.md
+?? docs/design/pdf-branding-audit.md
+?? docs/design/pdf-house-style-brief.md
+?? docs/design/sample-pack.zip
+?? docs/design/sample-pack/
+?? scripts/design/
+?? src/lib/invoices/__tests__/delivery-state.test.ts
+?? src/lib/invoices/delivery-state.ts
+?? src/lib/oj-projects/__tests__/billing-run-guard.test.ts
+?? src/lib/oj-projects/billing-run-guard.ts
+?? tasks/plan-2026-09-05-anchor-booking-growth.md
+?? tasks/seo-powerhouse/
