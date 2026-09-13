@@ -113,3 +113,7 @@ temp/
 # cannot sweep them into a commit alongside real work.
 output/
 outputs/
+
+# Tool caches that keep showing up as untracked noise
+.playwright-cli/
+__pycache__/
