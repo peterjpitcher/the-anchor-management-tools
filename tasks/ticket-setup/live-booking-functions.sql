@@ -494,4 +494,3 @@ begin
   on conflict (booking_id, ticket_type_id)
     do update set quantity = excluded.quantity;
 end $function$;
-

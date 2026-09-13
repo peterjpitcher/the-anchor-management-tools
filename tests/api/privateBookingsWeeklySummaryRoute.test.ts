@@ -16,7 +16,7 @@ vi.mock('@/lib/api/idempotency', () => ({
 }))
 
 vi.mock('@/lib/private-bookings/manager-notifications', () => ({
-  sendManagerPrivateBookingsWeeklyDigestEmail: vi.fn(),
+  queueManagerPrivateBookingsWeeklyDigestEmail: vi.fn(),
 }))
 
 vi.mock('@/services/audit', () => ({
@@ -45,7 +45,7 @@ import {
   persistIdempotencyResponse,
   releaseIdempotencyClaim,
 } from '@/lib/api/idempotency'
-import { sendManagerPrivateBookingsWeeklyDigestEmail } from '@/lib/private-bookings/manager-notifications'
+import { queueManagerPrivateBookingsWeeklyDigestEmail } from '@/lib/private-bookings/manager-notifications'
 import { GET } from '@/app/api/cron/private-bookings-weekly-summary/route'
 
 function createSupabaseMock() {
@@ -147,8 +147,8 @@ describe('private-bookings weekly summary cron route', () => {
     ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
     ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
     ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(sendManagerPrivateBookingsWeeklyDigestEmail as unknown as vi.Mock).mockResolvedValue({
-      sent: true,
+    ;(queueManagerPrivateBookingsWeeklyDigestEmail as unknown as vi.Mock).mockResolvedValue({
+      queued: true,
       actionCount: 3,
       eventCount: 2,
     })
@@ -162,9 +162,9 @@ describe('private-bookings weekly summary cron route', () => {
     expect(createAdminClient).not.toHaveBeenCalled()
   })
 
-  it('skips outside the 9am London window unless forced', async () => {
+  it('skips outside the 8am London window unless forced', async () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-03-23T07:00:00.000Z')) // Monday but 7am, not 9am
+    vi.setSystemTime(new Date('2026-03-27T07:00:00.000Z')) // Friday but 7am, not 8am
     ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
 
     try {
@@ -183,23 +183,23 @@ describe('private-bookings weekly summary cron route', () => {
     }
   })
 
-  it('skips on non-Monday unless forced', async () => {
+  it('skips on non-Friday unless forced', async () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-03-25T09:00:00.000Z')) // Wednesday
+    vi.setSystemTime(new Date('2026-03-25T08:00:00.000Z')) // Wednesday
     ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
 
     try {
       const response = await GET(new Request('http://localhost/api/cron/private-bookings-weekly-summary') as any)
       const payload = await response.json()
-      expect(payload).toMatchObject({ skipped: true, reason: 'not_monday' })
+      expect(payload).toMatchObject({ skipped: true, reason: 'not_friday' })
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('sends digest on non-Monday when force=true', async () => {
+  it('queues summary on non-Friday when force=true', async () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-03-25T09:00:00.000Z')) // Wednesday
+    vi.setSystemTime(new Date('2026-03-25T08:00:00.000Z')) // Wednesday
     ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue(createSupabaseMock())
 
@@ -208,15 +208,15 @@ describe('private-bookings weekly summary cron route', () => {
         new Request('http://localhost/api/cron/private-bookings-weekly-summary?force=true') as any
       )
       const payload = await response.json()
-      expect(payload).toMatchObject({ success: true, sent: true })
+      expect(payload).toMatchObject({ success: true, queued: true })
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('sends the digest and persists idempotency response during the 9am Monday window', async () => {
+  it('queues the summary and persists idempotency response during the 8am Friday window', async () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-03-23T09:00:00.000Z')) // Monday 9am GMT
+    vi.setSystemTime(new Date('2026-03-27T08:00:00.000Z')) // Friday 8am GMT
     ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue(createSupabaseMock())
 
@@ -227,12 +227,12 @@ describe('private-bookings weekly summary cron route', () => {
       expect(response.status).toBe(200)
       expect(payload).toMatchObject({
         success: true,
-        sent: true,
-        londonDate: '2026-03-23',
+        queued: true,
+        londonDate: '2026-03-27',
         events: 2,
         actions: 3,
       })
-      expect(sendManagerPrivateBookingsWeeklyDigestEmail).toHaveBeenCalledTimes(1)
+      expect(queueManagerPrivateBookingsWeeklyDigestEmail).toHaveBeenCalledTimes(1)
       expect(persistIdempotencyResponse).toHaveBeenCalledTimes(1)
       expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
     } finally {
@@ -240,14 +240,14 @@ describe('private-bookings weekly summary cron route', () => {
     }
   })
 
-  it('releases idempotency claim when email send fails', async () => {
+  it('releases idempotency claim when summary queue fails', async () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-03-23T09:00:00.000Z')) // Monday 9am GMT
+    vi.setSystemTime(new Date('2026-03-27T08:00:00.000Z')) // Friday 8am GMT
     ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
     const supabase = createSupabaseMock()
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
-    ;(sendManagerPrivateBookingsWeeklyDigestEmail as unknown as vi.Mock).mockResolvedValueOnce({
-      sent: false,
+    ;(queueManagerPrivateBookingsWeeklyDigestEmail as unknown as vi.Mock).mockResolvedValueOnce({
+      queued: false,
       error: 'smtp down',
       actionCount: 3,
       eventCount: 2,
@@ -259,7 +259,7 @@ describe('private-bookings weekly summary cron route', () => {
       expect(response.status).toBe(500)
       expect(releaseIdempotencyClaim).toHaveBeenCalledWith(
         supabase,
-        'cron:private-bookings-weekly-summary:2026-03-23',
+        'cron:private-bookings-weekly-summary:2026-03-27',
         'hash-1'
       )
       expect(persistIdempotencyResponse).not.toHaveBeenCalled()

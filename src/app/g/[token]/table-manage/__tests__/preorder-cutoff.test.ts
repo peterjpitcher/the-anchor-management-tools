@@ -25,6 +25,7 @@ describe('resolvePreorderCutoff', () => {
 
   it('closes the form the moment the cutoff passes', () => {
     expect(resolvePreorderCutoff('2026-12-24', 7, new Date('2026-12-17T11:59:00Z')).editable).toBe(true)
+    expect(resolvePreorderCutoff('2026-12-24', 7, new Date('2026-12-17T12:00:00Z')).editable).toBe(false)
     expect(resolvePreorderCutoff('2026-12-24', 7, new Date('2026-12-17T12:00:01Z')).editable).toBe(false)
   })
 

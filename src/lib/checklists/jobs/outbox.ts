@@ -1,12 +1,13 @@
 // src/lib/checklists/jobs/outbox.ts
 // The checklist_email_outbox_process job (spec 3.7 / 10). Claims up to 20 pending outbox rows
-// whose next_attempt_at has passed and delivers them via sendEmail. Success marks the row
-// sent; failure increments attempts with exponential backoff, and on the 5th failure the row
+// whose next_attempt_at has passed. Manager notifications are queued and held for the Friday
+// report; technical alerts are delivered immediately. Failure uses backoff, and on the 5th failure the row
 // is marked failed and one system_alert to Peter is created (guarded by a distinct key so it
 // is written once). Service-role admin client (checklist_* is deny-all under RLS).
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail } from '@/lib/email/emailService'
+import { queueManagerReportEmail } from '@/lib/manager-report/queue'
 
 const MAX_ATTEMPTS = 5
 const BATCH_SIZE = 20
@@ -15,6 +16,7 @@ const CLAIM_LEASE_MS = 10 * 60 * 1000
 type OutboxDependencies = {
   db?: ReturnType<typeof createAdminClient>
   send?: typeof sendEmail
+  queue?: typeof queueManagerReportEmail
 }
 
 function systemEmail(): string {
@@ -24,6 +26,7 @@ function systemEmail(): string {
 export async function runOutboxProcess(dependencies: OutboxDependencies = {}): Promise<Record<string, unknown>> {
   const db = dependencies.db ?? createAdminClient()
   const send = dependencies.send ?? sendEmail
+  const queue = dependencies.queue ?? queueManagerReportEmail
   const nowIso = new Date().toISOString()
 
   const { data: rows, error } = await db
@@ -36,6 +39,7 @@ export async function runOutboxProcess(dependencies: OutboxDependencies = {}): P
   if (error) throw error
 
   let sent = 0
+  let queued = 0
   let retried = 0
   let failed = 0
   let claimed = 0
@@ -59,12 +63,26 @@ export async function runOutboxProcess(dependencies: OutboxDependencies = {}): P
     claimed += 1
 
     const toAddresses = (claimedRow.to_addresses as string[] | null) ?? []
-    let result: { success: boolean; error?: string; messageId?: string }
+    const deferToReport = claimedRow.email_type === 'value_breach'
+      || claimedRow.email_type === 'weekly_summary'
+      || ['closing_night', 'season'].includes(claimedRow.source_type as string)
+    let result: { success: boolean; error?: string; messageId?: string; emailMessageId?: string | null }
     try {
       const bodyHtml =
         (claimedRow.body_html as string | null) ??
         `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">${claimedRow.subject}</div>`
-      result = await send({
+      result = deferToReport ? await queue({
+        section: claimedRow.email_type === 'weekly_summary' ? 'checklist_summary' : 'checklist_alerts',
+        key: claimedRow.id as string,
+        to: toAddresses.join(', '),
+        subject: claimedRow.subject as string,
+        html: bodyHtml,
+        metadata: {
+          checklist_outbox_id: claimedRow.id as string,
+          checklist_idempotency_key: claimedRow.idempotency_key as string,
+          summary: claimedRow.subject as string,
+        },
+      }) : await send({
         to: toAddresses.join(', '),
         subject: claimedRow.subject as string,
         html: bodyHtml,
@@ -84,15 +102,18 @@ export async function runOutboxProcess(dependencies: OutboxDependencies = {}): P
     if (result.success) {
       const { data: sentRow, error: updErr } = await db
         .from('checklist_email_outbox')
-        .update({ status: 'sent', sent_at: new Date().toISOString(), message_id: result.messageId ?? null })
+        .update(deferToReport
+          ? { status: 'held', sent_at: null, message_id: null, next_attempt_at: null }
+          : { status: 'sent', sent_at: new Date().toISOString(), message_id: result.messageId ?? null })
         .eq('id', claimedRow.id as string)
         .eq('status', 'pending')
         .eq('next_attempt_at', claimUntil)
         .select('id')
         .maybeSingle()
       if (updErr) throw updErr
-      if (!sentRow) throw new Error(`Checklist outbox claim lost after sending ${claimedRow.id as string}`)
-      sent += 1
+      if (!sentRow) throw new Error(`Checklist outbox claim lost after processing ${claimedRow.id as string}`)
+      if (deferToReport) queued += 1
+      else sent += 1
       continue
     }
 
@@ -149,5 +170,5 @@ export async function runOutboxProcess(dependencies: OutboxDependencies = {}): P
     retried += 1
   }
 
-  return { candidates: (rows ?? []).length, processed: claimed, sent, retried, failed }
+  return { candidates: (rows ?? []).length, processed: claimed, sent, queued, retried, failed }
 }

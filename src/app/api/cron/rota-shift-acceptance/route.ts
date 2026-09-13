@@ -1,13 +1,17 @@
+import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { sendEmail } from '@/lib/email/emailService';
+import { queueManagerReportEmail } from '@/lib/manager-report/queue';
+import type { ManagerReportInput } from '@/lib/manager-report/types';
 import {
   buildShiftAutoAcceptWarningEmailHtml,
   type PortalShiftEmailSummary,
 } from '@/lib/rota/email-templates';
 import { recordShiftReliabilityEvent } from '@/services/employee-reliability';
 import { displayName } from '@/lib/employees/display-name';
+import { formatDateInLondon } from '@/lib/dateUtils';
 import {
   SHIFT_ACCEPTANCE_CUTOFF_DAYS,
   isInsideAcceptanceCutoff,
@@ -99,6 +103,90 @@ async function logWarningEmail(
   });
 }
 
+const MANAGER_RETRY_PREFIX = 'manager-report-retry:';
+
+function managerRetryId(input: ManagerReportInput): string {
+  const hash = createHash('sha256').update(`rota-manager-retry:${input.key}:${input.to}`).digest('hex');
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
+}
+
+async function collectManagerWarnings(
+  supabase: ReturnType<typeof createAdminClient>,
+  warnings: Array<{ input: ManagerReportInput; shiftId: string }>,
+): Promise<{ queued: number; failed: number; retryStorageErrors: number }> {
+  const result = { queued: 0, failed: 0, retryStorageErrors: 0 };
+  const attempted = new Set<string>();
+  // Failed collections survive staff delivery and later shift acceptance or deletion.
+  let retryRows: Array<{ id: string; entity_id: string; to_addresses: string[]; error_message: string }> = [];
+  try {
+    const { data, error } = await supabase.from('rota_email_log')
+      .select('id, entity_id, to_addresses, error_message')
+      .eq('email_type', 'shift_auto_accept_warning')
+      .eq('status', 'failed')
+      .like('error_message', `${MANAGER_RETRY_PREFIX}%`)
+      .order('created_at')
+      .limit(100);
+    if (error) result.retryStorageErrors += 1;
+    else retryRows = data ?? [];
+  } catch {
+    result.retryStorageErrors += 1;
+  }
+
+  const pending = [...warnings];
+  for (const row of retryRows ?? []) {
+    try {
+      const envelope = JSON.parse(row.error_message.slice(MANAGER_RETRY_PREFIX.length)) as { input: ManagerReportInput };
+      if (envelope.input.section !== 'staff_shift_reminders' || typeof envelope.input.key !== 'string'
+        || typeof envelope.input.subject !== 'string' || typeof envelope.input.html !== 'string'
+        || !row.to_addresses?.[0]) throw new Error('Invalid manager warning retry');
+      pending.push({ input: { ...envelope.input, to: row.to_addresses[0] }, shiftId: row.entity_id });
+    } catch {
+      result.retryStorageErrors += 1;
+    }
+  }
+
+  for (const { input, shiftId } of pending) {
+    const id = managerRetryId(input);
+    if (attempted.has(id)) continue;
+    attempted.add(id);
+    let queueResult: { success: boolean; error?: string };
+    try {
+      queueResult = await queueManagerReportEmail(input);
+    } catch (error) {
+      queueResult = { success: false, error: error instanceof Error ? error.message : 'Manager report collection failed' };
+    }
+    try {
+      if (queueResult.success) {
+        result.queued += 1;
+        const { error } = await supabase.from('rota_email_log')
+          .update({ error_message: 'Manager report collection recovered; entry queued for Friday delivery.' })
+          .eq('id', id)
+          .eq('status', 'failed')
+          .like('error_message', `${MANAGER_RETRY_PREFIX}%`);
+        if (error) result.retryStorageErrors += 1;
+      } else {
+        result.failed += 1;
+        const { error } = await supabase.from('rota_email_log').upsert({
+          id,
+          email_type: 'shift_auto_accept_warning',
+          entity_type: 'rota_shift',
+          entity_id: shiftId,
+          to_addresses: [input.to],
+          cc_addresses: [],
+          subject: input.subject,
+          status: 'failed',
+          error_message: `${MANAGER_RETRY_PREFIX}${JSON.stringify({ error: queueResult.error, input })}`,
+          message_id: null,
+        }, { onConflict: 'id', ignoreDuplicates: true });
+        if (error) result.retryStorageErrors += 1;
+      }
+    } catch {
+      result.retryStorageErrors += 1;
+    }
+  }
+  return result;
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   const authResult = authorizeCronRequest(request);
   if (!authResult.authorized) {
@@ -114,7 +202,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   // environment. A missing one must not stop staff being warned, so it downgrades
   // to sending without a copy to the manager and is reported in the response.
   const managerEmailResult = await resolveRotaManagerEmail(supabase);
-  const managerCc = 'email' in managerEmailResult ? [managerEmailResult.email] : [];
+  const managerEmail = 'email' in managerEmailResult ? managerEmailResult.email : null;
   const managerEmailError = 'error' in managerEmailResult ? managerEmailResult.error : null;
 
   const { data: shifts, error: shiftsError } = await supabase
@@ -173,6 +261,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   let warningSent = 0;
+  const managerWarnings: Array<{ input: ManagerReportInput; shiftId: string }> = [];
   let warningFailed = 0;
   let warningSkipped = 0;
 
@@ -184,20 +273,39 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     const subject = 'Please accept or reject your upcoming shifts';
+    const html = buildShiftAutoAcceptWarningEmailHtml(
+      employeeName(employee),
+      employeeShifts.map(toEmailSummary),
+    );
+    if (managerEmail) {
+      for (const shift of employeeShifts) {
+        managerWarnings.push({ shiftId: shift.id, input: {
+          section: 'staff_shift_reminders',
+          key: `${employeeId}:${shift.id}`,
+          to: managerEmail,
+          subject: `Shift acceptance reminder: ${employeeName(employee)}`,
+          html: buildShiftAutoAcceptWarningEmailHtml(employeeName(employee), [toEmailSummary(shift)]),
+          metadata: {
+            employee_id: employeeId,
+            shift_ids: [shift.id],
+            source_recorded_at: now.toISOString(),
+            summary: `${employeeName(employee)}: reminder generated ${formatDateInLondon(now)} for ${formatDateInLondon(shift.shift_date)}, ${shift.start_time}`,
+          },
+        } });
+      }
+      // A shared manager mailbox receives this cohort through the report only.
+      if (employee.email_address.trim().toLowerCase() === managerEmail.trim().toLowerCase()) continue;
+    }
     const emailResult = await sendEmail({
       to: employee.email_address,
-      ...(managerCc.length > 0 ? { cc: managerCc } : {}),
       subject,
-      html: buildShiftAutoAcceptWarningEmailHtml(
-        employeeName(employee),
-        employeeShifts.map(toEmailSummary),
-      ),
+      html,
     });
 
     await logWarningEmail(supabase, {
       shiftId: employeeShifts[0]!.id,
       to: employee.email_address,
-      cc: managerCc,
+      cc: [],
       subject,
       status: emailResult.success ? 'sent' : 'failed',
       error: emailResult.success ? null : emailResult.error ?? null,
@@ -221,6 +329,16 @@ export async function GET(request: Request): Promise<NextResponse> {
     } else {
       warningFailed += 1;
     }
+  }
+
+  // Run manager collection after immediate staff sends. Collection or storage failure
+  // cannot suppress a staff warning, and previous failures retry outside the pending-shift scan.
+  let managerCollection = { queued: 0, failed: 0, retryStorageErrors: 0 };
+  try {
+    managerCollection = await collectManagerWarnings(supabase, managerWarnings);
+  } catch (error) {
+    managerCollection.retryStorageErrors += 1;
+    console.error('[rota] Manager warning collection failed:', error instanceof Error ? error.message : 'Unknown error');
   }
 
   const acceptedAt = now.toISOString();
@@ -339,9 +457,12 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   return NextResponse.json(
     {
-      ok: autoAcceptDesynced === 0,
+      ok: autoAcceptDesynced === 0 && managerCollection.retryStorageErrors === 0,
       pendingChecked: pendingShifts.length,
       warningEmailsSent: warningSent,
+      managerCopiesQueued: managerCollection.queued,
+      managerCopiesFailed: managerCollection.failed,
+      managerRetryStorageErrors: managerCollection.retryStorageErrors,
       warningEmailsFailed: warningFailed,
       warningShiftsSkippedNoEmail: warningSkipped,
       autoAccepted,
@@ -352,8 +473,8 @@ export async function GET(request: Request): Promise<NextResponse> {
       managerEmailError,
       employeeLookupError: employeesError?.message ?? null,
     },
-    // Drift between the snapshot and the live rota cannot be repaired by running
-    // again, so it has to fail loudly rather than sit in a 200 nobody reads.
-    { status: autoAcceptDesynced > 0 ? 500 : 200 },
+    // Drift or an unavailable retry ledger needs a visible operational failure. Staff
+    // deliveries have already completed and their warning timestamps prevent resends.
+    { status: autoAcceptDesynced > 0 || managerCollection.retryStorageErrors > 0 ? 500 : 200 },
   );
 }

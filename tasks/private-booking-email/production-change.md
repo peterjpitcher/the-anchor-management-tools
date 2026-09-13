@@ -1,6 +1,6 @@
 # Private booking email fix
 
-Status: live and verified. Production migration applied; application deployment Ready.
+Status: production migration applied and verified. Application deployment pending.
 
 ## Exact target and change
 
@@ -122,19 +122,3 @@ Lint and uncached types pass. Both London and UTC: 783 files passed, 7,065 tests
 passed, two skipped. The isolated database regression passes after migration rename.
 Production's recorded SQL MD5 and the local file both equal
 `04102721276f1bca7736ed53ccdffc06`. Clean production build passed on Node 20.19.5 with an 8 GiB heap.
-
-## Final production verification
-
-Commit `aa42f2b44f2dde449f9821a7f13ad2ea49d41851` is on main.
-Deployment `dpl_H14gNQxhWjZQPhiKKRywwuoXxsPK` is Ready and serves
-https://management.orangejelly.co.uk. Vercel deployment metadata matches the exact commit.
-The signed-in New Private Booking form loads after reloading on the new deployment.
-No runtime error logs were returned for that deployment. Browser console entries
-were older message-channel errors from before this deployment, with no new error
-after the reload.
-
-The owner tested the real booking and confirmed success. A read-only query confirms
-exactly one matching booking exists with the apostrophe email unchanged and deposit
-waiver preserved. The assistant created no business booking or customer message.
-The temporary release worktree and branch have been removed. Unrelated local edits
-remain untouched. This final verification addendum is a local completion record.

@@ -1,9 +1,15 @@
 'use client'
 
+import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Badge, Button, ConfirmDialog, Input, Modal, Textarea } from '@/ds'
+import { Badge, Button, ConfirmDialog, Input, Modal, Radio, Textarea } from '@/ds'
+import {
+  STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT,
+  defaultStaffMessageChannel,
+  type StaffMessageChannel,
+} from '@/lib/messaging/staff-email-defaults'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import { RefundDialog } from '@/components/features/invoices/RefundDialog'
 import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
@@ -17,6 +23,24 @@ import {
   getTableBookingVisualState,
 } from '@/lib/table-bookings/ui'
 import { requestTableBookingAction } from '@/lib/table-bookings/client-actions'
+import {
+  describeGuestNotificationChannel,
+  describeGuestNotificationProblem,
+  readGuestNotificationOutcome,
+} from '@/lib/table-bookings/guest-notification-outcome'
+
+/**
+ * Staff must know when a guest was not told their booking was cancelled. Only the email-first
+ * path (messaging flag table_cancelled_email_first) reports this; without it there is nothing to
+ * show, as before.
+ */
+function warnIfCancellationNotReached(payload: unknown): void {
+  const outcome = readGuestNotificationOutcome(
+    payload && typeof payload === 'object' ? (payload as Record<string, unknown>).guest_notification : null
+  )
+  const problem = describeGuestNotificationProblem(outcome, 'about the cancellation')
+  if (problem) toast.error(problem, { duration: 10000 })
+}
 
 const londonDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   dateStyle: 'medium',
@@ -341,6 +365,11 @@ interface Props {
   canRefund: boolean
   /** The seasonal pre-order block, rendered on the server and slotted in. Null when the booking has none. */
   seasonalPreorder?: ReactNode
+  /**
+   * P7: whether the guest message card may send an email (flag staff_message_email_option), and
+   * whether this guest has a usable address, which makes email the default.
+   */
+  emailOption?: { enabled: boolean; usable: boolean }
 }
 
 type MoveTableOption = {
@@ -374,7 +403,7 @@ type BookingEditState = {
 
 type PreorderEditState = Record<string, { quantity: string; special_requests: string }>
 
-export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, seasonalPreorder }: Props) {
+export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, seasonalPreorder, emailOption }: Props) {
   const router = useRouter()
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   const [moveTableId, setMoveTableId] = useState<string>('')
@@ -384,6 +413,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
+  const [christmasCourseCounts, setChristmasCourseCounts] = useState<number[] | undefined>(undefined)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditSendSms, setPartySizeEditSendSms] = useState(true)
   const [partySizeMoveTableId, setPartySizeMoveTableId] = useState('')
@@ -392,6 +422,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   const [preorderEditOpen, setPreorderEditOpen] = useState(false)
   const [preorderEdit, setPreorderEdit] = useState<PreorderEditState>({})
   const [smsBody, setSmsBody] = useState('')
+  const [messageChannel, setMessageChannel] = useState<StaffMessageChannel>(() => defaultStaffMessageChannel(emailOption))
+  const [emailSubject, setEmailSubject] = useState(STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT)
   const [showRefundDialog, setShowRefundDialog] = useState(false)
   const [refundTotals, setRefundTotals] = useState({ totalRefunded: 0, totalPending: 0 })
 
@@ -550,9 +582,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     await runAction(
       `status:${action}`,
       async () => {
-        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/status`, {
+        const payload = await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/status`, {
           body: { action },
         })
+        warnIfCancellationNotReached(payload)
       },
       'Booking updated'
     )
@@ -711,10 +744,12 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           depositUrl?: string | null
           smsSent?: boolean
           warning?: string | null
+          depositNotification?: unknown
           data?: { auto_moved_table_name?: string | null }
         }>(`/api/boh/table-bookings/${booking.id}/party-size`, {
           body: {
             party_size: nextSize,
+            christmas_course_counts: christmasCourseCounts,
             send_sms: partySizeEditSendSms,
             ...(selectedMoveTable
               ? {
@@ -727,6 +762,15 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         })
         setPartySizeEditOpen(false)
         setPartySizeMoveTableId('')
+        // Email-first path only (flag table_party_size_deposit_email_first): if the link reached
+        // nobody, staff must send it themselves.
+        const depositProblem = describeGuestNotificationProblem(
+          readGuestNotificationOutcome(payload.depositNotification),
+          'about the deposit'
+        )
+        if (depositProblem) {
+          toast.error(`${depositProblem} Copy the deposit link from this booking to send it.`, { duration: 10000 })
+        }
         return payload
       },
       (payload) => {
@@ -736,6 +780,13 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           return `${prefix}${payload.warning}`
         }
         if (payload.depositRequired) {
+          const notification = readGuestNotificationOutcome(payload.depositNotification)
+          if (notification) {
+            const channel = describeGuestNotificationChannel(notification)
+            return channel
+              ? `${prefix}Party size updated. Deposit link sent ${channel}.`
+              : `${prefix}Party size updated. Deposit link created.`
+          }
           return payload.smsSent
             ? `${prefix}Party size updated. Deposit link sent by SMS.`
             : `${prefix}Party size updated. Deposit link created.`
@@ -764,9 +815,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     await runAction(
       'delete',
       async () => {
-        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}`, {
+        const payload = await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}`, {
           method: 'DELETE',
         })
+        warnIfCancellationNotReached(payload)
         router.push('/table-bookings/boh')
       },
       'Booking deleted'
@@ -790,6 +842,27 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       'SMS sent to guest'
     )
   }
+
+  async function handleSendEmail() {
+    const trimmed = smsBody.trim()
+    const subject = emailSubject.trim()
+    if (!trimmed || !subject) {
+      toast.error('Enter a subject and a message before sending')
+      return
+    }
+    await runAction(
+      'send-sms',
+      async () => {
+        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/email`, {
+          body: { subject, message: trimmed },
+        })
+        setSmsBody('')
+      },
+      'Email sent to guest'
+    )
+  }
+
+  const emailChosen = Boolean(emailOption?.enabled) && messageChannel === 'email'
 
   useEffect(() => {
     let cancelled = false
@@ -1204,27 +1277,57 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             </div>
           </SectionCard>
 
-          <SectionCard title="Send SMS">
+          <SectionCard title={emailOption?.enabled ? 'Message guest' : 'Send SMS'}>
             {canEdit ? (
               <div className="space-y-3">
+                {emailOption?.enabled && (
+                  <fieldset className="space-y-2">
+                    <legend className="sr-only">Send by</legend>
+                    <Radio
+                      name="guest-message-channel"
+                      value="email"
+                      label="Email"
+                      description={emailOption.usable ? undefined : 'No usable email address on file for this guest.'}
+                      checked={messageChannel === 'email'}
+                      onChange={() => setMessageChannel('email')}
+                      disabled={!emailOption.usable || Boolean(actionLoadingKey)}
+                    />
+                    <Radio
+                      name="guest-message-channel"
+                      value="sms"
+                      label="Text"
+                      checked={messageChannel === 'sms'}
+                      onChange={() => setMessageChannel('sms')}
+                      disabled={Boolean(actionLoadingKey)}
+                    />
+                  </fieldset>
+                )}
+                {emailChosen && (
+                  <Input
+                    label="Subject"
+                    value={emailSubject}
+                    maxLength={200}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                  />
+                )}
                 <textarea
                   value={smsBody}
                   onChange={(e) => setSmsBody(e.target.value)}
                   rows={5}
-                  maxLength={640}
+                  maxLength={emailChosen ? 2000 : 640}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
                   placeholder="Type message..."
                 />
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">{smsBody.length}/640</p>
+                  <p className="text-xs text-gray-500">{smsBody.length}/{emailChosen ? 2000 : 640}</p>
                   <Button
                     size="sm"
                     variant="secondary"
                     loading={actionLoadingKey === 'send-sms'}
                     disabled={Boolean(actionLoadingKey)}
-                    onClick={() => void handleSendSms()}
+                    onClick={() => void (emailChosen ? handleSendEmail() : handleSendSms())}
                   >
-                    Send SMS
+                    {emailChosen ? 'Send email' : 'Send SMS'}
                   </Button>
                 </div>
               </div>
@@ -1537,6 +1640,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
             />
           </div>
+          <ChristmasCourseFields bookingId={booking.id} partySize={Number(partySizeEditValue)} onChange={setChristmasCourseCounts} />
           {partySizeNeedsLargerTable && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
               <p className="text-sm text-amber-900">
@@ -1577,7 +1681,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               onChange={(event) => setPartySizeEditSendSms(event.target.checked)}
               className="rounded border-gray-300 text-green-600 focus:ring-green-500"
             />
-            Notify guest by SMS
+            {/* The request goes by text, or by email first when table_party_size_deposit_email_first is on. */}
+            Notify guest
           </label>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" size="sm" onClick={() => setPartySizeEditOpen(false)}>

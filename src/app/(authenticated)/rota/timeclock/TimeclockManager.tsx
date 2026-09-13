@@ -15,7 +15,8 @@ import { createTimeclockSession, updateTimeclockSession, deleteTimeclockSession,
 import type { SessionPremiumInput, TimeclockSessionWithEmployee } from '@/app/actions/timeclock';
 import type { RotaEmployee } from '@/app/actions/rota';
 import { Badge, Button, ConfirmDialog } from '@/ds';
-import { formatTime12Hour, parseLondonDateTimeLocalToIso } from '@/lib/dateUtils';
+import { formatTime12Hour } from '@/lib/dateUtils';
+import { resolvePremiumBoundaryIso } from '@/lib/timeclock/session-times';
 import { displayName } from '@/lib/employees/display-name';
 
 // Premium rate presets offered in the review UI. 'custom' captures a bespoke
@@ -193,20 +194,12 @@ export default function TimeclockManager({
 
   const cancelEdit = () => setEditingId(null);
 
-  // Build a UTC ISO instant from the session's work_date + a HH:MM local time,
-  // advancing a day when the time falls before clock-in (overnight window). The
-  // server re-clamps to the worked interval, so this only needs to land the
-  // window on the correct side of midnight.
-  const windowInstant = (workDate: string, clockInLocal: string, hhmm: string): string | null => {
-    if (!hhmm) return null;
-    const base = parseLondonDateTimeLocalToIso(`${workDate}T${hhmm}`);
-    if (!base) return null;
-    const inIso = parseLondonDateTimeLocalToIso(`${workDate}T${clockInLocal}`);
-    if (inIso && new Date(base).getTime() < new Date(inIso).getTime()) {
-      return new Date(new Date(base).getTime() + 24 * 60 * 60 * 1000).toISOString();
-    }
-    return base;
-  };
+  // Build a UTC ISO instant from the session's work_date + a HH:MM local time, moving to the
+  // next London date when the time falls before clock-in (overnight window). Found on the
+  // calendar rather than by adding 24 hours, which put the boundary an hour out on the nights
+  // the clocks change; the server's re-clamp cannot fix a boundary inside the worked interval.
+  const windowInstant = (workDate: string, clockInLocal: string, hhmm: string): string | null =>
+    resolvePremiumBoundaryIso(workDate, clockInLocal, hhmm);
 
   const buildPremiumInput = (s: TimeclockSessionWithEmployee): SessionPremiumInput => {
     if (editPremium === 'none') {

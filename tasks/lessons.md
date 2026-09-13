@@ -211,10 +211,88 @@ free-form customer copy, continue to use NGCI with the approved
 cross-contamination caveat. Never remove a venue capability based only on a
 wording distinction; verify it with the owner or an operational source first.
 
-## 2026-09-06: Check spacing between composed email blocks
+## 5 September 2026: dated event capacities
 
-A section intro directly below the masthead had zero top padding, while separate note and button blocks doubled the gaps below. Inspect the composed opening in the live preview, including block boundaries. Prefer an existing integrated text-and-button block when it provides the required spacing without changing shared renderers.
+Use the owner-confirmed dated capacities: 60 for the reviewed events, Halloween 150 and Tasting Night 25. Report-level genre examples are not live sellable-capacity instructions. Check the actual booking snapshot before reporting a configured limit.
 
-## 2026-09-10: Keep ordinary event reservations simple
+## 7 September 2026: a click that races an auto-selection effect looks like a slow CI runner
 
-Paid ticket improvements must not add attendee forms to ordinary free or pay-on-arrival events. Require per-person details for online-paid tickets, or when the organiser explicitly adds guest questions. Keep free entry the quick default in event setup.
+**Mistake:** `MessagesClientResponsive.test.tsx` clicked a conversation row as soon
+as `findByRole('option')` resolved. On a loaded GitHub runner the click landed
+before React had flushed the pending passive effect that auto-selects the first
+unread row, so the synchronous router mock recorded `push(customer-2)` and then
+`replace(customer-1)`. Selection ended back on the customer whose response the test
+holds open, the `role="log"` pane never rendered, and the failure read as
+`Unable to find role="log"`, which looks like a timeout rather than a race.
+
+**Rule:** In these component tests, wait for the component's own auto-selection to
+land (for example `waitFor(() => expect(loader).toHaveBeenCalledWith(id, undefined))`)
+before firing a click that changes that selection. Getting there by raising a
+`waitFor` timeout hides the race and leaves the test asserting nothing. Anchor any
+assertion about an async pane with `findBy*`, never a bare `getBy*` after an await,
+and scope a "this control is absent" assertion inside the container that has to be
+open, or it passes because the container had not rendered yet.
+
+## 8 September 2026: a true sentence that reads as a lie
+
+**Mistake:** The October round-up said "We are open from midday every day except Monday".
+Every fact in it is right. The bar opens at midday Tuesday to Sunday, and Monday is the
+exception. But the exception attaches to "open" rather than to "from midday", so it reads
+as "we are shut on Mondays", and we are not: we open at 4pm. The owner caught it in the
+draft. I had checked the hours against `business_hours` and the times were correct, so no
+amount of fact-checking would have found it.
+
+**Rule:** Fact-checking copy is not the same as reading it. Before any customer-facing
+sentence ships, read it once for what a hurried reader will take from it, not only for
+whether each clause is true. Two shapes to watch for, both now enforced by
+`findVenueClosureClaims` in `src/lib/email/marketing/`:
+
+- Never hang an exception off a day. Say what the day IS: "from midday Tuesday to Sunday
+  and from 4pm on Mondays".
+- Do not paraphrase in prose what a table two blocks below already states. The hours block
+  was in the same email, and it was right.
+
+The guard warns in the campaign UI and refuses at `scheduleCampaign`, deliberately not in
+`validateMarketingContent`: that runs again before every send against deployed code, so a
+rule added today would be able to kill a campaign approved last month.
+
+## 9 September 2026: true, accurate, and entirely about us
+
+**Mistake:** The December round-up opened with "Three nights out before Christmas, the
+last of the Christmas sittings, and then the quiet stretch between the years when the bar
+is open and the kitchen has earned a rest." The owner rejected it. Every fact in it is
+right and I had checked every one. The problem is that it is a stock-take: our nights, our
+sittings, our kitchen's rest. A reader gets nothing to feel and no reason to come in.
+
+His example of what it should be: "December is finally here, which means we can officially
+stop pretending it's too early to get excited about Christmas. The lights are twinkling,
+the festive drinks are flowing and there's something about this time of year that makes
+even an ordinary evening feel a little more special."
+
+**Rule:** Accuracy is the floor, not the goal. Marketing copy has a second job after being
+true, which is to make someone want to be there, and I keep shipping the first without the
+second because the first is the one I can verify. Before any customer-facing paragraph
+ships, check it describes something the reader will feel rather than something we will do,
+and that there is a picture in it. If a sentence is a list of operational facts, it belongs
+in a table; the prose beside the table is where the warmth goes. The facts themselves are
+never warmed: times, prices and hours stay exactly as the records have them.
+
+## 12 September 2026: a piped build reports the pipe's exit code, not the build's
+
+**Mistake:** I gated the guest email work with `npm run build 2>&1 | tail -12; echo "EXIT: $?"`
+and read the resulting `EXIT: 0` as a passing build. `$?` after a pipeline is the exit status of
+the last command in it, which was `tail`, and `tail` always succeeds. The build had actually died
+with `FATAL ERROR: Ineffective mark-compacts near heap limit` during the type-check phase, and the
+only sign of it was a V8 stack trace above my own "EXIT: 0" line. I nearly pushed on that.
+
+**Rule:** Never read `$?` through a pipe. Capture the command's own status first
+(`npm run build > log 2>&1; echo "EXIT=$?"`), or use `set -o pipefail`, and grep the log for
+`FATAL`, `Failed to compile` and `signal: SIG` rather than trusting a number. A gate that cannot
+fail is not a gate.
+
+**The real finding underneath it:** a cold `next build` of this app no longer fits in Node's
+default heap on this machine (4192 MB), and it OOMs in "Linting and checking validity of types".
+`NODE_OPTIONS="--max-old-space-size=8192" npm run build` passes: compiled in 31s, 155/155 static
+pages, 427 routes, exit 0. Use that locally. Deliberately NOT added to the `build` script, because
+that script also runs on Vercel, where asking for an 8 GB heap inside an 8 GB container invites the
+container to kill the build instead. Vercel's own production builds are passing as they are.

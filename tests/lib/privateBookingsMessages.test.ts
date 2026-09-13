@@ -34,7 +34,7 @@ describe('privateBookingCreatedMessage', () => {
       holdExpiry: '19 April 2026',
     })
     expect(body).toBe(
-      "Hi Sarah — your date at The Anchor on 12 May 2026 is penciled in. £150 deposit secures it by 19 April 2026. We'll be in touch with next steps."
+      "Hi Sarah, your date at The Anchor on 12 May 2026 is penciled in. £150 deposit secures it by 19 April 2026. We'll be in touch with next steps."
     )
   })
 
@@ -45,7 +45,7 @@ describe('privateBookingCreatedMessage', () => {
       depositAmount: 150,
       holdExpiry: '19 April 2026',
     })
-    expect(body.startsWith('Hi there —')).toBe(true)
+    expect(body.startsWith('Hi there,')).toBe(true)
   })
 
   it('sanitises newlines from first name', () => {
@@ -68,7 +68,7 @@ describe('bookingCancelledRefundableMessage', () => {
       refundAmount: 150,
     })
     expect(body).toBe(
-      "Hi Sarah — your booking on 12 May 2026 is cancelled. We'll refund £150 within 10 working days and confirm once it's on the way."
+      "Hi Sarah, your booking on 12 May 2026 is cancelled. We'll refund £150 within 10 working days and confirm once it's on the way."
     )
   })
 })

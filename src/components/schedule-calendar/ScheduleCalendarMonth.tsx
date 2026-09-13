@@ -4,11 +4,13 @@ import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, isToday, format } from 'date-fns'
 import { cn } from '@/lib/utils'
-import type { CalendarEntry } from './types'
+import type { CalendarEntry, ScheduleDailyOps } from './types'
 import { compareEntries } from './sort'
 import { CONTENT_GAP_LABELS, entryGaps } from './filters'
 import { calendarColourNeedsLightText } from './appearance'
 import { CalendarKindBadge } from './CalendarKindBadge'
+import { CalendarEntryTooltip } from './CalendarEntryTooltip'
+import { entryTooltipText } from './tooltip-text'
 
 export interface ScheduleCalendarMonthProps {
     entries: CalendarEntry[]
@@ -17,6 +19,19 @@ export interface ScheduleCalendarMonthProps {
     onEntryClick?: (entry: CalendarEntry) => void
     onEmptyDayClick?: (date: Date) => void
     renderTooltip?: (entry: CalendarEntry) => ReactNode
+    /**
+     * Covers booked and who is working. Previously reached the list view only,
+     * so it was invisible on desktop, which is where the week actually gets
+     * planned.
+     */
+    dailyOps?: ScheduleDailyOps
+    /**
+     * Unfiltered entries, used only to decide whether the venue or kitchen is
+     * shut. Filters control which ENTRIES are listed; they must not change an
+     * operational fact about the day. Filtering to "no brief" should not make a
+     * closed day look open.
+     */
+    closureEntries?: CalendarEntry[]
 }
 
 export function ScheduleCalendarMonth({
@@ -26,6 +41,8 @@ export function ScheduleCalendarMonth({
     onEntryClick,
     onEmptyDayClick,
     renderTooltip,
+    dailyOps,
+    closureEntries,
 }: ScheduleCalendarMonthProps) {
     const weeks = useMemo(() => {
         const monthStart = startOfMonth(anchor)
@@ -114,30 +131,50 @@ export function ScheduleCalendarMonth({
                                 {bands.map(({ entry, startCol, span }) => {
                                     const isCancelled = entry.status === 'cancelled'
                                     const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
-                                    return (
-                                        <div
-                                            key={entry.id}
-                                            className={cn(
-                                                'flex items-center gap-1 rounded-sm border px-2 py-1 text-xs font-medium whitespace-normal break-words',
-                                                isCancelled && 'line-through'
-                                            )}
-                                            style={{
-                                                borderColor: isCancelled ? '#111827' : entry.color,
-                                                backgroundColor: isCancelled ? '#FFFFFF' : entry.color,
-                                                color: lightText ? '#FFFFFF' : '#111827',
-                                                marginLeft: `${(startCol / 7) * 100}%`,
-                                                width: `${(span / 7) * 100}%`,
-                                            }}
-                                            data-entry-kind={entry.kind}
-                                            data-entry-title
-                                            title={
-                                                renderTooltip
-                                                    ? undefined
-                                                    : entry.title
-                                            }
-                                        >
+                                    const bandStyle = {
+                                        borderColor: isCancelled ? '#111827' : entry.color,
+                                        backgroundColor: isCancelled ? '#FFFFFF' : entry.color,
+                                        color: lightText ? '#FFFFFF' : '#111827',
+                                        marginLeft: `${(startCol / 7) * 100}%`,
+                                        width: `${(span / 7) * 100}%`,
+                                    }
+                                    const bandClass = cn(
+                                        'flex items-center gap-1 rounded-sm border px-2 py-1 text-xs font-medium whitespace-normal break-words',
+                                        isCancelled && 'line-through',
+                                        onEntryClick && 'text-left hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-950 focus-visible:ring-offset-1'
+                                    )
+                                    const bandBody = (
+                                        <>
                                             <CalendarKindBadge kind={entry.kind} lightText={lightText} />
                                             <span>{entry.title}</span>
+                                        </>
+                                    )
+                                    // A multi-day entry renders ONLY as a band here, so leaving the
+                                    // band inert made a multi-day note unopenable in the month grid
+                                    // even once single-day notes could be clicked.
+                                    return onEntryClick ? (
+                                        <button
+                                            key={entry.id}
+                                            type="button"
+                                            onClick={() => onEntryClick(entry)}
+                                            className={bandClass}
+                                            style={bandStyle}
+                                            data-entry-kind={entry.kind}
+                                            data-entry-title
+                                            title={entryTooltipText(entry)}
+                                        >
+                                            {bandBody}
+                                        </button>
+                                    ) : (
+                                        <div
+                                            key={entry.id}
+                                            className={bandClass}
+                                            style={bandStyle}
+                                            data-entry-kind={entry.kind}
+                                            data-entry-title
+                                            title={entryTooltipText(entry)}
+                                        >
+                                            {bandBody}
                                         </div>
                                     )
                                 })}
@@ -148,6 +185,10 @@ export function ScheduleCalendarMonth({
                         {week.map((day, di) => {
                             const dayEntries = entriesForDay(day)
                             const inMonth = isSameMonth(day, anchor)
+                            const closure = closureForDay(day, closureEntries ?? entries)
+                            const iso = format(day, 'yyyy-MM-dd')
+                            const covers = dailyOps?.coversByDate[iso] ?? 0
+                            const staff = dailyOps?.staffByDate[iso] ?? []
                             return (
                                 <div
                                     key={day.toISOString()}
@@ -155,6 +196,10 @@ export function ScheduleCalendarMonth({
                                         'group bg-white p-1 flex flex-col gap-1 min-h-[80px]',
                                         di > 0 && 'border-l border-gray-200',
                                         !inMonth && 'bg-gray-50 text-gray-400',
+                                        // Being shut is a property of the DAY, not one more
+                                        // chip queued behind the events on it.
+                                        closure === 'closed' && 'bg-gray-200',
+                                        closure === 'kitchen' && 'bg-amber-50',
                                         onEmptyDayClick && 'cursor-pointer'
                                     )}
                                     onClick={
@@ -191,7 +236,27 @@ export function ScheduleCalendarMonth({
                                         >
                                             {format(day, 'd')}
                                         </button>
+                                        {/* Text as well as colour: a colour-only
+                                            treatment says nothing to a screen reader
+                                            or in high contrast. */}
+                                        {closure === 'closed' && (
+                                            <span className="rounded bg-gray-900 px-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                                                Closed
+                                            </span>
+                                        )}
+                                        {closure === 'kitchen' && (
+                                            <span className="rounded bg-amber-200 px-1 text-[10px] font-semibold uppercase tracking-wide text-amber-950">
+                                                No kitchen
+                                            </span>
+                                        )}
                                     </div>
+                                    {(covers > 0 || staff.length > 0) && (
+                                        <p className="text-[10px] leading-tight text-gray-500">
+                                            {covers > 0 && <span>{covers} cover{covers === 1 ? '' : 's'}</span>}
+                                            {covers > 0 && staff.length > 0 && <span aria-hidden> · </span>}
+                                            {staff.length > 0 && <span>{staff.join(', ')}</span>}
+                                        </p>
+                                    )}
                                     {dayEntries.map((entry) => (
                                         <EntryBlock
                                             key={entry.id}
@@ -208,7 +273,12 @@ export function ScheduleCalendarMonth({
                                                 ev.stopPropagation()
                                                 onEmptyDayClick(day)
                                             }}
-                                            className="mt-auto flex items-center gap-1 self-start rounded-sm px-1 py-0.5 text-[11px] text-text-muted opacity-0 transition-opacity hover:bg-surface-hover group-hover:opacity-100 focus-visible:opacity-100"
+                                            // Was opacity-0 + group-hover. Opacity does not remove an
+                                            // element from hit testing and touch never fires hover, so
+                                            // every day cell carried an invisible but tappable button.
+                                            // Now it is dimmed rather than hidden, and full strength on
+                                            // hover or focus.
+                                            className="mt-auto flex min-h-[24px] items-center gap-1 self-start rounded-sm px-1 py-0.5 text-[11px] text-text-muted opacity-40 transition-opacity hover:bg-surface-hover hover:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
                                         >
                                             <span aria-hidden="true">+</span> Note
                                         </button>
@@ -221,6 +291,22 @@ export function ScheduleCalendarMonth({
             })}
         </div>
     )
+}
+
+/**
+ * Whether the venue or just the kitchen is shut on a day, from the special-hours
+ * entries already on the calendar. Venue closure wins over kitchen closure.
+ */
+function closureForDay(day: Date, entries: CalendarEntry[]): 'closed' | 'kitchen' | null {
+    let kitchen = false
+    for (const entry of entries) {
+        if (entry.kind !== 'special_hours') continue
+        if (!isSameDay(entry.start, day)) continue
+        if (entry.tooltipData.kind !== 'special_hours') continue
+        if (entry.tooltipData.isClosed) return 'closed'
+        if (entry.tooltipData.isKitchenClosed) kitchen = true
+    }
+    return kitchen ? 'kitchen' : null
 }
 
 interface EntryBlockProps {
@@ -297,35 +383,44 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
         color: lightText ? '#FFFFFF' : '#111827',
     } as const
 
-    if (entry.onClickHref) {
-        return (
-            <a
-                href={entry.onClickHref}
-                onClick={(e) => {
-                    if (!onClick) return
-                    e.preventDefault()
-                    onClick(entry)
-                }}
-                className={sharedClass}
-                style={sharedStyle}
-                data-entry-kind={entry.kind}
-                title={renderTooltip ? undefined : entry.title}
-            >
-                {content}
-            </a>
-        )
-    }
+    const tooltipText = entryTooltipText(entry)
 
-    return (
+    const control = entry.onClickHref ? (
+        <a
+            href={entry.onClickHref}
+            onClick={(e) => {
+                if (!onClick) return
+                // Let the browser handle modifier clicks so "open in new tab"
+                // still works on a real link.
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+                e.preventDefault()
+                onClick(entry)
+            }}
+            className={sharedClass}
+            style={sharedStyle}
+            data-entry-kind={entry.kind}
+            title={tooltipText}
+        >
+            {content}
+        </a>
+    ) : (
         <button
             type="button"
             onClick={() => onClick?.(entry)}
             className={sharedClass}
             style={sharedStyle}
             data-entry-kind={entry.kind}
-            title={renderTooltip ? undefined : entry.title}
+            title={tooltipText}
         >
             {content}
         </button>
+    )
+
+    if (!renderTooltip) return control
+
+    return (
+        <CalendarEntryTooltip content={renderTooltip(entry)} text={tooltipText}>
+            {control}
+        </CalendarEntryTooltip>
     )
 }

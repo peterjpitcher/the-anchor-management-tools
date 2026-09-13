@@ -19,6 +19,7 @@ const {
   mapTableBookingBlockedReason,
   recordAnalyticsEvent,
   verifyTurnstileToken,
+  recordOneCourseInsideCutoff,
 } = vi.hoisted(() => ({
   saveSundayPreorderByBookingId: vi.fn().mockResolvedValue({ state: 'saved', item_count: 2, booking_id: 'bk1' }),
   ensureCustomerForPhone: vi.fn(),
@@ -32,6 +33,12 @@ const {
   mapTableBookingBlockedReason: vi.fn((reason?: string) => (reason as any) ?? null),
   recordAnalyticsEvent: vi.fn(),
   verifyTurnstileToken: vi.fn().mockResolvedValue({ success: true }),
+  recordOneCourseInsideCutoff: vi.fn().mockResolvedValue('not_needed'),
+}))
+
+vi.mock('@/lib/table-bookings/christmas-one-course', () => ({
+  recordOneCourseInsideCutoff,
+  oneCourseForEveryone: (partySize: number) => Array.from({ length: partySize }, () => 1),
 }))
 
 vi.mock('@/lib/rate-limit', () => ({
@@ -60,6 +67,7 @@ vi.mock('@/lib/api/auth', () => ({
 }))
 
 vi.mock('@/lib/api/idempotency', () => ({
+  lookupIdempotencyKey: vi.fn(),
   claimIdempotencyKey: vi.fn().mockResolvedValue({ state: 'claimed' }),
   computeIdempotencyRequestHash: vi.fn(() => 'hash'),
   getIdempotencyKey: vi.fn(() => 'idem-1'),
@@ -129,7 +137,7 @@ function buildSupabase() {
   const tableBookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
   const tableBookingsUpdate = vi.fn(() => ({ eq: tableBookingsUpdateEq }))
 
-  const rpc = vi.fn(async () => ({
+  const rpc = vi.fn(async (): Promise<{ data: Record<string, unknown> | null; error: { message: string } | null }> => ({
     data: {
       state: 'pending_payment',
       table_booking_id: BOOKING_ID,
@@ -171,6 +179,79 @@ describe('POST /api/table-bookings — structured persistence', () => {
     vi.clearAllMocks()
     ensureCustomerForPhone.mockResolvedValue({ customerId: 'cust-1' })
     saveSundayPreorderByBookingId.mockResolvedValue({ state: 'saved', item_count: 2, booking_id: BOOKING_ID })
+  })
+
+  it('routes explicit Christmas course choices through the atomic snapshot RPC', async () => {
+    const supabase = buildSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const response = await POST(buildRequest({
+      phone: '+447000000000', first_name: 'Fixture', last_name: 'Guest', date: '2026-12-05', time: '18:00',
+      party_size: 6, purpose: 'food', booking_period_id: DISH_ID, booking_period_answer: true,
+      christmas_course_counts: [1, 1, 1, 1, 1, 1],
+    }) as Parameters<typeof POST>[0])
+    expect(response.status).toBeLessThan(400)
+    expect(supabase.rpc).toHaveBeenCalledWith('create_table_booking_christmas_v01', expect.objectContaining({
+      p_course_counts: [1, 1, 1, 1, 1, 1],
+      p_request: expect.objectContaining({ customer_id: 'cust-1', party_size: 6 }),
+    }))
+  })
+
+  it('fails visibly if the course RPC cannot run, without silently using the legacy create path', async () => {
+    const supabase = buildSupabase()
+    supabase.rpc.mockResolvedValueOnce({ data: null, error: { message: 'Course capability unavailable' } })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const response = await POST(buildRequest({
+      phone: '+447000000000', first_name: 'Fixture', date: '2026-12-05', time: '18:00',
+      party_size: 6, purpose: 'food', booking_period_id: DISH_ID, booking_period_answer: true,
+      christmas_course_counts: [1, 1, 1, 1, 1, 1],
+    }) as Parameters<typeof POST>[0])
+    expect(response.status).toBe(500)
+    expect((await response.json()).error).toBeTruthy()
+    expect(supabase.rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('records a Christmas booking that arrives without courses as one course, and saves no dishes', async () => {
+    // An older client: today's form always sends a course for every guest.
+    recordOneCourseInsideCutoff.mockResolvedValueOnce('recorded')
+    const supabase = buildSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const response = await POST(buildRequest({
+      phone: '+447000000000', first_name: 'Fixture', date: '2026-12-05', time: '18:00',
+      party_size: 6, purpose: 'food', booking_period_id: DISH_ID, booking_period_answer: true,
+      preorder: [{ main_menu_item_id: DISH_ID_2 }],
+    }) as Parameters<typeof POST>[0])
+
+    expect(response.status).toBeLessThan(400)
+    expect(supabase.rpc).toHaveBeenCalledWith('create_table_booking_public_v06', expect.anything())
+    expect(recordOneCourseInsideCutoff).toHaveBeenCalledWith(supabase, {
+      id: BOOKING_ID,
+      bookingDate: '2026-12-05',
+      partySize: 6,
+    })
+    const body = await response.json()
+    expect(body.data.preorder).toMatchObject({ saved: false, saved_covers: 0 })
+    expect(body.data.preorder.error).toMatch(/deadline for this date has passed/)
+    // The confirmation is built from the in-memory booking, which must now say one course each.
+    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
+      supabase,
+      expect.objectContaining({
+        bookingResult: expect.objectContaining({
+          booking_period_requires_preorder: false,
+          christmas_course_counts: [1, 1, 1, 1, 1, 1],
+        }),
+      }),
+    )
+  })
+
+  it('never second-guesses a booking that arrived with its courses', async () => {
+    const supabase = buildSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    await POST(buildRequest({
+      phone: '+447000000000', first_name: 'Fixture', date: '2026-12-05', time: '18:00',
+      party_size: 6, purpose: 'food', booking_period_id: DISH_ID, booking_period_answer: true,
+      christmas_course_counts: [1, 1, 1, 1, 1, 1],
+    }) as Parameters<typeof POST>[0])
+    expect(recordOneCourseInsideCutoff).not.toHaveBeenCalled()
   })
 
   it('persists dietary_requirements and allergies arrays on the booking row', async () => {
@@ -291,5 +372,51 @@ describe('POST /api/table-bookings — structured persistence', () => {
 
     expect(response.status).toBeLessThan(500)
     expect(saveSundayPreorderByBookingId).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('fixture replay-only booking recovery', () => {
+  const fixtureId = '10000000-0000-4000-8000-000000000001'
+  async function recover(state: unknown, fields = {}, replayHeader = true) {
+    const { lookupIdempotencyKey } = await import('@/lib/api/idempotency')
+    vi.mocked(lookupIdempotencyKey).mockResolvedValue(state as Awaited<ReturnType<typeof lookupIdempotencyKey>>)
+    const request = buildRequest({ replay_request: { phone: '+447000000000', date: '2026-11-07', time: '12:00', party_size: 2, purpose: 'food', fixture_id: fixtureId, notes: `Nations Championship: [${fixtureId}]\nNear the screen`, ...fields } })
+    if (replayHeader) request.headers.set('X-Idempotency-Replay-Only', 'true')
+    const supabase = buildSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const response = await POST(request as Parameters<typeof POST>[0])
+    const { claimIdempotencyKey } = await import('@/lib/api/idempotency')
+    expect(claimIdempotencyKey).not.toHaveBeenCalled()
+    expect(ensureCustomerForPhone).not.toHaveBeenCalled()
+    expect(supabase.rpc).not.toHaveBeenCalled()
+    expect(supabase.from).not.toHaveBeenCalled()
+    return response
+  }
+  beforeEach(() => { vi.clearAllMocks() })
+  it('rejects the envelope as a normal creation request with zero writes', async () => {
+    expect((await recover({ state: 'new' }, {}, false)).status).toBe(400)
+  })
+  it('returns NOT_FOUND with zero claims or booking writes', async () => {
+    expect((await recover({ state: 'new' })).status).toBe(404)
+  })
+  it.each(['confirmed', 'pending_payment'])('returns stored %s response without creating', async state => {
+    const response = await recover({ state: 'replay', response: { success: true, data: { state, booking_reference: 'ORIGINAL' }, meta: { status_code: 201 } } })
+    expect(response.status).toBe(201)
+    expect(await response.json()).toMatchObject({ data: { state, booking_reference: 'ORIGINAL' } })
+  })
+  it('does not reclaim a processing request', async () => {
+    expect((await recover({ state: 'replay', response: { state: 'processing' } })).status).toBe(409)
+  })
+  it('does not disclose a different intent', async () => {
+    expect((await recover({ state: 'conflict' })).status).toBe(409)
+  })
+  it('requires an authenticated API key before replay', async () => {
+    const { getApiKeyAuthState } = await import('@/lib/api/auth')
+    vi.mocked(getApiKeyAuthState).mockResolvedValueOnce('anonymous')
+    expect((await recover({ state: 'replay', response: { data: { state: 'confirmed' } } })).status).toBe(401)
+  })
+  it('rejects notes belonging to another fixture', async () => {
+    expect((await recover({ state: 'new' }, { notes: 'Nations Championship: [10000000-0000-4000-8000-000000000002]' })).status).toBe(400)
   })
 })

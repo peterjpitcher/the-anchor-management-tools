@@ -11,6 +11,7 @@ import {
   type EventMarketingLinkPayload,
 } from '@/lib/event-marketing-links';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
+import { isEventPromoTemplateKey } from '@/lib/sms/promo-template-keys';
 import QRCode from 'qrcode';
 
 export interface EventMarketingLink {
@@ -159,9 +160,7 @@ function isMarketingMetadataMessage(message: SmsMessageRow): boolean {
     metadata?.marketing === true ||
     metadata?.bulk_sms === true ||
     templateKey === 'bulk_sms_campaign' ||
-    templateKey.startsWith('event_cross_promo_') ||
-    templateKey.startsWith('event_general_promo_') ||
-    templateKey.startsWith('event_reminder_promo_')
+    isEventPromoTemplateKey(templateKey)
   );
 }
 

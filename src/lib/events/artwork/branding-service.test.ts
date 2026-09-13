@@ -21,9 +21,11 @@ import {
   logoRectFree,
   qrRect,
   insetPx,
+  logoShadowSpec,
   type Corner,
   type Rect,
 } from './geometry'
+import { logoShadowPaddingPx } from './composite'
 import type { CompositeResult, CompositeSpec, LogoColour } from './composite'
 import { EVENT_IMAGE_VARIANTS, type EventImageVariant } from '@/lib/events/imageVariants'
 
@@ -42,6 +44,15 @@ const POSTER_LINK = {
   wasRepaired: false,
 }
 
+const TABLE_TALKER_LINK = {
+  ok: true as const,
+  shortLinkId: '77777777-6666-4555-8444-333322221111',
+  shortCode: 'tt3f1d9e',
+  shortUrl: 'https://l.the-anchor.pub/tt3f1d9e',
+  destinationUrl: 'https://www.the-anchor.pub/events/quiz-night',
+  wasRepaired: false,
+}
+
 // ---------------------------------------------------------------------------
 // Hoisted test state. `vi.mock` factories run before the module body, so
 // anything they close over has to come from `vi.hoisted`.
@@ -50,6 +61,8 @@ const POSTER_LINK = {
 const hoisted = vi.hoisted(() => ({
   client: null as unknown,
   posterLink: null as unknown,
+  /** Every channel the service asked for a print link on, in order. */
+  printLinkChannels: [] as string[],
   compositeOverride: null as
     | null
     | ((source: Buffer, spec: CompositeSpec) => Promise<CompositeResult>),
@@ -69,7 +82,10 @@ vi.mock('@/app/actions/audit', () => ({
 }))
 
 vi.mock('./poster-link', () => ({
-  resolvePosterLink: vi.fn(async () => hoisted.posterLink),
+  resolvePrintLink: vi.fn(async (_eventId: string, channel: string) => {
+    hoisted.printLinkChannels.push(channel)
+    return hoisted.posterLink
+  }),
 }))
 
 // The real compositor by default, so every placement claim below is proved by
@@ -309,6 +325,8 @@ const VARIANT_SIZES: Record<EventImageVariant, { width: number; height: number }
   // Deliberately NOT the nominal 2480x3508. Real posters in production sit
   // around here, because the upload path has only ever checked aspect ratio.
   print_poster: { width: 1055, height: 1491 },
+  // A DL panel well under the nominal 1169x2480, for the same reason.
+  table_talker: { width: 600, height: 1273 },
 }
 
 async function createImage(width: number, height: number, format: 'png' | 'jpeg' = 'png'): Promise<Buffer> {
@@ -355,16 +373,33 @@ async function changedBounds(
   return { count, minX, minY, maxX, maxY }
 }
 
-/** Every changed pixel sits inside this rect, allowing for anti-aliased edges. */
+/**
+ * Every changed pixel sits inside this rect, allowing for anti-aliased edges
+ * AND for the logo's drop shadow.
+ *
+ * The logo now carries a shadow in the opposite colour, so the painted area is
+ * legitimately larger than `logoRect`. The blur pads the shape on all four
+ * sides by `logoShadowPaddingPx`, and the offset then pushes it down and right.
+ * So the extra room needed is `pad + offset` on the bottom and right, and only
+ * whatever the blur reaches beyond the offset on the top and left.
+ *
+ * Widened rather than dropped: the assertion still proves the logo landed where
+ * geometry said and that nothing else was painted, which is the whole point of
+ * it. `composite.test.ts` proves the mark itself is pixel exact by separating it
+ * from its shadow by colour.
+ */
 function expectWithin(
   bounds: { count: number; minX: number; minY: number; maxX: number; maxY: number },
   rect: Rect
 ): void {
+  const spec = logoShadowSpec(rect, 'white')
+  const pad = logoShadowPaddingPx(spec)
+
   expect(bounds.count).toBeGreaterThan(0)
-  expect(bounds.minX).toBeGreaterThanOrEqual(rect.x - 1)
-  expect(bounds.minY).toBeGreaterThanOrEqual(rect.y - 1)
-  expect(bounds.maxX).toBeLessThanOrEqual(rect.x + rect.width)
-  expect(bounds.maxY).toBeLessThanOrEqual(rect.y + rect.height)
+  expect(bounds.minX).toBeGreaterThanOrEqual(rect.x - 1 - Math.max(0, pad - spec.offsetXPx))
+  expect(bounds.minY).toBeGreaterThanOrEqual(rect.y - 1 - Math.max(0, pad - spec.offsetYPx))
+  expect(bounds.maxX).toBeLessThanOrEqual(rect.x + rect.width + pad + spec.offsetXPx + 1)
+  expect(bounds.maxY).toBeLessThanOrEqual(rect.y + rect.height + pad + spec.offsetYPx + 1)
 }
 
 // ---------------------------------------------------------------------------
@@ -428,6 +463,7 @@ beforeEach(() => {
   db.events.set(OTHER_EVENT_ID, { id: OTHER_EVENT_ID })
   hoisted.client = db
   hoisted.posterLink = POSTER_LINK
+  hoisted.printLinkChannels = []
   hoisted.compositeOverride = null
   hoisted.permission = { ok: true, userId: USER_ID, supabase: db }
   hoisted.audits = []
@@ -437,8 +473,9 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('isPrintVariant', () => {
-  it('is true for the A4 poster and nothing else', () => {
+  it('is true for the two print sizes and nothing else', () => {
     expect(isPrintVariant('print_poster')).toBe(true)
+    expect(isPrintVariant('table_talker')).toBe(true)
     for (const variant of ['square', 'landscape', 'social', 'story'] as EventImageVariant[]) {
       expect(isPrintVariant(variant)).toBe(false)
     }
@@ -618,7 +655,7 @@ describe('the composite source is always the original', () => {
 })
 
 describe('placement', () => {
-  it('places a cornered logo on every one of the five variants', async () => {
+  it('places a cornered logo on every variant', async () => {
     for (const variant of Object.keys(VARIANT_SIZES) as EventImageVariant[]) {
       db = new FakeSupabase()
       db.events.set(EVENT_ID, { id: EVENT_ID })
@@ -702,8 +739,10 @@ describe('placement', () => {
     const logo = logoRect(1055, 1491, 'top_left', 0.22)
     const qr = qrRect(1055, 1491, 0.5, 0.8, 0.25)
     const bounds = await changedBounds(db.liveBytes('print_poster'))
-    expect(bounds.minX).toBeGreaterThanOrEqual(logo.x - 1)
-    expect(bounds.minY).toBeGreaterThanOrEqual(logo.y - 1)
+    const shadow = logoShadowSpec(logo, 'white')
+    const pad = logoShadowPaddingPx(shadow)
+    expect(bounds.minX).toBeGreaterThanOrEqual(logo.x - 1 - Math.max(0, pad - shadow.offsetXPx))
+    expect(bounds.minY).toBeGreaterThanOrEqual(logo.y - 1 - Math.max(0, pad - shadow.offsetYPx))
     expect(bounds.maxX).toBeLessThanOrEqual(Math.max(logo.x + logo.width, qr.x + qr.width))
     expect(bounds.maxY).toBeLessThanOrEqual(qr.y + qr.height)
     expect(qr.width).toBeGreaterThanOrEqual(Math.ceil((1055 * 40) / 210))
@@ -716,6 +755,55 @@ describe('placement', () => {
       wasRepaired: false,
     })
     expect(db.findRow(EVENT_ID, 'print_poster')?.qr_short_link_id).toBe(POSTER_LINK.shortLinkId)
+    // The poster's own channel, so its scans are reported as poster scans.
+    expect(hoisted.printLinkChannels).toEqual(['poster'])
+  })
+})
+
+describe('the table talker', () => {
+  it('carries its own tt QR, not the poster one', async () => {
+    hoisted.posterLink = TABLE_TALKER_LINK
+    await seedVariant('table_talker')
+
+    const result = expectOk(
+      await applyEventImageBranding({
+        eventId: EVENT_ID,
+        variant: 'table_talker',
+        logo: cornerLogo('top_left'),
+        qr: { centreXFrac: 0.5, centreYFrac: 0.85, widthFrac: 0.2 },
+        userId: USER_ID,
+      })
+    )
+
+    expect(hoisted.printLinkChannels).toEqual(['table_talker'])
+    expect(result.qr?.shortCode).toBe(TABLE_TALKER_LINK.shortCode)
+    expect(db.findRow(EVENT_ID, 'table_talker')?.qr_short_link_id).toBe(TABLE_TALKER_LINK.shortLinkId)
+    // Branding never resizes the panel.
+    expect(result.width).toBe(VARIANT_SIZES.table_talker.width)
+    expect(result.height).toBe(VARIANT_SIZES.table_talker.height)
+    expect(await dimensionsOf(db.liveBytes('table_talker'))).toEqual(VARIANT_SIZES.table_talker)
+  })
+
+  it('refuses a QR the poster would accept but that prints under 15mm on the panel', async () => {
+    hoisted.posterLink = TABLE_TALKER_LINK
+    await seedVariant('table_talker')
+
+    // 12% clears the poster's 10% floor, and is about 11mm on a 92mm panel.
+    const result = await applyEventImageBranding({
+      eventId: EVENT_ID,
+      variant: 'table_talker',
+      logo: cornerLogo('top_left'),
+      qr: { centreXFrac: 0.5, centreYFrac: 0.85, widthFrac: 0.12 },
+      userId: USER_ID,
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.code).toBe('placement_invalid')
+    expect(result.status).toBe(422)
+    expect(result.error).toContain('15mm print minimum')
+    expect(result.error).toContain('table talker')
+    expect(db.uploads.filter((path) => path.includes('/branded/'))).toHaveLength(0)
   })
 })
 
@@ -737,6 +825,7 @@ describe('refusals', () => {
     expect(result.status).toBe(422)
     expect(db.rpcCalls).toHaveLength(0)
     expect(db.uploads).toHaveLength(0)
+    expect(hoisted.printLinkChannels).toEqual([])
   })
 
   it('passes a blocked poster link straight through with its reason', async () => {
@@ -1072,6 +1161,22 @@ describe('POST /api/events/[id]/artwork/composite', () => {
     expect(revertedBody.originalStoragePath).toBeNull()
   })
 
+  it('saves a poster QR at exactly 10% through the HTTP route', async () => {
+    await seedVariant('print_poster')
+    const response = await POST(
+      request({
+        variant: 'print_poster',
+        logo: null,
+        qr: { centreXFrac: 0.5, centreYFrac: 0.5, widthFrac: 0.1 },
+      }) as never,
+      context()
+    )
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.success).toBe(true)
+    expect(body.placementSaved).toBe(true)
+  })
+
   it('rejects a malformed placement with a stable code', async () => {
     const tooWide = await POST(
       request({
@@ -1088,7 +1193,7 @@ describe('POST /api/events/[id]/artwork/composite', () => {
       request({
         variant: 'print_poster',
         logo: null,
-        qr: { centreXFrac: 0.5, centreYFrac: 0.5, widthFrac: 0.19 },
+        qr: { centreXFrac: 0.5, centreYFrac: 0.5, widthFrac: 0.09 },
       }) as never,
       context()
     )

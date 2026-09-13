@@ -35,6 +35,31 @@ describe('sms suspension helpers', () => {
     ).toBe('all_sms')
   })
 
+  it('treats SUSPEND_ALL_COMMS as the strongest switch, above SUSPEND_ALL_SMS', () => {
+    expect(
+      resolveSmsSuspensionReason({
+        suspendAllComms: 'true',
+        suspendAllSms: 'true',
+        suspendEventSms: 'true',
+        metadata: { event_id: 'abc' }
+      })
+    ).toBe('all_comms')
+
+    // Every message, not only event-scoped ones.
+    expect(
+      resolveSmsSuspensionReason({
+        suspendAllComms: '1',
+        metadata: { template_key: 'private_booking_balance_reminder' }
+      })
+    ).toBe('all_comms')
+  })
+
+  it('ignores SUSPEND_ALL_COMMS when it is unset or false', () => {
+    expect(resolveSmsSuspensionReason({ suspendAllComms: 'false' })).toBe(null)
+    expect(resolveSmsSuspensionReason({ suspendAllComms: undefined })).toBe(null)
+    expect(resolveSmsSuspensionReason({ suspendAllComms: '', suspendAllSms: 'true' })).toBe('all_sms')
+  })
+
   it('suspends only event messages when event suspension is enabled', () => {
     expect(
       resolveSmsSuspensionReason({

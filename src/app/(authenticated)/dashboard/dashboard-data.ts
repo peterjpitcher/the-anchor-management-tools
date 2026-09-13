@@ -7,6 +7,12 @@ import { PrivateBookingService } from '@/services/private-bookings'
 import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { displayName } from '@/lib/employees/display-name'
 import type { ScheduleDailyOps } from '@/components/schedule-calendar'
+import {
+  readBirthdays,
+  readMarketingSends,
+  readSpecialHours,
+  type CalendarMarketingSend,
+} from '@/lib/calendar/datasets'
 import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays, getISOWeek, setISOWeek } from 'date-fns'
 import {
   buildPrivateBookingBalanceDueSummaries,
@@ -22,6 +28,16 @@ type EventSummary = {
   price: number | null
   eventStatus: string | null
   bookedSeatsCount: number
+  /**
+   * Publishable-content readiness, derived server-side from the readiness
+   * columns. The columns themselves are deliberately NOT carried on this type:
+   * `brief` and `long_description` are large, and the calendar only needs the
+   * booleans. Without these the calendar cannot tell "not loaded" from "missing"
+   * and reports every event as needing artwork, a brief and a description.
+   */
+  hasImage: boolean
+  hasBrief: boolean
+  hasDescription: boolean
 }
 
 type CalendarNoteSummary = {
@@ -251,6 +267,13 @@ type RotaTodaySnapshot = {
   error?: string
 }
 
+type MarketingSnapshot = {
+  permitted: boolean
+  /** Campaign sends for the calendar. Empty when not permitted. */
+  calendarSends: CalendarMarketingSend[]
+  error?: string
+}
+
 type ProfileSnapshot = {
   permitted: boolean
   email: string | null
@@ -277,6 +300,7 @@ export type DashboardSnapshot = {
   tableBookings: TableBookingsSnapshot
   systemHealth: SystemHealthSnapshot
   rotaToday: RotaTodaySnapshot
+  marketing: MarketingSnapshot
   /** Per-day covers booked + staff on rota, for the schedule operational notes */
   dailyOps: ScheduleDailyOps
   /** B4: Total revenue from private bookings today (confirmed/completed) */
@@ -408,6 +432,10 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       totalUpcoming: 0,
     }
     const canViewCalendarNotes = events.permitted || hasModuleAccess(permissionsMap, 'settings')
+    // Exact action, not module-level access: this one guards money on screen.
+    const canViewPrivateBookingPricing =
+      (permissionsMap.get('private_bookings')?.has('view_pricing') ?? false) ||
+      (permissionsMap.get('private_bookings')?.has('manage') ?? false)
 
     const customers: CustomersSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'customers'),
@@ -523,6 +551,11 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
     const rotaToday: RotaTodaySnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'rota'),
       staffOnRota: [],
+    }
+
+    const marketing: MarketingSnapshot = {
+      permitted: hasModuleAccess(permissionsMap, 'marketing'),
+      calendarSends: [],
     }
 
     // Per-day covers + staff for the schedule operational notes. Populated in
@@ -772,7 +805,13 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
                   time,
                   capacity,
                   price,
-                  event_status
+                  event_status,
+                  brief,
+                  short_description,
+                  long_description,
+                  hero_image_url,
+                  poster_image_url,
+                  thumbnail_image_url
                 `,
                 { count: 'exact' }
               )
@@ -790,7 +829,13 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
                   time,
                   capacity,
                   price,
-                  event_status
+                  event_status,
+                  brief,
+                  short_description,
+                  long_description,
+                  hero_image_url,
+                  poster_image_url,
+                  thumbnail_image_url
                 `
               )
               .gte('date', eventsLookbackIso)
@@ -808,6 +853,11 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           // still show the correct count after the review cron transitions
           // bookings from `confirmed` to `visited_waiting_for_review`, then
           // `review_clicked` or `completed`.
+          // Statuses that occupy a seat. Kept in step with
+          // BOOKED_BOOKING_STATUSES in src/lib/events/stats.ts, which is what
+          // /events counts with; the two surfaces must not disagree about the
+          // same event. Reminder-only rows are excluded below for the same
+          // reason: stats.ts excludes them and the dashboard used not to.
           const BOOKED_STATUSES = [
             'confirmed',
             'visited_waiting_for_review',
@@ -823,13 +873,17 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           if (summaryEventIds.length > 0) {
             const { data: bookingRows, error: bookingRowsError } = await supabase
               .from('bookings')
-              .select('event_id, seats')
+              .select('event_id, seats, is_reminder_only')
               .in('event_id', summaryEventIds)
               .in('status', BOOKED_STATUSES)
 
             if (bookingRowsError) throw bookingRowsError
 
             for (const row of bookingRows ?? []) {
+              // A reminder-only booking holds no seat. /events has always
+              // excluded these; the dashboard counted them, so the same event
+              // showed two different "N booked" figures.
+              if ((row as { is_reminder_only?: boolean | null }).is_reminder_only === true) continue
               const eventId = row.event_id as string
               const seats = typeof row.seats === 'number' ? row.seats : Number(row.seats ?? 0)
               bookedSeatsByEvent.set(
@@ -839,6 +893,9 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             }
           }
 
+          const hasText = (value: unknown): boolean =>
+            typeof value === 'string' && value.trim().length > 0
+
           const toSummary = (event: {
             id: string
             name: string | null
@@ -847,6 +904,12 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             capacity: number | null
             price: number | null
             event_status?: string | null
+            brief?: string | null
+            short_description?: string | null
+            long_description?: string | null
+            hero_image_url?: string | null
+            poster_image_url?: string | null
+            thumbnail_image_url?: string | null
           }): EventSummary => {
             return {
               id: event.id as string,
@@ -857,6 +920,15 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               price: event.price ?? null,
               eventStatus: (event.event_status as string) ?? null,
               bookedSeatsCount: bookedSeatsByEvent.get(event.id as string) ?? 0,
+              // Derived here, not in the browser: the source columns are large
+              // and the calendar only ever needs the booleans.
+              hasImage:
+                hasText(event.hero_image_url) ||
+                hasText(event.poster_image_url) ||
+                hasText(event.thumbnail_image_url),
+              hasBrief: hasText(event.brief),
+              hasDescription:
+                hasText(event.short_description) || hasText(event.long_description),
             }
           }
 
@@ -889,17 +961,13 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .order('start_time', { ascending: true, nullsFirst: true })
               .order('title', { ascending: true })
               .range(0, 999),
-            supabase
-              .from('special_hours')
-              .select('id, date, opens, closes, is_closed, is_kitchen_closed, note')
-              .gte('date', eventsLookbackIso)
-              .lte('date', calendarNotesHorizonIso)
-              .order('date', { ascending: true })
-              .range(0, 999),
+            // Shared reader, so the dashboard and /events cannot drift apart on
+            // what an opening-hours change looks like.
+            readSpecialHours(supabase, eventsLookbackIso, calendarNotesHorizonIso),
           ])
 
           if (notesResult.error) throw notesResult.error
-          if (specialHoursResult.error) throw specialHoursResult.error
+          if (specialHoursResult.status === 'failed') throw new Error(specialHoursResult.message)
 
           events.calendarNotes = (notesResult.data ?? []).map((note) => ({
             id: String(note.id),
@@ -913,17 +981,27 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             color: typeof note.color === 'string' ? note.color : '#0EA5E9',
           }))
 
-          events.specialHours = (specialHoursResult.data ?? []).map((special) => ({
-            id: String(special.id),
-            date: String(special.date),
-            opens: typeof special.opens === 'string' ? special.opens : null,
-            closes: typeof special.closes === 'string' ? special.closes : null,
-            is_closed: Boolean(special.is_closed),
-            is_kitchen_closed: Boolean(special.is_kitchen_closed),
-            note: typeof special.note === 'string' ? special.note : null,
-          }))
+          events.specialHours = specialHoursResult.data
         } catch (error) {
           console.error('Failed to load dashboard calendar notes or special hours:', error)
+        }
+      })() : Promise.resolve(),
+
+      // Marketing sends for the calendar. Same shared reader as /events, and the
+      // same admin client it requires: marketing_campaigns is service-role only,
+      // so the `marketing` module check above is the gate.
+      marketing.permitted ? (async () => {
+        try {
+          const sendsResult = await readMarketingSends(
+            supabase,
+            eventsLookbackIso,
+            calendarNotesHorizonIso,
+          )
+          if (sendsResult.status === 'failed') throw new Error(sendsResult.message)
+          marketing.calendarSends = sendsResult.data
+        } catch (error) {
+          console.error('Failed to load dashboard marketing sends:', error)
+          marketing.error = 'Failed to load marketing sends'
         }
       })() : Promise.resolve(),
 
@@ -1087,7 +1165,13 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             return eventDate != null && eventDate < todayIso
           })
           privateBookings.past = pastRows.slice(-50).map(toPbSummary)
-          privateBookings.balanceDueDates = buildPrivateBookingBalanceDueSummaries(balanceDueRows, balancePayments)
+          // Balance markers show the AMOUNT as their subtitle, so they need
+          // pricing access, not just private-bookings access. The staff role
+          // holds view without view_pricing, and used to see private-hire totals
+          // on this calendar.
+          privateBookings.balanceDueDates = canViewPrivateBookingPricing
+            ? buildPrivateBookingBalanceDueSummaries(balanceDueRows, balancePayments)
+            : []
         } catch (error) {
           console.error('Failed to load dashboard private bookings:', error)
           privateBookings.error = 'Failed to load private bookings'
@@ -1324,29 +1408,14 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .from('employees')
               .select('employee_id', { count: 'exact', head: true })
               .in('status', ['Active', 'Started Separation']),
-            supabase
-              .from('employees')
-              .select('employee_id, first_name, last_name, preferred_name, job_title, date_of_birth')
-              .in('status', ['Active', 'Started Separation'])
-              .not('date_of_birth', 'is', null)
-              .order('first_name', { ascending: true })
-              .range(0, 999),
+            readBirthdays(supabase, eventsLookbackIso, calendarNotesHorizonIso),
           ])
 
           if (activeCountResult.error) throw activeCountResult.error
-          if (birthdaysResult.error) throw birthdaysResult.error
+          if (birthdaysResult.status === 'failed') throw new Error(birthdaysResult.message)
 
           employees.activeCount = activeCountResult.count ?? 0
-          employees.birthdays = (birthdaysResult.data ?? [])
-            .flatMap((employee) => getBirthdayOccurrencesInRange({
-              employee_id: String(employee.employee_id),
-              first_name: typeof employee.first_name === 'string' ? employee.first_name : null,
-              last_name: typeof employee.last_name === 'string' ? employee.last_name : null,
-              preferred_name: typeof employee.preferred_name === 'string' ? employee.preferred_name : null,
-              job_title: typeof employee.job_title === 'string' ? employee.job_title : null,
-              date_of_birth: typeof employee.date_of_birth === 'string' ? employee.date_of_birth : null,
-            }, eventsLookbackIso, calendarNotesHorizonIso))
-            .sort((a, b) => a.occurrence_date.localeCompare(b.occurrence_date) || a.employee_name.localeCompare(b.employee_name))
+          employees.birthdays = birthdaysResult.data
         } catch (error) {
           console.error('Failed to load dashboard employee metrics:', error)
           employees.error = 'Failed to load employee metrics'
@@ -1647,6 +1716,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       tableBookings,
       systemHealth,
       rotaToday,
+      marketing,
       dailyOps,
       revenueToday,
       bookingPipelineValue,

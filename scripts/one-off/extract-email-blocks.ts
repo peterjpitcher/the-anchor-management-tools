@@ -4,7 +4,11 @@
  * Two sources, two extraction strategies:
  *
  * 1. anchor-email-blocks.html carries explicit `<!-- BLOCK: name -->` markers, so those
- *    slices are found mechanically.
+ *    slices are found mechanically. anchor-email-blocks-additions.html carries the same
+ *    markers and is extracted the same way. Where a block name appears in both files the
+ *    additions file wins, because that is what "corrected" means: the September 2026
+ *    redraw of media_row and two_up_cards replaces the original, and leaving the older
+ *    slice on disk would let a stale fixture keep a fixed block passing.
  * 2. anchor-christmas-and-lunch.html has no markers. Its slices are hand-chosen line
  *    ranges (CAMPAIGN_SLICES below). A hand-chosen boundary can be wrong, so the script
  *    proves the ranges tile the file exactly: every byte of the source belongs to exactly
@@ -25,6 +29,7 @@ const OUT_DIR = join(REPO_ROOT, 'src', 'lib', 'email', 'marketing', 'blocks', '_
 
 const CAMPAIGN_FILE = join(HANDOVER_DIR, 'anchor-christmas-and-lunch.html')
 const BLOCKS_FILE = join(HANDOVER_DIR, 'anchor-email-blocks.html')
+const ADDITIONS_FILE = join(HANDOVER_DIR, 'anchor-email-blocks-additions.html')
 
 /**
  * Inclusive 1-indexed line ranges covering anchor-christmas-and-lunch.html.
@@ -117,6 +122,15 @@ function extractCampaign(source: string): ExtractedSlice[] {
  * notice bar for a rule, a deadline or a closure") into a real send. Splitting here keeps both
  * blocks usable without waiting on a re-export. The split is proven the same way as the
  * campaign slices: the two halves must reassemble into the original byte for byte.
+ *
+ * The note bar's outer cell also gains `class="gutter"` here, which is the ONE place this
+ * script changes the designer's markup rather than only slicing it. The October 2026 gutter
+ * pass covered every other left-aligned 32px cell in the library and missed this one, for the
+ * same reason the split exists: the block has no markers of its own, so from the designer's
+ * side it is invisible inside `pull_quote`. Their handover note asks us to apply the
+ * one-attribute change ourselves rather than wait for a re-export. Doing it here, next to the
+ * reassembly proof, keeps the handover file untouched and the divergence in one readable
+ * place. `pull_quote`'s own cell is centred at 34px 44px and correctly gets nothing.
  */
 function splitPullQuote(slice: ExtractedSlice): ExtractedSlice[] {
   const openTag = slice.html.slice(0, slice.html.indexOf('<tr'))
@@ -141,9 +155,26 @@ function splitPullQuote(slice: ExtractedSlice): ExtractedSlice[] {
 
   const rebuild = (rows: string) => `${openTag}${rows}${closeTag}`
 
+  // See the note above. Exactly one insertion, asserted, so a re-export that adds the class
+  // itself fails loudly here instead of silently producing it twice.
+  const NOTE_BAR_CELL = '<td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:24px 32px'
+  if (!noteRows.includes(NOTE_BAR_CELL)) {
+    throw new Error(
+      'The note bar outer cell is not the shape the gutter insertion expects. If the designer ' +
+        'has re-exported it with class="gutter" already, delete this insertion.',
+    )
+  }
+  const gutteredNoteRows = noteRows.replace(
+    NOTE_BAR_CELL,
+    '<td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:24px 32px',
+  )
+
+  const quote = rebuild(quoteRows)
+  const note = rebuild(gutteredNoteRows)
+
   return [
-    { ...slice, name: 'pull_quote', html: rebuild(quoteRows), sha256: sha256(rebuild(quoteRows)) },
-    { ...slice, name: 'note_bar', html: rebuild(noteRows), sha256: sha256(rebuild(noteRows)) },
+    { ...slice, name: 'pull_quote', html: quote, sha256: sha256(quote) },
+    { ...slice, name: 'note_bar', html: note, sha256: sha256(note) },
   ]
 }
 
@@ -186,12 +217,47 @@ function extractMarkedBlocks(source: string): ExtractedSlice[] {
   return slices
 }
 
+/**
+ * Merges the additions file over the main library, newest wins.
+ *
+ * The September 2026 additions file re-draws `media_row` and `two_up_cards`, so both files
+ * carry a slice under those names. Taking the addition and dropping the original is the
+ * whole point of a correction; keeping both would mean a fixture on disk that no module
+ * claims, and a corrected block could then be reverted without a single test noticing.
+ *
+ * Every override is announced, so a name colliding by accident rather than by intent is
+ * visible in the run output instead of silently swallowed.
+ */
+function mergeLibrary(base: ExtractedSlice[], additions: ExtractedSlice[]): ExtractedSlice[] {
+  const overridden = new Map(additions.map((slice) => [slice.name, slice]))
+  const merged: ExtractedSlice[] = []
+
+  for (const slice of base) {
+    const replacement = overridden.get(slice.name)
+    if (replacement) {
+      console.warn(`Corrected by the additions file: ${slice.name}`)
+      merged.push(replacement)
+      overridden.delete(slice.name)
+      continue
+    }
+    merged.push(slice)
+  }
+
+  // Whatever is left in the additions file is genuinely new rather than a correction.
+  for (const slice of additions) {
+    if (overridden.has(slice.name)) merged.push(slice)
+  }
+
+  return merged
+}
+
 function main(): void {
   const campaignSource = readFileSync(CAMPAIGN_FILE, 'utf8')
   const blocksSource = readFileSync(BLOCKS_FILE, 'utf8')
+  const additionsSource = readFileSync(ADDITIONS_FILE, 'utf8')
 
   const campaignSlices = extractCampaign(campaignSource)
-  const markedSlices = extractMarkedBlocks(blocksSource)
+  const markedSlices = mergeLibrary(extractMarkedBlocks(blocksSource), extractMarkedBlocks(additionsSource))
 
   mkdirSync(OUT_DIR, { recursive: true })
 
@@ -199,6 +265,10 @@ function main(): void {
     generatedFrom: {
       campaign: { file: 'docs/design/email-handover/anchor-christmas-and-lunch.html', sha256: sha256(campaignSource) },
       blocks: { file: 'docs/design/email-handover/anchor-email-blocks.html', sha256: sha256(blocksSource) },
+      additions: {
+        file: 'docs/design/email-handover/anchor-email-blocks-additions.html',
+        sha256: sha256(additionsSource),
+      },
     },
     campaign: campaignSlices.map(({ name, startOffset, endOffset, sha256: hash }) => ({
       name,
@@ -225,7 +295,7 @@ function main(): void {
   writeFileSync(join(OUT_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8')
 
   console.warn(`Campaign slices: ${campaignSlices.length} (tiling proof passed)`)
-  console.warn(`Library blocks:  ${markedSlices.length}`)
+  console.warn(`Library blocks:  ${markedSlices.length} (main library plus September 2026 additions)`)
   console.warn(`Written to ${OUT_DIR}`)
 }
 

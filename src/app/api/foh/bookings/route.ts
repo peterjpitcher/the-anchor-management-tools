@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { randomBytes } from 'crypto'
-import { fromZonedTime } from 'date-fns-tz'
 import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
+import { loadTradingHours, resolveTradingDayNow, serviceInstantFor } from '@/lib/business-hours/trading-day'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
+import { oneCourseForEveryone, recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logAuditEvent } from '@/app/actions/audit'
 import {
@@ -33,6 +34,7 @@ import {
   toStoredBookingPurpose,
 } from '@/lib/table-bookings/christmas'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
+import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import {
   FOH_BOOKING_CLIENT_HEADER,
   FOH_CLIENT_OUTDATED_CODE,
@@ -43,7 +45,13 @@ import {
   shouldSeatFohWalkIn,
   WALK_IN_TODAY_ONLY_MESSAGE,
 } from '@/lib/foh/walk-in'
-import { splitWalkInGuestName, createWalkInCustomer } from '@/lib/foh/walk-in-customer'
+import {
+  splitWalkInGuestName,
+  createWalkInCustomer,
+  startWalkInCustomerTrail,
+  finishWalkInCustomerTrail,
+  type WalkInCustomerTrail,
+} from '@/lib/foh/walk-in-customer'
 
 /** Booking purposes the FOH create endpoint accepts. */
 type FohBookingPurpose = 'food' | 'drinks' | 'christmas'
@@ -197,9 +205,14 @@ async function createManualWalkInBookingOverride(params: {
   }
 }): Promise<TableBookingRpcResult> {
   const bookingTime = params.payload.time.length === 5 ? `${params.payload.time}:00` : params.payload.time
-  const start = fromZonedTime(`${params.payload.date}T${bookingTime}`, 'Europe/London')
-  const startMs = start.getTime()
-  if (!Number.isFinite(startMs)) {
+  // The start within the date's trading day, not the date glued to the time: on a night that
+  // closes after midnight, 00:31 on 31 December's service is 00:31 on 1 January, as the booking
+  // functions' hours check already reads it. The booking keeps the service date. Throws when the
+  // hours cannot be read, rather than risk writing the booking a day early.
+  const serviceHours = (await loadTradingHours(params.supabase, [params.payload.date])).get(params.payload.date)
+  const start = serviceInstantFor(params.payload.date, bookingTime, serviceHours)
+  const startMs = start?.getTime() ?? Number.NaN
+  if (!start || !Number.isFinite(startMs)) {
     throw new Error('Invalid walk-in booking time')
   }
 
@@ -818,7 +831,34 @@ async function recordFohTableBookingAnalyticsSafe(
   }
 }
 
-export async function POST(request: NextRequest) {
+// PostgREST errors arrive as plain objects rather than Errors, so name their fields instead of
+// logging "Unknown error" (tasks/lessons.md, 2026-05-28).
+function describeDatabaseError(error: unknown): {
+  code: string | null
+  message: string | null
+  details: string | null
+  hint: string | null
+} {
+  const record = (error && typeof error === 'object' ? error : {}) as Record<string, unknown>
+  const field = (key: string) => (typeof record[key] === 'string' ? (record[key] as string) : null)
+  return { code: field('code'), message: field('message'), details: field('details'), hint: field('hint') }
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  // An anonymous walk-in gets a customer made up before its booking is attempted. The `finally`
+  // removes it again on any way out, a thrown error included, when no booking row came of it.
+  const walkInTrail = startWalkInCustomerTrail()
+  try {
+    return await createFohTableBooking(request, walkInTrail)
+  } finally {
+    await finishWalkInCustomerTrail(walkInTrail, 'POST /api/foh/bookings')
+  }
+}
+
+async function createFohTableBooking(
+  request: NextRequest,
+  walkInTrail: WalkInCustomerTrail,
+): Promise<NextResponse> {
   const auth = await requireFohPermission('edit')
   if (!auth.ok) {
     return auth.response
@@ -854,11 +894,15 @@ export async function POST(request: NextRequest) {
   }
 
   const payload = parsed.data
-  const todayIso = getLondonDateIso()
+  // A walk-in joins the service in force: the night before, from midnight until an
+  // after-midnight close. Only a walk-in needs the hours read to know it.
+  const serviceDateNow = payload.walk_in === true
+    ? (await resolveTradingDayNow(auth.supabase)).date
+    : getLondonDateIso()
   if (!isFohWalkInDateAllowed({
     walkIn: payload.walk_in === true,
     bookingDate: payload.date,
-    todayIso,
+    serviceDateNow,
   })) {
     return NextResponse.json({ error: WALK_IN_TODAY_ONLY_MESSAGE }, { status: 400 })
   }
@@ -866,7 +910,7 @@ export async function POST(request: NextRequest) {
   const shouldSeatNow = shouldSeatFohWalkIn({
     walkIn: payload.walk_in === true,
     bookingDate: payload.date,
-    todayIso,
+    serviceDateNow,
   })
 
   // Management override: verify caller is super_admin, then bypass all booking rules.
@@ -903,9 +947,19 @@ export async function POST(request: NextRequest) {
         }
       })
     } catch (mgmtError) {
+      // An override still meets the kitchen-hours guard, so tell the manager in its words.
+      const serviceWindowMessage = extractServiceWindowRuleErrorMessage(mgmtError)
+      if (serviceWindowMessage) {
+        return NextResponse.json({ error: serviceWindowMessage }, { status: 400 })
+      }
       logger.error('Management booking override failed', {
         error: mgmtError instanceof Error ? mgmtError : new Error('Unknown error'),
-        metadata: { userId: auth.userId, customerId: mgmtCustomerId, bookingDate: payload.date }
+        metadata: {
+          userId: auth.userId,
+          customerId: mgmtCustomerId,
+          bookingDate: payload.date,
+          ...describeDatabaseError(mgmtError),
+        }
       })
       return NextResponse.json({ error: 'Failed to create management booking' }, { status: 500 })
     }
@@ -1071,6 +1125,9 @@ export async function POST(request: NextRequest) {
       customerId = walkInCustomer.customerId
       normalizedPhone = walkInCustomer.syntheticPhone
       shouldSendBookingSms = false
+      walkInTrail.supabase = auth.supabase
+      walkInTrail.userId = auth.userId
+      walkInTrail.customer = walkInCustomer
     } catch (walkInError) {
       logger.error('Failed to create walk-in customer profile', {
         error: walkInError instanceof Error ? walkInError : new Error('Unknown walk-in customer error'),
@@ -1307,6 +1364,12 @@ export async function POST(request: NextRequest) {
       if (christmasRuleMessage) {
         return NextResponse.json({ error: christmasRuleMessage }, { status: 400 })
       }
+      // The kitchen is not serving at that time. The guard's own sentence says exactly that, so
+      // staff get it rather than a failure they cannot act on.
+      const serviceWindowMessage = extractServiceWindowRuleErrorMessage(rpcError)
+      if (serviceWindowMessage) {
+        return NextResponse.json({ error: serviceWindowMessage }, { status: 400 })
+      }
       logger.error('create_table_booking_staff_v06 RPC failed for FOH create', {
         error: new Error(rpcError.message),
         metadata: {
@@ -1355,6 +1418,11 @@ export async function POST(request: NextRequest) {
       shouldSendBookingSms = false
       holdExpiresAt = null
     } catch (walkInOverrideError) {
+      // The fallback's raw insert meets the same kitchen-hours guard as the booking function.
+      const serviceWindowMessage = extractServiceWindowRuleErrorMessage(walkInOverrideError)
+      if (serviceWindowMessage) {
+        return NextResponse.json({ error: serviceWindowMessage }, { status: 400 })
+      }
       const fallbackReason = bookingResult.reason || null
       logger.error('Manual walk-in booking override failed', {
         error:
@@ -1366,7 +1434,8 @@ export async function POST(request: NextRequest) {
           customerId,
           bookingDate: payload.date,
           bookingTime,
-          purpose: payload.purpose
+          purpose: payload.purpose,
+          ...describeDatabaseError(walkInOverrideError),
         }
       })
       return NextResponse.json(
@@ -1377,6 +1446,14 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
+  }
+
+  // From here a booking row exists and points at the customer, so a made-up walk-in customer
+  // has to stay whatever happens next: a failed payment link cancels the booking, it does not
+  // delete it. Decided on the state, never on whether an id came back, because a blocked result
+  // can carry another booking's id (tasks/lessons.md, 2026-07-03).
+  if (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment') {
+    walkInTrail.bookingPersisted = true
   }
 
   // Stamp is_venue_event on the booking record when set — the RPC does not accept this field,
@@ -1395,6 +1472,32 @@ export async function POST(request: NextRequest) {
           error: venueEventUpdateError.message || String(venueEventUpdateError)
         }
       })
+    }
+  }
+
+  // This screen does not ask for courses. Inside the Christmas pre-order deadline the 1 course
+  // tier is the only one on offer (SSOT §7, owner decision 10 September 2026), so every guest is
+  // recorded as one course, with nothing to pre-order and nobody to chase. Before the deadline the
+  // booking keeps its existing policy. Non-fatal: the booking already exists, and the reminder cron
+  // no longer texts a guest once their form has locked.
+  if (
+    isChristmasBooking &&
+    bookingResult.table_booking_id &&
+    (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment')
+  ) {
+    const outcome = await recordOneCourseInsideCutoff(auth.supabase, {
+      id: bookingResult.table_booking_id,
+      bookingDate: payload.date,
+      partySize: payload.party_size,
+    })
+    // The confirmation text is built from this result, not from the row, so without this it would
+    // still say "Choose your food" and link to a form that has already locked.
+    if (outcome === 'recorded') {
+      bookingResult = {
+        ...bookingResult,
+        booking_period_requires_preorder: false,
+        christmas_course_counts: oneCourseForEveryone(payload.party_size),
+      }
     }
   }
 
@@ -1578,17 +1681,37 @@ export async function POST(request: NextRequest) {
       bookingResult.state === 'pending_payment'
     )
   ) {
-    const smsSendResult = await sendTableBookingCreatedSmsIfAllowed(auth.supabase, {
-      customerId,
-      normalizedPhone,
-      bookingResult,
-      nextStepUrl
-    })
+    // A walk-in is standing at the bar. Sending them "your table booking is confirmed" with a
+    // link to change or cancel it, while they are being shown to a table, reads as a message
+    // about a future booking they have not made. Walk-ins entered without a number were already
+    // silent; one entered WITH a number was not, which is the only reason this case existed.
+    //
+    // The manager email still goes (it skips walk-ins by source), the analytics events below
+    // still record, and the booking itself is untouched: only the guest notice is dropped.
+    const guestNoticeApplies = payload.walk_in !== true
+    const smsSendResult = guestNoticeApplies
+      ? await sendTableBookingCreatedSmsIfAllowed(auth.supabase, {
+          customerId,
+          normalizedPhone,
+          bookingResult,
+          nextStepUrl
+        })
+      : null
+
+    if (!guestNoticeApplies) {
+      logger.info('Walk-in booking created, so no guest booking confirmation was sent', {
+        metadata: {
+          userId: auth.userId,
+          tableBookingId: bookingResult.table_booking_id || null,
+          state: bookingResult.state
+        }
+      })
+    }
 
     if (
       bookingResult.state === 'pending_payment' &&
       bookingResult.table_booking_id &&
-      smsSendResult.scheduledFor
+      smsSendResult?.scheduledFor
     ) {
       holdExpiresAt =
         (await alignTablePaymentHoldToScheduledSend(auth.supabase, {

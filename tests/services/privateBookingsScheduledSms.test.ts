@@ -158,7 +158,7 @@ describe('getBookingScheduledSms', () => {
     expect(twentyOne).toBeDefined()
     expect(twentyOne?.suppression_reason).toBeNull()
     expect(twentyOne?.preview_body).toContain('Sam')
-    expect(twentyOne?.preview_body).toContain('£1200')
+    expect(twentyOne?.preview_body).toContain('£1,200')
   })
 
   it('returns balance_reminder_16day when the balance is due in 2 days', async () => {
@@ -200,7 +200,7 @@ describe('getBookingScheduledSms', () => {
     )
     expect(twentyOne).toBeDefined()
     expect(twentyOne?.preview_body).toContain('£700')
-    expect(twentyOne?.preview_body).not.toContain('£1200')
+    expect(twentyOne?.preview_body).not.toContain('£1,200')
   })
 
   it('returns event_reminder_1d when event is tomorrow', async () => {

@@ -334,29 +334,11 @@ describe('additional route idempotency persist fail-closed guards', () => {
     })
   })
 
-  it('does not release the performer-interest idempotency claim when response persistence fails after submission insert', async () => {
-    ;(getIdempotencyKey as unknown as vi.Mock).mockReturnValue('idem-performer-1')
-    ;(sendEmail as unknown as vi.Mock).mockResolvedValue({ success: true })
-
-    const submissionSingle = vi.fn().mockResolvedValue({
-      data: {
-        id: 'submission-1',
-        full_name: 'Pat Example',
-        email: 'pat@example.com',
-        phone: '+447700900123',
-        bio: 'Singer songwriter',
-      },
-      error: null,
-    })
-    const submissionSelect = vi.fn().mockReturnValue({ single: submissionSingle })
-    const submissionInsert = vi.fn().mockReturnValue({ select: submissionSelect })
-
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
-      from: vi.fn(() => ({
-        insert: submissionInsert,
-      })),
-    })
-
+  // The performer-interest route was retired on 12 September 2026 (open mic nights are
+  // discontinued), so it commits no mutation and claims no idempotency key. There is nothing
+  // left for a persistence failure to strand. Its own suite,
+  // tests/api/performerInterestRouteErrors.test.ts, covers the retirement.
+  it('takes no idempotency claim on the retired performer-interest route', async () => {
     const request = new Request('http://localhost/api/external/performer-interest', {
       method: 'POST',
       headers: {
@@ -369,21 +351,15 @@ describe('additional route idempotency persist fail-closed guards', () => {
         phone: '+447700900123',
         bio: 'Singer songwriter',
         consentDataStorage: true,
-        honeypot: '',
       }),
     })
 
     const response = await performerInterestPost(request as any)
-    const payload = await response.json()
 
-    expect(response.status).toBe(200)
-    expect(payload).toMatchObject({
-      success: true,
-      data: {
-        id: 'submission-1',
-      },
-    })
-    expect(persistIdempotencyResponse).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(410)
+    expect(getIdempotencyKey).not.toHaveBeenCalled()
+    expect(persistIdempotencyResponse).not.toHaveBeenCalled()
     expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
+    expect(sendEmail).not.toHaveBeenCalled()
   })
 })

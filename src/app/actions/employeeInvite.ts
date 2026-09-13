@@ -205,6 +205,33 @@ async function requireTokenBoundSession(employeeId: string): Promise<string | nu
 // Manager-side actions
 // ---------------------------------------------------------------------------
 
+/**
+ * Records an invite attempt, whether or not the email went. A failed send is recorded as a
+ * failure with its reason, so the audit log never says an invite was sent when it was not.
+ */
+async function auditInviteAttempt(input: {
+  employeeId: string;
+  status: 'success' | 'failure';
+  values?: Record<string, unknown>;
+  error?: string;
+}): Promise<void> {
+  try {
+    const user = await getCurrentUser();
+    await logAuditEvent({
+      user_id: user?.user_id ?? undefined,
+      user_email: user?.user_email ?? undefined,
+      operation_type: 'invite',
+      resource_type: 'employee',
+      resource_id: input.employeeId,
+      operation_status: input.status,
+      ...(input.error ? { error_message: input.error } : {}),
+      ...(input.values ? { new_values: input.values } : {}),
+    });
+  } catch (auditError) {
+    console.error('[employeeInvite] Audit log failed:', auditError);
+  }
+}
+
 export async function inviteEmployee(prevState: any, formData: FormData) {
   const canCreate = await checkUserPermission('employees', 'create');
   if (!canCreate) {
@@ -244,10 +271,14 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
       return { type: 'error', message: 'Invite created but token was not returned.' };
     }
 
+    // The email is what makes the invite real: the new starter cannot do anything without the
+    // link. So a failed send undoes the half-made record rather than leaving a blank employee
+    // nobody can explain, and staff are told the invite did not go.
     try {
       await sendWelcomeEmail(email, buildOnboardingUrl(result.token));
     } catch (emailError) {
       console.error('[inviteEmployee] Failed to send welcome email:', emailError);
+      const reason = getErrorMessage(emailError);
       const { error: cleanupError } = await adminClient
         .from('employees')
         .delete()
@@ -257,24 +288,26 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
       if (cleanupError) {
         console.error('[inviteEmployee] Failed to clean up invite-created employee:', cleanupError);
       }
-      return { type: 'error', message: 'Invite could not be sent. No employee record was created.' };
+      await auditInviteAttempt({
+        employeeId: result.employee_id,
+        status: 'failure',
+        error: reason,
+        values: { email, job_title: jobTitle, employment_start_date: employmentStartDate, cleaned_up: !cleanupError },
+      });
+      revalidatePath('/employees');
+      return {
+        type: 'error',
+        message: cleanupError
+          ? `The invite email could not be sent (${reason}), and the part-made employee record could not be removed. Check the employee list before trying again.`
+          : `The invite email could not be sent (${reason}). Nothing reached them and no employee record was made, so check the email address and try again.`,
+      };
     }
 
-    // Audit log
-    try {
-      const user = await getCurrentUser();
-      await logAuditEvent({
-        user_id: user?.user_id ?? undefined,
-        user_email: user?.user_email ?? undefined,
-        operation_type: 'invite',
-        resource_type: 'employee',
-        resource_id: result.employee_id,
-        operation_status: 'success',
-        new_values: { email, job_title: jobTitle, employment_start_date: employmentStartDate, status: 'Onboarding' },
-      });
-    } catch (auditError) {
-      console.error('[inviteEmployee] Audit log failed:', auditError);
-    }
+    await auditInviteAttempt({
+      employeeId: result.employee_id,
+      status: 'success',
+      values: { email, job_title: jobTitle, employment_start_date: employmentStartDate, status: 'Onboarding' },
+    });
 
     revalidatePath('/employees');
     return { type: 'success', message: `Invite sent to ${email}.`, employeeId: result.employee_id };
@@ -325,13 +358,20 @@ export async function sendPortalInvite(employeeId: string) {
     return { type: 'error', message: 'Failed to create invite token.' };
   }
 
-  // DEF-009: If email fails, clean up the orphaned token before returning error
+  // DEF-009: If email fails, clean up the orphaned token before returning error. Older portal
+  // links are left alone until the new one has actually gone (below), so a failed send never
+  // leaves the employee with no working link.
   try {
     await sendPortalInviteEmail(employee.email_address, buildOnboardingUrl(tokenData.token));
   } catch (emailError) {
     console.error('[sendPortalInvite] Failed to send email:', emailError);
+    const reason = getErrorMessage(emailError);
     await deleteTokenByValue(adminClient, tokenData.token);
-    return { type: 'error', message: 'Token created but email could not be sent.' };
+    await auditInviteAttempt({ employeeId, status: 'failure', error: reason, values: { portal_invite_sent: false } });
+    return {
+      type: 'error',
+      message: `The portal invite email could not be sent (${reason}). Nothing reached them, and any link they already had still works. Check the email address and try again.`,
+    };
   }
 
   const siblingExpiryError = await expirePendingSiblingTokens(
@@ -344,20 +384,7 @@ export async function sendPortalInvite(employeeId: string) {
     return { type: 'error', message: 'Invite sent, but old portal invite links could not be expired. Please try again.' };
   }
 
-  try {
-    const user = await getCurrentUser();
-    await logAuditEvent({
-      user_id: user?.user_id ?? undefined,
-      user_email: user?.user_email ?? undefined,
-      operation_type: 'invite',
-      resource_type: 'employee',
-      resource_id: employeeId,
-      operation_status: 'success',
-      new_values: { portal_invite_sent: true },
-    });
-  } catch (auditError) {
-    console.error('[sendPortalInvite] Audit log failed:', auditError);
-  }
+  await auditInviteAttempt({ employeeId, status: 'success', values: { portal_invite_sent: true } });
 
   return { type: 'success', message: `Portal invite sent to ${employee.email_address}.` };
 }
@@ -399,12 +426,19 @@ export async function resendInvite(employeeId: string) {
     return { type: 'error', message: 'Failed to create new invite token.' };
   }
 
+  // Older onboarding links are expired only after the new email has gone (below). A resend whose
+  // email failed must not take away the link the employee may already be holding.
   try {
     await sendWelcomeEmail(employee.email_address, buildOnboardingUrl(tokenData.token));
   } catch (emailError) {
     console.error('[resendInvite] Failed to send email:', emailError);
+    const reason = getErrorMessage(emailError);
     await deleteTokenByValue(adminClient, tokenData.token);
-    return { type: 'error', message: 'Token created but email could not be sent.' };
+    await auditInviteAttempt({ employeeId, status: 'failure', error: reason, values: { invite_resent: false } });
+    return {
+      type: 'error',
+      message: `The invite email could not be sent (${reason}). Nothing reached them, and any link they already had still works. Check the email address and try again.`,
+    };
   }
 
   const siblingExpiryError = await expirePendingSiblingTokens(
@@ -416,6 +450,8 @@ export async function resendInvite(employeeId: string) {
   if (siblingExpiryError) {
     return { type: 'error', message: 'Invite sent, but old onboarding links could not be expired. Please try again.' };
   }
+
+  await auditInviteAttempt({ employeeId, status: 'success', values: { invite_resent: true } });
 
   return { type: 'success', message: `Invite resent to ${employee.email_address}.` };
 }

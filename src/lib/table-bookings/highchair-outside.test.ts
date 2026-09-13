@@ -317,6 +317,19 @@ describe('sendTableBookingCreatedSmsIfAllowed — wording', () => {
     }
   }
 
+  it('renders the recorded Christmas tiers consistently in SMS and both email formats', async () => {
+    await sendTableBookingCreatedSmsIfAllowed(customerClient(), {
+      customerId: 'cust-1', normalizedPhone: '+447700900123',
+      bookingResult: confirmedResult({ christmas_course_counts: [1, 1, 1, 1, 2, 3] }),
+    })
+    const rendered = await capture()
+    for (const content of [rendered.sms, rendered.html, rendered.text]) {
+      expect(content).toContain('Christmas courses: 4 x 1 course, 1 x 2 courses, 1 x 3 courses.')
+      expect(content).toContain('Guests on one course have nothing to pre-order.')
+      expect(content).not.toMatch(/undefined|Invalid Date|NaN/)
+    }
+  })
+
   it('should use outside/booking wording (not "your table") for an outside booking', async () => {
     await sendTableBookingCreatedSmsIfAllowed(customerClient(), {
       customerId: 'cust-1',
@@ -327,8 +340,9 @@ describe('sendTableBookingCreatedSmsIfAllowed — wording', () => {
     expect(sms).toContain('outside booking')
     expect(sms).toContain('Outside seating (weather permitting)')
     expect(sms).not.toMatch(/your table/i)
-    expect(text).toContain('Outside seating (weather permitting)')
-    expect(html).toContain('Outside seating')
+    // The email states it as a detail row, the same shape the deposit confirmation uses.
+    expect(text).toContain('Seating: Outside (weather permitting)')
+    expect(html).toContain('Outside (weather permitting)')
     // Confirmed outside subject line, never "table confirmed".
     expect(html).not.toMatch(/table booking at the anchor is confirmed/i)
   })
@@ -341,10 +355,10 @@ describe('sendTableBookingCreatedSmsIfAllowed — wording', () => {
     })
     const { sms, html, text } = await capture()
     expect(sms).toContain('High chair reserved x2')
-    expect(text).toContain('High chair reserved x2')
-    // Email HTML uses the &times; entity.
+    // The email states it as a detail row, the same shape the deposit confirmation uses.
+    expect(text).toContain('High chair reserved: x2')
     expect(html).toContain('High chair reserved')
-    expect(html).toContain('&times;2')
+    expect(html).toContain('x2')
   })
 
   it('should render neither chair nor outside wording for an indoor booking with no chairs', async () => {

@@ -1,3 +1,264 @@
+# Guest email review fixes, 12 September 2026
+
+The 11 September review of every guest-facing email put ten questions to the owner. He answered them
+on 12 September and asked for the whole list built, gated and deployed. Six migrations are applied
+to production; the report is a private artifact.
+
+- [x] Campaign copy, round one (applied as `campaign_copy_owner_answers`): four fire claims out of the
+      October and November round-ups, New Year's Eve at 1am in both December round-ups, the 3 October
+      Halloween save the date cancelled, the gap between guest campaigns from 2 days to 4.
+- [x] Campaign copy, round two (applied as `campaign_copy_owner_answers_round_two`): 15 campaigns.
+      The "festive nights are booked" preview, the January kitchen footnote, all three Snowball
+      figures, "attended" to "played at", dabbers as £1 cash only, the October night count, "horror
+      singalong", the business scarcity claim, contractions, and the 20 November tasting night added
+      to both November round-ups from its event record.
+- [x] Legacy consent recorded (applied as `legacy_email_marketing_consent_attestation`): 290 rows,
+      labelled as the owner's declaration rather than a captured tick, opted-out guests excluded.
+- [x] Bounce-derived opt-outs corrected (applied as `correct_bounce_derived_marketing_opt_outs`,
+      version 20260912190904): 9 compensating rows, 0 left uncorrected, 55 opt-out flags untouched,
+      reachable audience unchanged at 253. Recorded in the repo as
+      `supabase/migrations/20260912210000_correct_bounce_derived_marketing_opt_outs.sql`.
+- [x] Voucher reminders carry `requires_booking` (applied as `voucher_reminder_requires_booking`,
+      version 20260912191510). Verified against the four reminders pending at the time: the two
+      music bingo vouchers resolve true, the £25 and house wine vouchers false.
+- [x] Opting back in clears the old opt-out (applied as `consent_opt_in_clears_opt_out`, version
+      20260912191542), on all three marketing channels. 0 customers were in the broken state when
+      it ran, so it rewrote no summary row; the smoke test rolled itself back and left nothing.
+- [x] Shared foundation: `sendEmail` derives a plain-text part when a caller sends HTML alone and
+      logs what the guest received; one contact block for every guest email.
+- [x] Event emails: the reschedule time read as a London wall time (email, text, the hold write and
+      the cancelled-event text), a confirmation email for free and pay-on-the-night bookings, no
+      "£0.00" lines, what changed on a change email, arrival times, refund terms, contact details.
+- [x] Table emails: online cancellation refunds and notifies, manage links live to the booking, the
+      deposit request says deposit and states the terms, "still confirmed" only when true, 15+ and
+      Christmas website bookings get their email, the Christmas food-choice deadline, the pre-order
+      chase reworded, the review request only after a guest was seated and only 9am to 9pm.
+- [x] Private booking emails: the deposit receipt no longer claims a confirmation the gate blocked,
+      no invite for a booking with no date, split refunds report the real position, the internal
+      reason stays internal, no £0.00 totals, the balance email promises only a refund that exists,
+      hold deadlines that match what enforces them, a way to pay in every deposit email, the
+      calendar invite rebuilt to the standard, and every dash and unescaped value gone.
+- [x] Plumbing: a temporary bounce no longer blocks an address for ever, a bounce is no longer
+      recorded as the guest opting out, a corrected address is emailable again, the refund email
+      names its booking, voucher reminders tell booking-only holders to book, invoices come from
+      Orange Jelly Limited, the unsubscribe page stops lying, one-click limits keyed on the token,
+      staff one-off emails show consent, the open mic intake retired.
+- [x] Gates on the merged tree: lint clean, `tsc --noEmit` clean, `npm test` and `npm run test:utc`
+      869 files with 8,295 passed and 2 skipped, cold `npm run build` exit 0 (compiled in 31s,
+      155/155 static pages, 427 routes). The build needs
+      `NODE_OPTIONS=--max-old-space-size=8192` on this machine; see the 12 September entry in
+      `tasks/lessons.md` for why, and for the piped-exit-code trap that hid it the first time.
+- [x] Merged to main and deployed. PR #139, merged as `d694a909` after CI passed (build-and-lint,
+      database-contract, and the Vercel preview). Production deployment
+      `oj-anchor-management-tools-be65xbzk5` reached Ready at 20:55 on 12 September, and
+      management.orangejelly.co.uk serves it (same static chunk hashes as the deployment URL;
+      `/auth/login` and `/api/business/hours` both 200).
+
+Owner calls taken on his standing recommendations, with him away: walk-ins get no booking
+confirmation; a guest who books by replying to a text gets both the text and the email; the booking
+reference is the first 8 characters of the id, as the staff page shows; the contract's trader name
+change applies to new contracts only.
+
+Still needing the owner:
+
+- [ ] The 9 `customer_consents` rows that recorded a bounce as a marketing opt-out: a compensating
+      row was added to each, and their `marketing_email_opted_out_at` was deliberately left set, so
+      nothing resumed sending. Whether those guests should be marketable again is his call.
+- [ ] `fix/nye-after-midnight` (7 commits, 39 files): the app half of the 1am close. It also rewrites
+      the FOH floor screen, walk-ins, booking time moves and cash-up detection, so it wants a
+      deliberate landing rather than a Saturday-evening deploy. The website half is merged and falls
+      back to the old copy until this ships.
+- [ ] A manual (cash or bank transfer) refund still tells the guest nothing.
+- [ ] A partial deposit refund that is the final position gets no closing statement.
+- [ ] The review request by email and its PECR position (the funnel itself stays, per his answer).
+
+# Retired quiz and Music Bingo claims, 12 September 2026 (applied to production)
+
+The owner confirmed on 11 and 12 September: the quiz has five rounds with one interactive round in the middle, one phone per player, and prizes for first place (a £25 bar voucher) and second from last (a bottle of wine) only. Music Bingo winners get a £25 voucher; fancy dress earns extra points. Cash Bingo does have free drink rounds and £10 food vouchers, so its copy stands.
+
+- [x] `20260912090000_campaign_quiz_prize_claims.sql` (sha256 `3ff52e0f...`) applied as `20260912080836 campaign_quiz_prize_claims`: six scheduled campaigns, content and content_hash together. Every stored hash was reproduced from its stored content first, so the fingerprint keeps meaning what it says. After: no scheduled campaign claims spot prizes or free-drink questions, the six sit at their reviewed hashes, and their status and send times are unchanged (14 and 18 September, 30 September, 28 October, 6 November, 4 December).
+- [x] `20260912091000_charity_quiz_one_phone_per_player.sql` (sha256 `bed96518...`) applied as `20260912080853 charity_quiz_one_phone_per_player`: the 25 September record now says one phone per player.
+- [x] Repo campaign sources, the one-off charity quiz script and four new house-style error rules (spot-prizes, free-drink-question, phone-per-team, quiz-league-table) so a future campaign carrying them is refused at schedule time.
+- Earlier the same evening: `20260911200535 quiz_prize_claims` took the same claims off the five upcoming quiz records.
+
+# "Open now" past midnight, for the 1am New Year's Eve close, 11 September 2026
+
+Branch `fix/hours-open-now-past-midnight-2026-09-11`. Code only: no database change, no deploy. Unblocks item 12 below (the 31 December special hours row moving from 22:00 to 01:00), which stays a separate, owner-approved data change after this is live.
+
+- [x] `whenLondonClockReaches()` in `src/lib/dateUtils.ts`: the first instant the London clock shows a wall time on a date. `fromZonedTime` lands an hour out for 01:00 to 01:59 on both clock-change nights. Tests in both zones.
+- [x] `src/lib/business-hours/open-now.ts` (pure): trading window per London date (a close at or before the opening time is the next day), the trading day in force now (yesterday's until its after-midnight close, else today's), the kitchen service being served on that day, and `calculateTimeUntil` measured between instants.
+- [x] `/api/business/hours`: currentStatus, services.venue and services.kitchen read the trading day; yesterday's special row and yesterday's effective-dated regular row are loaded; payload otherwise unchanged.
+- [x] `/api/business-hours`: isOpen reads the trading day the same way.
+- [x] Route tests for both, fixtures: ordinary day, 31 December 12:00 to 01:00 (23:30 and 12:00 on 31 December, 00:30 on 1 January, 00:30 on 31 December after a 22:00 close on 30 December), a regular midnight close, a version change at midnight, both clock-change nights. Against the old routes 11 of the 17 fail and the ordinary-day ones pass.
+- [x] Sweep the rest of the app for "open now" read off today's row alone; check the website's consumers on `origin/main` (read only). No other open or closed status in the app. The FOH screen, FOH walk-ins, FOH booking time moves and the missing cash-up list take "today" from the calendar date; left alone here and reported. The website's badges read `currentStatus.isOpen`, so they come right with this change; its smaller follow-ups are reported, not fixed.
+- [x] Gates: lint, typecheck, `npm test`, `npm run test:utc`, build. Commit; no push.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+- [ ] Then the 31 December special hours row from 22:00 to 01:00 (item 12 below): a production write, the owner's go-ahead.
+
+Results (Node 20.19.5, on `origin/main` `339bfcf1`): lint clean; uncached `tsc --noEmit` clean; 838 test files, 7,955 passed and 2 skipped in both London and UTC (the same on Node 26); cold `npm run build` passes with `NODE_OPTIONS=--max-old-space-size=6144`, both hours routes dynamic.
+
+Decisions recorded: a close at or before the opening time is always the next day, with no cap, as the routes already had it; on a clock-change night a close is the first moment the clock shows it; `today` and `todayHours` still describe the calendar day; the special hours read still falls back to regular hours when it fails.
+
+# Private booking deposits confirmed by staff, balance reminders by email, 11 September 2026
+
+Branch `feat/private-booking-deposit-confirm-2026-09-11`, rebased on `origin/main` (`377434a0`). Local commits only. Both new flags are off by default, and off is today's behaviour.
+
+- [x] 1. Flag `private_booking_deposit_confirmation`: creating a booking sends no deposit message (staff create and `/api/external/create-booking`); website enquiries stay silent (`b8d9ed70`).
+- [x] 2. Deposit to be confirmed: nullable `deposit_confirmed_at` / `deposit_confirmed_by`, migration `20260911200000_private_booking_deposit_confirmation.sql` and its rollback written and replayed on a throwaway local Postgres fixture, NOT applied. While unconfirmed: no deposit reminders, no automatic hold expiry, no hold-lapsed or hold-extended message, no "Send payment link", no move to Confirmed; list badge and detail banner (`b8d9ed70`, `290a1ab9`, renumbered in `f3e220d6`).
+- [x] 3. Confirm deposit action (manage_deposits or manage): amount adjustable (GM override and reason below £250), records who and when, keeps a future hold or sets one with `computeHoldExpiry`, sends one deposit request by email (text if no usable email or the email fails), idempotent by a conditional claim, undone and shown to staff when nothing reaches the guest, timeline and audit rows; the bounce fallback rebuilds it (`290a1ab9`).
+- [x] 4. Deposit reminders run only for confirmed deposits (`b8d9ed70`).
+- [x] 5. Flag `private_booking_balance_email_auto`: balance reminders by email straight away when there is a usable address, text for approval otherwise; balance reminders queued before the switch refused at Approve and Send Now; no backfill of passed deadlines (`dabfaf4d`).
+- [x] 6. Balance reminder emails list the payments made, the event total, paid towards the bill and the balance due, from the payment ledger; if the figures do not add up no email goes and the text waits for approval instead; fixture renders in both zones (`dabfaf4d`).
+- [x] Gates: lint, uncached tsc, `npm test`, `npm run test:utc`, uncached build.
+- [ ] Apply the migration, deploy, switch the two flags on: the owner's decision; not asked for.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+Results (Node 20.19.5, rebased on `377434a0`): lint clean; uncached `tsc --noEmit` clean; 836 test files, 7,915 passed and 2 skipped in both London and UTC (baseline before this work: 829 files after the rebase's new tests, 823 on `506c3c69`); uncached `npm run build` passes with `NODE_OPTIONS=--max-old-space-size=6144`.
+
+Decisions recorded: the deposit request's PayPal link is the guest's booking page (a one-button PayPal payment that lasts a year), not a PayPal approval link that runs out within hours; unconfirmed bookings keep today's hold expiry because only a live hold blocks the space; bookings that exist when the migration runs count as confirmed; `PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED` must stay true in production for any balance reminder to go.
+
+# SSOT data corrections, 11 September 2026 (applied to production)
+
+Owner approval 11 September 2026 (items 1 to 11, 13 to 15, and the owner's answers on finish times, quiz seating and access wording). Applied through `prod-migrate` to `tfcasgxopxegwrabvwat`, each as one guarded DO statement (production marker, ids plus the captured old value or its md5, exact counts, reviewed md5 of every changed long text).
+
+- [x] `20260911172000_ssot_record_and_content_corrections.sql` (sha256 `2585ba63...`) applied as `20260911180655 ssot_record_and_content_corrections`: 60 statements. Every literal value re-checked against the file by md5 afterwards: 70 fields, none different.
+- [x] `20260911172100_private_booking_queue_cancel_stale_texts.sql` (sha256 `91ad9f85...`) applied as `20260911180903 private_booking_queue_cancel_stale_texts`: 21 texts cancelled, none had gone; the one other pending text (a draft booking's deposit reminder) untouched.
+- [x] `20260911172200_backup_accessibility_tables_rls.sql` (sha256 `7a152ee0...`) applied as `20260911180913 backup_accessibility_tables_rls`: row level security on for both backup tables; `assert-anon-surface.ts` all 9 checks passed after.
+- [x] `20260911180000_ssot_record_followups.sql` (sha256 `fb3f3f96...`) applied as `20260911181415 ssot_record_followups`: "Assistance dogs are always welcome." back after the SSOT access block on the 25 rows that had it (SSOT section 8), the tasting night brief's "wheelchair accessible" line, and the four other quiz briefs' 6:45pm and 6:55pm arrival lines. Replayed on a throwaway local Postgres 17 first: it only logs a notice off production.
+- [ ] New Year's Eve closing at 1am (item 12): blocked until the business hours "open now" status reads the previous day's row past midnight (`src/app/api/business/hours/route.ts`, `src/app/api/business-hours/route.ts`). Then one field on the 31 December special hours row. The code fix is on `fix/hours-open-now-past-midnight-2026-09-11` (top of this file), not yet deployed.
+
+After: no upcoming brief says 6:45pm, 6:55pm or wheelchair accessible; no upcoming quiz record says communal; no upcoming event other than the Halloween party ends after 22:00.
+
+# Christmas minimum from 6 to 4, 11 September 2026 (applied to production)
+
+- [x] Prove the production ref (`tfcasgxopxegwrabvwat`) from `supabase/.temp/project-ref` and `.env.local`; read live state with read-only SELECTs only.
+- [x] Capture both live function definitions and match them to production by md5 before editing.
+- [x] Draft `20260911133645_christmas_minimum_four.sql` (two gates, EXECUTE re-stated, one period row) and its rollback in `supabase/rollbacks/`.
+- [x] `CHRISTMAS_MIN_PARTY_SIZE` to 4; fixtures that modelled the 6-guest period moved to 4.
+- [x] Tests that fail on the old values: `christmas-minimum.test.ts`, `FohCreateBookingModal.test.tsx`.
+- [x] Validate on an isolated local database: production state reproduced, migration, re-run, rollback, unhappy paths.
+- [x] Gates: lint (0 warnings), typecheck, `npm test` and `npm run test:utc` (791 files, 7,174 passed, 2 existing skips each), cold build. The build ran out of memory at the default heap while type checking and passed with `NODE_OPTIONS=--max-old-space-size=8192`, the same flag the typecheck needs.
+- [x] Owner go-ahead (11 September 2026), then applied through `prod-migrate` to `tfcasgxopxegwrabvwat` as production migration `20260911170248 christmas_minimum_four`.
+  - Applied as one DO statement rather than by pasting the 66 KB file: it read each function's live `pg_get_functiondef`, required md5 `f8f7f2b84b4fdf9ff7cb5266416a21c8` (core) and `988a2a5ddefd576aef392edaf70c67dc` (v05), made the two Christmas edits, required the edited text to hash to `abfa1c3f725cd01bb5ddfed2a39b23dc` and `1f8074f0034a99dc9b89274cde5f67ee` (the md5 of this file's two CREATE statements plus a newline, so the text run is byte for byte the file's), then ran it, restated the same EXECUTE grants, moved the period row from 6 to 4 and ran this file's own end-state assertions. Anything unexpected would have rolled the whole statement back.
+  - After: both function md5s as above; `christmas-2026` min_party_size 4; EXECUTE unchanged (core: service_role only; v05: authenticated and service_role); `resolve_table_booking_deposit` on 4 December 2026 refuses 3 and asks £40, £50 and £60 of 4, 5 and 6; `scripts/security/assert-anon-surface.ts` all 9 checks passed.
+  - Rollback unchanged: `supabase/rollbacks/20260911133645_christmas_minimum_four.sql`, or the same guarded pattern in reverse.
+
+Decisions: the period row is matched on its code, not its production id, so a rebuilt database applies it too. Marketing campaign files were left alone: two are records of emails sent in August, the rest are the designer's handover samples that the fidelity tests pin byte for byte.
+
+# Email-first messaging: review fixes for the bounce fallback, 11 September 2026
+
+Integration branch `feat/email-first-integration-2026-09-11`, on top of `dc76b5a9`. Local commits only. With every flag off nothing a guest or staff member sees changes, except the party-size checkbox label and the cancellation email key.
+
+- [x] 1a. A fallback job inside quiet hours (or within five minutes of 21:00) waits for the next 09:00 London: the queue puts the same job row back to pending, unclaimed, so the render and every check run again when the text can go (`069126eb`).
+- [x] 1b. Renderers return `validUntil` for time-bound wording; the job skips with `too_late` at or after it. Private deposit received states the deposit paid date, so a deleted deposit is `booking_changed` (`8a75b8ce`).
+- [x] 1c. A message that no longer applies (hold paid or gone, balance paid, link used, guest answered, choices in) is skipped as `no_longer_needed`, never failed, in both renderers (`8a75b8ce`).
+- [x] 2. The fallback never texts a private booking trigger that needs approval: `needs_approval`, listed for staff (`b8812056`).
+- [x] 3. Party-size checkbox reads "Notify guest" (`fdead553`).
+- [x] 4. Table cancellation email key includes the booking's `cancelled_at` (`cc2f12ec`).
+- [x] 5. The private booking email-first flag is read once per action and passed to the messenger (`3b7bb44b`).
+- [x] Gates: lint, uncached tsc, `npm test`, `npm run test:utc`, uncached build.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+Results (Node 20.19.5): lint clean; uncached `tsc --noEmit` clean; 822 test files, 7,730 passed and 2 skipped in both London and UTC; uncached `npm run build` passes with `NODE_OPTIONS=--max-old-space-size=6144`.
+
+Decisions recorded: "due tomorrow" and "2 days to go" balance wording is held to its relative words (start of the due day, start of the day before), like the event reminder; a used manage link still reports `link_expired`; the quiet-hours decision uses `evaluateSmsQuietHours`, the rule sendSMS applies, so the two cannot disagree.
+
+# Email-first messaging: bounce fallback for table bookings, 11 September 2026
+
+Integration branch `feat/email-first-integration-2026-09-11`. Local commit only. Nothing changes for guests while `bounce_sms_fallback` or the table flags are off.
+
+- [x] Every email-first table booking message writes its booking id, template key, message, stated facts and link form on the delivery row at insert (`deliveryMetadata` on `notifyCustomer`, `fallback-details.ts`). Ids and facts only.
+- [x] One text builder per message in `guest-texts.ts`, shared by the email-first sender, the flag-off sender and the fallback.
+- [x] Table booking renderer for the five template keys. Links are found through the existing short link and a live token, never made; otherwise `link_not_found`, `link_expired` or `link_not_rebuildable`, in plain words for staff.
+- [x] A text that cannot be rebuilt for a booking cancelled, started or changed since is skipped, not raised with staff.
+- [x] Tests: sender text equals rebuilt text for all five keys (cancellation in seven refund variants), unavailable paths, changed facts, cancelled and reinstated bookings, one end-to-end run, fixture renders either side of 25 October 2026.
+- [ ] Push, merge and deploy: not asked for; local commit only.
+
+Results: lint clean; uncached `tsc --noEmit` clean; 822 test files, 7,637 passed and 2 skipped in both London and UTC; uncached `npm run build` passes with `NODE_OPTIONS=--max-old-space-size=6144`.
+
+# Email-first messaging P2, P3 and P5, 11 September 2026
+
+Same branch as P1. Every change sits behind a `messaging_flags` key that reads as off, so deploying changes nothing for guests. Local commits only.
+
+- [x] P2 `event_promo_last_push`: skip the 7-day intro and 24-hour follow-up; one last push 0 to 3 London days out, before the start, under 25% booked; two promo texts per person per rolling 30 days; keys `event_last_push` and `event_last_push_paid`.
+- [x] P2 `event_promo_intro_sms_no_email` (only with the flag above): today's 7-day intro for guests with no usable email, inside the same cap.
+- [x] P2 tests: capacity boundaries, timing window (London midnight, both clock changes), third-night cap, no-email intro, reply-to-book, flag off. Gate: lint and tsc clean; 797 files, 7,274 passed and 2 skipped in London and UTC.
+- [x] P3 `table_cancelled_email_first`: email first, email-only guests covered, `table_booking_id` in the SMS metadata, staff see a failed notice.
+- [x] P3 `table_deposit_confirmed_email_first`: email first, one message for five triggers (claim, pre-check, idempotency key).
+- [x] P3 `table_party_size_deposit_email_first`: email first, real channel and outcome in the staff toast.
+- [x] P3 `table_preorder_email_first`: email first instead of both.
+- [x] P5 `table_confirm_reminder_email_first`: email first, shared short link, email-only guests eligible.
+- [x] Fixture renders of every new email in London and UTC (cancellation in all seven refund variants, deposit confirmed, deposit request, pre-order, tap-to-confirm), failing on undefined, Invalid Date, NaN, £0.00, null and banned dashes, with the weekday checked against the calendar.
+- [x] Gates after each piece: lint, tsc, `npm test`, `npm run test:utc`; uncached build at the end.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+Results: lint clean; tsc clean; 804 test files, 7,356 passed and 2 skipped in both London and UTC; no test reads the real flags row (checked with an instrumented run); uncached `npm run build` passes with CI's `NODE_OPTIONS=--max-old-space-size=6144`. At Node's default heap the build's type check runs out of memory, as it already did at P1: tsc peaks at 4.86 GB here against 4.53 GB at P1, and CI gives the build 6 GB.
+
+Found, not changed: the BOH party-size checkbox still reads "Notify guest by SMS" (with the flag on the toast names the channel used); the tap-to-confirm token expiry string noted in the plan is untouched; the no-email intro and the last push can both reach one guest on the same day for two different nights (inside the two-a-month cap).
+
+# Email-first messaging P1, safety foundations, 11 September 2026
+
+Branch `feat/email-first-messaging-2026-09-11`. No guest-visible change: every new path is behind a flag that reads as off, and the new levers are kill switches nobody has set.
+
+- [x] Pre-check: `SUSPEND_ALL_COMMS` and `SUSPEND_ALL_EMAIL` are not defined in production (`vercel env ls production`, names only).
+- [x] `sendEmail` honours `SUSPEND_ALL_EMAIL` and `SUSPEND_ALL_COMMS` before the suppression lookup; `code: 'email_suspended'`.
+- [x] Marketing holds its queue while email is suspended (classifier and cron guard).
+- [x] `sendSMS` and `resolveSmsSuspensionReason` honour `SUSPEND_ALL_COMMS`.
+- [x] `isMessagingFlagOn()` reads `system_settings.messaging_flags`, 60-second cache, off in every failure mode.
+- [x] `notifyCustomer`: idempotency key, accepted-but-unlogged email counts as sent and alerts, `finalStatus` and `fallbackUsed`.
+- [x] One `isEmailUsable()` in `channel.ts`, used by `notify.ts`.
+- [x] `CLAUDE.md` kill-switch paragraph and `.env.example`.
+- [x] Gates: lint, tsc, tests in London and UTC, uncached build.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+Results: lint clean; `npx tsc --noEmit` clean (it needs `NODE_OPTIONS=--max-old-space-size=8192`, as in CI); 794 test files, 7,208 passed and 2 skipped in both London and UTC; uncached production build passed. The first commit's tree passed the same gates on its own (792 files, 7,177 passed).
+
+Left for later pieces: writing `final_status = 'fallback_sent'` for the daily monitor was not in this brief. `CRON_ALERT_EMAIL` is not in the production environment list, so the new sent-but-unlogged alert reaches the logs only until it is set.
+
+# Email-first messaging P4, P6 and P7, 11 September 2026
+
+Branch `feat/email-first-bookings-2026-09-11` (worktree `OJ-AnchorManagementTools-wt-email-b`), on top of P1. Local commits only. Every guest-visible change sits behind a `messaging_flags` key that reads as off; the only unflagged change is the step 0 bug fix.
+
+- [x] P6 step 0: the queue bulk-cancel stops writing the missing `updated_at` column and checks its error (three paths in `mutations.ts`, one in the expire-holds cron); regression tests. No clean-up of existing stale rows. Gates: lint and tsc clean; 796 files, 7,217 passed and 2 skipped in London and UTC.
+- [x] P4 (`bounce_sms_fallback`): the Resend webhook enqueues one `notification_delayed_fallback` job per bounced, failed or suppressed transactional email; the job claims the delivery once, re-renders the text from the live booking, skips cancelled, past or changed bookings, sends through `sendSMS`, and marks failures with an audit row and a staff alert; "Undelivered guest messages" on `/settings/sms-failures`. Gates: lint and tsc clean; 800 files, 7,253 passed and 2 skipped in London and UTC. No renderer is registered yet: P6 adds the private booking one, and table booking keys from P3 and P5 need theirs before they set `delayedFallbackAllowed`.
+- [x] P6 (`private_booking_email_first`): `sendPrivateBookingMessage` chooses email when the booking has a usable address (contact email first, then the customer's), falls back to the queued text on failure, and records the delivery for P4; every automated caller switched; Send Now chooses the channel at send time; email builders for the text-only messages and the six cancellation variants; waived-deposit wording; emails on the Communications tab and timeline. Gates: lint and tsc clean; 807 files, 7,358 passed and 2 skipped in London and UTC.
+- [x] P7 (`staff_message_email_option`): email choice on the BOH "Message guests" modal, the single-guest card and the private booking Messages tab, defaulting to email for a guest with a usable address; permissions unchanged; toasts show the real outcome. Gates: lint and tsc clean; 811 files, 7,386 passed and 2 skipped in London and UTC.
+- [x] Fixture renders of every new email in London and UTC (no `undefined`, `Invalid Date`, `NaN` or `£0.00`; weekday matches the date): `tests/lib/privateBookingMessageEmails.fixtures.test.ts`, four event dates including both 2026 clock changes.
+- [x] Gates after each piece: lint, `tsc --noEmit`, `npm test`, `npm run test:utc`; uncached build at the end (`rm -rf .next && npm run build` with CI's `NODE_OPTIONS=--max-old-space-size=6144`; the default 4 GB heap runs out during the type check).
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+# AI event copy builder layout, 6 September 2026
+
+- [x] Inspect live panel and trace card padding.
+- [x] Apply spacing inside CardBody, align with app tokens and wrap narrow-screen content.
+- [x] Verify desktop/mobile layout and existing copy controls with fixtures.
+  Browser checks: desktop, 390px and 320px; no horizontal overflow. Switched to GBP, selected a custom link, generated fixture copy and copied it successfully.
+- [x] Run quality gates: lint, typecheck, 734 test files (6,331 tests passed, two existing skips), production build.
+- [ ] Merge and verify production deployment.
+
+Scope: UI only. Existing generation prompts and server action unchanged. The card previously combined outer padding with its automatic inner padding, while outer space-y never reached the form sections.
+
+# Event checklist rapid completion, 6 September 2026
+
+- [x] Confirm the active event detail card reloads after each completion.
+- [x] Update only the changed task, with independent pending and rollback state.
+- [x] Verify overlapping saves, failures and reopening in six component tests and browser fixtures.
+- [x] Complete build gate: lint, typecheck, 734 test files (6,331 passed) and production build passed.
+- [ ] Merge, deploy and verify the production release.
+
+Browser evidence: five ticks produced four saved tasks and one isolated rollback; checklist reads stayed at one while other tasks remained usable.
+
+No database migration. Assumption: completing prep tasks refers to the event detail checklist. Other checklist views already update local state without explicitly reloading the checklist.
+
+# Friday manager report, 5 September 2026
+
+Detailed plan: [Friday manager report](./plan-2026-09-05-friday-manager-report.md).
+
+- [x] Discover existing manager emails and record the owner's timing decisions.
+- [x] Implement the report queue, renderer and protected delivery route without a migration.
+- [x] Connect selected manager notifications and Friday snapshots.
+- [ ] Complete regression checks and release verification.
+
 # Nav pills: make every pill a clearable to-do
 
 Goal: a pill means "there is something here you can action now", and working
@@ -166,22 +427,447 @@ the current owner session. Its support request is prepared and awaits the visibl
 reCAPTCHA and Submit. Bing remains locked pending verification. Paid placements
 remain excluded.
 
-# Paid ticket setup, 10 September 2026
+## API connections, 5 September 2026
 
-- [x] Implement and verify locally [ticket setup plan](fix-function/2026-09-10-ticket-setup/todo.md), keeping free events simple.
+See `tasks/fix-function/2026-09-05-api-connections/todo.md` for the isolated remediation run, verified fixes and production rollout.
 
-- [x] Release both ticket apps and apply both approved migrations; final production IDs, browser checks, CI and cleanup are recorded in [production release](ticket-setup/production-release.md).
+## 5 September 2026: Anchor booking growth
+
+- [x] Implement event dining requests and Christmas course snapshots in the isolated booking-growth branch.
+- [x] Complete independent SQL/code review and isolated migration/rollback tests.
+- [x] Save baseline, guarded menu corrections, dated-capacity review and release approval package in `tasks/anchor-booking-growth/`.
+- [x] Complete paired browser verification and refreshed integration gates.
+- [x] Obtain approval of exact production migration, activation and menu payloads before application.
+- [x] Deploy the paired approved release, verify production aliases, activate Christmas courses and exercise the live one-course journey without customer submission.
+- [x] Configure the 15 venue-confirmed dated capacities, with matching live booking snapshots and audit records; campaign remains a prepared brief.
 
 
-## 2026-09-10 Private booking email rejection
+# QR branding fixes, 6 September 2026
 
-- [x] Verify live email constraint and failure evidence.
-- [x] Prepare constraint migration and safe create-error reporting.
-- [x] Run isolated create-RPC regression, lint, types and both timezone test suites.
-- [x] Finish clean build with increased Node heap.
-- [x] Prepare exact production migration and rollback packet.
-- [x] Apply approved migration as production version 20260910095523.
-- [x] Publish scoped fix to main as aa42f2b44f2dde449f9821a7f13ad2ea49d41851.
-- [x] Verify production deployment dpl_H14gNQxhWjZQPhiKKRywwuoXxsPK and complete cleanup. Owner confirmed booking works; live record preserves email and waiver.
+- [x] Check live schema and current production code in an isolated worktree.
+- [x] Lower editor and geometry minimum to 10%; draft and locally validate storage constraint.
+- [x] Render BOOK NOW without runtime font dependencies.
+- [ ] Validate migration and run checks, then deploy and verify the actual download.
 
-Scope: constraint fix and error reporting are independently deployable. Production application remains pending explicit approval.
+Scope: QR branding only. Existing artwork unchanged until saved again. Database constraint update is an independently deployable prerequisite; application changes follow. No new columns, grants, functions or data rewrites. Website and unrelated checkout work unchanged.
+
+QR verification: Node 20 lint, uncached typecheck, all 759 test files (6832 tests passed, two skipped) and clean production build passed. Actual minimum-size rendered image visually inspected with readable vector lettering. Isolated PostgreSQL validates boundaries and rollback. Production migration approval pending; no live changes applied.
+
+## Event artwork adjustments, 10 September 2026
+- [x] Strengthen soft logo shadows and reserve branding space in prompts.
+- [x] Remove printed cut marks and update printing instructions.
+- [x] Run checks and visually verify generated artwork and PDF.
+- [ ] Deploy and verify production.
+
+Verification notes: generated white and black logo composites and rendered the three-panel A4 PDF. Both shadows fade smoothly; the PDF contains three images and no stroked cut marks. Existing saved artwork needs branding reapplied to pick up the shadow. No database migration is needed.
+
+Changed files for this request: src/lib/events/imageVariants.ts; src/lib/events/artwork/geometry.ts; src/lib/events/artwork/composite.ts; src/lib/events/artwork/composite.test.ts; src/lib/events/artwork/branding-service.test.ts; src/lib/events/artwork/table-talker-pdf.ts; src/lib/events/artwork/table-talker-pdf.test.ts; src/app/(authenticated)/events/_components/EventImagePanel.tsx; src/app/(authenticated)/events/_components/ArtworkBrandingModal.test.tsx; src/components/features/events/TableTalkerSheetButton.tsx; src/components/features/events/tableTalkerSheet.ts; tasks/todo.md.
+Deliberately unchanged: print-sheet.ts and print-sheet.test.ts retain the existing panel geometry; ArtworkBrandingModal.tsx already reads the shared shadow settings. Other work in the original checkout is untouched.
+
+Checks passed: zero-warning lint, uncached typecheck, 788 test files (7,144 passing tests, 2 skipped) in both Europe/London and UTC, and a cold production build.
+
+---
+
+# Employee invites report a failed email, 12 September 2026
+
+Branch `fix/employee-invite-email-outcome` (worktree `.worktrees/employee-invite-outcome`, from `origin/main` `a1ba68db`). Local commits only; no push, merge or deploy without the owner's yes. No database change. Same defect class as the private booking payment link (`fix/pb-payment-link-outcome`).
+
+Verified in the code first: `sendWelcomeEmail`, `sendPortalInviteEmail`, `sendChaseEmail` and `sendOnboardingCompleteEmail` returned `sendEmail`'s `{ success: false }` and never threw, while every caller only had a try/catch. So a failed invite email read as sent: staff saw "Invite sent", the clean-up that removes the part-made employee record never ran, a resend expired the employee's older links anyway, and the chase cron stamped a chase that never went. Reproduced by running the new tests against `origin/main`: `inviteEmployee` returned `type: 'success'`.
+
+- [x] 1. The four helpers throw the provider's reason when the email does not go, as `sendSeparationStartedEmail` in the same file always has.
+- [x] 2. `inviteEmployee`: the clean-up now runs, staff are told the reason, and the message says whether the part-made record was removed.
+- [x] 3. `sendPortalInvite` and `resendInvite`: the new token is deleted, older links are left working, staff are told the reason.
+- [x] 4. Audit rows: an invite attempt is recorded as a failure with its reason instead of a success; `resendInvite` gained the audit row it never had.
+- [x] 5. Chase cron: a failed chase is not stamped, so the next run tries again, and the run raises `reportCronFailure` (silent before).
+- [x] 6. `sendOnboardingCompleteEmail` at `submitOnboardingProfile` stays best effort: it is our own notification, so a failure must not fail the employee's submission. Its caller already catches and logs.
+- [x] 7. Tests: helper contract (throws or resolves), all three actions end to end with a failing provider (real helpers, faked provider only), the cron's unstamped chase and alert, and the invite modal showing the reason on screen. All ten new assertions fail on `origin/main`.
+- [x] 8. Swept the same area: `beginSeparation` already rolls back when its email fails; the event ticket and payment link senders are checked by their callers; no other staff send in employees or recruitment reports success blind.
+- [x] 9. Gates: lint, uncached tsc, `npm test`, `npm run test:utc`, uncached build.
+- [ ] 10. Push, merge and deploy: needs the owner's yes.
+
+Decisions: throwing rather than returning a result, because the callers were already written for it and the file's separation email works that way; `inviteRecruitmentCandidateAsEmployeeAction` needs no change, since it already turns an invite error into a failed hire handoff.
+
+# "Open now" past midnight, for the 1am New Year's Eve close, 11 September 2026
+
+Branch `fix/hours-open-now-past-midnight-2026-09-11`. Code only: no database change, no deploy. Unblocks item 12 below (the 31 December special hours row moving from 22:00 to 01:00), which stays a separate, owner-approved data change after this is live.
+
+- [x] `whenLondonClockReaches()` in `src/lib/dateUtils.ts`: the first instant the London clock shows a wall time on a date. `fromZonedTime` lands an hour out for 01:00 to 01:59 on both clock-change nights. Tests in both zones.
+- [x] `src/lib/business-hours/open-now.ts` (pure): trading window per London date (a close at or before the opening time is the next day), the trading day in force now (yesterday's until its after-midnight close, else today's), the kitchen service being served on that day, and `calculateTimeUntil` measured between instants.
+- [x] `/api/business/hours`: currentStatus, services.venue and services.kitchen read the trading day; yesterday's special row and yesterday's effective-dated regular row are loaded; payload otherwise unchanged.
+- [x] `/api/business-hours`: isOpen reads the trading day the same way.
+- [x] Route tests for both, fixtures: ordinary day, 31 December 12:00 to 01:00 (23:30 and 12:00 on 31 December, 00:30 on 1 January, 00:30 on 31 December after a 22:00 close on 30 December), a regular midnight close, a version change at midnight, both clock-change nights. Against the old routes 11 of the 17 fail and the ordinary-day ones pass.
+- [x] Sweep the rest of the app for "open now" read off today's row alone; check the website's consumers on `origin/main` (read only). No other open or closed status in the app. The FOH screen, FOH walk-ins, FOH booking time moves and the missing cash-up list take "today" from the calendar date; left alone here and reported. The website's badges read `currentStatus.isOpen`, so they come right with this change; its smaller follow-ups are reported, not fixed.
+- [x] Gates: lint, typecheck, `npm test`, `npm run test:utc`, build. Commit; no push.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+- [ ] Then the 31 December special hours row from 22:00 to 01:00 (item 12 below): a production write, the owner's go-ahead.
+
+Results (Node 20.19.5, on `origin/main` `339bfcf1`): lint clean; uncached `tsc --noEmit` clean; 838 test files, 7,955 passed and 2 skipped in both London and UTC (the same on Node 26); cold `npm run build` passes with `NODE_OPTIONS=--max-old-space-size=6144`, both hours routes dynamic.
+
+Decisions recorded: a close at or before the opening time is always the next day, with no cap, as the routes already had it; on a clock-change night a close is the first moment the clock shows it; `today` and `todayHours` still describe the calendar day; the special hours read still falls back to regular hours when it fails.
+
+# Private booking deposits confirmed by staff, balance reminders by email, 11 September 2026
+
+Branch `feat/private-booking-deposit-confirm-2026-09-11`, rebased on `origin/main` (`377434a0`). Local commits only. Both new flags are off by default, and off is today's behaviour.
+
+- [x] 1. Flag `private_booking_deposit_confirmation`: creating a booking sends no deposit message (staff create and `/api/external/create-booking`); website enquiries stay silent (`b8d9ed70`).
+- [x] 2. Deposit to be confirmed: nullable `deposit_confirmed_at` / `deposit_confirmed_by`, migration `20260911200000_private_booking_deposit_confirmation.sql` and its rollback written and replayed on a throwaway local Postgres fixture, NOT applied. While unconfirmed: no deposit reminders, no automatic hold expiry, no hold-lapsed or hold-extended message, no "Send payment link", no move to Confirmed; list badge and detail banner (`b8d9ed70`, `290a1ab9`, renumbered in `f3e220d6`).
+- [x] 3. Confirm deposit action (manage_deposits or manage): amount adjustable (GM override and reason below £250), records who and when, keeps a future hold or sets one with `computeHoldExpiry`, sends one deposit request by email (text if no usable email or the email fails), idempotent by a conditional claim, undone and shown to staff when nothing reaches the guest, timeline and audit rows; the bounce fallback rebuilds it (`290a1ab9`).
+- [x] 4. Deposit reminders run only for confirmed deposits (`b8d9ed70`).
+- [x] 5. Flag `private_booking_balance_email_auto`: balance reminders by email straight away when there is a usable address, text for approval otherwise; balance reminders queued before the switch refused at Approve and Send Now; no backfill of passed deadlines (`dabfaf4d`).
+- [x] 6. Balance reminder emails list the payments made, the event total, paid towards the bill and the balance due, from the payment ledger; if the figures do not add up no email goes and the text waits for approval instead; fixture renders in both zones (`dabfaf4d`).
+- [x] Gates: lint, uncached tsc, `npm test`, `npm run test:utc`, uncached build.
+- [ ] Apply the migration, deploy, switch the two flags on: the owner's decision; not asked for.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+Results (Node 20.19.5, rebased on `377434a0`): lint clean; uncached `tsc --noEmit` clean; 836 test files, 7,915 passed and 2 skipped in both London and UTC (baseline before this work: 829 files after the rebase's new tests, 823 on `506c3c69`); uncached `npm run build` passes with `NODE_OPTIONS=--max-old-space-size=6144`.
+
+Decisions recorded: the deposit request's PayPal link is the guest's booking page (a one-button PayPal payment that lasts a year), not a PayPal approval link that runs out within hours; unconfirmed bookings keep today's hold expiry because only a live hold blocks the space; bookings that exist when the migration runs count as confirmed; `PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED` must stay true in production for any balance reminder to go.
+
+# SSOT data corrections, 11 September 2026 (applied to production)
+
+Owner approval 11 September 2026 (items 1 to 11, 13 to 15, and the owner's answers on finish times, quiz seating and access wording). Applied through `prod-migrate` to `tfcasgxopxegwrabvwat`, each as one guarded DO statement (production marker, ids plus the captured old value or its md5, exact counts, reviewed md5 of every changed long text).
+
+- [x] `20260911172000_ssot_record_and_content_corrections.sql` (sha256 `2585ba63...`) applied as `20260911180655 ssot_record_and_content_corrections`: 60 statements. Every literal value re-checked against the file by md5 afterwards: 70 fields, none different.
+- [x] `20260911172100_private_booking_queue_cancel_stale_texts.sql` (sha256 `91ad9f85...`) applied as `20260911180903 private_booking_queue_cancel_stale_texts`: 21 texts cancelled, none had gone; the one other pending text (a draft booking's deposit reminder) untouched.
+- [x] `20260911172200_backup_accessibility_tables_rls.sql` (sha256 `7a152ee0...`) applied as `20260911180913 backup_accessibility_tables_rls`: row level security on for both backup tables; `assert-anon-surface.ts` all 9 checks passed after.
+- [x] `20260911180000_ssot_record_followups.sql` (sha256 `fb3f3f96...`) applied as `20260911181415 ssot_record_followups`: "Assistance dogs are always welcome." back after the SSOT access block on the 25 rows that had it (SSOT section 8), the tasting night brief's "wheelchair accessible" line, and the four other quiz briefs' 6:45pm and 6:55pm arrival lines. Replayed on a throwaway local Postgres 17 first: it only logs a notice off production.
+- [ ] New Year's Eve closing at 1am (item 12): blocked until the business hours "open now" status reads the previous day's row past midnight (`src/app/api/business/hours/route.ts`, `src/app/api/business-hours/route.ts`). Then one field on the 31 December special hours row. The code fix is on `fix/hours-open-now-past-midnight-2026-09-11` (top of this file), not yet deployed.
+
+After: no upcoming brief says 6:45pm, 6:55pm or wheelchair accessible; no upcoming quiz record says communal; no upcoming event other than the Halloween party ends after 22:00.
+
+# Christmas minimum from 6 to 4, 11 September 2026 (applied to production)
+
+- [x] Prove the production ref (`tfcasgxopxegwrabvwat`) from `supabase/.temp/project-ref` and `.env.local`; read live state with read-only SELECTs only.
+- [x] Capture both live function definitions and match them to production by md5 before editing.
+- [x] Draft `20260911133645_christmas_minimum_four.sql` (two gates, EXECUTE re-stated, one period row) and its rollback in `supabase/rollbacks/`.
+- [x] `CHRISTMAS_MIN_PARTY_SIZE` to 4; fixtures that modelled the 6-guest period moved to 4.
+- [x] Tests that fail on the old values: `christmas-minimum.test.ts`, `FohCreateBookingModal.test.tsx`.
+- [x] Validate on an isolated local database: production state reproduced, migration, re-run, rollback, unhappy paths.
+- [x] Gates: lint (0 warnings), typecheck, `npm test` and `npm run test:utc` (791 files, 7,174 passed, 2 existing skips each), cold build. The build ran out of memory at the default heap while type checking and passed with `NODE_OPTIONS=--max-old-space-size=8192`, the same flag the typecheck needs.
+- [x] Owner go-ahead (11 September 2026), then applied through `prod-migrate` to `tfcasgxopxegwrabvwat` as production migration `20260911170248 christmas_minimum_four`.
+  - Applied as one DO statement rather than by pasting the 66 KB file: it read each function's live `pg_get_functiondef`, required md5 `f8f7f2b84b4fdf9ff7cb5266416a21c8` (core) and `988a2a5ddefd576aef392edaf70c67dc` (v05), made the two Christmas edits, required the edited text to hash to `abfa1c3f725cd01bb5ddfed2a39b23dc` and `1f8074f0034a99dc9b89274cde5f67ee` (the md5 of this file's two CREATE statements plus a newline, so the text run is byte for byte the file's), then ran it, restated the same EXECUTE grants, moved the period row from 6 to 4 and ran this file's own end-state assertions. Anything unexpected would have rolled the whole statement back.
+  - After: both function md5s as above; `christmas-2026` min_party_size 4; EXECUTE unchanged (core: service_role only; v05: authenticated and service_role); `resolve_table_booking_deposit` on 4 December 2026 refuses 3 and asks £40, £50 and £60 of 4, 5 and 6; `scripts/security/assert-anon-surface.ts` all 9 checks passed.
+  - Rollback unchanged: `supabase/rollbacks/20260911133645_christmas_minimum_four.sql`, or the same guarded pattern in reverse.
+
+Decisions: the period row is matched on its code, not its production id, so a rebuilt database applies it too. Marketing campaign files were left alone: two are records of emails sent in August, the rest are the designer's handover samples that the fidelity tests pin byte for byte.
+
+# Email-first messaging: review fixes for the bounce fallback, 11 September 2026
+
+Integration branch `feat/email-first-integration-2026-09-11`, on top of `dc76b5a9`. Local commits only. With every flag off nothing a guest or staff member sees changes, except the party-size checkbox label and the cancellation email key.
+
+- [x] 1a. A fallback job inside quiet hours (or within five minutes of 21:00) waits for the next 09:00 London: the queue puts the same job row back to pending, unclaimed, so the render and every check run again when the text can go (`069126eb`).
+- [x] 1b. Renderers return `validUntil` for time-bound wording; the job skips with `too_late` at or after it. Private deposit received states the deposit paid date, so a deleted deposit is `booking_changed` (`8a75b8ce`).
+- [x] 1c. A message that no longer applies (hold paid or gone, balance paid, link used, guest answered, choices in) is skipped as `no_longer_needed`, never failed, in both renderers (`8a75b8ce`).
+- [x] 2. The fallback never texts a private booking trigger that needs approval: `needs_approval`, listed for staff (`b8812056`).
+- [x] 3. Party-size checkbox reads "Notify guest" (`fdead553`).
+- [x] 4. Table cancellation email key includes the booking's `cancelled_at` (`cc2f12ec`).
+- [x] 5. The private booking email-first flag is read once per action and passed to the messenger (`3b7bb44b`).
+- [x] Gates: lint, uncached tsc, `npm test`, `npm run test:utc`, uncached build.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+Results (Node 20.19.5): lint clean; uncached `tsc --noEmit` clean; 822 test files, 7,730 passed and 2 skipped in both London and UTC; uncached `npm run build` passes with `NODE_OPTIONS=--max-old-space-size=6144`.
+
+Decisions recorded: "due tomorrow" and "2 days to go" balance wording is held to its relative words (start of the due day, start of the day before), like the event reminder; a used manage link still reports `link_expired`; the quiet-hours decision uses `evaluateSmsQuietHours`, the rule sendSMS applies, so the two cannot disagree.
+
+# Email-first messaging: bounce fallback for table bookings, 11 September 2026
+
+Integration branch `feat/email-first-integration-2026-09-11`. Local commit only. Nothing changes for guests while `bounce_sms_fallback` or the table flags are off.
+
+- [x] Every email-first table booking message writes its booking id, template key, message, stated facts and link form on the delivery row at insert (`deliveryMetadata` on `notifyCustomer`, `fallback-details.ts`). Ids and facts only.
+- [x] One text builder per message in `guest-texts.ts`, shared by the email-first sender, the flag-off sender and the fallback.
+- [x] Table booking renderer for the five template keys. Links are found through the existing short link and a live token, never made; otherwise `link_not_found`, `link_expired` or `link_not_rebuildable`, in plain words for staff.
+- [x] A text that cannot be rebuilt for a booking cancelled, started or changed since is skipped, not raised with staff.
+- [x] Tests: sender text equals rebuilt text for all five keys (cancellation in seven refund variants), unavailable paths, changed facts, cancelled and reinstated bookings, one end-to-end run, fixture renders either side of 25 October 2026.
+- [ ] Push, merge and deploy: not asked for; local commit only.
+
+Results: lint clean; uncached `tsc --noEmit` clean; 822 test files, 7,637 passed and 2 skipped in both London and UTC; uncached `npm run build` passes with `NODE_OPTIONS=--max-old-space-size=6144`.
+
+# Email-first messaging P2, P3 and P5, 11 September 2026
+
+Same branch as P1. Every change sits behind a `messaging_flags` key that reads as off, so deploying changes nothing for guests. Local commits only.
+
+- [x] P2 `event_promo_last_push`: skip the 7-day intro and 24-hour follow-up; one last push 0 to 3 London days out, before the start, under 25% booked; two promo texts per person per rolling 30 days; keys `event_last_push` and `event_last_push_paid`.
+- [x] P2 `event_promo_intro_sms_no_email` (only with the flag above): today's 7-day intro for guests with no usable email, inside the same cap.
+- [x] P2 tests: capacity boundaries, timing window (London midnight, both clock changes), third-night cap, no-email intro, reply-to-book, flag off. Gate: lint and tsc clean; 797 files, 7,274 passed and 2 skipped in London and UTC.
+- [x] P3 `table_cancelled_email_first`: email first, email-only guests covered, `table_booking_id` in the SMS metadata, staff see a failed notice.
+- [x] P3 `table_deposit_confirmed_email_first`: email first, one message for five triggers (claim, pre-check, idempotency key).
+- [x] P3 `table_party_size_deposit_email_first`: email first, real channel and outcome in the staff toast.
+- [x] P3 `table_preorder_email_first`: email first instead of both.
+- [x] P5 `table_confirm_reminder_email_first`: email first, shared short link, email-only guests eligible.
+- [x] Fixture renders of every new email in London and UTC (cancellation in all seven refund variants, deposit confirmed, deposit request, pre-order, tap-to-confirm), failing on undefined, Invalid Date, NaN, £0.00, null and banned dashes, with the weekday checked against the calendar.
+- [x] Gates after each piece: lint, tsc, `npm test`, `npm run test:utc`; uncached build at the end.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+Results: lint clean; tsc clean; 804 test files, 7,356 passed and 2 skipped in both London and UTC; no test reads the real flags row (checked with an instrumented run); uncached `npm run build` passes with CI's `NODE_OPTIONS=--max-old-space-size=6144`. At Node's default heap the build's type check runs out of memory, as it already did at P1: tsc peaks at 4.86 GB here against 4.53 GB at P1, and CI gives the build 6 GB.
+
+Found, not changed: the BOH party-size checkbox still reads "Notify guest by SMS" (with the flag on the toast names the channel used); the tap-to-confirm token expiry string noted in the plan is untouched; the no-email intro and the last push can both reach one guest on the same day for two different nights (inside the two-a-month cap).
+
+# Email-first messaging P1, safety foundations, 11 September 2026
+
+Branch `feat/email-first-messaging-2026-09-11`. No guest-visible change: every new path is behind a flag that reads as off, and the new levers are kill switches nobody has set.
+
+- [x] Pre-check: `SUSPEND_ALL_COMMS` and `SUSPEND_ALL_EMAIL` are not defined in production (`vercel env ls production`, names only).
+- [x] `sendEmail` honours `SUSPEND_ALL_EMAIL` and `SUSPEND_ALL_COMMS` before the suppression lookup; `code: 'email_suspended'`.
+- [x] Marketing holds its queue while email is suspended (classifier and cron guard).
+- [x] `sendSMS` and `resolveSmsSuspensionReason` honour `SUSPEND_ALL_COMMS`.
+- [x] `isMessagingFlagOn()` reads `system_settings.messaging_flags`, 60-second cache, off in every failure mode.
+- [x] `notifyCustomer`: idempotency key, accepted-but-unlogged email counts as sent and alerts, `finalStatus` and `fallbackUsed`.
+- [x] One `isEmailUsable()` in `channel.ts`, used by `notify.ts`.
+- [x] `CLAUDE.md` kill-switch paragraph and `.env.example`.
+- [x] Gates: lint, tsc, tests in London and UTC, uncached build.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+Results: lint clean; `npx tsc --noEmit` clean (it needs `NODE_OPTIONS=--max-old-space-size=8192`, as in CI); 794 test files, 7,208 passed and 2 skipped in both London and UTC; uncached production build passed. The first commit's tree passed the same gates on its own (792 files, 7,177 passed).
+
+Left for later pieces: writing `final_status = 'fallback_sent'` for the daily monitor was not in this brief. `CRON_ALERT_EMAIL` is not in the production environment list, so the new sent-but-unlogged alert reaches the logs only until it is set.
+
+# Email-first messaging P4, P6 and P7, 11 September 2026
+
+Branch `feat/email-first-bookings-2026-09-11` (worktree `OJ-AnchorManagementTools-wt-email-b`), on top of P1. Local commits only. Every guest-visible change sits behind a `messaging_flags` key that reads as off; the only unflagged change is the step 0 bug fix.
+
+- [x] P6 step 0: the queue bulk-cancel stops writing the missing `updated_at` column and checks its error (three paths in `mutations.ts`, one in the expire-holds cron); regression tests. No clean-up of existing stale rows. Gates: lint and tsc clean; 796 files, 7,217 passed and 2 skipped in London and UTC.
+- [x] P4 (`bounce_sms_fallback`): the Resend webhook enqueues one `notification_delayed_fallback` job per bounced, failed or suppressed transactional email; the job claims the delivery once, re-renders the text from the live booking, skips cancelled, past or changed bookings, sends through `sendSMS`, and marks failures with an audit row and a staff alert; "Undelivered guest messages" on `/settings/sms-failures`. Gates: lint and tsc clean; 800 files, 7,253 passed and 2 skipped in London and UTC. No renderer is registered yet: P6 adds the private booking one, and table booking keys from P3 and P5 need theirs before they set `delayedFallbackAllowed`.
+- [x] P6 (`private_booking_email_first`): `sendPrivateBookingMessage` chooses email when the booking has a usable address (contact email first, then the customer's), falls back to the queued text on failure, and records the delivery for P4; every automated caller switched; Send Now chooses the channel at send time; email builders for the text-only messages and the six cancellation variants; waived-deposit wording; emails on the Communications tab and timeline. Gates: lint and tsc clean; 807 files, 7,358 passed and 2 skipped in London and UTC.
+- [x] P7 (`staff_message_email_option`): email choice on the BOH "Message guests" modal, the single-guest card and the private booking Messages tab, defaulting to email for a guest with a usable address; permissions unchanged; toasts show the real outcome. Gates: lint and tsc clean; 811 files, 7,386 passed and 2 skipped in London and UTC.
+- [x] Fixture renders of every new email in London and UTC (no `undefined`, `Invalid Date`, `NaN` or `£0.00`; weekday matches the date): `tests/lib/privateBookingMessageEmails.fixtures.test.ts`, four event dates including both 2026 clock changes.
+- [x] Gates after each piece: lint, `tsc --noEmit`, `npm test`, `npm run test:utc`; uncached build at the end (`rm -rf .next && npm run build` with CI's `NODE_OPTIONS=--max-old-space-size=6144`; the default 4 GB heap runs out during the type check).
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+# AI event copy builder layout, 6 September 2026
+
+- [x] Inspect live panel and trace card padding.
+- [x] Apply spacing inside CardBody, align with app tokens and wrap narrow-screen content.
+- [x] Verify desktop/mobile layout and existing copy controls with fixtures.
+  Browser checks: desktop, 390px and 320px; no horizontal overflow. Switched to GBP, selected a custom link, generated fixture copy and copied it successfully.
+- [x] Run quality gates: lint, typecheck, 734 test files (6,331 tests passed, two existing skips), production build.
+- [ ] Merge and verify production deployment.
+
+Scope: UI only. Existing generation prompts and server action unchanged. The card previously combined outer padding with its automatic inner padding, while outer space-y never reached the form sections.
+
+# Event checklist rapid completion, 6 September 2026
+
+- [x] Confirm the active event detail card reloads after each completion.
+- [x] Update only the changed task, with independent pending and rollback state.
+- [x] Verify overlapping saves, failures and reopening in six component tests and browser fixtures.
+- [x] Complete build gate: lint, typecheck, 734 test files (6,331 passed) and production build passed.
+- [ ] Merge, deploy and verify the production release.
+
+Browser evidence: five ticks produced four saved tasks and one isolated rollback; checklist reads stayed at one while other tasks remained usable.
+
+No database migration. Assumption: completing prep tasks refers to the event detail checklist. Other checklist views already update local state without explicitly reloading the checklist.
+
+# Friday manager report, 5 September 2026
+
+Detailed plan: [Friday manager report](./plan-2026-09-05-friday-manager-report.md).
+
+- [x] Discover existing manager emails and record the owner's timing decisions.
+- [x] Implement the report queue, renderer and protected delivery route without a migration.
+- [x] Connect selected manager notifications and Friday snapshots.
+- [ ] Complete regression checks and release verification.
+
+# Nav pills: make every pill a clearable to-do
+
+Goal: a pill means "there is something here you can action now", and working
+through the app drives every pill to zero.
+
+## Findings that shaped the plan
+
+- Approving a charge request can never succeed. `decide_charge_request_v05`
+  returns `stripe_payment_method_id` hard-coded to NULL, and
+  `charge-approvals.ts` fails any charge with "No card on file" when that is
+  missing. 28 requests created, 0 charged, 1 waived, 27 stuck pending.
+  So the in-app queue is waive-only. No Approve button, because it would be a
+  button guaranteed to fail.
+- Feedback needs no schema change. The inbox is backed by `review_feedback`,
+  which already has `status` plus `handled_by`/`handled_at`, and the actions
+  file already defines `OPEN_STATUSES = ['new','in_progress']`.
+- Parking has no staff-actionable queue. All 9 bookings are terminal
+  (paid/expired/cancelled); `payment_status='pending'` only ever means "waiting
+  on the guest" and self-resolves. Dropping parking from the counts entirely.
+
+## Tasks
+
+- [x] 1. Counts action-only: invoices drop `sent`/`partially_paid`; table
+      bookings drop `pending_payment`; remove parking from the type and query
+- [x] 2. Add rota (leave requests pending), checklists (tasks still open and due),
+      feedback (`new`/`in_progress`) to `OutstandingCounts`
+- [x] 3. Map the three new ids in `navCount`, drop parking
+- [x] 4. In-app charge-request queue under /table-bookings, waive-only, with
+      permission check and audit logging
+- [x] 5. Tests for the new count semantics and the waive action
+- [x] 6. Verify: typecheck, lint, full test suite, production build
+
+## Review
+
+Two problems found during the build that the plan had not anticipated.
+
+**RLS made two of the new counts silently zero.** `checklist_task_instances`
+has a service_role-only policy and `review_feedback` has RLS enabled with no
+policies at all, so both return zero rows through the cookie-based client the
+action was using. Nothing errors: the badge would simply have stayed empty
+forever. Those two counts now read through the admin client, gated on an
+authenticated user, with the rest left on the cookie client so no existing
+count changed behaviour.
+
+**A client component pulled server-only code into the browser bundle.**
+Importing `formatChargeRequestType` from `charge-approvals.ts` dragged Stripe
+and the email stack in with it and the production build failed on missing
+`net`/`fs`/`tls`. The formatter now lives in `charge-request-labels.ts`, a pure
+module, re-exported from `charge-approvals.ts` so existing callers are
+unaffected. Worth remembering: `npx tsc --noEmit` and the dev server both pass
+this, only a production build catches it.
+
+Verified: typecheck clean, lint clean, 4,671 tests pass, clean production build,
+and the queue UI checked in a browser (render, selection, empty state).
+
+Pill values at the time of writing: menu 121, table bookings 27, private
+bookings 13, checklists 55, rota 4, invoices 4, receipts 1, feedback 1.
+
+# Event QR pack: printed media only
+
+## Tasks
+
+- [x] Exclude screen-only QR channels from the event QR pack
+- [x] Keep screen QR channels available everywhere else
+- [x] Add a regression test for print, screen and digital channel inclusion
+- [x] Run focused tests, typecheck and lint
+
+## Review
+
+The event QR pack now creates, renders and lists only the 23 print channels. The
+five screen channels and all digital channels are excluded from this export, but
+their shared catalogue and event tools are unchanged.
+
+Verified on Node 20: 19 focused QR-pack tests and all 5,257 project tests pass;
+typecheck, full lint, diff checks and the production build are clean.
+
+Deployed to production as Vercel deployment
+`dpl_EiqZdHqDgXXgTWRgdVwzvm7FqgAm`; the production aliases report Ready.
+
+# FOH selected-customer walk-in hardening
+
+## Tasks
+
+- [x] Require the current FOH booking client contract and reject stale screens
+- [x] Carry explicit selected/phone/anonymous customer intent to both booking APIs
+- [x] Refresh long-lived FOH screens when the deployed version changes
+- [x] Reject non-today walk-ins and direct staff to create a normal booking
+- [x] Add regression tests for identity, stale clients, refresh checks and seating
+- [x] Verify focused tests, typecheck and lint; confirm the branch is `main`
+
+## Review
+
+The faulty booking came from an old FOH screen that did not send the selected
+customer id. Current FOH requests now state whether the operator selected a
+customer, entered a phone number, or intentionally chose an anonymous walk-in.
+The APIs reject stale clients instead of silently creating a Walk-in customer,
+and long-lived FOH screens reload after a deployment when it is safe to do so.
+
+Non-today walk-ins are rejected by the screen and both APIs, including the manual
+override path. Staff are told to use Add booking instead. Verified on `main`:
+80 focused FOH tests and all 5,121 project tests pass;
+typecheck, lint and diff checks are clean. The production build compiled and
+typechecked, but its final page-data step could not be checked while the live
+development server was writing to the same `.next` directory.
+
+# Public citation baseline, 4 September 2026
+
+## Tasks
+
+- [x] Confirm the canonical public identity, contact details and live hours source
+- [x] Research current official standards for core maps and directory platforms
+- [x] Find and verify existing public listings across maps, social, hospitality and local directories
+- [x] Record missing, incorrect, duplicate and inaccessible listings with confidence and evidence
+- [x] Produce a prioritised baseline for a later change plan, without changing any live listing
+
+## Review
+
+Completed a read-only audit of 45 public surfaces, passive references and
+realistic placement opportunities. The
+baseline, standards, evidence limits and priority findings are recorded in
+`tasks/seo-powerhouse/2026-09-04-the-anchor-citations/`. No live listing was
+changed.
+
+# Public citation corrections, 4 September 2026
+
+## Tasks
+
+- [x] Record the owner's batched approval and account guardrails
+- [x] Correct the dead CAMRA URL in the website SSOT
+- [x] Retire the obsolete Tabology ordering profile
+- [ ] Submit the prepared Tabology support request to replace its residual public `orders@the-anchor.pub` email
+- [ ] Retire the obsolete Uber Eats ordering profile
+- [ ] Correct P0 misinformation on Cylex, SquareMeal and inapub
+- [x] Claim Apple Maps and submit its corrected location, actions and brand media
+- [x] Correct OpenTable hours and verify its dietary options
+- [x] Submit TripAdvisor business information and menu corrections
+- [ ] Correct or claim Bing and Yell listings
+- [x] Correct the claimed Yelp listing
+- [x] Find and claim the existing free Nextdoor Business Page
+- [x] Correct OpenStreetMap and submit corrections for dependent local listings
+- [ ] Work through remaining actionable P2 and P3 citations
+- [ ] Verify every submitted or live change and update the change log
+
+## Review
+
+In progress. OpenStreetMap and Pubs Galore corrections are live. Apple is claimed
+and verified, with four gallery photos published and its location, actions, logo
+and cover photo in review. SquareMeal,
+CAMRA, Yell, Restaurant Guru, Useyourlocal, inapub, Barrel & Stone and Staines
+Online corrections are submitted. Uber Eats retirement is with support. OpenTable
+hours are corrected and its accurate gluten-free and vegan options are published.
+Cylex is submitted and awaiting moderation. The beerintheevening registration
+email did not arrive, so its direct support form is prepared and awaits one
+owner CAPTCHA. TripAdvisor's canonical hours, address, tenant description and cuisines
+are submitted and processing. Its false Buffet attribute is removed, both stale
+2025 rich menus are unpublished, and its link now points to the live menu.
+Nextdoor is claimed without a duplicate and now publishes the correct logo,
+cover photo, public contact details, website, hours, categories and tenant
+description. Its public page is confirmed accessible while signed out. Yelp's
+canonical hours and tenant description are now live, and its payment attributes
+have been checked. Tabology Mobile Ordering and click and collect are disabled,
+both signed-out ordering routes refuse orders, and its public address, hours and
+social links are corrected. Its information page still shows
+`orders@the-anchor.pub` because the Venue details contact fields reject input in
+the current owner session. Its support request is prepared and awaits the visible
+reCAPTCHA and Submit. Bing remains locked pending verification. Paid placements
+remain excluded.
+
+## API connections, 5 September 2026
+
+See `tasks/fix-function/2026-09-05-api-connections/todo.md` for the isolated remediation run, verified fixes and production rollout.
+
+## 5 September 2026: Anchor booking growth
+
+- [x] Implement event dining requests and Christmas course snapshots in the isolated booking-growth branch.
+- [x] Complete independent SQL/code review and isolated migration/rollback tests.
+- [x] Save baseline, guarded menu corrections, dated-capacity review and release approval package in `tasks/anchor-booking-growth/`.
+- [x] Complete paired browser verification and refreshed integration gates.
+- [x] Obtain approval of exact production migration, activation and menu payloads before application.
+- [x] Deploy the paired approved release, verify production aliases, activate Christmas courses and exercise the live one-course journey without customer submission.
+- [x] Configure the 15 venue-confirmed dated capacities, with matching live booking snapshots and audit records; campaign remains a prepared brief.
+
+
+# QR branding fixes, 6 September 2026
+
+- [x] Check live schema and current production code in an isolated worktree.
+- [x] Lower editor and geometry minimum to 10%; draft and locally validate storage constraint.
+- [x] Render BOOK NOW without runtime font dependencies.
+- [ ] Validate migration and run checks, then deploy and verify the actual download.
+
+Scope: QR branding only. Existing artwork unchanged until saved again. Database constraint update is an independently deployable prerequisite; application changes follow. No new columns, grants, functions or data rewrites. Website and unrelated checkout work unchanged.
+
+QR verification: Node 20 lint, uncached typecheck, all 759 test files (6832 tests passed, two skipped) and clean production build passed. Actual minimum-size rendered image visually inspected with readable vector lettering. Isolated PostgreSQL validates boundaries and rollback. Production migration approval pending; no live changes applied.
+
+## Event artwork adjustments, 10 September 2026
+- [x] Strengthen soft logo shadows and reserve branding space in prompts.
+- [x] Remove printed cut marks and update printing instructions.
+- [x] Run checks and visually verify generated artwork and PDF.
+- [ ] Deploy and verify production.
+
+Verification notes: generated white and black logo composites and rendered the three-panel A4 PDF. Both shadows fade smoothly; the PDF contains three images and no stroked cut marks. Existing saved artwork needs branding reapplied to pick up the shadow. No database migration is needed.
+
+Changed files for this request: src/lib/events/imageVariants.ts; src/lib/events/artwork/geometry.ts; src/lib/events/artwork/composite.ts; src/lib/events/artwork/composite.test.ts; src/lib/events/artwork/branding-service.test.ts; src/lib/events/artwork/table-talker-pdf.ts; src/lib/events/artwork/table-talker-pdf.test.ts; src/app/(authenticated)/events/_components/EventImagePanel.tsx; src/app/(authenticated)/events/_components/ArtworkBrandingModal.test.tsx; src/components/features/events/TableTalkerSheetButton.tsx; src/components/features/events/tableTalkerSheet.ts; tasks/todo.md.
+Deliberately unchanged: print-sheet.ts and print-sheet.test.ts retain the existing panel geometry; ArtworkBrandingModal.tsx already reads the shared shadow settings. Other work in the original checkout is untouched.
+
+Checks passed: zero-warning lint, uncached typecheck, 788 test files (7,144 passing tests, 2 skipped) in both Europe/London and UTC, and a cold production build.

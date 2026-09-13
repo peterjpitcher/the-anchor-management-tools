@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs'
+import { readdirSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import { describe, expect, it } from 'vitest'
 import {
@@ -22,7 +22,18 @@ import {
   logoRectFree,
   resolveLogoRect,
   QR_MIN_WIDTH_FRAC,
+  QR_MAX_WIDTH_FRAC,
   QR_MIN_WIDTH_FRAC_EXACT,
+  shadowColourFor,
+  logoShadowSpec,
+  cssDropShadow,
+  qrStripRect,
+  qrBlockRect,
+  qrCodeRectWithinCanvas,
+  snapFrac,
+  SNAP_THRESHOLD_FRAC,
+  POSTER_QR_MINIMUM,
+  type QrPrintMinimum,
 } from './geometry'
 import { EVENT_IMAGE_VARIANTS, EVENT_IMAGE_VARIANT_ORDER } from '@/lib/events/imageVariants'
 import {
@@ -32,7 +43,7 @@ import {
 
 const CORNERS: readonly Corner[] = ['top_left', 'top_right', 'bottom_left', 'bottom_right']
 
-/** The five real canvases, read from the variant config so a new one is covered too. */
+/** The real canvases, read from the variant config so a new one is covered too. */
 const CANVASES = EVENT_IMAGE_VARIANT_ORDER.map((key) => ({
   key,
   width: EVENT_IMAGE_VARIANTS[key].targetWidth,
@@ -87,8 +98,8 @@ describe('constants', () => {
       .toBeLessThanOrEqual(934)
   })
 
-  it('checks there are five canvases to reason about', () => {
-    expect(CANVASES).toHaveLength(5)
+  it('checks there are six canvases to reason about, the slim table talker included', () => {
+    expect(CANVASES).toHaveLength(6)
   })
 })
 
@@ -247,33 +258,18 @@ describe('reservedLogoRect', () => {
 })
 
 describe('qrMinWidthPx and qrMinWidthFrac', () => {
-  it('rounds UP on the A4 poster, 473 not 472', () => {
-    // 2480 * 40 / 210 = 472.38. A floor would print at 39.9mm, under the minimum.
-    expect(qrMinWidthPx(2480)).toBe(473)
-    expect(Math.floor((2480 * QR_MIN_MM) / A4_WIDTH_MM)).toBe(472)
+  it('allows exactly 10% on an A4 poster', () => {
+    expect(qrMinWidthPx(2480)).toBe(248)
+    expect(qrMinWidthFrac()).toBe(0.1)
   })
 
-  it('never returns a width that prints under 40mm', () => {
+  it('rounds up fractional pixels at the 10% minimum', () => {
     for (const posterWidth of [1080, 1240, 1920, 2480, 4961]) {
       const px = qrMinWidthPx(posterWidth)
       expect(Number.isInteger(px)).toBe(true)
-      expect((px * A4_WIDTH_MM) / posterWidth).toBeGreaterThanOrEqual(QR_MIN_MM)
+      expect(px).toBeGreaterThanOrEqual(posterWidth * 0.1)
+      expect(qrRect(posterWidth, posterWidth * 2, 0.5, 0.5, 0.1).width).toBe(px)
     }
-  })
-
-  it('expresses the same minimum as the ENFORCED fraction, rounded up', () => {
-    // Deliberately 0.1905 and not the exact 40/210 = 0.190476. The enforced
-    // floor has to sit at or above the exact ratio, never below it, or the
-    // smallest legal code prints under 40mm. It also has to match the database
-    // CHECK and the route's Zod bound, both of which use 0.1905; returning the
-    // unrounded ratio here meant the geometric minimum was rejected with a 400.
-    expect(qrMinWidthFrac()).toBe(0.1905)
-    expect(qrMinWidthFrac()).toBeGreaterThan(40 / 210)
-    expect(qrMinWidthPx(2480)).toBe(473)
-    // And the rect built at that fraction is at least the minimum pixel width.
-    expect(qrRect(2480, 3508, 0.5, 0.5, qrMinWidthFrac()).width).toBeGreaterThanOrEqual(
-      qrMinWidthPx(2480)
-    )
   })
 })
 
@@ -394,7 +390,15 @@ describe('validateQrPlacement', () => {
     const side = qrMinWidthPx(posterW)
     // Sat just below the reservation, inside the gap, so it does not intersect
     // the logo itself but is still too close to it.
-    const qr: Rect = { x: reserved.x, y: reserved.y + reserved.height + Math.floor(gap / 2), width: side, height: side }
+    // Shifted right by the strip width so the whole BLOCK stays on the canvas.
+    // Without that the bounds check fires first and this stops testing the gap.
+    const stripWidth = qrStripRect({ x: 0, y: 0, width: side, height: side }).width
+    const qr: Rect = {
+      x: reserved.x + insetPx(posterW, posterH) + stripWidth,
+      y: reserved.y + reserved.height + Math.floor(gap / 2),
+      width: side,
+      height: side,
+    }
     expect(rectsOverlap(qr, logo, 0)).toBe(false)
     const result = validateQrPlacement(posterW, posterH, qr, logo)
     expect(result.ok).toBe(false)
@@ -415,15 +419,15 @@ describe('validateQrPlacement', () => {
     }
   })
 
-  it('rejects a code under the 40mm print minimum', () => {
-    const tooSmall = qrMinWidthPx(posterW) - 1 // 472px prints at 39.9mm
+  it('rejects a code under the 21mm print minimum', () => {
+    const tooSmall = qrMinWidthPx(posterW) - 1 // one pixel below 10%
     const qr: Rect = { x: 1000, y: 2000, width: tooSmall, height: tooSmall }
     const result = validateQrPlacement(posterW, posterH, qr, null)
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toContain('40mm')
+    if (!result.ok) expect(result.reason).toContain('21mm')
   })
 
-  it('accepts a code at exactly the 40mm minimum', () => {
+  it('accepts a code at exactly the 21mm minimum', () => {
     const side = qrMinWidthPx(posterW)
     const qr: Rect = { x: 1000, y: 2000, width: side, height: side }
     expect(validateQrPlacement(posterW, posterH, qr, null)).toEqual({ ok: true })
@@ -522,30 +526,222 @@ describe('resolveLogoRect', () => {
   })
 })
 
+const MIGRATIONS_DIR = resolve(__dirname, '../../../../supabase/migrations')
+
+/**
+ * The last migration, in filename order, that mentions the given declaration.
+ *
+ * Migrations are applied in filename order, so the last file to touch a
+ * constraint is the one the database ends up with. Hardcoding a filename means
+ * the assertion silently goes stale the moment a newer migration supersedes it.
+ */
+function latestMigrationDefining(declaration: string): { sql: string; file: string } {
+  const match = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .reverse()
+    .map((file) => ({ file, sql: readFileSync(resolve(MIGRATIONS_DIR, file), 'utf8') }))
+    .find(({ sql }) => sql.includes(declaration) && /qr_width_frac\s*>=/i.test(sql))
+
+  if (!match) throw new Error(`No migration defines: ${declaration}`)
+  return match
+}
+
+/** The numeric bounds of the qr_width_frac CHECK, or null if it cannot be read. */
+function parseQrWidthBounds(sql: string): { min: number; max: number } | null {
+  const m = sql.match(
+    /qr_width_frac\s*>=\s*([0-9]*\.?[0-9]+)\s+and\s+qr_width_frac\s*<=\s*([0-9]*\.?[0-9]+)/i,
+  )
+  if (!m) return null
+  return { min: Number(m[1]), max: Number(m[2]) }
+}
+
 describe('the QR minimum width floor agrees everywhere it is written down', () => {
-  it('is the rounded-up 0.1905, not the exact 40/210 ratio', () => {
-    expect(qrMinWidthFrac()).toBe(0.1905)
-    expect(QR_MIN_WIDTH_FRAC).toBe(0.1905)
-    expect(QR_MIN_WIDTH_FRAC_EXACT).toBeCloseTo(0.190476, 6)
-    // The rounding direction is the safety property: the enforced floor must
-    // never be below the exact ratio, or a code could print under 40mm.
-    expect(QR_MIN_WIDTH_FRAC).toBeGreaterThan(QR_MIN_WIDTH_FRAC_EXACT)
+  it('uses the exact 10% ratio', () => {
+    expect(qrMinWidthFrac()).toBe(0.1)
+    expect(QR_MIN_WIDTH_FRAC).toBe(0.1)
+    expect(QR_MIN_WIDTH_FRAC_EXACT).toBe(0.1)
   })
 
-  it('matches the database CHECK constraint in the branding migration', () => {
-    const sql = readFileSync(
-      resolve(__dirname, '../../../../supabase/migrations/20260906095746_event_image_branding.sql'),
-      'utf8'
-    )
-    // If someone changes one and not the other, the smallest legal code either
-    // fails validation or prints too small. Both are silent until it is printed.
-    expect(sql).toContain(`qr_width_frac >= ${QR_MIN_WIDTH_FRAC}`)
+  it('matches the database CHECK constraint, both bounds, in the migration that last set it', () => {
+    // Three things this test used to get wrong, all of which let a real drift
+    // through:
+    //
+    // 1. It read ONE hardcoded migration. A later migration changing the
+    //    constraint would leave this asserting against a superseded file and
+    //    still pass. Find the last migration that sets the constraint instead.
+    // 2. It matched a SUBSTRING. `qr_width_frac >= 0.1` is a prefix of
+    //    `>= 0.12` and `>= 0.1905`, so both of those would have satisfied it.
+    //    Parse the number and compare it as a number.
+    // 3. It ignored the ceiling entirely, so QR_MAX_WIDTH_FRAC could drift from
+    //    the database unchecked.
+    const { sql, file } = latestMigrationDefining('event_images_qr_width_frac_check')
+    const bounds = parseQrWidthBounds(sql)
+
+    expect(bounds, `could not parse the bounds out of ${file}`).not.toBeNull()
+    expect(bounds!.min).toBe(QR_MIN_WIDTH_FRAC)
+    expect(bounds!.max).toBe(QR_MAX_WIDTH_FRAC)
   })
 
-  it('a QR at exactly the floor still clears 40mm on the A4 canvas', () => {
+  it('rejects a constraint whose floor merely starts with the same digits', () => {
+    // Guards the guard: proves the parse is numeric, not a substring match.
+    const decoy = 'check (qr_width_frac >= 0.1905 and qr_width_frac <= 0.4)'
+    expect(parseQrWidthBounds(decoy)).toEqual({ min: 0.1905, max: 0.4 })
+    expect(parseQrWidthBounds(decoy)!.min).not.toBe(QR_MIN_WIDTH_FRAC)
+  })
+
+  it('a QR at exactly the floor still clears 21mm on the A4 canvas', () => {
     const widthPx = qrRect(2480, 3508, 0.5, 0.5, QR_MIN_WIDTH_FRAC).width
     const mm = (widthPx / 2480) * 210
-    expect(mm).toBeGreaterThanOrEqual(40)
+    expect(mm).toBeGreaterThanOrEqual(21)
     expect(widthPx).toBeGreaterThanOrEqual(qrMinWidthPx(2480))
+  })
+})
+
+describe('logo drop shadow', () => {
+  it('shadows a white logo in black and a black logo in white', () => {
+    expect(shadowColourFor('white')).toBe('#000000')
+    expect(shadowColourFor('black')).toBe('#ffffff')
+  })
+
+  it('scales with the logo, not the canvas', () => {
+    const small = logoShadowSpec(logoRect(1080, 1080, 'top_left', 0.08), 'white')
+    const large = logoShadowSpec(logoRect(2480, 3508, 'top_left', 0.35), 'white')
+    expect(large.offsetXPx).toBeGreaterThan(small.offsetXPx)
+    expect(large.blurPx).toBeGreaterThan(small.blurPx)
+  })
+
+  it('never collapses to a zero offset or blur on a tiny logo', () => {
+    const spec = logoShadowSpec({ x: 0, y: 0, width: 10, height: 5 }, 'black')
+    expect(spec.offsetXPx).toBeGreaterThanOrEqual(1)
+    expect(spec.blurPx).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders a CSS filter that doubles the sigma for the blur radius', () => {
+    const spec = logoShadowSpec(logoRect(1920, 1080, 'top_left', 0.22), 'white')
+    const css = cssDropShadow(spec)
+    expect(css).toContain(`${spec.blurPx * 2}px`)
+    expect(css).toContain('rgba(0, 0, 0,')
+    expect(cssDropShadow(logoShadowSpec(logoRect(1920, 1080, 'top_left', 0.22), 'black')))
+      .toContain('rgba(255, 255, 255,')
+  })
+})
+
+describe('the BOOK NOW strip', () => {
+  const CODE = qrRect(2480, 3508, 0.5, 0.5, 0.2)
+
+  it('sits beside the code and never over it', () => {
+    const strip = qrStripRect(CODE)
+    expect(rectsOverlap(strip, CODE, 0)).toBe(false)
+  })
+
+  it('does not reduce the scannable code, so the 21mm rule still holds', () => {
+    // qr_width_frac keeps meaning the CODE width. The block is simply wider.
+    expect(CODE.width).toBeGreaterThanOrEqual(qrMinWidthPx(2480))
+    expect(qrBlockRect(CODE).width).toBeGreaterThan(CODE.width)
+  })
+
+  it('makes the block exactly code plus strip, at the code height', () => {
+    const strip = qrStripRect(CODE)
+    const block = qrBlockRect(CODE)
+    expect(block.width).toBe(CODE.width + strip.width)
+    expect(block.height).toBe(CODE.height)
+  })
+
+  it('keeps the whole block on the canvas even when pushed into the edge', () => {
+    for (const [cx, cy] of [[0, 0], [1, 1], [0, 1], [1, 0], [0.5, 0.5]] as const) {
+      const code = qrCodeRectWithinCanvas(2480, 3508, cx, cy, 0.2)
+      const block = qrBlockRect(code)
+      const inset = insetPx(2480, 3508)
+      expect(block.x, `block left at ${cx},${cy}`).toBeGreaterThanOrEqual(inset)
+      expect(block.x + block.width, `block right at ${cx},${cy}`).toBeLessThanOrEqual(2480 - inset)
+    }
+  })
+
+  it('rejects a placement whose STRIP falls off, not just the code', () => {
+    // A code hard against the left edge is legal on its own; with a strip to its
+    // left it is not, and that is the case this guard exists for.
+    const code = qrRect(2480, 3508, 0, 0.5, 0.2)
+    const verdict = validateQrPlacement(2480, 3508, code, null)
+    expect(verdict.ok).toBe(false)
+    if (verdict.ok) throw new Error('expected a rejection')
+    expect(verdict.reason).toContain('outside the poster')
+  })
+})
+
+describe('snapFrac', () => {
+  it('snaps onto the centre when close', () => {
+    expect(snapFrac(0.49)).toEqual({ value: 0.5, snappedTo: 0.5 })
+    expect(snapFrac(0.51)).toEqual({ value: 0.5, snappedTo: 0.5 })
+  })
+
+  it('leaves a deliberate off-centre placement alone', () => {
+    expect(snapFrac(0.3)).toEqual({ value: 0.3, snappedTo: null })
+    expect(snapFrac(0.8)).toEqual({ value: 0.8, snappedTo: null })
+  })
+
+  it('releases as soon as the drag passes the threshold', () => {
+    const justInside = snapFrac(0.5 + SNAP_THRESHOLD_FRAC)
+    const justOutside = snapFrac(0.5 + SNAP_THRESHOLD_FRAC + 0.001)
+    expect(justInside.snappedTo).toBe(0.5)
+    expect(justOutside.snappedTo).toBeNull()
+    expect(justOutside.value).toBeCloseTo(0.521, 3)
+  })
+
+  it('reports which target it caught, so a guide can be drawn there', () => {
+    expect(snapFrac(0.2, [0.2, 0.5, 0.8]).snappedTo).toBe(0.2)
+    expect(snapFrac(0.79, [0.2, 0.5, 0.8]).snappedTo).toBe(0.8)
+  })
+
+  it('picks the nearest target when two are in range', () => {
+    expect(snapFrac(0.51, [0.5, 0.53], 0.05).snappedTo).toBe(0.5)
+  })
+})
+
+describe('QR minimum per print surface', () => {
+  /** A narrower surface whose floor is a larger fraction of its width. */
+  const NARROW: QrPrintMinimum = { widthFrac: 0.1625, mm: 15, surfaceName: 'table talker' }
+
+  it('defaults to the poster, so the poster behaves exactly as before', () => {
+    expect(POSTER_QR_MINIMUM).toEqual({ widthFrac: QR_MIN_WIDTH_FRAC, mm: QR_MIN_MM, surfaceName: 'poster' })
+    expect(qrMinWidthPx(2480)).toBe(qrMinWidthPx(2480, POSTER_QR_MINIMUM))
+    const side = qrMinWidthPx(2480)
+    const qr: Rect = { x: 1000, y: 2000, width: side, height: side }
+    expect(validateQrPlacement(2480, 3508, qr, null)).toEqual(
+      validateQrPlacement(2480, 3508, qr, null, POSTER_QR_MINIMUM)
+    )
+  })
+
+  it('rounds the pixel floor up for the surface it is given', () => {
+    // 1169 * 0.1625 = 189.96, so 190: never a pixel under the floor.
+    expect(qrMinWidthPx(1169, NARROW)).toBe(190)
+  })
+
+  it('refuses a code the poster would accept when the surface is narrower', () => {
+    // At the poster floor, on a table talker's canvas: legal on a poster, and
+    // physically about 9mm on the table talker, well under its 15mm.
+    const side = qrMinWidthPx(1169, POSTER_QR_MINIMUM)
+    const qr: Rect = { x: 400, y: 1800, width: side, height: side }
+
+    expect(validateQrPlacement(1169, 2480, qr, null, POSTER_QR_MINIMUM)).toEqual({ ok: true })
+    const narrow = validateQrPlacement(1169, 2480, qr, null, NARROW)
+    expect(narrow.ok).toBe(false)
+    if (!narrow.ok) {
+      expect(narrow.reason).toBe(
+        `The QR code is smaller than the 15mm print minimum (${qrMinWidthPx(1169, NARROW)}px on this table talker).`
+      )
+    }
+  })
+
+  it('accepts a code at exactly the narrower floor', () => {
+    const side = qrMinWidthPx(1169, NARROW)
+    const qr: Rect = { x: 400, y: 1800, width: side, height: side }
+    expect(validateQrPlacement(1169, 2480, qr, null, NARROW)).toEqual({ ok: true })
+  })
+
+  it('names the surface when a code falls off it', () => {
+    const side = qrMinWidthPx(1169, NARROW)
+    const result = validateQrPlacement(1169, 2480, { x: -5, y: 100, width: side, height: side }, null, NARROW)
+    expect(result).toEqual({ ok: false, reason: 'The QR code falls outside the table talker.' })
   })
 })

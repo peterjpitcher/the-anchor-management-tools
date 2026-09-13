@@ -22,6 +22,7 @@ export const CALENDAR_KIND_APPEARANCE: Record<
     special_hours: { color: '#111827', label: 'Special hours', shortLabel: 'Hours' },
     calendar_note: { color: '#7DD3FC', label: 'Calendar notes', shortLabel: 'Note' },
     parking: { color: '#16A34A', label: 'Parking', shortLabel: 'Parking' },
+    marketing_email: { color: '#BE185D', label: 'Marketing emails', shortLabel: 'Email' },
 }
 
 export function kindColor(kind: CalendarEntryKind): string {
@@ -37,5 +38,5 @@ export function kindShortLabel(kind: CalendarEntryKind): string {
 }
 
 export function calendarColourNeedsLightText(colour: string): boolean {
-    return ['#1E3A8A', '#9333EA', '#111827'].includes(colour.toUpperCase())
+    return ['#1E3A8A', '#9333EA', '#111827', '#BE185D'].includes(colour.toUpperCase())
 }

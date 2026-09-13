@@ -1,0 +1,589 @@
+import { formatDateInLondon, isValidIsoDate, parseLondonDateTimeLocal, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
+import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { daysUntilHoldExpiry } from '@/lib/private-bookings/hold-deadline'
+import {
+  balanceReminder15DayMessage,
+  balanceReminder16DayMessage,
+  balanceReminder21DayMessage,
+  balanceReminderDueMessage,
+  balanceDueDateChangedMessage,
+  bookingCancelledHoldMessage,
+  bookingCancelledManualReviewMessage,
+  bookingCancelledPartialRefundMessage,
+  bookingCancelledRefundableMessage,
+  bookingCancelledRetentionMessage,
+  bookingCancelledReviewPendingMessage,
+  bookingCompletedThanksMessage,
+  bookingConfirmedMessage,
+  bookingExpiredMessage,
+  dateChangedMessage,
+  depositReceivedMessage,
+  depositRequestMessage,
+  depositReminder1DayMessage,
+  depositReminder3DayMessage,
+  depositReminder7DayMessage,
+  eventReminder1DayMessage,
+  finalPaymentMessage,
+  holdExtendedMessage,
+  privateBookingCreatedMessage,
+  reviewRequestMessage,
+  setupReminderMessage,
+} from '@/lib/private-bookings/messages'
+import {
+  buildBalanceReminderEmail,
+  buildCancellationEmail,
+  buildDepositReminderEmail,
+  buildDepositRequestEmail,
+  type PrivateBookingCancellationVariant,
+  type PrivateBookingEmailContent,
+} from '@/lib/email/private-booking-emails'
+import type { FallbackBookingFacts, FallbackValidUntil } from '@/lib/notifications/delayed-fallback/types'
+import type { PrivateBookingPaymentStatement } from '@/lib/private-bookings/payment-statement'
+
+/**
+ * Rebuilds a private booking message from the booking as it is now.
+ *
+ * Two users, both of which must reproduce a message rather than compose a new one:
+ * - the bounce fallback (P4), which texts the guest the message their email carried;
+ * - Send Now for an approved queued text, which may send the email version instead (P6), but only
+ *   when rebuilding the text from the booking gives exactly the text staff approved.
+ *
+ * Each entry builds the text with the same builder, the same inputs and the same date format as
+ * the code that first sends it (mutations.ts, payments.ts, the monitor cron, the expire-holds
+ * cron). Only the approval-gated messages and the deposit request carry an email version here; the
+ * other automated paths build theirs at the call site from the values they already have. The
+ * deposit request is built here by its sender too, so the text and email it sends and the text a
+ * bounce rebuilds come from one place.
+ */
+
+/** The private_bookings columns the catalogue reads. */
+export const PRIVATE_BOOKING_MESSAGE_COLUMNS =
+  'id, status, customer_id, customer_first_name, customer_last_name, customer_name, contact_phone, contact_email, event_type, event_date, start_time, end_time, end_time_next_day, guest_count, date_tbd, internal_notes, hold_expiry, deposit_amount, deposit_paid_date, deposit_waived, balance_due_date, final_payment_date, setup_date, setup_time'
+
+export type CatalogueBooking = {
+  id: string
+  status: string | null
+  customer_id: string | null
+  customer_first_name: string | null
+  customer_last_name?: string | null
+  customer_name: string | null
+  contact_phone: string | null
+  contact_email: string | null
+  event_type: string | null
+  event_date: string | null
+  start_time: string | null
+  end_time: string | null
+  end_time_next_day: boolean | null
+  guest_count: number | null
+  date_tbd: boolean | null
+  internal_notes: string | null
+  hold_expiry: string | null
+  deposit_amount: number | string | null
+  deposit_paid_date: string | null
+  deposit_waived: boolean | null
+  balance_due_date: string | null
+  final_payment_date: string | null
+  setup_date: string | null
+  setup_time: string | null
+}
+
+export type CancellationAmounts = {
+  refundAmount: number
+  retainedAmount: number
+  deductionAmount: number
+  retentionReason?: string | null
+}
+
+export type CatalogueContext = {
+  booking: CatalogueBooking
+  now: Date
+  /** What is still owed (private_bookings_with_details.balance_remaining), for the balance reminders. */
+  balanceAmount?: number | null
+  reviewLink?: string | null
+  /** The guest's booking page, for the deposit request (buildPrivateBookingPortalUrl). */
+  paymentLink?: string | null
+  /**
+   * The payments made, for a balance reminder email while private_booking_balance_email_auto is on
+   * (loaded only when asked for). paymentStatementUnavailable means it was asked for and could not
+   * be read or did not add up: the reminder then has no email version, so the text goes instead.
+   */
+  paymentStatement?: PrivateBookingPaymentStatement | null
+  paymentStatementUnavailable?: boolean
+  cancellation?: CancellationAmounts | null
+  /** The facts stored when the message first went, for the parts a later rebuild cannot infer. */
+  storedFacts?: Record<string, unknown> | null
+}
+
+export type CatalogueMessage = {
+  templateKey: string
+  triggerType: string
+  smsBody: string
+  /** The email version, for the messages that wait for approval. */
+  email: (() => PrivateBookingEmailContent) | null
+  facts: FallbackBookingFacts
+  expectCancelled: boolean
+  expectPast: boolean
+  /**
+   * When the words stop being true, for wording tied to a day or a deadline; null when they hold
+   * until the event starts. The bounce fallback sends nothing that would land at or after it.
+   */
+  validUntil: FallbackValidUntil
+}
+
+const CANCELLATION_TEMPLATES: Record<string, PrivateBookingCancellationVariant> = {
+  booking_cancelled_hold: 'private_booking_cancelled_hold',
+  booking_cancelled_refundable: 'private_booking_cancelled_refundable',
+  booking_cancelled_partial_refund: 'private_booking_cancelled_partial_refund',
+  booking_cancelled_retention: 'private_booking_cancelled_retention',
+  booking_cancelled_review_pending: 'private_booking_cancelled_review_pending',
+  booking_cancelled_manual_review: 'private_booking_cancelled_manual_review',
+}
+
+function toNumber(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+/** The date format every private booking text uses: "3 October 2026", London. */
+export function formatPrivateBookingSmsDate(value: string | Date | null | undefined): string {
+  if (!value) return ''
+  return formatDateInLondon(value, { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+function smsEventDateTbdAware(booking: CatalogueBooking): string {
+  return isBookingDateTbd(booking) ? 'Date to be confirmed' : formatPrivateBookingSmsDate(booking.event_date)
+}
+
+function firstNameChain(booking: CatalogueBooking): string {
+  return booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there'
+}
+
+/** A calendar date stays as written; a timestamp becomes its London date. */
+function isoDate(value: string | null | undefined): string | null {
+  if (!value) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : toLocalIsoDate(parsed)
+}
+
+/**
+ * The facts a private booking message states, as comparable values: dates as YYYY-MM-DD in London,
+ * amounts as numbers. Call sites store these with the email; the bounce fallback compares them
+ * with the booking as it is now and sends nothing if any differ.
+ */
+export function buildPrivateBookingMessageFacts(
+  triggerType: string,
+  booking: Partial<CatalogueBooking>,
+  extras: { balanceAmount?: number | null; cancellation?: CancellationAmounts | null; includeBalanceDueDate?: boolean } = {}
+): FallbackBookingFacts {
+  const facts: FallbackBookingFacts = { event_date: isoDate(booking.event_date) }
+  const statesDeposit =
+    triggerType === 'booking_created' || triggerType === 'deposit_request' || triggerType.startsWith('deposit_reminder_')
+  if (statesDeposit || triggerType === 'hold_extended') {
+    facts.hold_expiry_date = isoDate(booking.hold_expiry)
+  }
+  if (statesDeposit) {
+    facts.deposit_amount = toNumber(booking.deposit_amount)
+  }
+  if (triggerType === 'deposit_received') {
+    // "Deposit received" stays true only while the deposit is recorded. Staff deleting it clears
+    // this date (and puts the booking back to draft), so a later bounce sees a changed booking.
+    facts.deposit_paid_date = isoDate(booking.deposit_paid_date)
+  }
+  if (triggerType === 'balance_due_date_changed' || triggerType.startsWith('balance_reminder_')) {
+    facts.balance_due_date = isoDate(booking.balance_due_date)
+  }
+  if (triggerType === 'date_changed') {
+    facts.balance_due_date = extras.includeBalanceDueDate ? isoDate(booking.balance_due_date) : null
+  }
+  if (triggerType.startsWith('balance_reminder_')) {
+    facts.balance_amount = extras.balanceAmount ?? null
+  }
+  if (triggerType === 'setup_reminder') {
+    facts.setup_date = isoDate(booking.setup_date)
+    facts.setup_time = booking.setup_time ? booking.setup_time.slice(0, 5) : null
+  }
+  if (triggerType === 'event_reminder_1d') {
+    facts.guest_count = booking.guest_count ?? null
+  }
+  if (triggerType in CANCELLATION_TEMPLATES && extras.cancellation) {
+    facts.refund_amount = extras.cancellation.refundAmount
+    facts.retained_amount = extras.cancellation.retainedAmount
+    facts.deduction_amount = extras.cancellation.deductionAmount
+  }
+  return facts
+}
+
+/** When the booking starts, as an ISO instant, or null while its date is to be confirmed. */
+export function privateBookingStartsAt(booking: Pick<CatalogueBooking, 'event_date' | 'start_time' | 'date_tbd' | 'internal_notes'>): string | null {
+  if (!booking.event_date || isBookingDateTbd(booking)) return null
+  const time = booking.start_time ? booking.start_time.slice(0, 5) : '00:00'
+  return parseLondonDateTimeLocal(`${booking.event_date.slice(0, 10)}T${time}`)?.toISOString() ?? null
+}
+
+/** Midnight at the start of a London calendar date, as an ISO instant. */
+function startOfLondonDate(value: string | null | undefined): string | null {
+  const date = isoDate(value)
+  if (!date || !isValidIsoDate(date)) return null
+  return parseLondonDateTimeLocal(`${date}T00:00`)?.toISOString() ?? null
+}
+
+/** Midnight at the end of a London calendar date: the moment "by" that date has passed. */
+function afterLondonDate(value: string | null | undefined): string | null {
+  const date = isoDate(value)
+  return date && isValidIsoDate(date) ? startOfLondonDate(shiftIsoDate(date, 1)) : null
+}
+
+/** A stored timestamp in one ISO form. */
+function instantOf(value: string | null | undefined): string | null {
+  if (!value) return null
+  const ms = Date.parse(value)
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null
+}
+
+/**
+ * When the words of a private booking text stop being true, taken from the words themselves (see
+ * messages.ts): hold wording runs to the hold's expiry, "tomorrow" to the start of the day it
+ * names, and "due by" a date to the end of that date. Null when the words hold until the event
+ * starts, which the bounce fallback checks anyway.
+ */
+export function privateBookingMessageValidUntil(triggerType: string, ctx: CatalogueContext): FallbackValidUntil {
+  const b = ctx.booking
+  switch (triggerType) {
+    // "deposit secures it by 25 September", "expires on 25 September", "expires tomorrow
+    // (25 September)... get the deposit in today", "New deadline: 25 September".
+    case 'booking_created':
+    case 'deposit_request':
+    case 'deposit_reminder_7day':
+    case 'deposit_reminder_3day':
+    case 'deposit_reminder_1day':
+    case 'hold_extended':
+      return instantOf(b.hold_expiry)
+    // "Tomorrow's the day": true until the event's London day begins.
+    case 'event_reminder_1d':
+      return startOfLondonDate(b.event_date)
+    // "Due by 19 September": true until the 19th ends.
+    case 'balance_reminder_21day':
+    case 'balance_due_date_changed':
+      return afterLondonDate(b.balance_due_date)
+    // "2 days to go: ... due by 19 September": the count is right only on the 17th.
+    case 'balance_reminder_16day': {
+      const dueDate = isoDate(b.balance_due_date)
+      return dueDate && isValidIsoDate(dueDate) ? startOfLondonDate(shiftIsoDate(dueDate, -1)) : null
+    }
+    // "Due tomorrow (19 September)": true until the 19th begins.
+    case 'balance_reminder_15day':
+      return startOfLondonDate(b.balance_due_date)
+    // "Due today (19 September)": true until the 19th ends. After that the balance is overdue,
+    // which is never chased automatically.
+    case 'balance_reminder_due':
+      return afterLondonDate(b.balance_due_date)
+    // "Balance and final details are now due by 19 September", only when the text names the date.
+    case 'date_changed':
+      return ctx.storedFacts?.balance_due_date ? afterLondonDate(b.balance_due_date) : null
+    default:
+      return null
+  }
+}
+
+/**
+ * Whether what a message asked for has happened since it was sent, so a text now would chase
+ * something already done: a hold reminder or hold extension once the deposit is paid, waived or
+ * the hold is gone; a balance reminder once the balance is paid. The bounce fallback asks this
+ * before rebuilding, and skips the message instead of reporting it undelivered.
+ */
+export function privateBookingMessageNoLongerApplies(triggerType: string, ctx: CatalogueContext): boolean {
+  const b = ctx.booking
+  if (triggerType.startsWith('deposit_reminder_')) {
+    return !b.hold_expiry || Boolean(b.deposit_paid_date) || b.deposit_waived === true || toNumber(b.deposit_amount) <= 0
+  }
+  if (triggerType === 'deposit_request') {
+    // A request for a booking whose date is to be confirmed has no hold, so a missing hold alone
+    // is not "done"; a paid, waived or zero deposit is.
+    return Boolean(b.deposit_paid_date) || b.deposit_waived === true || toNumber(b.deposit_amount) <= 0
+  }
+  if (triggerType === 'hold_extended') {
+    return !b.hold_expiry || Boolean(b.deposit_paid_date)
+  }
+  if (triggerType.startsWith('balance_reminder_')) {
+    // A balance that could not be read is not a paid one: that stays a failure staff hear about.
+    return Boolean(b.final_payment_date) || (ctx.balanceAmount != null && !(ctx.balanceAmount > 0))
+  }
+  return false
+}
+
+export function renderPrivateBookingMessage(triggerType: string, ctx: CatalogueContext): CatalogueMessage | null {
+  const b = ctx.booking
+  const facts = (extras: Parameters<typeof buildPrivateBookingMessageFacts>[2] = {}) =>
+    buildPrivateBookingMessageFacts(triggerType, b, extras)
+  const base = {
+    triggerType,
+    expectCancelled: false,
+    expectPast: false,
+    email: null,
+    validUntil: privateBookingMessageValidUntil(triggerType, ctx),
+  }
+
+  switch (triggerType) {
+    case 'booking_created': {
+      const holdExpiry = b.hold_expiry ? formatPrivateBookingSmsDate(new Date(b.hold_expiry)) : null
+      const depositAmount = toNumber(b.deposit_amount)
+      return {
+        ...base,
+        templateKey: 'private_booking_created',
+        smsBody: privateBookingCreatedMessage({
+          customerFirstName: b.customer_first_name,
+          eventDate: smsEventDateTbdAware(b),
+          depositAmount,
+          holdExpiry,
+        }),
+        facts: facts(),
+      }
+    }
+
+    // The deposit request Confirm deposit sends (services/private-bookings/deposit-confirmation.ts
+    // builds it here too, so a bounce rebuilds exactly what went). The link is the guest's booking
+    // page: a signed token that lasts a year and holds no state, so a rebuild may mint a fresh one
+    // for the same page without any risk a one-time link would carry.
+    case 'deposit_request': {
+      if (!ctx.paymentLink) return null
+      const paymentLink = ctx.paymentLink
+      const depositAmount = toNumber(b.deposit_amount)
+      const eventDate = !b.event_date || isBookingDateTbd(b) ? null : formatPrivateBookingSmsDate(b.event_date)
+      const holdExpiry = b.hold_expiry ? formatPrivateBookingSmsDate(new Date(b.hold_expiry)) : null
+      return {
+        ...base,
+        templateKey: 'private_booking_deposit_request',
+        smsBody: depositRequestMessage({ customerFirstName: b.customer_first_name, eventDate, depositAmount, holdExpiry, paymentLink }),
+        email: () => buildDepositRequestEmail({ booking: b, firstName: b.customer_first_name, depositAmount, holdExpiry, paymentLink }),
+        facts: facts(),
+      }
+    }
+
+    case 'deposit_reminder_7day':
+    case 'deposit_reminder_3day':
+    case 'deposit_reminder_1day': {
+      if (!b.hold_expiry) return null
+      const eventDate = formatPrivateBookingSmsDate(b.event_date)
+      const holdExpiry = formatPrivateBookingSmsDate(b.hold_expiry)
+      const depositAmount = toNumber(b.deposit_amount)
+      // London calendar days, so "expires in 6 days" and the date it names agree (review PB-BR-1).
+      const daysRemaining = daysUntilHoldExpiry(b.hold_expiry, ctx.now) ?? 0
+      const stage = triggerType === 'deposit_reminder_7day' ? '7day' : triggerType === 'deposit_reminder_3day' ? '3day' : '1day'
+      const smsBody =
+        stage === '7day'
+          ? depositReminder7DayMessage({ customerFirstName: b.customer_first_name, eventDate, depositAmount, daysRemaining, holdExpiry })
+          : stage === '3day'
+            ? depositReminder3DayMessage({ customerFirstName: b.customer_first_name, eventDate, depositAmount, holdExpiry })
+            : depositReminder1DayMessage({ customerFirstName: b.customer_first_name, eventDate, depositAmount, holdExpiry })
+      return {
+        ...base,
+        templateKey: `private_booking_${triggerType}`,
+        smsBody,
+        email: () =>
+          buildDepositReminderEmail({
+            booking: b,
+            firstName: b.customer_first_name,
+            stage,
+            depositAmount,
+            holdExpiry,
+            daysRemaining,
+            ...(ctx.paymentLink !== undefined ? { paymentLink: ctx.paymentLink } : {}),
+          }),
+        facts: facts(),
+      }
+    }
+
+    case 'deposit_received':
+      return {
+        ...base,
+        templateKey: 'private_booking_deposit_received',
+        smsBody: depositReceivedMessage({
+          customerFirstName: b.customer_first_name,
+          eventDate: smsEventDateTbdAware(b),
+          // A booking still in draft after its deposit was taken is one the SOP gate held back,
+          // so the rebuilt text must not call the date theirs either (review PB-2).
+          bookingConfirmed: b.status !== 'draft',
+        }),
+        facts: facts(),
+      }
+
+    case 'booking_confirmed':
+      return {
+        ...base,
+        templateKey: 'private_booking_confirmed',
+        smsBody: bookingConfirmedMessage({ customerFirstName: firstNameChain(b), eventDate: smsEventDateTbdAware(b) }),
+        facts: facts(),
+      }
+
+    case 'final_payment_received':
+      return {
+        ...base,
+        templateKey: 'private_booking_final_payment',
+        smsBody: finalPaymentMessage({ customerFirstName: b.customer_first_name, eventDate: smsEventDateTbdAware(b) }),
+        facts: facts(),
+      }
+
+    case 'date_changed': {
+      const includeBalanceDueDate = Boolean(ctx.storedFacts?.balance_due_date)
+      return {
+        ...base,
+        templateKey: 'private_booking_date_changed',
+        smsBody: dateChangedMessage({
+          customerFirstName: b.customer_first_name,
+          newEventDate: formatPrivateBookingSmsDate(b.event_date),
+          balanceDueDate: includeBalanceDueDate ? formatPrivateBookingSmsDate(b.balance_due_date) : null,
+        }),
+        facts: facts({ includeBalanceDueDate }),
+      }
+    }
+
+    case 'balance_due_date_changed':
+      if (!b.balance_due_date) return null
+      return {
+        ...base,
+        templateKey: 'private_booking_balance_due_date_changed',
+        smsBody: balanceDueDateChangedMessage({
+          customerFirstName: b.customer_first_name,
+          eventDate: formatPrivateBookingSmsDate(b.event_date),
+          balanceDueDate: formatPrivateBookingSmsDate(b.balance_due_date),
+        }),
+        facts: facts(),
+      }
+
+    case 'setup_reminder':
+      return {
+        ...base,
+        templateKey: 'private_booking_setup_reminder',
+        smsBody: setupReminderMessage({ customerFirstName: firstNameChain(b), eventDate: formatPrivateBookingSmsDate(b.event_date) }),
+        facts: facts(),
+      }
+
+    case 'booking_completed':
+      return {
+        ...base,
+        templateKey: 'private_booking_thank_you',
+        smsBody: bookingCompletedThanksMessage({ customerFirstName: firstNameChain(b) }),
+        facts: facts(),
+        expectPast: true,
+      }
+
+    case 'booking_expired':
+      return {
+        ...base,
+        templateKey: 'private_booking_expired',
+        smsBody: bookingExpiredMessage({ customerFirstName: b.customer_first_name, eventDate: smsEventDateTbdAware(b) }),
+        facts: facts(),
+        expectCancelled: true,
+      }
+
+    case 'hold_extended':
+      if (!b.hold_expiry) return null
+      return {
+        ...base,
+        templateKey: 'private_booking_hold_extended',
+        smsBody: holdExtendedMessage({
+          customerFirstName: b.customer_first_name,
+          eventDate: b.event_date ? formatPrivateBookingSmsDate(b.event_date) : 'your event',
+          newExpiryDate: formatPrivateBookingSmsDate(new Date(b.hold_expiry)),
+        }),
+        facts: facts(),
+      }
+
+    case 'event_reminder_1d':
+      return {
+        ...base,
+        templateKey: 'private_booking_event_reminder_1d',
+        smsBody: eventReminder1DayMessage({
+          customerFirstName: b.customer_first_name || b.customer_name?.split(' ')[0],
+          guestPart: b.guest_count ? `for your ${b.guest_count} ${b.guest_count === 1 ? 'guest' : 'guests'}` : '',
+        }),
+        facts: facts(),
+      }
+
+    case 'review_request':
+      if (!ctx.reviewLink) return null
+      return {
+        ...base,
+        templateKey: 'private_booking_review_request',
+        smsBody: reviewRequestMessage({
+          customerFirstName: b.customer_first_name,
+          eventDate: formatPrivateBookingSmsDate(b.event_date),
+          reviewLink: ctx.reviewLink,
+        }),
+        facts: facts(),
+        expectPast: true,
+      }
+
+    case 'balance_reminder_21day':
+    case 'balance_reminder_16day':
+    case 'balance_reminder_15day':
+    case 'balance_reminder_due': {
+      if (!b.balance_due_date || ctx.balanceAmount == null || !(ctx.balanceAmount > 0)) return null
+      const eventDate = formatPrivateBookingSmsDate(b.event_date)
+      const balanceDueDate = formatPrivateBookingSmsDate(b.balance_due_date)
+      const input = { customerFirstName: b.customer_first_name, eventDate, balanceAmount: ctx.balanceAmount, balanceDueDate }
+      const stage =
+        triggerType === 'balance_reminder_21day' ? '21day' : triggerType === 'balance_reminder_16day' ? '16day' : triggerType === 'balance_reminder_15day' ? '15day' : 'due'
+      const smsBody =
+        stage === '21day'
+          ? balanceReminder21DayMessage(input)
+          : stage === '16day'
+            ? balanceReminder16DayMessage(input)
+            : stage === '15day'
+              ? balanceReminder15DayMessage(input)
+              : balanceReminderDueMessage(input)
+      const balanceAmount = ctx.balanceAmount
+      const payments = ctx.paymentStatement ?? null
+      return {
+        ...base,
+        templateKey: `private_booking_${triggerType}`,
+        smsBody,
+        email: ctx.paymentStatementUnavailable
+          ? null
+          : () => buildBalanceReminderEmail({ booking: b, firstName: b.customer_first_name, stage, balanceAmount, balanceDueDate, payments }),
+        facts: facts({ balanceAmount }),
+      }
+    }
+
+    default: {
+      const variant = CANCELLATION_TEMPLATES[triggerType]
+      if (!variant) return null
+      const amounts = ctx.cancellation
+      if (!amounts && variant !== 'private_booking_cancelled_hold' && variant !== 'private_booking_cancelled_review_pending' && variant !== 'private_booking_cancelled_manual_review') {
+        return null
+      }
+      const cancellation: CancellationAmounts = amounts ?? { refundAmount: 0, retainedAmount: 0, deductionAmount: 0 }
+      const common = { customerFirstName: firstNameChain(b), eventDate: smsEventDateTbdAware(b) }
+      const smsBody =
+        variant === 'private_booking_cancelled_hold'
+          ? bookingCancelledHoldMessage(common)
+          : variant === 'private_booking_cancelled_refundable'
+            ? bookingCancelledRefundableMessage({ ...common, refundAmount: cancellation.refundAmount })
+            : variant === 'private_booking_cancelled_partial_refund'
+              ? bookingCancelledPartialRefundMessage({ ...common, refundAmount: cancellation.refundAmount, deductionAmount: cancellation.deductionAmount })
+              : variant === 'private_booking_cancelled_retention'
+                ? bookingCancelledRetentionMessage({ ...common, retainedAmount: cancellation.retainedAmount, refundAmount: cancellation.refundAmount })
+                : variant === 'private_booking_cancelled_review_pending'
+                  ? bookingCancelledReviewPendingMessage(common)
+                  : bookingCancelledManualReviewMessage(common)
+      return {
+        ...base,
+        templateKey: variant,
+        smsBody,
+        email: () =>
+          buildCancellationEmail({
+            booking: b,
+            firstName: firstNameChain(b),
+            variant,
+            refundAmount: cancellation.refundAmount,
+            retainedAmount: cancellation.retainedAmount,
+            deductionAmount: cancellation.deductionAmount,
+            retentionReason: cancellation.retentionReason ?? null,
+          }),
+        facts: facts({ cancellation }),
+        expectCancelled: true,
+      }
+    }
+  }
+}

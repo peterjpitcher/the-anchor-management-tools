@@ -79,7 +79,7 @@ function buildValidSeoResponse(): Record<string, unknown> {
   ]
 
   return {
-    metaTitle: 'Live Music — Jessica Lovelock',
+    metaTitle: 'Live Music with Jessica Lovelock',
     metaDescription: 'Live music at The Anchor featuring Jessica Lovelock on 15 June 2026. Book your table now for a night of acoustic magic near Heathrow.',
     shortDescription: 'Join us at The Anchor for a brilliant evening of live music with Jessica Lovelock performing acoustic favourites and original compositions on Sunday 15 June 2026.',
     longDescription: longParas.join('\n\n'),
@@ -102,7 +102,7 @@ function buildValidSeoResponse(): Record<string, unknown> {
     faqs: [
       {
         question: 'What time does the live music start at The Anchor on 15 June 2026?',
-        answer: 'The live music performance by Jessica Lovelock begins at eight in the evening at The Anchor in Stanwell Moor. Doors open at half past seven so you can grab a drink and settle in before the show starts at this popular pub near Heathrow.',
+        answer: 'The live music performance by Jessica Lovelock begins at eight in the evening at The Anchor in Stanwell Moor. Arrive from half past seven so you can grab a drink and settle in before the show starts at this popular pub near Heathrow.',
       },
       {
         question: 'Is there parking available for the acoustic night at The Anchor in Stanwell Moor?',
@@ -185,7 +185,10 @@ describe('generateEventSeoContent', () => {
       expect(result.data.longDescription).toBeTruthy()
       // Deterministic fields should be overwritten
       expect(result.data.slug).toContain('2026-06-15')
-      expect(result.data.accessibilityNotes).toContain('step-free access')
+      // SSOT §16: step free from the car park, one step to the garden, and no accessible toilet.
+      expect(result.data.accessibilityNotes).toContain('Getting in from the car park is step free')
+      expect(result.data.accessibilityNotes).toContain("We don't have an accessible toilet.")
+      expect(result.data.accessibilityNotes).not.toMatch(/with an accessible toilet/)
       expect(result.data.cancellationPolicy).toContain('01753 682707')
     }
   })
@@ -313,7 +316,10 @@ describe('generateEventSeoContent', () => {
 
       // Accessibility notes should be code-generated
       expect(result.data.accessibilityNotes).not.toBe('Model suggested notes')
-      expect(result.data.accessibilityNotes).toContain('step-free access')
+      // SSOT §16: step free from the car park, one step to the garden, and no accessible toilet.
+      expect(result.data.accessibilityNotes).toContain('Getting in from the car park is step free')
+      expect(result.data.accessibilityNotes).toContain("We don't have an accessible toilet.")
+      expect(result.data.accessibilityNotes).not.toMatch(/with an accessible toilet/)
 
       // Keywords should include the input keywords, merged and deduped
       expect(result.data.keywords).toContain('live music')
@@ -339,7 +345,7 @@ describe('generateEventSeoContent', () => {
     expect(result.success).toBe(true)
     if (result.success) {
       expect(result.data.cancellationPolicy).toBe(
-        'Free event — no cancellation policy required.',
+        "It's a free event, so there's no cancellation policy.",
       )
     }
   })

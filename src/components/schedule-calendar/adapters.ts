@@ -1,20 +1,33 @@
 // src/components/schedule-calendar/adapters.ts
-import { addHours, format } from 'date-fns'
+import { addHours, addMinutes, differenceInCalendarDays, format } from 'date-fns'
 import type {
     EventOverview,
     PrivateBookingCalendarOverview,
     CalendarNoteCalendarOverview,
 } from '@/app/(authenticated)/events/get-events-command-center'
-import type { CalendarEntry, CalendarEntryStatus } from './types'
+import type { CalendarEntry, CalendarEntryContent, CalendarEntryStatus } from './types'
 import { kindColor } from './appearance'
+import { formatTimeInLondon, toLocalIsoDate as toLondonIsoDate } from '@/lib/dateUtils'
 
 // --- Helpers ---
 
 function parseLocalDate(isoDate: string, time: string = '00:00'): Date {
     // Europe/London wall-clock. ISO date parts + time -> local Date.
+    // Guarded: date-fns v4 format() THROWS on an Invalid Date, so one malformed
+    // row would take down the whole calendar rather than just itself. NaN also
+    // slips past `?? 1`, so check explicitly.
     const [y, m, d] = isoDate.split('-').map(Number)
     const [hh, mm] = time.split(':').slice(0, 2).map(Number)
-    return new Date(y, (m ?? 1) - 1, d ?? 1, hh ?? 0, mm ?? 0)
+    const year = Number.isFinite(y) ? y : NaN
+    const month = Number.isFinite(m) ? m : 1
+    const day = Number.isFinite(d) ? d : 1
+    const hours = Number.isFinite(hh) ? hh : 0
+    const minutes = Number.isFinite(mm) ? mm : 0
+    if (!Number.isFinite(year)) return new Date(NaN)
+    const parsed = new Date(year, month - 1, day, hours, minutes)
+    // Round-trip check: JavaScript silently rolls 2026-02-31 into March.
+    if (parsed.getMonth() !== month - 1 || parsed.getDate() !== day) return new Date(NaN)
+    return parsed
 }
 
 function statusFromString(s: string | null | undefined): CalendarEntryStatus {
@@ -34,6 +47,8 @@ function statusFromString(s: string | null | undefined): CalendarEntryStatus {
             'completed',
             'visited_waiting_for_review',
             'review_clicked',
+            'sending',
+            'paused',
         ].includes(s)
     ) {
         return s as CalendarEntryStatus
@@ -65,6 +80,10 @@ function statusLabel(s: CalendarEntryStatus): string | null {
             return 'Visited'
         case 'review_clicked':
             return 'Review clicked'
+        case 'sending':
+            return 'Sending'
+        case 'paused':
+            return 'Paused'
         default:
             return null
     }
@@ -78,12 +97,44 @@ function formatCurrency(value: number): string {
     }).format(value)
 }
 
+/**
+ * Content readiness for an event, or undefined when the caller supplied none.
+ *
+ * Undefined means "we did not load this", which is NOT the same as "loaded and
+ * missing". `entryGaps` returns [] for an absent record but all three gaps for a
+ * record of `false`s, so defaulting to false makes every event on a caller that
+ * does not load readiness claim it needs artwork, a brief and a description. The
+ * dashboard shipped exactly that bug.
+ *
+ * Only the three explicit flags count. Image URLs are deliberately not used as a
+ * fallback: a caller that has not loaded them passes null, which is
+ * indistinguishable from "no artwork".
+ */
+function resolveEventContent(event: EventOverview): CalendarEntryContent | undefined {
+    if (
+        event.hasImage === undefined &&
+        event.hasBrief === undefined &&
+        event.hasDescription === undefined
+    ) {
+        return undefined
+    }
+
+    // A partially supplied record reports gaps only for what was actually
+    // loaded; anything unknown defaults to "present" so it raises no false flag.
+    return {
+        hasImage: event.hasImage ?? true,
+        hasBrief: event.hasBrief ?? true,
+        hasDescription: event.hasDescription ?? true,
+    }
+}
+
 // --- Event ---
 
 export function eventToEntry(event: EventOverview): CalendarEntry {
     const start = parseLocalDate(event.date, event.time || '00:00')
     const end = addHours(start, 2) // D9 — fixed 2h
     const status = statusFromString(event.eventStatus ?? 'scheduled')
+    const content = resolveEventContent(event)
     return {
         id: `evt:${event.id}`,
         kind: 'event',
@@ -97,11 +148,13 @@ export function eventToEntry(event: EventOverview): CalendarEntry {
         subtitle: `${event.bookedSeatsCount ?? 0} booked`,
         status,
         statusLabel: statusLabel(status),
-        content: {
-            hasImage: event.hasImage ?? Boolean(event.heroImageUrl || event.posterImageUrl),
-            hasBrief: event.hasBrief ?? false,
-            hasDescription: event.hasDescription ?? false,
-        },
+        // Content readiness is OPTIONAL on purpose. A caller that does not load
+        // the readiness columns must not have its events reported as missing
+        // everything: `entryGaps` returns [] when `content` is absent, but would
+        // return all three gaps for a record of `false`s. The dashboard shipped
+        // exactly that bug, showing "No artwork / No brief / No description" on
+        // every event it rendered.
+        ...(content ? { content } : {}),
         tooltipData: {
             kind: 'event',
             name: event.name,
@@ -336,13 +389,36 @@ export interface DashboardParkingInput {
     payment_status: string | null
 }
 
-export function parkingToEntry(booking: DashboardParkingInput): CalendarEntry {
-    const start = booking.start_at ? new Date(booking.start_at) : new Date()
-    const end = booking.end_at ? new Date(booking.end_at) : addHours(start, 2)
+/**
+ * Parking is the only kind built from an instant rather than a calendar date.
+ * `new Date(timestamptz)` plus host-local formatting puts a late-evening booking
+ * on the wrong day for anyone whose device is not on London time, and under
+ * `npm run test:utc`. Convert to the London wall clock first, then build the
+ * same host-local Date every other adapter builds, so the month grid and the
+ * list agree with the rest of the calendar.
+ */
+function londonWallClock(instant: Date): Date {
+    return parseLocalDate(toLondonIsoDate(instant), formatTimeInLondon(instant))
+}
+
+export function parkingToEntry(booking: DashboardParkingInput): CalendarEntry | null {
+    // No start instant means we cannot place it on a day. Returning null is
+    // honest; the previous `new Date()` fallback silently parked it on today.
+    if (!booking.start_at) return null
+    const startInstant = new Date(booking.start_at)
+    if (Number.isNaN(startInstant.getTime())) return null
+
+    const start = londonWallClock(startInstant)
+    const endInstant = booking.end_at ? new Date(booking.end_at) : null
+    const end =
+        endInstant && !Number.isNaN(endInstant.getTime())
+            ? londonWallClock(endInstant)
+            : addHours(start, 2)
     const spansMultipleDays = start.toDateString() !== end.toDateString()
     const customerName =
         [booking.customer_first_name, booking.customer_last_name].filter(Boolean).join(' ') || 'Parking'
     const timeRange = `${format(start, 'HH:mm')}–${format(end, 'HH:mm')}`
+    const status = statusFromString(booking.status)
     return {
         id: `park:${booking.id}`,
         kind: 'parking',
@@ -351,11 +427,16 @@ export function parkingToEntry(booking: DashboardParkingInput): CalendarEntry {
         end,
         allDay: spansMultipleDays,
         spansMultipleDays,
-        endsNextDay: spansMultipleDays,
+        // "+1 day" is only true when it actually ends the next day. A booking
+        // running a fortnight was previously labelled "+1 day".
+        endsNextDay: spansMultipleDays && differenceInCalendarDays(end, start) === 1,
         color: kindColor('parking'),
         subtitle: booking.vehicle_registration ?? null,
-        status: null,
-        statusLabel: null,
+        // Carry the real status so a cancelled or expired booking is struck
+        // through and can be hidden by the "Hide cancelled" filter, instead of
+        // rendering as a live green block that no filter can touch.
+        status,
+        statusLabel: statusLabel(status),
         tooltipData: {
             kind: 'parking',
             reference: booking.reference ?? null,
@@ -365,5 +446,104 @@ export function parkingToEntry(booking: DashboardParkingInput): CalendarEntry {
             status: booking.status ?? null,
         },
         onClickHref: '/parking',
+    }
+}
+
+// --- Marketing email send ---
+
+export interface MarketingSendInput {
+    id: string
+    name: string
+    subject: string
+    /** 'customer' or 'business'. Anything else is treated as an unknown list. */
+    audience_type: string
+    status: string
+    /**
+     * The instant the send sits at: when it actually started, else when it is
+     * due. Resolved by the reader, not here, so both calendars agree.
+     */
+    send_at: string | null
+    /** Approved audience size frozen at schedule time. Not a delivered count. */
+    recipient_count: number | null
+}
+
+const MARKETING_AUDIENCE_LABELS: Record<string, string> = {
+    customer: 'Guests',
+    business: 'Business contacts',
+}
+
+/**
+ * Campaign status in the calendar's words.
+ *
+ * Deliberately not the shared statusLabel(): a finished campaign is "Sent",
+ * which is what a manager glancing at the month wants to read, whereas the
+ * shared map calls every completed thing "Completed".
+ */
+function marketingStatusLabel(status: string): string {
+    switch (status) {
+        case 'sending':
+            return 'Sending'
+        case 'paused':
+            return 'Paused'
+        case 'completed':
+            return 'Sent'
+        case 'cancelled':
+            return 'Cancelled'
+        case 'draft':
+            return 'Draft'
+        default:
+            return 'Scheduled'
+    }
+}
+
+/**
+ * A marketing email send on the venue calendar.
+ *
+ * Built from an instant, like parking, so it goes through londonWallClock for
+ * the same reason: a 21:00 send must not slide to the previous day for anyone
+ * whose device is not on London time, or under `npm run test:utc`.
+ */
+export function marketingSendToEntry(send: MarketingSendInput): CalendarEntry | null {
+    if (!send.send_at) return null
+    const instant = new Date(send.send_at)
+    if (Number.isNaN(instant.getTime())) return null
+
+    const start = londonWallClock(instant)
+    // A send is a moment, not a booking. Half an hour keeps it a readable block
+    // without implying the mailing occupies the evening.
+    const end = addMinutes(start, 30)
+    const status = statusFromString(send.status)
+    const audience = MARKETING_AUDIENCE_LABELS[send.audience_type] ?? 'Marketing list'
+    const recipientCount =
+        send.recipient_count != null && Number.isFinite(send.recipient_count)
+            ? send.recipient_count
+            : null
+
+    return {
+        id: `mkt:${send.id}`,
+        kind: 'marketing_email',
+        title: send.name,
+        start,
+        end,
+        allDay: false,
+        spansMultipleDays: false,
+        endsNextDay: false,
+        color: kindColor('marketing_email'),
+        subtitle:
+            recipientCount != null
+                ? `${recipientCount.toLocaleString('en-GB')} recipients`
+                : audience,
+        status,
+        statusLabel: marketingStatusLabel(send.status),
+        tooltipData: {
+            kind: 'marketing_email',
+            name: send.name,
+            subject: send.subject,
+            audience,
+            time: format(start, 'HH:mm'),
+            recipientCount,
+            statusLabel: marketingStatusLabel(send.status),
+        },
+        onClickHref: `/marketing/campaigns/${send.id}`,
     }
 }

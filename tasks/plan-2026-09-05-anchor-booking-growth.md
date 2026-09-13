@@ -251,6 +251,6 @@ No further business answers are needed to approve development of the bounded rel
 - [x] Split the programme into independently reviewable releases with dependencies and acceptance criteria.
 - [x] Preserved existing implementations and separated unverified findings from required changes.
 - [x] Recorded production safeguards, test coverage, rollout order and deferred scope.
-- [ ] Development authorised and started.
+- [x] Development authorised and started in isolated codex/anchor-booking-growth worktrees.
 
-Status: local planning documents only. No migration drafted or applied. No application or live system changes made by this planning task.
+Status: implementation prepared locally in both repositories. See anchor-booking-growth/verification.md for current evidence and release gates. Two migration drafts are not applied. Menu and capacity data remain unchanged; no campaign has run.

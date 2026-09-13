@@ -1,5 +1,7 @@
 # Event SMS Cross-Promotion & Tone Refresh
 
+> **Voice superseded, 11 September 2026.** The tone rules in this spec (a "cheeky/playful" voice, dashes for rhythm, more than one exclamation mark) are replaced by the website repo's `docs/SSOT.md` §1. The texts built from it were brought into line on 11 September 2026. The rest of the spec stands as a design record.
+
 **Date**: 2026-03-22
 **Status**: Design approved
 **Complexity**: XL (5) — new inbound SMS parsing, cross-promotion engine, booking service extraction, tone refresh across all SMS touchpoints (hardcoded in server code, not centralised templates)

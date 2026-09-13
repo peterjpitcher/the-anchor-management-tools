@@ -8,6 +8,13 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/name-utils'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
+import { isEmailUsable } from '@/lib/notifications/channel'
+import { sendStaffOneOffEmail } from '@/lib/email/staff-one-off-email'
+import {
+  STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT,
+  findSuppressedEmails,
+  isStaffEmailOptionOn,
+} from '@/lib/messaging/staff-email-option'
 
 // Operational ("transactional") messaging for table-booking guests.
 //
@@ -19,6 +26,8 @@ import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 // plus idempotency, safety guards and message logging.
 
 const TEMPLATE_KEY = 'table_booking_manual_message'
+// email_messages.comm_type for the same message sent by email (P7).
+const EMAIL_COMM_TYPE = 'table_booking_manual_message_email'
 // Allowed booking statuses to message. Defaults to confirmed only.
 const BOOKING_STATUSES = [
   'confirmed',
@@ -46,6 +55,10 @@ const previewSchema = z.object({
 
 const sendSchema = previewSchema.extend({
   message: z.string().trim().min(1, 'Message is required').max(1000, 'Message is too long'),
+  // P7 (flag staff_message_email_option): 'email_first' emails guests with a usable address and
+  // texts the rest. Ignored while the flag is off, so the send is exactly today's.
+  channel: z.enum(['sms', 'email_first']).optional(),
+  subject: z.string().trim().max(200, 'Subject is too long').optional(),
 })
 
 type GuestRow = {
@@ -59,6 +72,9 @@ type GuestRow = {
     mobile_e164: string | null
     sms_opt_in: boolean | null
     sms_status: string | null
+    email?: string | null
+    email_status?: string | null
+    email_deactivated_at?: string | null
   } | null
 }
 
@@ -70,12 +86,33 @@ type EligibleGuest = {
   bookingId: string
 }
 
+/** A guest reachable by email, text or both (the email-first send). */
+type ReachableGuest = {
+  customerId: string
+  firstName: string | null
+  lastName: string | null
+  bookingId: string
+  mobile: string | null
+  email: string | null
+}
+
 export type PreviewResult = {
   availableTimes: Array<{ time: string; count: number }>
   total: number
   eligible: number
   unreachable: number
   noName: number
+  /** Present while the email option is switched on (P7). */
+  emailOption?: {
+    /** Guests who would get an email. */
+    emailable: number
+    /** Guests with no usable address who would get a text. */
+    textOnly: number
+    /** Guests reachable either way, which is who an email-first send goes to. */
+    reachable: number
+    /** Of those, guests with no name on file. */
+    noName: number
+  }
 }
 
 export type SendResult = {
@@ -86,6 +123,9 @@ export type SendResult = {
   skipped?: number
   failed?: number
   paused?: boolean
+  /** Set on an email-first send: how many guests were emailed. */
+  emailed?: number
+  channel?: 'sms' | 'email_first'
 }
 
 function isSmsEligible(c: GuestRow['customer']): boolean {
@@ -116,7 +156,7 @@ async function fetchDay(params: { date: string; statuses: string[] }): Promise<G
   const { data, error } = await admin
     .from('table_bookings')
     .select(
-      'id, booking_time, status, customer:customers!table_bookings_customer_id_fkey(id, first_name, last_name, mobile_e164, sms_opt_in, sms_status)'
+      'id, booking_time, status, customer:customers!table_bookings_customer_id_fkey(id, first_name, last_name, mobile_e164, sms_opt_in, sms_status, email, email_status, email_deactivated_at)'
     )
     .eq('booking_date', params.date)
     .in('status', params.statuses)
@@ -145,6 +185,38 @@ function dedupeEligible(rows: GuestRow[]): EligibleGuest[] {
       lastName: c.last_name,
       mobile: c.mobile_e164 as string,
       bookingId: row.id,
+    })
+  }
+  return [...byCustomer.values()]
+}
+
+function emailsOf(rows: GuestRow[]): string[] {
+  return rows.map((row) => row.customer?.email?.trim() ?? '').filter(Boolean)
+}
+
+/**
+ * The email-first scope (P7): every guest reachable by a usable email address or by text, deduped
+ * by customer. A guest with a usable address is emailed; the rest are texted as before. If the
+ * suppression list cannot be read, nobody is emailed and the send is text only.
+ */
+function dedupeReachable(rows: GuestRow[], suppressed: Set<string> | null): ReachableGuest[] {
+  const byCustomer = new Map<string, ReachableGuest>()
+  for (const row of rows) {
+    const c = row.customer
+    if (!c || byCustomer.has(c.id)) continue
+    const email =
+      suppressed !== null && isEmailUsable(c) && c.email && !suppressed.has(c.email.trim().toLowerCase())
+        ? c.email.trim()
+        : null
+    const mobile = isSmsEligible(c) ? (c.mobile_e164 as string) : null
+    if (!email && !mobile) continue
+    byCustomer.set(c.id, {
+      customerId: c.id,
+      firstName: c.first_name,
+      lastName: c.last_name,
+      bookingId: row.id,
+      mobile,
+      email,
     })
   }
   return [...byCustomer.values()]
@@ -191,6 +263,18 @@ export async function previewTableBookingGuests(
     const eligibleGuests = dedupeEligible(scopeRows)
     const uniqueCustomers = new Set(scopeRows.map((r) => r.customer?.id).filter(Boolean) as string[])
 
+    let emailOption: PreviewResult['emailOption']
+    if (await isStaffEmailOptionOn()) {
+      const reachable = dedupeReachable(scopeRows, await findSuppressedEmails(emailsOf(scopeRows)))
+      const emailable = reachable.filter((guest) => guest.email).length
+      emailOption = {
+        emailable,
+        textOnly: reachable.length - emailable,
+        reachable: reachable.length,
+        noName: reachable.filter((guest) => !hasRealName(guest.firstName)).length,
+      }
+    }
+
     return {
       data: {
         availableTimes,
@@ -198,6 +282,7 @@ export async function previewTableBookingGuests(
         eligible: eligibleGuests.length,
         unreachable: uniqueCustomers.size - eligibleGuests.length,
         noName: eligibleGuests.filter((g) => !hasRealName(g.firstName)).length,
+        ...(emailOption ? { emailOption } : {}),
       },
     }
   } catch (error) {
@@ -220,17 +305,26 @@ export async function messageTableBookingGuests(
 
   const statuses = parsed.data.statuses ?? [...DEFAULT_STATUSES]
   const { date, time, message } = parsed.data
+  // Email first only when staff chose it and the option is switched on; otherwise exactly today.
+  const emailFirst = parsed.data.channel === 'email_first' && (await isStaffEmailOptionOn())
+  const subject = parsed.data.subject?.trim() || STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT
 
-  let recipients: EligibleGuest[]
+  let recipients: ReachableGuest[]
   try {
     const rows = filterByTime(await fetchDay({ date, statuses }), time)
-    recipients = dedupeEligible(rows)
+    recipients = emailFirst
+      ? dedupeReachable(rows, await findSuppressedEmails(emailsOf(rows)))
+      : dedupeEligible(rows).map((guest) => ({ ...guest, email: null }))
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Failed to load guests' }
   }
 
   if (recipients.length === 0) {
-    return { error: 'No eligible guests to message (none have a mobile number and SMS opt-in).' }
+    return {
+      error: emailFirst
+        ? 'No guests to message (none have a usable email address or a mobile number with SMS opt-in).'
+        : 'No eligible guests to message (none have a mobile number and SMS opt-in).',
+    }
   }
   if (recipients.length > MAX_RECIPIENTS) {
     return {
@@ -242,6 +336,7 @@ export async function messageTableBookingGuests(
   let scheduled = 0
   let skipped = 0
   let failed = 0
+  let emailed = 0
   // Set when we must stop the batch: 'logging' (fatal — logging broke, so safety
   // guards are blind) or a systemic SMS code (rate limit / suspended).
   let abortReason: 'logging' | string | null = null
@@ -252,6 +347,22 @@ export async function messageTableBookingGuests(
       window.map(async (r) => {
         try {
           const body = personalise(message, r.firstName, r.lastName)
+          if (r.email) {
+            const emailResult = await sendStaffOneOffEmail({
+              to: r.email,
+              subject,
+              body,
+              customerId: r.customerId,
+              commType: EMAIL_COMM_TYPE,
+              tableBookingId: r.bookingId,
+              withBookingSignature: true,
+              metadata: { source: 'boh_message_guests', booking_date: date },
+            })
+            if (emailResult.success) return { kind: 'emailed' as const }
+            // The email failed: the guest still gets the message, by text if they can be texted.
+            if (!r.mobile) return { kind: 'failed' as const }
+          }
+          if (!r.mobile) return { kind: 'failed' as const }
           const res = await sendSMS(r.mobile, body, {
             customerId: r.customerId,
             metadata: {
@@ -277,7 +388,8 @@ export async function messageTableBookingGuests(
       })
     )
     for (const o of outcomes) {
-      if (o.kind === 'sent') sent += 1
+      if (o.kind === 'emailed') emailed += 1
+      else if (o.kind === 'sent') sent += 1
       else if (o.kind === 'scheduled') scheduled += 1
       else if (o.kind === 'skipped') skipped += 1
       else failed += 1
@@ -286,13 +398,13 @@ export async function messageTableBookingGuests(
     }
   }
 
-  const notAttempted = recipients.length - sent - scheduled - skipped - failed
+  const notAttempted = recipients.length - emailed - sent - scheduled - skipped - failed
 
   await logAuditEvent({
     user_id: auth.userId,
     operation_type: 'table_booking.bulk_sms_sent',
     resource_type: 'table_booking',
-    operation_status: failed > 0 && sent === 0 && scheduled === 0 ? 'failure' : 'success',
+    operation_status: failed > 0 && sent === 0 && scheduled === 0 && emailed === 0 ? 'failure' : 'success',
     additional_info: {
       booking_date: date,
       booking_time: time ?? null,
@@ -305,6 +417,7 @@ export async function messageTableBookingGuests(
       not_attempted: notAttempted,
       abort_reason: abortReason,
       message_length: message.length,
+      ...(emailFirst ? { channel: 'email_first', emailed, subject_length: subject.length } : {}),
     },
   })
 
@@ -320,10 +433,12 @@ export async function messageTableBookingGuests(
     }
   }
 
+  const emailCounts = emailFirst ? { emailed, channel: 'email_first' as const } : {}
+
   // A systemic rate-limit/suspension stopped the batch early; the rest were not sent.
   if (abortReason) {
-    return { success: true, paused: true, sent, scheduled, skipped, failed }
+    return { success: true, paused: true, sent, scheduled, skipped, failed, ...emailCounts }
   }
 
-  return { success: true, sent, scheduled, skipped, failed }
+  return { success: true, sent, scheduled, skipped, failed, ...emailCounts }
 }

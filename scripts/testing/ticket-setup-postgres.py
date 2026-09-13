@@ -3,16 +3,13 @@
 Capacity and allocation use synthetic fixture helpers, never production services.
 """
 from pathlib import Path
-import importlib.util
 import subprocess
 import tempfile
 import json
 ROOT=Path(__file__).resolve().parents[2]
 PG=Path('/opt/homebrew/bin')
-MIGRATION=ROOT/'supabase/migrations/20260910065400_ticket_setup_and_attendees.sql'
-spec=importlib.util.spec_from_file_location('standing',ROOT/'scripts/testing/event-standing-postgres.py')
-standing=importlib.util.module_from_spec(spec);spec.loader.exec_module(standing)
-SETUP=standing.SETUP+"""
+MIGRATION=ROOT/'supabase/migrations/20260910075712_ticket_setup_and_attendees.sql'
+SETUP=(ROOT/'scripts/testing/fixtures/ticket-setup-base.sql').read_text()+"""
 ALTER TABLE booking_holds ADD consumed_at timestamptz;
 ALTER TABLE events ADD price numeric default 45, ADD price_per_seat numeric default 45, ADD is_free boolean default false, ADD online_discount_type text default 'fixed', ADD online_discount_value numeric default 5;
 ALTER TABLE bookings ADD is_reminder_only boolean default false, ADD attendee_names text[];
@@ -111,6 +108,30 @@ def main():
    reset();sql("UPDATE events SET payment_mode='prepaid',booking_questions='[]';")
    check("("+call([{**attendee(),'answers':{}}])+"->>'state')='confirmed'",'explicit free ticket needs no payment')
    check("NOT EXISTS (SELECT 1 FROM booking_holds WHERE status='active')",'free ticket consumes payment hold')
+   # Combined guest and dining requests must commit or roll back together.
+   sql("ALTER TABLE bookings ADD notes text;")
+   sql((ROOT/'supabase/migrations/20260910075719_ticket_attendees_dining_requests.sql').read_text())
+   reset();sql("UPDATE event_ticket_types SET base_price=45 WHERE id='"+T+"';UPDATE events SET payment_mode='prepaid',booking_questions='[]',online_discount_ends_at=null;")
+   def combined(customer="gen_random_uuid()",expected=40,dining="'before_event'"):
+    return f"create_event_booking_with_attendees_and_requests_v01('{E}',{customer},1,'brand_site','seated',15,null,{dining},true,{literal([{**attendee(),'answers':{}}])},{expected})"
+   sql('SELECT '+combined(expected=39)+';','price_changed')
+   check('(SELECT count(*) FROM bookings)=0','combined quote failure creates no booking')
+   sql('SELECT '+combined(dining="'invalid'")+';','invalid_dining_request')
+   check('(SELECT count(*) FROM bookings)=0','invalid dining request creates no booking')
+   customer="'00000000-0000-0000-0000-000000000040'::uuid"
+   check("("+combined(customer)+"->>'requests_recorded')::boolean",'combined booking acknowledges saved requests')
+   check("(SELECT attendees->0->>'name' FROM bookings)='Fixture Guest'",'combined booking saves guest snapshot')
+   check("(SELECT notes FROM bookings) LIKE '%food before the event.%arriving early.%'",'combined booking saves dining and early arrival')
+   sql("UPDATE bookings SET notes='Original request';")
+   check("("+combined(customer)+"->>'reason')='customer_conflict'",'combined retry reports existing booking')
+   check("(SELECT notes FROM bookings)='Original request'",'combined retry does not alter existing notes')
+   reset();sql("CREATE FUNCTION fixture_fail_request() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture_request_failure';END $$; CREATE TRIGGER fixture_fail_request BEFORE UPDATE OF notes ON bookings FOR EACH ROW EXECUTE FUNCTION fixture_fail_request();")
+   sql('SELECT '+combined()+';','fixture_request_failure')
+   check('(SELECT count(*) FROM bookings)=0','notes failure rolls back guest booking')
+   check('(SELECT count(*) FROM booking_items)=0 AND (SELECT count(*) FROM booking_holds)=0','notes failure rolls back items and holds')
+   for role in ['anon','authenticated']:
+    check(f"NOT has_function_privilege('{role}','create_event_booking_with_attendees_and_requests_v01(uuid,uuid,integer,text,text,integer,jsonb,text,boolean,jsonb,numeric)','EXECUTE')",role+' blocked from combined mutation')
+   check("has_function_privilege('service_role','create_event_booking_with_attendees_and_requests_v01(uuid,uuid,integer,text,text,integer,jsonb,text,boolean,jsonb,numeric)','EXECUTE')",'service role can use combined booking')
    for role in ['anon','authenticated']:
     check(f"NOT has_function_privilege('{role}','create_event_booking_v08(uuid,uuid,integer,text,text,integer,jsonb,jsonb,numeric)','EXECUTE')",role+' blocked from new mutation')
    check("has_function_privilege('service_role','create_event_booking_v08(uuid,uuid,integer,text,text,integer,jsonb,jsonb,numeric)','EXECUTE')",'service role can book')

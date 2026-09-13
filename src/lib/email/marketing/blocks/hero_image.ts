@@ -93,12 +93,12 @@ export const heroImage = defineBlock<HeroImageData>({
   render: (data) => `
 ${imageRow(data)}
 
-<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:40px 32px 8px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;mso-line-height-rule:exactly;letter-spacing:0.18em;text-transform:uppercase;color:#8b6914">${escapeEmailText(data.kicker)}</td></tr>
-<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:10px 32px 0;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:38px;font-weight:400;line-height:44px;mso-line-height-rule:exactly;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.headline)}</td></tr>
+<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:40px 32px 8px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;mso-line-height-rule:exactly;letter-spacing:0.18em;text-transform:uppercase;color:#8b6914">${escapeEmailText(data.kicker)}</td></tr>
+<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:10px 32px 0;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:38px;font-weight:400;line-height:44px;mso-line-height-rule:exactly;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.headline)}</td></tr>
 ${data.body
   .map(
     (paragraph, index) =>
-      `<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:${index === 0 ? '16px' : '14px'} 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:27px;mso-line-height-rule:exactly;color:#1a1a1a">${escapeEmailText(paragraph)}</td></tr>`,
+      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:${index === 0 ? '16px' : '14px'} 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:27px;mso-line-height-rule:exactly;color:#1a1a1a">${escapeEmailText(paragraph)}</td></tr>`,
   )
   .join('\n')}
 

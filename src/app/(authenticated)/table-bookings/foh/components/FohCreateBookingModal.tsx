@@ -362,7 +362,8 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 Christmas bookings need {CHRISTMAS_MIN_PARTY_SIZE} guests or more,
                 at least {CHRISTMAS_MIN_NOTICE_HOURS} hours notice, and always take a
                 deposit of {formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person.
-                Over {CHRISTMAS_MAX_PARTY_SIZE} guests is private hire.
+                Over {CHRISTMAS_MAX_PARTY_SIZE} guests is private hire. Booked after noon
+                7 days before the date, it&apos;s the 1 course menu for everyone, with no pre-order.
               </p>
             )}
           </label>

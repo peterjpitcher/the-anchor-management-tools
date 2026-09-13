@@ -6,6 +6,7 @@
 
 import { addDays, format, parseISO } from 'date-fns'
 import { fromZonedTime } from 'date-fns-tz'
+import { whenLondonClockReaches } from '@/lib/dateUtils'
 import type { WindowInstants } from '@/lib/checklists/types'
 
 const TZ = 'Europe/London'
@@ -80,10 +81,16 @@ export function expandInstants(
   const opensNorm = normaliseTime(opens)
   const closesNorm = normaliseTime(closes)
 
-  const opensAt = fromZonedTime(`${businessDate}T${opensNorm}:00`, TZ)
+  // Opening and closing times are read off the clock: the first moment it shows them.
+  // fromZonedTime lands an hour out for 01:00 to 01:59 on both clock-change nights, which is
+  // exactly when a 1am close falls.
+  const opensAt = whenLondonClockReaches(businessDate, opensNorm)
 
   const closeDate = closesNorm <= opensNorm ? addCalendarDays(businessDate, 1) : businessDate
-  const closesAt = fromZonedTime(`${closeDate}T${closesNorm}:00`, TZ)
+  const closesAt = whenLondonClockReaches(closeDate, closesNorm)
+  if (!opensAt || !closesAt) {
+    return { error: 'invalid_hours' }
+  }
 
   const { end } = businessDayBounds(businessDate, businessDayStartHour)
   if (closesAt.getTime() > end.getTime()) {

@@ -1,8 +1,8 @@
 import { readBookingPaymentLedger } from '@/lib/private-bookings/payment-ledger';
+import { buildPaymentHistoryEntries } from '@/lib/private-bookings/payment-statement';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils';
-import { SmsQueueService } from '@/services/sms-queue';
+import { formatDateInLondon } from '@/lib/dateUtils';
 import { syncCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { logAuditEvent } from '@/app/actions/audit';
@@ -12,13 +12,18 @@ import {
   sendBalancePaidEmail,
   sendBookingConfirmationEmail,
   sendBookingCalendarInvite,
+  buildBalancePaidMessageEmail,
+  buildBookingConfirmedMessageEmail,
+  buildDepositReceivedMessageEmail,
+  resolveConfirmationDepositState,
 } from '@/lib/email/private-booking-emails';
+import { sendPrivateBookingMessage } from '@/lib/private-bookings/messenger';
+import { isPrivateBookingEmailFirstOn } from '@/lib/private-bookings/email-first';
+import { buildPrivateBookingMessageFacts } from '@/lib/private-bookings/message-catalogue';
 import type {
   BookingStatus,
   PrivateBookingWithDetails,
   PaymentHistoryEntry,
-  DepositPaymentEntry,
-  BalancePaymentEntry,
 } from '@/types/private-bookings';
 import {
   type PrivateBookingSmsSideEffectSummary,
@@ -62,6 +67,17 @@ function formatEventDate(eventDate: string | null | undefined, booking?: { date_
         year: 'numeric',
       })
     : ''
+}
+
+/**
+ * A total worth showing, or null.
+ *
+ * Deposits are often taken to hold a date before anything is priced, and the emails printed the
+ * unpriced booking as "Total event cost £0.00, Event balance due £0.00" (review PB-7).
+ */
+function positiveTotal(value: unknown): number | null {
+  const amount = toNumber(value)
+  return amount > 0 ? amount : null
 }
 
 function summarizeSmsResult(
@@ -116,8 +132,15 @@ async function sendDepositReceivedSideEffects(input: {
   method: string
   performedByUserId?: string
   calculatedTotal?: number | null
+  /**
+   * True when the SOP gate held the booking back: the deposit is recorded but the booking stays a
+   * draft (space conflict, capacity, outstanding risk review or GM approval). The guest still gets
+   * a receipt, but neither the email nor the text may say the booking is confirmed (review PB-2).
+   */
+  confirmationBlocked?: boolean
 }): Promise<PrivateBookingSmsSideEffectSummary[]> {
   const { db, booking, updatedBooking, amount, method, performedByUserId, calculatedTotal } = input
+  const bookingConfirmed = input.confirmationBlocked !== true
   const bookingId = booking.id
   const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
@@ -138,31 +161,52 @@ async function sendDepositReceivedSideEffects(input: {
     }
   }
 
-  if (booking.contact_phone || booking.customer_id) {
+  // Email first (P6): the "Booking Confirmed" email has always gone alongside this text. Under the
+  // flag one email carries both, and the text goes only if that email does not.
+  const depositByEmailFirst = await isPrivateBookingEmailFirstOn()
+
+  if (depositByEmailFirst || booking.contact_phone || booking.customer_id) {
     const eventDate = formatEventDate(booking.event_date, booking)
     const smsMessage = depositReceivedMessage({
       customerFirstName: booking.customer_first_name,
       eventDate,
+      bookingConfirmed,
     });
 
     let smsResult: any
     try {
-      smsResult = await SmsQueueService.queueAndSend({
-        booking_id: bookingId,
-        trigger_type: 'deposit_received',
-        template_key: 'private_booking_deposit_received',
-        message_body: smsMessage,
-        customer_phone: booking.contact_phone,
-        customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
-        customer_id: booking.customer_id,
-        created_by: performedByUserId,
-        priority: 1,
-        metadata: {
-          template: 'private_booking_deposit_received',
-          first_name: booking.customer_first_name,
-          amount,
-          event_date: eventDate
-        }
+      smsResult = await sendPrivateBookingMessage({
+        sms: {
+          booking_id: bookingId,
+          trigger_type: 'deposit_received',
+          template_key: 'private_booking_deposit_received',
+          message_body: smsMessage,
+          customer_phone: booking.contact_phone,
+          customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
+          customer_id: booking.customer_id,
+          created_by: performedByUserId,
+          priority: 1,
+          metadata: {
+            template: 'private_booking_deposit_received',
+            first_name: booking.customer_first_name,
+            amount,
+            event_date: eventDate
+          }
+        },
+        booking,
+        email: () => buildDepositReceivedMessageEmail({
+          booking,
+          firstName: booking.customer_first_name,
+          depositAmount: amount,
+          totalAmount: positiveTotal(calculatedTotal ?? booking.total_amount),
+          balanceDueDate: booking.balance_due_date ?? null,
+          bookingConfirmed,
+        }),
+        windowKey: 'deposit',
+        // From the row as the payment left it: `booking` was read before the deposit was recorded.
+        facts: buildPrivateBookingMessageFacts('deposit_received', { ...booking, ...(updatedBooking ?? {}) }),
+        // The same read that decides, below, whether the old deposit email goes too.
+        emailFirst: depositByEmailFirst,
       });
     } catch (smsError) {
       smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
@@ -173,7 +217,7 @@ async function sendDepositReceivedSideEffects(input: {
     )
   }
 
-  if (booking.contact_email) {
+  if (booking.contact_email && !depositByEmailFirst) {
     const depositEmailDate = isBookingDateTbd(booking) ? 'Date to be confirmed' : booking.event_date;
     sendDepositReceivedEmail({
       id: booking.id,
@@ -185,11 +229,15 @@ async function sendDepositReceivedSideEffects(input: {
       event_type: booking.event_type,
       start_time: booking.start_time,
       end_time: booking.end_time,
+      end_time_next_day: booking.end_time_next_day,
       guest_count: booking.guest_count,
       deposit_amount: amount,
       deposit_payment_method: method,
       balance_due_date: booking.balance_due_date,
-      total_amount: calculatedTotal ?? booking.total_amount,
+      // Null, not zero: a deposit taken before anything is priced printed "Total event cost
+      // £0.00" (review PB-7).
+      total_amount: positiveTotal(calculatedTotal ?? booking.total_amount),
+      bookingConfirmed,
     }).catch(e =>
       logger.error('Failed to send deposit received email', { error: e instanceof Error ? e : new Error(String(e)) })
     );
@@ -259,11 +307,15 @@ export async function sendBookingConfirmedSideEffects(input: {
     }
   }
 
-  if (booking.contact_email) {
+  // Email first (P6): under the flag one corrected confirmation email replaces both the old
+  // confirmation email (which called a waived-deposit booking a "Provisional Booking Hold") and the
+  // text. The calendar invite still goes as before.
+  const confirmationByEmailFirst = await isPrivateBookingEmailFirstOn()
+
+  const resolveGrossTotal = async (): Promise<number | null> => {
     // Stored prices are net; the confirmation email must show the VAT-inclusive gross
     // total (view-only column). Pass null when there is no positive total so the
     // "Total event cost" row is omitted rather than shown as £0.00.
-    let confirmationGrossTotal: number | null = null
     try {
       const { data: viewRow } = await db
         .from('private_bookings_with_details')
@@ -271,43 +323,66 @@ export async function sendBookingConfirmedSideEffects(input: {
         .eq('id', bookingId)
         .maybeSingle()
       const g = toNumber(viewRow?.gross_total ?? viewRow?.calculated_total)
-      confirmationGrossTotal = g > 0 ? g : null
+      return g > 0 ? g : null
     } catch (grossError) {
       logger.error('Failed to resolve gross total for confirmation email', { error: grossError instanceof Error ? grossError : new Error(String(grossError)) })
+      return null
     }
-    sendBookingConfirmationEmail({ ...booking, total_amount: confirmationGrossTotal }).catch(e =>
-      logger.error('Failed to send booking confirmation email', { error: e instanceof Error ? e : new Error(String(e)) })
-    )
+  }
+
+  if (booking.contact_email) {
+    if (!confirmationByEmailFirst) {
+      const confirmationGrossTotal = await resolveGrossTotal()
+      sendBookingConfirmationEmail({ ...booking, total_amount: confirmationGrossTotal }).catch(e =>
+        logger.error('Failed to send booking confirmation email', { error: e instanceof Error ? e : new Error(String(e)) })
+      )
+    }
     sendBookingCalendarInvite(booking).catch(e =>
       logger.error('Failed to send calendar invite', { error: e instanceof Error ? e : new Error(String(e)) })
     )
   }
 
-  if (booking.contact_phone || booking.customer_id) {
+  if (confirmationByEmailFirst || booking.contact_phone || booking.customer_id) {
     const messageBody = bookingConfirmedMessage({
       customerFirstName: firstName,
       eventDate,
     })
+    const confirmationGrossTotal = confirmationByEmailFirst ? await resolveGrossTotal() : null
 
     let smsResult: any
     try {
-      smsResult = await SmsQueueService.queueAndSend({
-        booking_id: bookingId,
-        trigger_type: 'booking_confirmed',
-        template_key: 'private_booking_confirmed',
-        message_body: messageBody,
-        customer_phone: booking.contact_phone,
-        customer_name:
-          booking.customer_name ||
-          `${booking.customer_first_name ?? ''} ${booking.customer_last_name ?? ''}`.trim(),
-        customer_id: booking.customer_id,
-        created_by: input.performedByUserId,
-        priority: 1,
-        metadata: {
-          template: 'private_booking_confirmed',
-          event_date: eventDate,
-          event_type: booking.event_type ?? null
-        }
+      smsResult = await sendPrivateBookingMessage({
+        sms: {
+          booking_id: bookingId,
+          trigger_type: 'booking_confirmed',
+          template_key: 'private_booking_confirmed',
+          message_body: messageBody,
+          customer_phone: booking.contact_phone,
+          customer_name:
+            booking.customer_name ||
+            `${booking.customer_first_name ?? ''} ${booking.customer_last_name ?? ''}`.trim(),
+          customer_id: booking.customer_id,
+          created_by: input.performedByUserId,
+          priority: 1,
+          metadata: {
+            template: 'private_booking_confirmed',
+            event_date: eventDate,
+            event_type: booking.event_type ?? null
+          }
+        },
+        booking,
+        email: () => buildBookingConfirmedMessageEmail({
+          booking,
+          firstName,
+          depositState: resolveConfirmationDepositState(booking),
+          depositAmount: toNumber(booking.deposit_amount),
+          holdExpiry: booking.hold_expiry ?? null,
+          totalAmount: confirmationGrossTotal,
+        }),
+        windowKey: `confirmed-${String(booking.event_date ?? 'tbd').slice(0, 10)}`,
+        facts: buildPrivateBookingMessageFacts('booking_confirmed', booking),
+        // The same read that decided, above, whether the old confirmation email went.
+        emailFirst: confirmationByEmailFirst,
       })
     } catch (smsError) {
       smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
@@ -530,6 +605,8 @@ async function finalizeDepositPaymentWithClient(
     method,
     performedByUserId,
     calculatedTotal,
+    // The gate kept the booking a draft, so the receipt must not call it confirmed (review PB-2).
+    confirmationBlocked,
   })
 
   return smsSideEffects.length > 0
@@ -584,7 +661,9 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
   // Fetch booking upfront -- needed for SMS context and calendar sync regardless of outcome.
   const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, total_amount, date_tbd, internal_notes')
+    // invoice_deposit_treatment: a deposit applied to the invoice is not a refundable bond, so the
+    // balance-paid email must not promise to return it (review PB-8).
+    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, total_amount, invoice_deposit_treatment, date_tbd, internal_notes')
     .eq('id', bookingId)
     .single();
 
@@ -644,8 +723,12 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
 
   const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
+  // Email first (P6): the "Payment Complete" email has always gone alongside this text. Under the
+  // flag one email carries both, and the text goes only if that email does not.
+  const finalPaymentByEmailFirst = await isPrivateBookingEmailFirstOn()
+
   // SMS
-  if (booking.contact_phone || booking.customer_id) {
+  if (finalPaymentByEmailFirst || booking.contact_phone || booking.customer_id) {
     const eventDate = formatEventDate(booking.event_date, booking)
 
     const smsMessage = finalPaymentMessage({
@@ -656,21 +739,36 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
 
     let smsResult: any
     try {
-      smsResult = await SmsQueueService.queueAndSend({
-        booking_id: bookingId,
-        trigger_type: 'final_payment_received',
-        template_key: 'private_booking_final_payment',
-        message_body: smsMessage,
-        customer_phone: booking.contact_phone,
-        customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
-        customer_id: booking.customer_id,
-        created_by: performedByUserId,
-        priority: 1,
-        metadata: {
-          template: 'private_booking_final_payment',
-          first_name: booking.customer_first_name,
-          event_date: eventDate
-        }
+      smsResult = await sendPrivateBookingMessage({
+        sms: {
+          booking_id: bookingId,
+          trigger_type: 'final_payment_received',
+          template_key: 'private_booking_final_payment',
+          message_body: smsMessage,
+          customer_phone: booking.contact_phone,
+          customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
+          customer_id: booking.customer_id,
+          created_by: performedByUserId,
+          priority: 1,
+          metadata: {
+            template: 'private_booking_final_payment',
+            first_name: booking.customer_first_name,
+            event_date: eventDate
+          }
+        },
+        booking,
+        email: () => buildBalancePaidMessageEmail({
+          booking,
+          firstName: booking.customer_first_name,
+          totalAmount: positiveTotal(balanceCalculatedTotal ?? booking.total_amount),
+          depositAmount: booking.deposit_amount ?? null,
+          depositPaidDate: booking.deposit_paid_date ?? null,
+          invoiceDepositTreatment: (booking as { invoice_deposit_treatment?: string | null }).invoice_deposit_treatment ?? null,
+        }),
+        windowKey: 'final-payment',
+        facts: buildPrivateBookingMessageFacts('final_payment_received', booking),
+        // The same read that decides, below, whether the old balance-paid email goes too.
+        emailFirst: finalPaymentByEmailFirst,
       });
     } catch (smsError) {
       smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
@@ -715,7 +813,7 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
   }
 
   // Send balance paid email (non-blocking)
-  if (booking.contact_email) {
+  if (booking.contact_email && !finalPaymentByEmailFirst) {
     const balanceEmailDate = isBookingDateTbd(booking) ? 'Date to be confirmed' : booking.event_date;
     sendBalancePaidEmail({
       id: booking.id,
@@ -725,8 +823,10 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
       customer_name: booking.customer_name,
       event_date: balanceEmailDate,
       event_type: booking.event_type,
-      total_amount: balanceCalculatedTotal ?? booking.total_amount,
+      total_amount: positiveTotal(balanceCalculatedTotal ?? booking.total_amount),
       deposit_amount: booking.deposit_amount,
+      deposit_paid_date: booking.deposit_paid_date,
+      invoice_deposit_treatment: (booking as { invoice_deposit_treatment?: string | null }).invoice_deposit_treatment ?? null,
     }).catch(e =>
       logger.error('Failed to send balance paid email', { error: e instanceof Error ? e : new Error(String(e)) })
     );
@@ -783,41 +883,8 @@ export async function getBookingPaymentHistory(bookingId: string): Promise<Payme
 
   const ledger = await readBookingPaymentLedger(bookingId)
 
-  const entries: PaymentHistoryEntry[] = []
-
-  if (booking.deposit_paid_date) {
-    entries.push({
-      id: 'deposit',
-      appliedAmount: ledger.appliedDepositAmount,
-      readonly: Boolean(booking.invoice_id),
-      invoice_id: booking.invoice_id ?? undefined,
-      type: 'deposit',
-      amount: booking.deposit_amount,
-      method: booking.deposit_payment_method as DepositPaymentEntry['method'],
-      date: toLocalIsoDate(new Date(booking.deposit_paid_date)),
-    })
-  }
-
-  for (const payment of ledger.payments) {
-    entries.push({
-      id: payment.id,
-      readonly: payment.readonly,
-      invoice_id: payment.invoice_id,
-      type: 'balance',
-      amount: payment.amount,
-      method: payment.method as BalancePaymentEntry['method'],
-      date: toLocalIsoDate(new Date(payment.created_at)),
-    })
-  }
-
-  entries.sort((a, b) => {
-    if (a.date !== b.date) return a.date < b.date ? -1 : 1
-    if (a.type === 'deposit' && b.type === 'balance') return -1
-    if (a.type === 'balance' && b.type === 'deposit') return 1
-    return 0
-  })
-
-  return entries
+  // The same list a balance reminder email carries (payment-statement.ts).
+  return buildPaymentHistoryEntries(booking, ledger)
 }
 
 export async function updateBalancePayment(

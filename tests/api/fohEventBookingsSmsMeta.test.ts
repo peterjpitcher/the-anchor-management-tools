@@ -6,6 +6,12 @@ vi.mock('@/lib/foh/api-auth', () => ({
   getLondonDateIso: vi.fn(() => '2026-01-01'),
 }))
 
+// An ordinary day, so the service in force for a walk-in is the pinned date.
+vi.mock('@/lib/business-hours/trading-day', async (importActual) => ({
+  ...(await importActual<typeof import('@/lib/business-hours/trading-day')>()),
+  resolveTradingDayNow: vi.fn(async () => ({ date: '2026-01-01', until: new Date('2026-01-02T00:00:00Z') })),
+}))
+
 vi.mock('@/lib/events/manage-booking', () => ({
   createEventManageToken: vi.fn().mockResolvedValue({ url: 'https://example.com/manage' }),
 }))

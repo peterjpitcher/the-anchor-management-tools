@@ -9,6 +9,7 @@ export type CalendarEntryKind =
     | 'special_hours'
     | 'calendar_note'
     | 'parking'
+    | 'marketing_email'
 
 export type CalendarEntryStatus =
     | 'scheduled'
@@ -24,6 +25,9 @@ export type CalendarEntryStatus =
     | 'completed'
     | 'visited_waiting_for_review'
     | 'review_clicked'
+    // Marketing email campaigns only: a send is in flight, or a manager stopped it.
+    | 'sending'
+    | 'paused'
     | null
 
 /**
@@ -112,6 +116,16 @@ type TooltipData =
           timeRange: string
           status: string | null
       }
+    | {
+          kind: 'marketing_email'
+          name: string
+          subject: string
+          audience: string
+          time: string
+          /** Approved audience size at schedule time, not a delivered count. */
+          recipientCount: number | null
+          statusLabel: string
+      }
 
 /** Week was retired: it was not used, and it is the one view a status or content badge does not fit in. */
 export type ScheduleCalendarView = 'month' | 'list'
@@ -125,14 +139,6 @@ export interface ScheduleDailyOps {
     staffByDate: Record<string, string[]>
 }
 
-interface ScheduleCalendarProps {
-    entries: CalendarEntry[]
-    view: ScheduleCalendarView
-    onViewChange: (view: ScheduleCalendarView) => void
-    canCreateCalendarNote?: boolean
-    onEmptyDayClick?: (date: Date) => void
-    renderTooltip?: (entry: CalendarEntry) => ReactNode
-    firstDayOfWeek?: 0 | 1 | 2 | 3 | 4 | 5 | 6
-    legendKinds?: CalendarEntryKind[] // kinds actually present & permitted
-    className?: string
-}
+// The live ScheduleCalendar prop type is exported from ScheduleCalendar.tsx.
+// A private copy used to live here, was never imported, and had drifted out of
+// date (it omitted dailyOps and onEntryClick), so reading it misled.

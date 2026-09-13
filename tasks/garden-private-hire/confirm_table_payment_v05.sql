@@ -159,4 +159,3 @@ BEGIN
   );
 END;
 $function$;
-

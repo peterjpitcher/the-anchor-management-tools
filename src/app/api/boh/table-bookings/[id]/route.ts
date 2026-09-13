@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
-import { fromZonedTime } from 'date-fns-tz'
 import { z } from 'zod'
+import { loadTradingHours, serviceInstantFor } from '@/lib/business-hours/trading-day'
+import type { TradingHours } from '@/lib/business-hours/open-now'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
 import { sendTableBookingCancelledSmsIfAllowed, sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
+import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
 import { logAuditEvent } from '@/app/actions/audit'
+import { logger } from '@/lib/logger'
+import type { createAdminClient } from '@/lib/supabase/admin'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
@@ -27,8 +31,17 @@ const UpdateBookingSchema = z.object({
   internal_notes: z.string().max(4000).nullable().optional(),
 })
 
-function computeBookingWindow(bookingDate: string, bookingTime: string, durationMinutes: number) {
-  const start = fromZonedTime(`${bookingDate}T${bookingTime}:00`, 'Europe/London')
+// The start sits inside the date's trading day rather than being the date glued to the time: on
+// a night that closes after midnight, 00:15 on New Year's Eve is 00:15 on 1 January, as the
+// booking functions' hours check reads it. The booking keeps the date it was given.
+function computeBookingWindow(
+  bookingDate: string,
+  bookingTime: string,
+  durationMinutes: number,
+  hours: TradingHours | null | undefined,
+) {
+  const start = serviceInstantFor(bookingDate, bookingTime, hours)
+  if (!start) return null
   const end = new Date(start.getTime() + durationMinutes * 60 * 1000)
 
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
@@ -45,6 +58,42 @@ function isAssignmentConflict(error: { code?: string; message?: string } | null 
   const code = typeof error?.code === 'string' ? error.code : ''
   const message = typeof error?.message === 'string' ? error.message : ''
   return code === '23P01' || message.includes('table_assignment_overlap') || message.includes('table_assignment_private_blocked')
+}
+
+type AssignmentWindow = { id: string; start_datetime: string; end_datetime: string }
+
+/**
+ * Puts each table assignment back on the window it held before this edit moved it.
+ *
+ * The edit moves the assignments first, so a clash stops it before the booking changes. That
+ * leaves the opposite gap: when the booking update is then refused (by the kitchen-hours guard,
+ * say), the table sits at the new time while the booking keeps the old one. Best effort; a
+ * failure is logged, since there is nothing further the request can do about it.
+ */
+async function restoreAssignmentWindows(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string,
+  savedWindows: AssignmentWindow[],
+): Promise<void> {
+  for (const saved of savedWindows) {
+    const { error } = await supabase
+      .from('booking_table_assignments')
+      .update({ start_datetime: saved.start_datetime, end_datetime: saved.end_datetime })
+      .eq('id', saved.id)
+
+    if (error) {
+      logger.error('BOH booking edit: failed to put a table assignment back after the booking update failed', {
+        metadata: {
+          bookingId,
+          assignmentId: saved.id,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        },
+      })
+    }
+  }
 }
 
 export async function PATCH(
@@ -97,10 +146,32 @@ export async function PATCH(
     )
   }
 
+  let bookingDateHours: TradingHours | null | undefined
+  // The date the booking is moving off needs its own hours: the reschedule email says what the
+  // booking was, and on a night that closes after midnight that start sits in the previous
+  // trading day. One read covers both dates.
+  let previousDateHours: TradingHours | null | undefined
+  try {
+    const dates = [parsed.data.booking_date]
+    if (existing.booking_date && existing.booking_date !== parsed.data.booking_date) {
+      dates.push(existing.booking_date)
+    }
+    const hoursByDate = await loadTradingHours(auth.supabase, dates)
+    bookingDateHours = hoursByDate.get(parsed.data.booking_date)
+    previousDateHours = existing.booking_date ? hoursByDate.get(existing.booking_date) : undefined
+  } catch (hoursError) {
+    logger.error('BOH booking edit: failed to load opening hours', {
+      error: hoursError instanceof Error ? hoursError : new Error(String((hoursError as { message?: unknown })?.message ?? hoursError)),
+      metadata: { bookingId: id, bookingDate: parsed.data.booking_date },
+    })
+    return NextResponse.json({ error: 'Failed to load opening hours' }, { status: 500 })
+  }
+
   const window = computeBookingWindow(
     parsed.data.booking_date,
     parsed.data.booking_time,
-    parsed.data.duration_minutes
+    parsed.data.duration_minutes,
+    bookingDateHours
   )
   if (!window) {
     return NextResponse.json({ error: 'Invalid booking window' }, { status: 400 })
@@ -136,7 +207,31 @@ export async function PATCH(
   // fire for an outside booking. The outside table they DO hold is re-windowed for us: the
   // `table_bookings` UPDATE below trips the reconciling trigger from
   // 20260802000008_outside_reservation_sync.sql. Do not add a bespoke copy of that here.
+  // What each assignment holds now, so the table can be put back exactly if the booking update
+  // below is refused. Read rather than rebuilt from the booking, because an assignment can carry
+  // a turnaround gap that the booking's own window does not.
+  let savedAssignmentWindows: AssignmentWindow[] = []
+
   if (!isOutsideSeating) {
+    const { data: currentAssignments, error: currentAssignmentsError } = await auth.supabase
+      .from('booking_table_assignments')
+      .select('id, start_datetime, end_datetime')
+      .eq('table_booking_id', id)
+
+    if (currentAssignmentsError) {
+      logger.error('BOH booking edit: failed to read table assignments before moving them', {
+        metadata: {
+          bookingId: id,
+          code: currentAssignmentsError.code,
+          message: currentAssignmentsError.message,
+          details: currentAssignmentsError.details,
+          hint: currentAssignmentsError.hint,
+        },
+      })
+      return NextResponse.json({ error: 'Failed to update table assignment window' }, { status: 500 })
+    }
+    savedAssignmentWindows = (currentAssignments ?? []) as AssignmentWindow[]
+
     const { error: assignmentError } = await auth.supabase.from('booking_table_assignments')
       .update({
         start_datetime: window.startIso,
@@ -161,7 +256,27 @@ export async function PATCH(
     .select('id')
     .maybeSingle()
 
+  if (updateError || !updated) {
+    // The assignments already moved to the new window. Put them back so a refused edit leaves
+    // the table and the booking agreeing on the old time.
+    await restoreAssignmentWindows(auth.supabase, id, savedAssignmentWindows)
+  }
+
   if (updateError) {
+    // The kitchen is not serving at the new time. Staff get the guard's sentence, which says so.
+    const serviceWindowMessage = extractServiceWindowRuleErrorMessage(updateError)
+    if (serviceWindowMessage) {
+      return NextResponse.json({ error: serviceWindowMessage }, { status: 400 })
+    }
+    logger.error('BOH booking edit: failed to update booking', {
+      metadata: {
+        bookingId: id,
+        code: updateError.code,
+        message: updateError.message,
+        details: updateError.details,
+        hint: updateError.hint,
+      },
+    })
     return NextResponse.json({ error: 'Failed to update booking' }, { status: 500 })
   }
   if (!updated) {
@@ -205,19 +320,34 @@ export async function PATCH(
     additional_info: { action: 'admin_booking_edit' },
   }).catch(() => {})
 
-  // Confirm the amended booking to the customer whenever the date, time, or duration
-  // actually changed. Note: the `windowChanged` flag above compares the stored
-  // seconds-precision time ('18:00:00') against the form's 'HH:MM', so it is true on
-  // almost every save — fine for the idempotent high-chair re-grant, but it must NOT
-  // gate a customer message. Re-derive a normalised comparison so editing only notes,
-  // dietary requirements, etc. never messages the guest. Never fails the edit — the
-  // helper swallows its own errors.
-  const windowActuallyChanged =
+  // Confirm the amended booking to the customer whenever the date or the time actually changed.
+  //
+  // Note: the `windowChanged` flag above compares the stored seconds-precision time ('18:00:00')
+  // against the form's 'HH:MM', so it is true on almost every save. That is fine for the
+  // idempotent high-chair re-grant, but it must NOT gate a customer message. This comparison is
+  // normalised, so editing only notes or dietary requirements never messages the guest.
+  //
+  // Duration is deliberately not in it. How long the table is held is a floor decision the guest
+  // never sees, and an email restating the same date, time and party size is noise that teaches
+  // guests to ignore the ones that matter. The old start goes with the call so the email can say
+  // what the booking was as well as what it is now. Never fails the edit: the helper swallows its
+  // own errors.
+  const guestVisibleWindowChanged =
     existing.booking_date !== parsed.data.booking_date ||
-    (existing.booking_time ?? '').slice(0, 5) !== parsed.data.booking_time ||
-    existing.duration_minutes !== parsed.data.duration_minutes
-  if (windowActuallyChanged) {
-    await sendTableBookingRescheduledNotificationIfAllowed(auth.supabase, { tableBookingId: id })
+    (existing.booking_time ?? '').slice(0, 5) !== parsed.data.booking_time
+  if (guestVisibleWindowChanged) {
+    const previousWindow = existing.booking_date && existing.booking_time
+      ? computeBookingWindow(
+          existing.booking_date,
+          (existing.booking_time ?? '').slice(0, 5),
+          existing.duration_minutes ?? parsed.data.duration_minutes,
+          previousDateHours
+        )
+      : null
+    await sendTableBookingRescheduledNotificationIfAllowed(auth.supabase, {
+      tableBookingId: id,
+      previous: { startDateTime: previousWindow?.startIso ?? null },
+    })
   }
 
   revalidatePath('/table-bookings')
@@ -427,14 +557,17 @@ export async function DELETE(
   }).catch(() => {})
 
   // Tiered deposit refund + cancellation SMS (never fail the delete)
+  // guestNotification is set only on the email-first path (flag table_cancelled_email_first).
+  let guestNotification: Awaited<ReturnType<typeof refundAndNotifyOnCancel>>['notification'] = null
   if (existing.booking_date && existing.customer_id) {
-    await refundAndNotifyOnCancel(auth.supabase, {
+    const cancelOutcome = await refundAndNotifyOnCancel(auth.supabase, {
       bookingId: existing.id,
       bookingReference: existing.booking_reference || id,
       bookingDate: existing.booking_date,
       customerId: existing.customer_id,
       source: 'boh_soft_delete',
     })
+    guestNotification = cancelOutcome?.notification ?? null
   }
 
   return NextResponse.json({
@@ -447,6 +580,7 @@ export async function DELETE(
       cancelled_at: cancelledBooking.cancelled_at || nowIso,
       cancellation_reason: cancelledBooking.cancellation_reason || cancellationReason,
       soft_deleted: true
-    }
+    },
+    ...(guestNotification ? { guest_notification: guestNotification } : {}),
   })
 }

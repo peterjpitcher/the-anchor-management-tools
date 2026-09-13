@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { logAuditEvent } from '@/app/actions/audit';
+import { cancelPendingQueuedSms } from '@/lib/private-bookings/queue-cleanup';
+import { isMessagingFlagOn } from '@/lib/messaging/flags';
 
 // Vercel Cron: runs at 06:00 UTC daily (cron: "0 6 * * *")
 // Cancels draft private bookings whose hold_expiry has passed.
@@ -17,10 +19,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = createAdminClient();
   const now = new Date().toISOString();
 
+  // Deposit confirmation (flag private_booking_deposit_confirmation): while it is on, a hold whose
+  // deposit is still to be confirmed never expires by itself, and so never gets the hold-lapsed
+  // message. The guest has not been told a deposit or a deadline. With the flag off the update
+  // below is exactly as it was.
+  const depositConfirmation = await isMessagingFlagOn('private_booking_deposit_confirmation');
+
   // Atomically update expired draft bookings and return the affected rows.
   // hold_expiry IS NOT NULL filters out TBD bookings (which have null hold_expiry).
   // Re-checking status='draft' prevents cancelling bookings confirmed between cron runs.
-  const { data: expiredRows, error: updateError } = await supabase
+  let expireQuery = supabase
     .from('private_bookings')
     .update({
       status: 'cancelled',
@@ -30,8 +38,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     })
     .eq('status', 'draft')
     .not('hold_expiry', 'is', null)
-    .lt('hold_expiry', now)
-    .select('id');
+    .lt('hold_expiry', now);
+  if (depositConfirmation) {
+    expireQuery = expireQuery.not('deposit_confirmed_at', 'is', null);
+  }
+  const { data: expiredRows, error: updateError } = await expireQuery.select('id');
 
   if (updateError) {
     logger.error('private-bookings-expire-holds: atomic update failed', {
@@ -75,13 +86,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       // expireBooking expects draft status — but we already set cancelled above.
       // Instead, perform per-row cleanup inline: cancel pending SMS, calendar, notification.
 
-      // 1. Cancel pending SMS for this booking
+      // 1. Cancel pending SMS for this booking. The helper reads the returned error; the old
+      // inline update wrote a column the queue table does not have and nothing noticed.
       try {
-        await supabase
-          .from('private_booking_sms_queue')
-          .update({ status: 'cancelled', updated_at: now })
-          .eq('booking_id', id)
-          .in('status', ['pending', 'approved']);
+        await cancelPendingQueuedSms(supabase, id, 'hold_expired_cron');
       } catch (smsCleanupError) {
         logger.error('private-bookings-expire-holds: SMS cleanup failed', {
           error: smsCleanupError instanceof Error ? smsCleanupError : new Error(String(smsCleanupError)),
@@ -121,14 +129,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       try {
         const { data: booking } = await supabase
           .from('private_bookings')
-          .select('customer_first_name, customer_name, contact_phone, customer_id, event_date, date_tbd, internal_notes')
+          .select('customer_first_name, customer_name, contact_phone, contact_email, customer_id, event_date, date_tbd, internal_notes, event_type, start_time, end_time, end_time_next_day, guest_count')
           .eq('id', id)
           .maybeSingle();
 
-        if (booking && (booking.contact_phone || booking.customer_id)) {
+        // Email first (P6): a booking with only an email address hears about the lapse too.
+        const { isPrivateBookingEmailFirstOn } = await import('@/lib/private-bookings/email-first');
+        const emailFirst = await isPrivateBookingEmailFirstOn();
+
+        if (booking && (emailFirst || booking.contact_phone || booking.customer_id)) {
           const { isBookingDateTbd } = await import('@/lib/private-bookings/tbd-detection');
           const { bookingExpiredMessage } = await import('@/lib/private-bookings/messages');
-          const { SmsQueueService } = await import('@/services/sms-queue');
+          const { sendPrivateBookingMessage } = await import('@/lib/private-bookings/messenger');
+          const { buildHoldLapsedEmail } = await import('@/lib/email/private-booking-emails');
+          const { buildPrivateBookingMessageFacts } = await import('@/lib/private-bookings/message-catalogue');
 
           const isTbd = isBookingDateTbd(booking);
           const eventDate = isTbd
@@ -142,20 +156,29 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             eventDate: eventDate,
           });
 
-          const smsResult = await SmsQueueService.queueAndSend({
-            booking_id: id,
-            trigger_type: 'booking_expired',
-            template_key: 'private_booking_expired',
-            message_body: smsMessage,
-            customer_phone: booking.contact_phone,
-            customer_name: booking.customer_name,
-            customer_id: booking.customer_id,
-            created_by: undefined,
-            priority: 2,
-            metadata: {
-              template: 'private_booking_expired',
-              event_date: eventDate,
+          const bookingForMessage = { ...booking, id };
+          const smsResult = await sendPrivateBookingMessage({
+            sms: {
+              booking_id: id,
+              trigger_type: 'booking_expired',
+              template_key: 'private_booking_expired',
+              message_body: smsMessage,
+              customer_phone: booking.contact_phone,
+              customer_name: booking.customer_name,
+              customer_id: booking.customer_id,
+              created_by: undefined,
+              priority: 2,
+              metadata: {
+                template: 'private_booking_expired',
+                event_date: eventDate,
+              },
             },
+            booking: bookingForMessage,
+            email: () => buildHoldLapsedEmail({ booking: bookingForMessage, firstName: booking.customer_first_name }),
+            windowKey: 'expired',
+            facts: buildPrivateBookingMessageFacts('booking_expired', bookingForMessage),
+            // The same read that let an email-only booking through above.
+            emailFirst,
           });
 
           smsSent = Boolean(smsResult?.sent);

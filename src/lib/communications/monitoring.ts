@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { escapeHtml, redactPii } from '@/lib/cron/alerting'
 import { sendEmail } from '@/lib/email/emailService'
 import { logger } from '@/lib/logger'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
 
 type CommunicationHealthIssue = {
   key: string
@@ -116,13 +117,27 @@ export async function runCommunicationsHealthCheck(): Promise<CommunicationHealt
     countRows('unmatched_communications', (query) =>
       query.eq('status', 'unmatched')
     ),
+    // WINDOWED ON `updated_at`, NOT `created_at`. `fallback_sent` is written when the text
+    // goes out, which for the delayed fallback is hours after the delivery row was created;
+    // past 24 hours the row falls out of a created_at window entirely and the fallback it
+    // records is never counted. The `failed` counter below already windows on `updated_at`
+    // for exactly this reason, and this one was left behind, which is how the fallback-rate
+    // alert came to be structurally unable to fire.
     countRows('notification_deliveries', (query) =>
-      query.eq('final_status', 'fallback_sent').gte('created_at', last24h)
+      query.eq('final_status', 'fallback_sent').gte('updated_at', last24h)
     ),
+    // The denominator stays on `created_at`: it is "deliveries attempted in the last day",
+    // and every delivery row is created when the attempt starts.
     countRows('notification_deliveries', (query) =>
       query.gte('created_at', last24h)
     ),
   ])
+
+  // Guest messages that reached nobody, including bounced emails whose text fallback failed.
+  // Listed under Settings, SMS failures, "Undelivered guest messages".
+  const undeliveredGuestMessages24h = await countRows('notification_deliveries', (query) =>
+    query.eq('final_status', 'failed').gte('updated_at', last24h)
+  )
 
   const inboundEmail48h = await countRows('email_messages', (query) =>
     query.eq('direction', 'inbound').gte('received_at', last48h)
@@ -143,6 +158,7 @@ export async function runCommunicationsHealthCheck(): Promise<CommunicationHealt
     fallbackSent24h,
     deliveries24h,
     fallbackRate,
+    undeliveredGuestMessages24h,
   }
 
   const issues: CommunicationHealthIssue[] = []
@@ -197,6 +213,17 @@ export async function runCommunicationsHealthCheck(): Promise<CommunicationHealt
       label: 'Fallback rate',
       rate: fallbackRate,
       threshold: fallbackThreshold,
+    })
+  }
+
+  // One undelivered guest message is worth a person's attention. Raised only once the bounce
+  // fallback is switched on, so deploying this changes no alert.
+  if (undeliveredGuestMessages24h >= 1 && (await isMessagingFlagOn('bounce_sms_fallback'))) {
+    issues.push({
+      key: 'undelivered_guest_messages',
+      label: 'Undelivered guest messages (see Settings, SMS failures)',
+      count: undeliveredGuestMessages24h,
+      threshold: 1,
     })
   }
 

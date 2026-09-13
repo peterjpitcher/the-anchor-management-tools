@@ -25,6 +25,12 @@ import { sendEmail } from '@/lib/email/emailService'
 import { getSmartFirstName } from '@/lib/sms/name-utils'
 import { countSmsSeptets, normaliseToGsm7, GSM7_SINGLE_SEGMENT_LIMIT } from '@/lib/sms/gsm7'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
+import {
+  GUEST_EMAIL_SIGN_OFF,
+  guestContactHtmlBlock,
+  guestContactTextLine,
+} from '@/lib/email/guest-footer'
 
 const CLAIM_BATCH_SIZE = 50
 // Hard safety cap per run: 10 claim batches. Anything beyond this waits for
@@ -74,6 +80,14 @@ interface ClaimedVoucherReminder {
   expiry_date: string | null
   won_at_label: string | null
   prize_label: string | null
+  /**
+   * Whether this voucher has to be booked in advance.
+   *
+   * Optional because the claim RPC only started returning it in the 20260912 migration. Any
+   * row that arrives without it is resolved by `loadBookingRequirements` below, so the copy
+   * is right whether or not that migration has been applied.
+   */
+  requires_booking?: boolean | null
 }
 
 interface ClaimDueResponse {
@@ -103,6 +117,17 @@ interface ReminderCopyInput {
   wonAtLabel: string | null
   expiryDate: string
   londonToday: string
+  /**
+   * True when the voucher cannot simply be presented at the bar.
+   *
+   * THREE OF THE SEVEN VOUCHER TYPES need booking: Sunday roast for two, four quiz tickets
+   * and four music bingo tickets. Their own terms say so ("Availability is not guaranteed
+   * without an advance booking", "Advance booking is required and remains subject to event
+   * capacity"), and the reminder told every holder to "just show the card at the bar and we
+   * will sort you out". Somebody could have turned up on a full Sunday holding a voucher we
+   * could not honour.
+   */
+  requiresBooking: boolean
 }
 
 export interface VoucherReminderEmailCopy {
@@ -154,12 +179,19 @@ function resolveCopyParts(input: ReminderCopyInput): {
 
 function composeSmsBody(
   kind: ReminderCopyKind,
-  parts: { firstName: string; prize: string; origin: string; expiry: string }
+  parts: { firstName: string; prize: string; origin: string; expiry: string },
+  requiresBooking: boolean
 ): string {
   const { firstName, prize, origin, expiry } = parts
+  // "Show the card" is only true for the walk-up vouchers. A booking-only voucher needs a
+  // call, and the number is the venue's own, which is where this text comes from.
+  const howToUse = requiresBooking
+    ? `Book ahead on ${GUEST_CONTACT.phoneDisplay} and use it by ${expiry}.`
+    : `Show the card by ${expiry}.`
+
   return kind === 'pre_expiry_3'
-    ? `Hi ${firstName}, just a few days left to use your ${prize} voucher${origin} at The Anchor. Show the card by ${expiry}. See you soon!`
-    : `Hi ${firstName}, your ${prize} voucher${origin} is waiting at The Anchor. Show the card by ${expiry}. See you soon!`
+    ? `Hi ${firstName}, just a few days left to use your ${prize} voucher${origin} at The Anchor. ${howToUse} See you soon!`
+    : `Hi ${firstName}, your ${prize} voucher${origin} is waiting at The Anchor. ${howToUse} See you soon!`
 }
 
 // Always exactly one GSM-7 segment.
@@ -174,7 +206,13 @@ export function buildVoucherReminderSms(input: ReminderCopyInput): string {
   const parts = resolveCopyParts(input)
   const firstName = parts.firstName.slice(0, SMS_MAX_FIRST_NAME_CHARS).trimEnd() || 'there'
   const build = (prize: string, origin: string) =>
-    normaliseToGsm7(composeSmsBody(input.kind, { firstName, prize, origin, expiry: parts.expiry }))
+    normaliseToGsm7(
+      composeSmsBody(
+        input.kind,
+        { firstName, prize, origin, expiry: parts.expiry },
+        input.requiresBooking
+      )
+    )
   const fits = (body: string) => countSmsSeptets(body) <= GSM7_SINGLE_SEGMENT_LIMIT
 
   const full = build(parts.prize, parts.origin)
@@ -194,29 +232,34 @@ export function buildVoucherReminderEmail(input: ReminderCopyInput): VoucherRemi
   const { firstName, prize, origin, expiry } = resolveCopyParts(input)
   const finalNudge = input.kind === 'pre_expiry_3'
 
+  // The prize goes after a colon. Interpolating it into the sentence read "Your A drink on us
+  // voucher is waiting at The Anchor", because the prize labels are written as headlines, not
+  // as noun phrases that survive being embedded.
   const subject = finalNudge
-    ? `Just a few days left to use your ${prize} voucher`
-    : `Your ${prize} voucher is waiting at The Anchor`
+    ? `Just a few days left to use your voucher: ${prize}`
+    : `Your voucher is waiting at The Anchor: ${prize}`
 
   const opening = finalNudge
     ? `There are just a few days left to use your ${prize} voucher${origin} at The Anchor.`
     : `Your ${prize} voucher${origin} is still waiting for you at The Anchor.`
   const deadline = finalNudge ? `It runs out on ${expiry}.` : `It is valid until ${expiry}.`
 
-  const lines = [
-    `Hi ${firstName},`,
-    opening,
-    `${deadline} Just show the card at the bar and we will sort you out.`,
-    'See you soon,',
-    'The Anchor'
-  ]
+  // What the guest has to DO, which for three of the seven voucher types is not "turn up".
+  // The wording follows the terms printed on those vouchers.
+  const howToUse = input.requiresBooking
+    ? `Give us a ring on ${GUEST_CONTACT.phoneDisplay} to book, because availability is not guaranteed without one, and your visit needs to be on or before ${expiry}.`
+    : 'Just show the card at the bar and we will sort you out.'
+
+  const bodyLines = [`Hi ${firstName},`, opening, `${deadline} ${howToUse}`]
 
   return {
     subject,
-    text: lines.join('\n\n'),
+    text: [...bodyLines, guestContactTextLine(), 'See you soon,', GUEST_EMAIL_SIGN_OFF].join('\n\n'),
     html: [
       '<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">',
-      ...lines.map((line) => `<p>${escapeHtml(line)}</p>`),
+      ...bodyLines.map((line) => `<p>${escapeHtml(line)}</p>`),
+      guestContactHtmlBlock(),
+      `<p style="margin:16px 0 0">See you soon,<br/>${escapeHtml(GUEST_EMAIL_SIGN_OFF)}</p>`,
       '</div>'
     ].join('')
   }
@@ -366,6 +409,74 @@ async function loadSuppressedEmails(
   return suppressed
 }
 
+/**
+ * Whether each claimed voucher has to be booked in advance.
+ *
+ * The claim RPC returns `requires_booking` from the 20260912 migration onwards. Until that is
+ * applied the field is absent, so this fills the gap from the voucher's own type, reading the
+ * batch's frozen type snapshot first exactly as `voucher_redeem` does: a batch may override
+ * the type's flag, and the override is what the guest was actually issued.
+ *
+ * A voucher whose requirement cannot be read is treated as NEEDING a booking. That is the
+ * safe direction: telling a walk-up holder to ring us first is a small inconvenience, while
+ * telling a booking-only holder to turn up is a guest arriving on a full Sunday with a
+ * voucher we cannot honour.
+ */
+async function loadBookingRequirements(
+  supabase: AdminClient,
+  voucherIds: string[]
+): Promise<Map<string, boolean>> {
+  const requirements = new Map<string, boolean>()
+  if (voucherIds.length === 0) return requirements
+
+  const { data, error } = await supabase
+    .from('vouchers')
+    .select('id, type_id, voucher_batches(type_definitions), voucher_types(requires_booking)')
+    .in('id', voucherIds)
+
+  if (error) {
+    logger.warn('Voucher reminder booking-requirement lookup failed; assuming a booking is needed', {
+      metadata: { voucherCount: voucherIds.length, error: error.message }
+    })
+    voucherIds.forEach((id) => requirements.set(id, true))
+    return requirements
+  }
+
+  type VoucherJoinRow = {
+    id: string
+    type_id: string | null
+    // Postgrest types an embedded relation as an array or an object depending on how it
+    // infers the cardinality, so both shapes are unwrapped rather than asserted away.
+    voucher_batches?: unknown
+    voucher_types?: unknown
+  }
+
+  /** First element of an embedded relation, whichever shape Postgrest returned. */
+  function embedded<T>(value: unknown): T | null {
+    if (Array.isArray(value)) return (value[0] as T) ?? null
+    return (value as T) ?? null
+  }
+
+  for (const row of (data ?? []) as unknown as VoucherJoinRow[]) {
+    const batch = embedded<{ type_definitions?: unknown }>(row.voucher_batches)
+    const type = embedded<{ requires_booking?: boolean | null }>(row.voucher_types)
+
+    const definitions = batch?.type_definitions
+    const snapshot =
+      row.type_id && definitions && typeof definitions === 'object'
+        ? (definitions as Record<string, { requires_booking?: boolean | null } | undefined>)[row.type_id]
+        : undefined
+
+    const fromSnapshot = snapshot?.requires_booking
+    const resolved = typeof fromSnapshot === 'boolean' ? fromSnapshot : type?.requires_booking
+    requirements.set(row.id, resolved !== false)
+  }
+
+  voucherIds.filter((id) => !requirements.has(id)).forEach((id) => requirements.set(id, true))
+
+  return requirements
+}
+
 function isSuppressionLikeError(errorText: string | null | undefined): boolean {
   return Boolean(errorText && SUPPRESSION_ERROR_SHAPE.test(errorText))
 }
@@ -443,7 +554,8 @@ async function sendOneReminder(
   row: ClaimedVoucherReminder,
   target: { channel: VoucherReminderChannel; to: string; smsFallbackTo: string | null },
   londonToday: string,
-  expiryDate: string
+  expiryDate: string,
+  requiresBooking: boolean
 ): Promise<VoucherReminderChannel | null> {
   const copyInput: ReminderCopyInput = {
     kind: toCopyKind(row.reminder_kind),
@@ -451,7 +563,8 @@ async function sendOneReminder(
     prizeLabel: row.prize_label,
     wonAtLabel: row.won_at_label,
     expiryDate,
-    londonToday
+    londonToday,
+    requiresBooking
   }
   const metadata = {
     template_key: TEMPLATE_KEY,
@@ -536,9 +649,20 @@ export async function sendDueVoucherReminders(params: {
       }
     }
 
-    const [emailBlocked, suppressedEmails] = await Promise.all([
+    // Only for rows the claim query did not classify, so this query disappears entirely once
+    // the 20260912 migration is applied.
+    const unclassifiedVoucherIds = Array.from(
+      new Set(
+        rows
+          .filter((row) => typeof row.requires_booking !== 'boolean')
+          .map((row) => row.voucher_id)
+      )
+    )
+
+    const [emailBlocked, suppressedEmails, bookingRequirements] = await Promise.all([
       loadEmailBlocks(supabase, emailCandidateIds),
-      loadSuppressedEmails(supabase, Array.from(emailCandidates))
+      loadSuppressedEmails(supabase, Array.from(emailCandidates)),
+      loadBookingRequirements(supabase, unclassifiedVoucherIds)
     ])
 
     for (const row of rows) {
@@ -565,7 +689,10 @@ export async function sendDueVoucherReminders(params: {
           row,
           target,
           params.londonToday,
-          row.expiry_date
+          row.expiry_date,
+          typeof row.requires_booking === 'boolean'
+            ? row.requires_booking
+            : bookingRequirements.get(row.voucher_id) ?? true
         )
 
         if (sentVia === 'email') {

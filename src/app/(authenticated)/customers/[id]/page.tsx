@@ -18,6 +18,11 @@ import {
 } from '@/app/actions/customerSmsActions'
 import { markMessagesAsRead } from '@/app/actions/messageActions'
 import { sendCustomerEmail } from '@/app/actions/customerEmailActions'
+import {
+  clearCustomerEmailBlock,
+  getCustomerEmailBlock,
+  type CustomerEmailBlock,
+} from '@/app/actions/emailSuppressionActions'
 import { updateCustomer as updateCustomerAction, updateCustomerNotes } from '@/app/actions/customers'
 import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, type CustomerLabelAssignment } from '@/app/actions/customer-labels'
 import { PageLayout } from '@/ds'
@@ -294,6 +299,12 @@ export default function CustomerViewPage() {
   const [emailSubject, setEmailSubject] = useState('')
   const [emailBody, setEmailBody] = useState('')
   const [sendingEmail, setSendingEmail] = useState(false)
+  // The modal used to show nothing but the address. Staff could not see that the guest had
+  // unsubscribed, that the address had bounced, or that it was suppressed and the send was
+  // going to be refused before it left the building.
+  const [emailBlock, setEmailBlock] = useState<CustomerEmailBlock | null>(null)
+  const [emailBlockLoading, setEmailBlockLoading] = useState(false)
+  const [clearingEmailBlock, setClearingEmailBlock] = useState(false)
   const [notesValue, setNotesValue] = useState('')
   const [isEditingNotes, setIsEditingNotes] = useState(false)
   const [isSavingNotes, setIsSavingNotes] = useState(false)
@@ -680,6 +691,53 @@ export default function CustomerViewPage() {
     } catch (error) {
       console.error('Error updating customer:', error)
       toast.error('Failed to update customer')
+    }
+  }
+
+  /**
+   * Load the email state behind the compose box.
+   *
+   * `email_suppressions` is service-role only, so this has to come from a server action
+   * rather than the page's own query. A failure leaves `emailBlock` null and the modal simply
+   * shows no consent panel: staff can still send, which is the right trade for a service
+   * message they are writing by hand.
+   */
+  const loadEmailBlock = useCallback(async (id: string) => {
+    setEmailBlockLoading(true)
+    try {
+      const result = await getCustomerEmailBlock(id)
+      setEmailBlock(result.block ?? null)
+    } catch (error) {
+      console.error('Error loading customer email state:', error)
+      setEmailBlock(null)
+    } finally {
+      setEmailBlockLoading(false)
+    }
+  }, [])
+
+  const openCustomerEmail = () => {
+    if (!customer) return
+    setIsEmailingCustomer(true)
+    void loadEmailBlock(customer.id)
+  }
+
+  const handleClearEmailBlock = async () => {
+    if (!customer) return
+
+    setClearingEmailBlock(true)
+    try {
+      const result = await clearCustomerEmailBlock(customer.id)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('Email to this address is unblocked')
+      await loadEmailBlock(customer.id)
+    } catch (error) {
+      console.error('Error clearing customer email block:', error)
+      toast.error('Failed to clear the block')
+    } finally {
+      setClearingEmailBlock(false)
     }
   }
 
@@ -1132,7 +1190,7 @@ export default function CustomerViewPage() {
               <Button
                 variant="secondary"
                 type="button"
-                onClick={() => setIsEmailingCustomer(true)}
+                onClick={openCustomerEmail}
               >
                 Email customer
               </Button>
@@ -1177,6 +1235,82 @@ export default function CustomerViewPage() {
                 Sending to <span className="font-medium">{customer.email}</span>
               </p>
             )}
+
+            {/*
+              WHAT THIS BOX IS FOR, stated before the fields.
+
+              This send carries no unsubscribe header and is not part of the marketing
+              audience, so it is a service message about this customer's own business with
+              us. The label says so because the box gave no clue: a member of staff could
+              write a "come to the quiz on Friday" message to somebody who had unsubscribed,
+              and nothing on screen would stop or even mention it.
+            */}
+            <p className="rounded-md bg-gray-50 p-3 text-sm text-gray-600">
+              Service messages only. Use this for something to do with this customer, a
+              booking, a payment or a reply. Anything promotional goes out as a marketing
+              campaign, which carries the unsubscribe link.
+            </p>
+
+            {emailBlockLoading && (
+              <p className="text-sm text-gray-500">Checking contact preferences…</p>
+            )}
+
+            {emailBlock && (
+              <div className="space-y-2 rounded-md border border-gray-200 p-3 text-sm">
+                <p className="text-gray-700">
+                  Marketing email:{' '}
+                  <span className="font-medium">
+                    {emailBlock.marketingOptIn && !emailBlock.marketingOptedOutAt
+                      ? 'opted in'
+                      : emailBlock.marketingOptedOutAt
+                        ? 'unsubscribed'
+                        : 'not opted in'}
+                  </span>
+                </p>
+                <p className="text-gray-700">
+                  Delivery: <span className="font-medium">{emailBlock.emailStatus ?? 'unknown'}</span>
+                  {emailBlock.deliveryFailures > 0
+                    ? ` (${emailBlock.deliveryFailures} failed ${emailBlock.deliveryFailures === 1 ? 'send' : 'sends'})`
+                    : ''}
+                </p>
+
+                {/*
+                  WARN, DO NOT BLOCK. A service message to somebody who has unsubscribed from
+                  marketing is entirely legitimate, and the staff member writing it can see
+                  the conversation this is part of. Blocking the send would stop real replies;
+                  saying nothing is how a marketing message gets sent to somebody who asked us
+                  to stop. So it says it plainly and leaves the decision with the person.
+                */}
+                {(!emailBlock.marketingOptIn || emailBlock.marketingOptedOutAt) && (
+                  <p className="text-amber-700">
+                    This customer has not opted in to marketing email. Keep this message about
+                    their booking or their enquiry.
+                  </p>
+                )}
+
+                {(emailBlock.suppressed || emailBlock.deactivatedAt) && (
+                  <div className="space-y-2">
+                    <p className="text-red-700">
+                      Email to this address is blocked
+                      {emailBlock.suppressionReason ? ` (${emailBlock.suppressionReason})` : ''}
+                      {emailBlock.lastFailureReason ? `: ${emailBlock.lastFailureReason}` : '.'} It
+                      will not send until the block is cleared.
+                    </p>
+                    {canManageCustomers && (
+                      <Button
+                        variant="secondary"
+                        type="button"
+                        onClick={handleClearEmailBlock}
+                        disabled={clearingEmailBlock || sendingEmail}
+                      >
+                        {clearingEmailBlock ? 'Clearing…' : 'Clear the block and try this address again'}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <Input
               label="Subject"
               value={emailSubject}

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { PageLayout } from '@/ds'
 import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
-import { getLondonDateIso } from '@/lib/foh/api-auth'
+import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
 import { FohScheduleClient } from './FohScheduleClient'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import { createClient } from '@/lib/supabase/server'
@@ -89,6 +89,10 @@ export default async function TableBookingsFohPage() {
     if (sessionsResult.success) clockWidgetSessions = sessionsResult.data as ClockSession[]
   }
 
+  // The service the floor is working: the night before, from midnight until an after-midnight
+  // close (1am on New Year's Eve), otherwise today.
+  const initialDate = (await resolveTradingDayNow(createAdminClient())).date
+
   const headerActions = useManagerKioskStyle
     ? (
         <div className="flex items-center gap-2">
@@ -126,7 +130,7 @@ export default async function TableBookingsFohPage() {
       padded={!useManagerKioskStyle}
     >
       <FohScheduleClient
-        initialDate={getLondonDateIso()}
+        initialDate={initialDate}
         deploymentVersion={getDeploymentVersion()}
         canEdit={canEdit}
         isSuperAdmin={isSuperAdmin}

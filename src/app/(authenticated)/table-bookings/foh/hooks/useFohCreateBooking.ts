@@ -100,6 +100,11 @@ export type UseFohCreateBookingReturn = {
 export function useFohCreateBooking(input: {
   date: string
   clockNow: Date
+  /**
+   * The service date in force (resolveFohServiceDateNow): the night before, from midnight until
+   * an after-midnight close. Walk-ins belong to it. Defaults to the calendar date.
+   */
+  serviceDateNow?: string
   canEdit: boolean
   schedule: FohScheduleResponse['data'] | null
   timeline: TimelineRange
@@ -108,6 +113,7 @@ export function useFohCreateBooking(input: {
   reloadSchedule: (opts?: { requestedDate?: string; surfaceError?: boolean }) => Promise<void>
 }): UseFohCreateBookingReturn {
   const { date, clockNow, canEdit, schedule, timeline, setErrorMessage, setStatusMessage, reloadSchedule } = input
+  const serviceDateNow = input.serviceDateNow || getLondonDateKey(clockNow) || date
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [createMode, setCreateMode] = useState<FohCreateMode>('booking')
@@ -136,7 +142,7 @@ export function useFohCreateBooking(input: {
     last_name: '',
     time: '19:00',
     party_size: '2',
-    // `christmas` posts a Christmas table booking: 6 guests or more, 24 hours
+    // `christmas` posts a Christmas table booking: 4 guests or more, 24 hours
     // notice, and a deposit every time. The rules are enforced in the database.
     purpose: 'food' as 'food' | 'drinks' | 'event' | 'christmas',
     seating_preference: 'seated',
@@ -352,9 +358,10 @@ export function useFohCreateBooking(input: {
         serviceDateIso, now,
         serviceWindow: schedule?.service_window,
         timelineStartMin: timeline.startMin, timelineEndMin: timeline.endMin,
-        eventOptions
+        eventOptions,
+        tradingDateIso: serviceDateNow
       }),
-    [eventOptions, schedule?.service_window, timeline.endMin, timeline.startMin]
+    [eventOptions, schedule?.service_window, timeline.endMin, timeline.startMin, serviceDateNow]
   )
 
   useEffect(() => {
@@ -389,7 +396,7 @@ export function useFohCreateBooking(input: {
   }) {
     const requestedMode = options?.mode || 'booking'
     const walkInMode = requestedMode === 'walk_in'
-    const bookingDate = options?.prefill?.booking_date || getLondonDateKey(clockNow) || date
+    const bookingDate = options?.prefill?.booking_date || serviceDateNow
     setErrorMessage(null); setStatusMessage(null); setCreateMode(requestedMode)
     setWalkInTargetTable(
       walkInMode && options?.laneTableId ? { id: options.laneTableId, name: options.laneTableName || 'selected table' } : null
@@ -419,7 +426,8 @@ export function useFohCreateBooking(input: {
           serviceWindow: schedule?.service_window,
           timelineStartMin: timeline.startMin,
           timelineEndMin: timeline.endMin,
-          purpose: nextPurpose === 'drinks' ? 'drinks' : 'food'
+          purpose: nextPurpose === 'drinks' ? 'drinks' : 'food',
+          tradingDateIso: serviceDateNow
         })
       })()
 
@@ -453,12 +461,12 @@ export function useFohCreateBooking(input: {
     const isWalkIn = createMode === 'walk_in'
     const isManagement = createMode === 'management'
     const bookingDate = createForm.booking_date
-    const isSameDayWalkIn = isWalkIn && bookingDate === getLondonDateKey(clockNow)
+    const isSameDayWalkIn = isWalkIn && bookingDate === serviceDateNow
     if (!/^\d{4}-\d{2}-\d{2}$/.test(bookingDate)) { setErrorMessage('Please pick a valid booking date'); return }
     if (isWalkIn && !isSameDayWalkIn) { setErrorMessage(WALK_IN_TODAY_ONLY_MESSAGE); return }
 
     const effectiveBookingTime = isWalkIn
-      ? suggestWalkInTime({ serviceDateIso: bookingDate, now: new Date(), serviceWindow: schedule?.service_window, timelineStartMin: timeline.startMin, timelineEndMin: timeline.endMin, purpose: createForm.purpose === 'drinks' ? 'drinks' : 'food' })
+      ? suggestWalkInTime({ serviceDateIso: bookingDate, now: new Date(), serviceWindow: schedule?.service_window, timelineStartMin: timeline.startMin, timelineEndMin: timeline.endMin, purpose: createForm.purpose === 'drinks' ? 'drinks' : 'food', tradingDateIso: serviceDateNow })
       : createForm.time
 
     if (isWalkIn && createForm.time !== effectiveBookingTime) {

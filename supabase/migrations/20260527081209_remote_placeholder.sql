@@ -1,4 +1,0 @@
--- Remote migration placeholder.
--- This version exists in the linked Supabase migration history but the SQL file
--- was not present locally. Keep this placeholder so future db push operations
--- can reconcile local and remote migration history safely.

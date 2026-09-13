@@ -41,7 +41,18 @@ import {
   deleteDeposit,
 } from '@/services/private-bookings'
 import { SmsQueueService } from '@/services/sms-queue' // Still needed for SMS actions
+import { sendStaffOneOffEmail } from '@/lib/email/staff-one-off-email'
+import { isStaffEmailOptionOn } from '@/lib/messaging/staff-email-option'
+import { resolvePrivateBookingEmailRecipient } from '@/lib/private-bookings/email-recipient'
 import { sendBookingCalendarInvite, sendDepositPaymentLinkEmail } from '@/lib/email/private-booking-emails'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
+import {
+  confirmDeposit,
+  DepositConfirmationError,
+  type ConfirmDepositOutcome,
+} from '@/services/private-bookings/deposit-confirmation'
 
 // Helper function to extract string values from FormData
 const getString = (formData: FormData, key: string): string | undefined => {
@@ -69,6 +80,23 @@ function amountsMatch(actual: number, expected: number): boolean {
 
 function normalizeActionError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
+}
+
+/**
+ * The line that appears on the guest's PayPal receipt.
+ *
+ * "Deposit for Birthday Party on 2026-09-20" put a raw ISO date in front of a customer, and a
+ * booking whose date is still to be confirmed showed the placeholder date it was created with.
+ */
+function paypalDepositDescription(booking: {
+  event_type?: string | null
+  event_date?: string | null
+  date_tbd?: boolean | null
+  internal_notes?: string | null
+}): string {
+  const label = booking.event_type || 'Private Booking'
+  if (!booking.event_date || isBookingDateTbd(booking)) return `Deposit for ${label}`
+  return `Deposit for ${label} on ${formatDateInLondon(booking.event_date, { day: 'numeric', month: 'long', year: 'numeric' })}`
 }
 
 function logPrivateBookingActionError(
@@ -2249,7 +2277,7 @@ export async function createDepositPaymentOrder(
     const result = await createSimplePayPalOrder({
       customId: `pb-deposit-${bookingId}`,
       reference: bookingId,
-      description: `Deposit for ${booking.event_type || 'Private Booking'} on ${booking.event_date}`,
+      description: paypalDepositDescription(booking),
       amount: depositAmount,
       returnUrl: `${appUrl}/private-bookings/${bookingId}?paypal_return=deposit`,
       cancelUrl: `${appUrl}/private-bookings/${bookingId}?paypal_cancel=deposit`,
@@ -2451,7 +2479,7 @@ export async function resendCalendarInvite(
   const { data: booking, error: fetchError } = await admin
     .from('private_bookings')
     .select(
-      'id, customer_id, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, event_type, guest_count, status'
+      'id, customer_id, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, event_type, guest_count, status, date_tbd, internal_notes, updated_at'
     )
     .eq('id', bookingId)
     .single()
@@ -2468,11 +2496,25 @@ export async function resendCalendarInvite(
     return { error: 'Calendar invites can only be sent for confirmed or completed bookings' }
   }
 
+  // Staff pressed a button, so they are told what actually happened. This used to report success
+  // whatever the send did, because the sender swallowed its own failures (review PB-11).
+  let inviteResult: Awaited<ReturnType<typeof sendBookingCalendarInvite>>
   try {
-    await sendBookingCalendarInvite(booking)
+    inviteResult = await sendBookingCalendarInvite(booking)
   } catch (e) {
     logPrivateBookingActionError('Error sending calendar invite', e, { bookingId })
-    return { error: 'Failed to send the calendar invite — please try again' }
+    return { error: 'Failed to send the calendar invite. Please try again.' }
+  }
+
+  if (!inviteResult.sent) {
+    if (inviteResult.reason === 'date_to_be_confirmed') {
+      return { error: "This booking has no date yet, so there is nothing to put in the guest's calendar. Set the date first." }
+    }
+    if (inviteResult.reason === 'no_email') {
+      return { error: 'This booking has no contact email address' }
+    }
+    logPrivateBookingActionError('Calendar invite email failed', new Error(inviteResult.error), { bookingId })
+    return { error: 'The calendar invite was not sent. Please try again.' }
   }
 
   try {
@@ -2527,6 +2569,130 @@ export async function getBookingPortalLink(
   return { success: true, url }
 }
 
+const confirmDepositInputSchema = z.object({
+  bookingId: z.string().uuid('Booking not found'),
+  amount: z.coerce
+    .number({ invalid_type_error: 'Enter the deposit amount' })
+    .finite('Enter the deposit amount')
+    .positive('Enter a deposit amount greater than £0. To waive the deposit, set it to £0 with a waiver instead.')
+    .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6, 'Enter the deposit in pounds and pence'),
+  reductionReason: z.string().trim().max(500).optional(),
+})
+
+export type ConfirmPrivateBookingDepositResult = {
+  success?: boolean
+  error?: string
+  data?: {
+    status: 'sent' | 'already_confirmed'
+    channel: 'email' | 'sms' | null
+    message: string
+  }
+}
+
+/**
+ * Confirm deposit (flag private_booking_deposit_confirmation): staff confirm the amount and the
+ * guest gets one deposit request, by email (text when there is no usable email address), saying
+ * it can be paid in cash at the bar or by PayPal, with the link. For staff who manage deposits,
+ * the permission that governs private booking payments. A reduction below the £250 standard needs
+ * the General Manager override and a reason, as it does when the booking is created.
+ *
+ * Nothing is ever reported as sent unless it reached the guest: when nothing did, the error says
+ * why and the deposit stays to be confirmed.
+ */
+export async function confirmPrivateBookingDeposit(
+  bookingId: string,
+  input: { amount: number | string; reductionReason?: string }
+): Promise<ConfirmPrivateBookingDepositResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const [canManageDeposits, canManage] = await Promise.all([
+    checkUserPermission('private_bookings', 'manage_deposits'),
+    checkUserPermission('private_bookings', 'manage'),
+  ])
+  if (!canManageDeposits && !canManage) {
+    return { error: 'You do not have permission to confirm deposits' }
+  }
+
+  if (!(await isMessagingFlagOn('private_booking_deposit_confirmation'))) {
+    return { error: 'Deposit confirmation is switched off, so nothing was sent.' }
+  }
+
+  const parsed = confirmDepositInputSchema.safeParse({
+    bookingId,
+    amount: typeof input.amount === 'string' ? input.amount.trim() : input.amount,
+    reductionReason: input.reductionReason,
+  })
+  if (!parsed.success) {
+    return { error: parsed.error.errors[0]?.message ?? 'Check the deposit amount' }
+  }
+  const { amount, reductionReason } = parsed.data
+
+  // SOP §12: the £250 standard deposit may only be reduced by a General Manager, with a reason.
+  if (amount < 250) {
+    if (!(await checkUserPermission('private_bookings', GM_OVERRIDE_ACTION))) {
+      return { error: 'Deposit reductions need General Manager override permission' }
+    }
+    if (!reductionReason) {
+      return { error: 'Reducing the deposit below £250 requires a reason (General Manager discretion)' }
+    }
+  }
+
+  let outcome: ConfirmDepositOutcome
+  try {
+    outcome = await confirmDeposit({ bookingId, amount, confirmedBy: user.id })
+  } catch (error: unknown) {
+    logPrivateBookingActionError('Error confirming private booking deposit', error, { bookingId })
+    return {
+      error: error instanceof DepositConfirmationError
+        ? error.message
+        : 'The deposit could not be confirmed, so nothing was sent. Please try again.',
+    }
+  }
+
+  try {
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'private_booking',
+      resource_id: bookingId,
+      operation_status: outcome.status === 'not_sent' ? 'failure' : 'success',
+      additional_info: {
+        action: 'confirm_deposit',
+        outcome: outcome.status,
+        amount,
+        ...(amount < 250 ? { deposit_reduced_to: amount, deposit_reduction_reason: reductionReason } : {}),
+        ...(outcome.status === 'sent'
+          ? { channel: outcome.channel, hold_expiry: outcome.holdExpiry, email_error: outcome.emailError }
+          : {}),
+        ...(outcome.status === 'not_sent' ? { reason: outcome.reason, restored: outcome.restored } : {}),
+      },
+    })
+  } catch (auditError) {
+    logger.error('Failed to log audit event for confirmPrivateBookingDeposit', {
+      error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+      metadata: { bookingId },
+    })
+  }
+
+  revalidatePath('/private-bookings')
+  revalidatePath(`/private-bookings/${bookingId}`)
+  revalidateTag('dashboard')
+
+  if (outcome.status === 'not_sent') {
+    return { error: outcome.message }
+  }
+  return {
+    success: true,
+    data: {
+      status: outcome.status,
+      channel: outcome.status === 'sent' ? outcome.channel : null,
+      message: outcome.message,
+    },
+  }
+}
+
 /**
  * Create a PayPal deposit payment order and email the approve link directly to the customer.
  * Staff-initiated, not automated.
@@ -2545,7 +2711,9 @@ export async function sendDepositPaymentLink(
   const admin = createAdminClient()
   const { data: booking, error: fetchError } = await admin
     .from('private_bookings')
-    .select('id, customer_id, deposit_amount, deposit_paid_date, status, event_date, event_type, customer_first_name, customer_name, contact_email')
+    // date_tbd and internal_notes: a booking with no date yet must not be emailed the placeholder
+    // date it was created with (review PB-1).
+    .select('id, customer_id, deposit_amount, deposit_paid_date, status, event_date, event_type, customer_first_name, customer_name, contact_email, date_tbd, internal_notes')
     .eq('id', bookingId)
     .maybeSingle()
 
@@ -2558,6 +2726,29 @@ export async function sendDepositPaymentLink(
   if (depositAmount <= 0) return { error: 'No deposit amount set for this booking' }
   if (!booking.contact_email) return { error: 'No email address on file for this customer' }
 
+  // Deposit confirmation (flag private_booking_deposit_confirmation): the guest hears about a
+  // deposit only through Confirm deposit, which sends the payment link with the request. While the
+  // amount is still to be confirmed the link is not sent on its own.
+  if (await isMessagingFlagOn('private_booking_deposit_confirmation')) {
+    const { data: confirmation, error: confirmationError } = await admin
+      .from('private_bookings')
+      .select('deposit_confirmed_at, deposit_waived')
+      .eq('id', bookingId)
+      .maybeSingle()
+    if (confirmationError || !confirmation) {
+      return { error: 'Could not check whether the deposit has been confirmed, so no link was sent. Please try again.' }
+    }
+    if (isDepositAwaitingConfirmation({
+      status: booking.status,
+      deposit_amount: depositAmount,
+      deposit_paid_date: booking.deposit_paid_date,
+      deposit_waived: confirmation.deposit_waived,
+      deposit_confirmed_at: confirmation.deposit_confirmed_at,
+    })) {
+      return { error: 'Confirm the deposit first. Confirming it sends the guest the deposit request with the payment link.' }
+    }
+  }
+
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || ''
     const portalToken = generateBookingToken(bookingId)
@@ -2566,7 +2757,7 @@ export async function sendDepositPaymentLink(
     const result = await createSimplePayPalOrder({
       customId: `pb-deposit-${bookingId}`,
       reference: bookingId,
-      description: `Deposit for ${booking.event_type || 'Private Booking'} on ${booking.event_date}`,
+      description: paypalDepositDescription(booking),
       amount: depositAmount,
       returnUrl: `${portalUrl}?payment_pending=1`,
       cancelUrl: `${portalUrl}`,
@@ -2585,7 +2776,17 @@ export async function sendDepositPaymentLink(
     // The portal page must never create an order just because an email scanner
     // opened its link. The customer creates/reuses the order with an explicit
     // button press on the portal instead.
-    await sendDepositPaymentLinkEmail(booking, result.approveUrl, portalUrl)
+    const emailResult = await sendDepositPaymentLinkEmail(booking, result.approveUrl, portalUrl)
+
+    // Money path, so it fails closed: staff were told "Payment link sent to customer" while the
+    // send had failed, the guest had no link and the hold ran down (review PB-11).
+    if (!emailResult.sent) {
+      logger.error('Deposit payment link email was not sent', {
+        error: new Error(emailResult.error),
+        metadata: { bookingId, orderId: result.orderId },
+      })
+      return { error: 'The payment link email was not sent. Please try again, or send the booking portal link by hand.' }
+    }
 
     logger.info('Deposit payment link sent to customer', { metadata: { bookingId, orderId: result.orderId } })
     return { success: true }
@@ -2872,6 +3073,114 @@ export async function sendPrivateBookingSms(
     return { success: true }
   } catch (error) {
     logPrivateBookingActionError('Error sending private booking SMS:', error, { bookingId })
+    return { error: getErrorMessage(error) }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Send a manual email for a private booking (P7, flag staff_message_email_option)
+// ---------------------------------------------------------------------------
+
+/**
+ * The email sibling of sendPrivateBookingSms: same permission (private_bookings send or manage).
+ * Goes to the booking's contact email, else the customer's, when usable; recorded on the booking
+ * timeline and in the email log against the booking.
+ */
+export async function sendPrivateBookingEmail(
+  bookingId: string,
+  subject: string,
+  message: string
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = await createClient()
+  const [{ data: { user } }, canSend, canManage] = await Promise.all([
+    supabase.auth.getUser(),
+    checkUserPermission('private_bookings', 'send'),
+    checkUserPermission('private_bookings', 'manage'),
+  ])
+
+  if (!canSend && !canManage) {
+    return { error: 'You do not have permission to send messages for private bookings' }
+  }
+
+  if (!user) {
+    return { error: 'You must be signed in to send messages' }
+  }
+
+  if (!(await isStaffEmailOptionOn())) {
+    return { error: 'Emailing guests from here is switched off' }
+  }
+
+  const trimmedSubject = subject?.trim()
+  const trimmedMessage = message?.trim()
+  if (!trimmedSubject) {
+    return { error: 'Subject is required' }
+  }
+  if (!trimmedMessage) {
+    return { error: 'Message body is required' }
+  }
+
+  try {
+    const admin = createAdminClient()
+    const { data: booking, error: fetchError } = await admin
+      .from('private_bookings')
+      .select('id, customer_id, contact_email')
+      .eq('id', bookingId)
+      .maybeSingle()
+
+    if (fetchError || !booking) {
+      return { error: 'Booking not found' }
+    }
+
+    const recipient = await resolvePrivateBookingEmailRecipient(booking, admin)
+    if (!recipient.usable) {
+      return { error: 'This booking has no usable email address' }
+    }
+
+    const result = await sendStaffOneOffEmail({
+      to: recipient.email,
+      subject: trimmedSubject,
+      body: trimmedMessage,
+      customerId: booking.customer_id ?? null,
+      commType: 'private_booking_manual_email',
+      privateBookingId: bookingId,
+      withBookingSignature: true,
+      metadata: { source: 'private_booking_messages_tab', sent_by: user.id },
+    })
+
+    if (!result.success) {
+      logger.error('Manual private booking email failed', {
+        error: new Error(result.error),
+        metadata: { bookingId, userId: user.id },
+      })
+      return { error: result.error }
+    }
+
+    const { error: auditError } = await admin.from('private_booking_audit').insert({
+      booking_id: bookingId,
+      action: 'email_sent',
+      field_name: 'email',
+      new_value: 'private_booking_manual_email',
+      metadata: {
+        description: `Sent a manual email: "${trimmedSubject}"`,
+        subject: trimmedSubject,
+        recipient_source: recipient.source,
+        email_message_id: result.emailMessageId,
+      },
+      performed_by: user.id,
+    })
+    if (auditError) {
+      logger.error('Manual private booking email audit row not written', {
+        error: new Error(auditError.message),
+        metadata: { bookingId },
+      })
+    }
+
+    revalidatePath(`/private-bookings/${bookingId}`)
+    revalidatePath(`/private-bookings/${bookingId}/messages`)
+    revalidatePath(`/private-bookings/${bookingId}/communications`)
+    return { success: true }
+  } catch (error) {
+    logPrivateBookingActionError('Error sending private booking email:', error, { bookingId })
     return { error: getErrorMessage(error) }
   }
 }
