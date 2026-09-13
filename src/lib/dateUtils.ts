@@ -256,16 +256,33 @@ export function whenLondonClockReaches(isoDate: string, time: string): Date | nu
   return new Date(after)
 }
 
+/**
+ * The London calendar date `days` days before today's London date, YYYY-MM-DD.
+ * See getLocalIsoDateDaysAhead for why this is calendar arithmetic rather than elapsed time.
+ */
 export function getLocalIsoDateDaysAgo(days: number): string {
-  const date = new Date()
-  date.setDate(date.getDate() - days)
-  return toLocalIsoDate(date)
+  return getLocalIsoDateDaysAhead(-days)
 }
 
+/**
+ * The London calendar date `days` days after today's London date, YYYY-MM-DD.
+ *
+ * Moves the London date itself by whole calendar days, never the clock. These used to call
+ * `setDate` on a Date, which on the UTC server is `days` x 24 hours, and that lands on the wrong
+ * London date for one hour a night whenever a clock change falls inside the span: from 00:00 to
+ * 00:59 BST on Sunday 25 October 2026, one day ahead came out as that same Sunday, and from
+ * 23:00 to 23:59 GMT on Saturday 27 March 2027 it came out as Monday 29 March. The longer
+ * windows callers use met that hour far more often: a 90-day window on about half the nights of
+ * the year, a 180-day window on about four nights in five. On a London host (a staff browser)
+ * the old code was right, which is why the bug only showed on the server.
+ */
 export function getLocalIsoDateDaysAhead(days: number): string {
-  const date = new Date()
-  date.setDate(date.getDate() + days)
-  return toLocalIsoDate(date)
+  const target = shiftIsoDate(getTodayIsoDate(), days)
+  if (!target) {
+    // Only a fractional day count gets here, which is a programming error, not a clock problem.
+    throw new Error(`London date arithmetic needs a whole number of days, got ${days}`)
+  }
+  return target
 }
 
 export function formatDateFull(date: string | Date | null): string {
