@@ -183,6 +183,28 @@ describe('access wording and the Sunday menu, 11 September 2026', () => {
   })
 })
 
+describe('the Sunday pre-order, claimed and denied', () => {
+  it.each([
+    // A real claim. The pre-order and the cutoff went at the 2026-05-17 walk-in launch.
+    'Pre-order your Sunday roast by Saturday.',
+    'Sunday roast pre-orders close at the Saturday cutoff.',
+    'Choose your Sunday roast pre-order before you arrive.',
+    'Order by the Saturday cutoff or we cannot carve for you.',
+  ])('still treats "%s" as an error', (text) => {
+    expect(houseStyleErrors(text).map((f) => f.rule)).toContain('sunday-preorder')
+  })
+
+  it.each([
+    // Both of these were live in the September what's-on email, and both are true.
+    'Sunday roast, no pre-order needed',
+    'There is nothing to order in advance and no Saturday cutoff.',
+    'Roasts are carved fresh every Sunday from 1pm to 6pm, with no pre-order and no Saturday cutoff.',
+    'We do not take a Sunday roast pre-order any more.',
+  ])('lets the honest denial "%s" through', (text) => {
+    expect(houseStyleErrors(text)).toEqual([])
+  })
+})
+
 describe('quiz and Music Bingo prize claims, 11 September 2026', () => {
   it.each([
     // Every string here was live, in scheduled marketing emails and in event records.
