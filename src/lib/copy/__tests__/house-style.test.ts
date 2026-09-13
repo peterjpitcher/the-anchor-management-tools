@@ -190,6 +190,18 @@ describe('the Sunday pre-order, claimed and denied', () => {
     'Sunday roast pre-orders close at the Saturday cutoff.',
     'Choose your Sunday roast pre-order before you arrive.',
     'Order by the Saturday cutoff or we cannot carve for you.',
+    // Live in service_statuses.sunday_lunch from 4 November 2025 until 13 September 2026. The
+    // rule existed to police exactly this sentence and did not catch a word of it, because it
+    // says "Sunday lunch" rather than "Sunday roast" and gives the cutoff as a time rather than
+    // as the word "cutoff".
+    'Sunday lunch bookings require pre-order with £5 per person deposit by 1pm Saturday.',
+    'Sunday lunch pre-orders are taken up to Saturday.',
+    'Please order by 1pm Saturday.',
+    'A £5 per person deposit secures your Sunday roast.',
+    'Roasts must be ordered before the Saturday cut-off.',
+    // Live in menu_menus and on the Mother's Day event page until 13 September 2026.
+    'Pre-orderable Sunday lunch menu',
+    'Pre-orders must be completed by 1pm on Saturday via OpenTable.',
   ])('still treats "%s" as an error', (text) => {
     expect(houseStyleErrors(text).map((f) => f.rule)).toContain('sunday-preorder')
   })
@@ -200,6 +212,24 @@ describe('the Sunday pre-order, claimed and denied', () => {
     'There is nothing to order in advance and no Saturday cutoff.',
     'Roasts are carved fresh every Sunday from 1pm to 6pm, with no pre-order and no Saturday cutoff.',
     'We do not take a Sunday roast pre-order any more.',
+    // The widened rule must still let these through. The first is the replacement message now
+    // live on the row above; the last is the group deposit, which is £10 a head at 15 or more on
+    // any day including Sunday (SSOT §7) and is not the retired £5.
+    "We're not serving Sunday roast on this date. Call us on 01753 682707 if you'd like to know more.",
+    'Sunday lunch needs no pre-order and no deposit.',
+    'For 15 or more we take a £10 per person deposit on any day, Sunday roast included.',
+    // Verbatim from the live site on 13 September 2026, checked so the widened rule cannot start
+    // punishing the pages that say the true thing. The hyphenated "cut-off" is the site's own
+    // spelling and is exactly what the widened claim clause now also catches when it is claimed.
+    'Walk in any time from 1pm to 6pm on Sundays. There is no pre-order and no Saturday cut-off. Mains from £16.',
+    'There is no pre-order or Saturday cut-off: choose your roast when you arrive.',
+    'Walk in any time from 1pm to 6pm. No pre-order, no Saturday cut-off and no per-roast prepayment.',
+    'No Sunday-specific pre-order is required.',
+    'Walk-ins are welcome too, with no pre-order needed.',
+    // From the shipped Christmas campaign. An hours list is not a cutoff, and the first draft of
+    // the widened rule failed this real email on the words "Saturday, plus Sunday 1pm".
+    'We are open as usual on Saturday, plus Sunday 1pm to 6pm for roasts.',
+    'Kitchen open from 1pm Saturday and Sunday.',
   ])('lets the honest denial "%s" through', (text) => {
     expect(houseStyleErrors(text)).toEqual([])
   })

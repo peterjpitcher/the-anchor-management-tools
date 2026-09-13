@@ -145,13 +145,31 @@ const BANNED_CLAIMS: Rule[] = [
     // roast, no pre-order needed"), so the lookbehind alone is not enough and the gap between
     // the two words has to refuse a denial too. Both of those were live in the September
     // what's-on email and the checker called them faults.
+    //
+    // Widened on 13 September 2026, after the owner confirmed there is no Sunday pre-order at
+    // all any more. The old rule only knew the words "Sunday roast", "pre-order" and "Saturday
+    // cutoff", so the service_statuses row that had been live since 4 November 2025 walked
+    // straight past it: it said "Sunday lunch bookings require pre-order with £5 per person
+    // deposit by 1pm Saturday." Three gaps are closed. "Sunday lunch" counts as much as "Sunday
+    // roast". The retired cutoff is caught by its time as well as by the word "cutoff", but only
+    // as a deadline: "by 1pm Saturday" is the retired policy, while "Saturday, plus Sunday 1pm"
+    // is an opening-hours list, and the first draft of this clause failed the shipped Christmas
+    // campaign on exactly that. And £5 a head near a Sunday is caught on the
+    // figure alone: the only per-person deposit that survives is the £10 group one at 15 or more
+    // (SSOT §7), so a fiver is always the retired policy talking. "cutoff" also accepts the
+    // "cut-off" the website itself uses, which the old spelling missed both ways round.
     pattern: new RegExp(
-      `(?<!${AFTER_A_DENIAL})(?:saturday${withoutDenial(40)}cutoff` +
-        `|pre-?order${withoutDenial(30)}sunday roast` +
-        `|sunday roast${withoutDenial(30)}pre-?order)`,
+      `(?<!${AFTER_A_DENIAL})(?:saturday${withoutDenial(40)}cut-? ?off` +
+        `|pre-?order${withoutDenial(30)}sunday (?:roast|lunch)` +
+        `|sunday (?:roast|lunch)${withoutDenial(30)}pre-?order` +
+        `|\\b(?:by|before|until)\\s+1\\s?pm${withoutDenial(15)}saturday` +
+        `|sunday (?:roast|lunch)${withoutDenial(40)}£\\s?5\\b` +
+        `|£\\s?5\\b${withoutDenial(40)}sunday (?:roast|lunch))`,
       'gi',
     ),
-    message: 'Sunday roast pre-order and the Saturday cutoff were retired at the 2026-05-17 walk-in launch.',
+    message:
+      'Sunday roast pre-order, the £5 per person deposit and the 1pm Saturday cutoff were all ' +
+      'retired at the 2026-05-17 walk-in launch. Walk in between 1pm and 6pm, SSOT §4.',
   },
   {
     rule: 'ulez-figure',
