@@ -1620,10 +1620,22 @@ function optionalRuleInteger(input: FormDataEntryValue | null): number | undefin
   return Number.isFinite(value) ? value : undefined
 }
 
+/**
+ * What the form is asking us to do with the description: the trimmed text, null when the field
+ * is there but blank (a deliberate clear), and undefined when the form carries no description
+ * field at all, which means leave the stored one alone. The rule edit screen has no description
+ * input, so every edit used to blank the descriptions written by the approve-suggestion RPC,
+ * the group-rule path and the seed migrations.
+ */
+function getRuleDescription(formData: FormData): string | null | undefined {
+  if (!formData.has('description')) return undefined
+  return optionalRuleText(formData.get('description')) ?? null
+}
+
 function getRuleFormData(formData: FormData) {
   return {
     name: formData.get('name'),
-    description: optionalRuleText(formData.get('description')),
+    description: getRuleDescription(formData),
     priority: optionalRuleInteger(formData.get('priority')),
     kind: optionalRuleText(formData.get('kind')) ?? 'standard',
     reviewed: formData.get('reviewed') === 'on',
@@ -1638,10 +1650,17 @@ function getRuleFormData(formData: FormData) {
   }
 }
 
+/**
+ * The columns to write for a rule insert or update.
+ *
+ * `isInsert` also decides what an absent description means: a new rule starts with none, while
+ * an update leaves the stored one alone (see getRuleDescription). Every other optional column
+ * below IS on the rule edit form, prefilled, so a blank one there is a deliberate clear.
+ */
 function buildRuleWritePayload(
   data: {
     name: string
-    description?: string
+    description?: string | null
     priority?: number
     kind?: ReceiptRule['kind']
     reviewed?: boolean
@@ -1655,7 +1674,7 @@ function buildRuleWritePayload(
     set_expense_category?: ReceiptRule['set_expense_category']
   },
   userId: string,
-  includeCreatedBy = false,
+  isInsert = false,
   options: {
     canGovernRules?: boolean
     vendorId?: string | null
@@ -1663,7 +1682,6 @@ function buildRuleWritePayload(
 ) {
   const payload: Record<string, unknown> = {
     name: data.name,
-    description: data.description ?? null,
     match_description: data.match_description ?? null,
     match_transaction_type: data.match_transaction_type ?? null,
     match_direction: data.match_direction,
@@ -1676,6 +1694,12 @@ function buildRuleWritePayload(
     updated_by: userId,
   }
 
+  if (data.description !== undefined) {
+    payload.description = data.description
+  } else if (isInsert) {
+    payload.description = null
+  }
+
   if (options.canGovernRules) {
     payload.priority = data.priority ?? 1000
     payload.kind = data.kind ?? 'standard'
@@ -1685,7 +1709,7 @@ function buildRuleWritePayload(
     }
   }
 
-  if (includeCreatedBy) {
+  if (isInsert) {
     payload.created_by = userId
   }
 

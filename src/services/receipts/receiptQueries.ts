@@ -1631,7 +1631,8 @@ export async function queryAIUsageBreakdown(): Promise<{ success: boolean; break
 
 export async function queryPreviewReceiptRule(ruleData: {
   name: string
-  description?: string
+  // Null when the form is clearing the description; the preview only reads the match fields.
+  description?: string | null
   match_description?: string
   match_transaction_type?: string
   match_direction: string
