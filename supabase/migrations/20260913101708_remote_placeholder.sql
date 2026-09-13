@@ -1,0 +1,13 @@
+-- Placeholder for 20260913101708_remote_placeholder.sql
+-- Production's schema_migrations holds this version as remove_paid_advertising_event_todo, applied 13 September 2026
+-- Original SQL committed at supabase/migrations/20260913101234_remove_paid_advertising_event_todo.sql
+--
+-- Not a squash stub: nothing is lost. The apply went through the Supabase MCP, which records an
+-- apply-time version rather than the filename's (supabase/migrations/README.md, "Why filenames
+-- drift"), so the same change sits in the repo under 20260913101234 and in the ledger under
+-- 20260913101708. The repo file was checked read-only on 13 September 2026 against
+-- schema_migrations.statements[1] and is byte-identical: 949 bytes, md5 1a5aced1b76ce4ff86937c4b8da97216.
+--
+-- This file carries no SQL on purpose. It exists so the CLI sees the same history as production for
+-- 20260913101708; the statement itself is already in the repo at the other version, and repeating it
+-- here would replace public.auto_close_past_event_tasks twice for one change.
