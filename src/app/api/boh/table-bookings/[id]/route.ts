@@ -147,8 +147,18 @@ export async function PATCH(
   }
 
   let bookingDateHours: TradingHours | null | undefined
+  // The date the booking is moving off needs its own hours: the reschedule email says what the
+  // booking was, and on a night that closes after midnight that start sits in the previous
+  // trading day. One read covers both dates.
+  let previousDateHours: TradingHours | null | undefined
   try {
-    bookingDateHours = (await loadTradingHours(auth.supabase, [parsed.data.booking_date])).get(parsed.data.booking_date)
+    const dates = [parsed.data.booking_date]
+    if (existing.booking_date && existing.booking_date !== parsed.data.booking_date) {
+      dates.push(existing.booking_date)
+    }
+    const hoursByDate = await loadTradingHours(auth.supabase, dates)
+    bookingDateHours = hoursByDate.get(parsed.data.booking_date)
+    previousDateHours = existing.booking_date ? hoursByDate.get(existing.booking_date) : undefined
   } catch (hoursError) {
     logger.error('BOH booking edit: failed to load opening hours', {
       error: hoursError instanceof Error ? hoursError : new Error(String((hoursError as { message?: unknown })?.message ?? hoursError)),
@@ -330,7 +340,8 @@ export async function PATCH(
       ? computeBookingWindow(
           existing.booking_date,
           (existing.booking_time ?? '').slice(0, 5),
-          existing.duration_minutes ?? parsed.data.duration_minutes
+          existing.duration_minutes ?? parsed.data.duration_minutes,
+          previousDateHours
         )
       : null
     await sendTableBookingRescheduledNotificationIfAllowed(auth.supabase, {
