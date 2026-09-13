@@ -28,7 +28,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
-import { shouldSuppressEventReminderForLateBooking } from '@/lib/events/reminder-eligibility'
+import { resolveEventReminderDay, shouldSuppressEventReminderForLateBooking } from '@/lib/events/reminder-eligibility'
 import {
   getFirstVisitReviewEligibleCandidateKeys,
   hasCustomerReviewed,
@@ -916,6 +916,15 @@ async function processReminders(
       continue
     }
 
+    // Name the day the guest reads it on. Quiet hours hold a send from 21:00 until 09:00, which
+    // for an event starting after 20:45 is the event day itself, where "tomorrow" was wrong.
+    // Null means it could only land after the start, so it is not sent at all.
+    const reminderDay = resolveEventReminderDay({ eventStartAt: eventStartIso, now })
+    if (!reminderDay) {
+      result.skipped += 1
+      continue
+    }
+
     if (shouldSuppressEventReminderForLateBooking({
       bookingCreatedAt: booking.created_at,
       eventStartAt: eventStartIso,
@@ -948,7 +957,9 @@ async function processReminders(
     // rather than selling. No seat ask: they have their seats.
     const seatCount = Math.max(0, Number(booking.seats || 0))
     const seatPhrase = seatCount === 1 ? 'Your seat is' : `Your ${seatCount} seats are`
-    const baseBody = `The Anchor: ${firstName}, ${event.name} is tomorrow, ${eventDateText}. ${seatPhrase} ready. Come a bit early tomorrow if you fancy a drink.`
+    const baseBody = reminderDay === 'tomorrow'
+      ? `The Anchor: ${firstName}, ${event.name} is tomorrow, ${eventDateText}. ${seatPhrase} ready. Come a bit early tomorrow if you fancy a drink.`
+      : `The Anchor: ${firstName}, ${event.name} is today, ${eventDateText}. ${seatPhrase} ready. Come a bit early if you fancy a drink.`
     const messageBody = ensureReplyInstruction(
       manageLink ? `${baseBody} Change: ${manageLink}` : baseBody,
       supportPhone
