@@ -45,7 +45,7 @@
 --   no-op that raises, because the old md5 no longer matches. service_statuses has no triggers and
 --   no dependent views, so nothing else moves.
 --
--- Rollback: supabase/rollbacks/20260913120000_sunday_lunch_service_message_walk_in_launch.sql
+-- Rollback: supabase/rollbacks/20260913130000_sunday_lunch_service_message_walk_in_launch.sql
 
 DO $migration$
 DECLARE
