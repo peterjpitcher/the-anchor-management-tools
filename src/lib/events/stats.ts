@@ -8,6 +8,7 @@ type EventLike = {
   price?: number | string | null
   price_per_seat?: number | string | null
   online_discount_type?: string | null
+  online_discount_ends_at?: string | null
   online_discount_value?: number | string | null
   is_free?: boolean | null
   payment_mode?: string | null

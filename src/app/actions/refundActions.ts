@@ -41,6 +41,7 @@ interface SourceBookingData {
   customerEmail: string | null
   customerPhone: string | null
   currency: string
+  appliedInvoiceId?: string | null
 }
 
 async function getAuthenticatedUser(): Promise<{ userId: string } | { error: string }> {
@@ -63,7 +64,7 @@ async function loadSourceBooking(
   if (sourceType === 'private_booking') {
     const { data } = await db
       .from('private_bookings')
-      .select('id, paypal_deposit_capture_id, deposit_paid_date, deposit_amount, customer_id, customer_name, contact_email, contact_phone')
+      .select('id, paypal_deposit_capture_id, deposit_paid_date, deposit_amount, customer_id, customer_name, contact_email, contact_phone, invoice_id, invoice_deposit_treatment')
       .eq('id', sourceId)
       .maybeSingle()
     if (!data) return null
@@ -77,6 +78,7 @@ async function loadSourceBooking(
       customerEmail: data.contact_email,
       customerPhone: data.contact_phone,
       currency: PAYPAL_DEFAULT_CURRENCY,
+      appliedInvoiceId: data.invoice_deposit_treatment === 'deducted' ? data.invoice_id : null,
     }
   }
 
@@ -367,6 +369,9 @@ export async function processPayPalRefund(
   // 3. Load booking
   const booking = await loadSourceBooking(db, sourceType, sourceId)
   if (!booking) return { error: 'Booking not found' }
+  if (booking.appliedInvoiceId) {
+    return { error: 'This deposit has been applied to the invoice. Resolve the invoice credit before refunding it as a separate deposit.' }
+  }
 
   // 3b. The seasonal refund promise, enforced rather than merely displayed.
   const policyCheck = await enforceSeasonalRefundPolicy(db, sourceType, sourceId, userId, reason, options)
@@ -645,6 +650,9 @@ export async function processManualRefund(
   // 3. Load booking
   const booking = await loadSourceBooking(db, sourceType, sourceId)
   if (!booking) return { error: 'Booking not found' }
+  if (booking.appliedInvoiceId) {
+    return { error: 'This deposit has been applied to the invoice. Resolve the invoice credit before refunding it as a separate deposit.' }
+  }
 
   // 3b. The same seasonal promise applies however the money goes back. Handing cash across the bar
   // inside the window is exactly as much a breach of the stated terms as a PayPal refund is.

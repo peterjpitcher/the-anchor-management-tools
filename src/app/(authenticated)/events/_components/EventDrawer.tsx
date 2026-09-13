@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useTransition } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Drawer, Button, Input, Select, Textarea, DateTimePicker,
   Checkbox, Spinner, toast, Switch,
@@ -44,18 +46,6 @@ const STATUS_OPTIONS = [
   { value: 'draft', label: 'Draft' },
 ]
 
-const PAYMENT_MODE_OPTIONS = [
-  { value: 'free', label: 'Free' },
-  { value: 'cash_only', label: 'Cash on arrival' },
-  { value: 'prepaid', label: 'Prepaid (online payment)' },
-]
-
-const ONLINE_DISCOUNT_OPTIONS = [
-  { value: '', label: 'No online discount' },
-  { value: 'fixed', label: '£ discount online' },
-  { value: 'percent', label: '% discount online' },
-]
-
 const BOOKING_MODE_OPTIONS = [
   { value: 'table', label: 'Table bookings' },
   { value: 'general', label: 'Tickets (no assigned seats)' },
@@ -74,7 +64,9 @@ const PERFORMER_TYPE_OPTIONS = [
 ]
 
 export function EventDrawer({ open, onClose, event, categories, onSave }: EventDrawerProps) {
+  const router = useRouter()
   const isEdit = !!event
+  const existingPaid = !!event && resolveEventPaymentMode(event) !== 'free'
   const [isPending, startTransition] = useTransition()
 
   // ── Basic info ──
@@ -100,8 +92,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
   // ── Pricing & booking ──
   const [price, setPrice] = useState('')
-  const [onlineDiscountType, setOnlineDiscountType] = useState('')
-  const [onlineDiscountValue, setOnlineDiscountValue] = useState('')
   const [isFree, setIsFree] = useState(true)
   const [paymentMode, setPaymentMode] = useState('free')
   const [bookingMode, setBookingMode] = useState('table')
@@ -183,8 +173,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       const resolvedPrice = resolveEventTicketPriceAmount(event)
       const resolvedPaymentMode = resolveEventPaymentMode(event)
       setPrice(resolvedPrice > 0 ? resolvedPrice.toString() : '0')
-      setOnlineDiscountType((event as any).online_discount_type || '')
-      setOnlineDiscountValue((event as any).online_discount_value != null ? String((event as any).online_discount_value) : '')
       setIsFree(resolvedPrice === 0 && resolvedPaymentMode === 'free')
       setPaymentMode(resolvedPaymentMode)
       setBookingMode(event.booking_mode || 'table')
@@ -225,8 +213,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setPerformerName('')
       setPerformerType('')
       setPrice('')
-      setOnlineDiscountType('')
-      setOnlineDiscountValue('')
       setIsFree(true)
       setPaymentMode('free')
       setBookingMode('table')
@@ -359,6 +345,11 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       return
     }
 
+    if (!existingPaid && paymentMode !== 'free' && (!price.trim() || !Number.isFinite(Number(price)) || Number(price) <= 0)) {
+      toast.error('Enter a ticket price above £0, or choose Free entry')
+      return
+    }
+
     startTransition(async () => {
       const formData = new FormData()
       formData.set('name', name)
@@ -385,11 +376,11 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       if (performerType) formData.set('performer_type', performerType)
 
       // Pricing & booking
-      formData.set('price', price || '0')
-      formData.set('online_discount_type', onlineDiscountType)
-      formData.set('online_discount_value', onlineDiscountValue.trim())
-      formData.set('is_free', String(isFree))
-      formData.set('payment_mode', paymentMode)
+      if (!event || (!existingPaid && paymentMode !== 'free')) {
+        formData.set('price', price || '0')
+        formData.set('is_free', String(isFree))
+        formData.set('payment_mode', paymentMode)
+      }
       if (bookingUrl.trim()) formData.set('booking_url', bookingUrl.trim())
       formData.set('bookings_enabled', String(bookingsEnabled))
       formData.set('booking_cutoff_at', bookingCutoffAt) // London wall-time or '' (cleared)
@@ -468,10 +459,14 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
           }
         }
         onClose()
+        if (paymentMode !== 'free') router.push(`/events/${newEventId}?tab=tickets`)
         return
       }
 
-      if (targetId) onClose()
+      if (targetId) {
+        onClose()
+        if (!existingPaid && paymentMode !== 'free') router.push(`/events/${targetId}?tab=tickets`)
+      }
     })
   }
 
@@ -762,51 +757,27 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
         {/* ── Pricing & Booking ── */}
         <Section title="Pricing & Booking">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              label="Ticket price (£)"
-              type="number"
-              value={price}
-              onChange={(e) => {
-                setPrice(e.target.value)
-                const v = e.target.value ? parseFloat(e.target.value) : 0
-                setIsFree(v === 0)
-                if (v > 0 && paymentMode === 'free') setPaymentMode('cash_only')
-              }}
-              placeholder="0.00"
-            />
-            <Select
-              label="Online discount"
-              options={ONLINE_DISCOUNT_OPTIONS}
-              value={onlineDiscountType}
-              onChange={(e) => {
-                setOnlineDiscountType(e.target.value)
-                if (!e.target.value) setOnlineDiscountValue('')
-              }}
-            />
-          </div>
-          {onlineDiscountType ? (
-            <Input
-              label={onlineDiscountType === 'percent' ? 'Discount (%)' : 'Discount (£)'}
-              type="number"
-              value={onlineDiscountValue}
-              onChange={(e) => setOnlineDiscountValue(e.target.value)}
-              placeholder={onlineDiscountType === 'percent' ? '10' : '2.00'}
-              className="mt-3"
-            />
-          ) : null}
+          {existingPaid && event ? (
+            <div className="mb-4 rounded-default border border-border p-4">
+              <p className="font-medium text-text-strong">Paid event</p>
+              <p className="mt-1 text-sm text-text-muted">Ticket prices, online discounts and guest questions are managed together in Tickets.</p>
+              <Link className="mt-3 inline-block text-sm font-semibold text-primary underline" href={`/events/${event.id}?tab=tickets`} onClick={onClose}>Manage tickets and guest questions</Link>
+            </div>
+          ) : (
+            <div className="mb-4 space-y-3">
+              <Select label="Entry" value={paymentMode === 'free' ? 'free' : 'paid'} options={[{ value: 'free', label: 'Free entry' }, { value: 'paid', label: 'Paid tickets' }]} onChange={e => {
+                const free = e.target.value === 'free'
+                setPaymentMode(free ? 'free' : 'cash_only')
+                setIsFree(free)
+                if (free) setPrice('0')
+              }} />
+              {paymentMode !== 'free' && <>
+                <Input label="Standard ticket price (£)" type="number" min="0.01" step="0.01" value={price} onChange={e => setPrice(e.target.value)} />
+                <p className="text-sm text-text-muted">Save the event, then open Tickets to set up online payment, discounts and questions for each guest.</p>
+              </>}
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-            <Select
-              label="Payment Mode"
-              options={PAYMENT_MODE_OPTIONS}
-              value={paymentMode}
-              onChange={(e) => {
-                const mode = e.target.value
-                setPaymentMode(mode)
-                if (mode === 'free') { setPrice('0'); setIsFree(true) }
-                else { setIsFree(false) }
-              }}
-            />
             <Select
               label="Booking Mode"
               options={BOOKING_MODE_OPTIONS}

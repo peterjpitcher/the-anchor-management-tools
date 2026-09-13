@@ -5,6 +5,7 @@ type EventPricingInput = {
   price_per_seat?: number | string | null;
   online_discount_type?: string | null;
   online_discount_value?: number | string | null;
+  online_discount_ends_at?: string | null;
 };
 
 export type EventPaymentMode = 'free' | 'cash_only' | 'prepaid';
@@ -16,9 +17,9 @@ function positiveMoney(value: unknown): number | null {
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
-export function resolveEventPriceAmount(event: EventPricingInput): number {
+export function resolveEventPriceAmount(event: EventPricingInput, now: number = Date.now()): number {
   const ticketPrice = resolveEventTicketPriceAmount(event);
-  const discount = resolveEventOnlineDiscountAmount(event);
+  const discount = resolveEventOnlineDiscountAmount(event, now);
   return Math.max(0, Number((ticketPrice - discount).toFixed(2)));
 }
 
@@ -33,7 +34,11 @@ function normalizeEventOnlineDiscountType(value: unknown): EventOnlineDiscountTy
   return value === 'fixed' || value === 'percent' ? value : null;
 }
 
-export function resolveEventOnlineDiscountAmount(event: EventPricingInput): number {
+export function resolveEventOnlineDiscountAmount(event: EventPricingInput, now: number = Date.now()): number {
+  if (event.online_discount_ends_at) {
+    const deadline = Date.parse(event.online_discount_ends_at);
+    if (!Number.isFinite(deadline) || now >= deadline) return 0;
+  }
   if (event.payment_mode !== 'prepaid') return 0;
 
   const ticketPrice = resolveEventTicketPriceAmount(event);

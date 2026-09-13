@@ -2359,6 +2359,8 @@ export default function PrivateBookingDetailClient({
     : null
   const depositAmount = toNumber(booking.deposit_amount, 0);
   const depositRequired = depositAmount > 0;
+  const appliedDepositAmount = toNumber(booking.applied_deposit_amount, 0);
+  const depositAppliedToInvoice = Boolean(booking.invoice_id && booking.invoice_deposit_treatment === "deducted");
 
   // Stored prices are NET (SOP 2026-07) — customer-payable figures are gross.
   // Computed locally from items so the summary stays live during edits.
@@ -3031,12 +3033,12 @@ export default function PrivateBookingDetailClient({
               <div className="space-y-3 pt-3 border-t">
                 <div className="bg-blue-50 p-3 rounded-lg">
                   <p className="text-xs font-medium text-blue-900 mb-2">
-                    Refundable Deposit
+                    {depositAppliedToInvoice ? "Deposit applied to invoice" : "Refundable Deposit"}
                   </p>
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-700">
-                        Security Deposit
+                        {depositAppliedToInvoice ? "Applied towards event price" : "Security Deposit"}
                       </p>
                       <p className="text-xs text-gray-500">
                         {!depositRequired
@@ -3121,7 +3123,7 @@ export default function PrivateBookingDetailClient({
                     ) : (
                       <div className="flex items-center gap-1 justify-end">
                         <p className="text-sm font-medium text-gray-900">
-                          {depositRequired ? formatMoney(depositAmount) : "No deposit"}
+                          {depositAppliedToInvoice ? formatMoney(appliedDepositAmount) : depositRequired ? formatMoney(depositAmount) : "No deposit"}
                         </p>
                         {!booking.deposit_paid_date && canManageDeposits && (
                           <button
@@ -3189,7 +3191,7 @@ export default function PrivateBookingDetailClient({
                   </div>
                   {depositRequired && (
                     <p className="text-xs text-gray-600 mt-2">
-                      Returned after event (subject to terms)
+                      {depositAppliedToInvoice ? "This deposit has been applied to the invoice. Any refund needs an invoice review." : "Returned after event (subject to terms)"}
                     </p>
                   )}
                   {/* Refund status badge */}
@@ -3204,7 +3206,7 @@ export default function PrivateBookingDetailClient({
                     </div>
                   )}
                   {/* Refund button */}
-                  {depositRequired && canRefund && booking.deposit_paid_date && refundTotals.totalRefunded < depositAmount && (
+                  {depositRequired && !depositAppliedToInvoice && canRefund && booking.deposit_paid_date && refundTotals.totalRefunded < depositAmount && (
                     <div className="mt-2">
                       <Button
                         variant="secondary"
@@ -3226,24 +3228,24 @@ export default function PrivateBookingDetailClient({
                   )}
                 </div>
 
-                {/* SOP: gross event total plus the refundable deposit (unless waived) */}
+                {/* Only a separately held deposit is additional to the event price. */}
                 <div className="flex justify-between text-sm pt-3 border-t">
                   <span className="font-medium text-gray-900">
                     Total to pay before event
                   </span>
                   <span className="font-semibold text-gray-900">
                     {formatMoney(
-                      bookingMoney.grossTotal + (depositRequired ? depositAmount : 0),
+                      bookingMoney.grossTotal + (depositRequired && !depositAppliedToInvoice ? depositAmount : 0),
                     )}
                   </span>
                 </div>
 
                 {(() => {
                   const payments: PrivateBookingPayment[] = booking.payments ?? [];
-                  const totalPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
+                  const totalPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0) + appliedDepositAmount;
                   // Balance is VAT-inclusive: stored prices are net
                   const bookingTotal = bookingMoney.grossTotal;
-                  // Booking and damage deposit — separate from event balance
+                  // An applied invoice deposit is already included in totalPaid.
                   const remaining = Math.max(0, bookingTotal - totalPaid);
                   return (
                     <>
@@ -3266,17 +3268,17 @@ export default function PrivateBookingDetailClient({
                             <p className="text-sm font-medium text-gray-900">To be confirmed</p>
                           ) : (
                             <>
-                              {totalPaid > 0 && !booking.final_payment_date && (
+                              {totalPaid > 0 && remaining > 0 && (
                                 <p className="text-xs text-gray-500 mb-0.5">
                                   {formatMoney(totalPaid)} of {formatMoney(bookingTotal)} paid
                                 </p>
                               )}
                               <p className="text-sm font-medium text-gray-900">
-                                {booking.final_payment_date ? formatMoney(0) : formatMoney(remaining)}
+                                {formatMoney(remaining)}
                               </p>
                             </>
                           )}
-                          {!isDateTbd && !booking.final_payment_date && remaining > 0 && canManageDeposits && (
+                          {!isDateTbd && remaining > 0 && canManageDeposits && (
                             <Button
                               type="button"
                               variant="primary"
@@ -3299,7 +3301,7 @@ export default function PrivateBookingDetailClient({
                         />
                       </div>
 
-                      {booking.final_payment_date && (
+                      {booking.final_payment_date && remaining === 0 && (
                         <div className="pt-3 border-t">
                           <div className="flex items-center justify-between">
                             <span className="text-sm text-green-600 font-medium">
@@ -3550,8 +3552,8 @@ export default function PrivateBookingDetailClient({
 
       {canManageDeposits && (() => {
         const payments: PrivateBookingPayment[] = booking?.payments ?? [];
-        const totalPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
-        // Booking and damage deposit — separate from event balance (gross, inc. VAT)
+        const totalPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0) + appliedDepositAmount;
+        // An applied invoice deposit is already included in totalPaid. (gross, inc. VAT)
         const remaining = Math.max(0, bookingMoney.grossTotal - totalPaid);
         return (
           <PaymentModal

@@ -164,6 +164,18 @@ describe('EventBookingService.createBooking', () => {
 
   // ── RPC parameter forwarding ────────────────────────────────────────────────
 
+  it.each(['price_changed', 'attendee_answer_required'])('rolls a failed atomic guest booking up without sending messages: %s', async (message) => {
+    const supabase = makeSupabaseMock({ rpcResults: { create_event_booking_v08: { data: null, error: { message } } } })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const attendees = [{ id: '22222222-2222-4222-8222-222222222222', name: 'Guest', answers: {} }]
+    const result = await EventBookingService.createBooking({ ...BASE_PARAMS, attendees, expectedTotal: 80, shouldSendSms: true })
+    expect(supabase.rpc).toHaveBeenCalledWith('create_event_booking_v08', expect.objectContaining({ p_attendees: attendees, p_expected_total: 80 }))
+    expect(result.rpcFailed).toBe(true)
+    expect(result.rpcErrorCode).toBe(message === 'price_changed' ? 'price_changed' : 'questions_changed')
+    expect(sendSMS).not.toHaveBeenCalled()
+    expect(createEventPaymentToken).not.toHaveBeenCalled()
+  })
+
   it('calls create_event_booking_v06 with correct parameters for brand_site source', async () => {
     const supabase = makeSupabaseMock({
       rpcResults: {
@@ -492,6 +504,20 @@ describe('EventBookingService.createBooking', () => {
 
     expect(sendSMS).toHaveBeenCalledOnce()
     expect(result.smsMeta).toMatchObject({ success: true })
+  })
+
+
+  it.each(['confirmed', 'pending_payment'] as const)('names standing tickets in %s SMS', async (state) => {
+    const rpcResult = state === 'confirmed' ? CONFIRMED_RPC_RESULT : PENDING_PAYMENT_RPC_RESULT
+    const supabase = makeSupabaseMock({
+      rpcResults: { create_event_booking_v05: { data: { ...rpcResult, event_seating_type: 'standing' }, error: null } },
+      fromResults: { customers: { data: ACTIVE_CUSTOMER_ROW, error: null } }
+    })
+    vi.mocked(createAdminClient).mockReturnValue(supabase)
+    await EventBookingService.createBooking({ ...BASE_PARAMS, bookingMode: 'communal', seatingPreference: 'standing', shouldSendSms: true })
+    const body = vi.mocked(sendSMS).mock.calls[0][1]
+    expect(body).toContain('2 standing tickets')
+    expect(body).not.toMatch(/undefined|Invalid Date|NaN|\bseats?\b/)
   })
 
   it('does not send SMS when shouldSendSms=false', async () => {

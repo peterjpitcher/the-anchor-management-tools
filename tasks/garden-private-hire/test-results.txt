@@ -1,0 +1,36 @@
+PASS transaction rollback removes new objects
+PASS outside insert refused during garden hire
+PASS blocked insert writes no booking
+PASS real outside availability hides private hire
+PASS indoor availability remains separate
+PASS indoor insert still accepted
+PASS switching indoor booking outside refused
+PASS exact pre-buffer endpoint allowed
+PASS amendment overlapping buffer refused
+PASS exact post-buffer start allowed
+PASS draft hire blocks garden
+PASS cancelled hire releases garden
+PASS reactivating conflicting hire refused
+PASS whole pub hire blocks garden
+PASS indoor-only hire leaves garden available
+PASS changing hire space into occupied garden refused
+PASS adding garden hire after outside booking refused
+PASS reactivating cancelled table booking refused
+PASS setup buffer blocks earlier arrivals
+PASS overnight end includes next day
+PASS previous-day setup preserves overnight end
+PASS explicit next-day end is honoured
+PASS expired unpaid table hold does not block hire
+PASS paid hold cannot reactivate into private hire
+PASS table turnaround gap participates in conflict
+PASS anon cannot read private windows
+PASS authenticated cannot read private windows
+PASS service role can read availability helper
+PASS concurrent hire then table rejects second writer
+PASS concurrent table then hire rejects second writer
+PASS staff time move and concurrent edit both succeed
+PASS cash deposit and concurrent edit both succeed
+PASS payment confirmation and concurrent edit both succeed
+PASS prelocked private booking and concurrent edit both succeed
+PASS allocator highchair lock and real staff move both succeed
+PASS explicit rollback restores original behaviour

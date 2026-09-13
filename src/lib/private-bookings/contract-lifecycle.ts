@@ -1,3 +1,4 @@
+import { readBookingPaymentLedger } from '@/lib/private-bookings/payment-ledger'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateContractHTML, bookingRequiresWaiverAnnex } from '@/lib/contract-template'
 import { CONTRACT_LOGO_DATA_URI } from '@/lib/private-bookings/contract-logo'
@@ -65,6 +66,10 @@ export async function renderContractPreview(bookingId: string): Promise<Generate
     throw new Error('Booking not found')
   }
 
+  const ledger = await readBookingPaymentLedger(bookingId)
+  booking.payments = ledger.payments
+  booking.applied_deposit_amount = ledger.appliedDepositAmount
+
   const version = Number((booking as { contract_version?: number | null }).contract_version ?? 0)
 
   const html = generateContractHTML({
@@ -100,6 +105,10 @@ export async function generateContractDocument(
   if (error || !booking) {
     throw new Error('Booking not found')
   }
+
+  const ledger = await readBookingPaymentLedger(bookingId)
+  booking.payments = ledger.payments
+  booking.applied_deposit_amount = ledger.appliedDepositAmount
 
   const { data: incrementedVersion, error: versionError } = await admin.rpc(
     'increment_private_booking_contract_version',

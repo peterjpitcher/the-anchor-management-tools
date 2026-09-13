@@ -11,14 +11,12 @@ describe('event checklist definitions', () => {
       'Schedule Social Posts',
       'Schedule Event Email',
       'Scheduled Stories',
-      'Set Up Paid Advertising',
       'WhatsApp Reminder (3 Days Before)'
     ])
   })
 
   it('starts all launch tasks 56 days before the event', () => {
     expect(EVENT_CHECKLIST_DEFINITIONS.map(({ offsetDays }) => offsetDays)).toEqual([
-      -56,
       -56,
       -56,
       -56,
@@ -43,7 +41,7 @@ describe('event checklist definitions', () => {
     expect(checklist.find(({ key }) => key === 'schedule_event_email')?.dueDate).toBe(
       checklist.find(({ key }) => key === 'schedule_social_content')?.dueDate
     )
-    expect(checklist[8]).toMatchObject({
+    expect(checklist[7]).toMatchObject({
       label: 'WhatsApp Reminder (3 Days Before)',
       dueDate: '2026-09-28',
       status: 'upcoming'
@@ -57,7 +55,7 @@ describe('event checklist definitions', () => {
       '2026-07-09'
     )
 
-    expect(checklist).toHaveLength(9)
+    expect(checklist).toHaveLength(8)
     expect(checklist.find(({ label }) => label === 'Design Printed Materials')).toMatchObject({
       completed: true,
       completedAt: '2026-07-01T10:00:00Z'

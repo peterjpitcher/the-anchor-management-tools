@@ -781,7 +781,23 @@ export async function createBooking(
   });
 
   if (error) {
-    logger.error('Create private booking transaction error:', { error: error instanceof Error ? error : new Error(String(error)) });
+    const code = typeof error.code === 'string' && /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(error.code)
+      ? error.code
+      : 'unknown';
+    const emailConstraintRejected = code === '23514'
+      && typeof error.message === 'string'
+      && error.message.includes('"chk_email_format"');
+    // Database messages, details and hints can contain customer data. Log only
+    // the diagnostic code and a known, safe description of this failure.
+    logger.error('Create private booking transaction error:', {
+      error: new Error(emailConstraintRejected
+        ? 'Database rejected contact email (chk_email_format)'
+        : 'Private booking database transaction failed'),
+      metadata: { code },
+    });
+    if (emailConstraintRejected) {
+      throw new Error('The booking could not be saved because the system rejected the email format. If the address is correct, keep it unchanged and report this error.');
+    }
     throw new Error('Failed to create private booking');
   }
 

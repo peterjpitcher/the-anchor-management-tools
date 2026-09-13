@@ -10,6 +10,9 @@ import {
 import {
   Alert,
   Card,
+  Button,
+  Input,
+  Select,
   Empty,
   LinkButton,
   PageLayout,
@@ -20,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/ds'
-import type { MarketingCampaignStats } from '@/types/marketing'
+import type { MarketingCampaignStats, MarketingCampaignStatus } from '@/types/marketing'
 
 import {
   CampaignStatusBadge,
@@ -33,10 +36,30 @@ import { UnsubscribeEmailCard } from './UnsubscribeEmailCard'
 export const dynamic = 'force-dynamic'
 
 const PAGE_SIZE = 50
+const STATUSES: MarketingCampaignStatus[] = ['draft', 'scheduled', 'sending', 'paused', 'completed', 'cancelled']
+const SORTS = ['scheduled_asc', 'scheduled_desc', 'newest', 'oldest', 'name_asc', 'name_desc'] as const
+type SearchParams = Record<string, string | string[] | undefined>
+const firstValue = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value) ?? ''
 
-export default async function MarketingCampaignsPage() {
+export default async function MarketingCampaignsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const canView = await checkUserPermission('marketing', 'view')
   if (!canView) redirect('/unauthorized')
+
+  const params = await searchParams
+  const search = firstValue(params.search).trim().slice(0, 200)
+  const rawStatus = firstValue(params.status)
+  const status = rawStatus === 'all' || STATUSES.includes(rawStatus as MarketingCampaignStatus) ? rawStatus : 'upcoming'
+  const rawAudience = firstValue(params.audience)
+  const audience = rawAudience === 'business' || rawAudience === 'customer' ? rawAudience : ''
+  const sort = SORTS.find(value => value === firstValue(params.sort)) ?? 'scheduled_asc'
+  const pageNumber = Number(firstValue(params.page))
+  const page = Number.isSafeInteger(pageNumber) && pageNumber > 0 ? Math.min(pageNumber, 1000000) : 1
+  const pageHref = (nextPage: number) => {
+    const query = new URLSearchParams({ status, sort, page: String(nextPage) })
+    if (search) query.set('search', search)
+    if (audience) query.set('audience', audience)
+    return `/marketing?${query}`
+  }
 
   const [canCreate, canEdit] = await Promise.all([
     checkUserPermission('marketing', 'create'),
@@ -44,7 +67,10 @@ export default async function MarketingCampaignsPage() {
   ])
 
   const [campaignsResult, settingsResult] = await Promise.all([
-    listMarketingCampaigns({ page: 1, pageSize: PAGE_SIZE }),
+    listMarketingCampaigns({
+      page, pageSize: PAGE_SIZE, search, sort, audienceType: audience || undefined,
+      statuses: status === 'upcoming' ? ['draft', 'scheduled'] : status === 'all' ? undefined : [status as MarketingCampaignStatus],
+    }),
     getMarketingSettings(),
   ])
 
@@ -59,6 +85,9 @@ export default async function MarketingCampaignsPage() {
   }
 
   const campaigns = campaignsResult.data.campaigns
+  const total = campaignsResult.data.total
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  if (page > pages) redirect(pageHref(pages))
   const settings = settingsResult.data
   const sendingOff = settings ? settings.sendsEnabled === false : false
 
@@ -77,7 +106,7 @@ export default async function MarketingCampaignsPage() {
   return (
     <PageLayout
       title="Marketing"
-      subtitle="Email campaigns to business contacts"
+      subtitle="Email campaigns to guests and business contacts"
       navItems={MARKETING_SECTION_NAV}
       headerActions={
         canCreate ? (
@@ -111,17 +140,44 @@ export default async function MarketingCampaignsPage() {
         {canEdit && <UnsubscribeEmailCard />}
 
         <Card>
+          <form key={`${search}:${status}:${audience}:${sort}`} action="/marketing" method="get" className="grid gap-4 border-b border-border p-4 sm:grid-cols-2 xl:grid-cols-5" aria-label="Campaign filters">
+            <Input label="Search campaigns" name="search" type="search" placeholder="Campaign name or subject" defaultValue={search} maxLength={200} />
+            <Select label="Status" name="status" defaultValue={status}>
+              <option value="upcoming">Scheduled and drafts</option>
+              <option value="all">All statuses</option>
+              {STATUSES.map(value => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>)}
+            </Select>
+            <Select label="Audience" name="audience" defaultValue={audience}>
+              <option value="">All audiences</option>
+              <option value="customer">Guests</option>
+              <option value="business">Business contacts</option>
+            </Select>
+            <Select label="Sort by" name="sort" defaultValue={sort}>
+              <option value="scheduled_asc">Send date: earliest first</option>
+              <option value="scheduled_desc">Send date: latest first</option>
+              <option value="newest">Created: newest first</option>
+              <option value="oldest">Created: oldest first</option>
+              <option value="name_asc">Campaign name: A to Z</option>
+              <option value="name_desc">Campaign name: Z to A</option>
+            </Select>
+            <div className="flex items-end gap-2">
+              <Button type="submit" variant="primary">Apply</Button>
+              <LinkButton href="/marketing" variant="secondary">Reset</LinkButton>
+            </div>
+          </form>
+          <p className="px-4 py-3 text-sm text-text-muted" aria-live="polite">
+            {total === 0 ? 'No matching campaigns' : `${(page - 1) * PAGE_SIZE + 1} to ${Math.min(page * PAGE_SIZE, total)} of ${total} campaigns`}
+            {status === 'upcoming' && '. Showing scheduled and draft emails only.'}
+          </p>
           {campaigns.length === 0 ? (
             <Empty
               icon="inbox"
-              title="No campaigns yet"
-              description="Campaigns are written as content files and loaded here. Paste the JSON on the new campaign page, choose who it goes to, then schedule it."
+              title="No campaigns match these filters"
+              description="Try another search or choose All statuses to include completed campaigns."
               action={
-                canCreate ? (
-                  <LinkButton href="/marketing/campaigns/new" variant="primary">
-                    New campaign
+                  <LinkButton href="/marketing?status=all" variant="secondary">
+                    Show all campaigns
                   </LinkButton>
-                ) : undefined
               }
             />
           ) : (
@@ -204,6 +260,13 @@ export default async function MarketingCampaignsPage() {
                 </TableBody>
               </Table>
             </div>
+          )}
+          {pages > 1 && (
+            <nav aria-label="Campaign pages" className="flex items-center justify-between border-t border-border p-4">
+              {page > 1 ? <LinkButton href={pageHref(page - 1)} variant="secondary">Previous</LinkButton> : <span />}
+              <span className="text-sm text-text-muted">Page {page} of {pages}</span>
+              {page < pages ? <LinkButton href={pageHref(page + 1)} variant="secondary">Next</LinkButton> : <span />}
+            </nav>
           )}
         </Card>
 

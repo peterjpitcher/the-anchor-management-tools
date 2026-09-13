@@ -86,6 +86,7 @@ export interface EventTicketTypeDTO {
   name: string
   description: string | null
   price: number
+  base_price?: number
   capacity: number | null
   remaining: number | null
   sort_order: number
@@ -101,6 +102,7 @@ export interface TicketSelectionInput {
 interface EventDiscountContext {
   payment_mode?: string | null
   online_discount_type?: string | null
+  online_discount_ends_at?: string | null
   online_discount_value?: number | string | null
 }
 
@@ -167,6 +169,7 @@ export function serializeTicketType(
     name: row.name,
     description: row.description,
     price: resolveTicketTypeSellPrice(Number(row.base_price), event),
+    base_price: Number(row.base_price),
     capacity: row.capacity,
     remaining,
     sort_order: row.sort_order,

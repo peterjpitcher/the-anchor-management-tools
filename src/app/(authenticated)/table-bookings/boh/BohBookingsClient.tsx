@@ -442,7 +442,7 @@ export function BohBookingsClient({
         date: focusDate,
         view
       })
-      const previousPeriodDate = shiftFocusDate(focusDate, view, -1)
+      const previousPeriodDate = shiftFocusDate(focusDate, view === 'day' ? 'week' : view, -1)
       const previousSearchParams = new URLSearchParams({
         date: previousPeriodDate,
         view

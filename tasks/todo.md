@@ -165,3 +165,23 @@ social links are corrected. Its information page still shows
 the current owner session. Its support request is prepared and awaits the visible
 reCAPTCHA and Submit. Bing remains locked pending verification. Paid placements
 remain excluded.
+
+# Paid ticket setup, 10 September 2026
+
+- [x] Implement and verify locally [ticket setup plan](fix-function/2026-09-10-ticket-setup/todo.md), keeping free events simple.
+
+- [x] Release both ticket apps and apply both approved migrations; final production IDs, browser checks, CI and cleanup are recorded in [production release](ticket-setup/production-release.md).
+
+
+## 2026-09-10 Private booking email rejection
+
+- [x] Verify live email constraint and failure evidence.
+- [x] Prepare constraint migration and safe create-error reporting.
+- [x] Run isolated create-RPC regression, lint, types and both timezone test suites.
+- [x] Finish clean build with increased Node heap.
+- [x] Prepare exact production migration and rollback packet.
+- [x] Apply approved migration as production version 20260910095523.
+- [x] Publish scoped fix to main as aa42f2b44f2dde449f9821a7f13ad2ea49d41851.
+- [x] Verify production deployment dpl_H14gNQxhWjZQPhiKKRywwuoXxsPK and complete cleanup. Owner confirmed booking works; live record preserves email and waiver.
+
+Scope: constraint fix and error reporting are independently deployable. Production application remains pending explicit approval.

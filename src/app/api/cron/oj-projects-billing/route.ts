@@ -23,6 +23,8 @@ import {
   getRecurringChargeCoverage,
   getRecurringChargePeriod,
 } from '@/lib/oj-projects/recurring-periods'
+import { shouldSkipConcurrentBillingRun } from '@/lib/oj-projects/billing-run-guard'
+import { buildInvoiceSentUpdate } from '@/lib/invoices/delivery-state'
 import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 
 export const runtime = 'nodejs'
@@ -31,9 +33,6 @@ export const maxDuration = 300
 
 const LONDON_TZ = 'Europe/London'
 const OJ_INVOICE_NOTES_MAX_CHARS = 8000
-// A run cannot outlive the function timeout (maxDuration 300s), so anything
-// younger than this is treated as still in flight rather than crashed.
-const IN_FLIGHT_RUN_GRACE_MS = 10 * 60 * 1000
 const OJ_TIMESHEET_MARKER = 'OJ_TIMESHEET_ATTACHMENT=1'
 
 function roundMoney(value: number) {
@@ -2404,6 +2403,7 @@ export async function GET(request: Request) {
 
       // Create or load billing run (idempotency)
       let billingRun: any | null = null
+      let billingRunCreatedByThisInvocation = false
       try {
         const { data: created, error: createError } = await supabase
           .from('oj_billing_runs')
@@ -2432,6 +2432,7 @@ export async function GET(request: Request) {
           billingRun = existing
         } else {
           billingRun = created
+          billingRunCreatedByThisInvocation = true
         }
       } catch (err) {
         throw err instanceof Error ? err : new Error('Failed to initialise billing run')
@@ -2452,18 +2453,19 @@ export async function GET(request: Request) {
       // persisted, so the stranded-pending release below would unlock them and
       // both invocations would invoice the same work. Stand down instead: only
       // touch a 'processing' run once it is provably dead.
-      if (billingRun.status === 'processing' && !billingRun.invoice_id) {
-        const startedAt = Date.parse(String(billingRun.run_started_at || billingRun.created_at || ''))
-        const ageMs = Number.isFinite(startedAt) ? Date.now() - startedAt : Number.POSITIVE_INFINITY
-        if (ageMs < IN_FLIGHT_RUN_GRACE_MS) {
-          results.skipped++
-          results.vendors.push({
-            vendor_id: vendorId,
-            status: 'skipped',
-            error: 'A billing run for this client and period is already in flight',
-          })
-          continue
-        }
+      if (shouldSkipConcurrentBillingRun({
+        createdByThisInvocation: billingRunCreatedByThisInvocation,
+        status: billingRun.status,
+        invoiceId: billingRun.invoice_id,
+        startedAt: billingRun.run_started_at || billingRun.created_at,
+      })) {
+        results.skipped++
+        results.vendors.push({
+          vendor_id: vendorId,
+          status: 'skipped',
+          error: 'A billing run for this client and period is already in flight',
+        })
+        continue
       }
 
       // Recover invoice_id if the run created an invoice but crashed before persisting the linkage.
@@ -2734,7 +2736,7 @@ export async function GET(request: Request) {
 
         const { data: sentInvoiceRow, error: sentInvoiceError } = await supabase
           .from('invoices')
-          .update({ status: 'sent', updated_at: new Date().toISOString() })
+          .update(buildInvoiceSentUpdate(recipients.to))
           .eq('id', invoice.id)
           .eq('status', 'draft')
           .select('id')
@@ -3581,7 +3583,7 @@ export async function GET(request: Request) {
 
       const { data: sentInvoiceRow, error: sentInvoiceError } = await supabase
         .from('invoices')
-        .update({ status: 'sent', updated_at: new Date().toISOString() })
+        .update(buildInvoiceSentUpdate(recipients.to))
         .eq('id', invoiceId)
         .eq('status', 'draft')
         .select('id')

@@ -1,5 +1,9 @@
 # Lessons Learned
 
+## 2026-09-05: Consolidate review feedback into one developer handoff
+
+When the owner answers a specification review, incorporate those decisions into one final self-contained report. Replace superseded recommendations and acceptance criteria throughout. Do not make the owner assemble the review and a separate decision addendum before sending the result to a developer.
+
 <!-- After every correction, Claude adds a rule here to prevent repeating the mistake. -->
 <!-- Format: date, mistake pattern, rule to follow going forward. -->
 <!-- Review this file at the start of every session. -->
@@ -206,3 +210,11 @@ platform-controlled dietary attributes such as `Gluten-free Options`. In
 free-form customer copy, continue to use NGCI with the approved
 cross-contamination caveat. Never remove a venue capability based only on a
 wording distinction; verify it with the owner or an operational source first.
+
+## 2026-09-06: Check spacing between composed email blocks
+
+A section intro directly below the masthead had zero top padding, while separate note and button blocks doubled the gaps below. Inspect the composed opening in the live preview, including block boundaries. Prefer an existing integrated text-and-button block when it provides the required spacing without changing shared renderers.
+
+## 2026-09-10: Keep ordinary event reservations simple
+
+Paid ticket improvements must not add attendee forms to ordinary free or pay-on-arrival events. Require per-person details for online-paid tickets, or when the organiser explicitly adds guest questions. Keep free entry the quick default in event setup.

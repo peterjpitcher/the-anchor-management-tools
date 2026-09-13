@@ -1,0 +1,1471 @@
+{
+  "size": 262144,
+  "views": [
+    {
+      "view_name": "customer_communications"
+    },
+    {
+      "view_name": "private_booking_sms_reminders"
+    },
+    {
+      "view_name": "private_booking_summary"
+    },
+    {
+      "view_name": "private_bookings_with_details"
+    }
+  ],
+  "columns": [
+    {
+      "data_type": "uuid",
+      "table_name": "customers",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "first_name",
+      "is_nullable": "NO",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "last_name",
+      "is_nullable": "NO",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "mobile_number",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "timezone('utc'::text, now())",
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "customers",
+      "column_name": "sms_opt_in",
+      "is_nullable": "YES",
+      "column_default": "true",
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "customers",
+      "column_name": "sms_delivery_failures",
+      "is_nullable": "YES",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "last_sms_failure_reason",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "last_successful_sms_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "sms_deactivated_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "sms_deactivation_reason",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "messaging_status",
+      "is_nullable": "YES",
+      "column_default": "'active'::text",
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "last_successful_delivery",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "customers",
+      "column_name": "consecutive_failures",
+      "is_nullable": "YES",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "customers",
+      "column_name": "total_failures_30d",
+      "is_nullable": "YES",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "last_failure_type",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "customers",
+      "column_name": "table_booking_count",
+      "is_nullable": "YES",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "customers",
+      "column_name": "no_show_count",
+      "is_nullable": "YES",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "date",
+      "table_name": "customers",
+      "column_name": "last_table_booking_date",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "character varying",
+      "table_name": "customers",
+      "column_name": "email",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "character varying",
+      "table_name": "customers",
+      "column_name": "mobile_e164",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "mobile_number_raw",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "sms_status",
+      "is_nullable": "NO",
+      "column_default": "'active'::text",
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "customers",
+      "column_name": "marketing_sms_opt_in",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "stripe_customer_id",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "internal_notes",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "email_status",
+      "is_nullable": "NO",
+      "column_default": "'unknown'::text",
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "customers",
+      "column_name": "email_delivery_failures",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "last_email_failure_reason",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "last_successful_email_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "email_deactivated_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "customers",
+      "column_name": "marketing_email_opt_in",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "customers",
+      "column_name": "whatsapp_opt_in",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "customers",
+      "column_name": "marketing_whatsapp_opt_in",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "whatsapp_status",
+      "is_nullable": "NO",
+      "column_default": "'unknown'::text",
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "whatsapp_opt_in_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "whatsapp_opted_out_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "customers",
+      "column_name": "whatsapp_delivery_failures",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "last_whatsapp_failure_reason",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "last_successful_whatsapp_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "whatsapp_deactivated_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "whatsapp_deactivation_reason",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "last_whatsapp_inbound_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "sms_opt_in_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "sms_opted_out_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "marketing_sms_opt_in_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "marketing_sms_opted_out_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "marketing_email_opt_in_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "marketing_email_opted_out_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "marketing_whatsapp_opt_in_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "marketing_whatsapp_opted_out_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "sms_opt_in_source",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "customers",
+      "column_name": "whatsapp_opt_in_source",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "marketing_last_email_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "customers",
+      "column_name": "marketing_reserved_until",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "customers",
+      "column_name": "marketing_last_campaign_id",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "customers",
+      "column_name": "marketing_unsubscribe_campaign_id",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_booking_items",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()",
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_booking_items",
+      "column_name": "booking_id",
+      "is_nullable": "NO",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_booking_items",
+      "column_name": "item_type",
+      "is_nullable": "NO",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_booking_items",
+      "column_name": "space_id",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_booking_items",
+      "column_name": "package_id",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_booking_items",
+      "column_name": "vendor_id",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_booking_items",
+      "column_name": "description",
+      "is_nullable": "NO",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "private_booking_items",
+      "column_name": "quantity",
+      "is_nullable": "NO",
+      "column_default": "1",
+      "generation_expression": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "private_booking_items",
+      "column_name": "unit_price",
+      "is_nullable": "NO",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_booking_items",
+      "column_name": "discount_type",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "private_booking_items",
+      "column_name": "discount_value",
+      "is_nullable": "YES",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_booking_items",
+      "column_name": "discount_reason",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_booking_items",
+      "column_name": "notes",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_booking_items",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "timezone('utc'::text, now())",
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "private_booking_items",
+      "column_name": "display_order",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "private_booking_items",
+      "column_name": "line_total",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": "GREATEST((0)::numeric,\nCASE\n    WHEN (discount_type = 'percent'::text) THEN ((quantity * unit_price) * ((1)::numeric - (COALESCE(discount_value, (0)::numeric) / (100)::numeric)))\n    WHEN (discount_type = 'fixed'::text) THEN ((quantity * unit_price) - COALESCE(discount_value, (0)::numeric))\n    ELSE (quantity * unit_price)\nEND)"
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "private_booking_items",
+      "column_name": "vat_rate",
+      "is_nullable": "NO",
+      "column_default": "20",
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_bookings",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()",
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_bookings",
+      "column_name": "customer_id",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "customer_name",
+      "is_nullable": "NO",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "contact_phone",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "contact_email",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "date",
+      "table_name": "private_bookings",
+      "column_name": "event_date",
+      "is_nullable": "NO",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "time without time zone",
+      "table_name": "private_bookings",
+      "column_name": "start_time",
+      "is_nullable": "NO",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "time without time zone",
+      "table_name": "private_bookings",
+      "column_name": "setup_time",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "time without time zone",
+      "table_name": "private_bookings",
+      "column_name": "end_time",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "private_bookings",
+      "column_name": "guest_count",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "event_type",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "status",
+      "is_nullable": "YES",
+      "column_default": "'draft'::text",
+      "generation_expression": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "private_bookings",
+      "column_name": "deposit_amount",
+      "is_nullable": "YES",
+      "column_default": "250.00",
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "deposit_paid_date",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "deposit_payment_method",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "private_bookings",
+      "column_name": "total_amount",
+      "is_nullable": "YES",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "date",
+      "table_name": "private_bookings",
+      "column_name": "balance_due_date",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "final_payment_date",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "final_payment_method",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "calendar_event_id",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "private_bookings",
+      "column_name": "contract_version",
+      "is_nullable": "YES",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "internal_notes",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "customer_requests",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_bookings",
+      "column_name": "created_by",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "timezone('utc'::text, now())",
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "timezone('utc'::text, now())",
+      "generation_expression": null
+    },
+    {
+      "data_type": "date",
+      "table_name": "private_bookings",
+      "column_name": "setup_date",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "discount_type",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "private_bookings",
+      "column_name": "discount_amount",
+      "is_nullable": "YES",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "discount_reason",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "customer_first_name",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "customer_last_name",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "customer_full_name",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": "\nCASE\n    WHEN ((customer_last_name IS NOT NULL) AND (customer_last_name <> ''::text)) THEN ((customer_first_name || ' '::text) || customer_last_name)\n    ELSE customer_first_name\nEND"
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "source",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "special_requirements",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "accessibility_needs",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "cancellation_reason",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "cancelled_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "private_bookings",
+      "column_name": "end_time_next_day",
+      "is_nullable": "YES",
+      "column_default": "false",
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "hold_expiry",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "contract_note",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "paypal_deposit_order_id",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "paypal_deposit_capture_id",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "review_processed_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "review_clicked_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "post_event_outcome",
+      "is_nullable": "YES",
+      "column_default": "'pending'::text",
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "post_event_outcome_decided_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "outcome_email_sent_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "review_sms_sent_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "deposit_refund_status",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "private_bookings",
+      "column_name": "date_tbd",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "private_bookings",
+      "column_name": "paypal_reconciliation_attempts",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "paypal_reconciliation_last_error",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "private_bookings",
+      "column_name": "has_open_dispute",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "private_bookings",
+      "column_name": "deposit_waived",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "deposit_waived_reason",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "contract_sent_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "contract_sent_to",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "contract_accepted_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "contract_acceptance_method",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "final_details_status",
+      "is_nullable": "NO",
+      "column_default": "'not_requested'::text",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "supplier_status",
+      "is_nullable": "NO",
+      "column_default": "'not_applicable'::text",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "waiver_status",
+      "is_nullable": "NO",
+      "column_default": "'not_required'::text",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "risk_status",
+      "is_nullable": "NO",
+      "column_default": "'normal'::text",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "event_sheet_status",
+      "is_nullable": "NO",
+      "column_default": "'not_generated'::text",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "post_event_status",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "layout",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "private_bookings",
+      "column_name": "guest_count_adults",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "private_bookings",
+      "column_name": "guest_count_under_18",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "private_bookings",
+      "column_name": "bar_tab_required",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "generation_expression": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "private_bookings",
+      "column_name": "bar_tab_limit",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "private_bookings",
+      "column_name": "bar_tab_prepaid_amount",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "bar_tab_preauth_reference",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_bookings",
+      "column_name": "bar_tab_approved_by",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "private_bookings",
+      "column_name": "outside_food",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "private_bookings",
+      "column_name": "high_power_equipment",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "high_power_equipment_approved_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "decorations_plan",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "private_bookings",
+      "column_name": "dogs_expected",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "special_risk_notes",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "communication_preference",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "time without time zone",
+      "table_name": "private_bookings",
+      "column_name": "cleardown_time",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "cancellation_channel",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "cancellation_received_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_bookings",
+      "column_name": "cancellation_evidence_document_id",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_bookings",
+      "column_name": "cancelled_by",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "locked_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "locked_reason",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_bookings",
+      "column_name": "locked_by",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "private_bookings",
+      "column_name": "invoice_id",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "private_bookings",
+      "column_name": "invoice_sent_at",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "private_bookings",
+      "column_name": "invoice_deposit_treatment",
+      "is_nullable": "YES",
+      "column_default": null,
+      "generation_expression": null
+    }
+  ],
+  "function": "CREATE OR REPLACE FUNCTION public.create_private_booking_transaction(p_booking_data jsonb, p_items jsonb DEFAULT '[]'::jsonb, p_customer_data jsonb DEFAULT NULL::jsonb)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nDECLARE\n  v_booking_id UUID;\n  v_customer_id UUID;\n  v_booking_record JSONB;\n  v_start_time TIME;\n  v_end_time TIME;\n  v_end_time_next_day BOOLEAN := false;\n  v_customer_mobile_raw TEXT;\n  v_customer_mobile_e164 TEXT;\n  v_customer_first_name TEXT;\n  v_customer_last_name TEXT;\n  v_customer_email TEXT;\nBEGIN\n  IF p_customer_data IS NOT NULL THEN\n    IF (p_customer_data->>'id') IS NOT NULL THEN\n      v_customer_id := (p_customer_data->>'id')::UUID;\n    ELSE\n      v_customer_mobile_raw := NULLIF(\n        BTRIM(\n          COALESCE(\n            p_customer_data->>'mobile_e164',\n            p_customer_data->>'mobile_number',\n            ''\n          )\n        ),\n        ''\n      );\n\n      IF v_customer_mobile_raw IS NOT NULL THEN\n        v_customer_mobile_e164 := regexp_replace(v_customer_mobile_raw, '[^0-9+]', '', 'g');\n\n        IF LEFT(v_customer_mobile_e164, 2) = '00' THEN\n          v_customer_mobile_e164 := '+' || SUBSTRING(v_customer_mobile_e164 FROM 3);\n        END IF;\n\n        IF LEFT(v_customer_mobile_e164, 1) <> '+' THEN\n          IF LEFT(v_customer_mobile_e164, 1) = '0' THEN\n            v_customer_mobile_e164 := '+44' || LTRIM(v_customer_mobile_e164, '0');\n          ELSIF LEFT(v_customer_mobile_e164, 2) = '44' THEN\n            v_customer_mobile_e164 := '+' || v_customer_mobile_e164;\n          ELSE\n            v_customer_mobile_e164 := '+44' || v_customer_mobile_e164;\n          END IF;\n        END IF;\n\n        IF v_customer_mobile_e164 !~ '^\\+[1-9][0-9]{7,14}$' THEN\n          v_customer_mobile_e164 := NULL;\n        END IF;\n      END IF;\n\n      IF v_customer_mobile_e164 IS NOT NULL THEN\n        SELECT id INTO v_customer_id\n        FROM customers\n        WHERE mobile_e164 = v_customer_mobile_e164\n        ORDER BY created_at ASC\n        LIMIT 1;\n      END IF;\n\n      IF v_customer_id IS NULL AND v_customer_mobile_raw IS NOT NULL THEN\n        SELECT id INTO v_customer_id\n        FROM customers\n        WHERE mobile_number IN (v_customer_mobile_raw, v_customer_mobile_e164)\n        ORDER BY created_at ASC\n        LIMIT 1;\n      END IF;\n\n      IF v_customer_id IS NOT NULL AND v_customer_mobile_e164 IS NOT NULL THEN\n        UPDATE customers\n        SET mobile_e164 = v_customer_mobile_e164\n        WHERE id = v_customer_id\n          AND mobile_e164 IS NULL\n          AND NOT EXISTS (\n            SELECT 1\n            FROM customers existing\n            WHERE existing.mobile_e164 = v_customer_mobile_e164\n              AND existing.id <> v_customer_id\n          );\n      END IF;\n\n      IF v_customer_id IS NULL THEN\n        IF v_customer_mobile_raw IS NULL AND v_customer_mobile_e164 IS NULL THEN\n          RAISE EXCEPTION 'Customer mobile number is required when creating a new customer';\n        END IF;\n\n        v_customer_first_name := NULLIF(BTRIM(p_customer_data->>'first_name'), '');\n        v_customer_last_name := NULLIF(BTRIM(p_customer_data->>'last_name'), '');\n        v_customer_email := NULLIF(LOWER(BTRIM(p_customer_data->>'email')), '');\n\n        INSERT INTO customers (\n          first_name,\n          last_name,\n          mobile_number,\n          mobile_e164,\n          email,\n          sms_opt_in\n        ) VALUES (\n          COALESCE(v_customer_first_name, 'Guest'),\n          COALESCE(v_customer_last_name, 'Guest'),\n          COALESCE(v_customer_mobile_e164, v_customer_mobile_raw),\n          v_customer_mobile_e164,\n          v_customer_email,\n          COALESCE((p_customer_data->>'sms_opt_in')::BOOLEAN, true)\n        )\n        RETURNING id INTO v_customer_id;\n      END IF;\n    END IF;\n  ELSE\n    v_customer_id := (p_booking_data->>'customer_id')::UUID;\n  END IF;\n\n  v_start_time := NULLIF(p_booking_data->>'start_time', '')::TIME;\n  v_end_time := NULLIF(p_booking_data->>'end_time', '')::TIME;\n\n  IF v_end_time IS NOT NULL AND v_start_time IS NOT NULL THEN\n    v_end_time_next_day := v_end_time <= v_start_time;\n  END IF;\n\n  INSERT INTO private_bookings (\n    customer_id,\n    event_date,\n    start_time,\n    end_time,\n    end_time_next_day,\n    setup_date,\n    setup_time,\n    guest_count,\n    event_type,\n    status,\n    deposit_amount,\n    balance_due_date,\n    internal_notes,\n    contract_note,\n    customer_requests,\n    special_requirements,\n    accessibility_needs,\n    source,\n    customer_first_name,\n    customer_last_name,\n    customer_name,\n    contact_phone,\n    contact_email,\n    created_by,\n    hold_expiry,\n    date_tbd,\n    deposit_waived,\n    deposit_waived_reason\n  ) VALUES (\n    v_customer_id,\n    (p_booking_data->>'event_date')::DATE,\n    v_start_time,\n    v_end_time,\n    v_end_time_next_day,\n    NULLIF(p_booking_data->>'setup_date', '')::DATE,\n    NULLIF(p_booking_data->>'setup_time', '')::TIME,\n    (p_booking_data->>'guest_count')::INTEGER,\n    p_booking_data->>'event_type',\n    COALESCE(p_booking_data->>'status', 'draft'),\n    COALESCE((p_booking_data->>'deposit_amount')::DECIMAL, 0),\n    NULLIF(p_booking_data->>'balance_due_date', '')::DATE,\n    p_booking_data->>'internal_notes',\n    p_booking_data->>'contract_note',\n    p_booking_data->>'customer_requests',\n    p_booking_data->>'special_requirements',\n    p_booking_data->>'accessibility_needs',\n    p_booking_data->>'source',\n    p_booking_data->>'customer_first_name',\n    p_booking_data->>'customer_last_name',\n    p_booking_data->>'customer_name',\n    p_booking_data->>'contact_phone',\n    NULLIF(p_booking_data->>'contact_email', ''),\n    (p_booking_data->>'created_by')::UUID,\n    (p_booking_data->>'hold_expiry')::TIMESTAMPTZ,\n    COALESCE((p_booking_data->>'date_tbd')::BOOLEAN, false),\n    COALESCE((p_booking_data->>'deposit_waived')::BOOLEAN, false),\n    p_booking_data->>'deposit_waived_reason'\n  )\n  RETURNING id INTO v_booking_id;\n\n  IF jsonb_array_length(p_items) > 0 THEN\n    INSERT INTO private_booking_items (\n      booking_id,\n      item_type,\n      description,\n      space_id,\n      package_id,\n      vendor_id,\n      quantity,\n      unit_price,\n      vat_rate,\n      notes,\n      display_order\n    )\n    SELECT\n      v_booking_id,\n      item->>'item_type',\n      item->>'description',\n      (item->>'space_id')::UUID,\n      (item->>'package_id')::UUID,\n      (item->>'vendor_id')::UUID,\n      (item->>'quantity')::INTEGER,\n      (item->>'unit_price')::DECIMAL,\n      COALESCE((item->>'vat_rate')::NUMERIC, 20),\n      item->>'notes',\n      COALESCE((item->>'display_order')::INTEGER, 0)\n    FROM jsonb_array_elements(p_items) AS item;\n  END IF;\n\n  SELECT to_jsonb(pb) || jsonb_build_object('customer_id', v_customer_id)\n  INTO v_booking_record\n  FROM private_bookings pb\n  WHERE pb.id = v_booking_id;\n\n  RETURN v_booking_record;\n\nEXCEPTION WHEN OTHERS THEN\n  RAISE;\nEND;\n$function$\n",
+  "triggers": [
+    "CREATE TRIGGER audit_balance_due_date_change AFTER UPDATE ON public.private_bookings FOR EACH ROW WHEN ((old.balance_due_date IS DISTINCT FROM new.balance_due_date)) EXECUTE FUNCTION audit_balance_due_date_change()",
+    "CREATE TRIGGER outside_private_hire_booking_guard AFTER UPDATE OF status, event_date, start_time, end_time, end_time_next_day, setup_date, setup_time ON public.private_bookings FOR EACH ROW EXECUTE FUNCTION enforce_private_hire_outside_bookings()",
+    "CREATE TRIGGER private_booking_invoice_link_changed AFTER UPDATE OF invoice_id, invoice_deposit_treatment ON public.private_bookings FOR EACH ROW WHEN (((old.invoice_id IS DISTINCT FROM new.invoice_id) OR (old.invoice_deposit_treatment IS DISTINCT FROM new.invoice_deposit_treatment))) EXECUTE FUNCTION after_private_booking_invoice_link()",
+    "CREATE TRIGGER private_booking_invoice_money_guard BEFORE DELETE OR UPDATE ON public.private_bookings FOR EACH ROW EXECUTE FUNCTION guard_private_booking_invoice_money()",
+    "CREATE TRIGGER private_bookings_delete_gate BEFORE DELETE ON public.private_bookings FOR EACH ROW EXECUTE FUNCTION prevent_hard_delete_when_sms_sent()",
+    "CREATE TRIGGER set_balance_due_date BEFORE INSERT OR UPDATE OF event_date ON public.private_bookings FOR EACH ROW EXECUTE FUNCTION calculate_balance_due_date()",
+    "CREATE TRIGGER sync_customer_name_trigger BEFORE INSERT OR UPDATE OF customer_id ON public.private_bookings FOR EACH ROW EXECUTE FUNCTION sync_customer_name_from_customers()",
+    "CREATE TRIGGER update_private_bookings_updated_at BEFORE UPDATE ON public.private_bookings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
+  ],
+  "row_count": 47,
+  "migrations": [
+    {
+      "name": "walk_ins_skip_service_window_guard",
+      "version": "20260910083051"
+    },
+    {
+      "name": "ticket_attendees_dining_requests",
+      "version": "20260910075719"
+    },
+    {
+      "name": "ticket_setup_and_attendees",
+      "version": "20260910075712"
+    },
+    {
+      "name": "marketing_monthly_roundup_cap_exempt",
+      "version": "20260909084500"
+    },
+    {
+      "name": "qr_width_frac_comment_matches_constraint",
+      "version": "20260908095842"
+    }
+  ],
+  "constraints": [
+    {
+      "conname": "chk_booking_times",
+      "definition": "CHECK (((end_time IS NULL) OR (end_time > start_time) OR (end_time_next_day = true)))"
+    },
+    {
+      "conname": "chk_email_format",
+      "definition": "CHECK (((contact_email IS NULL) OR (contact_email ~* '^[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'::text)))"
+    },
+    {
+      "conname": "chk_phone_format",
+      "definition": "CHECK (((contact_phone IS NULL) OR (contact_phone ~ '^\\+[1-9][0-9]{7,14}$'::text) OR (contact_phone ~ '^00[1-9][0-9]{7,14}$'::text) OR (contact_phone ~ '^0[0-9]{6,14}$'::text) OR (contact_phone ~ '^[1-9][0-9]{7,14}$'::text)))"
+    },
+    {
+      "conname": "chk_setup_before_start",
+      "definition": "CHECK (((setup_time IS NULL) OR (setup_date < event_date) OR ((setup_date = event_date) AND (setup_time <= start_time)) OR ((setup_date IS NULL) AND (setup_time <= start_time))))"
+    },
+    {
+      "conname": "private_bookings_cancellation_channel_check",
+      "definition": "CHECK (((cancellation_channel IS NULL) OR (cancellation_channel = ANY (ARRAY['email'::text, 'whatsapp'::text, 'text'::text, 'phone'::text, 'in_person'::text, 'other'::text]))))"
+    },
+    {
+      "conname": "private_bookings_cancellation_evidence_document_id_fkey",
+      "definition": "FOREIGN KEY (cancellation_evidence_document_id) REFERENCES private_booking_documents(id)"
+    },
+    {
+      "conname": "private_bookings_created_by_fkey",
+      "definition": "FOREIGN KEY (created_by) REFERENCES auth.users(id)"
+    },
+    {
+      "conname": "private_bookings_customer_id_fkey",
+      "definition": "FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "private_bookings_deposit_refund_status_check",
+      "definition": "CHECK ((deposit_refund_status = ANY (ARRAY['partially_refunded'::text, 'refunded'::text])))"
+    },
+    {
+      "conname": "private_bookings_discount_type_check",
+      "definition": "CHECK ((discount_type = ANY (ARRAY['percent'::text, 'fixed'::text])))"
+    },
+    {
+      "conname": "private_bookings_event_sheet_status_check",
+      "definition": "CHECK ((event_sheet_status = ANY (ARRAY['not_generated'::text, 'generated'::text, 'sent_to_staff'::text, 'locked'::text])))"
+    },
+    {
+      "conname": "private_bookings_final_details_status_check",
+      "definition": "CHECK ((final_details_status = ANY (ARRAY['not_requested'::text, 'requested'::text, 'complete'::text, 'incomplete'::text, 'overdue'::text, 'manager_reviewed'::text])))"
+    },
+    {
+      "conname": "private_bookings_invoice_deposit_treatment_check",
+      "definition": "CHECK ((invoice_deposit_treatment = ANY (ARRAY['held_separately'::text, 'deducted'::text])))"
+    },
+    {
+      "conname": "private_bookings_invoice_id_fkey",
+      "definition": "FOREIGN KEY (invoice_id) REFERENCES invoices(id)"
+    },
+    {
+      "conname": "private_bookings_layout_check",
+      "definition": "CHECK (((layout IS NULL) OR (layout = ANY (ARRAY['seated'::text, 'standing'::text, 'mixed'::text]))))"
+    },
+    {
+      "conname": "private_bookings_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "conname": "private_bookings_post_event_outcome_check",
+      "definition": "CHECK ((post_event_outcome = ANY (ARRAY['pending'::text, 'went_well'::text, 'issues'::text, 'skip'::text])))"
+    },
+    {
+      "conname": "private_bookings_post_event_status_check",
+      "definition": "CHECK (((post_event_status IS NULL) OR (post_event_status = ANY (ARRAY['awaiting_inspection'::text, 'inspection_complete'::text, 'deduction_discussion'::text, 'refund_processed'::text, 'complete'::text]))))"
+    },
+    {
+      "conname": "private_bookings_risk_status_check",
+      "definition": "CHECK ((risk_status = ANY (ARRAY['low'::text, 'normal'::text, 'high'::text, 'gm_approval_required'::text, 'approved'::text, 'rejected'::text])))"
+    },
+    {
+      "conname": "private_bookings_status_check",
+      "definition": "CHECK ((status = ANY (ARRAY['draft'::text, 'confirmed'::text, 'completed'::text, 'cancelled'::text])))"
+    },
+    {
+      "conname": "private_bookings_supplier_status_check",
+      "definition": "CHECK ((supplier_status = ANY (ARRAY['not_applicable'::text, 'requested'::text, 'incomplete'::text, 'approved'::text, 'rejected'::text])))"
+    },
+    {
+      "conname": "private_bookings_waiver_status_check",
+      "definition": "CHECK ((waiver_status = ANY (ARRAY['not_required'::text, 'required'::text, 'sent'::text, 'signed'::text, 'overdue'::text])))"
+    }
+  ]
+}
