@@ -1,5 +1,10 @@
 -- Restore the search_path on auto_close_past_event_tasks(), lost in a CREATE OR REPLACE today.
 --
+-- APPLIED to production on 13 September 2026 through the Supabase MCP, which recorded it at
+-- version 20260913110102. This file is named after that version, as supabase/migrations/README.md
+-- requires. The ledger's statement is this file with the comment block above the DO condensed:
+-- md5 ff7bf5cf4fffd81de2440c631c7b45eb, 2,169 bytes. The DO block itself is identical.
+--
 -- 20260527062350_security_hardening_2026_05_27 pinned this function with
 -- `ALTER FUNCTION public.auto_close_past_event_tasks() SET search_path = public, pg_catalog;`.
 -- Postgres keeps that setting in pg_proc.proconfig, and a CREATE OR REPLACE that does not restate
@@ -30,7 +35,7 @@
 --   when proconfig is NULL, so a re-run is a no-op, and the block then reads proconfig back and
 --   raises unless it holds the two entries. Nothing else in the schema moves.
 --
--- Rollback: supabase/rollbacks/20260913140000_restore_auto_close_search_path.sql
+-- Rollback: supabase/rollbacks/20260913110102_restore_auto_close_search_path.sql
 --   (the rollback exists for completeness; putting the hole back is not something to do)
 
 DO $migration$

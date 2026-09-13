@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20260913130000_sunday_lunch_service_message_walk_in_launch.sql.
+-- Rollback for supabase/migrations/20260913110049_sunday_lunch_service_message_walk_in_launch.sql.
 --
 -- Puts the old pre-order message back on service_statuses.sunday_lunch, exactly as captured on
 -- 13 September 2026, and restores the 4 November 2025 `updated_at` that row carried. Guarded the
