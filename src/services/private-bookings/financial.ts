@@ -1,3 +1,4 @@
+import { readBookingPaymentLedger } from '@/lib/private-bookings/payment-ledger'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 
@@ -49,9 +50,9 @@ export type PrivateBookingCancellationOutcome = {
  *
  * `deposit_paid` is sourced from `private_bookings.deposit_amount` and is only
  * counted when `deposit_paid_date` is set (i.e. the deposit has actually
- * landed). `balance_payments_total` sums every row in
- * `private_booking_payments` (these are non-deposit top-up payments recorded
- * after the deposit).
+ * landed). `balance_payments_total` includes original booking payments and
+ * money received directly against the linked invoice. Invoice copies and the
+ * applied deposit credit are excluded here so actual receipts count once.
  *
  * Dispute detection is sourced from `private_bookings.has_open_dispute`; staff
  * and future webhook handlers should set that structured flag rather than
@@ -72,34 +73,15 @@ export async function getPrivateBookingPaidTotals(
     logger.error('getPrivateBookingPaidTotals: booking not found', {
       metadata: { bookingId, error: bookingError?.message ?? null },
     })
-    return {
-      deposit_paid: 0,
-      balance_payments_total: 0,
-      total_paid: 0,
-      has_open_dispute: false,
-      event_date: null,
-    }
+    throw new Error('Could not load booking payment totals')
   }
 
   const depositPaid = booking.deposit_paid_date
     ? Number(booking.deposit_amount ?? 0)
     : 0
 
-  const { data: payments, error: paymentsError } = await db
-    .from('private_booking_payments')
-    .select('amount, notes')
-    .eq('booking_id', bookingId)
-
-  if (paymentsError) {
-    logger.error('getPrivateBookingPaidTotals: failed to load payments', {
-      metadata: { bookingId, error: paymentsError.message ?? null },
-    })
-  }
-
-  const balancePaymentsTotal = (payments ?? []).reduce(
-    (sum, p) => sum + Number(p?.amount ?? 0),
-    0,
-  )
+  const ledger = await readBookingPaymentLedger(bookingId)
+  const balancePaymentsTotal = ledger.balancePaymentsTotal
 
   return {
     deposit_paid: depositPaid,

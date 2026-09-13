@@ -677,8 +677,8 @@ export class EventService {
     const nextPosterImage = input.poster_image_url ?? currentEvent.poster_image_url
     const nextIsFree = input.is_free ?? currentEvent.is_free
     const nextPrice = input.price ?? currentEvent.price
-    const nextOnlineDiscountType = input.online_discount_type ?? currentEvent.online_discount_type
-    const nextOnlineDiscountValue = input.online_discount_value ?? currentEvent.online_discount_value
+    const nextOnlineDiscountType = input.online_discount_type === undefined ? currentEvent.online_discount_type : input.online_discount_type
+    const nextOnlineDiscountValue = input.online_discount_value === undefined ? currentEvent.online_discount_value : input.online_discount_value
     const nextPaymentMode = input.payment_mode ?? currentEvent.payment_mode
 
     let slug: string | undefined

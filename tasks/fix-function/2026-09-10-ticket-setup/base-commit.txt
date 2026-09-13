@@ -1,0 +1,83 @@
+5decd64c184ed3b91ce36334acf29b21f09d401f
+ M src/app/(authenticated)/marketing/page.tsx
+ M src/app/(authenticated)/private-bookings/[id]/PaymentHistoryTable.tsx
+ M src/app/(authenticated)/private-bookings/[id]/PrivateBookingDetailClient.tsx
+ M src/app/(authenticated)/private-bookings/[id]/page.tsx
+ M src/app/(authenticated)/table-bookings/boh/BohBookingsClient.tsx
+ M src/app/actions/__tests__/invoice-paypal.test.ts
+ M src/app/actions/__tests__/refundActions.test.ts
+ M src/app/actions/invoicePayPalActions.ts
+ M src/app/actions/invoices.ts
+ M src/app/actions/marketing-campaigns.ts
+ M src/app/actions/refundActions.ts
+ M src/app/api/cron/invoice-paypal-reconciliation/route.ts
+ M src/app/api/cron/oj-projects-billing/route.ts
+ M src/app/api/event-bookings/route.ts
+ M src/app/api/webhooks/paypal/invoices/route.ts
+ M src/lib/__tests__/contract-template.test.ts
+ M src/lib/contract-template.ts
+ M src/lib/email/marketing/campaigns/autumn-kick-off-quiz-night-2026-guests.json
+ M src/lib/email/marketing/campaigns/big-sing-friday-karaoke-night-2026-guests.json
+ M src/lib/email/marketing/campaigns/lovely-jubbly-charity-quiz-2026-guests.json
+ M src/lib/events/event-payments.ts
+ M src/lib/private-bookings/contract-lifecycle.ts
+ M src/services/__tests__/event-bookings.test.ts
+ M src/services/event-bookings.ts
+ M src/services/marketing-campaigns.ts
+ M src/services/private-bookings.test.ts
+ M src/services/private-bookings/financial.ts
+ M src/services/private-bookings/payments.ts
+ M src/services/private-bookings/queries.ts
+ M src/services/private-bookings/scheduled-sms.ts
+ M src/types/database.generated.ts
+ M src/types/invoices.ts
+ M src/types/private-bookings.ts
+ M tasks/lessons.md
+ M tests/api/eventBookingsRouteSmsMeta.test.ts
+ M tests/lib/eventPaymentSmsSafetyMeta.test.ts
+ M tests/services/privateBookingsFinancial.test.ts
+ M tests/services/privateBookingsScheduledSms.test.ts
+?? .playwright-cli/
+?? docs/design/brief-orange-jelly.md
+?? docs/design/brief-the-anchor.md
+?? docs/design/email-seasonal/
+?? docs/design/pdf-branding-audit.md
+?? docs/design/pdf-house-style-brief.md
+?? docs/design/sample-pack.zip
+?? docs/design/sample-pack/
+?? scripts/design/
+?? scripts/testing/event-standing-postgres.py
+?? scripts/testing/private-booking-settlement-postgres.py
+?? src/app/(authenticated)/marketing/__tests__/
+?? src/app/(authenticated)/private-bookings/[id]/PaymentHistoryTable.test.tsx
+?? src/lib/email/marketing/campaigns/autumn-jackpot-cash-bingo-2026-guests.json
+?? src/lib/email/marketing/campaigns/christmas-2026-business-followup-2026-09-07.json
+?? src/lib/email/marketing/campaigns/christmas-2026-business-followup-2026-10-01.json
+?? src/lib/email/marketing/campaigns/christmas-2026-business-followup-2026-10-26.json
+?? src/lib/invoices/__tests__/delivery-state.test.ts
+?? src/lib/invoices/delivery-state.ts
+?? src/lib/invoices/paypal-capture.ts
+?? src/lib/oj-projects/__tests__/billing-run-guard.test.ts
+?? src/lib/oj-projects/billing-run-guard.ts
+?? src/lib/private-bookings/payment-ledger.test.ts
+?? src/lib/private-bookings/payment-ledger.ts
+?? src/services/__tests__/marketing-list.test.ts
+?? supabase/migrations/20260905192946_private_booking_invoice_settlement.sql
+?? supabase/migrations/20260905192951_reconcile_verified_private_booking_capture.sql
+?? supabase/migrations/20260906143610_event_standing_after_seated_sold_out.sql
+?? supabase/migrations/20260906155336_outside_private_hire_blocking.sql
+?? supabase/migrations/20260910065400_ticket_setup_and_attendees.sql
+?? tasks/fix-function/2026-09-05-174500-private-booking-payments/
+?? tasks/garden-private-hire/
+?? tasks/maintenance-tracker/
+?? tasks/plan-2026-09-05-anchor-booking-growth.md
+?? tasks/seo-powerhouse/
+?? tasks/spec-event-table-talker-2026-09-09.md
+?? tasks/standing-ticket-policy/
+?? tasks/ticket-setup/
+?? tasks/venue-calendar-implementation-plan-2026-09-07.md
+?? tasks/venue-calendar-spec-review-2026-09-07.md
+?? tasks/venue-calendar-unification-spec-2026-09-07.md
+?? tests/api/invoicePayPalReconciliation.test.ts
+?? tests/api/invoicePayPalWebhook.test.ts
+?? tests/fixtures/

@@ -1,3 +1,4 @@
+import { readBookingPaymentLedger, readBookingPaymentLedgers } from '@/lib/private-bookings/payment-ledger';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { toLocalIsoDate } from '@/lib/dateUtils';
@@ -225,19 +226,13 @@ export async function fetchPrivateBookings(options: {
 
   const bookingIds = (data || []).map((booking) => booking.id).filter(Boolean);
   const holdExpiryById = new Map<string, string | null>();
-  const paymentSumById = new Map<string, number>();
+  const ledgers = await readBookingPaymentLedgers(bookingIds);
 
   if (bookingIds.length > 0) {
-    const [holdExpiryResult, paymentsResult] = await Promise.all([
-      supabase
+    const holdExpiryResult = await supabase
         .from('private_bookings')
         .select('id, hold_expiry')
-        .in('id', bookingIds),
-      supabase
-        .from('private_booking_payments')
-        .select('booking_id, amount')
-        .in('booking_id', bookingIds),
-    ]);
+        .in('id', bookingIds);
 
     if (holdExpiryResult.error) {
       logger.error('Error fetching hold expiry dates for private bookings:', { error: holdExpiryResult.error instanceof Error ? holdExpiryResult.error : new Error(String(holdExpiryResult.error)) });
@@ -246,19 +241,13 @@ export async function fetchPrivateBookings(options: {
         holdExpiryById.set(row.id, row.hold_expiry ?? null);
       }
     }
-
-    if (paymentsResult.data) {
-      for (const row of paymentsResult.data) {
-        paymentSumById.set(row.booking_id, (paymentSumById.get(row.booking_id) ?? 0) + toNumber(row.amount));
-      }
-    }
   }
 
   const enriched = (data || []).map((booking) => {
     // Customer-payable total is VAT-inclusive (stored prices are net)
     const bookingTotal = toNumber(booking.gross_total ?? booking.calculated_total ?? booking.total_amount);
-    const paymentSum = paymentSumById.get(booking.id) ?? 0;
-    const balanceRemaining = booking.final_payment_date ? 0 : Math.max(0, bookingTotal - paymentSum);
+    const paymentSum = ledgers.get(booking.id)?.eventPaidTotal ?? 0;
+    const balanceRemaining = Math.max(0, bookingTotal - paymentSum);
     return {
       ...booking,
       hold_expiry: holdExpiryById.get(booking.id) ?? undefined,
@@ -366,6 +355,7 @@ export async function getBookingById(id: string): Promise<PrivateBookingWithDeta
     payments?: PrivateBookingPayment[];
   };
 
+  const ledger = await readBookingPaymentLedger(id);
   const items = bookingCore.items ?? [];
 
    
@@ -392,7 +382,8 @@ export async function getBookingById(id: string): Promise<PrivateBookingWithDeta
     deposit_status: depositStatus,
     days_until_event: daysUntilEvent,
     audit_trail: auditTrail,
-    payments: (paymentsData ?? []) as PrivateBookingPayment[]
+    payments: ledger.payments,
+    applied_deposit_amount: ledger.appliedDepositAmount
   };
 
   return bookingWithDetails;
@@ -530,28 +521,13 @@ export async function getBookingByIdForMessages(id: string): Promise<PrivateBook
     throw new Error(smsError.message || 'Failed to fetch booking messages');
   }
 
-  // The balance reminder SMS prefills {balance_due} from this. Without the
-  // payments subtracted it quoted the whole booking total, so every reminder
-  // asked the customer for money they had already paid.
-  // Summed the same way as balance_remaining on the list query above, so the
-  // messages screen and the list never disagree about what is owed.
-  const { data: payments, error: paymentsError } = await supabase
-    .from('private_booking_payments')
-    .select('amount')
-    .eq('booking_id', id);
-
-  if (paymentsError) {
-    logger.error('Error fetching private booking payments for messages:', { error: paymentsError instanceof Error ? paymentsError : new Error(String(paymentsError)) });
-    throw new Error(paymentsError.message || 'Failed to fetch booking payments');
-  }
-
+  const ledger = await readBookingPaymentLedger(id);
   const bookingTotal = toNumber(booking.gross_total ?? booking.calculated_total ?? booking.total_amount);
-  const paymentSum = (payments ?? []).reduce((sum, row) => sum + toNumber(row.amount), 0);
 
   return {
     ...(booking as PrivateBookingWithDetails),
     deposit_status: normalizeDepositStatus(booking),
-    balance_remaining: booking.final_payment_date ? 0 : Math.max(0, bookingTotal - paymentSum),
+    balance_remaining: Math.max(0, bookingTotal - ledger.eventPaidTotal),
     sms_queue: smsQueue ?? [],
   };
 }

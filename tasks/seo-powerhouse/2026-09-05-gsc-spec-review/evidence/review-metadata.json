@@ -1,0 +1,21 @@
+{
+  "review_date": "2026-09-05",
+  "original_spec_sha256": "7b40df80185b9294cabe069e87e1b312ae1d6b20955595bf80449099222e774e",
+  "website_remote_main": "c3ba7d537ce247404c287c7ea1d44a51825970e2",
+  "website_local_head": "0e2a84d400840fbc8f7daae009373e96283cd3b3",
+  "website_deployment_id": "not verified",
+  "sitemap_urls_checked": 200,
+  "total_distinct_page_or_resource_urls_checked_excluding_sitemap": 214,
+  "method": "GET through curl with TLS verification and no redirect following; HTMLParser for canonical, robots and anchor tags; at most five concurrent requests",
+  "limitations": [
+    "No authenticated GSC inspection or export was independently obtained",
+    "No live database query or update performed",
+    "No booking submission, payment or message sent",
+    "No browser rendering, full JavaScript journey, application test suite or build run",
+    "No Vercel deployment log or Googlebot server log inspection performed"
+  ],
+  "quiz_raw_accessible_toilet_occurrences": 18,
+  "quiz_raw_gluten_free_occurrences": 1,
+  "quiz_gluten_free_context": "Only /food-menu/gluten-free navigation href; no visible gluten-free claim found in extracted text",
+  "sitemap_blocking_x_robots_headers": 0
+}

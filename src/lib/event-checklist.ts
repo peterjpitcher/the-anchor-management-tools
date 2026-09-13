@@ -37,8 +37,7 @@ export const EVENT_CHECKLIST_DEFINITIONS: EventChecklistDefinition[] = [
   { key: 'schedule_social_content', label: 'Schedule Social Posts', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'FB/IG', required: true, order: 4 },
   { key: 'schedule_event_email', label: 'Schedule Event Email', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Email', required: true, order: 5 },
   { key: 'schedule_stories', label: 'Scheduled Stories', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'FB/IG', required: true, order: 6 },
-  { key: 'setup_paid_advertising', label: 'Set Up Paid Advertising', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Paid Ads', required: true, order: 7 },
-  { key: 'send_whatsapp_reminder', label: 'WhatsApp Reminder (3 Days Before)', offsetDays: -3, channel: 'WhatsApp', required: true, order: 8 }
+  { key: 'send_whatsapp_reminder', label: 'WhatsApp Reminder (3 Days Before)', offsetDays: -3, channel: 'WhatsApp', required: true, order: 7 }
 ]
 
 const EVENT_CHECKLIST_TOTAL_TASKS = EVENT_CHECKLIST_DEFINITIONS.length

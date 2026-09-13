@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "title": "Your exclusive Christmas food offer ends this month",
+  "preheader": "Save 20% on food. Our email-only local business offer needs a booking before 31 October.",
+  "blocks": [
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "October is here. Let’s talk Christmas.",
+        "body": [
+          "Your exclusive email offer of 20% off food ends this month. If your team’s Christmas celebration is still on the to-do list, now is a good time to get it organised.",
+          "Our festive diary is filling fast. We want to prioritise local businesses wherever possible, so please get in touch while we can help you explore the available dates.",
+          "Book before 31 October 2026 to receive 20% off food only. This email-only deal is exclusively for local businesses; drinks and other charges are excluded. Mention this email when you enquire so we can include the offer in your quote."
+        ],
+        "buttons": [
+          {
+            "label": "Check your Christmas date",
+            "url": "https://www.the-anchor.pub/christmas-parties",
+            "variant": "primary"
+          }
+        ]
+      }
+    },
+    {
+      "type": "image_full",
+      "data": {
+        "image": {
+          "alt": "A Christmas dinner at The Anchor: roast beef, a Yorkshire pudding, pigs in blankets, stuffing, roast potatoes, mash, peas and sprouts",
+          "src": "https://www.the-anchor.pub/images/marketing/christmas-2026/christmas-dinner-hero.jpg",
+          "width": 600,
+          "height": 340
+        },
+        "placeholder_label": "Christmas dinner at The Anchor",
+        "placeholder_caption": "Christmas 2026"
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Let us take the organising off your list",
+        "body": [
+          "From a dinner for four to a larger company celebration, tell us your preferred date, rough headcount and any dietary requirements. Christmas dining runs from 10 November to 20 December, with festive buffets for 30 guests or more.",
+          "For Christmas dinner, a £10 deposit per person is taken at booking and deducted from your bill. Tell us your plans and we’ll confirm availability and the next steps."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "body": "Let us know how we can help your team celebrate. Mention this email when enquiring, and make your booking before 31 October to receive the food discount.",
+        "cta_url": "https://www.the-anchor.pub/christmas-parties",
+        "cta_label": "Check your Christmas date",
+        "phone_url": "tel:+441753682707",
+        "phone_label": "01753 682707",
+        "script_line": "Let’s look after your team",
+        "whatsapp_url": "https://wa.me/441753682707",
+        "whatsapp_label": "WhatsApp",
+        "reassurance_items": [
+          "Exclusive local business email offer",
+          "20% off food only"
+        ]
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "year": "2026",
+        "unsubscribe_url": "%%unsubscribe%%",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "reason_for_contact": "You are receiving this because you enquired about a booking or an event with us, because you said we could get in touch, or because you are just down the road and we thought this would be useful. It may have been a while ago now, and it is good to still be in touch."
+      }
+    }
+  ]
+}

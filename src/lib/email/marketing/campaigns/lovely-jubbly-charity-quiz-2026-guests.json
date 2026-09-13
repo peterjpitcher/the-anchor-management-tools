@@ -1,37 +1,41 @@
 {
   "schema_version": 1,
   "title": "Only Fools and Horses Charity Quiz on Friday 25 September",
-  "preheader": "£3 cash entry · every entry fee donated to Macmillan · four themed rounds · teams up to six",
+  "preheader": "£3 cash entry, all donated to Macmillan. Teams of up to six, 7pm start. No online payment.",
   "blocks": [
     {
       "type": "masthead_green",
       "data": {}
     },
     {
-      "type": "hero_image",
+      "type": "text_block",
+      "data": {
+        "heading": "He who dares, quizzes",
+        "body": [
+          "Friday 25 September · 7pm",
+          "Join The Anchor and the Stanwell Moor Community Wellbeing Garden for our Only Fools and Horses charity quiz. Every penny of your £3 entry fee goes to Macmillan Cancer Support.",
+          "Reserve online, pay on the night. Entry costs £3 per person, payable in cash when you arrive. No online payment is taken."
+        ],
+        "buttons": [
+          {
+            "label": "Reserve your charity quiz table",
+            "url": "https://www.the-anchor.pub/events/pub-quiz-lovely-jubbly-only-fools-and-horses-quiz-night-2026-09-25",
+            "variant": "primary"
+          }
+        ]
+      }
+    },
+    {
+      "type": "image_full",
       "data": {
         "image": {
-          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/e9e84ee8-c59b-4f93-80f6-7e7961a03240/square/1787655504304_Untitled_design_6.png",
           "alt": "Only Fools and Horses charity quiz artwork for The Anchor and Stanwell Moor Community Wellbeing Garden, in aid of Macmillan Cancer Support",
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/e9e84ee8-c59b-4f93-80f6-7e7961a03240/square/1787655504304_Untitled_design_6.png",
           "width": 600,
           "height": 600
         },
         "placeholder_label": "Charity Quiz artwork · square",
-        "placeholder_caption": "Lovely Jubbly Quiz Night",
-        "kicker": "Friday 25 September · 7pm",
-        "headline": "Lovely jubbly. It’s quiz night for a brilliant cause.",
-        "body": [
-          "We are joining forces with the Stanwell Moor Community Wellbeing Garden for an Only Fools and Horses themed quiz in aid of Macmillan Cancer Support. Every penny from the £3 entry fee will be donated."
-        ],
-        "cta_label": "Book your charity quiz table",
-        "cta_url": "https://www.the-anchor.pub/events/pub-quiz-lovely-jubbly-only-fools-and-horses-quiz-night-2026-09-25"
-      }
-    },
-    {
-      "type": "note_bar",
-      "data": {
-        "label": "Every entry fee donated.",
-        "body": "All prizes are funded separately, so the full £3 entry fee from every player goes to Macmillan Cancer Support."
+        "placeholder_caption": "Lovely Jubbly Quiz Night"
       }
     },
     {
@@ -39,20 +43,20 @@
       "data": {
         "rows": [
           {
-            "label": "Entry",
-            "value": "£3 cash per person"
-          },
-          {
             "label": "Teams",
-            "value": "Up to six people"
+            "value": "Up to six players"
           },
           {
-            "label": "Arrive",
-            "value": "From 6.45pm, ready for a 7pm start"
+            "label": "Arrive from",
+            "value": "6:30pm for a 7pm start"
+          },
+          {
+            "label": "Finish",
+            "value": "About 9:30pm"
           },
           {
             "label": "Donation",
-            "value": "100% of quiz entry fees to Macmillan Cancer Support"
+            "value": "All entry fees go to Macmillan; prizes are funded separately"
           }
         ]
       }
@@ -60,38 +64,38 @@
     {
       "type": "text_block",
       "data": {
-        "heading": "He who dares, quizzes",
+        "heading": "Lovely jubbly, four themed rounds",
         "body": [
-          "Expect four themed rounds covering characters, storylines, famous quotes, Peckham adventures and the deeper details proper fans remember. There is also a quick interactive middle game, spot prizes and a £25 bar voucher for first place.",
-          "Dress-up is welcome, dinner is available from 4pm to 9pm, and the aim is a feel-good Friday night that raises as much as possible for Macmillan.",
-          "This is an independently organised fundraiser and themed fan quiz. It is not an official Only Fools and Horses event."
+          "Expect classic quotes, familiar characters and Peckham adventures, plus an interactive middle game and spot prizes. First place wins a £25 bar voucher, valid on food or drink for one month; second-to-last wins a bottle of wine.",
+          "Dress-up is welcome. Come early for dinner, served from 4pm to 9pm, and settle in before the first question.",
+          "This is an independently organised fundraiser in aid of Macmillan Cancer Support, not organised by Macmillan. It is a themed fan quiz, not an official Only Fools and Horses event."
         ]
       }
     },
     {
       "type": "closing_panel_dark",
       "data": {
-        "script_line": "You know it makes sense",
-        "body": "Get your team together and book ahead for a Friday night of classic moments, big laughs and a brilliant cause.",
-        "cta_label": "Book your charity quiz table",
+        "body": "Get your team together for a Friday night of classic moments and a good cause.",
         "cta_url": "https://www.the-anchor.pub/events/pub-quiz-lovely-jubbly-only-fools-and-horses-quiz-night-2026-09-25",
+        "cta_label": "Reserve your charity quiz table",
+        "phone_url": "tel:+441753682707",
+        "phone_label": "01753 682707",
+        "script_line": "You know it makes sense",
+        "whatsapp_url": "https://wa.me/441753682707",
+        "whatsapp_label": "WhatsApp",
         "reassurance_items": [
           "Every entry fee donated",
           "Free parking right outside"
-        ],
-        "phone_label": "01753 682707",
-        "phone_url": "tel:+441753682707",
-        "whatsapp_label": "WhatsApp",
-        "whatsapp_url": "https://wa.me/441753682707"
+        ]
       }
     },
     {
       "type": "footer",
       "data": {
+        "year": "2026",
         "unsubscribe_url": "%%unsubscribe%%",
-        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us.",
         "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
-        "year": "2026"
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us."
       }
     }
   ]

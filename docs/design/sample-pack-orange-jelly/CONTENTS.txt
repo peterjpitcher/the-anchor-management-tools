@@ -1,0 +1,9 @@
+01-invoice.pdf  2pp  Invoice, overdue, 8 line items, mixed VAT rates
+02-invoice-with-deposit-notice.pdf  2pp  Invoice carrying a deposit notice block
+03-credit-note.pdf  1pp  Credit note against INV-0247. The template supports it; no live path issues one today
+04-receipt.pdf  2pp  Receipt (remittance advice), the invoice template as a variant
+05-quote.pdf  2pp  Quote with a 5% discount
+06-client-statement.pdf  1pp  Client statement for a quarter, with ageing
+07-private-booking-contract.pdf  5pp  Private booking contract, 5 pages. Currently in The Anchor style, moving to Orange Jelly
+08-interview-kit.pdf  6pp  Interview kit, with its running footer. Currently in The Anchor style, moving to Orange Jelly
+09-weekly-cashing-up.pdf  1pp  Weekly cashing up, landscape

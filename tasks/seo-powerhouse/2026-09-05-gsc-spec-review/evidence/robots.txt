@@ -1,0 +1,16 @@
+User-Agent: *
+Allow: /
+Allow: /_next/static/
+Disallow: /api/
+Disallow: /_next/data/
+Disallow: /_serverless/
+Disallow: /_partials/
+Disallow: /_api/
+Disallow: /_scripts/
+Disallow: /cdn-cgi/
+Disallow: /subscribe
+Disallow: /leave-review
+Disallow: /subscribe-for-digital-flyers
+Disallow: /p5-demo
+
+Sitemap: https://www.the-anchor.pub/sitemap.xml
