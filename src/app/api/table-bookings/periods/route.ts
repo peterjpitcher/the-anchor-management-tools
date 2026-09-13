@@ -227,6 +227,13 @@ export async function GET(request: NextRequest) {
         const offerability = getPeriodOfferability(period, date)
         const bookable = offerability.offerable
         const collect = await isDepositCollectionEnabled(supabase)
+        // Optional capability: an older database keeps the existing seasonal journey.
+        // A missing RPC never advertises unsupported one-course booking.
+        let coursePolicy: unknown = null
+        if (period.periodKind === 'christmas') {
+          const { data, error } = await supabase.rpc('christmas_course_policy_v01', { p_booking_date: date })
+          if (!error) coursePolicy = data
+        }
 
         return createApiResponse(
           {
@@ -241,6 +248,7 @@ export async function GET(request: NextRequest) {
               starts_on: period.startsOn,
               ends_on: period.endsOn,
               requires_preorder: period.requiresPreorder,
+              course_policy: coursePolicy,
               preorder_cutoff_days: period.preorderCutoffDays,
               deposit_basis: period.depositBasis,
               deposit_amount: period.depositAmount,

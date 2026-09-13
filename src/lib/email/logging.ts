@@ -46,6 +46,60 @@ function normalizeEmail(value: string): string {
 }
 
 /**
+ * How far along the delivery a status is. Higher never gives way to lower.
+ *
+ * Mirrors `EMAIL_STATUS_RANK` in the Resend webhook, which has always refused to walk a
+ * status backwards. This file did not, and it upserts on `resend_message_id`: a retried send
+ * that the provider deduplicated returns the same id, so the upsert rewrote a row that had
+ * already reached 'delivered' (or 'bounced') back to 'sent'. The delivery evidence for that
+ * message was then simply gone, and a bounce could reappear as a successful send.
+ *
+ * Terminal states share the top rank so none of them can overwrite another.
+ */
+const EMAIL_STATUS_RANK: Record<string, number> = {
+  queued: 0,
+  sent: 10,
+  delivery_delayed: 15,
+  delivered: 20,
+  read: 25,
+  opened: 30,
+  clicked: 35,
+  bounced: 100,
+  complained: 100,
+  failed: 100,
+  suppressed: 100,
+  received: 100,
+}
+
+function isStatusProgression(currentStatus: string | null | undefined, nextStatus: string): boolean {
+  if (!currentStatus || currentStatus === nextStatus) return true
+  return (EMAIL_STATUS_RANK[nextStatus] ?? 0) >= (EMAIL_STATUS_RANK[currentStatus] ?? 0)
+}
+
+/**
+ * What the row already says about this provider message, when it exists.
+ *
+ * A lookup failure returns null, which lets the write go ahead unchanged. Refusing to log a
+ * send because a read wobbled would be worse than the stale status this guards against.
+ */
+async function loadExistingStatus(
+  client: ReturnType<typeof createAdminClient>,
+  resendMessageId: string
+): Promise<{ status: string | null } | null> {
+  try {
+    const { data, error } = await (client.from('email_messages') as any)
+      .select('status')
+      .eq('resend_message_id', resendMessageId)
+      .maybeSingle()
+
+    if (error) return null
+    return data ? { status: (data.status as string | null) ?? null } : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Three-state suppression check.
  *
  * `isEmailSuppressed` below deliberately fails open: a database wobble must not stop a
@@ -162,6 +216,19 @@ export async function recordEmailMessage(params: RecordEmailMessageParams): Prom
     // When the provider gave us an id, key on it. A retried send that the provider
     // deduplicated returns the same id, and this turns that into the same log row rather
     // than a second one claiming a second delivery.
+    //
+    // FORWARD ONLY. The row may already carry a later status written by the delivery webhook,
+    // and an upsert replaces the whole row, so the status (and the timestamp that came with
+    // it) are dropped from the payload when they would walk the row backwards.
+    if (params.resendMessageId) {
+      const existing = await loadExistingStatus(client, params.resendMessageId)
+      if (existing && !isStatusProgression(existing.status, params.status)) {
+        delete insertPayload.status
+        delete insertPayload.sent_at
+        delete insertPayload.failed_at
+      }
+    }
+
     const table = (client.from('email_messages') as any)
     const query = params.resendMessageId
       ? table.upsert(insertPayload, { onConflict: 'resend_message_id' })

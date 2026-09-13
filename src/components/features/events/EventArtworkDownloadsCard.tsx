@@ -7,7 +7,10 @@ import {
   buildEventImageDownloadFileName,
   buildEventImageDownloadUrl,
   eventImageFileExtension,
+  isBrandedCompositePath,
+  storagePathFromPublicUrl,
 } from '@/lib/events/imageVariants'
+import { TableTalkerSheetButton } from './TableTalkerSheetButton'
 
 export function EventArtworkDownloadsCard({ event }: { event: Event }) {
   const assets = EVENT_IMAGE_VARIANT_ORDER.flatMap((variant) => {
@@ -55,6 +58,15 @@ export function EventArtworkDownloadsCard({ event }: { event: Event }) {
                   >
                     Download
                   </LinkButton>
+                  {/* The single panel is for checking; this is what gets
+                      printed: the branded panel three to an A4 sheet. */}
+                  {variant === 'table_talker' && (
+                    <TableTalkerSheetButton
+                      eventId={event.id}
+                      branded={isBrandedCompositePath(storagePathFromPublicUrl(url))}
+                      className="mt-2 w-full"
+                    />
+                  )}
                 </div>
               )
             })}

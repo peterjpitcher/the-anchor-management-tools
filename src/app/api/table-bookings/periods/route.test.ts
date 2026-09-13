@@ -25,6 +25,7 @@ const state = {
   /** The system_settings row as stored: the jsonb column wraps the value, {"value": true}. */
   settingsRow: { value: { value: true } } as Record<string, unknown> | null,
   settingsError: null as unknown,
+  coursePolicy: null as unknown,
 }
 
 /** Every filter the route applies, so the test can prove the live-only query was really built. */
@@ -54,6 +55,7 @@ function chainFor(table: string, resolve: () => QueryResult) {
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({
+    rpc: vi.fn(async () => ({ data: state.coursePolicy, error: state.coursePolicy ? null : { code: "PGRST202" } })),
     from: vi.fn((table: string) => {
       calls.tables.push(table)
       return {
@@ -89,7 +91,10 @@ vi.mock('@/lib/api/auth', async (importOriginal) => {
 import { GET } from './route'
 import { withApiAuth } from '@/lib/api/auth'
 
-/** The seeded Christmas period, as the database row the route actually reads. */
+/**
+ * The seeded Christmas period, as the database row the route actually reads, with the minimum
+ * lowered to 4 by 20260911133645_christmas_minimum_four.sql.
+ */
 const CHRISTMAS_ROW = {
   id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
   code: 'christmas-2026',
@@ -104,7 +109,7 @@ const CHRISTMAS_ROW = {
   deposit_basis: 'per_head',
   deposit_amount: '10.00',
   refund_cutoff_days: 7,
-  min_party_size: 6,
+  min_party_size: 4,
   max_party_size: 20,
   min_notice_hours: 24,
   legacy_booking_type: 'christmas',
@@ -243,7 +248,7 @@ describe('GET /api/table-bookings/periods', () => {
   })
 
   it('explains a party outside the period limits instead of pricing it', async () => {
-    const res = await GET(makeRequest('?date=2026-12-05&party_size=4'))
+    const res = await GET(makeRequest('?date=2026-12-05&party_size=3'))
     const json = await res.json()
 
     expect(json.data.deposit.if_accepted).toBeNull()
@@ -345,5 +350,19 @@ describe('GET /api/table-bookings/periods', () => {
     expect(json.data.period.period_kind).toBe('christmas')
     expect(json.data.period.code).toBe('christmas-2026')
     expect(json.data.deposit.if_accepted.amount).toBe(160)
+  })
+})
+
+
+describe('Christmas course capability', () => {
+  it('only advertises course selection when the database supports it', async () => {
+    state.period = CHRISTMAS_ROW
+    state.menu = [{ id: 'menu-main', course: 'main', name: 'Main', is_active: true }]
+    state.coursePolicy = { version: 1, preorder_closes_at: '2026-11-28T12:00:00Z', multiple_courses_available: true }
+    const response = await GET(makeRequest('?date=2026-12-05&party_size=6'))
+    expect((await response.json()).data.period.course_policy).toEqual(state.coursePolicy)
+    state.coursePolicy = null
+    const oldResponse = await GET(makeRequest('?date=2026-12-05&party_size=6'))
+    expect((await oldResponse.json()).data.period.course_policy).toBeNull()
   })
 })

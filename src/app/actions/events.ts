@@ -42,6 +42,7 @@ import { getSmartFirstName } from '@/lib/sms/bulk'
 import { logger } from '@/lib/logger'
 import { buildKeywordsUnion } from '@/lib/keywords'
 import { normalizeEventPricingFields, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
+import { formatEventWhenCompactLondon, resolveEventStartIso, type EventWhenSource } from '@/lib/events/event-when'
 import {
   eventTicketTypesEnabled,
   buildTicketBreakdownLines,
@@ -1196,38 +1197,19 @@ type UpdateEventManualBookingSeatsResult =
     }
   }
 
+/**
+ * The event's start for a text message.
+ *
+ * The date and time columns are a London wall clock reading, so the fallback resolves them with
+ * `whenLondonClockReaches`. Parsing them directly made a UTC server read a 7pm British Summer
+ * Time event as 8pm.
+ */
 function formatEventDateTimeForSms(input: {
   startDatetime?: string | null
   date?: string | null
   time?: string | null
 }): string {
-  let parsed: Date | null = null
-  if (input.startDatetime) {
-    const fromStart = new Date(input.startDatetime)
-    if (Number.isFinite(fromStart.getTime())) {
-      parsed = fromStart
-    }
-  }
-
-  if (!parsed && input.date) {
-    const fallbackTime = (input.time || '00:00').slice(0, 5)
-    const fallback = new Date(`${input.date}T${fallbackTime}:00`)
-    if (Number.isFinite(fallback.getTime())) {
-      parsed = fallback
-    }
-  }
-
-  if (!parsed) return 'your event time'
-
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/London',
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-    hourCycle: 'h12'
-  }).format(parsed)
+  return formatEventWhenCompactLondon(resolveEventStartIso(input)) ?? 'your event time'
 }
 
 function buildEventBookingCancelledSms(input: {
@@ -2093,10 +2075,13 @@ export async function cancelEventManualBooking(input: {
 
     await sendEventBookingCancelledEmail(supabase, {
       bookingId: bookingRow.id,
-      refundStatus,
-      refundAmount,
+      refundStatus: refundStatus === 'none' ? null : refundStatus,
+      // Zero is "no refund", not "a refund of £0.00". maxRefundable is what this booking actually
+      // paid, so it decides whether a refund sentence has anything to say at all.
+      refundAmount: refundAmount > 0 ? refundAmount : null,
       currency: 'GBP',
-      reason: 'staff_cancel'
+      reason: 'staff_cancel',
+      paymentTaken: maxRefundable > 0
     })
 
     await logAuditEvent({
@@ -2632,7 +2617,7 @@ async function sendEventTransferSms(input: {
   const firstName = getSmartFirstName(customer.first_name)
   const overpaymentPart =
     typeof input.overpayment === 'number' && input.overpayment > 0
-      ? ` We owe you £${input.overpayment.toFixed(2)} — we'll be in touch about your refund.`
+      ? ` We owe you £${input.overpayment.toFixed(2)} and we will be in touch about your refund.`
       : ''
   const body = ensureReplyInstruction(
     `The Anchor: Hi ${firstName}, your tickets have been transferred from ${input.fromEventName} to ${input.toEventName}.${overpaymentPart}${manageLink ? ` Manage booking: ${manageLink}` : ''}`,
@@ -2793,7 +2778,7 @@ export async function transferEventBooking(input: {
         attendee_names,
         attendees,
         customer:customers(id, first_name, mobile_number, sms_status),
-        event:events(id, name, payment_mode, price, price_per_seat, online_discount_type, online_discount_value, is_free)
+        event:events(id, name, payment_mode, price, price_per_seat, online_discount_type, online_discount_value, is_free, start_datetime, date, time)
       `)
       .eq('id', parsed.data.bookingId)
       .maybeSingle()
@@ -3209,7 +3194,7 @@ export async function transferEventBooking(input: {
         customerId: bookingRow.customer_id,
         fromEventName: fromEvent?.name || 'your original event',
         toEventName: targetEvent.name || 'your new event',
-        eventStartIso: targetEvent.start_datetime || null,
+        eventStartIso: resolveEventStartIso(targetEvent as EventWhenSource | null),
         appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
         overpayment
       })
@@ -3221,7 +3206,11 @@ export async function transferEventBooking(input: {
       bookingId: createResult.bookingId,
       fromEventName: fromEvent?.name || 'your original event',
       toEventName: targetEvent.name || 'your new event',
-      eventStartIso: targetEvent.start_datetime || null,
+      // Two months of the same recurring night share a name, so the old date is what makes the
+      // email readable: without it a move between two Quiz Nights said "from Quiz Night to
+      // Quiz Night".
+      fromEventStartIso: resolveEventStartIso(fromEvent as EventWhenSource | null),
+      eventStartIso: resolveEventStartIso(targetEvent as EventWhenSource | null),
       appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
       overpayment
     })

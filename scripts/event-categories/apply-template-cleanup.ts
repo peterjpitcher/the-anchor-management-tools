@@ -8,7 +8,12 @@ import type { Database } from '../../src/types/database.generated'
 
 type CategoryUpdate = Database['public']['Tables']['event_categories']['Update']
 
-const ACCESSIBILITY = 'The bar and dining area are step-free from the level car park. The beer garden has steps, with a ramp available on request. We do not currently have an accessible toilet. Assistance dogs are welcome. Please call 01753 682707 to discuss specific access needs.'
+// The approved block from the website SSOT §16, and the exact text all nine active event
+// categories hold in production today. The old wording said the garden has steps and that the
+// ground floor has an accessible toilet; there is one step, between the bar and the garden, and
+// there is no accessible toilet. Migration 20260911172000 corrected the records, so re-running
+// this script with the old constant would have put both claims straight back.
+const ACCESSIBILITY = "Getting in from the car park is step free, and so are the bar and the dining area. The beer garden is step free straight from the car park. From inside, there's one step between the bar and the garden, and we'll put our ramp out for it if you ask. We don't have an accessible toilet. If you'd like to check what will work best for you, give us a call on 01753 682707 and we'll help. Assistance dogs are always welcome."
 const NO_CHARGE_CANCELLATION = 'There is no cancellation charge. If you can no longer attend, please cancel your booking so the places can be released to other guests.'
 const NON_REFUNDABLE_CANCELLATION = 'Tickets are non-refundable. If you can no longer attend, please contact us as soon as possible.'
 

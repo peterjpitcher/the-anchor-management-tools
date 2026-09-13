@@ -1489,6 +1489,8 @@ function formatMarketingTemplateLabel(templateKey: string): string {
     event_reminder_promo_7d_paid: 'Promo reminder 7d paid',
     event_reminder_promo_3d: 'Promo reminder 3d',
     event_reminder_promo_3d_paid: 'Promo reminder 3d paid',
+    event_last_push: 'Last push',
+    event_last_push_paid: 'Last push paid',
   }
 
   return labels[templateKey] ?? formatStatusLabel(templateKey)

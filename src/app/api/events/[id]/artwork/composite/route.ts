@@ -30,7 +30,7 @@ import {
 } from '@/lib/events/artwork/branding-service'
 // The placement bounds come from geometry.ts rather than being written out
 // again here. They are the same numbers as the CHECK constraints in
-// 20260906095746_event_image_branding.sql, and a copy that drifts would either
+// the branding and QR size migrations, and a copy that drifts would either
 // reject a legal placement with a 400 or accept one the database then refuses.
 import {
   LOGO_MAX_WIDTH_FRAC,
@@ -61,7 +61,7 @@ const variantSchema = z.enum(
 
 /**
  * Every bound below matches a CHECK constraint in
- * `20260906095746_event_image_branding.sql` exactly.
+ * `the branding and QR size migrations` exactly.
  *
  * Kept in step on purpose: a value that passes here is guaranteed to survive the
  * UPDATE that records it, so the only way to hit a constraint violation is a
@@ -90,8 +90,7 @@ const logoSchema = z.object({
 const qrSchema = z.object({
   centreXFrac: z.number().min(0).max(1),
   centreYFrac: z.number().min(0).max(1),
-  // QR_MIN_WIDTH_FRAC is the 40mm print minimum at A4 (40 / 210, rounded up so a code can
-  // never print under 40mm). 0.40 is a sanity guard.
+  // Share the editor's 10% minimum and 40% maximum.
   widthFrac: z.number().min(QR_MIN_WIDTH_FRAC).max(QR_MAX_WIDTH_FRAC),
 })
 

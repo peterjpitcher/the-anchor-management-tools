@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
+import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
@@ -22,7 +23,13 @@ import {
   shouldSeatFohWalkIn,
   WALK_IN_TODAY_ONLY_MESSAGE,
 } from '@/lib/foh/walk-in'
-import { splitWalkInGuestName, createWalkInCustomer } from '@/lib/foh/walk-in-customer'
+import {
+  splitWalkInGuestName,
+  createWalkInCustomer,
+  startWalkInCustomerTrail,
+  finishWalkInCustomerTrail,
+  type WalkInCustomerTrail,
+} from '@/lib/foh/walk-in-customer'
 
 const CreateFohEventBookingSchema = z.object({
   customer_mode: z.enum(['selected', 'phone', 'anonymous']),
@@ -149,7 +156,21 @@ async function recordFohAnalyticsSafe(
 
 // ─── Route handler ────────────────────────────────────────────────────────────
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  // An anonymous walk-in gets a customer made up before its booking is attempted. The `finally`
+  // removes it again on any way out, a thrown error included, when no booking row came of it.
+  const walkInTrail = startWalkInCustomerTrail()
+  try {
+    return await createFohEventBooking(request, walkInTrail)
+  } finally {
+    await finishWalkInCustomerTrail(walkInTrail, 'POST /api/foh/event-bookings')
+  }
+}
+
+async function createFohEventBooking(
+  request: NextRequest,
+  walkInTrail: WalkInCustomerTrail,
+): Promise<NextResponse> {
   const auth = await requireFohPermission('edit')
   if (!auth.ok) {
     return auth.response
@@ -199,11 +220,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Selected event could not be found' }, { status: 404 })
   }
 
-  const todayIso = getLondonDateIso()
+  // A walk-in joins the service in force: the night before, from midnight until an
+  // after-midnight close. Only a walk-in needs the hours read to know it.
+  const serviceDateNow = payload.walk_in === true
+    ? (await resolveTradingDayNow(auth.supabase)).date
+    : getLondonDateIso()
   if (!isFohWalkInDateAllowed({
     walkIn: payload.walk_in === true,
     bookingDate: eventRow.date || '',
-    todayIso,
+    serviceDateNow,
   })) {
     return NextResponse.json({ error: WALK_IN_TODAY_ONLY_MESSAGE }, { status: 400 })
   }
@@ -336,6 +361,9 @@ export async function POST(request: NextRequest) {
       customerId = walkInCustomer.customerId
       normalizedPhone = walkInCustomer.syntheticPhone
       shouldSendBookingSms = false
+      walkInTrail.supabase = auth.supabase
+      walkInTrail.userId = auth.userId
+      walkInTrail.customer = walkInCustomer
     } catch (walkInError) {
       logger.error('Failed to create walk-in customer profile for event booking', {
         error: walkInError instanceof Error ? walkInError : new Error('Unknown walk-in customer error'),
@@ -408,12 +436,19 @@ export async function POST(request: NextRequest) {
     rpcResult
   } = result
 
+  // A booking exists only in these two states. Decided on the state, never on whether an id came
+  // back (tasks/lessons.md, 2026-07-03). The failure returns above leave it unset, and the
+  // tidy-up then keeps any customer a cancelled event booking still refers to.
+  if (resolvedState === 'confirmed' || resolvedState === 'pending_payment') {
+    walkInTrail.bookingPersisted = true
+  }
+
   // ── Walk-in: auto-mark table booking as seated ──────────────────────────────
   if (
     shouldSeatFohWalkIn({
       walkIn: payload.walk_in === true,
       bookingDate: eventRow.date,
-      todayIso,
+      serviceDateNow,
     }) &&
     resolvedState === 'confirmed' &&
     tableBookingId

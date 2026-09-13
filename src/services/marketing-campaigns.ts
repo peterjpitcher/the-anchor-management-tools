@@ -11,7 +11,11 @@ import {
   summariseClicksByRecipient,
 } from '@/lib/email/marketing/attribution'
 import { provisionCampaignLinks } from '@/lib/email/marketing/links'
-import { collectDestinationUrls } from '@/lib/email/marketing/render'
+import { collectDestinationUrls, renderCampaignText } from '@/lib/email/marketing/render'
+import { houseStyleErrors } from '@/lib/copy/house-style'
+import { findVenueClosureClaims } from '@/lib/email/marketing/venueClosureClaims'
+import { getBusinessHoursForDates } from '@/lib/business-hours/effective'
+import { toLocalIsoDate } from '@/lib/dateUtils'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import {
   marketingContentSchema,
@@ -322,6 +326,12 @@ export interface CampaignInput {
   audienceType?: MarketingAudienceType
   audience?: MarketingAudience
   utmCampaign?: string | null
+  /**
+   * Only the monthly round-up sets this. See `MarketingCampaign.ignoresFrequencyCap`: it is
+   * a standing editorial decision about one recurring email, not a way to get a late
+   * campaign out of the door.
+   */
+  ignoresFrequencyCap?: boolean
 }
 
 export async function createCampaign(
@@ -346,6 +356,13 @@ export async function createCampaign(
       audience_type: input.audienceType ?? 'business',
       audience: audienceToDb(audience),
       utm_campaign: emptyToNull(input.utmCampaign),
+      // Only sent when the caller actually asks for it. The column defaults to false, so
+      // omitting it is identical in effect and lets this code run against a database that
+      // has not had the exemption migration applied yet. Writing it unconditionally coupled
+      // every campaign creation to that migration, and creating a draft failed outright.
+      ...(input.ignoresFrequencyCap === undefined
+        ? {}
+        : { ignores_frequency_cap: input.ignoresFrequencyCap === true }),
       status: 'draft',
       created_by: userId,
     })
@@ -381,6 +398,7 @@ export async function updateCampaign(
   if (input.preheader !== undefined) payload.preheader = input.preheader.trim()
   if (input.content !== undefined) payload.content = parseCampaignContent(input.content)
   if (input.utmCampaign !== undefined) payload.utm_campaign = emptyToNull(input.utmCampaign)
+  if (input.ignoresFrequencyCap !== undefined) payload.ignores_frequency_cap = input.ignoresFrequencyCap === true
 
   if (input.audience !== undefined) {
     payload.audience = audienceToDb({
@@ -566,6 +584,50 @@ async function assertNoFrequencyCapCollision(
   if (message) throw new Error(message)
 }
 
+/**
+ * Refuses to schedule copy that tells a reader the pub is shut when it is open.
+ *
+ * Sits beside the frequency-cap guard for the same reason: scheduling is the moment a human
+ * is present and the content is about to be frozen, so it is the last place a mistake can be
+ * caught cheaply. Refusing here also means an already-scheduled campaign can never be killed
+ * at send time by a rule added after it was approved.
+ *
+ * The open days come from the published `business_hours` version in force on the send date,
+ * not from today's, because a campaign scheduled for December must be judged against
+ * December's hours.
+ *
+ * A failure to read the hours does NOT block the send. The phrasing half of the check needs
+ * no records and still runs, and refusing to schedule an otherwise good campaign because a
+ * lookup failed would turn this guard into an outage.
+ */
+async function assertNoMisleadingClosureCopy(
+  content: MarketingContent,
+  when: Date,
+): Promise<void> {
+  let openWeekdays: Set<number> | undefined
+
+  try {
+    const isoDate = toLocalIsoDate(when)
+    const rows = await getBusinessHoursForDates([isoDate])
+    const row = rows.get(isoDate)
+    if (row) {
+      // One date resolves one weekday, so anything not that weekday stays unknown and the
+      // factual half simply does not fire for it. Better silent than guessing.
+      openWeekdays = row.is_closed ? new Set() : new Set([row.day_of_week])
+    }
+  } catch {
+    // Deliberately swallowed. See the note above: the phrasing rule still runs.
+  }
+
+  const claims = findVenueClosureClaims(renderCampaignText(content), openWeekdays)
+  if (claims.length === 0) return
+
+  throw new Error(
+    `This copy would tell people we are shut when we are not. ${claims[0].message}` +
+      (claims.length > 1 ? ` (${claims.length - 1} more like it.)` : ''),
+  )
+}
+
 export async function scheduleCampaign(
   id: string,
   scheduledFor: string,
@@ -598,7 +660,27 @@ export async function scheduleCampaign(
     throw new Error('This audience matches nobody, so there is nothing to schedule')
   }
 
-  await assertNoFrequencyCapCollision(supabase, existing, when)
+  // A claim the SSOT bans outright, in copy about to be frozen and sent. Voice warnings are
+  // surfaced by the content lint instead: those are worth fixing and never worth refusing a
+  // send over, and a checker that blocks on "premium" gets switched off. Every campaign, the
+  // cap-exempt monthly round-ups included: until 11 September 2026 this sat inside the
+  // exemption below by mistake, so a round-up could be scheduled carrying a banned claim.
+  const bannedClaims = houseStyleErrors(renderCampaignText(content))
+  if (bannedClaims.length > 0) {
+    throw new Error(
+      `This copy carries a claim the brand rules ban. "${bannedClaims[0].matched}": ` +
+        `${bannedClaims[0].message}` +
+        (bannedClaims.length > 1 ? ` (${bannedClaims.length - 1} more like it.)` : ''),
+    )
+  }
+
+  // The monthly round-up is exempt in SQL, so the schedule-time courtesy check would only
+  // refuse a collision the send itself will handle. Checking it anyway would make the guard
+  // and the enforcement disagree, and the guard is the one people believe.
+  if (!existing.ignoresFrequencyCap) {
+    await assertNoFrequencyCapCollision(supabase, existing, when)
+  }
+  await assertNoMisleadingClosureCopy(content, when)
 
   const now = new Date().toISOString()
   const linkMap = await provisionLinkMap(id, existing.utmCampaign ?? id, content)

@@ -17,6 +17,12 @@ interface AppShellProps {
   fohEmployeeId?: string
   userName: string
   userRole: string
+  /**
+   * Drives the super-admin-only nav items. Resolved on the server from the
+   * user's roles, never inferred from the userRole display label. Hiding an item
+   * is a courtesy: the pages and actions behind it re-check the role themselves.
+   */
+  isSuperAdmin?: boolean
   onSignOut: () => void
   isSigningOut: boolean
 }
@@ -28,14 +34,15 @@ export function AppShell({
   fohEmployeeId,
   userName,
   userRole,
+  isSuperAdmin = false,
   onSignOut,
   isSigningOut,
 }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { hasPermission } = usePermissions()
   const navGroups = useMemo(
-    () => filterNavGroupsForPermissions(NAV_GROUPS, hasPermission),
-    [hasPermission],
+    () => filterNavGroupsForPermissions(NAV_GROUPS, hasPermission, { isSuperAdmin }),
+    [hasPermission, isSuperAdmin],
   )
 
   const openMobile = useCallback(() => setMobileOpen(true), [])

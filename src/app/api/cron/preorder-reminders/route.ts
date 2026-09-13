@@ -33,10 +33,12 @@ import { reportCronFailure } from '@/lib/cron/alerting'
 import { sendEmail } from '@/lib/email/emailService'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { createTableManageToken } from '@/lib/table-bookings/manage-booking'
+import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
 import {
   decidePreorderChases,
   describePreorderGaps,
   getPreorderCompleteness,
+  getPreorderCutoff,
   isPreorderEnabled,
   loadPreorderOrder,
   PREORDER_BOOKER_REMINDER_DAYS,
@@ -50,6 +52,15 @@ import {
   toLocalIsoDate,
 } from '@/lib/dateUtils'
 import type { PreorderReminderKind } from '@/types/preorders'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import {
+  GUEST_CHANNEL_COLUMNS,
+  notifyTableBookingGuestEmailFirst,
+  type GuestChannelCustomer,
+} from '@/lib/table-bookings/guest-notify'
+import { buildTableBookingPreorderReminderEmail } from '@/lib/table-bookings/guest-emails'
+import { buildPreorderReminderText } from '@/lib/table-bookings/guest-texts'
+import { preorderReminderFacts } from '@/lib/table-bookings/fallback-details'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -78,10 +89,19 @@ type CandidateBooking = {
   booking_reference: string
   booking_date: string
   booking_time: string | null
+  start_datetime: string | null
   party_size: number | null
   customer_id: string | null
   booking_period_id: string | null
   booking_period_name: string | null
+  /** The course tier each guest is on, which decides what is still owed. */
+  christmas_course_counts: number[] | null
+}
+
+/** The deadline this booking is being chased against, for the wording of the chase. */
+type PreorderDeadline = {
+  cutoffDays: number | null
+  closesAtIso: string | null
 }
 
 type Booker = {
@@ -107,6 +127,7 @@ function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: string }).code === '23505'
 }
 
+/** Still needed by the manager escalation below, which is written out here. */
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -114,6 +135,35 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+}
+
+/**
+ * The chase, as both paths send it.
+ *
+ * The wording comes from the course tiers on the booking rather than from a fixed sentence. The
+ * old line, "Every guest needs to choose a main course. A starter and a dessert are optional.",
+ * contradicted the rule the sweep was chasing: a two or three course cover is only complete when
+ * every one of its courses is chosen, so a guest who read it and picked a main was still
+ * incomplete and still being escalated to the manager.
+ */
+function buildPreorderReminderEmail(
+  booking: CandidateBooking,
+  booker: Booker,
+  manageUrl: string,
+  deadline: PreorderDeadline,
+) {
+  return buildTableBookingPreorderReminderEmail({
+    firstName: booker.firstName,
+    bookingReference: booking.booking_reference,
+    bookingDate: booking.booking_date,
+    bookingTime: booking.booking_time,
+    partySize: booking.party_size,
+    manageLink: manageUrl,
+    periodName: booking.booking_period_name,
+    courseCounts: booking.christmas_course_counts,
+    preorderCutoffDays: deadline.cutoffDays,
+    preorderClosesAtIso: deadline.closesAtIso,
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -129,6 +179,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, skipped: true, reason: 'preorder_disabled' })
     }
 
+    // Owner decision, 11 September 2026: the booker reminder goes by email first, with a text
+    // only when there is no usable address or the email fails. Read once per sweep; off (and
+    // any failure to read it) is today's text-and-email pair.
+    const bookerReminderEmailFirst = await isMessagingFlagOn('table_preorder_email_first')
+
     const result = {
       checked: 0,
       alreadyComplete: 0,
@@ -136,6 +191,8 @@ export async function GET(request: NextRequest) {
       managerEscalations: 0,
       skipped: 0,
       failed: 0,
+      // Chases that went out at full link length because shortening failed.
+      shortLinkFallbacks: 0,
     }
 
     // Cutoffs are per period, so the window has to reach the furthest one. Without this a period
@@ -162,8 +219,8 @@ export async function GET(request: NextRequest) {
     const { data: bookingRows, error: bookingError } = await supabase
       .from('table_bookings')
       .select(
-        'id, booking_reference, booking_date, booking_time, party_size, customer_id, ' +
-          'booking_period_id, booking_period_name',
+        'id, booking_reference, booking_date, booking_time, start_datetime, party_size, customer_id, ' +
+          'booking_period_id, booking_period_name, christmas_course_counts',
       )
       .gte('booking_date', today)
       .lte('booking_date', windowEnd)
@@ -224,12 +281,21 @@ export async function GET(request: NextRequest) {
         ? cutoffByPeriod.get(booking.booking_period_id) ?? null
         : null
 
+      // The same rule the manage page uses to lock the form, so a guest is never texted a link to
+      // a form that will refuse them, and the same instant the chase quotes as its deadline.
+      const cutoff = getPreorderCutoff({ bookingDate: booking.booking_date, preorderCutoffDays: cutoffDays })
+      const deadline: PreorderDeadline = {
+        cutoffDays,
+        closesAtIso: cutoff.closesAt ? cutoff.closesAt.toISOString() : null,
+      }
+
       const due: PreorderReminderKind[] = decidePreorderChases({
         daysUntilBooking: days,
         cutoffDays,
         bookerReminderSentOn: sentOn.get(`${booking.id}:booker_reminder`) ?? null,
         managerEscalationSent: sentOn.has(`${booking.id}:manager_escalation`),
         todayIso: today,
+        preorderClosed: cutoff.closed,
       })
 
       if (due.length === 0) {
@@ -260,8 +326,11 @@ export async function GET(request: NextRequest) {
 
         try {
           if (kind === 'booker_reminder') {
-            await sendBookerReminder(supabase, booking, booker)
+            const reminder = bookerReminderEmailFirst
+              ? await sendBookerReminderEmailFirst(supabase, booking, booker, deadline)
+              : await sendBookerReminder(supabase, booking, booker, deadline)
             result.bookerReminders++
+            if (reminder.shortLinkFallback) result.shortLinkFallbacks++
           } else {
             await sendManagerEscalation(booking, booker, describePreorderGaps(completeness))
             result.managerEscalations++
@@ -350,30 +419,45 @@ async function loadBooker(
  * The SMS goes through the jobs queue, which owns retries, rate limits and the outbound message log.
  * The email goes direct, because the queue has no email job type and adding one for two messages a
  * booking is the sort of new delivery subsystem this design exists to avoid.
+ *
+ * The email is built by the shared template, exactly as the email-first path builds it, so the
+ * two cannot say different things. It used to be written out here with no text part and a
+ * "please give us a ring" line that named no number whenever the contact-phone variable was
+ * unset.
  */
 async function sendBookerReminder(
   supabase: ReturnType<typeof createAdminClient>,
   booking: CandidateBooking,
   booker: Booker | null,
-): Promise<void> {
+  deadline: PreorderDeadline,
+): Promise<{ shortLinkFallback: boolean }> {
   if (!booker) throw new Error('Booking has no customer to chase')
   if (!booker.phone && !booker.email) throw new Error('Booker has neither a mobile number nor an email')
 
   const token = await createTableManageToken(supabase, {
     customerId: booker.id,
     tableBookingId: booking.id,
-    bookingStartIso: null,
+    // The booking's own start, so the link lives until the sitting rather than for a flat
+    // fortnight from the chase.
+    bookingStartIso: booking.start_datetime,
     appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
   })
 
-  const bookingMoment = formatDateWithTimeForSms(booking.booking_date, booking.booking_time)
-  const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || null
+  // Shortened once here so the queued SMS and the email carry the same link.
+  const manage = await buildGuestShortLink({
+    longUrl: token.url,
+    linkKind: 'table_manage',
+    customerId: booker.id,
+    tableBookingId: booking.id,
+  })
 
   if (booker.phone && booker.smsActive) {
-    // Straight apostrophes and no dashes: one curly character drops the segment limit from 160 to 70.
-    const message =
-      `The Anchor: ${booker.firstName}, we still need the food choices for your booking on ` +
-      `${bookingMoment}. Every guest needs a main course. Choose here: ${token.url}`
+    const message = buildPreorderReminderText({
+      firstName: booker.firstName,
+      bookingDate: booking.booking_date,
+      bookingTime: booking.booking_time,
+      manageLink: manage.url,
+    })
 
     // No `unique` key on the enqueue: the ledger row claimed above is the idempotency, and a second
     // mechanism here would only add a lock round trip and another way for the two to disagree.
@@ -392,21 +476,13 @@ async function sendBookerReminder(
   }
 
   if (booker.email) {
-    const html = [
-      `<p>Hello ${escapeHtml(booker.firstName)},</p>`,
-      `<p>We still need the food choices for your booking at The Anchor on ` +
-        `${escapeHtml(bookingMoment)} (reference ${escapeHtml(booking.booking_reference)}).</p>`,
-      '<p>Every guest needs to choose a main course. A starter and a dessert are optional.</p>',
-      `<p><a href="${escapeHtml(token.url)}">Choose your food here</a></p>`,
-      contactPhone
-        ? `<p>Prefer to do it over the telephone? Ring us on ${escapeHtml(contactPhone)}.</p>`
-        : '<p>Prefer to do it over the telephone? Please give us a ring.</p>',
-    ].join('')
+    const email = buildPreorderReminderEmail(booking, booker, manage.url, deadline)
 
     const emailResult = await sendEmail({
       to: booker.email,
-      subject: `Your food choices for ${booking.booking_reference}`,
-      html,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
       customerId: booker.id,
       tableBookingId: booking.id,
     })
@@ -415,6 +491,91 @@ async function sendBookerReminder(
       throw new Error(emailResult.error || 'Failed to send the pre-order reminder email')
     }
   }
+
+  return { shortLinkFallback: !manage.shortened }
+}
+
+/**
+ * The booker reminder by email first (messaging flag table_preorder_email_first).
+ *
+ * One message, not two: the email when the booker has a usable address, otherwise (or when the
+ * email fails in the same attempt) the same text as today, sent straight away rather than
+ * through the jobs queue. The email gains the comm type and the address health check the old
+ * direct email lacked. Anything that reaches nobody is thrown, so the sweep counts it as failed,
+ * and the audit row names the booking. The ledger row stays claimed, as for every other failure.
+ */
+async function sendBookerReminderEmailFirst(
+  supabase: ReturnType<typeof createAdminClient>,
+  booking: CandidateBooking,
+  booker: Booker | null,
+  deadline: PreorderDeadline,
+): Promise<{ shortLinkFallback: boolean }> {
+  if (!booker) throw new Error('Booking has no customer to chase')
+
+  const { data: customerRow, error: customerError } = await supabase
+    .from('customers')
+    .select(GUEST_CHANNEL_COLUMNS)
+    .eq('id', booker.id)
+    .maybeSingle()
+
+  if (customerError) throw customerError
+  if (!customerRow) throw new Error('Booker could not be loaded')
+  const customer = customerRow as unknown as GuestChannelCustomer
+
+  const token = await createTableManageToken(supabase, {
+    customerId: booker.id,
+    tableBookingId: booking.id,
+    // The booking's own start, so the link lives until the sitting rather than for a flat
+    // fortnight from the chase.
+    bookingStartIso: booking.start_datetime,
+    appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+  })
+
+  // Shortened once so the email and a fallback text carry the same link.
+  const manage = await buildGuestShortLink({
+    longUrl: token.url,
+    linkKind: 'table_manage',
+    customerId: booker.id,
+    tableBookingId: booking.id,
+  })
+
+  const templateKey = 'table_booking_preorder_reminder'
+
+  const outcome = await notifyTableBookingGuestEmailFirst({
+    supabase,
+    templateKey,
+    tableBookingId: booking.id,
+    customer,
+    email: buildPreorderReminderEmail(booking, booker, manage.url, deadline),
+    sms: {
+      to: booker.phone,
+      // Today's text, word for word.
+      body: buildPreorderReminderText({
+        firstName: booker.firstName,
+        bookingDate: booking.booking_date,
+        bookingTime: booking.booking_time,
+        manageLink: manage.url,
+      }),
+    },
+    idempotencyKey: `${templateKey}:${booking.id}`,
+    auditContext: { booking_reference: booking.booking_reference, short_link_fallback: !manage.shortened },
+    fallback: {
+      message: 'preorder_reminder',
+      // The sweep only chases an order that is required, incomplete and still open.
+      facts: preorderReminderFacts({
+        bookingDate: booking.booking_date,
+        bookingTime: booking.booking_time,
+        choicesOutstanding: true,
+      }),
+      link: manage.shortened ? 'short_link' : 'full_url',
+    },
+  })
+
+  if (outcome.status !== 'sent') {
+    throw new Error(`Pre-order reminder reached nobody (${outcome.status}): ${outcome.error ?? 'unknown'}`)
+  }
+
+  return { shortLinkFallback: !manage.shortened }
 }
 
 /**

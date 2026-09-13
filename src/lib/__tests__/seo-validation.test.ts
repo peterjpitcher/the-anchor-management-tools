@@ -937,6 +937,23 @@ describe('validateGeneratedContent (full mode, with options)', () => {
       expect(issue!.severity).toBe('warning')
     })
 
+    it('allows one exclamation mark and warns at two, as SSOT section 1 does', () => {
+      const one = buildValidDraft()
+      one.metaTitle = 'Live Music at The Anchor!'
+      expect(validateGeneratedContent(one, buildValidOptions()).issues.some(i => i.code === 'excessive_exclamation')).toBe(false)
+      const two = buildValidDraft()
+      two.metaTitle = 'Live Music! At The Anchor!'
+      expect(validateGeneratedContent(two, buildValidOptions()).issues.some(i => i.code === 'excessive_exclamation')).toBe(true)
+    })
+
+    it('sends a banned claim back for repair rather than letting it publish', () => {
+      const draft = buildValidDraft()
+      draft.shortDescription = `${draft.shortDescription} Doors open at 6:30pm.`
+      const issue = validateGeneratedContent(draft, buildValidOptions()).issues.find(i => i.code === 'banned_claim')
+      expect(issue).toBeDefined()
+      expect(issue!.severity).toBe('repairable')
+    })
+
     it('should report warning for generic filler phrases', () => {
       const draft = buildValidDraft()
       draft.metaDescription = 'An unforgettable evening of live music with Jessica Lovelock at The Anchor in Stanwell Moor with something for everyone.'

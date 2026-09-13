@@ -40,6 +40,7 @@ export interface Event {
   social_image_url?: string | null;
   story_image_url?: string | null;
   print_poster_url?: string | null;
+  table_talker_url?: string | null;
   gallery_image_urls?: string[] | null;
   poster_image_url?: string | null;
   thumbnail_image_url?: string | null;

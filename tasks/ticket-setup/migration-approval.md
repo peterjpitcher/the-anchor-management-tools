@@ -8,7 +8,7 @@ Production: `the-anchor-management-tools`, project ref `tfcasgxopxegwrabvwat`.
 The repository `.env.local` public URL resolves to `https://tfcasgxopxegwrabvwat.supabase.co`.
 
 Migration name: `ticket_setup_and_attendees`.
-Exact SQL: [20260910065400_ticket_setup_and_attendees.sql](../../supabase/migrations/20260910065400_ticket_setup_and_attendees.sql).
+Exact SQL: [20260910075712_ticket_setup_and_attendees.sql](../../supabase/migrations/20260910075712_ticket_setup_and_attendees.sql).
 SHA-256: `3c932cde7891ed338c8fcd548343b285d96d0ce804d6db84d002c8b1ab28ee21`.
 
 Apply only through the verified Supabase MCP after the owner approves this exact target, checksum and forward-fix plan. Regenerate this packet if SQL changes.

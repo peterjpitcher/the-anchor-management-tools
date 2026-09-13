@@ -33,7 +33,7 @@ export function WinBackCampaign() {
   const [open, setOpen] = useState(false)
   const [inactiveMonths, setInactiveMonths] = useState('6')
   const [message, setMessage] = useState(
-    "The Anchor: Hi there, we miss you! It's been a while — come back and visit us soon. Call 01753 682707 or book at the-anchor.pub"
+    "The Anchor: Hi, it's been a while. Fancy a Sunday roast, a pint in the garden or a quiz night? Book at the-anchor.pub or call 01753 682707."
   )
   const [previewCount, setPreviewCount] = useState<number | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)

@@ -3,10 +3,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PAYPAL_DEFAULT_CURRENCY, refundPayPalPayment } from '@/lib/paypal'
-import { sendRefundNotification } from '@/lib/refund-notifications'
+import { sendRefundNotification, type RefundSubject } from '@/lib/refund-notifications'
 import {
   sendDepositRefundEmail,
-  sendDepositRefundWithDeductionsEmail,
+  sendDepositPartRefundEmail,
+  sendPrivateBookingRefundSentEmail,
 } from '@/lib/email/private-booking-emails'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -29,6 +30,13 @@ const REVALIDATE_PATHS: Record<SourceType, string> = {
   parking: '/parking',
 }
 
+/** How the refund email names the booking the money came off. */
+const REFUND_SUBJECTS: Record<SourceType, RefundSubject> = {
+  private_booking: 'private_booking',
+  table_booking: 'table_booking',
+  parking: 'parking',
+}
+
 const PAYPAL_REFUND_WINDOW_DAYS = 180
 
 interface SourceBookingData {
@@ -42,6 +50,15 @@ interface SourceBookingData {
   customerPhone: string | null
   currency: string
   appliedInvoiceId?: string | null
+  /**
+   * The date the booking is for, and a reference the guest can quote. Loaded so the refund
+   * email can name which booking the money came off: it used to say only the amount, which
+   * told a guest with several bookings with us nothing at all.
+   */
+  bookingDate: string | null
+  reference: string | null
+  /** The parent booking id, so the refund email is logged against the booking. */
+  parkingBookingId?: string | null
 }
 
 async function getAuthenticatedUser(): Promise<{ userId: string } | { error: string }> {
@@ -64,7 +81,7 @@ async function loadSourceBooking(
   if (sourceType === 'private_booking') {
     const { data } = await db
       .from('private_bookings')
-      .select('id, paypal_deposit_capture_id, deposit_paid_date, deposit_amount, customer_id, customer_name, contact_email, contact_phone, invoice_id, invoice_deposit_treatment')
+      .select('id, paypal_deposit_capture_id, deposit_paid_date, deposit_amount, customer_id, customer_name, contact_email, contact_phone, invoice_id, invoice_deposit_treatment, event_date')
       .eq('id', sourceId)
       .maybeSingle()
     if (!data) return null
@@ -79,13 +96,15 @@ async function loadSourceBooking(
       customerPhone: data.contact_phone,
       currency: PAYPAL_DEFAULT_CURRENCY,
       appliedInvoiceId: data.invoice_deposit_treatment === 'deducted' ? data.invoice_id : null,
+      bookingDate: data.event_date ?? null,
+      reference: null,
     }
   }
 
   if (sourceType === 'table_booking') {
     const { data } = await db
       .from('table_bookings')
-      .select('id, paypal_deposit_capture_id, card_capture_completed_at, deposit_amount, deposit_amount_locked, customer_id, customers(first_name, last_name, email, mobile_e164)')
+      .select('id, paypal_deposit_capture_id, card_capture_completed_at, deposit_amount, deposit_amount_locked, customer_id, booking_date, booking_reference, customers(first_name, last_name, email, mobile_e164)')
       .eq('id', sourceId)
       .maybeSingle()
     if (!data) return null
@@ -100,13 +119,15 @@ async function loadSourceBooking(
       customerEmail: customer?.email ?? null,
       customerPhone: customer?.mobile_e164 ?? null,
       currency: PAYPAL_DEFAULT_CURRENCY,
+      bookingDate: data.booking_date ?? null,
+      reference: data.booking_reference ?? null,
     }
   }
 
   if (sourceType === 'parking') {
     const { data } = await db
       .from('parking_booking_payments')
-      .select('id, transaction_id, paid_at, amount, currency, booking_id, parking_bookings(customer_id, customer_first_name, customer_last_name, customer_email, customer_mobile)')
+      .select('id, transaction_id, paid_at, amount, currency, booking_id, parking_bookings(customer_id, customer_first_name, customer_last_name, customer_email, customer_mobile, start_at, reference)')
       .eq('id', sourceId)
       .maybeSingle()
     if (!data) return null
@@ -124,6 +145,9 @@ async function loadSourceBooking(
       customerEmail: booking?.customer_email ?? null,
       customerPhone: booking?.customer_mobile ?? null,
       currency: (data.currency || PAYPAL_DEFAULT_CURRENCY).toUpperCase(),
+      bookingDate: booking?.start_at ?? null,
+      reference: booking?.reference ?? null,
+      parkingBookingId: (data as any).booking_id ?? null,
     }
   }
 
@@ -233,12 +257,19 @@ function isCaptureExpired(captureDate: string | null): boolean {
   return diffDays > PAYPAL_REFUND_WINDOW_DAYS
 }
 
+/**
+ * Reconcile the booking with the refunds now recorded against it.
+ *
+ * Returns whether the booking itself was cancelled, so the guest can be told. A full parking
+ * refund cancels the booking (below) and the guest used to be told only that money was coming
+ * back; somebody could have driven to Heathrow expecting a space.
+ */
 async function updateRefundStatus(
   db: ReturnType<typeof createAdminClient>,
   sourceType: SourceType,
   sourceId: string,
   originalAmount: number
-): Promise<void> {
+): Promise<{ bookingCancelled: boolean }> {
   // Sum all completed refunds
   const { data: refunds } = await db
     .from('payment_refunds')
@@ -282,7 +313,7 @@ async function updateRefundStatus(
         // bookings in 'pending_payment' and 'confirmed', so a fully refunded
         // booking left as 'confirmed' went on occupying a space nobody had paid
         // for, and the car park could not be resold to that slot.
-        await db
+        const { error: cancelError } = await db
           .from('parking_bookings')
           .update({
             payment_status: 'refunded',
@@ -290,61 +321,98 @@ async function updateRefundStatus(
             cancelled_at: new Date().toISOString(),
           })
           .eq('id', paymentRow.booking_id)
+
+        return { bookingCancelled: !cancelError }
       }
     }
   }
+
+  return { bookingCancelled: false }
 }
 
 /**
- * Post-event deposit refund notice (SOP §25.7–8): itemised email with any
- * deduction explained. Cancellation refunds are covered by the cancellation
- * email, so this only fires for completed bookings. Fire-and-forget.
+ * Tell the guest what has happened to their money.
+ *
+ * A completed booking gets the post-event deposit notice (SOP §25.7-8). A cancelled booking gets
+ * the confirmation its cancellation email promised ("we'll refund £150 within 10 working days and
+ * confirm once it's on the way"), which nothing used to send, least of all for a cash or bank
+ * transfer refund (review PB-BR-4).
+ *
+ * Every figure comes from the completed refunds on the booking, not from the payment in front of
+ * it. A £250 deposit returned as £100 then £150 produced two emails, one claiming £150 of
+ * deductions and the next £100, when the guest had the whole £250 back (review PB-4).
+ *
+ * The staff reason is not passed on: the refund dialog labels it "internal only" and it was being
+ * emailed verbatim and unescaped (review PB-6).
+ *
+ * Returns true when the guest was emailed, so the generic refund notice can stand down
+ * (review PB-19). Fire-and-forget: a failure here never fails the refund.
  */
 async function sendPrivateBookingRefundEmailSideEffect(
   db: ReturnType<typeof createAdminClient>,
   sourceType: SourceType,
   sourceId: string,
   refundAmount: number,
-  reason: string,
-): Promise<void> {
-  if (sourceType !== 'private_booking') return
+  refundMethod: string,
+): Promise<boolean> {
+  if (sourceType !== 'private_booking') return false
   try {
     const { data: pb } = await db
       .from('private_bookings')
-      .select('id, status, customer_id, contact_email, customer_first_name, customer_name, event_date, event_type, deposit_amount')
+      .select('id, status, customer_id, contact_email, customer_first_name, customer_name, event_date, event_type, deposit_amount, date_tbd, internal_notes')
       .eq('id', sourceId)
       .maybeSingle()
-    if (!pb?.contact_email || pb.status !== 'completed') return
+    if (!pb?.contact_email) return false
+    if (pb.status !== 'completed' && pb.status !== 'cancelled') return false
+
+    const { data: refunds, error: refundsError } = await db
+      .from('payment_refunds')
+      .select('amount')
+      .eq('source_type', 'private_booking')
+      .eq('source_id', sourceId)
+      .eq('status', 'completed')
+    // Without the full picture the email would have to guess at the deductions, which is the bug
+    // this replaces. Say nothing rather than guess; the refund itself is unaffected.
+    if (refundsError) return false
+    const totalRefunded =
+      Math.round((refunds ?? []).reduce((sum: number, r: { amount: unknown }) => sum + Number(r.amount), 0) * 100) / 100
+
+    const guest = {
+      id: pb.id,
+      customer_id: pb.customer_id,
+      contact_email: pb.contact_email,
+      customer_first_name: pb.customer_first_name,
+      customer_name: pb.customer_name,
+      event_date: pb.event_date,
+      event_type: pb.event_type,
+      date_tbd: (pb as { date_tbd?: boolean | null }).date_tbd ?? null,
+      internal_notes: (pb as { internal_notes?: string | null }).internal_notes ?? null,
+    }
+
+    if (pb.status === 'cancelled') {
+      await sendPrivateBookingRefundSentEmail({ ...guest, refund_amount: refundAmount, refund_method: refundMethod })
+      return true
+    }
 
     const deposit = Number(pb.deposit_amount ?? 0)
-    if (deposit > 0 && refundAmount + 0.005 < deposit) {
-      await sendDepositRefundWithDeductionsEmail({
-        id: pb.id,
-        customer_id: pb.customer_id,
-        contact_email: pb.contact_email,
-        customer_first_name: pb.customer_first_name,
-        customer_name: pb.customer_name,
-        event_date: pb.event_date,
-        event_type: pb.event_type,
+    if (deposit > 0 && totalRefunded + 0.005 < deposit) {
+      await sendDepositPartRefundEmail({
+        ...guest,
         deposit_amount: deposit,
-        deduction_amount: Math.round((deposit - refundAmount) * 100) / 100,
-        deduction_reason: reason,
         refund_amount: refundAmount,
+        total_refunded: totalRefunded,
       })
     } else {
       await sendDepositRefundEmail({
-        id: pb.id,
-        customer_id: pb.customer_id,
-        contact_email: pb.contact_email,
-        customer_first_name: pb.customer_first_name,
-        customer_name: pb.customer_name,
-        event_date: pb.event_date,
-        event_type: pb.event_type,
+        ...guest,
         refund_amount: refundAmount,
+        total_refunded: totalRefunded > 0 ? totalRefunded : refundAmount,
       })
     }
+    return true
   } catch {
     // Fire-and-forget: email failure must never fail the refund itself.
+    return false
   }
 }
 
@@ -481,17 +549,43 @@ export async function processPayPalRefund(
         return { success: true, refundId: refundRow.id, warning: 'Refund processed at PayPal but local status update failed. Please refresh.' }
       }
 
-      await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
-      void sendPrivateBookingRefundEmailSideEffect(db, sourceType, sourceId, amount, reason)
+      // Awaited, not fired and forgotten, for two reasons: its answer decides whether the generic
+      // refund notice goes out at all, and the reconciled result below tells that notice whether
+      // the booking was cancelled. A completed private booking used to get both emails, the
+      // itemised deposit one and the generic one, disagreeing with each other (review PB-19).
+      const reconciled = await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
+      // 'paypal' is the method, not the staff reason: the reason is labelled internal only in the
+      // refund dialog and was reaching the guest verbatim (review PB-6).
+      const privateBookingEmailSent = await sendPrivateBookingRefundEmailSideEffect(
+        db,
+        sourceType,
+        sourceId,
+        amount,
+        'paypal',
+      )
 
       let notificationStatus: string | null = null
-      if (booking.customerName) {
+      if (privateBookingEmailSent) {
+        // The booking's own email has gone, with the booking's details, the venue's number and the
+        // guest's first name. The generic notice had none of those and was logged against no
+        // booking, so two emails arrived saying different things (review PB-19).
+        notificationStatus = 'email_sent'
+      } else if (booking.customerName) {
         notificationStatus = await sendRefundNotification({
           customerId: booking.customerId,
           customerName: booking.customerName,
           email: booking.customerEmail,
           phone: booking.customerPhone,
           amount,
+          context: {
+            subject: REFUND_SUBJECTS[sourceType],
+            bookingDate: booking.bookingDate,
+            reference: booking.reference,
+            bookingCancelled: reconciled.bookingCancelled,
+          },
+          tableBookingId: sourceType === 'table_booking' ? sourceId : null,
+          privateBookingId: sourceType === 'private_booking' ? sourceId : null,
+          parkingBookingId: booking.parkingBookingId ?? null,
         })
       } else {
         notificationStatus = 'skipped'
@@ -695,7 +789,7 @@ export async function processManualRefund(
 
   // 6. Update booking refund status
   await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
-  void sendPrivateBookingRefundEmailSideEffect(db, sourceType, sourceId, amount, reason)
+  await sendPrivateBookingRefundEmailSideEffect(db, sourceType, sourceId, amount, refundMethod)
 
   // 7. Audit
   await logAuditEvent({

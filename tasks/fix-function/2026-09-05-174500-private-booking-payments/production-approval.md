@@ -6,10 +6,10 @@ Target: **the-anchor-management-tools**, Supabase project **tfcasgxopxegwrabvwat
 
 The linked complete SQL files, with these SHA-256 checksums, constitute the proposed database changes. Neither has been applied.
 
-- [20260905180000_private_booking_invoice_settlement.sql](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/tasks/fix-function/2026-09-05-174500-private-booking-payments/approved-sql/20260905180000_private_booking_invoice_settlement.sql)
+- [20260905180000_private_booking_invoice_settlement.sql](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/supabase/migrations/20260905180000_private_booking_invoice_settlement.sql)
   - Migration name: `private_booking_invoice_settlement`
   - SHA-256: `791277922fb5d15b22ed9067d190f81a2716d24babd676ca51720a0536409a79`
-- [20260905180100_reconcile_verified_private_booking_capture.sql](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/tasks/fix-function/2026-09-05-174500-private-booking-payments/approved-sql/20260905180100_reconcile_verified_private_booking_capture.sql)
+- [20260905180100_reconcile_verified_private_booking_capture.sql](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/supabase/migrations/20260905180100_reconcile_verified_private_booking_capture.sql)
   - Migration name: `reconcile_verified_private_booking_capture`
   - SHA-256: `5e97ab0ac17bd19f9d2d43d81ae9b322211a5441c3b73090ea22cdd8f0d3cbb0`
 
@@ -34,5 +34,3 @@ Approval covers these exact two SQL files/checksums, the forward-fix plan above,
 Apply through the verified Supabase migration tool, rechecking checksums and target first. Capture actual migration versions; re-read changed objects and grants; run the read-only anonymous-access assertion; deploy the application; verify the live invoice and booking both show £994.80 paid and £0 outstanding, the capture appears once with its real date, and provider/deployment logs show no new settlement errors. No additional live charge or customer message is needed for verification.
 
 Status: local only, awaiting exact owner approval.
-
-Approval was granted and both migrations applied. The original approved SQL is archived under approved-sql; active repository migration filenames now match applied history versions. See release-result.md for the deployment record.

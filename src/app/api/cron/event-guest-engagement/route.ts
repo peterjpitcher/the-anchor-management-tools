@@ -8,14 +8,27 @@ import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { createGuestToken } from '@/lib/guest/tokens'
+import { buildGuestReviewUrl } from '@/lib/guest/review-short-link'
 import { sendEmail } from '@/lib/email/emailService'
-import { sendCrossPromoForEvent, sendFollowUpForEvent, hasReachedDailyPromoLimit } from '@/lib/sms/cross-promo'
-import type { FollowUpRecipient } from '@/lib/sms/cross-promo'
+import { sendCrossPromoForEvent, sendFollowUpForEvent, hasReachedDailyPromoLimit, resolveEventStart } from '@/lib/sms/cross-promo'
+import type { CrossPromoMode, FollowUpRecipient } from '@/lib/sms/cross-promo'
+import {
+  decideLastPushTiming,
+  EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH,
+  EVENT_PROMO_TEMPLATE_KEYS,
+  londonDateDaysAhead,
+  resolveEventPromoFlags,
+  resolveLastPushDateWindow,
+} from '@/lib/sms/event-promo-policy'
+import type { MessagingFlagsReadFailure } from '@/lib/messaging/flags'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
+import { formatTimeInLondon } from '@/lib/dateUtils'
+import { hasBeenSeated, isWithinReviewSendWindow } from '@/lib/table-bookings/review-window'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
+import { reportCronFailure } from '@/lib/cron/alerting'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
-import { shouldSuppressEventReminderForLateBooking } from '@/lib/events/reminder-eligibility'
+import { resolveEventReminderDay, shouldSuppressEventReminderForLateBooking } from '@/lib/events/reminder-eligibility'
 import {
   getFirstVisitReviewEligibleCandidateKeys,
   hasCustomerReviewed,
@@ -72,20 +85,9 @@ const EVENT_PROMO_INTRO_MIN_DAYS_AHEAD = parsePositiveIntEnv('EVENT_PROMO_INTRO_
 const MAX_EVENT_PROMOS_PER_RUN = parsePositiveIntEnv('MAX_EVENT_PROMOS_PER_RUN', 250)
 const EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT = parsePositiveIntEnv('EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT', 250)
 const EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT = parsePositiveIntEnv('EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT', 250)
-const EVENT_PROMO_TEMPLATE_KEYS = [
-  'event_cross_promo_7d',
-  'event_cross_promo_7d_paid',
-  'event_general_promo_7d',
-  'event_general_promo_7d_paid',
-  'event_cross_promo_14d',
-  'event_cross_promo_14d_paid',
-  'event_general_promo_14d',
-  'event_general_promo_14d_paid',
-  'event_reminder_promo_24h',
-  'event_reminder_promo_24h_paid',
-  'event_reminder_promo_3d',
-  'event_reminder_promo_3d_paid',
-] as const
+// The promo template keys the hourly guard counts live in src/lib/sms/event-promo-policy.ts,
+// with the last-push keys, so the guard, the cap and the reports read one list.
+const EVENT_PROMO_CONTEXT_RETENTION_DAYS = 30
 
 type BookingWithRelations = {
   id: string
@@ -124,6 +126,8 @@ type TableBookingWithCustomer = {
   status: string
   booking_type: string | null
   start_datetime: string | null
+  /** Set when the party was actually shown to their table. No seating, no review request. */
+  seated_at?: string | null
   review_sms_sent_at?: string | null
   review_suppressed_at?: string | null
   customer: {
@@ -235,17 +239,6 @@ function allowEventEngagementSendGuardSchemaGaps(): boolean {
 
 function pad2(value: number): string {
   return String(value).padStart(2, '0')
-}
-
-function getLondonDateString(daysAhead = 0, now: Date = new Date()): string {
-  const target = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000)
-  const londonDate = toZonedTime(target, LONDON_TIMEZONE)
-
-  return [
-    londonDate.getFullYear(),
-    pad2(londonDate.getMonth() + 1),
-    pad2(londonDate.getDate())
-  ].join('-')
 }
 
 function getLondonRunKey(now: Date = new Date()): string {
@@ -814,6 +807,7 @@ async function loadTableBookingsForEngagement(
       status,
       booking_type,
       start_datetime,
+      seated_at,
       review_sms_sent_at,
       review_suppressed_at,
       customer:customers(
@@ -922,6 +916,15 @@ async function processReminders(
       continue
     }
 
+    // Name the day the guest reads it on. Quiet hours hold a send from 21:00 until 09:00, which
+    // for an event starting after 20:45 is the event day itself, where "tomorrow" was wrong.
+    // Null means it could only land after the start, so it is not sent at all.
+    const reminderDay = resolveEventReminderDay({ eventStartAt: eventStartIso, now })
+    if (!reminderDay) {
+      result.skipped += 1
+      continue
+    }
+
     if (shouldSuppressEventReminderForLateBooking({
       bookingCreatedAt: booking.created_at,
       eventStartAt: eventStartIso,
@@ -954,7 +957,9 @@ async function processReminders(
     // rather than selling. No seat ask: they have their seats.
     const seatCount = Math.max(0, Number(booking.seats || 0))
     const seatPhrase = seatCount === 1 ? 'Your seat is' : `Your ${seatCount} seats are`
-    const baseBody = `The Anchor: ${firstName}, ${event.name} is tomorrow, ${eventDateText}. ${seatPhrase} ready. Come a bit early tomorrow if you fancy a drink.`
+    const baseBody = reminderDay === 'tomorrow'
+      ? `The Anchor: ${firstName}, ${event.name} is tomorrow, ${eventDateText}. ${seatPhrase} ready. Come a bit early tomorrow if you fancy a drink.`
+      : `The Anchor: ${firstName}, ${event.name} is today, ${eventDateText}. ${seatPhrase} ready. Come a bit early if you fancy a drink.`
     const messageBody = ensureReplyInstruction(
       manageLink ? `${baseBody} Change: ${manageLink}` : baseBody,
       supportPhone
@@ -1003,7 +1008,7 @@ async function processReviewFollowups(
   bookings: BookingWithRelations[],
   appBaseUrl: string,
   safety: EventEngagementCronSafetyState
-): Promise<{ sent: number; skipped: number; suppressed: number }> {
+): Promise<{ sent: number; skipped: number; suppressed: number; shortLinkFallbacks: number }> {
   const now = new Date()
   const nowMs = now.getTime()
   const maxAgeMs = EVENT_ENGAGEMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
@@ -1083,7 +1088,7 @@ async function processReviewFollowups(
     safety.throwSafetyAbort()
   }
 
-  const result = { sent: 0, skipped: 0, suppressed: 0 }
+  const result = { sent: 0, skipped: 0, suppressed: 0, shortLinkFallbacks: 0 }
 
   for (const booking of boundedPastBookings) {
     const customer = booking.customer
@@ -1147,7 +1152,19 @@ async function processReviewFollowups(
       expiresAt: provisionalExpiry
     })
 
-    const redirectUrl = `${appBaseUrl}/r/${rawToken}`
+    // Shortened before it goes anywhere near the message body, so the guest sees
+    // l.the-anchor.pub/abc123 rather than 81 characters of token. Falls back to the
+    // long URL if shortening fails, so the ask still goes out. See
+    // src/lib/guest/review-short-link.ts.
+    const { url: redirectUrl, shortened } = await buildGuestReviewUrl({
+      appBaseUrl,
+      rawToken,
+      customerId: customer.id,
+      eventBookingId: booking.id,
+    })
+    // Counted, not just logged: the count rides out in the cron's JSON response, so a
+    // run where shortening quietly stopped working is visible in the Vercel log.
+    if (!shortened) result.shortLinkFallbacks += 1
     const firstName = getSmartFirstName(customer.first_name)
     const messageBody = ensureReplyInstruction(
       `The Anchor: ${firstName}! Hope you had a belter at ${event.name} last night. Got 30 seconds? A quick review means the world to us: ${redirectUrl}`,
@@ -1341,14 +1358,29 @@ async function processTableReviewFollowups(
   tableBookings: TableBookingWithCustomer[],
   appBaseUrl: string,
   safety: EventEngagementCronSafetyState
-): Promise<{ sent: number; skipped: number; suppressed: number }> {
+): Promise<{ sent: number; skipped: number; suppressed: number; shortLinkFallbacks: number }> {
   const now = Date.now()
   const maxAgeMs = TABLE_ENGAGEMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+
+  // Quiet hours. The request fires four hours after the sitting starts, so an evening table used
+  // to be asked for a review at one in the morning. The sweep runs every quarter of an hour, so
+  // waiting costs a booking nothing but the wait.
+  if (!isWithinReviewSendWindow(new Date(now))) {
+    logger.info('Table review requests held outside the sending window', {
+      metadata: { candidates: tableBookings.length, londonTime: formatTimeInLondon(new Date(now)) },
+    })
+    return { sent: 0, skipped: tableBookings.length, suppressed: 0, shortLinkFallbacks: 0 }
+  }
+
   const reviewLinkTarget = await getGoogleReviewLink(supabase)
 
   const eligibleBookings = tableBookings.filter((booking) => {
     if (booking.status !== 'confirmed' || booking.review_sms_sent_at) return false
+    // No record of the party being seated, no review request. 40 of the last 110 went to
+    // bookings nobody ever sat, which asks "how was your visit?" of someone who may not have
+    // arrived. `seated_at` is the only evidence we hold that they did.
+    if (!hasBeenSeated(booking)) return false
     const startMs = Date.parse(booking.start_datetime || '')
     if (!Number.isFinite(startMs)) return false
     return now >= startMs + 4 * 60 * 60 * 1000 && now - startMs <= maxAgeMs
@@ -1418,7 +1450,7 @@ async function processTableReviewFollowups(
     safety.throwSafetyAbort()
   }
 
-  const result = { sent: 0, skipped: 0, suppressed: 0 }
+  const result = { sent: 0, skipped: 0, suppressed: 0, shortLinkFallbacks: 0 }
 
   for (const booking of boundedEligibleBookings) {
     const customer = booking.customer
@@ -1492,7 +1524,18 @@ async function processTableReviewFollowups(
       expiresAt: provisionalExpiry
     })
 
-    const redirectUrl = `${appBaseUrl}/r/${rawToken}`
+    // Shortened here rather than at send time because this path is email-first and
+    // only `sendSMS` rewrites URLs. Doing it once, up front, shortens the email too
+    // and gives the email and the SMS fallback the same short code, so a click is
+    // counted once whichever channel the guest used. See
+    // src/lib/guest/review-short-link.ts.
+    const { url: redirectUrl, shortened } = await buildGuestReviewUrl({
+      appBaseUrl,
+      rawToken,
+      customerId: customer.id,
+      tableBookingId: booking.id,
+    })
+    if (!shortened) result.shortLinkFallbacks += 1
     const firstName = getSmartFirstName(customer.first_name)
     const messageBody = ensureReplyInstruction(
       `The Anchor: ${firstName}! Thanks for popping in. Got 30 seconds? A quick review means the world to us: ${redirectUrl}`,
@@ -1879,9 +1922,91 @@ type UpcomingPromoEvent = {
   name: string
   date: string
   time: string | null
+  start_datetime?: string | null
   price: number | string | null
   payment_mode: string | null
   category_id: string | null
+}
+
+type PromoStageResult = {
+  sent: number
+  skipped: number
+  errors: number
+  eventsProcessed: number
+  disabled?: true
+  reason?: 'event_promo_last_push' | 'messaging_flags_unreadable'
+}
+
+function disabledPromoStage(): PromoStageResult {
+  return { sent: 0, skipped: 0, errors: 0, eventsProcessed: 0, disabled: true, reason: 'event_promo_last_push' }
+}
+
+/** A promotion stage that did not run because the messaging flags could not be read. */
+function heldPromoStage(): PromoStageResult {
+  return { sent: 0, skipped: 0, errors: 0, eventsProcessed: 0, disabled: true, reason: 'messaging_flags_unreadable' }
+}
+
+/**
+ * The one log line and the one alert for a run whose promotion texts were held because the
+ * messaging flags could not be read. The run itself still completes: every other stage ran.
+ */
+async function reportPromotionTextsHeld(runKey: string, failure: MessagingFlagsReadFailure): Promise<void> {
+  logger.error('Event promotion texts held for this run: the messaging flags could not be read', {
+    metadata: { runKey, ...failure },
+  })
+
+  await reportCronFailure(
+    JOB_NAME,
+    new Error(`Event promotion texts held: the messaging flags could not be read (${failure.message})`),
+    {
+      run_key: runKey,
+      code: failure.code,
+      outcome:
+        'No event promotion texts were sent in this run. Reminders and review follow-ups ran as normal. The next run reads the flags again.',
+    }
+  )
+}
+
+/**
+ * Events the last push may be about: 0 to 3 London calendar days away (the query) and not yet
+ * started by the time a text could land (decideLastPushTiming, which also re-checks the dates
+ * so a query and a clock that disagree cannot let a D+4 event through).
+ */
+async function loadLastPushEvents(
+  supabase: ReturnType<typeof createAdminClient>,
+  now: Date = new Date()
+): Promise<UpcomingPromoEvent[]> {
+  const window = resolveLastPushDateWindow(now)
+
+  const { data, error } = await supabase
+    .from('events')
+    .select('id, name, date, time, start_datetime, price, payment_mode, category_id')
+    .eq('booking_open', true)
+    .eq('promo_sms_enabled', true)
+    .eq('event_status', 'scheduled')
+    .gte('date', window.from)
+    .lte('date', window.to)
+    .not('category_id', 'is', null)
+    .order('date', { ascending: true })
+    .limit(50)
+
+  if (error) {
+    throw error
+  }
+
+  const eligible: UpcomingPromoEvent[] = []
+  for (const event of (data || []) as UpcomingPromoEvent[]) {
+    const timing = decideLastPushTiming({ eventDate: event.date, eventStart: resolveEventStart(event), now })
+    if (!timing.eligible) {
+      logger.info('Event last push skipped: outside the 0 to 3 day window', {
+        metadata: { eventId: event.id, eventDate: event.date, reason: timing.reason },
+      })
+      continue
+    }
+    eligible.push(event)
+  }
+
+  return eligible
 }
 
 async function loadUpcomingEventsForPromo(
@@ -1892,8 +2017,9 @@ async function loadUpcomingEventsForPromo(
   // D-7 morning never got an intro at all: there was no second chance. The RPC
   // already refuses to promote the same event to the same customer twice, so
   // widening the window cannot produce duplicate sends.
-  const introWindowStart = getLondonDateString(EVENT_PROMO_INTRO_MIN_DAYS_AHEAD)
-  const introWindowEnd = getLondonDateString(EVENT_PROMO_INTRO_DAYS_AHEAD)
+  // London calendar days, never "now plus 24 hours" (see londonDateDaysAhead).
+  const introWindowStart = londonDateDaysAhead(EVENT_PROMO_INTRO_MIN_DAYS_AHEAD)
+  const introWindowEnd = londonDateDaysAhead(EVENT_PROMO_INTRO_DAYS_AHEAD)
 
   const { data, error } = await supabase
     .from('events')
@@ -1919,8 +2045,9 @@ async function loadFollowUpEvents(
   daysAheadMin: number,
   daysAheadMax: number
 ): Promise<UpcomingPromoEvent[]> {
-  const windowStartIso = getLondonDateString(daysAheadMin)
-  const windowEndIso = getLondonDateString(daysAheadMax)
+  // London calendar days: "tomorrow" is the next London date, whatever the clocks do tonight.
+  const windowStartIso = londonDateDaysAhead(daysAheadMin)
+  const windowEndIso = londonDateDaysAhead(daysAheadMax)
 
   const { data, error } = await supabase
     .from('events')
@@ -2039,8 +2166,9 @@ async function processFollowUps(
 async function processCrossPromo(
   supabase: ReturnType<typeof createAdminClient>,
   runStartMs: number,
-  remainingBudget: { value: number }
-): Promise<{ sent: number; skipped: number; errors: number; eventsProcessed: number }> {
+  remainingBudget: { value: number },
+  mode: CrossPromoMode = 'intro'
+): Promise<PromoStageResult> {
   const result = { sent: 0, skipped: 0, errors: 0, eventsProcessed: 0 }
 
   if (remainingBudget.value <= 0) {
@@ -2086,12 +2214,14 @@ async function processCrossPromo(
     return result
   }
 
-  const events = await loadUpcomingEventsForPromo(supabase)
+  const events = mode === 'last_push'
+    ? await loadLastPushEvents(supabase)
+    : await loadUpcomingEventsForPromo(supabase)
 
   for (const event of events) {
     if (remainingBudget.value <= 0 || result.sent >= MAX_EVENT_PROMOS_PER_RUN) {
       logger.info('Cross-promo: per-run cap reached', {
-        metadata: { maxPerRun: MAX_EVENT_PROMOS_PER_RUN, eventsProcessed: result.eventsProcessed }
+        metadata: { maxPerRun: MAX_EVENT_PROMOS_PER_RUN, eventsProcessed: result.eventsProcessed, mode }
       })
       break
     }
@@ -2107,6 +2237,8 @@ async function processCrossPromo(
     }, {
       startTime: runStartMs,
       maxRecipients: Math.min(remainingBudget.value, EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT),
+      // Left out for the intro so the call is exactly what it was before the flag existed.
+      ...(mode === 'intro' ? {} : { mode }),
     })
 
     result.sent += eventResult.sent
@@ -2230,16 +2362,49 @@ export async function GET(request: NextRequest) {
     // Stage 3: Promotional SMS (marketing — runs last, after all transactional stages)
     const promoBudget = { value: MAX_EVENT_PROMOS_PER_RUN }
 
-    // 24h follow-ups for customers who received the 7d intro and have not booked
-    const followUp24h = await processFollowUps(supabase, '24h', 1, 1, 1, runStartMs, promoBudget)
+    // Owner decision, 11 September 2026: promotions go by email first. With the flag on, the
+    // intro and the 24-hour follow-up stop and the only text is one last push close to a quiet
+    // night. With it off (a missing row or false) this stage is exactly what it was.
+    const promoFlags = await resolveEventPromoFlags()
 
-    // 7d new intros
-    const crossPromo = await processCrossPromo(supabase, runStartMs, promoBudget)
+    let followUp24h: PromoStageResult
+    let crossPromo: PromoStageResult
+    let lastPush: PromoStageResult | null = null
 
-    // Cleanup: remove sms_promo_context rows older than 30 days
+    if (promoFlags.state === 'unknown') {
+      // Unknown is not off. Off would run the 7-day intro and the 24-hour follow-up, the noisier
+      // texts the owner switched away from, to every eligible past guest. So this run sends no
+      // promotion text at all; the stages above have already run as normal, and the next run
+      // reads the flags again.
+      await reportPromotionTextsHeld(runKey, promoFlags.failure)
+      followUp24h = heldPromoStage()
+      crossPromo = heldPromoStage()
+      lastPush = heldPromoStage()
+    } else if (!promoFlags.lastPush) {
+      // 24h follow-ups for customers who received the 7d intro and have not booked
+      followUp24h = await processFollowUps(supabase, '24h', 1, 1, 1, runStartMs, promoBudget)
+
+      // 7d new intros
+      crossPromo = await processCrossPromo(supabase, runStartMs, promoBudget)
+    } else {
+      followUp24h = disabledPromoStage()
+      lastPush = await processCrossPromo(supabase, runStartMs, promoBudget, 'last_push')
+      // Guests with no usable email cannot get the guest campaigns, so with the second flag on
+      // they keep today's 7-day intro (never the follow-up), inside the same two-a-month cap.
+      crossPromo = promoFlags.introForGuestsWithoutEmail
+        ? await processCrossPromo(supabase, runStartMs, promoBudget, 'intro_no_email')
+        : disabledPromoStage()
+    }
+
+    // Cleanup: remove old sms_promo_context rows. Kept 45 days under the last push so the
+    // 30-day text cap never loses a row it still needs, and when the flags could not be read,
+    // because the cap may be in force; 30 days only when the flag is known to be off, as before.
+    const promoContextRetentionDays = promoFlags.state === 'known' && !promoFlags.lastPush
+      ? EVENT_PROMO_CONTEXT_RETENTION_DAYS
+      : EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH
     await supabase.from('sms_promo_context' as never)
       .delete()
-      .lt('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+      .lt('created_at', new Date(Date.now() - promoContextRetentionDays * 24 * 60 * 60 * 1000).toISOString())
 
     // Cleanup: remove promo_sequence rows older than 14 days
     await supabase.from('promo_sequence' as never)
@@ -2257,6 +2422,7 @@ export async function GET(request: NextRequest) {
       marketing,
       followUp24h,
       crossPromo,
+      ...(lastPush ? { lastPush } : {}),
       runKey,
       guard,
       processedAt: new Date().toISOString()

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Card } from '@/ds'
 import { Badge } from '@/ds'
@@ -23,7 +23,8 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
   const [items, setItems] = useState<EventChecklistItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [pendingTaskKey, setPendingTaskKey] = useState<string | null>(null)
+  const pendingTasks = useRef(new Set<string>())
+  const [pendingTaskKeys, setPendingTaskKeys] = useState<Set<string>>(new Set())
   const todayIso = getTodayIsoDate()
 
   const loadChecklist = useCallback(async () => {
@@ -51,38 +52,43 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
   }, [loadChecklist])
 
   const handleToggle = useCallback(async (item: EventChecklistItem) => {
+    const pendingKey = `${eventId}:${item.key}`
+    if (pendingTasks.current.has(pendingKey)) return
+    pendingTasks.current.add(pendingKey)
+    setPendingTaskKeys(new Set(pendingTasks.current))
+
     const nextState = !item.completed
-    setPendingTaskKey(item.key)
-
-    let previousItems: EventChecklistItem[] | null = null
-    if (nextState) {
-      previousItems = items
-      const optimisticItems = items.map((existing) => {
-        if (existing.key !== item.key) return existing
-        const updated: EventChecklistItem = {
-          ...existing,
-          completed: true,
-          completedAt: new Date().toISOString(),
-          status: 'completed',
-        }
-        return updated
-      })
-      setItems(optimisticItems)
+    const today = getTodayIsoDate()
+    const updated: EventChecklistItem = {
+      ...item,
+      completed: nextState,
+      completedAt: nextState ? new Date().toISOString() : null,
+      status: nextState ? 'completed' : item.dueDate < today ? 'overdue' : item.dueDate === today ? 'due_today' : 'upcoming',
     }
+    const replaceItem = (replacement: EventChecklistItem) => {
+      setItems(current => current.map(existing =>
+        existing.eventId === eventId && existing.key === item.key ? replacement : existing
+      ))
+    }
+    replaceItem(updated)
 
-    const result = await toggleEventChecklistTask(eventId, item.key, nextState)
-    if (!result.success) {
-      toast.error(result.error || 'Failed to update task')
-      if (previousItems) {
-        setItems(previousItems)
+    try {
+      const result = await toggleEventChecklistTask(eventId, item.key, nextState)
+      if (!result.success) {
+        // Restore only this task so other saves in progress keep their state.
+        replaceItem(item)
+        toast.error(result.error || 'Failed to update task')
+      } else {
+        toast.success(nextState ? 'Task marked complete' : 'Task reopened')
       }
-    } else {
-      toast.success(nextState ? 'Task marked complete' : 'Task reopened')
-      await loadChecklist()
+    } catch {
+      replaceItem(item)
+      toast.error('Failed to update task')
+    } finally {
+      pendingTasks.current.delete(pendingKey)
+      setPendingTaskKeys(new Set(pendingTasks.current))
     }
-
-    setPendingTaskKey(null)
-  }, [eventId, items, loadChecklist])
+  }, [eventId])
 
   const { completedCount, overdueCount, dueTodayCount, nextTask } = useMemo(() => {
     if (!items || items.length === 0) {
@@ -189,7 +195,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
                 />
               ) : (
                 outstandingItems.map((item) => {
-                  const isPending = pendingTaskKey === item.key
+                  const isPending = pendingTaskKeys.has(`${eventId}:${item.key}`)
                   const dueColor = item.status === 'overdue'
                     ? 'text-red-600'
                     : item.status === 'due_today'
@@ -250,7 +256,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
                         size="xs"
                         variant="secondary"
                         onClick={() => handleToggle(item)}
-                        disabled={pendingTaskKey === item.key}
+                        disabled={pendingTaskKeys.has(`${eventId}:${item.key}`)}
                       >
                         Reopen
                       </Button>

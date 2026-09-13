@@ -18,7 +18,21 @@ export interface NavItem {
     module: ModuleName
     action: ActionType
   }
+  /**
+   * For a feature restricted to super-admins rather than granted by a permission
+   * row. `permission` cannot express that: user_has_permission returns true for a
+   * super-admin on any module name, including one that was never created, so an
+   * RBAC module can only ever raise a floor, never impose a ceiling.
+   */
+  superAdminOnly?: boolean
 }
+
+/**
+ * What a nav badge shows. `'unavailable'` is not a number and is not zero: it
+ * means the count could not be read. Zero means there is nothing outstanding, so
+ * showing it in place of a failed read would be a lie.
+ */
+export type NavBadge = number | 'unavailable' | undefined
 
 export interface NavGroup {
   label: string | null
@@ -54,6 +68,11 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: 'vouchers', label: 'Vouchers', icon: 'ticket', href: '/vouchers', permission: { module: 'vouchers', action: 'manage' } },
       { id: 'private-bookings', label: 'Private Bookings', icon: 'building', href: '/private-bookings', permission: { module: 'private_bookings', action: 'view' } },
       { id: 'parking', label: 'Parking', icon: 'truck', href: '/parking', permission: { module: 'parking', action: 'view' } },
+      // Repairs and improvements to the building, not table_holds.hold_type =
+      // 'maintenance', which is a live and unrelated way of taking a table out of
+      // service. Super-admin only, and no permission gate for the reason given on
+      // NavItem.superAdminOnly.
+      { id: 'maintenance', label: 'Maintenance', icon: 'alertTriangle', href: '/maintenance', superAdminOnly: true },
     ],
   },
   {
@@ -90,14 +109,24 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
+/**
+ * `isSuperAdmin` defaults to false, so a caller that has not been taught about
+ * super-admin-only items hides them rather than showing them to everyone. Hiding
+ * an item is never the boundary in any case: the page and every server action
+ * re-check the role.
+ */
 export function filterNavGroupsForPermissions(
   groups: NavGroup[],
   hasPermission: (module: ModuleName, action: ActionType) => boolean,
+  options?: { isSuperAdmin?: boolean },
 ): NavGroup[] {
+  const isSuperAdmin = options?.isSuperAdmin ?? false
+
   return groups
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => {
+        if (item.superAdminOnly && !isSuperAdmin) return false
         if (!item.permission) return true
         return hasPermission(item.permission.module, item.permission.action)
       }),
@@ -118,11 +147,11 @@ export function navCount(
   item: Pick<NavItem, 'id' | 'badge'>,
   unreadCount: number,
   counts: OutstandingCounts | null,
-): number | undefined {
+): NavBadge {
   if (item.id === 'messages') return unreadCount > 0 ? unreadCount : undefined
   if (!counts) return item.badge
 
-  const countById: Record<string, number | undefined> = {
+  const countById: Record<string, NavBadge> = {
     events: counts.events,
     menu: counts.menu_management,
     'private-bookings': counts.private_bookings,
@@ -132,12 +161,26 @@ export function navCount(
     rota: counts.rota,
     checklists: counts.checklists,
     feedback: counts.feedback,
+    // Three states, not two. Absent means this user may not see the count at all
+    // and it never left the server; null means the read failed, which is shown as
+    // unavailable rather than as a zero nobody could act on.
+    maintenance: counts.maintenance === null ? 'unavailable' : counts.maintenance,
   }
 
   // A live count wins even when it is 0 (0 = "nothing outstanding", not "no
   // data"); only fall back to a static badge for items we don't track.
   if (item.id in countById) return countById[item.id]
   return item.badge
+}
+
+/**
+ * The text on a badge. Shared by the sidebar and the mobile chrome so a count
+ * cannot read one way on a phone and another on a laptop. '!' marks a count that
+ * could not be read; it is never shown as a number.
+ */
+export function navBadgeText(count: Exclude<NavBadge, undefined>): string {
+  if (count === 'unavailable') return '!'
+  return count > 99 ? '99+' : String(count)
 }
 
 interface SidebarNavProps {
@@ -189,8 +232,19 @@ export function SidebarNav({ items, onNavigate }: SidebarNavProps) {
                 </span>
                 <span className="ds-label truncate">{item.label}</span>
                 {count ? (
-                  <span className="ds-label ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-sidebar-active-bg text-[11px] font-semibold text-sidebar-fg">
-                    {count > 99 ? '99+' : count}
+                  <span
+                    className="ds-label ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-sidebar-active-bg text-[11px] font-semibold text-sidebar-fg"
+                    // The state is spelled out for a screen reader rather than
+                    // left to a glyph, and "unavailable" is never dressed up as a
+                    // number.
+                    aria-label={
+                      count === 'unavailable'
+                        ? `${item.label} count unavailable`
+                        : `${count} outstanding in ${item.label}`
+                    }
+                    title={count === 'unavailable' ? 'Count unavailable' : undefined}
+                  >
+                    {navBadgeText(count)}
                   </span>
                 ) : null}
               </Link>

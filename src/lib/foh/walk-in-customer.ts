@@ -10,6 +10,12 @@
  */
 
 import type { createAdminClient } from '@/lib/supabase/admin'
+import { logger } from '@/lib/logger'
+
+type WalkInSupabase = ReturnType<typeof createAdminClient>
+
+/** The customer record made up for an anonymous walk-in, and the dummy number it was given. */
+export type CreatedWalkInCustomer = { customerId: string; syntheticPhone: string }
 
 /**
  * Splits a single typed-in guest name into first and last.
@@ -47,14 +53,14 @@ export function splitWalkInGuestName(fullName: string | null | undefined): {
 }
 
 export async function createWalkInCustomer(
-  supabase: ReturnType<typeof createAdminClient>,
+  supabase: WalkInSupabase,
   input: {
     firstName?: string
     lastName?: string
     guestName?: string
     email?: string | null
   }
-): Promise<{ customerId: string; syntheticPhone: string }> {
+): Promise<CreatedWalkInCustomer> {
   const guestNameParts = splitWalkInGuestName(input.guestName)
   const firstName = input.firstName?.trim() || guestNameParts.firstName || 'Walk-in'
   const lastName = input.lastName?.trim() || guestNameParts.lastName || ''
@@ -100,4 +106,111 @@ export async function createWalkInCustomer(
   }
 
   throw new Error('Failed to reserve a walk-in customer profile')
+}
+
+/**
+ * Removes the customer record made up for a walk-in when no booking came of it.
+ *
+ * An anonymous walk-in needs a customer before its booking can be attempted, so
+ * createWalkInCustomer runs first. When the booking is then refused or fails, the record is left
+ * with a dummy number and no bookings. 68 had built up by September 2026, every one listed in
+ * the customer list as a "New Customer".
+ *
+ * It deletes only a record that no booking refers to, because the two booking tables behave
+ * differently: table_bookings refuses the delete (RESTRICT), but bookings, the event bookings,
+ * cascade, so removing a customer who holds even a cancelled event booking would erase it. The
+ * delete is also pinned to the dummy number this request generated, so it can never reach a
+ * real customer.
+ *
+ * Best effort, and never throws: a leftover record is untidy, but it must not turn an answer
+ * already given to staff into a failure. Failures go to logger.error, because logger.warn
+ * prints nothing in production.
+ */
+export async function discardUnusedWalkInCustomer(
+  supabase: WalkInSupabase,
+  walkInCustomer: CreatedWalkInCustomer,
+  context: { route: string; userId?: string | null },
+): Promise<'deleted' | 'kept' | 'failed'> {
+  const logContext = {
+    route: context.route,
+    userId: context.userId ?? null,
+    customerId: walkInCustomer.customerId,
+  }
+
+  try {
+    for (const table of ['table_bookings', 'bookings'] as const) {
+      const { data, error } = await supabase.from(table).select('id').eq('customer_id', walkInCustomer.customerId)
+
+      if (error) {
+        logger.error('Could not check an unused walk-in customer for bookings, so left it in place', {
+          metadata: {
+            ...logContext,
+            table,
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+          },
+        })
+        return 'failed'
+      }
+
+      // Anything other than an empty list means a booking may point at it: keep it.
+      if (data && (!Array.isArray(data) || data.length > 0)) {
+        return 'kept'
+      }
+    }
+
+    const { error: deleteError } = await supabase
+      .from('customers')
+      .delete()
+      .eq('id', walkInCustomer.customerId)
+      .eq('mobile_e164', walkInCustomer.syntheticPhone)
+
+    if (deleteError) {
+      logger.error('Failed to remove an unused walk-in customer', {
+        metadata: {
+          ...logContext,
+          code: deleteError.code,
+          message: deleteError.message,
+          details: deleteError.details,
+          hint: deleteError.hint,
+        },
+      })
+      return 'failed'
+    }
+
+    return 'deleted'
+  } catch (cleanupError) {
+    logger.error('Failed to remove an unused walk-in customer', {
+      error: cleanupError instanceof Error ? cleanupError : new Error(String(cleanupError)),
+      metadata: logContext,
+    })
+    return 'failed'
+  }
+}
+
+/**
+ * What a request made up for an anonymous walk-in. The route fills it in as it goes: the
+ * customer once createWalkInCustomer returns, and bookingPersisted once a booking row exists.
+ */
+export type WalkInCustomerTrail = {
+  supabase: WalkInSupabase | null
+  userId: string | null
+  customer: CreatedWalkInCustomer | null
+  bookingPersisted: boolean
+}
+
+export function startWalkInCustomerTrail(): WalkInCustomerTrail {
+  return { supabase: null, userId: null, customer: null, bookingPersisted: false }
+}
+
+/**
+ * Called on every way out of a walk-in route, from a `finally`. Removes the made-up customer
+ * only when this request created one and no booking row came of it. Never throws.
+ */
+export async function finishWalkInCustomerTrail(trail: WalkInCustomerTrail, route: string): Promise<void> {
+  if (trail.supabase && trail.customer && !trail.bookingPersisted) {
+    await discardUnusedWalkInCustomer(trail.supabase, trail.customer, { route, userId: trail.userId })
+  }
 }

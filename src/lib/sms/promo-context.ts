@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { isEventPromoTemplateKey } from '@/lib/sms/promo-template-keys'
 
 type BackfillPromoContextParams = {
   customerId: string
@@ -15,14 +16,6 @@ type BackfillPromoContextResult =
 function metadataString(metadata: Record<string, unknown> | null | undefined, key: string): string | null {
   const value = metadata?.[key]
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
-}
-
-function isEventPromoTemplateKey(templateKey: string): boolean {
-  return (
-    templateKey.startsWith('event_cross_promo_') ||
-    templateKey.startsWith('event_general_promo_') ||
-    templateKey.startsWith('event_reminder_promo_')
-  )
 }
 
 export async function backfillSmsPromoContextMessageId(

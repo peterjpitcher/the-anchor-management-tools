@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
     }
 
     let cancelled = 0
+    let guestsNotReached = 0
     for (const booking of (candidates ?? []) as PendingDepositBooking[]) {
       const holdExpiry = booking.hold_expires_at ? Date.parse(booking.hold_expires_at) : Number.NaN
       if (!Number.isFinite(holdExpiry) || holdExpiry > now.getTime()) continue
@@ -156,12 +157,19 @@ export async function GET(request: NextRequest) {
 
       if (booking.customer_id) {
         try {
-          await sendTableBookingCancelledSmsIfAllowed(supabase, {
+          const notice = await sendTableBookingCancelledSmsIfAllowed(supabase, {
             customerId: booking.customer_id,
             bookingReference: booking.booking_reference,
             bookingDate: booking.booking_date,
             refundResult: { refunded: false, reason: 'no_deposit' },
+            // Lets the email-first path (flag table_cancelled_email_first) key its duplicate
+            // protection and the text's log row to this booking.
+            tableBookingId: booking.id,
           })
+          // Only the email-first path reports an outcome; its audit row names the booking.
+          if (notice && (notice.status === 'failed' || notice.status === 'no_channel')) {
+            guestsNotReached++
+          }
         } catch (err) {
           console.error('[deposit-timeout] SMS error for booking', booking.id, err)
         }
@@ -171,9 +179,9 @@ export async function GET(request: NextRequest) {
     }
 
     logger.info('[deposit-timeout] completed', {
-      metadata: { cancelled }
+      metadata: { cancelled, guestsNotReached }
     })
-    return NextResponse.json({ cancelled })
+    return NextResponse.json(guestsNotReached > 0 ? { cancelled, guestsNotReached } : { cancelled })
   } catch (error) {
     console.error('[deposit-timeout] Fatal error:', error)
     await reportCronFailure('table-booking-deposit-timeout', error)

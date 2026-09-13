@@ -4,6 +4,7 @@ import {
     CakeIcon,
     CalendarDaysIcon,
     ClockIcon,
+    EnvelopeIcon,
     MapPinIcon,
     PencilSquareIcon,
     UsersIcon,
@@ -20,6 +21,7 @@ const KIND_ICONS: Record<CalendarEntryKind, ComponentType<SVGProps<SVGSVGElement
     special_hours: ClockIcon,
     calendar_note: PencilSquareIcon,
     parking: MapPinIcon,
+    marketing_email: EnvelopeIcon,
 }
 
 interface CalendarKindBadgeProps {

@@ -8,7 +8,7 @@ import { Avatar } from '@/ds/primitives/Avatar'
 import { Icon, type IconName } from '@/ds/icons'
 import { cn } from '@/lib/utils'
 import { useNavCounts } from './NavCountsContext'
-import { navCount, type NavGroup, type NavItem } from './SidebarNav'
+import { navBadgeText, navCount, type NavGroup, type NavItem } from './SidebarNav'
 
 const MOBILE_TABS = [
   { id: 'dashboard', label: 'Home', icon: 'home', href: '/dashboard' },
@@ -22,9 +22,10 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-function badgeText(count: number): string {
-  return count > 99 ? '99+' : String(count)
-}
+// The badge text comes from SidebarNav so a count cannot read one way here and
+// another on the desktop rail, and so a count that could not be read shows as '!'
+// on a phone too rather than as a number.
+const badgeText = navBadgeText
 
 export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
   const { unreadCount } = useNavCounts()

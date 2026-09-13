@@ -132,6 +132,7 @@ export type PreorderSelection = {
 }
 
 export type PreorderCover = {
+  courseCount?: 1 | 2 | 3 | null
   id: string
   tableBookingId: string
   /** Seat number, 1-based. Stable, and the number staff and the kitchen see. */

@@ -41,6 +41,7 @@ function makeSupabase() {
     eq: vi.fn(() => smsQueueUpdateQuery),
     in: vi.fn().mockResolvedValue({ error: null }),
   }
+  const smsQueueUpdate = vi.fn(() => smsQueueUpdateQuery)
 
   const privateBookingLookupQuery: any = {
     eq: vi.fn(() => privateBookingLookupQuery),
@@ -59,11 +60,13 @@ function makeSupabase() {
       }
       if (table === 'private_booking_sms_queue') {
         return {
-          update: vi.fn(() => smsQueueUpdateQuery),
+          update: smsQueueUpdate,
         }
       }
       throw new Error(`Unexpected table ${table}`)
     }),
+    smsQueueUpdate,
+    smsQueueUpdateQuery,
   }
 }
 
@@ -90,5 +93,36 @@ describe('private bookings expire-holds cron', () => {
         actor: 'system_cron',
       }),
     }))
+  })
+
+  it('cancels the waiting texts with a payload the queue table accepts', async () => {
+    const supabase = makeSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+
+    await GET(new Request('http://localhost/api/cron/private-bookings-expire-holds') as any)
+
+    // The queue table has no updated_at column; naming one made PostgREST reject the update.
+    expect(supabase.smsQueueUpdate).toHaveBeenCalledWith({ status: 'cancelled' })
+    expect(supabase.smsQueueUpdateQuery.eq).toHaveBeenCalledWith('booking_id', 'booking-expired-1')
+    expect(supabase.smsQueueUpdateQuery.in).toHaveBeenCalledWith('status', ['pending', 'approved'])
+  })
+
+  it('logs the queue error instead of dropping it', async () => {
+    const supabase = makeSupabase()
+    supabase.smsQueueUpdateQuery.in.mockResolvedValue({
+      error: { code: 'PGRST204', message: 'column missing', details: null, hint: null },
+    })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+    const { logger } = await import('@/lib/logger')
+
+    const response = await GET(new Request('http://localhost/api/cron/private-bookings-expire-holds') as any)
+
+    expect(response.status).toBe(200)
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to cancel queued texts for a cancelled private booking',
+      expect.objectContaining({
+        metadata: expect.objectContaining({ bookingId: 'booking-expired-1', code: 'PGRST204' }),
+      })
+    )
   })
 })

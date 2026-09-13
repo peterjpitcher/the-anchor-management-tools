@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "title": "Welcome to September at The Anchor",
+  "preheader": "Lunch is now served Tuesday to Friday, and there are four nights out still to come this month.",
+  "blocks": [
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Welcome to September",
+        "body": [
+          "The nights are drawing in, which is the best possible excuse to be in a pub. Here is what is on for the rest of the month, and what has changed since the summer.",
+          "The biggest change: we are now open from midday Tuesday to Friday, with lunch served from 12pm to 3pm and dinner from 4pm to 9pm. If you had us down as an evening-only pub, we are not any more."
+        ],
+        "buttons": [
+          {
+            "label": "See what is on",
+            "url": "https://www.the-anchor.pub/whats-on",
+            "variant": "primary"
+          }
+        ]
+      }
+    },
+    {
+      "type": "feature_card",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/9b78f364-7712-4c92-9b09-ffa9132e37e5/landscape/1787567197761_ChatGPT_Image_Aug_24_2026_11_26_20_AM_1-email.jpg",
+          "alt": "Autumn Kick-Off Quiz Night at The Anchor in Stanwell Moor",
+          "width": 536,
+          "height": 302
+        },
+        "heading": "Wednesday 16 September: Autumn Kick-Off Quiz Night",
+        "body": "7pm start, £3 cash entry, teams of up to six. General knowledge, music, TV and film, plus one round in the middle that you play on your phone. Doors from 6:30pm.",
+        "link_label": "Reserve your quiz seats",
+        "link_url": "https://www.the-anchor.pub/events/autumn-kick-off-quiz-night-2026-09-16"
+      }
+    },
+    {
+      "type": "feature_card",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/9d03a427-d331-45bd-91af-142b396b82ae/landscape/1787576289709_ChatGPT_Image_Aug_24_2026_01_56_24_PM_1-email.jpg",
+          "alt": "Big Sing Friday Karaoke Night at The Anchor in Stanwell Moor",
+          "width": 536,
+          "height": 302
+        },
+        "heading": "Friday 18 September: Big Sing Friday Karaoke",
+        "body": "8pm start and free entry. A huge song list, communal tables and a crowd that will cheer you on whatever you pick.",
+        "link_label": "Let us know you are coming",
+        "link_url": "https://www.the-anchor.pub/events/big-sing-friday-karaoke-night-2026-09-18"
+      }
+    },
+    {
+      "type": "feature_card",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/e9e84ee8-c59b-4f93-80f6-7e7961a03240/landscape/1787655507179_ChatGPT_Image_Aug_25_2026_11_57_48_AM_1-email.jpg",
+          "alt": "Only Fools and Horses charity quiz night at The Anchor, in aid of Macmillan Cancer Support",
+          "width": 536,
+          "height": 302
+        },
+        "heading": "Friday 25 September: Lovely Jubbly Charity Quiz",
+        "body": "7pm start, £3 cash entry, and every penny of it goes to Macmillan Cancer Support. Only Fools and Horses themed, and dress-up is welcome.",
+        "link_label": "Reserve your charity quiz table",
+        "link_url": "https://www.the-anchor.pub/events/pub-quiz-lovely-jubbly-only-fools-and-horses-quiz-night-2026-09-25"
+      }
+    },
+    {
+      "type": "feature_card",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/d81512e7-5e99-48fd-a153-3400c2f6f009/landscape/branded/1788696605959-landscape-email.jpg",
+          "alt": "Autumn Jackpot Cash Bingo at The Anchor in Stanwell Moor",
+          "width": 536,
+          "height": 302
+        },
+        "heading": "Wednesday 30 September: Autumn Jackpot Cash Bingo",
+        "body": "7pm start, £10 cash per book. Ten games, a rollover Snowball and a final cash jackpot that grows with every book sold.",
+        "link_label": "Reserve your bingo seats",
+        "link_url": "https://www.the-anchor.pub/events/cash-bingo-2026-09-30"
+      }
+    },
+    {
+      "type": "opening_hours_week",
+      "data": {
+        "heading": "Opening times",
+        "rows": [
+          {
+            "day": "Monday",
+            "bar": "4pm to 10pm",
+            "closed": true
+          },
+          {
+            "day": "Tuesday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Wednesday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Thursday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Friday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Saturday",
+            "bar": "12pm to 10pm",
+            "kitchen": "12pm to 7pm"
+          },
+          {
+            "day": "Sunday",
+            "bar": "12pm to 10pm",
+            "kitchen": "1pm to 6pm"
+          }
+        ],
+        "footnote": "We may stay open until midnight on Fridays, Saturdays and event nights. Last orders are 30 minutes before the kitchen closes, and 15 minutes before the bar does."
+      }
+    },
+    {
+      "type": "feature_card",
+      "data": {
+        "image": {
+          "src": "https://www.the-anchor.pub/images/food/sunday-roast/the-anchor-sunday-roast-hero.jpg",
+          "alt": "A Sunday roast at The Anchor, carved beef with roast potatoes and Yorkshire pudding",
+          "width": 536,
+          "height": 230
+        },
+        "heading": "Sunday roast, no pre-order needed",
+        "body": "Roasts are served from 1pm to 6pm every Sunday, with the last seating at 5:30pm. There is nothing to order in advance and no Saturday cutoff. Walk in if you like, though booking is wise for a group or a peak slot.",
+        "link_label": "Book a table",
+        "link_url": "https://www.the-anchor.pub/book-table"
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Christmas is open for enquiries",
+        "body": [
+          "Parties run from 10 November to 20 December, with a pre-ordered menu and a £10 per person deposit. Tell us your date and rough numbers and we will come back to you."
+        ],
+        "buttons": [
+          {
+            "label": "Christmas enquiries",
+            "url": "https://www.the-anchor.pub/christmas-parties",
+            "variant": "primary"
+          }
+        ]
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Coming in October",
+        "body": [
+          "A Hint of Halloween Quiz Night on Wednesday 7 October, Classic Horror Music Bingo on Friday 16 October, and the House of Horrors Halloween party on Saturday 31 October. We will be in touch about each one nearer the time."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "body": "Whether it is lunch, a roast or a quiz team, we would rather see you than not. Book a table or just turn up.",
+        "cta_url": "https://www.the-anchor.pub/whats-on",
+        "cta_label": "See what is on",
+        "phone_url": "tel:+441753682707",
+        "phone_label": "01753 682707",
+        "script_line": "See you this month",
+        "whatsapp_url": "https://wa.me/441753682707",
+        "whatsapp_label": "WhatsApp",
+        "reassurance_items": [
+          "Free parking right outside",
+          "Dogs welcome throughout"
+        ]
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "year": "2026",
+        "unsubscribe_url": "%%unsubscribe%%",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us."
+      }
+    }
+  ]
+}

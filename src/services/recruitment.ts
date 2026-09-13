@@ -957,6 +957,24 @@ export async function saveRecruitmentEmailTemplate(
   return data as RecruitmentEmailTemplate
 }
 
+/**
+ * When consent was given, which is a record of the consent and not of the last save. Newly given
+ * consent is stamped now, withdrawn consent clears the stamp, and consent that was already given
+ * keeps exactly what is stored, including nothing for rows that pre-date the column. Both
+ * candidate forms resend the tick on every save, so stamping it each time moved the date whenever
+ * an unrelated field was edited. A fresh application is a real consent event and still re-stamps
+ * (see the repeat-applicant branch of createRecruitmentApplication).
+ */
+function resolveConsentTimestamp(input: {
+  consented: boolean
+  wasConsented: boolean
+  storedAt: string | null
+  nowIso: string
+}): string | null {
+  if (!input.consented) return null
+  return input.wasConsented ? input.storedAt : input.nowIso
+}
+
 export async function updateRecruitmentCandidateProfile(
   candidateId: string,
   input: RecruitmentCandidateProfileInput,
@@ -972,24 +990,51 @@ export async function updateRecruitmentCandidateProfile(
       ? null
       : undefined
 
+  const phone = nullIfBlank(parsed.phone)
+  // phone_e164 is what SMS sends to and what duplicate matching compares, so it follows the
+  // phone the caller sent: a supplied phone_e164 wins (the talent pool form has that input),
+  // otherwise it is derived from the phone, the same expression a candidate is created with.
+  // The application-view edit form has no phone_e164 input, so it arrives as null, which used
+  // to clear the column on every save of an otherwise unrelated field.
+  const phoneE164 = nullIfBlank(parsed.phone_e164) ?? normalizePhoneForLookup(phone)
+
   const updatePayload: Record<string, unknown> = {
     first_name: normalizeRecruitmentName(parsed.first_name),
     last_name: normalizeRecruitmentName(parsed.last_name),
     email: normalizeEmail(parsed.email),
-    phone: nullIfBlank(parsed.phone),
-    phone_e164: nullIfBlank(parsed.phone_e164),
+    phone,
+    phone_e164: phoneE164,
     location: nullIfBlank(parsed.location),
     notes: nullIfBlank(parsed.notes),
   }
 
-  if (parsed.sms_consent !== undefined) {
-    updatePayload.sms_consent = parsed.sms_consent
-    updatePayload.sms_consent_at = parsed.sms_consent ? nowIso : null
-  }
+  if (parsed.sms_consent !== undefined || parsed.future_recruitment_consent !== undefined) {
+    // The consent a candidate already gave, so its date survives an edit of anything else.
+    const { data: stored } = await supabase
+      .from('recruitment_candidates')
+      .select('sms_consent, sms_consent_at, future_recruitment_consent, future_recruitment_consent_at')
+      .eq('id', candidateId)
+      .maybeSingle()
 
-  if (parsed.future_recruitment_consent !== undefined) {
-    updatePayload.future_recruitment_consent = parsed.future_recruitment_consent
-    updatePayload.future_recruitment_consent_at = parsed.future_recruitment_consent ? nowIso : null
+    if (parsed.sms_consent !== undefined) {
+      updatePayload.sms_consent = parsed.sms_consent
+      updatePayload.sms_consent_at = resolveConsentTimestamp({
+        consented: parsed.sms_consent,
+        wasConsented: stored?.sms_consent === true,
+        storedAt: stored?.sms_consent_at ?? null,
+        nowIso,
+      })
+    }
+
+    if (parsed.future_recruitment_consent !== undefined) {
+      updatePayload.future_recruitment_consent = parsed.future_recruitment_consent
+      updatePayload.future_recruitment_consent_at = resolveConsentTimestamp({
+        consented: parsed.future_recruitment_consent,
+        wasConsented: stored?.future_recruitment_consent === true,
+        storedAt: stored?.future_recruitment_consent_at ?? null,
+        nowIso,
+      })
+    }
   }
 
   if (rightToWorkStatus) {

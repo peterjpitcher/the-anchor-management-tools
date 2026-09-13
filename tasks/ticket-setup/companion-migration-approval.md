@@ -6,10 +6,10 @@ Production target: `the-anchor-management-tools`, ref `tfcasgxopxegwrabvwat`, ve
 
 ## Exact SQL
 
-File: [exact companion SQL](../../supabase/migrations/20260910073920_ticket_attendees_dining_requests.sql).
+File: [exact companion SQL](../../supabase/migrations/20260910075719_ticket_attendees_dining_requests.sql).
 Migration name: `ticket_attendees_dining_requests`.
 SHA-256: `70d663e10124565c2900d592d2e57f424cecf80b9d772ca7e57ae84db79fbca8`.
-The linked file is the complete exact SQL. It runs after `20260910065400_ticket_setup_and_attendees.sql`, whose approved SHA-256 remains `3c932cde7891ed338c8fcd548343b285d96d0ce804d6db84d002c8b1ab28ee21`.
+The linked file is the complete exact SQL. It runs after `20260910075712_ticket_setup_and_attendees.sql`, whose approved SHA-256 remains `3c932cde7891ed338c8fcd548343b285d96d0ce804d6db84d002c8b1ab28ee21`.
 
 ## Reason and live state
 

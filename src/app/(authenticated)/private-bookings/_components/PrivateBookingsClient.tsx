@@ -347,8 +347,12 @@ export default function PrivateBookingsClient({
     try {
       const result = await extendBookingHold(bookingId, days, reason)
       if ('error' in result && result.error) { toast.error(result.error); return }
+      const notToldBecauseDepositUnconfirmed =
+        'guestNotNotifiedReason' in result && result.guestNotNotifiedReason === 'deposit_to_be_confirmed'
       toast.success(
-        `Hold extended by ${days} days${'smsSent' in result && result.smsSent ? ' -- customer notified by SMS' : ''}`,
+        notToldBecauseDepositUnconfirmed
+          ? `Hold extended by ${days} days. The guest was not told, because their deposit is still to be confirmed.`
+          : `Hold extended by ${days} days${'smsSent' in result && result.smsSent ? ' -- customer notified by SMS' : ''}`,
       )
       setExtendHoldTarget(null)
       fetchWithState({ page: currentPage })
@@ -732,7 +736,11 @@ export default function PrivateBookingsClient({
                             {getHoldExpiryCountdown(booking.hold_expiry) ?? 'Hold expiry not set'}
                           </div>
                         )}
-                        {booking.deposit_status && booking.deposit_status !== 'Not Required' && (
+                        {booking.deposit_awaiting_confirmation ? (
+                          <div className="mt-1">
+                            <Badge tone="warning">Deposit to be confirmed</Badge>
+                          </div>
+                        ) : booking.deposit_status && booking.deposit_status !== 'Not Required' && (
                           <div className="mt-1">
                             <Badge tone={booking.deposit_status === 'Paid' ? 'success' : 'warning'}>
                               Deposit {booking.deposit_status}
@@ -895,7 +903,11 @@ export default function PrivateBookingsClient({
                     </div>
                   </div>
 
-                  {booking.deposit_status && booking.deposit_status !== 'Not Required' && (
+                  {booking.deposit_awaiting_confirmation ? (
+                    <div className="mb-3">
+                      <Badge tone="warning">Deposit to be confirmed</Badge>
+                    </div>
+                  ) : booking.deposit_status && booking.deposit_status !== 'Not Required' && (
                     <div className="mb-3">
                       <Badge tone={booking.deposit_status === 'Paid' ? 'success' : 'warning'}>
                         Deposit {booking.deposit_status}

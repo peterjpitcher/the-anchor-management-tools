@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "title": "October at The Anchor",
+  "preheader": "Dark evenings, three brilliant nights out, and Halloween done properly.",
+  "blocks": [
+    {
+      "type": "masthead_seasonal",
+      "data": {
+        "image_url": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/marketing/seasonal-masthead/10-october.jpg",
+        "alt": "The Anchor, Stanwell Moor Village, since 1751. Autumn leaves and berries around the wordmark."
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "October's here, and we're leaning right into it",
+        "body": [
+          "There's something about the first properly dark evening of the year. The lights go on, the fire gets going, and suddenly a Wednesday feels like an occasion. October's our favourite month for exactly that reason, and we've gone all in on it.",
+          "Three nights out, each with its own bit of mischief, building to Halloween itself on the Saturday. Whether that's a quiz, a horror singalong or full fancy dress, there's one here with your name on it."
+        ],
+        "buttons": [
+          {
+            "label": "See what is on",
+            "url": "https://www.the-anchor.pub/whats-on",
+            "variant": "primary"
+          }
+        ]
+      }
+    },
+    {
+      "type": "whats_on_media",
+      "data": {
+        "kicker": "What’s on",
+        "heading": "Three nights in October",
+        "events": [
+          {
+            "date": "Wed 7 Oct",
+            "name": "A Hint of Halloween Quiz Night",
+            "detail": "Teams of up to six, £3 cash on the night. A few spooky touches, no horror expertise required.",
+            "image": {
+              "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/76ec328b-48f8-47c0-b041-cc405e085deb/square/branded/1788709820568-square-email.jpg",
+              "alt": "A Hint of Halloween Quiz Night at The Anchor in Stanwell Moor",
+              "width": 180,
+              "height": 180
+            },
+            "cta_label": "Reserve your table →",
+            "url": "https://www.the-anchor.pub/events/quiz-night-2026-10-07"
+          },
+          {
+            "date": "Fri 16 Oct",
+            "name": "Screams & Soundtracks Music Bingo",
+            "detail": "Two rounds of classic horror soundtracks with Nikki in charge. £5 cash, and dressing up is encouraged.",
+            "image": {
+              "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/c3ac7e18-e562-4ef8-bea7-cae29f6e96ac/square/branded/1788768723539-square-email.jpg",
+              "alt": "Screams and Soundtracks classic horror music bingo at The Anchor",
+              "width": 180,
+              "height": 180
+            },
+            "cta_label": "Save your seats →",
+            "url": "https://www.the-anchor.pub/events/screams-and-soundtracks-classic-horror-music-bingo-2026-10-16"
+          },
+          {
+            "date": "Sat 31 Oct",
+            "name": "House of Horrors Halloween Party",
+            "detail": "Free entry, fancy dress and the bar open until midnight. Come early if you want a good spot.",
+            "image": {
+              "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/d52cbd18-d293-4516-beca-e151eaa90180/square/branded/1788785717882-square-email.jpg",
+              "alt": "Enter If You Dare, the House of Horrors Halloween party at The Anchor",
+              "width": 180,
+              "height": 180
+            },
+            "cta_label": "Let us know you're coming →",
+            "url": "https://www.the-anchor.pub/events/halloween-events-near-me-monster-mash-the-anchor-halloween-party-2026-10-31"
+          }
+        ],
+        "all_events_url": "https://www.the-anchor.pub/whats-on"
+      }
+    },
+    {
+      "type": "opening_hours_week",
+      "data": {
+        "heading": "When we're open",
+        "rows": [
+          {
+            "day": "Monday",
+            "bar": "4pm to 10pm",
+            "closed": true
+          },
+          {
+            "day": "Tuesday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Wednesday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Thursday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Friday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Saturday",
+            "bar": "12pm to 10pm",
+            "kitchen": "12pm to 7pm"
+          },
+          {
+            "day": "Sunday",
+            "bar": "12pm to 10pm",
+            "kitchen": "1pm to 6pm"
+          }
+        ],
+        "footnote": "Last orders are 30 minutes before the kitchen closes and 15 minutes before the bar does. The clocks go back on Sunday 25 October, but our hours don't change."
+      }
+    },
+    {
+      "type": "opening_hours_dates",
+      "data": {
+        "heading": "One date is different",
+        "rows": [
+          {
+            "date": "Sat 31 Oct",
+            "hours": "12pm to midnight",
+            "note": "Full menu 12pm to 6pm, kitchen shut 6pm to 9pm, then pizza only"
+          }
+        ],
+        "footnote": "Halloween is the only date in October that differs from the week above. Pizza from 9pm is available to eat in or to take away."
+      }
+    },
+    {
+      "type": "grid_cards_linked",
+      "data": {
+        "cards": [
+          {
+            "image": {
+              "src": "https://www.the-anchor.pub/images/food/sunday-roast/the-anchor-sunday-roast-stanwell-moor.jpg",
+              "alt": "A Sunday roast at The Anchor in Stanwell Moor",
+              "width": 258,
+              "height": 144
+            },
+            "heading": "Sunday roast",
+            "body": "Carved fresh every Sunday, 1pm to 6pm. Nothing to order ahead, so you can decide on the day.",
+            "cta_label": "Book a table →",
+            "url": "https://www.the-anchor.pub/book-table"
+          },
+          {
+            "image": {
+              "src": "https://www.the-anchor.pub/images/marketing/christmas-2026/christmas-dinner-hero.jpg",
+              "alt": "A Christmas dinner laid out at The Anchor",
+              "width": 258,
+              "height": 146
+            },
+            "heading": "Christmas is booking",
+            "body": "The good dates go first. If you've a work do or a family table in mind, now's the moment.",
+            "cta_label": "Christmas enquiries →",
+            "url": "https://www.the-anchor.pub/christmas-parties"
+          }
+        ]
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "And when November comes",
+        "body": [
+          "Sparks & Sparklers Quiz Night on Wednesday 4 November. Then Sequins & Showstoppers Music Bingo on Friday the 13th, and the Snowball Showdown on Wednesday the 18th. We'll nudge you nearer the time."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "See you this month",
+        "body": "Quiz team, fancy dress, or just a quiet pint by the fire. Whatever brings you in this month, we'd love to see you.",
+        "cta_label": "See what is on",
+        "cta_url": "https://www.the-anchor.pub/whats-on",
+        "reassurance_items": [
+          "Free parking right outside",
+          "Dogs welcome throughout"
+        ],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "year": "2026",
+        "unsubscribe_url": "%%unsubscribe%%",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us."
+      }
+    }
+  ]
+}

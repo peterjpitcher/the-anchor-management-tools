@@ -10,10 +10,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   getIdempotencyKey,
   claimIdempotencyKey,
+  lookupIdempotencyKey,
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
-import { computeTableBookingRequestHash } from '@/lib/table-bookings/booking-idempotency'
+import { computeTableBookingRequestHash, canonicalFixtureBookingNotes } from '@/lib/table-bookings/booking-idempotency'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -29,8 +30,10 @@ import {
 } from '@/lib/table-bookings/bookings'
 import { computeDepositAmount, LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
 import { extractChristmasRuleErrorMessage, isChristmasPurpose } from '@/lib/table-bookings/christmas'
+import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { savePreorderCover, syncPreorderCovers } from '@/lib/table-bookings/preorder'
+import { oneCourseForEveryone, recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
@@ -63,6 +66,7 @@ type SmsSafetyMeta = Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllow
 type NotificationChannelMeta = TableBookingNotificationChannel
 
 const CreateTableBookingSchema = z.object({
+  fixture_id: z.string().uuid().optional(),
   phone: z.string().trim().min(7).max(32),
   first_name: z.string().trim().min(1).max(100).optional(),
   last_name: z.string().trim().max(100).optional(),
@@ -87,6 +91,7 @@ const CreateTableBookingSchema = z.object({
   // normal terms. See GET /api/table-bookings/periods for what to show the guest.
   booking_period_id: z.string().uuid().optional(),
   booking_period_answer: z.boolean().optional(),
+  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(6).max(20).optional(),
   notes: z.string().trim().max(500).optional(),
   // Deprecated. Older public clients may still post this while their bundle
   // rolls forward, but Sunday bookings no longer have a pre-order flow.
@@ -336,7 +341,15 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Invalid JSON body', 'VALIDATION_ERROR', 400)
     }
 
-    const parsed = CreateTableBookingSchema.safeParse(body)
+    const replayOnly = req.headers.get('X-Idempotency-Replay-Only') === 'true'
+    if (replayOnly && authState !== 'authenticated') {
+      return createErrorResponse('API key required for booking recovery', 'UNAUTHORIZED', 401)
+    }
+    // The envelope makes an older server reject a recovery probe before it can create a booking.
+    const candidate = replayOnly && body && typeof body === 'object' && 'replay_request' in body
+      ? (body as { replay_request: unknown }).replay_request
+      : replayOnly ? null : body
+    const parsed = CreateTableBookingSchema.safeParse(candidate)
     if (!parsed.success) {
       return createErrorResponse(
         parsed.error.issues[0]?.message || 'Invalid table booking payload',
@@ -347,6 +360,14 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = parsed.data
+    if ((replayOnly || payload.fixture_id) && authState !== 'authenticated') {
+      return createErrorResponse('API key required for fixture booking recovery', 'UNAUTHORIZED', 401)
+    }
+    if (payload.fixture_id) {
+      try { canonicalFixtureBookingNotes(payload.fixture_id, payload.notes || '') } catch {
+        return createErrorResponse('Fixture notes do not match fixture ID', 'VALIDATION_ERROR', 400)
+      }
+    }
 
     let normalizedPhone: string
     try {
@@ -383,6 +404,7 @@ export async function POST(request: NextRequest) {
       party_size: payload.party_size,
       purpose: payload.purpose,
       notes: payload.notes,
+      fixture_id: payload.fixture_id,
       dietary_requirements: payload.dietary_requirements,
       allergies: payload.allergies,
       high_chair_count: payload.high_chair_count,
@@ -395,11 +417,21 @@ export async function POST(request: NextRequest) {
       // byte-for-byte the hash this route produced before the fields existed.
       booking_period_id: payload.booking_period_id,
       booking_period_answer: payload.booking_period_answer,
-      preorder: payload.preorder
+      preorder: payload.preorder,
+      christmas_course_counts: payload.christmas_course_counts
     })
 
     const supabase = createAdminClient()
-    const idempotencyState = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
+    const idempotencyState = replayOnly
+      ? await lookupIdempotencyKey(supabase, idempotencyKey, requestHash)
+      : await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
+
+    if (idempotencyState.state === 'new' && replayOnly) {
+      return createErrorResponse('No previous booking attempt found', 'IDEMPOTENCY_KEY_NOT_FOUND', 404)
+    }
+    if (idempotencyState.state === 'replay' && (idempotencyState.response as { state?: string })?.state === 'processing') {
+      return createErrorResponse('This request is already being processed. Please retry shortly.', 'IDEMPOTENCY_KEY_IN_PROGRESS', 409)
+    }
 
     if (idempotencyState.state === 'conflict') {
       return createErrorResponse(
@@ -445,7 +477,12 @@ export async function POST(request: NextRequest) {
       //
       // v06 falls back to v05 internally while table_allocation_v06_enabled is false, so
       // this switch is inert until the flag is turned on.
-      const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('create_table_booking_public_v06', {
+      const { data: rpcResultRaw, error: rpcError } = await (payload.christmas_course_counts
+        ? supabase.rpc('create_table_booking_christmas_v01', {
+            p_request: { ...payload, customer_id: customerResolution.customerId, time: bookingTime, source: 'brand_site' },
+            p_course_counts: payload.christmas_course_counts
+          })
+        : supabase.rpc('create_table_booking_public_v06', {
         p_customer_id: customerResolution.customerId,
         p_booking_date: payload.date,
         p_booking_time: bookingTime,
@@ -468,7 +505,7 @@ export async function POST(request: NextRequest) {
         // period for the date is refused rather than priced.
         p_booking_period_id: payload.booking_period_id ?? null,
         p_booking_period_answer: payload.booking_period_answer ?? null
-      })
+      }))
 
       let bookingResult: TableBookingRpcResult
       if (rpcError) {
@@ -479,6 +516,20 @@ export async function POST(request: NextRequest) {
               ? 'private_booking_blocked'
               : 'no_table'
           }
+        } else if (extractServiceWindowRuleErrorMessage(rpcError)) {
+          // The kitchen is not serving at that time. Availability applies the same rule, so the
+          // website should never have offered it: reaching the guard means the two have drifted,
+          // which has to be visible. The guest gets the usual "not that time" answer, worded by the
+          // website, rather than a 500 or the guard's sentence written for staff.
+          logger.error('Public table booking refused by the service-window guard', {
+            metadata: {
+              customerId: customerResolution.customerId,
+              bookingDate: payload.date,
+              bookingTime,
+              purpose: payload.purpose
+            }
+          })
+          bookingResult = { state: 'blocked', reason: 'outside_service_window' }
         } else {
           // Christmas rule breaches (party size below 6, under 24 hours notice)
           // are raised by the RPC with customer-appropriate wording. Surface
@@ -549,12 +600,45 @@ export async function POST(request: NextRequest) {
       // booking path. New public bookings never use the legacy `sunday_lunch`
       // booking type, so legacy pre-order line items are ignored.
 
+      // A Christmas booking that arrived without per-guest courses (an older client: today's form
+      // always sends them) is recorded as one course for every guest once the pre-order deadline
+      // has passed, because inside it the 1 course tier is the only one on offer (SSOT §7, owner
+      // decision 10 September 2026). Done before the dish write, so no dish is saved against a
+      // guest who cannot pre-order. Before the deadline this changes nothing.
+      const lateChristmasOneCourse =
+        bookingResult.table_booking_id &&
+        !payload.christmas_course_counts &&
+        (payload.booking_period_answer === true || payload.purpose === 'christmas') &&
+        (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment')
+          ? await recordOneCourseInsideCutoff(supabase, {
+              id: bookingResult.table_booking_id,
+              bookingDate: payload.date,
+              partySize: payload.party_size,
+            })
+          : 'not_needed'
+      if (lateChristmasOneCourse === 'recorded') {
+        // Keep the in-memory booking in step: the confirmation text is built from it.
+        bookingResult = {
+          ...bookingResult,
+          booking_period_requires_preorder: false,
+          christmas_course_counts: oneCourseForEveryone(payload.party_size),
+        }
+      }
+
       // Seasonal pre-order. Only ever attempted on a booking that actually
       // exists and that the database attached to a period: without a period
       // there is no menu to choose from, and every dish id is validated against
       // that period before anything is written.
       let preorderResult: PreorderPersistResult | null = null
-      if (bookingResult.table_booking_id && (payload.preorder?.length ?? 0) > 0) {
+      if (bookingResult.table_booking_id && (payload.preorder?.length ?? 0) > 0 && lateChristmasOneCourse === 'recorded') {
+        preorderResult = {
+          requested_covers: payload.preorder?.length ?? 0,
+          saved_covers: 0,
+          saved: false,
+          error: 'The pre-order deadline for this date has passed, so every guest is booked for one course, chosen on the day.'
+        }
+      } else if (bookingResult.table_booking_id && (payload.preorder?.length ?? 0) > 0
+          && !(payload.christmas_course_counts && bookingResult.booking_period_requires_preorder === false)) {
         const entries = payload.preorder ?? []
 
         if (entries.length > payload.party_size) {
@@ -620,14 +704,21 @@ export async function POST(request: NextRequest) {
         let smsSendResult: Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>> | null = null
 
         const [smsOutcome, emailOutcome] = await Promise.allSettled([
-          (payload.skip_customer_sms && bookingResult.state === 'pending_payment')
-            ? Promise.resolve({ sms: null } as Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>>)
-            : sendTableBookingCreatedSmsIfAllowed(supabase, {
-                customerId: customerResolution.customerId,
-                normalizedPhone,
-                bookingResult,
-                nextStepUrl
-              }),
+          // `skip_customer_sms` suppresses the TEXT, not the whole notice.
+          //
+          // The website sets it for a booking it is handing straight to PayPal, so the guest is
+          // not texted a payment link while a payment screen is already open. Skipping this call
+          // entirely suppressed the email as well, so every website booking of 15 or more and
+          // every website Christmas booking was taken with no confirmation of any kind: no
+          // deposit terms, no pay-by time, and nothing to come back to if the payment screen was
+          // abandoned. The email now goes on its own.
+          sendTableBookingCreatedSmsIfAllowed(supabase, {
+            customerId: customerResolution.customerId,
+            normalizedPhone,
+            bookingResult,
+            nextStepUrl,
+            skipCustomerSms: payload.skip_customer_sms === true && bookingResult.state === 'pending_payment'
+          }),
           // Defer manager email for website bookings awaiting deposit payment —
           // it will be sent in the capture-order route once payment is confirmed.
           (payload.skip_customer_sms && bookingResult.state === 'pending_payment')

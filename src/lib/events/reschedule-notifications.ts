@@ -8,23 +8,7 @@ import {
 import { buildEventRescheduledSms } from '@/lib/sms/templates'
 import { sendSMS } from '@/lib/twilio'
 import { createAdminClient } from '@/lib/supabase/admin'
-
-function formatLondonDateTime(isoDateTime: string | null | undefined): string {
-  if (!isoDateTime) return 'your event time'
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-      hourCycle: 'h12',
-    }).format(new Date(isoDateTime))
-  } catch {
-    return 'your event time'
-  }
-}
+import { formatEventWhenCompactLondon, resolveEventStartIso } from '@/lib/events/event-when'
 
 export async function dispatchEventRescheduleNotifications(params: {
   eventId: string
@@ -52,27 +36,36 @@ export async function dispatchEventRescheduleNotifications(params: {
     return { bookingsNotified: 0, totalBookingsAffected: 0 }
   }
 
-  const newStartIso = `${newDate}T${newTime || '00:00'}:00`
-  const formattedNewDate = formatLondonDateTime(newStartIso)
+  // The new date and time are a London wall clock reading, not an instant. Parsing
+  // `2026-09-16T19:00:00` with `new Date` makes a UTC server read 7pm as 8pm London, which both
+  // announced the wrong time and set every unpaid hold to expire an hour late.
+  const newStartIso = resolveEventStartIso({ date: newDate, time: newTime })
+  // The text pays by the character, so it takes the compact form; the email spells it out.
+  const formattedNewDate = formatEventWhenCompactLondon(newStartIso) ?? 'the new date'
 
   const pendingBookingIds = bookings
     .filter((booking) => booking.status === 'pending_payment')
     .map((booking) => booking.id)
 
   if (pendingBookingIds.length > 0) {
-    const newStartDatetime = new Date(newStartIso).toISOString()
+    if (newStartIso) {
+      await db
+        .from('bookings')
+        .update({ hold_expires_at: newStartIso })
+        .in('id', pendingBookingIds)
+        .lt('hold_expires_at', newStartIso)
 
-    await db
-      .from('bookings')
-      .update({ hold_expires_at: newStartDatetime })
-      .in('id', pendingBookingIds)
-      .lt('hold_expires_at', newStartDatetime)
-
-    await db
-      .from('booking_holds')
-      .update({ expires_at: newStartDatetime })
-      .in('event_booking_id', pendingBookingIds)
-      .eq('status', 'active')
+      await db
+        .from('booking_holds')
+        .update({ expires_at: newStartIso })
+        .in('event_booking_id', pendingBookingIds)
+        .eq('status', 'active')
+    } else {
+      // Leaving a hold on its old expiry is recoverable; writing an Invalid Date is not.
+      logger.error('Event reschedule could not resolve the new start, so unpaid holds were left alone', {
+        metadata: { eventId, newDate, newTime, pendingBookings: pendingBookingIds.length },
+      })
+    }
   }
 
   const smsTargets = bookings.filter((booking) => {

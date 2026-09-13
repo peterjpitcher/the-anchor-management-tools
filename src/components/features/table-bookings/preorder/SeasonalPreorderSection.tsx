@@ -473,6 +473,7 @@ export default function SeasonalPreorderSection({
         ) : (
           <div className="space-y-3">
             {order.covers.map((cover) => {
+              if (cover.courseCount === 1) return <p key={cover.id} className="text-sm">Seat {cover.ordinal}: 1 course, no pre-order required.</p>
               const coverDraft = draft[cover.id]
               if (!coverDraft) return null
               const missingMain = !coverDraft.choices.main
@@ -595,6 +596,7 @@ export default function SeasonalPreorderSection({
             {bookingAddons.count > 0 && (
               <ul className="mt-1 space-y-0.5 text-xs text-gray-700">
                 {order.covers.map((cover) => {
+              if (cover.courseCount === 1) return <p key={cover.id} className="text-sm">Seat {cover.ordinal}: 1 course, no pre-order required.</p>
                   const summary = addonsByCover.get(cover.id)?.summary
                   if (!summary || summary.count === 0) return null
                   return (

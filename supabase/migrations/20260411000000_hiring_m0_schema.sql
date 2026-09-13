@@ -673,10 +673,18 @@ CREATE POLICY "Hiring interview attendees delete" ON public.hiring_interview_att
     OR public.user_has_permission(auth.uid(), 'hiring', 'manage')
   );
 
--- 13. CV storage bucket (public for now to match existing flow)
+-- 13. CV storage bucket
+-- Created private. This originally created it public "to match existing flow"
+-- and used ON CONFLICT DO UPDATE SET public = EXCLUDED.public, which does not
+-- just create-if-missing: it FORCES public = true on every run. Migration
+-- 20260527081209_hiring_docs_private_2026_05_27.sql later made the bucket
+-- private, so replaying this file against a database that already has it
+-- (a local reset, a restore, or db push --include-all) silently re-published
+-- 268 CV and employment documents to direct URL access.
+-- DO NOTHING so an existing bucket's visibility is never overwritten.
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('hiring-docs', 'hiring-docs', true)
-ON CONFLICT (id) DO UPDATE SET public = EXCLUDED.public;
+VALUES ('hiring-docs', 'hiring-docs', false)
+ON CONFLICT (id) DO NOTHING;
 
 -- 14. Reconcile employee status constraint with current app values
 DO $$

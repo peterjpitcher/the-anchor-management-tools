@@ -222,6 +222,12 @@ function escapeLikePattern(input: string) {
 
 export async function listParkingBookings(options?: {
   status?: ParkingBookingStatus | 'all'
+  /**
+   * Restrict to several statuses at once. Used by the calendars, which want the
+   * live bookings only: a cancelled or expired booking rendered there as a live
+   * block that no filter could hide.
+   */
+  statuses?: ParkingBookingStatus[]
   paymentStatus?: ParkingPaymentStatus | 'all'
   search?: string
   limit?: number
@@ -250,6 +256,10 @@ export async function listParkingBookings(options?: {
 
     if (options?.status && options.status !== 'all') {
       query = query.eq('status', options.status)
+    }
+
+    if (options?.statuses && options.statuses.length > 0) {
+      query = query.in('status', options.statuses)
     }
 
     if (options?.paymentStatus && options.paymentStatus !== 'all') {

@@ -2,8 +2,10 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getBookingScheduledSms } from '@/services/private-bookings/scheduled-sms'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { loadPrivateBookingEmails } from '@/lib/private-bookings/email-timeline'
 import {
   CommunicationsTab,
+  type CommunicationsEmailRow,
   type CommunicationsHistoryRow,
 } from './CommunicationsTab'
 
@@ -30,7 +32,7 @@ export async function CommunicationsTabServer({
   const { data: historyData, error: historyError } = await supabase
     .from('private_booking_sms_queue')
     .select(
-      'id, created_at, trigger_type, template_key, status, message_body, twilio_sid:twilio_message_sid, scheduled_for',
+      'id, created_at, trigger_type, template_key, status, message_body, twilio_sid:twilio_message_sid, scheduled_for, metadata',
     )
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: false })
@@ -49,6 +51,24 @@ export async function CommunicationsTabServer({
     message_body: row.message_body ? String(row.message_body) : null,
     twilio_sid: row.twilio_sid ? String(row.twilio_sid) : null,
     scheduled_for: row.scheduled_for ? String(row.scheduled_for) : null,
+    // An approved text that Send Now delivered as an email instead (email first).
+    delivered_by:
+      row.metadata && typeof row.metadata === 'object' && (row.metadata as Record<string, unknown>).delivered_by === 'email'
+        ? 'email'
+        : null,
+  }))
+
+  // Emails about this booking: service-role only, and this page has already checked that the
+  // viewer may see the booking.
+  const emailResult = await loadPrivateBookingEmails(bookingId)
+  const emails: CommunicationsEmailRow[] = emailResult.rows.map((row) => ({
+    id: row.id,
+    created_at: row.sent_at ?? row.created_at,
+    comm_type: row.comm_type,
+    subject: row.subject,
+    status: row.status,
+    to_address: row.to_address,
+    error: row.error,
   }))
 
   const scheduled = await getBookingScheduledSms(bookingId)
@@ -70,6 +90,8 @@ export async function CommunicationsTabServer({
       history={history}
       scheduled={scheduled}
       isDateTbd={isDateTbd}
+      emails={emails}
+      emailsError={emailResult.error}
     />
   )
 }

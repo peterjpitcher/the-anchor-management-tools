@@ -113,4 +113,26 @@ describe('SmsQueueActionForm', () => {
     expect(action).not.toHaveBeenCalled()
     expect(screen.queryByText('Send?')).not.toBeInTheDocument()
   })
+
+  it('says what actually happened when the action reports it (sent by email)', async () => {
+    const action = vi.fn(async () => ({
+      status: 'success' as const,
+      message: 'Sent by email: the guest has a usable email address',
+      changedAt: Date.now(),
+    }))
+
+    render(
+      <SmsQueueActionForm action={action} smsId="sms-900" confirmMessage="Send?" successMessage="SMS sent">
+        Send Now
+      </SmsQueueActionForm>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send Now' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }))
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('Sent by email: the guest has a usable email address')
+    })
+    expect(toast.success).not.toHaveBeenCalledWith('SMS sent')
+  })
 })

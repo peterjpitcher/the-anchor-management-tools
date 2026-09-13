@@ -9,7 +9,7 @@ import { createEventManageToken } from '@/lib/events/manage-booking'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { logger } from '@/lib/logger'
-import { sendEventPaymentLinkEmail } from '@/lib/email/event-ticket-emails'
+import { sendEventBookingConfirmedEmail, sendEventPaymentLinkEmail } from '@/lib/email/event-ticket-emails'
 import type { TicketSelectionInput } from '@/lib/events/ticket-types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -54,6 +54,7 @@ type EventBookingRpcResult = {
   table_name?: string | null
   table_names?: string[]
   table_ids?: string[]
+  requests_recorded?: boolean
 }
 
 type EventTableReservationRpcResult = {
@@ -141,6 +142,8 @@ export type CreateBookingParams = {
    * gate — when the flag is off it must not pass multi/non-default selections here.
    */
   ticketSelections?: TicketSelectionInput[]
+  diningRequest?: 'before_event' | 'during_event' | 'not_sure'
+  earlyArrivalRequest?: boolean
 }
 
 export type CreateBookingResult = {
@@ -242,12 +245,12 @@ function buildEventBookingSms(
   if (state === 'pending_payment') {
     const managePart = payload.manageLink ? ` ${payload.manageLink}` : ''
     if (payload.paymentLink) {
-      return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one! Pay here: ${payload.paymentLink}.${managePart}`
+      return `The Anchor: Hi ${payload.firstName}, ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one. Pay here: ${payload.paymentLink}.${managePart}`
     }
-    return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one! We'll ping you a payment link shortly.${managePart}`
+    return `The Anchor: Hi ${payload.firstName}, ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one. We'll ping you a payment link shortly.${managePart}`
   }
 
-  return `The Anchor: ${payload.firstName}! You're in, ${payload.seats} ${seatWord} locked in for ${payload.eventName} on ${payload.eventStart}. See you there!${payload.manageLink ? ` ${payload.manageLink}` : ''}`
+  return `The Anchor: Hi ${payload.firstName}, you're in. ${payload.seats} ${seatWord} locked in for ${payload.eventName} on ${payload.eventStart}. See you there!${payload.manageLink ? ` ${payload.manageLink}` : ''}`
 }
 
 async function sendBookingSmsIfAllowed(
@@ -533,7 +536,9 @@ export class EventBookingService {
       attendeeNames,
       attribution = null,
       paymentHoldMinutes,
-      ticketSelections
+      ticketSelections,
+      diningRequest,
+      earlyArrivalRequest
     } = params
 
     // A multi-type basket (more than one line, or any line whose ticket_type_id is
@@ -549,7 +554,23 @@ export class EventBookingService {
 
     // ── 1. Call the create RPC (v06 legacy single-type, or v07 multi-type) ─────
     const holdMinutes = paymentHoldMinutes ?? (source === 'brand_site' ? 15 : 24 * 60)
-    const { data: rpcResultRaw, error: rpcError } = requireGuestDetails || attendees?.length
+    const hasRequests = Boolean(diningRequest || earlyArrivalRequest)
+    const needsAttendees = Boolean(requireGuestDetails || attendees?.length)
+    const { data: rpcResultRaw, error: rpcError } = needsAttendees && hasRequests
+      ? await supabase.rpc('create_event_booking_with_attendees_and_requests_v01', {
+          p_event_id: eventId,
+          p_customer_id: customerId,
+          p_seats: seats,
+          p_source: source,
+          p_seating_preference: normalizeSeatingPreference(seatingPreference),
+          p_payment_hold_minutes: holdMinutes,
+          p_ticket_selections: useTicketSelections ? ticketSelections : null,
+          p_attendees: attendees ?? [],
+          p_expected_total: expectedTotal ?? null,
+          p_dining_request: diningRequest ?? null,
+          p_early_arrival_request: earlyArrivalRequest ?? false,
+        })
+      : needsAttendees
       ? await supabase.rpc('create_event_booking_v08', {
           p_event_id: eventId,
           p_customer_id: customerId,
@@ -560,6 +581,18 @@ export class EventBookingService {
           p_ticket_selections: useTicketSelections ? ticketSelections : null,
           p_attendees: attendees ?? [],
           p_expected_total: expectedTotal ?? null,
+        })
+      : hasRequests
+      ? await supabase.rpc('create_event_booking_with_requests_v01', {
+          p_event_id: eventId,
+          p_customer_id: customerId,
+          p_seats: seats,
+          p_source: source,
+          p_seating_preference: normalizeSeatingPreference(seatingPreference),
+          p_payment_hold_minutes: holdMinutes,
+          p_ticket_selections: useTicketSelections ? ticketSelections as unknown as object : null,
+          p_dining_request: diningRequest ?? null,
+          p_early_arrival_request: earlyArrivalRequest ?? false
         })
       : useTicketSelections
       ? await supabase.rpc('create_event_booking_v07', {
@@ -581,7 +614,7 @@ export class EventBookingService {
 
     if (rpcError) {
       const rpcErrorCode = classifyBookingRpcError(rpcError.message)
-      logger.error(`${useTicketSelections ? 'create_event_booking_v07' : 'create_event_booking_v06'} RPC failed`, {
+      logger.error(`${needsAttendees ? (hasRequests ? 'create_event_booking_with_attendees_and_requests_v01' : 'create_event_booking_v08') : hasRequests ? 'create_event_booking_with_requests_v01' : useTicketSelections ? 'create_event_booking_v07' : 'create_event_booking_v06'} RPC failed`, {
         error: new Error(rpcError.message),
         metadata: { eventId, customerId, source, rpcErrorCode }
       })
@@ -808,13 +841,12 @@ export class EventBookingService {
         })
       }
 
-      if (shouldSendSms && normalizedPhone) {
-        tasks.push({
-          label: 'sms:booking_created',
-          promise: sendBookingSmsIfAllowed(
+      const runBookingSms = async (): Promise<void> => {
+        try {
+          smsMeta = await sendBookingSmsIfAllowed(
             supabase,
             customerId,
-            normalizedPhone,
+            normalizedPhone!,
             rpcResult,
             seats,
             nextStepUrl,
@@ -822,20 +854,66 @@ export class EventBookingService {
             logTag,
             firstName
           )
-            .then((meta) => {
-              smsMeta = meta
-            })
-            .catch((smsError) => {
-              const message = smsError instanceof Error ? smsError.message : String(smsError)
-              logger.warn(`${logTagCap} SMS task rejected unexpectedly`, {
+        } catch (smsError) {
+          const message = smsError instanceof Error ? smsError.message : String(smsError)
+          logger.warn(`${logTagCap} SMS task rejected unexpectedly`, {
+            metadata: {
+              bookingId: rpcResult.booking_id,
+              state: resolvedState,
+              error: message
+            }
+          })
+          smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
+        }
+      }
+
+      /**
+       * Confirmation goes by email where the guest has a usable address, and by text otherwise
+       * (owner decision, 12 September 2026). Thirteen of the fifteen events on the books are free
+       * or paid on the night, and their guests used to get a text and nothing else, while the
+       * booking form made an email address compulsory "so we can send your confirmation".
+       *
+       * Two exceptions, both about where the guest is standing when the booking is made:
+       *  - a walk-in is booked in at the venue by staff, and is already in the room, so there is
+       *    nothing to confirm to them in writing;
+       *  - a guest who booked by replying to a text is mid-conversation, so the text still goes
+       *    and the email goes as well rather than instead.
+       *
+       * The text also covers an email that does not go out, so a booking is never confirmed to
+       * nobody.
+       */
+      const confirmedBookingId =
+        resolvedState === 'confirmed' && source !== 'walk-in' ? rpcResult.booking_id : null
+      const emailReplacesText = source !== 'sms_reply'
+      if (confirmedBookingId) {
+        tasks.push({
+          label: 'email:event_booking_confirmed',
+          promise: (async () => {
+            let emailed = false
+            try {
+              const emailResult = await sendEventBookingConfirmedEmail(supabase, {
+                bookingId: confirmedBookingId,
+                appBaseUrl
+              })
+              emailed = emailResult.success === true
+            } catch (emailError) {
+              logger.warn(`${logTagCap} confirmation email rejected unexpectedly`, {
                 metadata: {
-                  bookingId: rpcResult.booking_id,
-                  state: resolvedState,
-                  error: message
+                  bookingId: confirmedBookingId,
+                  error: emailError instanceof Error ? emailError.message : String(emailError)
                 }
               })
-              smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
-            })
+            }
+
+            if (!(emailed && emailReplacesText) && shouldSendSms && normalizedPhone) {
+              await runBookingSms()
+            }
+          })()
+        })
+      } else if (shouldSendSms && normalizedPhone) {
+        tasks.push({
+          label: 'sms:booking_created',
+          promise: runBookingSms()
         })
       }
 

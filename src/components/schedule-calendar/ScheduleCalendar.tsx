@@ -21,6 +21,15 @@ export interface ScheduleCalendarProps {
     firstDayOfWeek?: 0 | 1 | 2 | 3 | 4 | 5 | 6
     legendKinds?: CalendarEntryKind[]
     dailyOps?: ScheduleDailyOps
+    /**
+     * Controlled month. Lifted so the owner can scope filter counts to the month
+     * actually on screen, and keep it in the URL. Falls back to internal state
+     * when not supplied.
+     */
+    anchor?: Date
+    onAnchorChange?: (anchor: Date) => void
+    /** Unfiltered entries, so closed days survive a filter. */
+    closureEntries?: CalendarEntry[]
     className?: string
 }
 
@@ -35,9 +44,18 @@ export function ScheduleCalendar({
     firstDayOfWeek = 1,
     legendKinds,
     dailyOps,
+    anchor: controlledAnchor,
+    onAnchorChange,
+    closureEntries,
     className,
 }: ScheduleCalendarProps) {
-    const [anchor, setAnchor] = useState<Date>(() => new Date())
+    const [uncontrolledAnchor, setUncontrolledAnchor] = useState<Date>(() => new Date())
+    const anchor = controlledAnchor ?? uncontrolledAnchor
+    const setAnchor = (next: Date | ((current: Date) => Date)) => {
+        const value = typeof next === 'function' ? next(anchor) : next
+        if (onAnchorChange) onAnchorChange(value)
+        else setUncontrolledAnchor(value)
+    }
     const isMobile = useMediaQuery('(max-width: 639px)')
 
     const effectiveView: ScheduleCalendarView = isMobile ? 'list' : view
@@ -116,10 +134,18 @@ export function ScheduleCalendar({
                     onEntryClick={onEntryClick}
                     onEmptyDayClick={canCreateCalendarNote ? onEmptyDayClick : undefined}
                     renderTooltip={renderTooltip}
+                    dailyOps={dailyOps}
+                    closureEntries={closureEntries}
                 />
             )}
             {effectiveView === 'list' && (
-                <ScheduleCalendarList entries={entries} onEntryClick={onEntryClick} hidePast={isMobile} dailyOps={dailyOps} />
+                <ScheduleCalendarList
+                    entries={entries}
+                    onEntryClick={onEntryClick}
+                    hidePast={isMobile}
+                    dailyOps={dailyOps}
+                    renderTooltip={renderTooltip}
+                />
             )}
         </div>
     )

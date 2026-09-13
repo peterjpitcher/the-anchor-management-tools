@@ -65,3 +65,33 @@ export function isValidEmailAddress(value: string | null | undefined): value is 
 
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
+
+/** Hard-failure states on the customer record: the address must not be used. */
+const BLOCKED_EMAIL_STATUSES = new Set(['invalid', 'bounced', 'complained'])
+
+export type EmailUsabilityState = {
+  email?: string | null
+  email_status?: string | null
+  email_deactivated_at?: string | null
+}
+
+/**
+ * The one test for "can we email this person at all": the address is well formed, the
+ * customer record does not mark it invalid, bounced or complained, and it has not been
+ * deactivated.
+ *
+ * Deliberately free of I/O, so it does not read the suppression list; callers still check
+ * `isEmailSuppressed` (and `sendEmail` refuses a suppressed address anyway). Marketing
+ * consent is a separate question and stays with the caller too.
+ */
+export function isEmailUsable(state: EmailUsabilityState | null | undefined): boolean {
+  if (!state || !isValidEmailAddress(state.email)) {
+    return false
+  }
+
+  if (BLOCKED_EMAIL_STATUSES.has(state.email_status ?? 'unknown')) {
+    return false
+  }
+
+  return !state.email_deactivated_at
+}

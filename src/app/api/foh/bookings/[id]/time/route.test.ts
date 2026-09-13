@@ -3,6 +3,7 @@ import { PATCH } from './route'
 import { NextRequest } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logAuditEvent } from '@/app/actions/audit'
+import { logger } from '@/lib/logger'
 import { sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
 
 vi.mock('@/lib/foh/api-auth', () => ({
@@ -14,6 +15,14 @@ vi.mock('@/lib/foh/api-auth', () => ({
 }))
 vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+}))
+// Ordinary days on 12:00 to 22:00, so every clock time stays on the booking's date and the
+// database mock's rpc stays the move alone. tests/api/fohTableBookingTimeAfterMidnight.test.ts
+// covers a night that closes after midnight, with the real hours read.
+vi.mock('@/lib/business-hours/trading-day', async (importActual) => ({
+  ...(await importActual<typeof import('@/lib/business-hours/trading-day')>()),
+  loadTradingHours: vi.fn(async (_db: unknown, dates: string[]) =>
+    new Map(dates.map((date) => [date, { opens: '12:00:00', closes: '22:00:00', is_closed: false }]))),
 }))
 vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn().mockResolvedValue(undefined),
@@ -322,6 +331,23 @@ describe('PATCH /api/foh/bookings/[id]/time', () => {
       expect(json.error).toMatch(/conflicts with another booking/i)
       expect(sendTableBookingRescheduledNotificationIfAllowed).not.toHaveBeenCalled()
     })
+
+    it('passes a kitchen-hours refusal through as a 422 in the database\'s own words', async () => {
+      // 422, not 400: the change-time screen keeps its dialog open and shows the message as it
+      // stands for 409 and 422, but appends "Check the timeline before trying again" to anything
+      // else, which is meant for a network failure and would mislead here.
+      const message = 'The kitchen is not serving at 20:45 on 15 Mar 2026. Please choose a time inside a food service.'
+      const db = createSupabaseMock({ rpcError: { code: '22023', message, details: null, hint: null } })
+      mockAuthSuccess(db)
+
+      const res = await PATCH(makeRequest({ time: '20:45' }), makeParams())
+
+      expect(res.status).toBe(422)
+      await expect(res.json()).resolves.toEqual({ error: message, code: 'outside_service_window' })
+      expect(logger.error).not.toHaveBeenCalled()
+      expect(logAuditEvent).not.toHaveBeenCalled()
+      expect(sendTableBookingRescheduledNotificationIfAllowed).not.toHaveBeenCalled()
+    })
   })
 
   describe('side effects', () => {
@@ -330,7 +356,8 @@ describe('PATCH /api/foh/bookings/[id]/time', () => {
       await PATCH(makeRequest({ time: '18:00' }), makeParams())
       expect(sendTableBookingRescheduledNotificationIfAllowed).toHaveBeenCalledWith(
         expect.anything(),
-        { tableBookingId: VALID_UUID },
+        // The old start goes with it, so the guest email can say what the booking was.
+        { tableBookingId: VALID_UUID, previous: { startDateTime: expect.any(String) } },
       )
     })
 

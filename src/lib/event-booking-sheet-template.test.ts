@@ -30,6 +30,13 @@ const options = {
 }
 
 describe('booking sheet template', () => {
+  it('prints unconfirmed food and arrival requests from durable booking notes', () => {
+    const bookingNotes = 'UNCONFIRMED REQUEST: Guest asks about food before the event. Guest would like to discuss arriving early. Food availability and arrival arrangements must be agreed with the team.'
+    const html = generateEventBookingSheetsHTML([{ ...baseSheet, bookingNotes }], options)
+    expect(html).toContain(bookingNotes)
+    expect(html).toContain('Booking notes')
+  })
+
   it('renders Sunday roast items from provided menu data', () => {
     const html = generateEventBookingSheetsHTML([baseSheet], options)
 

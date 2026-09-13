@@ -100,6 +100,53 @@ describe('decideConfirmReminder', () => {
   })
 })
 
+describe('decideConfirmReminder by email first (flag table_confirm_reminder_email_first)', () => {
+  const EMAIL_ONLY = { id: 'c', firstName: 'Jane', phone: null, smsActive: false, emailUsable: true }
+
+  it('now asks a guest who has an email address but no mobile', () => {
+    expect(decideConfirmReminder(candidate({ customer: EMAIL_ONLY }), TODAY, { emailFirst: true })).toEqual({ send: true })
+  })
+
+  it('asks a guest who switched texts off but can be emailed', () => {
+    expect(
+      decideConfirmReminder(
+        candidate({ customer: { id: 'c', firstName: 'Jane', phone: '+447700900000', smsActive: false, emailUsable: true } }),
+        TODAY,
+        { emailFirst: true },
+      ),
+    ).toEqual({ send: true })
+  })
+
+  it('keeps the text-only reasons for a guest who cannot be emailed either', () => {
+    expect(
+      decideConfirmReminder(
+        candidate({ customer: { id: 'c', firstName: 'Jane', phone: null, smsActive: true, emailUsable: false } }),
+        TODAY,
+        { emailFirst: true },
+      ),
+    ).toEqual({ send: false, reason: 'no_mobile' })
+    expect(
+      decideConfirmReminder(
+        candidate({ customer: { id: 'c', firstName: 'Jane', phone: '+447700900000', smsActive: false, emailUsable: false } }),
+        TODAY,
+        { emailFirst: true },
+      ),
+    ).toEqual({ send: false, reason: 'sms_not_active' })
+  })
+
+  it('still never asks a booking that is not confirmed, answered, reminded or tomorrow', () => {
+    const options = { emailFirst: true }
+    expect(decideConfirmReminder(candidate({ customer: EMAIL_ONLY, status: 'pending_payment' }), TODAY, options).send).toBe(false)
+    expect(decideConfirmReminder(candidate({ customer: EMAIL_ONLY, guestConfirmedAt: '2026-08-09T10:00:00Z' }), TODAY, options).send).toBe(false)
+    expect(decideConfirmReminder(candidate({ customer: EMAIL_ONLY, reminderAlreadySent: true }), TODAY, options).send).toBe(false)
+    expect(decideConfirmReminder(candidate({ customer: EMAIL_ONLY, bookingDate: TODAY }), TODAY, options).send).toBe(false)
+  })
+
+  it('ignores a usable email while the flag is off, exactly as today', () => {
+    expect(decideConfirmReminder(candidate({ customer: EMAIL_ONLY }), TODAY)).toEqual({ send: false, reason: 'no_mobile' })
+  })
+})
+
 describe('isTomorrow', () => {
   it('accepts the day after the sweep', () => {
     expect(isTomorrow('2026-08-10', '2026-08-09')).toBe(true)

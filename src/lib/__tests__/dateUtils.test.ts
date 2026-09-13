@@ -9,9 +9,12 @@ import {
   formatDateDdMmmmYyyy,
   formatDateTime,
   formatDateWithTimeForSms,
+  getLocalIsoDateDaysAgo,
+  getLocalIsoDateDaysAhead,
   parseLondonDateTimeLocalToIso,
   startOfLondonDayUtc,
   toLondonDateTimeLocalValue,
+  whenLondonClockReaches,
 } from '../dateUtils'
 
 afterEach(() => {
@@ -84,6 +87,110 @@ describe('toLocalIsoDate', () => {
     const originalTime = original.getTime()
     toLocalIsoDate(original)
     expect(original.getTime()).toBe(originalTime)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getLocalIsoDateDaysAhead / getLocalIsoDateDaysAgo
+// ---------------------------------------------------------------------------
+
+/**
+ * Both helpers move today's London date by whole calendar days. They used to move the host's
+ * calendar with setDate, which on the UTC server is n x 24 hours, and that lands on the wrong
+ * London date for one hour a night whenever a clock change falls inside the span. The clock
+ * change cases only ever failed under `npm run test:utc`: a London host hides the bug.
+ */
+describe('getLocalIsoDateDaysAhead and getLocalIsoDateDaysAgo', () => {
+  function at(instant: string) {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(instant))
+  }
+
+  describe('the night the clocks go back, Sunday 25 October 2026', () => {
+    it.each([
+      // 00:00, 00:30 and 00:59 BST on Sunday 25 October.
+      ['2026-10-24T23:00:00Z'],
+      ['2026-10-24T23:30:00Z'],
+      ['2026-10-24T23:59:00Z'],
+    ])('at %s, one day ahead is Monday 26 October, not the same Sunday', (instant) => {
+      at(instant)
+      expect(getTodayIsoDate()).toBe('2026-10-25')
+      expect(getLocalIsoDateDaysAhead(1)).toBe('2026-10-26')
+    })
+
+    it('at 23:30 GMT on Sunday 25 October, one day ago is Saturday 24 October, not the same Sunday', () => {
+      at('2026-10-25T23:30:00Z')
+      expect(getLocalIsoDateDaysAgo(1)).toBe('2026-10-24')
+    })
+
+    it('from weeks before: 90 days ahead of 00:30 BST on 1 October is 30 December, not 29', () => {
+      at('2026-09-30T23:30:00Z')
+      expect(getLocalIsoDateDaysAhead(90)).toBe('2026-12-30')
+    })
+
+    it('from days after: 7 days before 23:30 GMT on Friday 30 October is Friday 23 October, not 24', () => {
+      at('2026-10-30T23:30:00Z')
+      expect(getLocalIsoDateDaysAgo(7)).toBe('2026-10-23')
+    })
+  })
+
+  describe('the night the clocks go forward, Sunday 28 March 2027', () => {
+    it.each([
+      // 23:00, 23:30 and 23:59 GMT on Saturday 27 March.
+      ['2027-03-27T23:00:00Z'],
+      ['2027-03-27T23:30:00Z'],
+      ['2027-03-27T23:59:00Z'],
+    ])('at %s, one day ahead is Sunday 28 March, not Monday 29', (instant) => {
+      at(instant)
+      expect(getTodayIsoDate()).toBe('2027-03-27')
+      expect(getLocalIsoDateDaysAhead(1)).toBe('2027-03-28')
+    })
+
+    it('at 00:30 BST on Monday 29 March, one day ago is Sunday 28 March, not Saturday 27', () => {
+      at('2027-03-28T23:30:00Z')
+      expect(getLocalIsoDateDaysAgo(1)).toBe('2027-03-28')
+    })
+
+    it('from weeks before: 90 days ahead of 23:30 GMT on 15 January is 15 April, not 16', () => {
+      at('2027-01-15T23:30:00Z')
+      expect(getLocalIsoDateDaysAhead(90)).toBe('2027-04-15')
+    })
+
+    it('from days after: 90 days before 00:30 BST on 1 April is 1 January, not 31 December', () => {
+      at('2027-03-31T23:30:00Z')
+      expect(getLocalIsoDateDaysAgo(90)).toBe('2027-01-01')
+    })
+  })
+
+  describe('ordinary days give the same dates as before', () => {
+    it('in the afternoon', () => {
+      at('2026-09-15T14:00:00Z') // 15:00 BST on Tuesday 15 September 2026
+      expect(getLocalIsoDateDaysAhead(1)).toBe('2026-09-16')
+      expect(getLocalIsoDateDaysAhead(30)).toBe('2026-10-15')
+      expect(getLocalIsoDateDaysAgo(7)).toBe('2026-09-08')
+      expect(getLocalIsoDateDaysAgo(90)).toBe('2026-06-17')
+    })
+
+    it('just after midnight in summer and just before midnight in winter', () => {
+      at('2026-07-14T23:30:00Z') // 00:30 BST on Wednesday 15 July 2026
+      expect(getLocalIsoDateDaysAhead(1)).toBe('2026-07-16')
+      at('2026-01-15T23:30:00Z') // 23:30 GMT on Thursday 15 January 2026
+      expect(getLocalIsoDateDaysAhead(1)).toBe('2026-01-16')
+    })
+
+    it('across a year end and a leap day', () => {
+      at('2026-12-31T12:00:00Z')
+      expect(getLocalIsoDateDaysAhead(1)).toBe('2027-01-01')
+      at('2028-02-28T12:00:00Z')
+      expect(getLocalIsoDateDaysAhead(1)).toBe('2028-02-29')
+      expect(getLocalIsoDateDaysAgo(0)).toBe('2028-02-28')
+    })
+  })
+
+  it('refuses a fractional day count rather than rounding it', () => {
+    at('2026-09-15T14:00:00Z')
+    expect(() => getLocalIsoDateDaysAhead(1.5)).toThrow('whole number of days')
+    expect(() => getLocalIsoDateDaysAgo(0.5)).toThrow('whole number of days')
   })
 })
 
@@ -359,5 +466,49 @@ describe('startOfLondonDayUtc', () => {
     // Start of London day (15 Jul) = 23:00 UTC on 14 Jul
     const result = startOfLondonDayUtc(new Date('2026-07-15T00:30:00Z'))
     expect(result.toISOString()).toBe('2026-07-14T23:00:00.000Z')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// whenLondonClockReaches
+// ---------------------------------------------------------------------------
+
+describe('whenLondonClockReaches', () => {
+  const at = (isoDate: string, time: string) => whenLondonClockReaches(isoDate, time)?.toISOString() ?? null
+
+  it('reads an ordinary time in winter and in summer', () => {
+    expect(at('2026-12-31', '12:00:00')).toBe('2026-12-31T12:00:00.000Z')
+    expect(at('2027-01-01', '01:00')).toBe('2027-01-01T01:00:00.000Z')
+    expect(at('2026-07-15', '12:00')).toBe('2026-07-15T11:00:00.000Z')
+    expect(at('2026-07-16', '00:00:00')).toBe('2026-07-15T23:00:00.000Z')
+  })
+
+  it('takes the first 1am when the clocks go back, 25 October 2026', () => {
+    // 01:00 to 01:59 happens twice. A 1am close is the first time the clock shows 1am.
+    expect(at('2026-10-25', '00:30')).toBe('2026-10-24T23:30:00.000Z')
+    expect(at('2026-10-25', '01:00')).toBe('2026-10-25T00:00:00.000Z')
+    expect(at('2026-10-25', '01:30')).toBe('2026-10-25T00:30:00.000Z')
+    expect(at('2026-10-25', '02:00')).toBe('2026-10-25T02:00:00.000Z')
+    // parseLondonDateTimeLocal, by contrast, lands on the second 1am.
+    expect(parseLondonDateTimeLocalToIso('2026-10-25T01:00')).toBe('2026-10-25T01:00:00.000Z')
+  })
+
+  it('takes the jump itself when the clocks go forward, 28 March 2027', () => {
+    // 01:00 to 01:59 never shows: the clock passes it at 01:00 GMT, jumping to 02:00 BST.
+    expect(at('2027-03-28', '00:30')).toBe('2027-03-28T00:30:00.000Z')
+    expect(at('2027-03-28', '01:00')).toBe('2027-03-28T01:00:00.000Z')
+    expect(at('2027-03-28', '01:30:00')).toBe('2027-03-28T01:00:00.000Z')
+    expect(at('2027-03-28', '02:00')).toBe('2027-03-28T01:00:00.000Z')
+    expect(at('2027-03-28', '12:00')).toBe('2027-03-28T11:00:00.000Z')
+    // parseLondonDateTimeLocal, by contrast, lands an hour early.
+    expect(parseLondonDateTimeLocalToIso('2027-03-28T01:00')).toBe('2027-03-28T00:00:00.000Z')
+  })
+
+  it('returns null for an impossible date or time', () => {
+    expect(whenLondonClockReaches('2026-02-30', '12:00')).toBeNull()
+    expect(whenLondonClockReaches('2026-12-31', '24:00')).toBeNull()
+    expect(whenLondonClockReaches('2026-12-31', '12:60')).toBeNull()
+    expect(whenLondonClockReaches('2026-12-31', 'noon')).toBeNull()
+    expect(whenLondonClockReaches('31/12/2026', '12:00')).toBeNull()
   })
 })

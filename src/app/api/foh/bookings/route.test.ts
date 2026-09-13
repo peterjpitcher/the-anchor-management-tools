@@ -2,6 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { POST } from './route'
 import { requireFohPermission } from '@/lib/foh/api-auth'
+import { logger } from '@/lib/logger'
+import { recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
+import {
+  sendManagerTableBookingCreatedEmailIfAllowed,
+  sendTableBookingCreatedSmsIfAllowed,
+} from '@/lib/table-bookings/bookings'
 import {
   FOH_BOOKING_CLIENT_CONTRACT,
   FOH_BOOKING_CLIENT_HEADER,
@@ -11,6 +17,14 @@ import {
 vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
   getLondonDateIso: vi.fn(() => '2026-08-01'),
+}))
+// An ordinary day on 12:00 to 22:00: the service in force is the pinned date and every clock
+// time sits on it. tests/api/fohWalkInAfterMidnight.test.ts covers a night that closes at 1am.
+vi.mock('@/lib/business-hours/trading-day', async (importActual) => ({
+  ...(await importActual<typeof import('@/lib/business-hours/trading-day')>()),
+  resolveTradingDayNow: vi.fn(async () => ({ date: '2026-08-01', until: new Date('2026-08-01T23:00:00Z') })),
+  loadTradingHours: vi.fn(async (_db: unknown, dates: string[]) =>
+    new Map(dates.map((date) => [date, { opens: '12:00:00', closes: '22:00:00', is_closed: false }]))),
 }))
 vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -45,6 +59,10 @@ vi.mock('@/lib/table-bookings/deposit', () => ({
 vi.mock('@/lib/table-bookings/period-lookup', () => ({
   loadBookingPeriodContext: vi.fn().mockResolvedValue({ period: null, collectPeriodDeposits: true }),
   expectedDepositForCreate: vi.fn(() => null),
+}))
+vi.mock('@/lib/table-bookings/christmas-one-course', () => ({
+  recordOneCourseInsideCutoff: vi.fn().mockResolvedValue('not_needed'),
+  oneCourseForEveryone: (partySize: number) => Array.from({ length: partySize }, () => 1),
 }))
 vi.mock('@/lib/table-bookings/bookings', () => ({
   mapTableBookingBlockedReason: vi.fn((reason: string | null) => reason ?? 'blocked'),
@@ -336,5 +354,293 @@ describe('POST /api/foh/bookings — kitchen pacing', () => {
       'create_table_booking_staff_v06',
       expect.objectContaining({ p_bypass_pacing: true }),
     )
+  })
+})
+
+// The refusal table_bookings_service_window_guard raised for every walk-in on 9 September 2026.
+const KITCHEN_NOT_SERVING = {
+  code: '22023',
+  message: 'The kitchen is not serving at 20:34 on 01 Aug 2026. Please choose a time inside a food service.',
+  details: null,
+  hint: null,
+}
+
+// A walk-in with no name or number, as the floor adds them during service.
+const ANONYMOUS_WALK_IN = {
+  walk_in: true,
+  walk_in_guest_name: 'Walk in',
+  date: '2026-08-01',
+  time: '20:34',
+  party_size: 2,
+  purpose: 'food',
+}
+
+type Builder = ReturnType<typeof makeBuilder>
+
+// The builders that deleted from customers. The walk-in insert is a separate builder.
+function customerDeletes(db: ReturnType<typeof createSupabaseMock>): Builder[] {
+  return (db.builders.customers ?? []).filter(
+    (builder) => vi.mocked(builder.delete as ReturnType<typeof vi.fn>).mock.calls.length > 0,
+  )
+}
+
+// The dummy number createWalkInCustomer generated for this request.
+function insertedWalkInPhone(db: ReturnType<typeof createSupabaseMock>): string {
+  const insert = db.builders.customers[0].insert as ReturnType<typeof vi.fn>
+  return (insert.mock.calls[0][0] as { mobile_e164: string }).mobile_e164
+}
+
+describe('POST /api/foh/bookings: failed walk-ins and kitchen-hours refusals', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('removes the made-up walk-in customer when the booking fails', async () => {
+    const db = createSupabaseMock({
+      fromResults: { customers: { data: { id: NEW_WALKIN_ID }, error: null } },
+      rpcResult: { data: null, error: { code: 'XX000', message: 'connection reset', details: null, hint: null } },
+    })
+    mockAuthSuccess(db)
+
+    const res = await POST(makeRequest(ANONYMOUS_WALK_IN))
+
+    expect(res.status).toBe(500)
+    const deletes = customerDeletes(db)
+    expect(deletes).toHaveLength(1)
+    expect(deletes[0].eq).toHaveBeenCalledWith('id', NEW_WALKIN_ID)
+    expect(deletes[0].eq).toHaveBeenCalledWith('mobile_e164', insertedWalkInPhone(db))
+  })
+
+  it('removes it when the booking comes back blocked, because no booking row exists', async () => {
+    const db = createSupabaseMock({
+      fromResults: { customers: { data: { id: NEW_WALKIN_ID }, error: null } },
+      rpcResult: { data: { state: 'blocked', reason: 'no_table' }, error: null },
+    })
+    mockAuthSuccess(db)
+
+    const res = await POST(makeRequest(ANONYMOUS_WALK_IN))
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toMatchObject({ data: { state: 'blocked', reason: 'no_table' } })
+    expect(customerDeletes(db)).toHaveLength(1)
+  })
+
+  it('keeps the walk-in customer once a booking exists', async () => {
+    const db = createSupabaseMock({
+      fromResults: { customers: { data: { id: NEW_WALKIN_ID }, error: null } },
+    })
+    mockAuthSuccess(db)
+
+    const res = await POST(makeRequest(ANONYMOUS_WALK_IN))
+
+    expect(res.status).toBe(201)
+    expect(customerDeletes(db)).toHaveLength(0)
+  })
+
+  it('never removes a customer the request did not create', async () => {
+    const db = createSupabaseMock({
+      rpcResult: { data: null, error: { code: 'XX000', message: 'connection reset', details: null, hint: null } },
+    })
+    mockAuthSuccess(db)
+
+    const res = await POST(makeRequest({ ...ANONYMOUS_WALK_IN, customer_id: CUSTOMER_ID }))
+
+    expect(res.status).toBe(500)
+    expect(customerDeletes(db)).toHaveLength(0)
+  })
+
+  it('keeps the walk-in customer if a booking turns out to refer to it after all', async () => {
+    const db = createSupabaseMock({
+      fromResults: {
+        customers: { data: { id: NEW_WALKIN_ID }, error: null },
+        table_bookings: { data: [{ id: 'tb-cancelled' }], error: null },
+      },
+      rpcResult: { data: { state: 'blocked', reason: 'no_table' }, error: null },
+    })
+    mockAuthSuccess(db)
+
+    const res = await POST(makeRequest(ANONYMOUS_WALK_IN))
+
+    expect(res.status).toBe(200)
+    expect(customerDeletes(db)).toHaveLength(0)
+  })
+
+  it('still gives staff the original answer when the tidy-up cannot run', async () => {
+    const db = createSupabaseMock({
+      fromResults: {
+        customers: { data: { id: NEW_WALKIN_ID }, error: null },
+        bookings: { data: null, error: { code: '57014', message: 'statement timeout', details: null, hint: null } },
+      },
+      rpcResult: { data: { state: 'blocked', reason: 'no_table' }, error: null },
+    })
+    mockAuthSuccess(db)
+
+    const res = await POST(makeRequest(ANONYMOUS_WALK_IN))
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toMatchObject({ data: { state: 'blocked', reason: 'no_table' } })
+    expect(customerDeletes(db)).toHaveLength(0)
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringMatching(/could not check/i),
+      expect.objectContaining({ metadata: expect.objectContaining({ customerId: NEW_WALKIN_ID }) }),
+    )
+  })
+
+  it('tells staff the kitchen is not serving, instead of a generic failure', async () => {
+    const db = createSupabaseMock({ rpcResult: { data: null, error: KITCHEN_NOT_SERVING } })
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({ customer_id: CUSTOMER_ID, date: '2026-08-01', time: '20:34', party_size: 2, purpose: 'food' }),
+    )
+
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: KITCHEN_NOT_SERVING.message })
+    expect(logger.error).not.toHaveBeenCalled()
+  })
+
+  it('gives a refused walk-in the same message, and removes its made-up customer', async () => {
+    const db = createSupabaseMock({
+      fromResults: { customers: { data: { id: NEW_WALKIN_ID }, error: null } },
+      rpcResult: { data: null, error: KITCHEN_NOT_SERVING },
+    })
+    mockAuthSuccess(db)
+
+    const res = await POST(makeRequest(ANONYMOUS_WALK_IN))
+
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: KITCHEN_NOT_SERVING.message })
+    expect(customerDeletes(db)).toHaveLength(1)
+  })
+})
+
+describe('POST /api/foh/bookings: walk-ins are not sent a booking confirmation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('sends no guest notice for a walk-in entered with a phone number', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    // A walk-in with a number used to get "your table booking is confirmed" and a link to
+    // change or cancel it, while being shown to a table. One entered without a number was
+    // already silent, which is the only reason this case existed.
+    const res = await POST(
+      makeRequest({
+        walk_in: true,
+        phone: '07700900000',
+        date: '2026-08-01',
+        time: '18:00',
+        party_size: 2,
+        purpose: 'food',
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(sendTableBookingCreatedSmsIfAllowed).not.toHaveBeenCalled()
+    // The manager still hears about it.
+    expect(sendManagerTableBookingCreatedEmailIfAllowed).toHaveBeenCalled()
+  })
+
+  it('still sends the guest notice for an ordinary booking taken by telephone', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({
+        phone: '07700900000',
+        first_name: 'Sam',
+        date: '2026-08-01',
+        time: '18:00',
+        party_size: 2,
+        purpose: 'food',
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/foh/bookings: Christmas booked inside the pre-order deadline', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('asks for the booking to be recorded as one course, since this screen takes no courses', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({
+        customer_id: CUSTOMER_ID,
+        date: '2026-12-01',
+        time: '18:00',
+        party_size: 8,
+        purpose: 'christmas',
+        sunday_deposit_method: 'cash',
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    // The helper decides from the database's own deadline whether anything changes.
+    expect(recordOneCourseInsideCutoff).toHaveBeenCalledWith(db, {
+      id: 'booking-1',
+      bookingDate: '2026-12-01',
+      partySize: 8,
+    })
+  })
+
+  it('confirms a late booking as one course, never with a "choose your food" link', async () => {
+    vi.mocked(recordOneCourseInsideCutoff).mockResolvedValueOnce('recorded')
+    const db = createSupabaseMock({
+      rpcResult: {
+        data: {
+          state: 'confirmed',
+          table_booking_id: 'booking-1',
+          booking_reference: 'TB-TEST',
+          booking_period_id: 'period-1',
+          booking_period_answer: true,
+          booking_period_requires_preorder: true,
+        },
+        error: null,
+      },
+    })
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({
+        customer_id: CUSTOMER_ID,
+        date: '2026-12-01',
+        time: '18:00',
+        party_size: 8,
+        purpose: 'christmas',
+        sunday_deposit_method: 'cash',
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        bookingResult: expect.objectContaining({
+          booking_period_requires_preorder: false,
+          christmas_course_counts: [1, 1, 1, 1, 1, 1, 1, 1],
+        }),
+      }),
+    )
+  })
+
+  it('leaves every other booking alone', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({ customer_id: CUSTOMER_ID, date: '2026-08-01', time: '18:00', party_size: 2, purpose: 'food' }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(recordOneCourseInsideCutoff).not.toHaveBeenCalled()
   })
 })

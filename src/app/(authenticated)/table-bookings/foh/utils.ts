@@ -326,6 +326,23 @@ export function getLondonDateIso(now = new Date()): string {
   return `${year}-${month}-${day}`
 }
 
+/**
+ * The service date in force now, as the schedule last reported it: the night before from
+ * midnight until an after-midnight close (1am on New Year's Eve), otherwise today.
+ *
+ * Null when there is no report or it has run out. The calendar cannot tell a late night from an
+ * ordinary one, so once the report runs out the caller asks the server again rather than guess.
+ */
+export function resolveFohServiceDateNow(
+  now: Date,
+  tradingDayNow: { date: string; until: string } | null | undefined,
+): string | null {
+  if (!tradingDayNow) return null
+  const untilMs = Date.parse(tradingDayNow.until)
+  if (!Number.isFinite(untilMs) || now.getTime() >= untilMs) return null
+  return tradingDayNow.date
+}
+
 function isoDateToUtcDayNumber(isoDate: string): number | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null
   const [yearText, monthText, dayText] = isoDate.split('-')
@@ -494,6 +511,11 @@ export function suggestWalkInTime(input: {
   timelineStartMin: number
   timelineEndMin: number
   purpose: 'food' | 'drinks'
+  /**
+   * The service date in force now (resolveFohServiceDateNow). After midnight on a late night
+   * it is the day before, whose "now" is 24:30 rather than 00:30. Defaults to today.
+   */
+  tradingDateIso?: string | null
 }): string {
   const { startMin, endMin } = resolvePurposeWindowMinutes({
     serviceWindow: input.serviceWindow,
@@ -505,9 +527,9 @@ export function suggestWalkInTime(input: {
   const latestVisibleMinute = Math.max(startMin, endMin - 5)
   let minAllowedMinute = startMin
 
-  const londonTodayIso = getLondonDateKey(input.now)
+  const serviceDateNowIso = input.tradingDateIso || getLondonDateKey(input.now)
   const nowMinute = minutesFromServiceDate(input.now.toISOString(), input.serviceDateIso)
-  if (londonTodayIso === input.serviceDateIso && nowMinute != null) {
+  if (serviceDateNowIso === input.serviceDateIso && nowMinute != null) {
     minAllowedMinute = Math.max(minAllowedMinute, nowMinute + 1)
   }
 
@@ -558,6 +580,8 @@ export function resolveWalkInDefaults(input: {
   timelineStartMin: number
   timelineEndMin: number
   eventOptions: FohEventOption[]
+  /** The service date in force now; see suggestWalkInTime. */
+  tradingDateIso?: string | null
 }): {
   purpose: WalkInBookingPurpose
   eventId: string
@@ -579,7 +603,8 @@ export function resolveWalkInDefaults(input: {
         serviceWindow: input.serviceWindow,
         timelineStartMin: input.timelineStartMin,
         timelineEndMin: input.timelineEndMin,
-        purpose: 'food'
+        purpose: 'food',
+        tradingDateIso: input.tradingDateIso
       })
     }
   }
@@ -606,7 +631,8 @@ export function resolveWalkInDefaults(input: {
       serviceWindow: input.serviceWindow,
       timelineStartMin: input.timelineStartMin,
       timelineEndMin: input.timelineEndMin,
-      purpose: purpose === 'drinks' ? 'drinks' : 'food'
+      purpose: purpose === 'drinks' ? 'drinks' : 'food',
+      tradingDateIso: input.tradingDateIso
     })
   }
 }

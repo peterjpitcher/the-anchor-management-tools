@@ -586,7 +586,10 @@ export class ShortLinkService {
         name: linkName,
         destination_url: destinationUrl,
         link_type: input.link_type,
-        expires_at: input.expires_at ?? null,
+        // Only written when the caller sends it. The edit form has no expiry field, so an absent
+        // one used to remove an expiry that the redirect route and the table-booking fallback
+        // both enforce. An explicit null still clears it.
+        ...(input.expires_at !== undefined ? { expires_at: input.expires_at } : {}),
         updated_at: new Date().toISOString()
       })
       .eq('id', input.id)

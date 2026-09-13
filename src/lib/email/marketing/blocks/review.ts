@@ -41,7 +41,7 @@ export const review = defineBlock<ReviewData>({
   },
   render: (data) =>
     `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>
-<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:32px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#ffffff;border:1px solid #e2dccf"><tbody>
+<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#ffffff;border:1px solid #e2dccf"><tbody>
 <tr><td align="center" style="padding:26px 30px 0;font-family:'Outfit',Helvetica,Arial,sans-serif;font-size:18px;line-height:24px;letter-spacing:0.2em;color:#a57626">${escapeEmailText(FILLED_STAR.repeat(data.stars))}</td></tr>
 <tr><td align="center" style="padding:12px 34px 0;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:21px;line-height:29px;letter-spacing:-0.01em;color:#1a1a1a">&ldquo;${escapeEmailText(data.quote)}&rdquo;</td></tr>
 <tr><td align="center" style="padding:12px 30px 26px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;font-weight:600;line-height:20px;letter-spacing:0.06em;text-transform:uppercase;color:#6f6a61">${escapeEmailText(data.attribution)}</td></tr>

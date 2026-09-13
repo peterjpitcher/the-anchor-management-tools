@@ -1,6 +1,6 @@
 # Standing ticket policy, production approval packet
 
-Status: exact migration, rollback and both application releases approved by the owner on 6 September 2026. Applied as production history version 20260906143610 on 6 September 2026 at 14:36:10 UTC. Both apps are live and verified; see release-verification.md. Complexity: 4, delivered in three separable pieces: website recovery/UI, booking/SMS application changes, database policy migration. Deploy the compatible application changes before applying the policy migration.
+Status: exact migration and both application releases approved by the owner on 6 September 2026. Migration not yet applied. Complexity: 4, delivered in three separable pieces: website recovery/UI, booking/SMS application changes, database policy migration. Deploy the compatible application changes before applying the policy migration.
 
 ## Exact production target and SQL
 

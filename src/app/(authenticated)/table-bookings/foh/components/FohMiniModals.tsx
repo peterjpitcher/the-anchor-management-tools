@@ -1,9 +1,12 @@
 'use client'
 
 import React from 'react'
+import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
 import { Modal, ModalActions } from '@/ds'
 
 type FohPartySizeModalProps = {
+  bookingId?: string | null
+  onCoursesChange?: (counts: number[] | undefined) => void
   open: boolean
   bookingActionInFlight: string | null
   partySizeEditValue: string
@@ -62,6 +65,7 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
           autoFocus
         />
       </label>
+      {open && props.bookingId && props.onCoursesChange ? <ChristmasCourseFields bookingId={props.bookingId} partySize={Number(partySizeEditValue)} onChange={props.onCoursesChange} /> : null}
     </Modal>
   )
 })

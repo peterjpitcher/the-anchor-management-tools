@@ -1,5 +1,6 @@
 import { formatTime12Hour } from '@/lib/dateUtils'
 import { sendEmail } from '@/lib/email/emailService'
+import { queueManagerReportEmail } from '@/lib/manager-report/queue'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createGuestToken } from '@/lib/guest/tokens'
 import { logger } from '@/lib/logger'
@@ -219,9 +220,9 @@ export async function sendManagerPrivateBookingCreatedEmail(
   return { sent: true }
 }
 
-export async function sendManagerPrivateBookingsWeeklyDigestEmail(
+export async function queueManagerPrivateBookingsWeeklyDigestEmail(
   input: PrivateBookingWeeklyDigestInput
-): Promise<{ sent: boolean; error?: string; actionCount?: number; eventCount?: number }> {
+): Promise<{ queued: boolean; error?: string; actionCount?: number; eventCount?: number }> {
   const appBaseUrl = normalizeAppBaseUrl(input.appBaseUrl)
   const privateBookingsUrl = `${appBaseUrl}/private-bookings`
   const events = input.events
@@ -230,7 +231,7 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
   const tier2 = events.filter((e) => e.tier === 2)
   const tier3 = events.filter((e) => e.tier === 3)
   const actionCount = tier1.length + tier2.length
-  const subject = `Private bookings weekly summary — ${input.weekLabel}`
+  const subject = `Private bookings weekly summary - ${input.weekLabel}`
 
   // --- HTML builder ---
 
@@ -307,11 +308,11 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
       })()
     : ''
 
-  const footerHtml = `<p style="margin-top:24px;font-size:12px;color:#9ca3af;">Sent every Monday at 9am · <a href="${escapeHtml(privateBookingsUrl)}" style="color:#9ca3af;">Manage in Anchor Management Tools</a></p>`
+  const footerHtml = `<p style="margin-top:24px;font-size:12px;color:#9ca3af;">Included in the Friday manager report · <a href="${escapeHtml(privateBookingsUrl)}" style="color:#9ca3af;">Manage in Anchor Management Tools</a></p>`
 
   let bodyHtml: string
   if (events.length === 0) {
-    bodyHtml = '<p style="margin-top:16px;color:#6b7280;">All clear — no upcoming private events. Enjoy your week.</p>'
+    bodyHtml = '<p style="margin-top:16px;color:#6b7280;">All clear - no upcoming private events. Enjoy your week.</p>'
   } else {
     bodyHtml = [
       renderTierSectionHtml('Action Required', tier1, '#dc2626'),
@@ -333,13 +334,13 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
   // --- Plain text builder ---
 
   const textLines: string[] = [
-    `Private bookings weekly summary — ${input.weekLabel}`,
+    `Private bookings weekly summary - ${input.weekLabel}`,
     '',
     `${tier1.length} Action Required | ${tier2.length} Needs Attention | ${tier3.length} On Track`
   ]
 
   if (events.length === 0) {
-    textLines.push('', 'All clear — no upcoming private events. Enjoy your week.')
+    textLines.push('', 'All clear - no upcoming private events. Enjoy your week.')
   } else {
     if (tier1.length > 0) {
       textLines.push('', '--- ACTION REQUIRED ---')
@@ -395,11 +396,14 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
 
   textLines.push(
     '',
-    `Sent every Monday at 9am · Manage in Anchor Management Tools`,
+    `Included in the Friday manager report · Manage in Anchor Management Tools`,
     privateBookingsUrl
   )
 
-  const result = await sendEmail({
+  const result = await queueManagerReportEmail({
+    section: 'private_bookings',
+    key: input.runDateKey,
+    metadata: { snapshot_date: input.runDateKey, event_count: events.length, action_count: actionCount },
     to: PRIVATE_BOOKINGS_MANAGER_EMAIL,
     subject,
     html,
@@ -408,15 +412,15 @@ export async function sendManagerPrivateBookingsWeeklyDigestEmail(
 
   if (!result.success) {
     return {
-      sent: false,
-      error: result.error || 'Failed to send private-bookings weekly digest email',
+      queued: false,
+      error: result.error || 'Failed to queue private-bookings weekly summary',
       actionCount,
       eventCount: events.length
     }
   }
 
   return {
-    sent: true,
+    queued: true,
     actionCount,
     eventCount: events.length
   }

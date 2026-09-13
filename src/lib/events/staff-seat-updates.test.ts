@@ -41,7 +41,8 @@ const bookingRow = {
   booking_time: '18:00:00',
   start_datetime: '2026-07-10T17:00:00.000Z',
   end_datetime: '2026-07-10T19:00:00.000Z',
-  duration_minutes: 120
+  duration_minutes: 120,
+  christmas_course_counts: undefined as number[] | undefined
 }
 
 type UpdateResult = { data: Record<string, unknown> | null; error: { message: string } | null }
@@ -94,6 +95,7 @@ const availability = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  bookingRow.christmas_course_counts = undefined
   mockedGetAvailability.mockResolvedValue(availability)
   mockedMoveToTables.mockResolvedValue({ ok: true })
 })
@@ -201,6 +203,26 @@ describe('updateTableBookingPartySizeWithLinkedEventSeats (auto-move grow)', () 
       })
     ).rejects.toMatchObject({ message: 'update failed' })
 
+    expect(mockedMoveToTables).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('Christmas amendment preflight', () => {
+  it('rejects missing course choices before any table move or update', async () => {
+    bookingRow.christmas_course_counts = [1, 1, 1, 1, 1, 1]
+    const { client } = createSupabaseStub({ data: null, error: null })
+    await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, { tableBookingId: 'tb-1', partySize: 7, autoMoveTable: true }))
+      .rejects.toThrow('Choose one, two or three courses')
+    expect(mockedGetAvailability).not.toHaveBeenCalled()
+    expect(mockedMoveToTables).not.toHaveBeenCalled()
+  })
+  it('rejects a course change after the deadline before moving tables', async () => {
+    bookingRow.christmas_course_counts = [1, 1, 1, 1, 1, 1]
+    const { client } = createSupabaseStub({ data: null, error: null })
+    Object.assign(client, { rpc: vi.fn(async () => ({ data: { multiple_courses_available: false }, error: null })) })
+    await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, { tableBookingId: 'tb-1', partySize: 7, autoMoveTable: true, christmasCourseCounts: [1, 1, 1, 1, 1, 1, 2] }))
+      .rejects.toThrow('deadline has passed')
     expect(mockedMoveToTables).not.toHaveBeenCalled()
   })
 })

@@ -59,6 +59,17 @@ const resolverSql = latestDefinitionOf(
   'CREATE OR REPLACE FUNCTION public.resolve_table_booking_deposit('
 )
 
+/**
+ * The migration that built this create path. The file-level checks at the bottom describe THAT
+ * migration (its drops, its entry points, its freeze trigger, its grants), so they read it by
+ * name. A later migration can replace the core without being a create-path migration:
+ * 20260911133645 did, to lower the Christmas minimum, and it carries none of those pieces.
+ */
+const createPathMigrationSql = readFileSync(
+  join(MIGRATIONS, '20260803000200_seasonal_deposit_on_create.sql'),
+  'utf8',
+)
+
 /** The body of a named SQL function, so an assertion cannot drift onto a different one. */
 function functionBody(sql: string, declaration: string): string {
   const start = sql.indexOf(declaration)
@@ -213,7 +224,7 @@ describe('THE GBP 120 TIE, at the layer that charges', () => {
       depositBasis: 'per_head',
       depositAmount: 10,
       refundCutoffDays: 7,
-      minPartySize: 6,
+      minPartySize: 4,
       maxPartySize: 20,
       minNoticeHours: 24,
       legacyBookingType: 'christmas',
@@ -304,17 +315,17 @@ describe('the migration is deployable and honest about it', () => {
       'create_table_booking_staff_v06',
       'create_table_booking_core_v06',
     ]) {
-      expect(createPathSql).toContain(`DROP FUNCTION IF EXISTS public.${fn}(`)
+      expect(createPathMigrationSql).toContain(`DROP FUNCTION IF EXISTS public.${fn}(`)
     }
   })
 
   it('both entry points pass the two new parameters through to the core', () => {
     const publicEntry = functionBody(
-      createPathSql,
+      createPathMigrationSql,
       'CREATE OR REPLACE FUNCTION public.create_table_booking_public_v06(',
     )
     const staffEntry = functionBody(
-      createPathSql,
+      createPathMigrationSql,
       'CREATE OR REPLACE FUNCTION public.create_table_booking_staff_v06(',
     )
     for (const entry of [publicEntry, staffEntry]) {
@@ -325,13 +336,13 @@ describe('the migration is deployable and honest about it', () => {
   })
 
   it('closes the privileged functions to anon and authenticated, and proves it', () => {
-    expect(createPathSql).toMatch(
+    expect(createPathMigrationSql).toMatch(
       /REVOKE ALL ON FUNCTION public\.create_table_booking_core_v06\([\s\S]*?FROM PUBLIC, anon, authenticated;/,
     )
-    expect(createPathSql).toMatch(
+    expect(createPathMigrationSql).toMatch(
       /REVOKE ALL ON FUNCTION public\.create_table_booking_staff_v06\([\s\S]*?FROM PUBLIC, anon, authenticated;/,
     )
-    expect(createPathSql).toMatch(
+    expect(createPathMigrationSql).toMatch(
       /REVOKE ALL ON FUNCTION public\.freeze_table_booking_refund_terms\(\) FROM PUBLIC, anon, authenticated;/,
     )
     // The assertion must FAIL the migration, not report success on a half-closed door, and it must
@@ -341,9 +352,9 @@ describe('the migration is deployable and honest about it', () => {
       'create_table_booking_staff_v06',
       'freeze_table_booking_refund_terms',
     ]) {
-      expect(createPathSql).toContain(`'${fn}'`)
+      expect(createPathMigrationSql).toContain(`'${fn}'`)
     }
-    expect(createPathSql).toContain('RAISE EXCEPTION USING')
+    expect(createPathMigrationSql).toContain('RAISE EXCEPTION USING')
   })
 
   it('asks Postgres whether anon can execute, rather than pattern-matching the ACL text', () => {
@@ -351,37 +362,37 @@ describe('the migration is deployable and honest about it', () => {
     // touched stores proacl NULL, meaning the built-in default, and for a function that default is
     // EXECUTE TO PUBLIC. No "anon=X" appears in a NULL, so the assertion reported all clear while
     // anon genuinely could call it.
-    expect(createPathSql).toContain("has_function_privilege('anon', p.oid, 'EXECUTE')")
-    expect(createPathSql).toContain("has_function_privilege('authenticated', p.oid, 'EXECUTE')")
-    expect(createPathSql).not.toContain('(anon|authenticated)=X')
+    expect(createPathMigrationSql).toContain("has_function_privilege('anon', p.oid, 'EXECUTE')")
+    expect(createPathMigrationSql).toContain("has_function_privilege('authenticated', p.oid, 'EXECUTE')")
+    expect(createPathMigrationSql).not.toContain('(anon|authenticated)=X')
   })
 
   it('freezes the refund terms once the guest has been given them', () => {
     // The snapshot is safe from period edits by construction. This closes the other way it could
     // move: a support script or a bulk update writing to the booking directly.
-    expect(createPathSql).toContain('CREATE OR REPLACE FUNCTION public.freeze_table_booking_refund_terms()')
-    expect(createPathSql).toMatch(
+    expect(createPathMigrationSql).toContain('CREATE OR REPLACE FUNCTION public.freeze_table_booking_refund_terms()')
+    expect(createPathMigrationSql).toMatch(
       /BEFORE UPDATE OF deposit_refund_cutoff_days, deposit_refund_policy ON public\.table_bookings/,
     )
     // Setting them for the first time must still work, so a backfill is possible.
-    expect(createPathSql).toContain('IF OLD.deposit_refund_cutoff_days IS NOT NULL')
+    expect(createPathMigrationSql).toContain('IF OLD.deposit_refund_cutoff_days IS NOT NULL')
   })
 
   it('keeps the website able to book, and asserts that too', () => {
-    expect(createPathSql).toMatch(
+    expect(createPathMigrationSql).toMatch(
       /GRANT EXECUTE ON FUNCTION public\.create_table_booking_public_v06\([\s\S]*?TO anon, authenticated, service_role;/,
     )
-    expect(createPathSql).toContain('so the website cannot take a booking')
+    expect(createPathMigrationSql).toContain('so the website cannot take a booking')
   })
 
   it('runs as one transaction', () => {
-    expect(createPathSql.trimStart().split('\n').some((line) => line.trim() === 'BEGIN;')).toBe(true)
-    expect(createPathSql.trimEnd().endsWith('COMMIT;')).toBe(true)
+    expect(createPathMigrationSql.trimStart().split('\n').some((line) => line.trim() === 'BEGIN;')).toBe(true)
+    expect(createPathMigrationSql.trimEnd().endsWith('COMMIT;')).toBe(true)
   })
 
   it('has balanced dollar quoting', () => {
     for (const tag of ['$function$', '$freeze$', '$assert_grants$', '$assert_wiring$']) {
-      const count = createPathSql.split(tag).length - 1
+      const count = createPathMigrationSql.split(tag).length - 1
       expect(count % 2, `${tag} appears ${count} times, which is not a matched pair`).toBe(0)
     }
   })
@@ -390,6 +401,19 @@ describe('the migration is deployable and honest about it', () => {
     // 20260802000008 is the latest applied migration. Anything at or below it would never run.
     expect('20260803000200' > '20260802000008').toBe(true)
     expect('20260803000200' > '20260803000100').toBe(true)
+  })
+})
+
+describe('whichever migration last replaced the core keeps it closed', () => {
+  it('re-states that anon and authenticated cannot execute it, and that service_role can', () => {
+    // CREATE OR REPLACE keeps an existing ACL, so a replacement that forgets its grants passes in
+    // production and quietly differs in a rebuilt database. The newest definition has to say it.
+    expect(createPathSql).toMatch(
+      /REVOKE ALL ON FUNCTION public\.create_table_booking_core_v06\([\s\S]*?FROM PUBLIC, anon, authenticated;/,
+    )
+    expect(createPathSql).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.create_table_booking_core_v06\([\s\S]*?TO service_role;/,
+    )
   })
 })
 

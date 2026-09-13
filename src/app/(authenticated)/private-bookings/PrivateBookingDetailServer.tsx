@@ -6,6 +6,7 @@ interface Props {
   booking: PrivateBookingWithDetails | null
   permissions: React.ComponentProps<typeof PrivateBookingDetailClient>['permissions']
   paymentHistory: PaymentHistoryEntry[]
+  depositConfirmation?: React.ComponentProps<typeof PrivateBookingDetailClient>['depositConfirmation']
   initialError?: string | null
 }
 
@@ -14,6 +15,7 @@ export default function PrivateBookingDetailServer({
   booking,
   permissions,
   paymentHistory,
+  depositConfirmation,
   initialError,
 }: Props) {
   return (
@@ -22,6 +24,7 @@ export default function PrivateBookingDetailServer({
       initialBooking={booking}
       permissions={permissions}
       paymentHistory={paymentHistory}
+      depositConfirmation={depositConfirmation}
       initialError={initialError}
     />
   )

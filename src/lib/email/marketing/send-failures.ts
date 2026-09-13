@@ -47,7 +47,16 @@ const TERMINAL_PATTERNS: RegExp[] = [
   /\b(?:400|422)\b/,
 ]
 
-export function classifySendFailure(message: string): FailureClass {
+/**
+ * Codes from `sendEmail` that say nothing about the recipient and must never fail one.
+ * 'email_suspended': an emergency kill switch refused the send before the provider was asked,
+ * so the recipient is held back until the switch is cleared. The code is checked before the
+ * message because the wording is not a contract.
+ */
+const RETRYABLE_CODES = new Set<string>(['email_suspended'])
+
+export function classifySendFailure(message: string, code?: string | null): FailureClass {
+  if (code && RETRYABLE_CODES.has(code)) return 'retryable'
   const text = message ?? ''
   if (RETRYABLE_PATTERNS.some((pattern) => pattern.test(text))) return 'retryable'
   if (TERMINAL_PATTERNS.some((pattern) => pattern.test(text))) return 'terminal'

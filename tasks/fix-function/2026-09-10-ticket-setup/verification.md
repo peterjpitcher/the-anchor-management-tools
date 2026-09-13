@@ -1,12 +1,12 @@
 # Ticket setup implementation and verification
 
-Current status: both apps are live and both approved migrations are applied. See [production release record](../../ticket-setup/production-release.md) for deployment IDs and final CI status. The preparation notes below are retained as history.
+Status: local only. Release packaged on `codex/ticket-setup-release` from current `origin/main` (`0c5b3cfe`). Nothing pushed, merged, applied to production or deployed.
 
 Release preparation after owner approval: ticket changes are isolated from the shared dirty checkouts in `/Users/peterpitcher/Cursor/OJ-AnchorManagementTools-ticket-release` (branch `codex/ticket-setup-release`) and `/tmp/anchor-website-ticket-release` (branch `codex/ticket-attendees-release`). The website local commit is `32e759fcb0a6bd7b7708d0d27373ffb80274a524`.
 
-Latest management main includes atomic meal/early-arrival requests absent from the original feature checkout. An additional reviewed migration preserves those requests with named guests: `20260910073920_ticket_attendees_dining_requests.sql`, checksum `70d663e10124565c2900d592d2e57f424cecf80b9d772ca7e57ae84db79fbca8`. Its exact SQL/rollback packet is in the management release worktree at `tasks/ticket-setup/companion-migration-approval.md`. The original approved SQL is unchanged. Neither migration has been applied; the additional exact SQL needs owner approval before release.
+Latest management main includes atomic meal/early-arrival requests absent from the original feature checkout. An additional reviewed migration preserves those requests with named guests: `20260910075719_ticket_attendees_dining_requests.sql`, checksum `70d663e10124565c2900d592d2e57f424cecf80b9d772ca7e57ae84db79fbca8`. Its exact SQL/rollback packet is in the management release worktree at `tasks/ticket-setup/companion-migration-approval.md`. The original approved SQL is unchanged. Neither migration has been applied; the additional exact SQL needs owner approval before release.
 
-Release verification on latest main: management 7,036 tests passed with two existing skips in both London and UTC; website 2,401 passed with one existing skip in both zones, with lint, types and cold build passed. The self-contained PostgreSQL harness now passes 60 checks. Independent integration review found no remaining defects. Live read-only anon baseline passes all nine checks. Final management build completion and local commit are recorded in the release worktree.
+Release verification on latest main: management 7,036 tests passed with two existing skips in both London and UTC; website 2,401 passed with one existing skip in both zones, with lint, types and cold build passed. The self-contained PostgreSQL harness now passes 60 checks. Independent integration review found no remaining defects. Live read-only anon baseline passes all nine checks. The final management cold build passed, including lint/type checks and all 155 static pages. The emitted server bundle was inspected to confirm the final combined-RPC error logger was compiled. Both release commits remain local.
 
 ## Delivered behaviour
 
@@ -37,7 +37,7 @@ Staff can read and edit captured guest answers. Edits retain original question r
 
 ## Deployment order and approval
 
-The schema and compatibility triggers must be applied before either app release. Then publish the management API/admin change, followed by the website checkout change. Ordinary free/pay-on-arrival flows remain compatible. The production migration approval packet contains the exact SQL/checksum, guarded repair, locks, forward-fix plan and post-apply checks.
+The schema and compatibility triggers must be applied before either app release. Then publish the management API/admin change, followed by the website checkout change. Ordinary free/pay-on-arrival flows remain compatible. The production migration approval packet contains the exact SQL/checksum, guarded repair, locks, forward-fix plan and post-apply checks. Packaging against current main also found the existing atomic dining request wrapper. The companion migration packet preserves this feature for bookings with guest answers; the original approved SQL is unchanged. The companion still needs exact approval.
 
 Do not push this existing shared checkout wholesale. It contains substantial earlier uncommitted work and the current branch is behind its tracked remote. Package only this task's edits into an isolated release changeset, preserving the initial overlapping booking edits and all unrelated work.
 
@@ -75,7 +75,7 @@ Do not push this existing shared checkout wholesale. It contains substantial ear
 - [src/types/database.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/types/database.ts)
 - [tests/api/eventBookingGuestDetails.test.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/tests/api/eventBookingGuestDetails.test.ts)
 - [tests/lib/eventTicketPriceSnapshot.test.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/tests/lib/eventTicketPriceSnapshot.test.ts)
-- [supabase/migrations/20260910065400_ticket_setup_and_attendees.sql](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/supabase/migrations/20260910065400_ticket_setup_and_attendees.sql)
+- [supabase/migrations/20260910075712_ticket_setup_and_attendees.sql](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/supabase/migrations/20260910075712_ticket_setup_and_attendees.sql)
 - [scripts/testing/ticket-setup-postgres.py](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/scripts/testing/ticket-setup-postgres.py)
 
 ## Website files changed
@@ -93,6 +93,20 @@ Do not push this existing shared checkout wholesale. It contains substantial ear
 
 ## Deliberately preserved
 
-All pre-existing unrelated marketing, private-booking, invoice, table-booking, receipt/design and other task changes remain untouched by this task. The initially dirty event booking API, booking service, payment helper and service tests retain their earlier standing-ticket changes. The existing dirty database.generated.ts was not replaced; regenerate it from the approved live schema after migration. Website pre-existing task documents were left alone. No historic migration was edited or removed.
+All pre-existing unrelated marketing, private-booking, invoice, table-booking, receipt/design and other task changes remain untouched by this task. The initially dirty event booking API, booking service, payment helper and service tests retain their earlier standing-ticket changes already present on current main. The current main dining request fields, idempotency hashing, atomic wrapper and response flag are preserved. The existing dirty database.generated.ts was not replaced; regenerate it from the approved live schema after migration. Website pre-existing task documents were left alone. No historic migration was edited or removed.
 
 Task records added/updated: this run directory, tasks/ticket-setup migration packet and live function baseline, and appended entries in tasks/todo.md and tasks/lessons.md. Temporary synthetic browser fixtures are in temp/ticket-preview and are not release code.
+
+## Release packaging additions
+
+- `supabase/migrations/20260910075719_ticket_attendees_dining_requests.sql`: additive combined guest/dining transaction wrapper, not applied.
+- `src/services/__tests__/event-bookings-dining-requests.test.ts`: combined request forwarding and failure coverage.
+- `scripts/testing/fixtures/ticket-setup-base.sql`: owned synthetic base schema, so the ticket harness no longer imports the unrelated standing-policy script.
+- `tasks/ticket-setup/companion-migration-approval.md`: exact SQL, live-state findings, risk, validation and rollback.
+- `tasks/ticket-setup/production-smoke.sql`: prepared guaranteed rollback production smoke with combined guest/dining coverage. Not run against production.
+
+The release excludes all earlier dirty changes outside this task, and preserves current main additions through a three-way merge. Existing plain booking hashes remain unchanged when new guest and quote fields are absent. Structured booking fields participate in the hash when supplied. The existing main regression covers this compatibility.
+
+Release integration verification on current main: full London and UTC suites each passed 780 files, 7,036 tests, with two existing skips. The standalone PostgreSQL harness passed all 60 assertions. Final lint and uncached type validation passed before the cold build; the build also checks final types. Read-only live anon baseline passed all nine assertions. The original development-checkout counts above remain historical evidence only.
+
+Final release cold build completed successfully. Final standalone lint passed. Both SQL checksums were rechecked unchanged. No production migration, live booking, payment, message, push or deployment was performed.

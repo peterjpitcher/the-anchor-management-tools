@@ -2,6 +2,14 @@ import { configDefaults, defineConfig } from 'vitest/config'
 import path from 'path'
 import react from '@vitejs/plugin-react'
 
+// The suite must be able to run in two zones on purpose: Europe/London, the business zone the
+// app hardcodes, and UTC, which is what the serverless runtime actually runs in. Reading the
+// zone from TEST_TZ (defaulting to Europe/London) is what makes the second run real. Hardcoding
+// TZ here silently overrode any TZ set on the command line, so `TZ=UTC npm test` ran
+// Europe/London twice and reported a false green. TEST_TZ rather than TZ, so a stray TZ in a
+// developer or CI shell cannot quietly move the default run off the business zone.
+const testTimezone = process.env.TEST_TZ ?? 'Europe/London'
+
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -10,14 +18,19 @@ export default defineConfig({
     globals: true,
     css: false,
     exclude: [...configDefaults.exclude, '**/.claude/worktrees/**'],
-    // The app hardcodes Europe/London, so the suite defaults to there too, whatever timezone the
-    // developer or CI machine is on. Without this, any assertion built from a host-local Date
-    // shifts by a day outside the UK, and the same suite passes in London but fails elsewhere.
-    // An explicit TZ from the environment must win, otherwise `npm run test:utc` would be
-    // silently overridden by this config and would keep running in London while claiming UTC.
-    // UTC matters because that is what the Vercel serverless runtime actually runs in.
+    // TZ pins the zone the tests actually run in, whatever zone the developer or CI machine is
+    // on. Without it, any assertion built from a host-local Date shifts by a day outside the UK.
+    // TEST_TZ is passed through so tests/config/timezone-gate.test.ts can assert that the zone
+    // asked for is the zone that took effect.
     env: {
-      TZ: process.env.TZ ?? 'Europe/London',
+      TZ: testTimezone,
+      TEST_TZ: testTimezone,
+      // vitest.screening.config.ts requests its zone with SCREENING_TEST_TZ, and its suite
+      // self-checks against that name. Those files also run in this default suite, so publish
+      // the zone under that name too when it has not been set explicitly, or the screening
+      // self-check reads a zone nobody requested and fails the UTC run. An explicit
+      // SCREENING_TEST_TZ always wins, so the screening config keeps its own override.
+      SCREENING_TEST_TZ: process.env.SCREENING_TEST_TZ ?? testTimezone,
     },
     coverage: {
       provider: 'v8',

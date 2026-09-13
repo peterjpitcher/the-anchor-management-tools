@@ -67,6 +67,7 @@ describe('sendSMS emergency suspension flags', () => {
     vi.clearAllMocks()
     delete process.env.SUSPEND_ALL_SMS
     delete process.env.SUSPEND_EVENT_SMS
+    delete process.env.SUSPEND_ALL_COMMS
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     messagesCreateMock.mockResolvedValue({
       sid: 'SM-test',
@@ -78,7 +79,40 @@ describe('sendSMS emergency suspension flags', () => {
   afterEach(() => {
     delete process.env.SUSPEND_ALL_SMS
     delete process.env.SUSPEND_EVENT_SMS
+    delete process.env.SUSPEND_ALL_COMMS
     warnSpy.mockRestore()
+  })
+
+  it('blocks every send when SUSPEND_ALL_COMMS is enabled, before any database write', async () => {
+    process.env.SUSPEND_ALL_COMMS = 'true'
+
+    const result = await sendSMS(TO, 'hello', {
+      ...SEND_OPTIONS,
+      // A private booking text: SUSPEND_EVENT_SMS would not stop this one, SUSPEND_ALL_COMMS must.
+      metadata: { private_booking_id: 'private-booking-1', template_key: 'private_booking_balance_reminder' },
+    })
+
+    expect(result).toEqual({
+      success: false,
+      error: 'SMS sending is currently suspended',
+      code: 'sms_suspended',
+      suspensionReason: 'all_comms',
+    })
+    expect(messagesCreateMock).not.toHaveBeenCalled()
+    expect(createAdminClient).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledTimes(1)
+    expect(warnSpy.mock.calls[0]?.[0]).toContain('SUSPEND_ALL_COMMS')
+  })
+
+  it('sends normally when SUSPEND_ALL_COMMS is set to false', async () => {
+    process.env.SUSPEND_ALL_COMMS = 'false'
+    mockActiveCustomerLookup()
+
+    const result = await sendSMS(TO, 'hello', SEND_OPTIONS)
+
+    expect(result).toEqual(expect.objectContaining({ success: true, sid: 'SM-test' }))
+    expect(messagesCreateMock).toHaveBeenCalledTimes(1)
+    expect(warnSpy).not.toHaveBeenCalled()
   })
 
   it('blocks every send when SUSPEND_ALL_SMS is enabled', async () => {

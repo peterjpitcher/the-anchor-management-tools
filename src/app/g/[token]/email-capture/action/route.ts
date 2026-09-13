@@ -13,9 +13,12 @@ import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { isPlausibleEmail, lookupEmailCaptureToken } from '@/lib/guest/email-capture-token'
 import { hashGuestToken } from '@/lib/guest/tokens'
 import { ConsentService } from '@/services/consent'
+import { emailAddressResetFields } from '@/lib/email/address-reset'
 import {
   GUEST_COMMS_CONSENT_TEXT_VERSION,
   GUEST_MARKETING_EMAIL_LABEL,
+  GUEST_MARKETING_SMS_STOP_LABEL,
+  GUEST_MARKETING_SMS_STOP_LABEL_VERSION,
 } from '@/lib/consent/constants'
 
 export const runtime = 'nodejs'
@@ -24,10 +27,6 @@ export const dynamic = 'force-dynamic'
 type RouteContext = {
   params: Promise<{ token: string }>
 }
-
-/** The exact words beside the checkbox, stored verbatim in the consent ledger. */
-const SMS_OPT_OUT_LABEL =
-  'Email is enough, stop sending me marketing texts. Your booking confirmations and reminders will still come by text.'
 
 /** Postgres unique-violation. The only one reachable here is idx_customers_email_unique. */
 const UNIQUE_VIOLATION = '23505'
@@ -86,8 +85,10 @@ async function stopMarketingTexts(
       legalBasis: 'consent',
       source: 'guest_email_capture_link',
       captureMethod: 'sms_one_tap',
-      consentTextVersion: GUEST_COMMS_CONSENT_TEXT_VERSION,
-      consentText: SMS_OPT_OUT_LABEL,
+      // This box carries its own version, because its wording is AMS-only and changed on its
+      // own timetable. See `GUEST_MARKETING_SMS_STOP_LABEL_VERSION`.
+      consentTextVersion: GUEST_MARKETING_SMS_STOP_LABEL_VERSION,
+      consentText: GUEST_MARKETING_SMS_STOP_LABEL,
       userAgent,
       relatedEntityType: 'customer',
       relatedEntityId: customerId,
@@ -163,12 +164,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     .from('customers')
     .update({
       email,
-      email_status: 'unknown',
       marketing_email_opt_in: true,
       marketing_email_opt_in_at: now,
       // Explicitly cleared: an address given now overrides an earlier opt-out, because the
       // guest has just asked for these emails in as clear a way as it is possible to ask.
       marketing_email_opted_out_at: null,
+      // The whole address-level delivery history, not just the status. This route already
+      // reset `email_status` and left `email_deactivated_at` standing, which on its own is
+      // enough for `isEmailUsable` to refuse the new address for ever.
+      ...emailAddressResetFields(),
     })
     .eq('id', lookup.customer.id)
 

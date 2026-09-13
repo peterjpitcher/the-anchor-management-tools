@@ -15,9 +15,11 @@ import { AppShell } from '@/ds/shell'
 function AuthenticatedLayoutContent({
   children,
   userRoleLabel,
+  isSuperAdmin,
 }: {
   children: React.ReactNode
   userRoleLabel: string
+  isSuperAdmin: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname() ?? '/'
@@ -180,6 +182,7 @@ async function handleSignOut() {
         fohEmployeeId={fohEmployeeId}
         userName={user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? 'User'}
         userRole={userRoleLabel}
+        isSuperAdmin={isSuperAdmin}
         onSignOut={handleSignOut}
         isSigningOut={isSigningOut}
       >
@@ -193,15 +196,21 @@ async function handleSignOut() {
 export default function AuthenticatedLayout({
   children,
   initialPermissions,
-  userRoleLabel = 'Staff'
+  userRoleLabel = 'Staff',
+  // Defaults to false so a caller that has not resolved the role hides
+  // super-admin-only nav rather than showing it to everyone.
+  isSuperAdmin = false
 }: {
   children: React.ReactNode;
   initialPermissions?: UserPermission[];
   userRoleLabel?: string;
+  isSuperAdmin?: boolean;
 }) {
   return (
     <PermissionProvider initialPermissions={initialPermissions}>
-      <AuthenticatedLayoutContent userRoleLabel={userRoleLabel}>{children}</AuthenticatedLayoutContent>
+      <AuthenticatedLayoutContent userRoleLabel={userRoleLabel} isSuperAdmin={isSuperAdmin}>
+        {children}
+      </AuthenticatedLayoutContent>
     </PermissionProvider>
   )
 }

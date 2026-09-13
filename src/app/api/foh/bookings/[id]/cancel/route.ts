@@ -101,14 +101,18 @@ export async function POST(
     )
   }
 
+  // Set only on the email-first path (flag table_cancelled_email_first), so the screen can say
+  // when the guest was not reached. The text-only path returns nothing, as before.
+  let guestNotification: Awaited<ReturnType<typeof refundAndNotifyOnCancel>>['notification'] = null
   if (booking.booking_date && booking.customer_id) {
-    await refundAndNotifyOnCancel(auth.supabase, {
+    const cancelOutcome = await refundAndNotifyOnCancel(auth.supabase, {
       bookingId: booking.id,
       bookingReference: booking.booking_reference || booking.id,
       bookingDate: booking.booking_date,
       customerId: booking.customer_id,
       source: 'foh_cancel',
     })
+    guestNotification = cancelOutcome?.notification ?? null
   }
 
   // Staff status changes are auditable mutations. These FOH routes cancel bookings,
@@ -122,5 +126,10 @@ export async function POST(
     additional_info: { source: 'foh' },
   }).catch(() => {})
 
-  return NextResponse.json({ success: true, booking: data, data })
+  return NextResponse.json({
+    success: true,
+    booking: data,
+    data,
+    ...(guestNotification ? { guest_notification: guestNotification } : {}),
+  })
 }

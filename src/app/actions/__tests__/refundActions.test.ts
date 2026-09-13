@@ -198,8 +198,10 @@ describe('refundActions', () => {
       const result = await processPayPalRefund('parking', 'parking-payment-1', 10, 'test')
 
       expect(result).toMatchObject({ success: true, pending: true, refundId: 'refund-1' })
+      // start_at and reference joined in so the refund email can name which parking booking
+      // the money came off, and on what date.
       expect(parkingSelect).toHaveBeenCalledWith(
-        'id, transaction_id, paid_at, amount, currency, booking_id, parking_bookings(customer_id, customer_first_name, customer_last_name, customer_email, customer_mobile)'
+        'id, transaction_id, paid_at, amount, currency, booking_id, parking_bookings(customer_id, customer_first_name, customer_last_name, customer_email, customer_mobile, start_at, reference)'
       )
       expect(refundPayPalPayment).toHaveBeenCalledWith('CAPTURE-1', 10, expect.any(String), 'GBP')
     })

@@ -212,6 +212,17 @@ export interface MarketingCampaign {
   linkMap: Record<string, string>
   utmCampaign: string | null
 
+  /**
+   * True only for the monthly round-up.
+   *
+   * The frequency cap exists to stop event emails piling up on one reader. The monthly
+   * "Welcome to <month>" email is the drumbeat rather than one of the events, so the owner
+   * exempted it on 9 September 2026. The exemption runs in both directions in SQL: it is not
+   * blocked by a recent send, and it does not advance the reader's last-email timestamp.
+   * Every other guard still applies to it.
+   */
+  ignoresFrequencyCap: boolean
+
   status: MarketingCampaignStatus
   scheduledFor: string | null
   lockedAt: string | null
@@ -560,6 +571,9 @@ export function mapMarketingCampaign(row: DbRow): MarketingCampaign {
 
     linkMap: (row.link_map ?? {}) as Record<string, string>,
     utmCampaign: row.utm_campaign ?? null,
+    // Coalesced rather than read straight through, so a row selected before the column
+    // existed maps to the safe answer instead of undefined.
+    ignoresFrequencyCap: row.ignores_frequency_cap === true,
 
     status: row.status,
     scheduledFor: row.scheduled_for ?? null,

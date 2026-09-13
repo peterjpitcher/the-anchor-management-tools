@@ -23,6 +23,7 @@ import { EmptyState } from '@/ds'
 import { SmsQueueActionForm } from '@/components/private-bookings/SmsQueueActionForm'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import type { SmsQueueActionState } from '@/components/private-bookings/SmsQueueActionForm'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
 
 async function handleApproveSms(_prevState: SmsQueueActionState, formData: FormData): Promise<SmsQueueActionState> {
   'use server'
@@ -72,7 +73,13 @@ async function handleSendSms(_prevState: SmsQueueActionState, formData: FormData
     return { status: 'error', message: result.error, changedAt: Date.now() }
   }
 
-  return { status: 'success', changedAt: Date.now() }
+  // Email first: say so when the approved message went by email rather than text.
+  const sentByEmail = (result as { channel?: string }).channel === 'email'
+  return {
+    status: 'success',
+    ...(sentByEmail ? { message: 'Sent by email: the guest has a usable email address' } : {}),
+    changedAt: Date.now(),
+  }
 }
 
 export default async function SmsQueuePage() {
@@ -96,6 +103,9 @@ export default async function SmsQueuePage() {
   if (!canViewQueue) {
     redirect('/unauthorized')
   }
+
+  // Email first (P6): Send Now may deliver an approved message by email, so say so up front.
+  const emailFirst = await isMessagingFlagOn('private_booking_email_first')
 
   // Fetch SMS queue with booking details
   let smsQueue = null
@@ -293,7 +303,11 @@ export default async function SmsQueuePage() {
                 <SmsQueueActionForm
                   action={handleSendSms}
                   smsId={sms.id}
-                  confirmMessage="Send this approved SMS now?"
+                  confirmMessage={
+                    emailFirst
+                      ? 'Send this approved message now? It goes by email when the guest has a usable email address, otherwise by text.'
+                      : 'Send this approved SMS now?'
+                  }
                   leftIcon={<PaperAirplaneIcon className="h-4 w-4" />}
                   successMessage="SMS sent"
                   disabled={!canSendSms}

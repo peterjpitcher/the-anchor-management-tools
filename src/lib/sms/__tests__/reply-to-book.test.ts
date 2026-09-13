@@ -495,6 +495,44 @@ describe('handleReplyToBook', () => {
     )
   })
 
+  it('books a reply to a last-push text exactly like a reply to any other promo', async () => {
+    // The last push (owner policy of 11 September 2026) writes its reply window under the new
+    // key; nothing in reply-to-book reads the key, so the booking goes through unchanged.
+    const db = buildDbMock({
+      promoContextData: { ...PROMO_CONTEXT, template_key: 'event_last_push' },
+    })
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    mockEnsureCustomerForPhone.mockResolvedValue({
+      customerId: 'cust-uuid-001',
+      standardizedPhone: PHONE,
+    })
+    mockCreateBooking.mockResolvedValue({
+      resolvedState: 'confirmed',
+      resolvedReason: null,
+      bookingId: 'booking-uuid-002',
+      seatsRemaining: 16,
+      nextStepUrl: null,
+      manageUrl: null,
+      smsMeta: null,
+      tableBookingId: null,
+      tableName: null,
+      rpcResult: { state: 'confirmed', booking_id: 'booking-uuid-002', event_name: 'Quiz Night' },
+    })
+
+    const result = await handleReplyToBook(PHONE, '4')
+
+    expect(result.handled).toBe(true)
+    expect(mockCreateBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: PROMO_CONTEXT.event_id,
+        customerId: 'cust-uuid-001',
+        seats: 4,
+        source: 'sms_reply',
+      })
+    )
+    expect(db.update).toHaveBeenCalledWith(expect.objectContaining({ booking_created: true }))
+  })
+
   it('returns handled=false when customer resolution fails', async () => {
     const db = buildDbMock()
     mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)

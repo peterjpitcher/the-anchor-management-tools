@@ -32,7 +32,7 @@ export const noteBar = defineBlock<NoteBarData>({
   },
   render: (data) =>
     `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>
-<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:24px 32px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#ffffff;border-left:3px solid #a57626"><tbody><tr><td style="padding:14px 18px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:22px;color:#1a1a1a"><strong style="color:#005131">${escapeEmailText(data.label)}</strong> ${escapeEmailText(data.body)}</td></tr></tbody></table></td></tr>
+<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:24px 32px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#ffffff;border-left:3px solid #a57626"><tbody><tr><td style="padding:14px 18px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:22px;color:#1a1a1a"><strong style="color:#005131">${escapeEmailText(data.label)}</strong> ${escapeEmailText(data.body)}</td></tr></tbody></table></td></tr>
 </tbody></table>`,
   text: (data) => `${data.label} ${data.body}\n`,
 })

@@ -1,5 +1,3 @@
-> Update: The approved migrations and application deployment are complete. The canonical domain serves the verified release commit. Final booking-screen verification is blocked by the locked Mac. See [release result](release-result.md) for the current record. The pre-approval findings below are retained as an audit record.
-
 # Private booking payment repair
 
 Kim has paid the £994.80 invoice: £250 already applied plus the verified £744.80 PayPal capture. The capture has not reached the database because the live constraints reject it. Booking calculations separately ignored invoice money.
