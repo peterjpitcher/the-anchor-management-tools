@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20260913140000_restore_auto_close_search_path.sql.
+-- Rollback for supabase/migrations/20260913110102_restore_auto_close_search_path.sql.
 --
 -- This puts auto_close_past_event_tasks() back to having no pinned search_path, which is the
 -- SECURITY DEFINER hijack surface the forward migration closes. It exists so the pair is complete

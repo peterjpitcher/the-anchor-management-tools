@@ -1,5 +1,11 @@
 -- Sunday lunch service message: stop it printing a claim the SSOT retired on 17 May 2026.
 --
+-- APPLIED to production on 13 September 2026 through the Supabase MCP, which recorded it at
+-- version 20260913110049. This file is named after that version, as supabase/migrations/README.md
+-- requires, so `db push` sees it as done rather than re-running a block that would raise. The
+-- ledger's statement is this file with the comment block above the DO condensed: md5
+-- 8d5cfee99ed1a7e06f4622dceab3999a, 2,567 bytes. The DO block itself is identical.
+--
 -- `service_statuses.sunday_lunch.message` still reads "Sunday lunch bookings require pre-order
 -- with £5 per person deposit by 1pm Saturday." It was last written on 4 November 2025. The
 -- website's SSOT (§4, §14) retired all three of those facts at the 17 May 2026 walk-in launch:
@@ -45,7 +51,7 @@
 --   no-op that raises, because the old md5 no longer matches. service_statuses has no triggers and
 --   no dependent views, so nothing else moves.
 --
--- Rollback: supabase/rollbacks/20260913130000_sunday_lunch_service_message_walk_in_launch.sql
+-- Rollback: supabase/rollbacks/20260913110049_sunday_lunch_service_message_walk_in_launch.sql
 
 DO $migration$
 DECLARE
