@@ -1,3 +1,11 @@
+-- APPLIED to production on 13 September 2026 through the Supabase MCP, which recorded it at
+-- version 20260913120622. This file is named after that version, as supabase/migrations/README.md
+-- requires. The applied statement is not this text: it patches the one changed hunk into the live
+-- definition instead, asserting the live body is md5 3c6603bd5310153422303e90e71b590b before and
+-- md5 9a02376b99669a49210f8f153740e9b1 after, which is the md5 of the body below. That removes any
+-- chance of a transcription difference; the resulting function is byte-identical to this file.
+-- Ledger statement: md5 701b9b501830f32ea1216e21c74ccebf, 7,466 bytes.
+--
 -- A booking's start sits inside its trading day, not on the calendar date.
 --
 -- create_table_booking_core_v06 built the start by gluing the booking date to the booking time,
