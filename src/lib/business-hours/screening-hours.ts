@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { loadPublishedVersions } from './effective'
 import { resolveForDates } from './resolve'
 import { resolveKitchenWindows } from './kitchen-windows'
-import { getTodayIsoDate, isValidIsoDate, parseLondonDateTimeLocalToIso, shiftIsoDate } from '@/lib/dateUtils'
+import { getTodayIsoDate, isValidIsoDate, shiftIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
 import type { BusinessHours, SpecialHours } from '@/types/business-hours'
 import type { ScreeningDayHours, ScreeningHoursResponse, ServiceWindow } from './screening-contract'
 
@@ -22,8 +22,11 @@ export function validateScreeningDates(dates: string[], today = getTodayIsoDate(
   return unique
 }
 
+// The first moment the London clock shows the time, which is how opening hours read.
+// fromZonedTime (behind parseLondonDateTimeLocal) lands an hour out for 01:00 to 01:59 on both
+// clock-change nights. Every other date and time gives the same instant as before.
 function instant(date: string, time: string | null): string | null {
-  return time && CLOCK.test(time) ? parseLondonDateTimeLocalToIso(`${date}T${time}`) : null
+  return time && CLOCK.test(time) ? whenLondonClockReaches(date, time)?.toISOString() ?? null : null
 }
 
 function windowFor(date: string, opens: string | null, closes: string | null): ServiceWindow | null {

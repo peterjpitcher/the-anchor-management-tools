@@ -238,11 +238,17 @@ export async function GET(request: NextRequest) {
     ? kitchenServiceAt(resolveKitchenWindows(openNow.hours), openNow.tradingDate, now)
     : null;
 
+  // tradingDate, closes and closesAt describe the day in force, so a client can say "open until
+  // 1am" after midnight on New Year's Eve, when today's own row (1 January) is a closed day and
+  // has no closing time to print. closes and closesAt are set only while open.
   let currentStatus: any = {
     isOpen: false,
     kitchenOpen: false,
     closesIn: null,
     opensIn: null,
+    tradingDate: openNow.tradingDate,
+    closes: null,
+    closesAt: null,
   };
 
   if (openNow.window) {
@@ -253,6 +259,9 @@ export async function GET(request: NextRequest) {
       opensIn: !openNow.isOpen && now < openNow.window.opensAt
         ? calculateTimeUntil(now, openNow.window.opensAt)
         : null,
+      tradingDate: openNow.tradingDate,
+      closes: openNow.isOpen ? openNow.hours?.closes ?? null : null,
+      closesAt: openNow.isOpen ? openNow.window.closesAt.toISOString() : null,
       currentTime,
       timestamp: nowInLondon.toISOString(),
     };

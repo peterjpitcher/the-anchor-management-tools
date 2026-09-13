@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
-import { fromZonedTime } from 'date-fns-tz'
 import { z } from 'zod'
+import { loadTradingHours, serviceInstantFor } from '@/lib/business-hours/trading-day'
+import type { TradingHours } from '@/lib/business-hours/open-now'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
 import { sendTableBookingCancelledSmsIfAllowed, sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
@@ -30,8 +31,17 @@ const UpdateBookingSchema = z.object({
   internal_notes: z.string().max(4000).nullable().optional(),
 })
 
-function computeBookingWindow(bookingDate: string, bookingTime: string, durationMinutes: number) {
-  const start = fromZonedTime(`${bookingDate}T${bookingTime}:00`, 'Europe/London')
+// The start sits inside the date's trading day rather than being the date glued to the time: on
+// a night that closes after midnight, 00:15 on New Year's Eve is 00:15 on 1 January, as the
+// booking functions' hours check reads it. The booking keeps the date it was given.
+function computeBookingWindow(
+  bookingDate: string,
+  bookingTime: string,
+  durationMinutes: number,
+  hours: TradingHours | null | undefined,
+) {
+  const start = serviceInstantFor(bookingDate, bookingTime, hours)
+  if (!start) return null
   const end = new Date(start.getTime() + durationMinutes * 60 * 1000)
 
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
@@ -136,10 +146,22 @@ export async function PATCH(
     )
   }
 
+  let bookingDateHours: TradingHours | null | undefined
+  try {
+    bookingDateHours = (await loadTradingHours(auth.supabase, [parsed.data.booking_date])).get(parsed.data.booking_date)
+  } catch (hoursError) {
+    logger.error('BOH booking edit: failed to load opening hours', {
+      error: hoursError instanceof Error ? hoursError : new Error(String((hoursError as { message?: unknown })?.message ?? hoursError)),
+      metadata: { bookingId: id, bookingDate: parsed.data.booking_date },
+    })
+    return NextResponse.json({ error: 'Failed to load opening hours' }, { status: 500 })
+  }
+
   const window = computeBookingWindow(
     parsed.data.booking_date,
     parsed.data.booking_time,
-    parsed.data.duration_minutes
+    parsed.data.duration_minutes,
+    bookingDateHours
   )
   if (!window) {
     return NextResponse.json({ error: 'Invalid booking window' }, { status: 400 })

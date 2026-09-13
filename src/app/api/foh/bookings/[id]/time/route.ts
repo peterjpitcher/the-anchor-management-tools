@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { fromZonedTime } from 'date-fns-tz'
 import { requireFohPermission, getLondonDateIso } from '@/lib/foh/api-auth'
+import { loadTradingHours, serviceInstantFor } from '@/lib/business-hours/trading-day'
+import type { TradingHours } from '@/lib/business-hours/open-now'
+import { isValidIsoDate } from '@/lib/dateUtils'
 import { logger } from '@/lib/logger'
 import { logAuditEvent } from '@/app/actions/audit'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
@@ -206,9 +209,7 @@ export async function PATCH(
       ? Math.max(0, latestAssignmentEnd.getTime() - bookingEndMs)
       : 0
 
-    // Step 3: build the new windows. fromZonedTime is what keeps this correct through BST; using
-    // setUTCHours would land an hour out for seven months of the year.
-    const londonDateIso = getLondonDateIso(bookingStart)
+    // Step 3: build the new windows, inside the booking's own trading day.
     const fromTime = londonClock(bookingStart)
 
     if (fromTime === newTime) {
@@ -219,7 +220,30 @@ export async function PATCH(
       })
     }
 
-    const newStart = fromZonedTime(`${londonDateIso}T${newTime}:00`, 'Europe/London')
+    // The booking date is the service date, and it does not move. On a night that closes after
+    // midnight a time before the opening time is on the next calendar day (00:15 on New Year's
+    // Eve is 00:15 on 1 January), which is how the booking functions read it. Taking the date
+    // from the old start's calendar day put a move to 00:15 at 00:15 on 31 December, nearly a
+    // day early, and a move back from 00:15 to 23:30 a day late. The times are read off the
+    // London clock, which also keeps this right through BST and the clock-change nights.
+    const serviceDate = booking.booking_date && isValidIsoDate(booking.booking_date)
+      ? booking.booking_date
+      : getLondonDateIso(bookingStart)
+    let serviceHours: TradingHours | null | undefined
+    try {
+      serviceHours = (await loadTradingHours(auth.supabase, [serviceDate])).get(serviceDate)
+    } catch (hoursError) {
+      logger.error('FOH time update: failed to load opening hours', {
+        error: hoursError instanceof Error ? hoursError : new Error(String((hoursError as { message?: unknown })?.message ?? hoursError)),
+        metadata: { bookingId, serviceDate },
+      })
+      return NextResponse.json({ error: 'Failed to load opening hours' }, { status: 500 })
+    }
+
+    const newStart = serviceInstantFor(serviceDate, newTime, serviceHours)
+    if (!newStart) {
+      return NextResponse.json({ error: 'Invalid time' }, { status: 400 })
+    }
     const newBookingEnd = new Date(newStart.getTime() + guestDurationMs)
     const newAssignmentEnd = new Date(newBookingEnd.getTime() + turnaroundMs)
 

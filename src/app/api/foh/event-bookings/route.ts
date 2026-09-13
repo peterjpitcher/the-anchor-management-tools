@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
+import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
@@ -219,11 +220,15 @@ async function createFohEventBooking(
     return NextResponse.json({ error: 'Selected event could not be found' }, { status: 404 })
   }
 
-  const todayIso = getLondonDateIso()
+  // A walk-in joins the service in force: the night before, from midnight until an
+  // after-midnight close. Only a walk-in needs the hours read to know it.
+  const serviceDateNow = payload.walk_in === true
+    ? (await resolveTradingDayNow(auth.supabase)).date
+    : getLondonDateIso()
   if (!isFohWalkInDateAllowed({
     walkIn: payload.walk_in === true,
     bookingDate: eventRow.date || '',
-    todayIso,
+    serviceDateNow,
   })) {
     return NextResponse.json({ error: WALK_IN_TODAY_ONLY_MESSAGE }, { status: 400 })
   }
@@ -443,7 +448,7 @@ async function createFohEventBooking(
     shouldSeatFohWalkIn({
       walkIn: payload.walk_in === true,
       bookingDate: eventRow.date,
-      todayIso,
+      serviceDateNow,
     }) &&
     resolvedState === 'confirmed' &&
     tableBookingId

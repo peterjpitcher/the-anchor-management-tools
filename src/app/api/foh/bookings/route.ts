@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { randomBytes } from 'crypto'
-import { fromZonedTime } from 'date-fns-tz'
 import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
+import { loadTradingHours, resolveTradingDayNow, serviceInstantFor } from '@/lib/business-hours/trading-day'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
@@ -205,9 +205,14 @@ async function createManualWalkInBookingOverride(params: {
   }
 }): Promise<TableBookingRpcResult> {
   const bookingTime = params.payload.time.length === 5 ? `${params.payload.time}:00` : params.payload.time
-  const start = fromZonedTime(`${params.payload.date}T${bookingTime}`, 'Europe/London')
-  const startMs = start.getTime()
-  if (!Number.isFinite(startMs)) {
+  // The start within the date's trading day, not the date glued to the time: on a night that
+  // closes after midnight, 00:31 on 31 December's service is 00:31 on 1 January, as the booking
+  // functions' hours check already reads it. The booking keeps the service date. Throws when the
+  // hours cannot be read, rather than risk writing the booking a day early.
+  const serviceHours = (await loadTradingHours(params.supabase, [params.payload.date])).get(params.payload.date)
+  const start = serviceInstantFor(params.payload.date, bookingTime, serviceHours)
+  const startMs = start?.getTime() ?? Number.NaN
+  if (!start || !Number.isFinite(startMs)) {
     throw new Error('Invalid walk-in booking time')
   }
 
@@ -889,11 +894,15 @@ async function createFohTableBooking(
   }
 
   const payload = parsed.data
-  const todayIso = getLondonDateIso()
+  // A walk-in joins the service in force: the night before, from midnight until an
+  // after-midnight close. Only a walk-in needs the hours read to know it.
+  const serviceDateNow = payload.walk_in === true
+    ? (await resolveTradingDayNow(auth.supabase)).date
+    : getLondonDateIso()
   if (!isFohWalkInDateAllowed({
     walkIn: payload.walk_in === true,
     bookingDate: payload.date,
-    todayIso,
+    serviceDateNow,
   })) {
     return NextResponse.json({ error: WALK_IN_TODAY_ONLY_MESSAGE }, { status: 400 })
   }
@@ -901,7 +910,7 @@ async function createFohTableBooking(
   const shouldSeatNow = shouldSeatFohWalkIn({
     walkIn: payload.walk_in === true,
     bookingDate: payload.date,
-    todayIso,
+    serviceDateNow,
   })
 
   // Management override: verify caller is super_admin, then bypass all booking rules.

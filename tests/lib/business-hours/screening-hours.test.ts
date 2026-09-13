@@ -57,6 +57,12 @@ describe('strict screening hours', () => {
     expect(projectScreeningDay('2026-10-24', { ...day, closes: '02:00' }).bar).toEqual({ startAt: '2026-10-24T11:00:00.000Z', endAt: '2026-10-25T02:00:00.000Z' })
     expect(projectScreeningDay('2026-11-07', { ...day, opens: '20:00', closes: '02:00', kitchen_opens: '20:00', kitchen_closes: '01:00' }).kitchen[0].endAt).toBe('2026-11-08T01:00:00.000Z')
   })
+  it('closes a small-hours finish at the first moment the clock shows it on both clock-change nights', () => {
+    // Saturday 24 October 2026 to 1am: the first 1am is 01:00 BST (00:00 UTC), before the hour repeats.
+    expect(projectScreeningDay('2026-10-24', { ...day, closes: '01:00' }).bar).toEqual({ startAt: '2026-10-24T11:00:00.000Z', endAt: '2026-10-25T00:00:00.000Z' })
+    // Saturday 27 March 2027 to 01:30, which never shows: the clock passes it jumping from 00:59 GMT to 02:00 BST.
+    expect(projectScreeningDay('2027-03-27', { ...day, closes: '01:30' }).bar?.endAt).toBe('2027-03-28T01:00:00.000Z')
+  })
   it('fingerprints operational facts, not retrieval time', () => {
     const first = projectScreeningDay('2026-11-07', day)
     vi.setSystemTime(new Date('2026-09-06T08:00:00Z'))

@@ -6,7 +6,7 @@ describe('isFohWalkInDateAllowed', () => {
     expect(isFohWalkInDateAllowed({
       walkIn: true,
       bookingDate: '2026-08-14',
-      todayIso: '2026-08-14',
+      serviceDateNow: '2026-08-14',
     })).toBe(true)
   })
 
@@ -14,7 +14,7 @@ describe('isFohWalkInDateAllowed', () => {
     expect(isFohWalkInDateAllowed({
       walkIn: true,
       bookingDate: '2026-08-15',
-      todayIso: '2026-08-14',
+      serviceDateNow: '2026-08-14',
     })).toBe(false)
   })
 
@@ -22,8 +22,21 @@ describe('isFohWalkInDateAllowed', () => {
     expect(isFohWalkInDateAllowed({
       walkIn: false,
       bookingDate: '2026-08-15',
-      todayIso: '2026-08-14',
+      serviceDateNow: '2026-08-14',
     })).toBe(true)
+  })
+
+  it('allows 31 December after midnight, while New Year\'s Eve is still the service in force', () => {
+    expect(isFohWalkInDateAllowed({
+      walkIn: true,
+      bookingDate: '2026-12-31',
+      serviceDateNow: '2026-12-31',
+    })).toBe(true)
+    expect(isFohWalkInDateAllowed({
+      walkIn: true,
+      bookingDate: '2027-01-01',
+      serviceDateNow: '2026-12-31',
+    })).toBe(false)
   })
 })
 
@@ -32,7 +45,7 @@ describe('shouldSeatFohWalkIn', () => {
     expect(shouldSeatFohWalkIn({
       walkIn: true,
       bookingDate: '2026-08-14',
-      todayIso: '2026-08-14',
+      serviceDateNow: '2026-08-14',
     })).toBe(true)
   })
 
@@ -40,7 +53,7 @@ describe('shouldSeatFohWalkIn', () => {
     expect(shouldSeatFohWalkIn({
       walkIn: true,
       bookingDate: '2026-08-15',
-      todayIso: '2026-08-14',
+      serviceDateNow: '2026-08-14',
     })).toBe(false)
   })
 
@@ -48,7 +61,7 @@ describe('shouldSeatFohWalkIn', () => {
     expect(shouldSeatFohWalkIn({
       walkIn: false,
       bookingDate: '2026-08-14',
-      todayIso: '2026-08-14',
+      serviceDateNow: '2026-08-14',
     })).toBe(false)
   })
 })

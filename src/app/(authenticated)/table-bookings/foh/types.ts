@@ -67,6 +67,10 @@ export type FohScheduleResponse = {
   data?: {
     date: string
     service_window: ServiceWindow
+    // The service date in force when this was served (the night before, from midnight until an
+    // after-midnight close) and the instant that stops being true. Optional so older fixtures
+    // keep compiling; without it the screen falls back to the calendar date.
+    trading_day_now?: { date: string; until: string }
     lanes: FohLane[]
     unassigned_bookings: FohBooking[]
     // Outside bookings (no physical table) — rendered as cards via the Outside view

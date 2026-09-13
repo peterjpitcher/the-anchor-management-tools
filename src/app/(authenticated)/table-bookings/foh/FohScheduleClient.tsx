@@ -22,6 +22,7 @@ import {
   minutesFromServiceDate,
   postBookingAction,
   buildTimeChangeOptions,
+  resolveFohServiceDateNow,
 } from './utils'
 import { useFohBookings } from './hooks/useFohBookings'
 import { useFohRealtime } from './hooks/useFohRealtime'
@@ -162,7 +163,12 @@ export function FohScheduleClient({
   }, [schedule])
   const nextUpcomingEvent = useMemo(() => upcomingEvents[0] || null, [upcomingEvents])
   const timelineDuration = Math.max(1, timeline.endMin - timeline.startMin)
-  const londonTodayIso = useMemo(() => getLondonDateIso(clockNow), [clockNow])
+  // "Today" for the floor: the night before, from midnight until an after-midnight close.
+  const tradingDayNow = schedule?.trading_day_now
+  const serviceDateNow = useMemo(
+    () => resolveFohServiceDateNow(clockNow, tradingDayNow) ?? getLondonDateIso(clockNow),
+    [clockNow, tradingDayNow]
+  )
   const currentTimelineLeftPct = useMemo(() => {
     const serviceDateIso = schedule?.date || date
     const nowMinute = minutesFromServiceDate(clockNow.toISOString(), serviceDateIso)
@@ -172,7 +178,7 @@ export function FohScheduleClient({
 
   // --- Create booking hook ---
   const createBooking = useFohCreateBooking({
-    date, clockNow, canEdit, schedule, timeline, setErrorMessage, setStatusMessage, reloadSchedule,
+    date, clockNow, serviceDateNow, canEdit, schedule, timeline, setErrorMessage, setStatusMessage, reloadSchedule,
   })
 
   // --- Clock tick ---
@@ -217,7 +223,16 @@ export function FohScheduleClient({
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      const todayIso = getLondonDateIso()
+      const now = new Date()
+      const reportedServiceDate = resolveFohServiceDateNow(now, tradingDayNow)
+      if (tradingDayNow && reportedServiceDate === null) {
+        // The last word on which day is in force has run out (midnight, or a late close). Ask
+        // the server again and decide on the next poll: the calendar cannot tell 00:30 after an
+        // ordinary night from 00:30 on New Year's Eve, which is still 31 December's service.
+        void reloadSchedule({ surfaceError: false }).catch(() => {})
+        return
+      }
+      const todayIso = reportedServiceDate ?? getLondonDateIso(now)
       if (date === todayIso || hasActiveFohWork || document.visibilityState !== 'visible') return
       const ae = document.activeElement
       if (ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement || ae instanceof HTMLSelectElement || ae?.getAttribute('contenteditable') === 'true') return
@@ -228,7 +243,7 @@ export function FohScheduleClient({
       lastInteractionAtMsRef.current = Date.now()
     }, FOH_AUTO_RETURN_POLL_MS)
     return () => { window.clearInterval(intervalId) }
-  }, [date, hasActiveFohWork, setErrorMessage])
+  }, [date, hasActiveFohWork, setErrorMessage, tradingDayNow, reloadSchedule])
 
   // --- Selected booking move options loader ---
   const selectedBooking = selectedBookingContext?.booking ?? null
@@ -479,6 +494,7 @@ export function FohScheduleClient({
         canEdit={canEdit}
         styleVariant={styleVariant}
         clockNow={clockNow}
+        serviceDateNow={serviceDateNow}
         totals={totals}
         viewMode={viewMode}
         outsideCount={schedule?.outside_bookings?.length ?? 0}
