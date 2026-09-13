@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fromZonedTime } from 'date-fns-tz'
-import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
+import { requireFohPermission } from '@/lib/foh/api-auth'
+import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
+import { whenLondonClockReaches } from '@/lib/dateUtils'
 
 function isIsoDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -74,13 +76,12 @@ function shiftIsoDate(dateIso: string, dayDelta: number): string {
   return parsed.toISOString().slice(0, 10)
 }
 
+// The first moment the London clock shows the time, which is how a start or finish on the wall
+// reads. fromZonedTime lands an hour out for 01:00 to 01:59 on both clock-change nights.
 function toLondonIso(dateIso: string | null, clock: string | null, fallbackClock: string): string | null {
   if (!dateIso || !isIsoDate(dateIso)) return null
   const normalizedClock = normalizeClock(clock) || fallbackClock
-  const zoned = fromZonedTime(`${dateIso}T${normalizedClock}:00`, 'Europe/London')
-  const parsedMs = zoned.getTime()
-  if (!Number.isFinite(parsedMs)) return null
-  return zoned.toISOString()
+  return whenLondonClockReaches(dateIso, normalizedClock)?.toISOString() ?? null
 }
 
 function addMinutesToClock(clock: string, minutesToAdd: number): string {
@@ -121,8 +122,12 @@ function computePrivateBookingWindow(privateBooking: any): { startIso: string; e
     return null
   }
 
+  // An end at or before the start is the same clock time on the next day. Read off the clock
+  // on that date rather than adding 24 hours, which is an hour out across a clock change.
   if (endMs <= startMs) {
-    endMs += 24 * 60 * 60 * 1000
+    const nextDayEndIso = toLondonIso(shiftIsoDate(eventDate as string, 1), endTime || fallbackEnd, fallbackEnd)
+    if (!nextDayEndIso) return null
+    endMs = Date.parse(nextDayEndIso)
   }
 
   const bufferedStartMs = startMs - 30 * 60 * 1000
@@ -142,7 +147,9 @@ type ServiceWindow = {
   kitchen_end_time: string | null
   kitchen_end_next_day: boolean
   kitchen_closed: boolean
-  source: 'fallback' | 'business_hours'
+  // 'closed': the pub is shut all day. The times are only a neutral span to draw the
+  // timeline on, so the screen must not present them as hours.
+  source: 'fallback' | 'business_hours' | 'closed'
 }
 
 type PrivateBlockForTable = {
@@ -225,12 +232,16 @@ export async function GET(request: NextRequest) {
     return auth.response
   }
 
-  const dateParam = request.nextUrl.searchParams.get('date')
-  const date = dateParam && isIsoDate(dateParam) ? dateParam : getLondonDateIso()
-
   const { supabase } = auth
 
-  const [tablesResult, bookingsResult, businessHoursResult, specialHoursResult, tableAreasResult] = await Promise.all([
+  // The trading day in force, not the calendar date: from midnight until a late close (1am on
+  // New Year's Eve) the floor is still working the night before. With no date asked for, that
+  // is the day shown, and the screen is told it so it returns to it rather than to the calendar.
+  const tradingDayNowPromise = resolveTradingDayNow(supabase)
+  const dateParam = request.nextUrl.searchParams.get('date')
+  const date = dateParam && isIsoDate(dateParam) ? dateParam : (await tradingDayNowPromise).date
+
+  const [tablesResult, bookingsResult, businessHoursResult, specialHoursResult, tableAreasResult, tradingDayNow] = await Promise.all([
     supabase.from('tables')
       .select('id, table_number, name, capacity, area, area_id, is_bookable')
       .order('table_number', { ascending: true, nullsFirst: false })
@@ -245,7 +256,8 @@ export async function GET(request: NextRequest) {
       .maybeSingle(),
     supabase.from('table_areas')
       .select('id, name')
-      .order('name', { ascending: true })
+      .order('name', { ascending: true }),
+    tradingDayNowPromise
   ])
 
   if (tablesResult.error) {
@@ -297,7 +309,9 @@ export async function GET(request: NextRequest) {
     const kitchenOpens = normalizeClock(specialHours?.kitchen_opens ?? businessHours?.kitchen_opens ?? null)
     const kitchenCloses = normalizeClock(specialHours?.kitchen_closes ?? businessHours?.kitchen_closes ?? null)
 
-    if (!isClosed && opens && closes) {
+    if (isClosed) {
+      serviceWindow = { ...fallbackServiceWindow, source: 'closed' }
+    } else if (opens && closes) {
       serviceWindow = {
         start_time: opens,
         end_time: closes,
@@ -880,6 +894,7 @@ export async function GET(request: NextRequest) {
     data: {
       date,
       service_window: serviceWindow,
+      trading_day_now: { date: tradingDayNow.date, until: tradingDayNow.until.toISOString() },
       lanes,
       unassigned_bookings: [...unassignedBookings, ...standingEventBookings],
       outside_bookings: outsideBookings

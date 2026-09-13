@@ -45,13 +45,19 @@ function buildSupabase() {
     high_chair_count: 0,
   }
 
-  const rpc = vi.fn().mockResolvedValue({
-    data: { state: 'updated', assignment_count: 1, high_chairs_requested: 0, high_chairs_granted: 0 },
-    error: null,
-  })
+  const rpc = vi.fn((fn: string) =>
+    Promise.resolve(
+      fn === 'business_hours_for_date'
+        ? { data: [{ opens: '12:00:00', closes: '22:00:00', is_closed: false }], error: null }
+        : { data: { state: 'updated', assignment_count: 1, high_chairs_requested: 0, high_chairs_granted: 0 }, error: null },
+    ),
+  )
 
   return {
     from: vi.fn((table: string) => {
+      if (table === 'special_hours') {
+        return { select: () => ({ in: () => Promise.resolve({ data: [], error: null }) }) }
+      }
       if (table === 'table_bookings') {
         return {
           select: () => ({

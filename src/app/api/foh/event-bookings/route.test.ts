@@ -13,6 +13,11 @@ vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
   getLondonDateIso: vi.fn(() => '2026-08-14'),
 }))
+// An ordinary day, so the service in force for a walk-in is the pinned date.
+vi.mock('@/lib/business-hours/trading-day', async (importActual) => ({
+  ...(await importActual<typeof import('@/lib/business-hours/trading-day')>()),
+  resolveTradingDayNow: vi.fn(async () => ({ date: '2026-08-14', until: new Date('2026-08-14T23:00:00Z') })),
+}))
 vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }))
