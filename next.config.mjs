@@ -114,6 +114,12 @@ const nextConfig = {
     ],
   },
   experimental: {
+    // This project has a large route graph and Vercel's 8 GB builder was killed
+    // between compilation and type-checking. These low-risk Next.js options
+    // reduce peak Webpack memory and keep the build worker enabled despite the
+    // custom webpack hook below.
+    webpackMemoryOptimizations: true,
+    webpackBuildWorker: true,
     serverActions: {
       bodySizeLimit: '20mb',
     },
