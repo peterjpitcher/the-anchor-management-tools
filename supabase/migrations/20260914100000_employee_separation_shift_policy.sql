@@ -21,6 +21,42 @@ COMMENT ON COLUMN public.employees.separation_shift_policy IS
 COMMENT ON COLUMN public.employees.separation_started_at IS
   'The instant the current formal separation was started.';
 
+CREATE OR REPLACE FUNCTION public.guard_released_separation_assignment()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $function$
+BEGIN
+  IF NEW.employee_id IS NOT NULL AND EXISTS (
+    SELECT 1
+    FROM public.employees e
+    WHERE e.employee_id = NEW.employee_id
+      AND e.status = 'Started Separation'
+      AND e.separation_shift_policy = 'release_remaining'
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = 'Employee has been released from remaining shifts and cannot be assigned.';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.guard_released_separation_assignment()
+  FROM PUBLIC, anon, authenticated;
+
+CREATE TRIGGER guard_released_separation_rota_shift_assignment
+BEFORE INSERT OR UPDATE OF employee_id ON public.rota_shifts
+FOR EACH ROW
+EXECUTE FUNCTION public.guard_released_separation_assignment();
+
+CREATE TRIGGER guard_released_separation_rota_template_assignment
+BEFORE INSERT OR UPDATE OF employee_id ON public.rota_shift_templates
+FOR EACH ROW
+EXECUTE FUNCTION public.guard_released_separation_assignment();
+
 CREATE OR REPLACE FUNCTION public.begin_employee_separation(
   p_employee_id uuid,
   p_employment_end_date date,
@@ -248,4 +284,3 @@ REVOKE ALL ON FUNCTION public.begin_employee_separation(uuid, date, text, uuid, 
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.begin_employee_separation(uuid, date, text, uuid, timestamptz)
   TO service_role;
-

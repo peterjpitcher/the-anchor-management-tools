@@ -122,6 +122,37 @@ SELECT fixture_assert(
   'immediate release records both published calendar cancellations'
 );
 
+DO $$
+BEGIN
+  BEGIN
+    UPDATE public.rota_shifts
+    SET employee_id = '00000000-0000-0000-0000-000000000002',
+        is_open_shift = false
+    WHERE id = '30000000-0000-0000-0000-000000000007';
+    RAISE EXCEPTION 'FAIL released employee was assigned a new shift';
+  EXCEPTION
+    WHEN check_violation THEN
+      IF SQLERRM <> 'Employee has been released from remaining shifts and cannot be assigned.' THEN
+        RAISE;
+      END IF;
+      RAISE NOTICE 'PASS released employee cannot be assigned a new shift';
+  END;
+
+  BEGIN
+    UPDATE public.rota_shift_templates
+    SET employee_id = '00000000-0000-0000-0000-000000000002'
+    WHERE id = '20000000-0000-0000-0000-000000000002';
+    RAISE EXCEPTION 'FAIL released employee was assigned a recurring template';
+  EXCEPTION
+    WHEN check_violation THEN
+      IF SQLERRM <> 'Employee has been released from remaining shifts and cannot be assigned.' THEN
+        RAISE;
+      END IF;
+      RAISE NOTICE 'PASS released employee cannot be assigned a recurring template';
+  END;
+END;
+$$;
+
 CREATE TEMP TABLE invalid_result AS
 SELECT public.begin_employee_separation(
   '00000000-0000-0000-0000-000000000003',
