@@ -1,3 +1,13 @@
+# Employee separation shift handling, 14 September 2026
+
+- [ ] Add and validate the atomic employee and rota migration.
+- [ ] Build the separation preview, mutation and email variants.
+- [ ] Build the manager shift review and policy choice.
+- [ ] Prevent released leavers being assigned fresh rota shifts.
+- [ ] Pass full local verification.
+- [ ] Obtain exact production migration approval, apply and verify it.
+- [ ] Merge, deploy and verify the live authenticated flow.
+
 # Guest email review fixes, 12 September 2026
 
 The 11 September review of every guest-facing email put ten questions to the owner. He answered them
