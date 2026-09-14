@@ -554,6 +554,8 @@ export interface Employee {
   job_title: string | null; // NULL for Onboarding employees
   employment_start_date: string | null; // NULL for Onboarding employees
   employment_end_date?: string | null; // Date
+  separation_shift_policy?: 'work_remaining' | 'release_remaining' | null;
+  separation_started_at?: string | null; // Timestamp
   first_shift_date?: string | null; // Date
   status: string; // 'Onboarding' | 'Active' | 'Started Separation' | 'Former'
   uniform_preference?: string | null;

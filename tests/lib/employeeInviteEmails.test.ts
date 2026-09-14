@@ -61,6 +61,7 @@ describe('employee separation emails', () => {
       employeeName: 'Alex Rowe',
       employmentEndDate: '2099-05-15',
       todayIso: '2099-05-13',
+      shiftPolicy: 'work_remaining',
       remainingShifts: [
         {
           shiftDate: '2099-05-14',
@@ -94,11 +95,32 @@ describe('employee separation emails', () => {
       employeeName: 'Alex Rowe',
       employmentEndDate: '2099-05-12',
       todayIso: '2099-05-13',
+      shiftPolicy: 'work_remaining',
       remainingShifts: [],
     })
 
     expect(email.text).toContain('Your last working day was Tuesday, 12 May 2099.')
     expect(email.text).not.toContain('reason')
     expect(email.text).not.toContain('Notice given')
+  })
+
+  it('tells a released employee not to attend further shifts', () => {
+    const email = buildSeparationStartedEmail({
+      email: 'alex@example.com',
+      employeeName: 'Alex Rowe',
+      employmentEndDate: '2099-05-15',
+      todayIso: '2099-05-13',
+      shiftPolicy: 'release_remaining',
+      remainingShifts: [{
+        shiftDate: '2099-05-14',
+        startTime: '09:00',
+        endTime: '17:00',
+        department: 'bar',
+      }],
+    })
+
+    expect(email.text).toContain('You are not expected to attend any further scheduled shifts.')
+    expect(email.text).not.toContain('Thursday, 14 May 2099, 9am - 5pm')
+    expect(email.text).not.toContain('Please continue to attend')
   })
 })
