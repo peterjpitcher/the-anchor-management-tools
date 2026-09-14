@@ -3012,18 +3012,20 @@ export async function getActiveEmployeesForRota(weekStart?: string): Promise<
   // predictable order even when someone's preferred name starts elsewhere.
   const { data: employees, error: empError } = await supabase
     .from('employees')
-    .select('employee_id, first_name, last_name, preferred_name, job_title')
+    .select('employee_id, first_name, last_name, preferred_name, job_title, separation_shift_policy')
     .in('status', ['Active', 'Started Separation'])
     .order('first_name')
     .order('last_name');
 
   if (empError) return { success: false, error: empError.message };
 
-  const activeList = employees ?? [];
+  type EmpRow = { employee_id: string; first_name: string | null; last_name: string | null; preferred_name: string | null; job_title: string | null };
+  type AssignableEmpRow = EmpRow & { separation_shift_policy?: string | null };
+  const activeList = ((employees ?? []) as AssignableEmpRow[])
+    .filter(employee => employee.separation_shift_policy !== 'release_remaining');
   const activeIds = new Set(activeList.map((e: { employee_id: string }) => e.employee_id));
 
   // If a week is provided, also include any former employees who have shifts that week
-  type EmpRow = { employee_id: string; first_name: string | null; last_name: string | null; preferred_name: string | null; job_title: string | null };
   let formerList: EmpRow[] = [];
   if (weekStart) {
     const weekEnd = new Date(weekStart + 'T00:00:00');

@@ -11,19 +11,13 @@ import {
   type SeparationShiftPolicy,
 } from '@/app/actions/employeeSeparation';
 import { Button, toast } from '@/ds';
-import { formatDateFull, formatTime12Hour, shiftIsoDate } from '@/lib/dateUtils';
+import { formatDateFull, formatTime12Hour, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils';
 
 interface EmployeeStatusActionsProps {
   employeeId: string;
   status: string;
   canEdit: boolean;
   employmentStartDate: string | null;
-}
-
-function todayInputValue(): string {
-  const now = new Date();
-  const offsetMs = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
 }
 
 function departmentLabel(department: string | null | undefined): string {
@@ -71,7 +65,7 @@ export default function EmployeeStatusActions({
   const [preview, setPreview] = useState<EmployeeSeparationPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState<'separation' | 'revoke' | null>(null);
-  const [separationEndDate, setSeparationEndDate] = useState(todayInputValue);
+  const [separationEndDate, setSeparationEndDate] = useState(getTodayIsoDate);
   const [separationNote, setSeparationNote] = useState('');
   const [shiftPolicy, setShiftPolicy] = useState<SeparationShiftPolicy | null>(null);
 
