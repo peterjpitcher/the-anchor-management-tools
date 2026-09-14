@@ -20,6 +20,7 @@ export interface SeparationStartedEmailInput {
   employeeName?: string | null;
   employmentEndDate?: string;
   todayIso: string;
+  shiftPolicy: 'work_remaining' | 'release_remaining';
   remainingShifts?: SeparationShiftSummary[];
 }
 
@@ -55,6 +56,10 @@ function buildLastWorkingDayText(employmentEndDate: string | undefined, todayIso
 }
 
 function buildRemainingShiftsText(input: SeparationStartedEmailInput): string | null {
+  if (input.shiftPolicy === 'release_remaining') {
+    return 'You are not expected to attend any further scheduled shifts.';
+  }
+
   if (!input.employmentEndDate || input.employmentEndDate <= input.todayIso) {
     return null;
   }
@@ -143,7 +148,9 @@ export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) 
     '',
     'Please return your keys and any company property you have been provided with before you leave, or arrange their return with Billy or me.',
     '',
-    'Any questions during your shifts can be raised with Billy. Anything relating to this process can be raised with me directly.',
+    input.shiftPolicy === 'work_remaining'
+      ? 'Any questions during your shifts can be raised with Billy. Anything relating to this process can be raised with me directly.'
+      : 'Anything relating to this process can be raised with me directly.',
     '',
     'Thank you for your service. We wish you the best of luck for the future.',
     '',
