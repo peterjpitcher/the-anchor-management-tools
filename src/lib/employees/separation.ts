@@ -180,6 +180,8 @@ export async function finalizeEmployeeSeparation(
     .update({
       status: 'Former',
       employment_end_date: employmentEndDate,
+      separation_shift_policy: null,
+      separation_started_at: null,
       updated_at: now,
     })
     .eq('employee_id', employeeId)

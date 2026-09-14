@@ -325,6 +325,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
       employeeId={employee.employee_id}
       status={employee.status}
       canEdit={permissions.canEdit}
+      employmentStartDate={employee.employment_start_date}
     />,
     permissions.canDelete ? (
       <DeleteEmployeeButton

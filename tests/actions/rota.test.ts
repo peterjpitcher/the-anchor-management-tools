@@ -51,6 +51,7 @@ import {
   acceptPortalShift,
   markEmployeeCouldntWork,
   markShiftSick,
+  getActiveEmployeesForRota,
 } from '@/app/actions/rota'
 
 const mockedPermission = checkUserPermission as unknown as Mock
@@ -135,6 +136,42 @@ function makeEqChain(depth: number, terminal: unknown): unknown {
 describe('Rota actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  describe('getActiveEmployeesForRota', () => {
+    it('excludes a separating employee released from all remaining shifts', async () => {
+      mockedPermission.mockResolvedValue(true)
+      const employeeRows = [
+        { employee_id: 'active', first_name: 'Ada', last_name: 'Active', preferred_name: null, job_title: 'Bar', separation_shift_policy: null },
+        { employee_id: 'legacy', first_name: 'Lee', last_name: 'Legacy', preferred_name: null, job_title: 'Bar', separation_shift_policy: null },
+        { employee_id: 'working', first_name: 'Will', last_name: 'Work', preferred_name: null, job_title: 'Bar', separation_shift_policy: 'work_remaining' },
+        { employee_id: 'released', first_name: 'Rae', last_name: 'Lease', preferred_name: null, job_title: 'Bar', separation_shift_policy: 'release_remaining' },
+      ]
+      const employeeOrder = vi.fn().mockResolvedValue({ data: employeeRows, error: null })
+      const employeeQuery = {
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockReturnValue({
+            order: vi.fn().mockReturnValue({ order: employeeOrder }),
+          }),
+        }),
+      }
+      const settingsQuery = {
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      }
+      const client = mockSupabaseClient()
+      client.from = vi.fn((table: string) => table === 'employees' ? employeeQuery : settingsQuery)
+
+      const result = await getActiveEmployeesForRota()
+
+      expect(result.success).toBe(true)
+      if (!result.success) return
+      expect(result.data.map(employee => employee.employee_id)).toEqual(['active', 'legacy', 'working'])
+      expect(employeeQuery.select).toHaveBeenCalledWith(
+        'employee_id, first_name, last_name, preferred_name, job_title, separation_shift_policy',
+      )
+    })
   })
 
   // -----------------------------------------------------------------------
