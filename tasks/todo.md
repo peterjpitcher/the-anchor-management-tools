@@ -6,9 +6,9 @@
 - [x] Prevent released leavers being assigned fresh rota shifts.
 - [x] Pass full local verification: lint, clean type check, 8,526 London tests, 8,526 UTC tests, isolated PostgreSQL migration and rollback, and a clean production build.
 - [x] Obtain exact production migration approval, apply it as version `20260914075843`, verify the live schema and grants, pass the full service-role smoke test, clean all test rows, and pass all nine anonymous-surface checks.
-- [ ] Merge, deploy and verify the live authenticated flow.
+- [x] Merge PR #141 as `42ad26b2`, deploy it as `dpl_GLsUJY9YgQZs56dVVBNw1qyFDos5`, confirm the live domain serves that deployment, and verify the authenticated dialog against 25 scheduled shifts without submitting a separation.
 
-Local branch: `feat/employee-separation-shifts`. Production migration
+Live on `main` at `42ad26b2a11bc6b246a9b172c2db987d81710bcd`. Production migration
 `20260914075843_employee_separation_shift_policy.sql` has SHA-256
 `867a10c6d73ad684a80d67d744b22053caf595d51834dd47576899880e4d586d`.
 

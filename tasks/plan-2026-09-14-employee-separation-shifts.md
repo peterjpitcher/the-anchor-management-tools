@@ -124,7 +124,7 @@
 
 ### Task 5: Full verification and production handoff
 
-**Status:** Production database apply complete. Merge and live application verification remain.
+**Status:** Complete, merged and verified in production.
 
 **Files:**
 - Modify: `tasks/todo.md`
@@ -142,7 +142,7 @@
 - [x] Calculate SHA-256 `867a10c6d73ad684a80d67d744b22053caf595d51834dd47576899880e4d586d` and obtain exact owner approval for production project `tfcasgxopxegwrabvwat`.
 - [x] Apply the unchanged SQL as production ledger version `20260914075843`, then verify columns, constraint, invoker functions, restricted grants, happy path and unhappy paths with fully cleaned test data.
 - [x] Confirm the project uses a committed hand-written database type and that its two nullable separation fields remain aligned.
-- [ ] Commit final verification records, push the feature branch, open and merge the PR after CI passes, then update local main.
-- [ ] Match the full main commit SHA to a Ready production deployment and confirm `management.orangejelly.co.uk` serves that deployment.
-- [ ] Smoke-test the authenticated employee dialog without submitting a real separation, and check bounded runtime errors.
+- [x] Commit final verification records, push the feature branch, merge PR #141 after all checks pass, and update local main to merge commit `42ad26b2a11bc6b246a9b172c2db987d81710bcd`.
+- [x] Match the full main commit SHA to Ready production deployment `dpl_GLsUJY9YgQZs56dVVBNw1qyFDos5` and confirm `management.orangejelly.co.uk` serves it.
+- [x] Smoke-test the authenticated employee dialog without submitting a real separation. It loaded 25 shifts with Published, Draft and acceptance states, showed all 25 becoming open for immediate release, then recalculated to 7 retained and 18 released for a chosen last day. Cancel closed the dialog without a write.
 - [ ] Record the production migration mapping, deployment id and checks in `tasks/todo.md`, then tidy the merged branch.
