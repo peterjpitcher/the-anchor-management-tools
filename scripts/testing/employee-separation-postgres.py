@@ -147,6 +147,21 @@ def main() -> None:
 
         try:
             sql(SETUP)
+            sql("""
+                DO $$ BEGIN
+                  IF to_regprocedure('public.begin_employee_separation(uuid,date,text,uuid,timestamptz)') IS NOT NULL THEN
+                    RAISE EXCEPTION 'fixture already has the separation function';
+                  END IF;
+                  IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='employees'
+                      AND column_name IN ('separation_shift_policy', 'separation_started_at')
+                  ) THEN
+                    RAISE EXCEPTION 'fixture already has a separation column';
+                  END IF;
+                END $$;
+            """)
+            print('PASS pre-migration fixture has no separation contract')
             sql('BEGIN;\n' + MIGRATION.read_text() + '\nROLLBACK;')
             sql(MIGRATION.read_text())
             sql(TEST.read_text())

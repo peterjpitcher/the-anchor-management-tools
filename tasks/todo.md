@@ -1,12 +1,16 @@
 # Employee separation shift handling, 14 September 2026
 
-- [ ] Add and validate the atomic employee and rota migration.
-- [ ] Build the separation preview, mutation and email variants.
-- [ ] Build the manager shift review and policy choice.
-- [ ] Prevent released leavers being assigned fresh rota shifts.
-- [ ] Pass full local verification.
+- [x] Add and validate the atomic employee and rota migration.
+- [x] Build the separation preview, mutation and email variants.
+- [x] Build the manager shift review and policy choice.
+- [x] Prevent released leavers being assigned fresh rota shifts.
+- [x] Pass full local verification: lint, clean type check, 8,526 London tests, 8,526 UTC tests, isolated PostgreSQL migration and rollback, and a clean production build.
 - [ ] Obtain exact production migration approval, apply and verify it.
 - [ ] Merge, deploy and verify the live authenticated flow.
+
+Local branch: `feat/employee-separation-shifts`. Production migration history was aligned with its
+ledger before the dry run; the dry run now shows only
+`20260914100000_employee_separation_shift_policy.sql` pending.
 
 # Guest email review fixes, 12 September 2026
 

@@ -28,6 +28,8 @@
 
 ### Task 1: Atomic separation database contract
 
+**Status:** Complete and validated locally. The live anonymous-surface check remains part of the production apply step.
+
 **Files:**
 - Create: `supabase/migrations/20260914100000_employee_separation_shift_policy.sql`
 - Create: `supabase/rollbacks/20260914100000_employee_separation_shift_policy.sql`
@@ -37,17 +39,19 @@
 - Consumes: existing `employees`, `rota_shift_templates`, `rota_shifts`, `rota_published_shifts`, and `rota_shift_calendar_cancellations` tables.
 - Produces: `employees.separation_shift_policy`, `employees.separation_started_at`, and `public.begin_employee_separation(uuid,date,text,uuid,timestamptz) returns jsonb`.
 
-- [ ] Add failing SQL assertions proving the columns and function do not exist in the pre-migration fixture.
-- [ ] Add the nullable employee columns and the policy check constraint.
-- [ ] Implement `begin_employee_separation` with `SELECT ... FOR UPDATE`, explicit Active-state and date gates, London shift-start comparison, template clearing, cancellation history insertion, live shift release, published snapshot release, and a structured JSON result.
-- [ ] Revoke function execution from `PUBLIC`, `anon`, and `authenticated`; grant it only to `service_role`.
-- [ ] Write reversible rollback SQL which drops the function, constraint and two nullable columns without touching employee or rota data.
-- [ ] Execute the migration in a rolled-back isolated PostgreSQL fixture and exercise `work_remaining`, `release_remaining`, invalid dates, an already-started same-day shift, published rows and draft rows.
-- [ ] Re-run the migration in the fixture to confirm the intended one-time migration behaviour, then run the rollback and confirm the original shape returns.
+- [x] Add failing SQL assertions proving the columns and function do not exist in the pre-migration fixture.
+- [x] Add the nullable employee columns and the policy check constraint.
+- [x] Implement `begin_employee_separation` with `SELECT ... FOR UPDATE`, explicit Active-state and date gates, London shift-start comparison, template clearing, cancellation history insertion, live shift release, published snapshot release, and a structured JSON result.
+- [x] Revoke function execution from `PUBLIC`, `anon`, and `authenticated`; grant it only to `service_role`.
+- [x] Write reversible rollback SQL which drops the function, constraint and two nullable columns without touching employee or rota data.
+- [x] Execute the migration in a rolled-back isolated PostgreSQL fixture and exercise `work_remaining`, `release_remaining`, invalid dates, an already-started same-day shift, published rows and draft rows.
+- [x] Re-run the migration in the fixture to confirm the intended one-time migration behaviour, then run the rollback and confirm the original shape returns.
 - [ ] Run `npx tsx scripts/security/assert-anon-surface.ts` against the configured non-production validation target when available.
-- [ ] Commit the independently deployable database contract.
+- [x] Commit the independently deployable database contract.
 
 ### Task 2: Separation preview, mutation and email behaviour
+
+**Status:** Complete and verified by focused and full tests.
 
 **Files:**
 - Create: `src/app/actions/employeeSeparation.ts`
@@ -63,18 +67,20 @@
 - Produces: `beginEmployeeSeparation(employeeId: string, input: BeginEmployeeSeparationInput): Promise<BeginEmployeeSeparationResult>`.
 - Consumes: RPC JSON `{ state, retained_shift_ids, released_shift_ids, affected_published_week_ids }`.
 
-- [ ] Write action tests for permission denial, preview filtering and mapping, invalid end dates, both policies, RPC errors, an empty update caused by stale status, successful notes and audit data, and committed separation with email failure warning.
-- [ ] Write email tests proving retained shifts are listed only for `work_remaining`, and `release_remaining` says no further shifts are expected without listing released work.
-- [ ] Run the focused tests and confirm they fail against the old action and email interfaces.
-- [ ] Implement the focused server action with Zod validation and specific database error mapping.
-- [ ] Move the old begin-separation responsibility out of `employeeInvite.ts`, preserving unrelated onboarding and finalisation exports.
-- [ ] Extend the employee type with the two nullable separation fields.
-- [ ] Update the email input and text for both policies.
-- [ ] Add the post-commit note, audit entry, affected-week calendar resync callback and route revalidation. Treat email failure as a warning, not a database rollback.
-- [ ] Run the focused action and email tests until they pass.
-- [ ] Commit the independently testable server behaviour.
+- [x] Write action tests for permission denial, preview filtering and mapping, invalid end dates, both policies, RPC errors, an empty update caused by stale status, successful notes and audit data, and committed separation with email failure warning.
+- [x] Write email tests proving retained shifts are listed only for `work_remaining`, and `release_remaining` says no further shifts are expected without listing released work.
+- [x] Run the focused tests and confirm they fail against the old action and email interfaces.
+- [x] Implement the focused server action with Zod validation and specific database error mapping.
+- [x] Move the old begin-separation responsibility out of `employeeInvite.ts`, preserving unrelated onboarding and finalisation exports.
+- [x] Extend the employee type with the two nullable separation fields.
+- [x] Update the email input and text for both policies.
+- [x] Add the post-commit note, audit entry, affected-week calendar resync callback and route revalidation. Treat email failure as a warning, not a database rollback.
+- [x] Run the focused action and email tests until they pass.
+- [x] Commit the independently testable server behaviour.
 
 ### Task 3: Manager shift review interface
+
+**Status:** Complete and verified by component tests, strict type checking and a clean build.
 
 **Files:**
 - Modify: `src/components/features/employees/EmployeeStatusActions.tsx`
@@ -85,34 +91,40 @@
 - Consumes: preview and mutation actions from `src/app/actions/employeeSeparation.ts`.
 - Consumes: employee start date from the employee detail page.
 
-- [ ] Write component tests for loading the preview, list content, Published and Draft badges, the required policy choice, live retained and released summaries, the employment-date guard, release-today behaviour supplied by preview, success refresh, and email warning refresh.
-- [ ] Run the component test and confirm it fails against the current dialog.
-- [ ] Pass `employmentStartDate` into the status action component.
-- [ ] Load the preview when the dialog opens, keep confirmation disabled on loading or error, and render the chronological shift list with accessible radio controls.
-- [ ] Recalculate retained and released groups when the date or policy changes and show the exact counts before confirmation.
-- [ ] Show a specific date error when the last working day is not after the employment start date.
-- [ ] Show a success toast for a complete operation and a warning toast when the separation committed but the email failed, refreshing in both cases.
-- [ ] Run the component test until it passes.
-- [ ] Commit the manager interface.
+- [x] Write component tests for loading the preview, list content, Published and Draft badges, the required policy choice, live retained and released summaries, the employment-date guard, release-today behaviour supplied by preview, success refresh, and email warning refresh.
+- [x] Run the component test and confirm it fails against the current dialog.
+- [x] Pass `employmentStartDate` into the status action component.
+- [x] Load the preview when the dialog opens, keep confirmation disabled on loading or error, and render the chronological shift list with accessible radio controls.
+- [x] Recalculate retained and released groups when the date or policy changes and show the exact counts before confirmation.
+- [x] Show a specific date error when the last working day is not after the employment start date.
+- [x] Show a success toast for a complete operation and a warning toast when the separation committed but the email failed, refreshing in both cases.
+- [x] Run the component test until it passes.
+- [x] Commit the manager interface.
 
 ### Task 4: Rota assignment enforcement and regression coverage
 
+**Status:** Complete. The rota choices exclude released leavers, and database triggers reject direct shift or template assignment.
+
 **Files:**
-- Modify: `src/services/employees.ts`
 - Modify: `src/app/actions/rota.ts`
-- Test: `tests/services/employees.service.test.ts`
+- Modify: `supabase/migrations/20260914100000_employee_separation_shift_policy.sql`
+- Modify: `supabase/rollbacks/20260914100000_employee_separation_shift_policy.sql`
 - Test: `tests/actions/rota.test.ts`
+- Test: `tests/db/employee-separation-shifts.sql`
 
 **Interfaces:**
 - Consumes: `employees.separation_shift_policy`.
 - Produces: assignable employee queries which exclude `Started Separation` rows with `release_remaining` while retaining legacy null and `work_remaining` rows.
 
-- [ ] Add failing tests for employee dropdown queries and rota employee lists excluding released leavers.
-- [ ] Update only assignment-oriented employee queries, leaving portal access, timeclock, payroll and historical reporting unchanged.
-- [ ] Run focused employee and rota tests until they pass.
-- [ ] Commit the enforcement increment.
+- [x] Add failing tests for employee dropdown queries and rota employee lists excluding released leavers.
+- [x] Update only assignment-oriented employee queries, leaving portal access, timeclock, payroll and historical reporting unchanged.
+- [x] Reject direct live-shift and recurring-template assignment in PostgreSQL.
+- [x] Run focused employee and rota tests until they pass.
+- [x] Commit the enforcement increment.
 
 ### Task 5: Full verification and production handoff
+
+**Status:** Local verification complete. Exact production approval, apply, merge and live verification remain.
 
 **Files:**
 - Modify: `tasks/todo.md`
@@ -121,12 +133,12 @@
 - Consumes: all earlier tasks.
 - Produces: a verified commit, exact production migration approval packet, merged main branch and verified Vercel production deployment.
 
-- [ ] Run `npm run lint` on Node 20.
-- [ ] Remove `*.tsbuildinfo`, then run `NODE_OPTIONS=--max-old-space-size=8192 npx tsc --noEmit`.
-- [ ] Run `npm test` and `npm run test:utc`.
-- [ ] Remove `.next`, then run `NODE_OPTIONS=--max-old-space-size=8192 npm run build`.
-- [ ] Run `npm run knip` and assess only findings introduced by this change.
-- [ ] Run `npx supabase db push --dry-run` as a migration-history check, without treating it as SQL execution proof.
+- [x] Run `npm run lint` on Node 20.
+- [x] Remove `*.tsbuildinfo`, then run `NODE_OPTIONS=--max-old-space-size=8192 npx tsc --noEmit`.
+- [x] Run `npm test` and `npm run test:utc`.
+- [x] Remove `.next`, then run `NODE_OPTIONS=--max-old-space-size=8192 npm run build`.
+- [x] Run `npm run knip` and assess only findings introduced by this change.
+- [x] Run `npx supabase db push --dry-run` as a migration-history check, without treating it as SQL execution proof.
 - [ ] Calculate the migration SHA-256 and present the exact production project, SQL, live-state findings, lock risk, validation result, rollback and smoke plan for owner approval.
 - [ ] After exact approval, apply the unchanged SQL through the Supabase migration capability and verify columns, constraint, function grants, happy path and unhappy path with guaranteed rollback test data.
 - [ ] Regenerate TypeScript database types if the project stores generated Supabase types, then confirm the committed hand-written type remains aligned.
