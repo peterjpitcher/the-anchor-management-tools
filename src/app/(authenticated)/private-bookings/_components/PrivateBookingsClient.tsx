@@ -152,6 +152,7 @@ export default function PrivateBookingsClient({
   const router = useRouter()
   const { hasPermission } = usePermissions()
   const canManageSettings = hasPermission('private_bookings', 'manage')
+  const canViewReports = hasPermission('reports', 'view')
 
   /* --- Data state --- */
   const [bookings, setBookings] = useState<PrivateBookingDashboardItem[]>(initialBookings)
@@ -502,6 +503,11 @@ export default function PrivateBookingsClient({
         className="mb-0"
         actions={
           <div className="flex items-center gap-2">
+            {canViewReports && (
+              <Link href="/private-bookings/reports">
+                <Button variant="secondary" size="sm">Growth report</Button>
+              </Link>
+            )}
             {permissions.hasCreatePermission && (
               <Link href="/private-bookings/new">
                 <Button variant="primary" size="sm" icon={<PlusIcon />}>New Booking</Button>
