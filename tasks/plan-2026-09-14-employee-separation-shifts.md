@@ -28,11 +28,11 @@
 
 ### Task 1: Atomic separation database contract
 
-**Status:** Complete and validated locally. The live anonymous-surface check remains part of the production apply step.
+**Status:** Complete, applied to production and verified against the live schema.
 
 **Files:**
-- Create: `supabase/migrations/20260914100000_employee_separation_shift_policy.sql`
-- Create: `supabase/rollbacks/20260914100000_employee_separation_shift_policy.sql`
+- Create: `supabase/migrations/20260914075843_employee_separation_shift_policy.sql`
+- Create: `supabase/rollbacks/20260914075843_employee_separation_shift_policy.sql`
 - Test: `tests/db/employee-separation-shifts.sql`
 
 **Interfaces:**
@@ -46,7 +46,7 @@
 - [x] Write reversible rollback SQL which drops the function, constraint and two nullable columns without touching employee or rota data.
 - [x] Execute the migration in a rolled-back isolated PostgreSQL fixture and exercise `work_remaining`, `release_remaining`, invalid dates, an already-started same-day shift, published rows and draft rows.
 - [x] Re-run the migration in the fixture to confirm the intended one-time migration behaviour, then run the rollback and confirm the original shape returns.
-- [ ] Run `npx tsx scripts/security/assert-anon-surface.ts` against the configured non-production validation target when available.
+- [x] Run `npx tsx scripts/security/assert-anon-surface.ts` after production apply. All nine checks passed.
 - [x] Commit the independently deployable database contract.
 
 ### Task 2: Separation preview, mutation and email behaviour
@@ -107,8 +107,8 @@
 
 **Files:**
 - Modify: `src/app/actions/rota.ts`
-- Modify: `supabase/migrations/20260914100000_employee_separation_shift_policy.sql`
-- Modify: `supabase/rollbacks/20260914100000_employee_separation_shift_policy.sql`
+- Modify: `supabase/migrations/20260914075843_employee_separation_shift_policy.sql`
+- Modify: `supabase/rollbacks/20260914075843_employee_separation_shift_policy.sql`
 - Test: `tests/actions/rota.test.ts`
 - Test: `tests/db/employee-separation-shifts.sql`
 
@@ -124,7 +124,7 @@
 
 ### Task 5: Full verification and production handoff
 
-**Status:** Local verification complete. Exact production approval, apply, merge and live verification remain.
+**Status:** Production database apply complete. Merge and live application verification remain.
 
 **Files:**
 - Modify: `tasks/todo.md`
@@ -139,9 +139,9 @@
 - [x] Remove `.next`, then run `NODE_OPTIONS=--max-old-space-size=8192 npm run build`.
 - [x] Run `npm run knip` and assess only findings introduced by this change.
 - [x] Run `npx supabase db push --dry-run` as a migration-history check, without treating it as SQL execution proof.
-- [ ] Calculate the migration SHA-256 and present the exact production project, SQL, live-state findings, lock risk, validation result, rollback and smoke plan for owner approval.
-- [ ] After exact approval, apply the unchanged SQL through the Supabase migration capability and verify columns, constraint, function grants, happy path and unhappy path with guaranteed rollback test data.
-- [ ] Regenerate TypeScript database types if the project stores generated Supabase types, then confirm the committed hand-written type remains aligned.
+- [x] Calculate SHA-256 `867a10c6d73ad684a80d67d744b22053caf595d51834dd47576899880e4d586d` and obtain exact owner approval for production project `tfcasgxopxegwrabvwat`.
+- [x] Apply the unchanged SQL as production ledger version `20260914075843`, then verify columns, constraint, invoker functions, restricted grants, happy path and unhappy paths with fully cleaned test data.
+- [x] Confirm the project uses a committed hand-written database type and that its two nullable separation fields remain aligned.
 - [ ] Commit final verification records, push the feature branch, open and merge the PR after CI passes, then update local main.
 - [ ] Match the full main commit SHA to a Ready production deployment and confirm `management.orangejelly.co.uk` serves that deployment.
 - [ ] Smoke-test the authenticated employee dialog without submitting a real separation, and check bounded runtime errors.

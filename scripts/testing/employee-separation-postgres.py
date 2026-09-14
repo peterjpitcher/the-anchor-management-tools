@@ -7,8 +7,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path('/opt/homebrew/bin')
-MIGRATION = ROOT / 'supabase/migrations/20260914100000_employee_separation_shift_policy.sql'
-ROLLBACK = ROOT / 'supabase/rollbacks/20260914100000_employee_separation_shift_policy.sql'
+MIGRATION = ROOT / 'supabase/migrations/20260914075843_employee_separation_shift_policy.sql'
+ROLLBACK = ROOT / 'supabase/rollbacks/20260914075843_employee_separation_shift_policy.sql'
 TEST = ROOT / 'tests/db/employee-separation-shifts.sql'
 
 SETUP = r"""

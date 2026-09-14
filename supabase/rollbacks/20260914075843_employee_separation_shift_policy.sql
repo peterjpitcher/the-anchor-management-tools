@@ -1,4 +1,4 @@
--- Rollback for 20260914100000_employee_separation_shift_policy.sql.
+-- Rollback for 20260914075843_employee_separation_shift_policy.sql.
 -- This removes the stored policy fields. It does not attempt to reassign shifts already released
 -- by a completed separation, because another employee may have claimed them after the release.
 
