@@ -88,7 +88,7 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))
 
-import { createTrip, getTrips, getTripStats, updateTrip } from '../mileage'
+import { createTrip, deleteTrip, getTrips, getTripStats, updateTrip } from '../mileage'
 
 const HOME_ID = '00000000-0000-4000-8000-000000000001'
 const DEST_ID = '00000000-0000-4000-8000-000000000002'
@@ -305,5 +305,29 @@ describe('manual mileage trip mutations', () => {
       ],
     })
     expect(mockFrom).not.toHaveBeenCalledWith('mileage_trip_legs')
+  })
+})
+
+describe('deleteTrip', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockRpc.mockReset()
+  })
+
+  it('deletes a logged trip and leaves recalculation to the database trigger', async () => {
+    const deleteEq = vi.fn().mockResolvedValue({ error: null })
+    mockFrom.mockImplementation((table: string) => {
+      if (table !== 'mileage_trips') throw new Error(`Unexpected table: ${table}`)
+      return {
+        ...createSingleBuilder({ id: 'trip-1', source: 'manual', trip_date: '2026-04-04', total_miles: 3.4 }),
+        delete: vi.fn(() => ({ eq: deleteEq })),
+      }
+    })
+
+    const result = await deleteTrip('trip-1')
+
+    expect(result).toEqual({ success: true })
+    expect(deleteEq).toHaveBeenCalledWith('id', 'trip-1')
+    expect(mockRpc).not.toHaveBeenCalled()
   })
 })

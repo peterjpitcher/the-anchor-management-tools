@@ -12,7 +12,6 @@ import {
   THRESHOLD_MILES,
   type TaxYearStats,
 } from '@/lib/mileage/hmrcRates'
-import { recalculateTaxYearMileage } from '@/lib/mileage/recalculateTaxYear'
 
 // ---------------------------------------------------------------------------
 // Zod Schemas
@@ -1288,9 +1287,7 @@ export async function deleteTrip(
 
     if (deleteError) throw deleteError
 
-    // Recalculate HMRC rate splits for remaining trips in the affected tax year
-    await recalculateTaxYearMileage(existing.trip_date)
-
+    // trg_mileage_trips_recalculate repriced the rest of the tax year inside the delete itself.
     await logAuditEvent({
       user_id: userId,
       operation_type: 'delete',
