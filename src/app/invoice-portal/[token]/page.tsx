@@ -52,7 +52,7 @@ export default async function InvoicePortalPage({
   const admin = createAdminClient()
   const { data: invoice } = await admin
     .from('invoices')
-    .select('id, invoice_number, status, total_amount, paid_amount, invoice_date, due_date, sent_at, vendor:invoice_vendors(name, contact_name)')
+    .select('id, invoice_number, status, total_amount, paid_amount, invoice_date, due_date, sent_at, vendor:invoice_vendors(name, contact_name, paypal_payments_enabled)')
     .eq('id', invoiceId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -69,11 +69,18 @@ export default async function InvoicePortalPage({
   // authoritative delivery record, and the send's status flip can fail after
   // the email has already reached the customer.
   const notYetIssued = invoice.status === 'draft' && !invoice.sent_at
-  const payable = !settled && !withdrawn && !notYetIssued
 
   const vendor = (invoice as unknown as {
-    vendor?: { name?: string | null; contact_name?: string | null } | null
+    vendor?: {
+      name?: string | null
+      contact_name?: string | null
+      paypal_payments_enabled?: boolean | null
+    } | null
   }).vendor
+  const invoiceCollectible = !settled && !withdrawn && !notYetIssued
+  const paypalEnabled = vendor?.paypal_payments_enabled === true
+  const payable = invoiceCollectible && paypalEnabled
+  const paymentUnavailable = invoiceCollectible && !paypalEnabled
   const firstName = (vendor?.contact_name || vendor?.name || '').trim().split(' ')[0]
   // The heading and the headline figure must agree with the state. A cancelled
   // invoice showing "Pay your invoice" over "Amount due now GBP 975.60"
@@ -85,7 +92,9 @@ export default async function InvoicePortalPage({
       ? 'This invoice has been cancelled'
       : notYetIssued
         ? 'This invoice is not ready yet'
-        : 'Pay your invoice'
+        : paymentUnavailable
+          ? 'Online payment is unavailable'
+          : 'Pay your invoice'
 
   const lead = settled
     ? 'Thank you, there is nothing left to pay.'
@@ -93,13 +102,17 @@ export default async function InvoicePortalPage({
       ? 'There is nothing to pay on this one.'
       : notYetIssued
         ? 'We have not issued this invoice yet.'
+        : paymentUnavailable
+          ? firstName
+            ? `Hi ${firstName}, please use the payment details on the invoice or contact us if you need help.`
+            : 'Please use the payment details on the invoice or contact us if you need help.'
         : firstName
           ? `Hi ${firstName}, here's what's outstanding on this invoice.`
           : `Here's what's outstanding on this invoice.`
 
   // Only shown where a figure genuinely means something: what is owed, or what
   // was paid. A withdrawn or unissued invoice has no headline amount.
-  const showAmount = payable || settled
+  const showAmount = invoiceCollectible || settled
 
   const paymentPending = query.payment_pending === '1'
   // PayPal appends its order id as `token`, which collides confusingly with the
@@ -117,7 +130,7 @@ export default async function InvoicePortalPage({
       <GuestCard variant="accent">
         {/* Runs before the figures below are read, so what is shown is the
             state after payment. */}
-        {payable && paymentPending && paypalOrderId && (
+        {invoiceCollectible && paymentPending && paypalOrderId && (
           <InvoicePayCaptureClient token={token} paypalOrderId={paypalOrderId} />
         )}
 
@@ -132,7 +145,7 @@ export default async function InvoicePortalPage({
           <DetailRow label="Invoice" value={invoice.invoice_number} />
           <DetailRow label="Invoice total" value={formatMoney(total)} />
           {paid > 0 && <DetailRow label="Already paid" value={formatMoney(paid)} />}
-          {payable && (
+          {invoiceCollectible && (
             <DetailRow
               label="Due"
               value={formatDateInLondon(invoice.due_date, {
@@ -160,6 +173,11 @@ export default async function InvoicePortalPage({
           {notYetIssued && (
             <GuestAlert tone="notice" role="status">
               This invoice has not been issued yet.
+            </GuestAlert>
+          )}
+          {paymentUnavailable && (
+            <GuestAlert tone="notice" role="status">
+              Online payment is not available for this invoice.
             </GuestAlert>
           )}
           {payable && <InvoicePayClient token={token} amountDue={outstanding} />}
