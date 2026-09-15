@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const mocks = vi.hoisted(() => ({ alert: vi.fn(), auth: vi.fn(), get: vi.fn(), settle: vi.fn(), update: vi.fn(), limit: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  alert: vi.fn(),
+  auth: vi.fn(),
+  get: vi.fn(),
+  settle: vi.fn(),
+  update: vi.fn(),
+  select: vi.fn(),
+  limit: vi.fn(),
+}))
 vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: mocks.alert }))
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/cron-auth', () => ({ authorizeCronRequest: mocks.auth }))
@@ -10,13 +18,15 @@ vi.mock('@/lib/invoices/paypal-capture', () => ({ settleInvoicePayPalOrder: mock
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn() } }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from: () => {
   const select = { not: () => select, in: () => select, is: () => select, limit: mocks.limit }
-  return { select: () => select, update: mocks.update }
+  mocks.select.mockReturnValue(select)
+  return { select: mocks.select, update: mocks.update }
 } }) }))
 import { GET } from '@/app/api/cron/invoice-paypal-reconciliation/route'
 
 const invoice = {
   id: 'INVOICE-1', invoice_number: 'INV-003WK', paypal_order_id: 'ORDER-1',
   status: 'partially_paid', total_amount: 994.8, paid_amount: 250, paypal_reconciliation_attempts: 5,
+  vendor: { paypal_payments_enabled: true },
 }
 const request = () => new NextRequest('https://management.orangejelly.co.uk/api/cron/invoice-paypal-reconciliation')
 beforeEach(() => {
@@ -67,6 +77,25 @@ describe('invoice PayPal reconciliation', () => {
     mocks.settle.mockResolvedValue({ error: 'The amount due has changed' })
     expect((await GET(request())).status).toBe(500)
     expect(mocks.settle).toHaveBeenCalledTimes(1)
+  })
+  it('leaves a disabled vendor approved order untouched without raising a failure', async () => {
+    const disabledInvoice = {
+      ...invoice,
+      vendor: { paypal_payments_enabled: false },
+    }
+    mocks.limit.mockResolvedValue({ data: [disabledInvoice], error: null })
+    mocks.get.mockResolvedValue({ status: 'APPROVED' })
+
+    const response = await GET(request())
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ checked: 1, settled: 0, failed: 0 })
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.stringContaining('vendor:invoice_vendors(paypal_payments_enabled)'),
+    )
+    expect(mocks.settle).not.toHaveBeenCalled()
+    expect(mocks.update).not.toHaveBeenCalled()
+    expect(mocks.alert).not.toHaveBeenCalled()
   })
   it('alerts when the initial database read fails', async () => {
     mocks.limit.mockResolvedValue({ data: null, error: new Error('Database unavailable') })

@@ -435,6 +435,34 @@ describe('invoice capture recovery and guards', () => {
     expect(capturePayPalPayment).not.toHaveBeenCalled()
   })
 
+  it('does not capture an approved payment after the vendor is disabled', async () => {
+    const admin = mockAdmin(invoice({
+      vendor: { name: 'Kim Renyard', email: 'kim@example.com', paypal_payments_enabled: false },
+    }))
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder('APPROVED'))
+
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+
+    expect(result.error).toBe('PayPal payments are not enabled for this vendor.')
+    expect(capturePayPalPayment).not.toHaveBeenCalled()
+    expect(admin.rpc).not.toHaveBeenCalled()
+  })
+
+  it('does not capture an approved payment when the vendor setting is missing', async () => {
+    const admin = mockAdmin(invoice({
+      vendor: { name: 'Kim Renyard', email: 'kim@example.com' },
+    }))
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder('APPROVED'))
+
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+
+    expect(result.error).toBe('PayPal payments are not enabled for this vendor.')
+    expect(capturePayPalPayment).not.toHaveBeenCalled()
+    expect(admin.rpc).not.toHaveBeenCalled()
+  })
+
   it('does not credit a pending capture on a completed order', async () => {
     const admin = mockAdmin(invoice())
     vi.mocked(createAdminClient).mockReturnValue(admin)

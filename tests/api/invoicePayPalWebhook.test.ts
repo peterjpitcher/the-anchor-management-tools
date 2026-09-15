@@ -18,10 +18,13 @@ vi.mock('@/lib/api/idempotency', () => ({
 }))
 import { POST } from '@/app/api/webhooks/paypal/invoices/route'
 
-function request(overrides: Record<string, unknown> = {}) {
+function request(
+  overrides: Record<string, unknown> = {},
+  eventType = 'PAYMENT.CAPTURE.COMPLETED',
+) {
   return new NextRequest('https://management.orangejelly.co.uk/api/webhooks/paypal/invoices', {
     method: 'POST', body: JSON.stringify({
-      id: 'EVENT-1', event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: {
+      id: 'EVENT-1', event_type: eventType, resource: {
         id: 'CAPTURE-1', status: 'COMPLETED', custom_id: 'inv-pay-8a590bb4-487b-4522-929b-b5c6c3f81071',
         amount: { value: '744.80', currency_code: 'GBP' }, create_time: '2026-09-04T13:38:30Z',
         supplementary_data: { related_ids: { order_id: 'ORDER-1' } }, ...overrides,
@@ -56,6 +59,12 @@ describe('invoice PayPal webhook', () => {
     }))
     expect(mocks.persist).toHaveBeenCalledTimes(1)
     expect(mocks.release).not.toHaveBeenCalled()
+  })
+  it('does not treat an approved order event as a completed capture', async () => {
+    const response = await POST(request({ status: 'APPROVED' }, 'CHECKOUT.ORDER.APPROVED'))
+
+    expect(response.status).toBe(200)
+    expect(mocks.apply).not.toHaveBeenCalled()
   })
   it('acknowledges only completed duplicates', async () => {
     mocks.claim.mockResolvedValue({ state: 'replay', response: { received: true } })
