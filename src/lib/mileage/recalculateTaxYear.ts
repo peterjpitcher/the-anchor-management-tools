@@ -1,70 +1,26 @@
 /**
- * Recalculate HMRC rate splits for all mileage trips in a given tax year.
+ * Recalculate HMRC rate splits for every mileage trip in the tax year containing `tripDate`.
  *
- * Called by the application layer after any mutation that affects mileage_trips
- * (both manual trip saves and OJ-Projects mileage sync). The DB trigger only
- * sets default rates as if every mile were at the standard rate; this function
- * applies the cumulative threshold logic and the date-aware standard rate
- * (£0.45 before 1 April 2026, £0.55 on or after) with £0.25 above 10,000 miles.
+ * The arithmetic lives only in the database function recalculate_mileage_tax_year_v01, which
+ * locks the tax year's trips and prices them in one transaction. This wrapper keeps the callers
+ * that still recalculate after a change (OJ Projects entries and trip deletes) on that single
+ * implementation, instead of a second copy in TypeScript that could disagree with it.
+ * Release 1 removes these callers once a database trigger recalculates in the same transaction.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getTaxYearBounds, recalculateAllSplits } from './hmrcRates'
 
-/**
- * Recalculate rate splits for every trip in the tax year that contains `tripDate`.
- * Trips are ordered by (trip_date ASC, created_at ASC) for deterministic cumulative
- * mile counting.
- *
- * @param tripDate - Any YYYY-MM-DD date; the containing tax year is derived automatically.
- */
 export async function recalculateTaxYearMileage(tripDate: string): Promise<void> {
   const db = createAdminClient()
-  const { start, end } = getTaxYearBounds(tripDate)
+  const { error } = await db.rpc('recalculate_mileage_tax_year_v01', { p_trip_date: tripDate })
 
-  // Fetch all trips in this tax year, ordered deterministically
-  const { data: trips, error: fetchError } = await db
-    .from('mileage_trips')
-    .select('id, trip_date, total_miles')
-    .gte('trip_date', start)
-    .lte('trip_date', end)
-    .order('trip_date', { ascending: true })
-    .order('created_at', { ascending: true })
-
-  if (fetchError) {
-    throw new Error(`Failed to fetch trips for recalculation: ${fetchError.message}`)
-  }
-
-  if (!trips || trips.length === 0) return
-
-  // Calculate new splits using the shared pure function. The trip date selects
-  // the correct standard rate band (legacy £0.45 vs current £0.55).
-  const splits = recalculateAllSplits(
-    trips.map((t) => ({
-      totalMiles: Number(t.total_miles),
-      tripDate: t.trip_date,
-    }))
-  )
-
-  // Batch-update each trip with its recalculated split.
-  // Supabase JS client doesn't support batch updates in a single call,
-  // so we issue parallel updates (all within a short window).
-  const updatePromises = trips.map((trip, i) =>
-    db
-      .from('mileage_trips')
-      .update({
-        miles_at_standard_rate: splits[i].milesAtStandardRate,
-        miles_at_reduced_rate: splits[i].milesAtReducedRate,
-        amount_due: splits[i].amountDue,
-      })
-      .eq('id', trip.id)
-  )
-
-  const results = await Promise.all(updatePromises)
-
-  // Check for any errors
-  const firstError = results.find((r) => r.error)
-  if (firstError?.error) {
-    throw new Error(`Failed to update trip splits: ${firstError.error.message}`)
+  if (error) {
+    console.error('[mileage] recalculate_mileage_tax_year_v01 failed', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    })
+    throw new Error(`Failed to recalculate mileage for the tax year containing ${tripDate}: ${error.message}`)
   }
 }

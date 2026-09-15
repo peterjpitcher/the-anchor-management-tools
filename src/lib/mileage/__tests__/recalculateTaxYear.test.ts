@@ -1,155 +1,33 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Mock the admin client before importing the module under test
-const mockFrom = vi.fn()
-const mockUpdate = vi.fn()
-const mockEq = vi.fn()
-const mockSelect = vi.fn()
-const mockGte = vi.fn()
-const mockLte = vi.fn()
-const mockOrder = vi.fn()
+const mockRpc = vi.fn()
 
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({
-    from: mockFrom,
-  }),
+  createAdminClient: vi.fn(() => ({ rpc: mockRpc })),
 }))
 
 import { recalculateTaxYearMileage } from '../recalculateTaxYear'
 
 describe('recalculateTaxYearMileage', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-
-    // Default chain: from().select().gte().lte().order().order()
-    mockOrder.mockReturnValue({
-      order: vi.fn().mockResolvedValue({ data: [], error: null }),
-    })
-    mockLte.mockReturnValue({ order: mockOrder })
-    mockGte.mockReturnValue({ lte: mockLte })
-    mockSelect.mockReturnValue({ gte: mockGte })
-    mockFrom.mockReturnValue({ select: mockSelect })
+    mockRpc.mockReset()
   })
 
-  it('should do nothing when there are no trips in the tax year', async () => {
-    mockOrder.mockReturnValue({
-      order: vi.fn().mockResolvedValue({ data: [], error: null }),
-    })
+  it('delegates to the database recalculation function', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: null })
 
-    await recalculateTaxYearMileage('2026-06-15')
+    await recalculateTaxYearMileage('2026-04-05')
 
-    // Should have called from('mileage_trips') for the select
-    expect(mockFrom).toHaveBeenCalledWith('mileage_trips')
-    // Should NOT have called from() again for updates (no trips to update)
-    expect(mockFrom).toHaveBeenCalledTimes(1)
+    expect(mockRpc).toHaveBeenCalledTimes(1)
+    expect(mockRpc).toHaveBeenCalledWith('recalculate_mileage_tax_year_v01', { p_trip_date: '2026-04-05' })
   })
 
-  it('should recalculate splits for trips within standard rate threshold', async () => {
-    // 2026-06-15 is in tax year 2026/27, post 2026-04-01, so the £0.55 rate applies.
-    const trips = [
-      { id: 'trip-1', trip_date: '2026-06-15', total_miles: '100' },
-      { id: 'trip-2', trip_date: '2026-06-15', total_miles: '200' },
-    ]
-
-    // Setup the chain for fetching trips
-    const mockOrderInner = vi.fn().mockResolvedValue({ data: trips, error: null })
-    mockOrder.mockReturnValue({ order: mockOrderInner })
-
-    // Setup the chain for updating trips
-    const mockUpdateEq = vi.fn().mockResolvedValue({ error: null })
-    mockUpdate.mockReturnValue({ eq: mockUpdateEq })
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'mileage_trips') {
-        // First call is select, subsequent calls are updates
-        if (mockFrom.mock.calls.length === 1) {
-          return { select: mockSelect }
-        }
-        return { update: mockUpdate }
-      }
-      return { select: mockSelect }
-    })
-
-    await recalculateTaxYearMileage('2026-06-15')
-
-    // Both trips should be updated
-    // Trip 1: 100 miles, all at standard rate (0 cumulative before)
-    // Trip 2: 200 miles, all at standard rate (100 cumulative before)
-    expect(mockUpdate).toHaveBeenCalledTimes(2)
-
-    // First trip: 100 miles at standard
-    expect(mockUpdate).toHaveBeenNthCalledWith(1, {
-      miles_at_standard_rate: 100,
-      miles_at_reduced_rate: 0,
-      amount_due: 55, // 100 * 0.55
-    })
-
-    // Second trip: 200 miles at standard
-    expect(mockUpdate).toHaveBeenNthCalledWith(2, {
-      miles_at_standard_rate: 200,
-      miles_at_reduced_rate: 0,
-      amount_due: 110, // 200 * 0.55
-    })
-  })
-
-  it('should apply the legacy rate to pre-2026-04-01 trips', async () => {
-    // Tax year 2025/26 (6 April 2025 -> 5 April 2026). All trip dates are
-    // before the 2026-04-01 rate change.
-    const trips = [
-      { id: 'legacy-1', trip_date: '2025-09-10', total_miles: '120' },
-    ]
-
-    const mockOrderInner = vi.fn().mockResolvedValue({ data: trips, error: null })
-    mockOrder.mockReturnValue({ order: mockOrderInner })
-
-    const mockUpdateEq = vi.fn().mockResolvedValue({ error: null })
-    mockUpdate.mockReturnValue({ eq: mockUpdateEq })
-    mockFrom.mockImplementation(() => {
-      if (mockFrom.mock.calls.length === 1) {
-        return { select: mockSelect }
-      }
-      return { update: mockUpdate }
-    })
-
-    await recalculateTaxYearMileage('2025-09-10')
-
-    expect(mockUpdate).toHaveBeenNthCalledWith(1, {
-      miles_at_standard_rate: 120,
-      miles_at_reduced_rate: 0,
-      amount_due: 54, // 120 * 0.45
-    })
-  })
-
-  it('should throw on fetch error', async () => {
-    const mockOrderInner = vi.fn().mockResolvedValue({
+  it('throws when the database function fails', async () => {
+    mockRpc.mockResolvedValue({
       data: null,
-      error: { message: 'DB connection failed' },
+      error: { code: '40P01', message: 'deadlock detected', details: null, hint: null },
     })
-    mockOrder.mockReturnValue({ order: mockOrderInner })
 
-    await expect(recalculateTaxYearMileage('2026-06-15')).rejects.toThrow(
-      'Failed to fetch trips for recalculation'
-    )
-  })
-
-  it('should query the correct tax year bounds', async () => {
-    const mockOrderInner = vi.fn().mockResolvedValue({ data: [], error: null })
-    mockOrder.mockReturnValue({ order: mockOrderInner })
-
-    // Date 2026-06-15 falls in tax year 2026-04-06 to 2027-04-05
-    await recalculateTaxYearMileage('2026-06-15')
-
-    expect(mockGte).toHaveBeenCalledWith('trip_date', '2026-04-06')
-    expect(mockLte).toHaveBeenCalledWith('trip_date', '2027-04-05')
-  })
-
-  it('should query correct bounds for a date before April 6', async () => {
-    const mockOrderInner = vi.fn().mockResolvedValue({ data: [], error: null })
-    mockOrder.mockReturnValue({ order: mockOrderInner })
-
-    // Date 2026-01-15 falls in tax year 2025-04-06 to 2026-04-05
-    await recalculateTaxYearMileage('2026-01-15')
-
-    expect(mockGte).toHaveBeenCalledWith('trip_date', '2025-04-06')
-    expect(mockLte).toHaveBeenCalledWith('trip_date', '2026-04-05')
+    await expect(recalculateTaxYearMileage('2026-04-05')).rejects.toThrow('deadlock detected')
   })
 })
