@@ -1,0 +1,22 @@
+{
+  "rates": [
+    { "tripDate": "2023-04-05", "standardPence": null, "reducedPence": null, "thresholdMiles": null },
+    { "tripDate": "2023-04-06", "standardPence": 45, "reducedPence": 25, "thresholdMiles": 10000 },
+    { "tripDate": "2024-01-01", "standardPence": 45, "reducedPence": 25, "thresholdMiles": 10000 },
+    { "tripDate": "2026-04-01", "standardPence": 45, "reducedPence": 25, "thresholdMiles": 10000 },
+    { "tripDate": "2026-04-05", "standardPence": 45, "reducedPence": 25, "thresholdMiles": 10000 },
+    { "tripDate": "2026-04-06", "standardPence": 55, "reducedPence": 25, "thresholdMiles": 10000 },
+    { "tripDate": "2027-01-01", "standardPence": 55, "reducedPence": 25, "thresholdMiles": 10000 }
+  ],
+  "splits": [
+    { "name": "4 April 2026, 3.4 miles, at 45p", "tripDate": "2026-04-04", "tenthsBefore": 0, "tripTenths": 34, "standardTenths": 34, "reducedTenths": 0, "amountPence": 153, "standardBandPence": 153, "reducedBandPence": 0 },
+    { "name": "5 April 2026, 13.6 miles, at 45p", "tripDate": "2026-04-05", "tenthsBefore": 34, "tripTenths": 136, "standardTenths": 136, "reducedTenths": 0, "amountPence": 612, "standardBandPence": 612, "reducedBandPence": 0 },
+    { "name": "6 April 2026, 3.4 miles, at 55p", "tripDate": "2026-04-06", "tenthsBefore": 0, "tripTenths": 34, "standardTenths": 34, "reducedTenths": 0, "amountPence": 187, "standardBandPence": 187, "reducedBandPence": 0 },
+    { "name": "0.1 mile at 45p rounds half a penny up", "tripDate": "2025-05-01", "tenthsBefore": 0, "tripTenths": 1, "standardTenths": 1, "reducedTenths": 0, "amountPence": 5, "standardBandPence": 5, "reducedBandPence": 0 },
+    { "name": "0.1 mile at 55p rounds 5.5p up", "tripDate": "2026-05-01", "tenthsBefore": 0, "tripTenths": 1, "standardTenths": 1, "reducedTenths": 0, "amountPence": 6, "standardBandPence": 6, "reducedBandPence": 0 },
+    { "name": "reaches exactly 10,000 miles", "tripDate": "2026-05-01", "tenthsBefore": 99900, "tripTenths": 100, "standardTenths": 100, "reducedTenths": 0, "amountPence": 550, "standardBandPence": 550, "reducedBandPence": 0 },
+    { "name": "crosses 10,000 miles", "tripDate": "2026-05-01", "tenthsBefore": 99990, "tripTenths": 20, "standardTenths": 10, "reducedTenths": 10, "amountPence": 80, "standardBandPence": 55, "reducedBandPence": 25 },
+    { "name": "already past 10,000 miles", "tripDate": "2026-05-01", "tenthsBefore": 100000, "tripTenths": 15, "standardTenths": 0, "reducedTenths": 15, "amountPence": 38, "standardBandPence": 0, "reducedBandPence": 38 },
+    { "name": "crossing with half pennies in both bands", "tripDate": "2025-05-01", "tenthsBefore": 99999, "tripTenths": 2, "standardTenths": 1, "reducedTenths": 1, "amountPence": 7, "standardBandPence": 5, "reducedBandPence": 2 }
+  ]
+}
