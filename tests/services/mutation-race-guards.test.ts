@@ -61,6 +61,7 @@ describe('Mutation race/row-effect guards', () => {
     const updateMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
     const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const update = vi.fn().mockReturnValue({ eq: updateEq })
 
     mockedCreateClient.mockResolvedValue({
       from: vi.fn((table: string) => {
@@ -69,7 +70,7 @@ describe('Mutation race/row-effect guards', () => {
         }
 
         return {
-          update: vi.fn().mockReturnValue({ eq: updateEq }),
+          update,
         }
       }),
     })
@@ -78,8 +79,13 @@ describe('Mutation race/row-effect guards', () => {
       VendorService.updateVendor('vendor-1', {
         name: 'Band Co',
         payment_terms: 30,
+        paypal_payments_enabled: true,
       })
     ).rejects.toThrow('Vendor not found')
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ paypal_payments_enabled: true }),
+    )
   })
 
   it('EventCategoryService.deleteCategory throws not-found when delete affects no rows', async () => {
