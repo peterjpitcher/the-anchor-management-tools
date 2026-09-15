@@ -31,7 +31,7 @@
 
 **Files:**
 
-- Create: `supabase/migrations/20260915090000_vendor_paypal_payments_enabled.sql`
+- Create: `supabase/migrations/20260915161721_vendor_paypal_payments_enabled.sql`
 - Create: `tests/source/vendorPayPalMigration.test.ts`
 - Modify: `src/types/invoices.ts`
 - Modify: `src/types/database.generated.ts`
@@ -42,7 +42,7 @@
 - Produces TypeScript field: `InvoiceVendor.paypal_payments_enabled: boolean`.
 - Later tasks consume the field through `invoice.vendor`.
 
-- [ ] **Step 1: Write the failing migration contract test**
+- [x] **Step 1: Write the failing migration contract test**
 
 Create a source test that reads the exact migration and proves the default, nullability and one enabled vendor are explicit:
 
@@ -51,7 +51,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const sql = readFileSync(
-  'supabase/migrations/20260915090000_vendor_paypal_payments_enabled.sql',
+  'supabase/migrations/20260915161721_vendor_paypal_payments_enabled.sql',
   'utf8',
 )
 
@@ -65,13 +65,13 @@ describe('vendor PayPal setting migration', () => {
 })
 ```
 
-- [ ] **Step 2: Run the contract test and confirm it fails**
+- [x] **Step 2: Run the contract test and confirm it fails**
 
 Run: `source ~/.nvm/nvm.sh && nvm use && npx vitest run tests/source/vendorPayPalMigration.test.ts`
 
 Expected: FAIL because the migration file does not exist.
 
-- [ ] **Step 3: Create the additive migration**
+- [x] **Step 3: Create the additive migration**
 
 Create the migration with no grant, policy or view changes:
 
@@ -89,11 +89,11 @@ WHERE id = 'ed3bb6b9-01a5-4894-b54f-b83fe73cc52b'::uuid
   AND name = 'Sidemen Entertainment Limited';
 ```
 
-- [ ] **Step 4: Update handwritten and generated types**
+- [x] **Step 4: Update handwritten and generated types**
 
 Add `paypal_payments_enabled: boolean` to `InvoiceVendor`. Regenerate `src/types/database.generated.ts` from the linked project, then verify its `invoice_vendors` Row, Insert and Update shapes contain the field. Retain the existing live `customer_id` field surfaced by regeneration and review all other generated drift before keeping it.
 
-- [ ] **Step 5: Validate the migration without applying production changes**
+- [x] **Step 5: Validate the migration without applying production changes**
 
 Run the full migration in a rolled-back transaction against the linked database or an isolated validation database. Confirm:
 
@@ -109,10 +109,10 @@ Expected after the transaction statement: boolean, `NO`, default `false`.
 
 Also run the migration contract test and `npx tsx scripts/security/assert-anon-surface.ts`. Do not run `npx supabase db push` without production approval.
 
-- [ ] **Step 6: Commit the schema increment**
+- [x] **Step 6: Commit the schema increment**
 
 ```bash
-git add supabase/migrations/20260915090000_vendor_paypal_payments_enabled.sql tests/source/vendorPayPalMigration.test.ts src/types/invoices.ts src/types/database.generated.ts
+git add supabase/migrations/20260915161721_vendor_paypal_payments_enabled.sql tests/source/vendorPayPalMigration.test.ts src/types/invoices.ts src/types/database.generated.ts
 git commit -m "feat(db): add vendor PayPal setting"
 ```
 
@@ -134,7 +134,7 @@ git commit -m "feat(db): add vendor PayPal setting"
 - Produces: `invoiceCanOfferPayPal(invoice: PaymentLinkInvoice): boolean`.
 - `buildInvoicePaymentLinkFooter` remains the only place that creates the email payment block.
 
-- [ ] **Step 1: Write failing eligibility tests**
+- [x] **Step 1: Write failing eligibility tests**
 
 Update the test fixture so normal payable cases explicitly enable PayPal:
 
@@ -153,13 +153,13 @@ function invoice(overrides: Record<string, unknown> = {}) {
 
 Add tests proving that `false`, `null`, a missing vendor and a missing field produce no footer. Add one test proving an enabled vendor with an outstanding balance still receives the portal link.
 
-- [ ] **Step 2: Run the helper tests and confirm they fail**
+- [x] **Step 2: Run the helper tests and confirm they fail**
 
 Run: `npx vitest run src/lib/invoices/__tests__/payment-link-footer.test.ts`
 
 Expected: FAIL because vendor eligibility is not checked.
 
-- [ ] **Step 3: Add the shared eligibility helper**
+- [x] **Step 3: Add the shared eligibility helper**
 
 Extend the invoice shape and keep the existing balance helper separate:
 
@@ -180,11 +180,11 @@ export function invoiceCanOfferPayPal(invoice: PaymentLinkInvoice): boolean {
 
 Change `buildInvoicePaymentLinkFooter` to return an empty string unless `invoiceCanOfferPayPal(invoice)` is true. Do not change PDF generation.
 
-- [ ] **Step 4: Cover explicit cron projections**
+- [x] **Step 4: Cover explicit cron projections**
 
 Add `paypal_payments_enabled` to the explicit `vendor:invoice_vendors(...)` projections in automatic invoice sending and invoice reminders. Add a source test that reads both route files and checks the field appears inside their vendor projection. Paths that load `vendor:invoice_vendors(*)` require no query change.
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Run:
 
@@ -194,7 +194,7 @@ npx vitest run src/lib/invoices/__tests__/payment-link-footer.test.ts tests/sour
 
 Expected: PASS, with disabled vendors receiving no footer and existing recurring sends unchanged.
 
-- [ ] **Step 6: Commit the email eligibility increment**
+- [x] **Step 6: Commit the email eligibility increment**
 
 ```bash
 git add src/lib/invoices/payment-link-footer.ts src/lib/invoices/__tests__/payment-link-footer.test.ts src/app/api/cron/auto-send-invoices/route.ts src/app/api/cron/invoice-reminders/route.ts tests/source/invoicePayPalVendorProjection.test.ts
@@ -219,7 +219,7 @@ git commit -m "feat(invoices): gate PayPal links by vendor"
 - Produces form field: `paypal_payments_enabled`, serialised as `'true'` or `'false'`.
 - Existing permissions remain `invoices:create` and `invoices:edit`.
 
-- [ ] **Step 1: Write failing action persistence tests**
+- [x] **Step 1: Write failing action persistence tests**
 
 Mock `VendorService`, permission checks and audit logging. Submit create and update `FormData` with `paypal_payments_enabled: 'true'`, then assert:
 
@@ -237,11 +237,11 @@ expect(logAuditEvent).toHaveBeenCalledWith(
 
 Add a create case with the field absent and assert `false`, so direct callers also fail closed.
 
-- [ ] **Step 2: Write the failing vendor form test**
+- [x] **Step 2: Write the failing vendor form test**
 
 Render the vendor page with mocked actions, permissions, router and Supabase provider. Assert a new vendor form starts unchecked. Open an existing enabled vendor, assert the checkbox is checked, untick it, submit, and assert the outgoing `FormData` contains `'false'`.
 
-- [ ] **Step 3: Run the action and component tests and confirm they fail**
+- [x] **Step 3: Run the action and component tests and confirm they fail**
 
 Run:
 
@@ -251,7 +251,7 @@ npx vitest run src/app/actions/__tests__/vendors-paypal-setting.test.ts tests/co
 
 Expected: FAIL because the setting is not parsed, displayed or saved.
 
-- [ ] **Step 4: Persist the setting through the server boundary**
+- [x] **Step 4: Persist the setting through the server boundary**
 
 Add the Zod field and explicit parser:
 
@@ -265,7 +265,7 @@ paypal_payments_enabled: formData.get('paypal_payments_enabled') === 'true'
 
 Add the required boolean to both `VendorService` input types and payloads. Include the resulting value in create and update audit `new_values`.
 
-- [ ] **Step 5: Add the vendor checkbox**
+- [x] **Step 5: Add the vendor checkbox**
 
 Extend `VendorFormData`, new-form defaults and edit hydration. Add the design-system checkbox inside the vendor modal:
 
@@ -282,7 +282,7 @@ Extend `VendorFormData`, new-form defaults and edit hydration. Add the design-sy
 
 Keep the default unchecked. The existing `Object.entries(formData)` submit loop serialises the boolean.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run:
 
@@ -292,7 +292,7 @@ npx vitest run src/app/actions/__tests__/vendors-paypal-setting.test.ts tests/co
 
 Expected: PASS, including the existing vendor not-found guard.
 
-- [ ] **Step 7: Commit the vendor setup increment**
+- [x] **Step 7: Commit the vendor setup increment**
 
 ```bash
 git add 'src/app/(authenticated)/invoices/vendors/page.tsx' src/app/actions/vendors.ts src/services/vendors.ts src/app/actions/__tests__/vendors-paypal-setting.test.ts tests/components/VendorsPagePayPalSetting.test.tsx
@@ -316,15 +316,15 @@ git commit -m "feat(invoices): configure PayPal by vendor"
 
 - Consumes: `invoiceCanOfferPayPal` from Task 2.
 - Server actions return `PayPal payments are not enabled for this vendor.` when the setting is off.
-- `captureInvoicePaymentByToken` remains independent of the vendor setting.
+- Completed capture recording remains independent of the vendor setting, but an approved order cannot be captured after the setting is disabled.
 
-- [ ] **Step 1: Write failing server-action tests**
+- [x] **Step 1: Write failing server-action tests**
 
 Set the existing invoice fixture vendor to enabled by default. Add disabled-vendor cases for `getInvoicePortalLink`, `sendInvoicePaymentLink` and `createInvoicePaymentOrderByToken`. Each must return the disabled message and never call `createSimplePayPalOrder` or `sendInvoicePaymentLinkEmail`.
 
 Add a capture case with `vendor.paypal_payments_enabled: false` and a completed PayPal order. Assert the atomic recording RPC still runs and the result succeeds or reports already recorded.
 
-- [ ] **Step 2: Write failing staff and portal tests**
+- [x] **Step 2: Write failing staff and portal tests**
 
 For the invoice detail component, render the same payable invoice twice. Assert **Email payment link** and **Copy payment link** are present when enabled and absent when disabled, while **Email** remains present.
 
@@ -334,7 +334,7 @@ For the public page, mock the invoice query and render the async page. Assert:
 - disabled and collectible shows `Online payment is not available for this invoice.` and no Pay button;
 - disabled with `payment_pending=1` and a PayPal token still renders `InvoicePayCaptureClient` so a completed return can be recorded.
 
-- [ ] **Step 3: Run the focused tests and confirm they fail**
+- [x] **Step 3: Run the focused tests and confirm they fail**
 
 Run:
 
@@ -344,17 +344,17 @@ npx vitest run src/app/actions/__tests__/invoice-paypal.test.ts tests/components
 
 Expected: FAIL because the setting is not enforced.
 
-- [ ] **Step 4: Gate server-side order creation**
+- [x] **Step 4: Gate server-side order creation**
 
 Add `paypal_payments_enabled` to the explicit vendor projection in `INVOICE_COLUMNS`. Import the shared helper and make `describeUnpayable` return the disabled message only after existing cancelled, written-off, paid, unissued and zero-balance checks.
 
-Do not add this check to `captureInvoicePaymentByToken`, `settleInvoicePayPalOrder`, the webhook or reconciliation recording paths.
+Keep `COMPLETED` recording independent of the setting. Add a fail-closed check inside `settleInvoicePayPalOrder` before it can capture an `APPROVED` order, and make reconciliation supply the vendor setting. The webhook continues to record only verified completed capture events.
 
-- [ ] **Step 5: Hide staff payment-link controls**
+- [x] **Step 5: Hide staff payment-link controls**
 
 Require `invoice.vendor?.paypal_payments_enabled === true` in `canShowPaymentLinkActions`. Keep the server-side guard because hiding controls is not authorisation.
 
-- [ ] **Step 6: Separate public collection from capture recovery**
+- [x] **Step 6: Separate public collection from capture recovery**
 
 Add the field to the public portal query and derive:
 
@@ -364,9 +364,9 @@ const paypalEnabled = vendor?.paypal_payments_enabled === true
 const payable = invoiceCollectible && paypalEnabled
 ```
 
-Render the capture client when `invoiceCollectible && paymentPending && paypalOrderId`, not only when `payable`. Show a notice when `invoiceCollectible && !paypalEnabled`. Do not render `InvoicePayClient` or the PayPal trust line in that state.
+Render the capture client when `invoiceCollectible && paymentPending && paypalOrderId`, not only when `payable`. It can record a completed capture but cannot capture an approved order after disabling. Show a notice when `invoiceCollectible && !paypalEnabled`. Do not render `InvoicePayClient` or the PayPal trust line in that state.
 
-- [ ] **Step 7: Run focused tests**
+- [x] **Step 7: Run focused tests**
 
 Run:
 
@@ -376,7 +376,7 @@ npx vitest run src/app/actions/__tests__/invoice-paypal.test.ts tests/components
 
 Expected: PASS, including completed-capture recovery after disabling.
 
-- [ ] **Step 8: Commit the route enforcement increment**
+- [x] **Step 8: Commit the route enforcement increment**
 
 ```bash
 git add src/app/actions/invoicePayPalActions.ts src/app/actions/__tests__/invoice-paypal.test.ts 'src/app/(authenticated)/invoices/[id]/InvoiceDetailClient.tsx' tests/components/InvoiceDetailPayPalSetting.test.tsx 'src/app/invoice-portal/[token]/page.tsx' tests/components/guest-routes/invoicePaymentPage.test.tsx
@@ -397,11 +397,11 @@ git commit -m "feat(invoices): enforce vendor PayPal setting"
 - Consumes all deliverables from Tasks 1 to 4.
 - Produces a verified local branch and an exact production migration approval packet.
 
-- [ ] **Step 1: Check the final diff and generated artefacts**
+- [x] **Step 1: Check the final diff and generated artefacts**
 
 Run `git diff --check`, inspect `git status -sb`, confirm no em dash characters were added, and verify only intended files are staged or committed. Confirm the PDF template and PDF generator have no payment-link changes.
 
-- [ ] **Step 2: Run the full local quality pipeline**
+- [x] **Step 2: Run the full local quality pipeline**
 
 Run in order:
 
@@ -416,6 +416,8 @@ npx tsx scripts/security/assert-anon-surface.ts
 ```
 
 Expected: every command passes. The dry run must list only the new additive migration. Do not apply it.
+
+Result on 15 September 2026: lint and TypeScript passed; 899 test files passed in London and UTC with 8,567 tests passed and 2 skipped; the production build generated 155 pages; the dry run listed only `20260915161721_vendor_paypal_payments_enabled.sql`; all 9 anonymous-surface checks passed. Independent adversarial review found and verified the repair for disabled vendors with already approved PayPal orders.
 
 - [ ] **Step 3: Exercise the local user journeys**
 
@@ -437,7 +439,7 @@ Report the exact migration filename, checksum, SQL summary, dry-run output, veri
 
 Only after explicit approval:
 
-1. Apply `20260915090000_vendor_paypal_payments_enabled.sql` to the verified production project.
+1. Apply `20260915161721_vendor_paypal_payments_enabled.sql` to the verified production project.
 2. Query the new column and confirm exactly one enabled row, Sidemen Entertainment Limited.
 3. Push the application commits and wait for the Vercel production deployment.
 4. Verify the vendor setup screen and invoice `INV-003WP` in the authenticated live app.
@@ -446,4 +448,3 @@ Only after explicit approval:
 - [ ] **Step 6: Record final evidence**
 
 Tick the plan, record test results, migration id and deployment id, then commit only this plan update if it contains no unrelated user work.
-
