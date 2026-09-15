@@ -43,7 +43,8 @@ export async function GET(request: Request) {
         id,
         name,
         email,
-        contact_name
+        contact_name,
+        paypal_payments_enabled
       ),
       line_items:invoice_line_items(*),
       payments:invoice_payments(*)
