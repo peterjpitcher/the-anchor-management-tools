@@ -1,46 +1,58 @@
 /**
- * HMRC Mileage Rate Calculation Utility
+ * HMRC approved mileage allowance payments (AMAP) for cars and vans.
  *
- * Tax year runs 6 April to 5 April (London timezone boundaries).
- * First 10,000 miles in a tax year: standard rate.
- * Miles above 10,000: reduced rate (£0.25/mile).
+ * Rates come from an append-only schedule. A new HMRC rate is a new period; old periods are
+ * never edited, so every trip keeps the rate that applied on its date. The SQL function
+ * mileage_amap_rates_v01 mirrors this schedule, and tests/fixtures/mileage/amap-rate-cases.json
+ * checks both.
  *
- * The standard rate is date-aware:
- *   - Trips before 1 April 2026: £0.45/mile (legacy AMAP)
- *   - Trips on or after 1 April 2026: £0.55/mile
+ * Money is worked in whole numbers: tenths of a mile and pence (spec section 4.2).
+ * Tax year: 6 April to 5 April. Source for 55p from 6 April 2026: gov.uk "Travel: mileage and
+ * fuel rates and allowances", announced 21 May 2026.
  */
 
-/** Date from which the new HMRC standard rate applies (inclusive, YYYY-MM-DD). */
-export const RATE_CHANGE_DATE = '2026-04-01'
-
-/** Standard rate for trips before {@link RATE_CHANGE_DATE}. */
-export const STANDARD_RATE_LEGACY = 0.45
-
-/** Standard rate for trips on or after {@link RATE_CHANGE_DATE}. */
-export const STANDARD_RATE_CURRENT = 0.55
-
-const REDUCED_RATE = 0.25
-const THRESHOLD_MILES = 10_000
-
-/**
- * Current standard rate, retained for callers that unambiguously deal with new
- * trips (placeholders that will be overwritten by recalculation, "miles left"
- * hints, etc.). Date-sensitive call sites must use {@link getStandardRate}.
- */
-const STANDARD_RATE = STANDARD_RATE_CURRENT
-
-/**
- * Returns the HMRC standard rate that applies to a trip on the given date.
- * Relies on lexicographic comparison of zero-padded YYYY-MM-DD strings.
- */
-export function getStandardRate(tripDate: string): number {
-  return tripDate < RATE_CHANGE_DATE ? STANDARD_RATE_LEGACY : STANDARD_RATE_CURRENT
+export interface AmapRatePeriod {
+  /** First day the rates apply, YYYY-MM-DD, inclusive. */
+  validFrom: string
+  standardPence: number
+  reducedPence: number
+  thresholdMiles: number
 }
 
-export interface HmrcRateSplit {
-  milesAtStandardRate: number
-  milesAtReducedRate: number
-  amountDue: number
+export const AMAP_RATE_PERIODS: readonly AmapRatePeriod[] = [
+  { validFrom: '2023-04-06', standardPence: 45, reducedPence: 25, thresholdMiles: 10_000 },
+  { validFrom: '2026-04-06', standardPence: 55, reducedPence: 25, thresholdMiles: 10_000 },
+]
+
+const LATEST_PERIOD = AMAP_RATE_PERIODS[AMAP_RATE_PERIODS.length - 1]
+
+/** First date priced at 55p. Kept for the export code that labels the two standard rates. */
+export const RATE_CHANGE_DATE = LATEST_PERIOD.validFrom
+export const STANDARD_RATE_LEGACY = AMAP_RATE_PERIODS[0].standardPence / 100
+export const STANDARD_RATE_CURRENT = LATEST_PERIOD.standardPence / 100
+export const REDUCED_RATE = LATEST_PERIOD.reducedPence / 100
+export const THRESHOLD_MILES = LATEST_PERIOD.thresholdMiles
+
+export class MileageRateMissingError extends Error {
+  constructor(public readonly tripDate: string) {
+    super(`No mileage allowance rate is defined for ${tripDate}`)
+    this.name = 'MileageRateMissingError'
+  }
+}
+
+/** The AMAP period in force on a trip date. Throws for dates before the schedule starts. */
+export function getAmapRates(tripDate: string): AmapRatePeriod {
+  let match: AmapRatePeriod | null = null
+  for (const period of AMAP_RATE_PERIODS) {
+    if (period.validFrom <= tripDate) match = period
+  }
+  if (!match) throw new MileageRateMissingError(tripDate)
+  return match
+}
+
+/** Standard rate in pounds, for labels. 0.45 or 0.55. */
+export function getStandardRate(tripDate: string): number {
+  return getAmapRates(tripDate).standardPence / 100
 }
 
 export interface TaxYearBounds {
@@ -50,93 +62,102 @@ export interface TaxYearBounds {
   end: string
 }
 
-/**
- * Returns the tax year start/end dates for a given trip date (YYYY-MM-DD).
- * Tax year: 6 April to 5 April.
- * e.g. trip on 2026-01-15 => TY 2025-04-06 to 2026-04-05
- *      trip on 2026-04-06 => TY 2026-04-06 to 2027-04-05
- *      trip on 2026-04-05 => TY 2025-04-06 to 2026-04-05
- */
+/** The tax year (6 April to 5 April) containing a YYYY-MM-DD date. */
 export function getTaxYearBounds(tripDate: string): TaxYearBounds {
   const [yearStr, monthStr, dayStr] = tripDate.split('-')
   const year = parseInt(yearStr, 10)
   const month = parseInt(monthStr, 10)
   const day = parseInt(dayStr, 10)
+  const startYear = month > 4 || (month === 4 && day >= 6) ? year : year - 1
+  return { start: `${startYear}-04-06`, end: `${startYear + 1}-04-05` }
+}
 
-  // If date is on or after 6 April, the tax year started this calendar year.
-  // If date is before 6 April, the tax year started last calendar year.
-  const taxYearStartYear = month > 4 || (month === 4 && day >= 6) ? year : year - 1
+/** Miles held to one decimal place, as whole tenths. 3.4 becomes 34. */
+export function milesToTenths(miles: number): number {
+  return Math.round(miles * 10)
+}
 
-  return {
-    start: `${taxYearStartYear}-04-06`,
-    end: `${taxYearStartYear + 1}-04-05`,
+export function tenthsToMiles(tenths: number): number {
+  return tenths / 10
+}
+
+/** Rounds a non-negative whole number of tenths of a penny to pence, half up. */
+export function roundTenthPenceHalfUp(tenthPence: number): number {
+  if (!Number.isInteger(tenthPence) || tenthPence < 0) {
+    throw new Error(`Expected a non-negative whole number of tenths of a penny, got ${tenthPence}`)
   }
+  return Math.floor((tenthPence + 5) / 10)
+}
+
+export interface TripSplit {
+  standardTenths: number
+  reducedTenths: number
+  amountPence: number
 }
 
 /**
- * Given cumulative miles already claimed in the tax year BEFORE this trip,
- * the miles for the current trip, and the trip date, calculate the HMRC rate
- * split. The trip's date selects the standard rate band (legacy vs current).
+ * Splits one trip at its group's 10,000-mile threshold and prices it (spec 4.2 steps 1 and 2).
+ * `tenthsBefore` is the group's running total before this trip.
  */
+export function calculateTripSplit(input: {
+  tripDate: string
+  tenthsBefore: number
+  tripTenths: number
+}): TripSplit {
+  const rates = getAmapRates(input.tripDate)
+  const thresholdTenths = rates.thresholdMiles * 10
+  const standardTenths = Math.max(0, Math.min(input.tripTenths, thresholdTenths - input.tenthsBefore))
+  const reducedTenths = input.tripTenths - standardTenths
+  const amountPence = roundTenthPenceHalfUp(
+    standardTenths * rates.standardPence + reducedTenths * rates.reducedPence
+  )
+  return { standardTenths, reducedTenths, amountPence }
+}
+
+export interface TripBandPence {
+  standardBandPence: number
+  reducedBandPence: number
+}
+
+/** Allocates a stored trip amount to its bands so band totals add up to the claim (spec 4.2 step 3). */
+export function allocateTripBandPence(input: {
+  tripDate: string
+  standardTenths: number
+  amountPence: number
+}): TripBandPence {
+  const rates = getAmapRates(input.tripDate)
+  const standardBandPence = Math.min(
+    input.amountPence,
+    roundTenthPenceHalfUp(input.standardTenths * rates.standardPence)
+  )
+  return { standardBandPence, reducedBandPence: input.amountPence - standardBandPence }
+}
+
+export interface HmrcRateSplit {
+  milesAtStandardRate: number
+  milesAtReducedRate: number
+  amountDue: number
+}
+
+/** The trip form preview in miles and pounds, derived from the whole-number rules. */
 export function calculateHmrcRateSplit(
   cumulativeMilesBefore: number,
   tripMiles: number,
-  tripDate: string,
-): HmrcRateSplit {
-  const totalAfter = cumulativeMilesBefore + tripMiles
-
-  let milesAtStandardRate: number
-  let milesAtReducedRate: number
-
-  if (cumulativeMilesBefore >= THRESHOLD_MILES) {
-    // Already past threshold: all at reduced rate
-    milesAtStandardRate = 0
-    milesAtReducedRate = tripMiles
-  } else if (totalAfter <= THRESHOLD_MILES) {
-    // Entirely within standard rate
-    milesAtStandardRate = tripMiles
-    milesAtReducedRate = 0
-  } else {
-    // Trip crosses the threshold
-    milesAtStandardRate = THRESHOLD_MILES - cumulativeMilesBefore
-    milesAtReducedRate = tripMiles - milesAtStandardRate
-  }
-
-  const standardRate = getStandardRate(tripDate)
-  const amountDue = round2(
-    milesAtStandardRate * standardRate + milesAtReducedRate * REDUCED_RATE
-  )
-
-  return {
-    milesAtStandardRate: round1(milesAtStandardRate),
-    milesAtReducedRate: round1(milesAtReducedRate),
-    amountDue,
-  }
-}
-
-export interface RecalculateTripInput {
-  totalMiles: number
   tripDate: string
-}
-
-/**
- * Recalculate rate splits for an ordered list of trips in a tax year.
- * Each trip receives updated milesAtStandardRate / milesAtReducedRate / amountDue,
- * applying the rate band appropriate to its trip date.
- * Returns a new array (does not mutate input).
- */
-export function recalculateAllSplits(
-  trips: ReadonlyArray<RecalculateTripInput>
-): HmrcRateSplit[] {
-  let cumulative = 0
-  return trips.map((trip) => {
-    const split = calculateHmrcRateSplit(cumulative, trip.totalMiles, trip.tripDate)
-    cumulative += trip.totalMiles
-    return split
+): HmrcRateSplit {
+  const split = calculateTripSplit({
+    tripDate,
+    tenthsBefore: milesToTenths(cumulativeMilesBefore),
+    tripTenths: milesToTenths(tripMiles),
   })
+  return {
+    milesAtStandardRate: tenthsToMiles(split.standardTenths),
+    milesAtReducedRate: tenthsToMiles(split.reducedTenths),
+    amountDue: split.amountPence / 100,
+  }
 }
 
-/** Stats about current tax year usage */
+/** Stats about current tax year usage. Release 3 replaces this with per-driver totals. */
 export interface TaxYearStats {
   quarterTotalMiles: number
   quarterAmountDue: number
@@ -146,16 +167,4 @@ export interface TaxYearStats {
   taxYearTotalMiles: number
   taxYearAmountDue: number
   milesToThreshold: number
-}
-
-export { STANDARD_RATE, REDUCED_RATE, THRESHOLD_MILES }
-
-// ---- helpers ----
-
-function round1(n: number): number {
-  return Math.round(n * 10) / 10
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100
 }

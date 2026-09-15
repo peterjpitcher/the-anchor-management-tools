@@ -110,7 +110,7 @@ export async function buildMileageCsv(
   )
 
   // Aggregate quarter stats. Standard-rate miles are bucketed by trip date so
-  // pre-2026-04-01 trips (£0.45) and current trips (£0.55) are tracked separately
+  // trips before 6 April 2026 (£0.45) and from 6 April 2026 (£0.55) are tracked separately
   // for clear reporting.
   const totalTrips = rows.length
   const totalMiles = rows.reduce((sum, t) => sum + Number(t.total_miles), 0)
@@ -174,7 +174,7 @@ export async function buildMileageCsv(
 
   // The "Miles @ Standard" column contains the threshold-standard portion of
   // each trip; the rate per trip depends on whether the trip date is before
-  // or on/after 2026-04-01 (see the "Rates Applied" summary row above).
+  // or on or after 6 April 2026 (see the "Rates Applied" summary row above).
   const headerRow = [
     'Date',
     'Route',
