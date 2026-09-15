@@ -248,6 +248,66 @@ function fitToOneSegment(variants: string[], suffix = ''): string {
 }
 
 /**
+ * Shorter names to fall back on when an event's full title cannot fit one SMS segment in any
+ * wording (owner, 15 September 2026), in order: the part after the first colon, so "Screams &
+ * Soundtracks: Classic Horror Music Bingo" reads "Classic Horror Music Bingo", then the kind of
+ * night from the event's category, "Music Bingo". A name that repeats the full title or an
+ * earlier fallback is left out.
+ */
+export function eventNameFallbacks(eventName: string, categoryName: string | null | undefined): string[] {
+  const fullName = eventName.trim()
+  const candidates: string[] = []
+
+  const colon = fullName.indexOf(':')
+  if (colon >= 0) {
+    const subtitle = fullName.slice(colon + 1).trim()
+    if (subtitle) candidates.push(subtitle)
+  }
+
+  const category = categoryName?.trim()
+  if (category) candidates.push(category)
+
+  return candidates.filter((name, index) => name !== fullName && candidates.indexOf(name) === index)
+}
+
+/**
+ * The message built with the full title when any wording of it fits one SMS segment, otherwise
+ * with the first shorter name that does. When no name fits, the last name's shortest wording goes.
+ */
+function fitEventName(eventNames: string[], build: (eventName: string) => string): string {
+  let body = ''
+  for (const eventName of eventNames) {
+    body = build(eventName)
+    if (countSmsSegments(normaliseToGsm7(body)) === 1) return body
+  }
+  return body
+}
+
+/** The event's category name, which is the kind of night, or null when it cannot be read. */
+async function loadEventCategoryName(
+  db: ReturnType<typeof createAdminClient>,
+  categoryId: string | null | undefined
+): Promise<string | null> {
+  if (!categoryId) return null
+
+  const { data, error } = await db
+    .from('event_categories')
+    .select('name')
+    .eq('id', categoryId)
+    .maybeSingle()
+
+  if (error) {
+    logger.warn('Cross-promo: failed to load the event category name; texts keep the full title', {
+      metadata: { categoryId, error: error.message },
+    })
+    return null
+  }
+
+  const name = (data as { name?: unknown } | null)?.name
+  return typeof name === 'string' && name.trim() ? name.trim() : null
+}
+
+/**
  * How the entry price reads in a message. Most events are cash on the door, and
  * the price lives on events.price (events.price_per_seat is for prepaid ticketing
  * and is 0 for these). Saying nothing about a 10 pound event while inviting someone
@@ -714,6 +774,8 @@ export async function sendCrossPromoForEvent(
   })
   const eventTime = formatEventTimeForSms(event.time)
   const priceText = formatEventPriceForSms(event.price)
+  // The full title first, then shorter names for when it cannot fit one segment.
+  const eventNames = [event.name, ...eventNameFallbacks(event.name, await loadEventCategoryName(db, event.category_id))]
 
   const isPaid = isPaidEvent(event.payment_mode)
   const eventStart = await loadEventStart(db, event.id)
@@ -754,19 +816,23 @@ export async function sendCrossPromoForEvent(
       // Copy review is a separate piece of work.
       templateKey = isPaid ? EVENT_LAST_PUSH_PAID_TEMPLATE_KEY : EVENT_LAST_PUSH_TEMPLATE_KEY
       messageBody = isPaid
-        ? buildGeneralPaidMessage(firstName, event.name, eventDate, eventLink!, eventTime)
-        : buildGeneralFreeMessage(firstName, event.name, eventDate, eventTime, priceText)
+        ? fitEventName(eventNames, (name) => buildGeneralPaidMessage(firstName, name, eventDate, eventLink!, eventTime))
+        : fitEventName(eventNames, (name) => buildGeneralFreeMessage(firstName, name, eventDate, eventTime, priceText))
     } else if (isGeneral) {
       templateKey = isPaid ? TEMPLATE_GENERAL_PROMO_PAID : TEMPLATE_GENERAL_PROMO_FREE
       messageBody = isPaid
-        ? buildGeneralPaidMessage(firstName, event.name, eventDate, eventLink!, eventTime)
-        : buildGeneralFreeMessage(firstName, event.name, eventDate, eventTime, priceText)
+        ? fitEventName(eventNames, (name) => buildGeneralPaidMessage(firstName, name, eventDate, eventLink!, eventTime))
+        : fitEventName(eventNames, (name) => buildGeneralFreeMessage(firstName, name, eventDate, eventTime, priceText))
     } else {
       const lastEventCategory = recipient.last_event_category || 'our events'
       templateKey = isPaid ? TEMPLATE_CROSS_PROMO_PAID : TEMPLATE_CROSS_PROMO_FREE
       messageBody = isPaid
-        ? buildPaidMessage(firstName, lastEventCategory, event.name, eventDate, eventLink!, eventTime)
-        : buildFreeMessage(firstName, lastEventCategory, event.name, eventDate, eventTime, priceText)
+        ? fitEventName(eventNames, (name) =>
+            buildPaidMessage(firstName, lastEventCategory, name, eventDate, eventLink!, eventTime)
+          )
+        : fitEventName(eventNames, (name) =>
+            buildFreeMessage(firstName, lastEventCategory, name, eventDate, eventTime, priceText)
+          )
     }
 
     const idempotencyKey = `${templateKey}_${recipient.customer_id}_${event.id}`
@@ -842,7 +908,15 @@ export async function sendCrossPromoForEvent(
 }
 
 export async function sendFollowUpForEvent(
-  event: { id: string; name: string; date: string; time?: string | null; price?: number | string | null; payment_mode: string },
+  event: {
+    id: string
+    name: string
+    date: string
+    time?: string | null
+    price?: number | string | null
+    payment_mode: string
+    category_id?: string | null
+  },
   touchType: '24h',
   recipients: FollowUpRecipient[],
   options?: { startTime?: number }
@@ -874,6 +948,8 @@ export async function sendFollowUpForEvent(
   })
   const eventTime = formatEventTimeForSms(event.time)
   const priceText = formatEventPriceForSms(event.price)
+  // The full title first, then shorter names for when it cannot fit one segment.
+  const eventNames = [event.name, ...eventNameFallbacks(event.name, await loadEventCategoryName(db, event.category_id))]
 
   const eventStart = await loadEventStart(db, event.id)
   const replyWindowExpiresAt = computeReplyWindowExpiry(eventStart)
@@ -909,8 +985,8 @@ export async function sendFollowUpForEvent(
       .gt('reply_window_expires_at', new Date().toISOString())
 
     const messageBody = isPaid
-      ? buildReminder24hPaidMessage(firstName, event.name, eventDate, eventLink!, eventTime)
-      : buildReminder24hFreeMessage(firstName, event.name, eventDate, eventTime, priceText)
+      ? fitEventName(eventNames, (name) => buildReminder24hPaidMessage(firstName, name, eventDate, eventLink!, eventTime))
+      : fitEventName(eventNames, (name) => buildReminder24hFreeMessage(firstName, name, eventDate, eventTime, priceText))
 
     const idempotencyKey = `${templateKey}_${recipient.customer_id}_${event.id}`
     const smsResult = await sendSmsSafe(recipient.phone_number, messageBody, {

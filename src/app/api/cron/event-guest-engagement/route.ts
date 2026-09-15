@@ -2156,6 +2156,7 @@ async function processFollowUps(
         time: event.time,
         price: event.price,
         payment_mode: event.payment_mode ?? 'free',
+        category_id: event.category_id,
       },
       touchType,
       eligible
