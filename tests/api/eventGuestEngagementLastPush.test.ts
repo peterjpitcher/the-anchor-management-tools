@@ -304,6 +304,25 @@ describe('event promotion stage and the messaging flags', () => {
     expect(promoCalls().every((call) => call.mode === 'regulars')).toBe(true)
   })
 
+  it.each([
+    ['2026-09-14T23:15:00Z', '00:15 BST, when invites used to be prepared and held until 09:00'],
+    ['2026-09-15T19:56:00Z', '20:56 BST, too close to quiet hours for a full run'],
+  ])('with the regulars flag on, prepares no invites at %s (%s)', async (instant) => {
+    vi.setSystemTime(new Date(instant))
+
+    const { payload } = await runCron({ regularsWeekAhead: true, lastPush: true, introForGuestsWithoutEmail: false })
+
+    expect(payload.success).toBe(true)
+    // Nothing is prepared to sit in the queue until 09:00 without a fresh booking check.
+    expect(sendCrossPromoForEvent).not.toHaveBeenCalled()
+    expect(sendFollowUpForEvent).not.toHaveBeenCalled()
+    expect(payload.crossPromo).toEqual(expect.objectContaining({ disabled: true, reason: 'sms_quiet_hours', sent: 0 }))
+    expect(payload.followUp24h).toEqual(
+      expect.objectContaining({ disabled: true, reason: 'event_promo_regulars_week_ahead' })
+    )
+    expect(payload.lastPush).toBeUndefined()
+  })
+
   it('when the flags row cannot be read, sends no promotion text at all, not the old intro and follow-up', async () => {
     const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {})
 

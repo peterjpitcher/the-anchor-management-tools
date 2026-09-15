@@ -13,6 +13,7 @@ import { sendEmail } from '@/lib/email/emailService'
 import { sendCrossPromoForEvent, sendFollowUpForEvent, hasReachedDailyPromoLimit, resolveEventStart } from '@/lib/sms/cross-promo'
 import type { CrossPromoMode, FollowUpRecipient } from '@/lib/sms/cross-promo'
 import {
+  canPrepareRegularsInvitesNow,
   decideLastPushTiming,
   EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH,
   EVENT_PROMO_TEMPLATE_KEYS,
@@ -1931,6 +1932,7 @@ type UpcomingPromoEvent = {
 type PromoStageDisabledReason =
   | 'event_promo_last_push'
   | 'event_promo_regulars_week_ahead'
+  | 'sms_quiet_hours'
   | 'messaging_flags_unreadable'
 
 type PromoStageResult = {
@@ -1942,7 +1944,7 @@ type PromoStageResult = {
   reason?: PromoStageDisabledReason
 }
 
-/** A promotion stage switched off by a messaging flag; `reason` names the flag. */
+/** A promotion stage that did not run: switched off by a messaging flag, or held for quiet hours. */
 function disabledPromoStage(
   reason: Exclude<PromoStageDisabledReason, 'messaging_flags_unreadable'> = 'event_promo_last_push'
 ): PromoStageResult {
@@ -2397,12 +2399,18 @@ export async function GET(request: NextRequest) {
       // whatever event_promo_last_push says. With event_promo_intro_sms_no_email on, guests the
       // guest campaigns can email get no text.
       followUp24h = disabledPromoStage('event_promo_regulars_week_ahead')
-      crossPromo = await processCrossPromo(
-        supabase,
-        runStartMs,
-        promoBudget,
-        promoFlags.introForGuestsWithoutEmail ? 'regulars_no_email' : 'regulars'
-      )
+      // Prepared only when the texts can go straight out (09:00 to 20:55 London), so the audience
+      // function's booking check is made at the moment of sending. A text held for quiet hours is
+      // replayed at 09:00 without a fresh booking check, which let a guest who booked overnight
+      // still get the invite.
+      crossPromo = canPrepareRegularsInvitesNow()
+        ? await processCrossPromo(
+            supabase,
+            runStartMs,
+            promoBudget,
+            promoFlags.introForGuestsWithoutEmail ? 'regulars_no_email' : 'regulars'
+          )
+        : disabledPromoStage('sms_quiet_hours')
     } else if (!promoFlags.lastPush) {
       // 24h follow-ups for customers who received the 7d intro and have not booked
       followUp24h = await processFollowUps(supabase, '24h', 1, 1, 1, runStartMs, promoBudget)
