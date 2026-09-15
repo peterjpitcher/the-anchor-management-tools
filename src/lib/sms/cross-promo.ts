@@ -18,10 +18,13 @@ import {
   EVENT_LAST_PUSH_PAID_TEMPLATE_KEY,
   EVENT_LAST_PUSH_TEMPLATE_KEY,
   EVENT_PROMO_ANY_ATTENDANCE_RECENCY_DAYS,
+  EVENT_PROMO_REGULARS_GAP_DAYS,
+  EVENT_PROMO_REGULARS_TEXTS_PER_GAP,
   EVENT_PROMO_TEXT_CAP,
   EVENT_PROMO_TEXT_CAP_WINDOW_DAYS,
   isUnderDailyPromoTextLimit,
   isUnderPromoTextCap,
+  isUnderRegularsTextGap,
   loadCustomerIdsWithoutUsableEmail,
   loadPromoTextCounts,
   warnPromoHeldBack,
@@ -207,16 +210,21 @@ export type SendCrossPromoResult = {
  * Which promotion is being sent.
  *
  * - 'intro': today's 7-day intro, exactly as before. The default, and the only mode used while
- *   the messaging flag `event_promo_last_push` is off.
+ *   the messaging flags `event_promo_last_push` and `event_promo_regulars_week_ahead` are off.
  * - 'last_push': the one text the owner's 11 September 2026 policy allows, 0 to 3 days out,
  *   only while fewer than a quarter of the seats are booked, inside the two-a-month cap and the
  *   one-a-day limit.
  * - 'intro_no_email': today's intro, but only to guests with no usable email address and
  *   inside the same cap and limit (flag `event_promo_intro_sms_no_email`, with the last push on).
+ * - 'regulars': the owner's 15 September 2026 policy (flag `event_promo_regulars_week_ahead`):
+ *   the week-ahead invite, only to guests who have been to an event of the same category, with
+ *   at most one promotional text per guest in any two days and today's capacity rules.
+ * - 'regulars_no_email': the same, but only to guests with no usable email address (flag
+ *   `event_promo_intro_sms_no_email` on as well).
  *
  * See src/lib/sms/event-promo-policy.ts for the rules themselves.
  */
-export type CrossPromoMode = 'intro' | 'last_push' | 'intro_no_email'
+export type CrossPromoMode = 'intro' | 'last_push' | 'intro_no_email' | 'regulars' | 'regulars_no_email'
 
 function isPaidEvent(paymentMode: string): boolean {
   return paymentMode === 'prepaid'
@@ -440,8 +448,13 @@ export async function sendCrossPromoForEvent(
   const db = createAdminClient()
   const stats: SendCrossPromoResult = { sent: 0, skipped: 0, errors: 0 }
   const mode: CrossPromoMode = options?.mode ?? 'intro'
+  // The owner's 15 September 2026 policy: only guests who have been to this kind of night, any
+  // past attendance, and at most one promotional text per guest in any two days.
+  const regularsOnly = mode === 'regulars' || mode === 'regulars_no_email'
   // The owner's 11 September 2026 policy: any past attendance, and the two-a-month cap.
-  const underTextCap = mode !== 'intro'
+  const underTextCap = mode === 'last_push' || mode === 'intro_no_email'
+  // Guests the guest email campaigns can reach hear about the event by email instead.
+  const onlyGuestsWithoutEmail = mode === 'intro_no_email' || mode === 'regulars_no_email'
 
   if (!event.category_id) {
     logger.info('Cross-promo skipped: event has no category_id', {
@@ -520,13 +533,25 @@ export async function sendCrossPromoForEvent(
   const { data: audience, error: audienceError } = await db.rpc('get_cross_promo_audience', {
     p_event_id: event.id,
     p_category_id: event.category_id,
-    // Under the cap the audience is anyone who has attended any past event, however long ago,
-    // and the function's own frequency filter is set to the cap (two events in 30 days). The
-    // text count below is the exact cap; this only keeps capped guests out of the row limit.
-    p_recency_days: underTextCap ? EVENT_PROMO_ANY_ATTENDANCE_RECENCY_DAYS : EVENT_PROMO_CATEGORY_RECENCY_DAYS,
-    p_general_recency_days: underTextCap ? EVENT_PROMO_ANY_ATTENDANCE_RECENCY_DAYS : EVENT_PROMO_GENERAL_RECENCY_DAYS,
-    p_frequency_window_days: underTextCap ? EVENT_PROMO_TEXT_CAP_WINDOW_DAYS : EVENT_PROMO_FREQUENCY_WINDOW_DAYS,
-    p_max_events_per_window: underTextCap ? EVENT_PROMO_TEXT_CAP : EVENT_PROMO_MAX_EVENTS_PER_WINDOW,
+    // Under the cap, and for the regulars invite, the audience is anyone who has attended a past
+    // event, however long ago, and the function's own frequency filter matches the text limit:
+    // two other events in 30 days under the cap, one other event in two days for the regulars
+    // invite. The text count below is the exact limit; this only keeps limited guests out of the
+    // row limit.
+    p_recency_days:
+      underTextCap || regularsOnly ? EVENT_PROMO_ANY_ATTENDANCE_RECENCY_DAYS : EVENT_PROMO_CATEGORY_RECENCY_DAYS,
+    p_general_recency_days:
+      underTextCap || regularsOnly ? EVENT_PROMO_ANY_ATTENDANCE_RECENCY_DAYS : EVENT_PROMO_GENERAL_RECENCY_DAYS,
+    p_frequency_window_days: regularsOnly
+      ? EVENT_PROMO_REGULARS_GAP_DAYS
+      : underTextCap
+        ? EVENT_PROMO_TEXT_CAP_WINDOW_DAYS
+        : EVENT_PROMO_FREQUENCY_WINDOW_DAYS,
+    p_max_events_per_window: regularsOnly
+      ? EVENT_PROMO_REGULARS_TEXTS_PER_GAP
+      : underTextCap
+        ? EVENT_PROMO_TEXT_CAP
+        : EVENT_PROMO_MAX_EVENTS_PER_WINDOW,
     p_max_recipients: Math.max(
       1,
       Math.min(options?.maxRecipients ?? EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT, EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT)
@@ -549,7 +574,24 @@ export async function sendCrossPromoForEvent(
     return stats
   }
 
-  if (mode === 'intro_no_email') {
+  if (regularsOnly) {
+    // Only guests who have been to this kind of night before. In the three months to September
+    // 2026, invites to guests who had never been to that kind of night were 71% of the promotion
+    // texts and were followed by 5 of the 23 bookings. The others are not this event's audience,
+    // so they are not counted as skipped.
+    const regulars = audienceRows.filter((row) => row.audience_type === 'category_match')
+    if (regulars.length < audienceRows.length) {
+      logger.info('Cross-promo: regulars invite leaves out guests who have not been to this kind of night', {
+        metadata: { eventId: event.id, mode, leftOut: audienceRows.length - regulars.length },
+      })
+    }
+    audienceRows = regulars
+    if (audienceRows.length === 0) {
+      return stats
+    }
+  }
+
+  if (onlyGuestsWithoutEmail) {
     // Guests the guest campaigns reach hear about the event by email instead. Anyone the
     // campaigns would skip (unsubscribed, bounced, listed, no consent, no address) keeps the text.
     const withoutEmail = await loadCustomerIdsWithoutUsableEmail(
@@ -587,7 +629,7 @@ export async function sendCrossPromoForEvent(
       return stats
     }
 
-    const withinCap = audienceRows.filter((row) => isUnderPromoTextCap(textCounts.last30Days, row.customer_id))
+    const withinCap = audienceRows.filter((row) => isUnderPromoTextCap(textCounts.inWindow, row.customer_id))
     const capped = audienceRows.length - withinCap.length
     if (capped > 0) {
       stats.skipped += capped
@@ -606,6 +648,39 @@ export async function sendCrossPromoForEvent(
     }
 
     audienceRows = withinDay
+    if (audienceRows.length === 0) {
+      return stats
+    }
+  } else if (regularsOnly) {
+    // At most one promotional text per guest in any two days, across every event and staff bulk
+    // texts. Read again for every event, so a text sent for the event before this one in the same
+    // run counts here. A failed count sends nothing.
+    const textCounts = await loadPromoTextCounts(
+      db,
+      audienceRows.map((row) => row.customer_id),
+      new Date(),
+      EVENT_PROMO_REGULARS_GAP_DAYS
+    )
+    if (!textCounts) {
+      warnPromoHeldBack('Cross-promo: the two-day promo text limit could not be checked; skipping event', {
+        eventId: event.id,
+        mode,
+        reason: 'gap_unavailable',
+      })
+      stats.skipped += audienceRows.length
+      return stats
+    }
+
+    const outsideGap = audienceRows.filter((row) => isUnderRegularsTextGap(textCounts.inWindow, row.customer_id))
+    const textedRecently = audienceRows.length - outsideGap.length
+    if (textedRecently > 0) {
+      stats.skipped += textedRecently
+      logger.info('Cross-promo: guests skipped because they had a promotional text in the last two days', {
+        metadata: { eventId: event.id, mode, textedRecently },
+      })
+    }
+
+    audienceRows = outsideGap
     if (audienceRows.length === 0) {
       return stats
     }
@@ -731,10 +806,10 @@ export async function sendCrossPromoForEvent(
       })
     }
 
-    // The last push is the only text for the event, so it opens no follow-up sequence. Writing
-    // one would let the 24-hour follow-up text these guests again if the flag were switched
-    // off before the event: get_follow_up_recipients reads promo_sequence.
-    if (mode === 'last_push') {
+    // The last push and the regulars invite are the only text for the event, so neither opens a
+    // follow-up sequence. Writing one would let the 24-hour follow-up text these guests again if
+    // the flags were switched off before the event: get_follow_up_recipients reads promo_sequence.
+    if (mode === 'last_push' || regularsOnly) {
       stats.sent += 1
       continue
     }

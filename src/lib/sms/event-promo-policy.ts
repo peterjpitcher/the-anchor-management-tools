@@ -1,5 +1,23 @@
 /**
- * The event promotion text policy the owner set on 11 September 2026.
+ * The event promotion text policies.
+ *
+ * Regulars week-ahead invites, set by the owner on 15 September 2026 after a review of three
+ * months of promotion texts (invites about a kind of night the guest had never been to were 71%
+ * of the texts and were followed by 5 of 23 bookings). With the messaging flag
+ * `event_promo_regulars_week_ahead` on, the only promotion text is one invite:
+ *
+ *  - for an event 1 to 7 London calendar days away (the intro window, so a night published late
+ *    still gets its invite);
+ *  - to guests who have been to an event of the same category before, however long ago;
+ *  - with at most one promotional text per guest in any two days, across every event and staff
+ *    bulk texts;
+ *  - and, with `event_promo_intro_sms_no_email` on, only to guests the guest marketing campaigns
+ *    cannot reach.
+ *
+ * It replaces the 7-day intro, the 24-hour follow-up and the last push below, whatever
+ * `event_promo_last_push` says.
+ *
+ * The policy the owner set on 11 September 2026, still in force while the regulars flag is off:
  *
  * Event promotions go by email first, through the guest marketing campaigns. With the
  * messaging flag `event_promo_last_push` on, the promotion engine sends no 7-day intro and no
@@ -92,6 +110,14 @@ export const EVENT_PROMO_ANY_ATTENDANCE_RECENCY_DAYS = 3650
  */
 export const EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH = 45
 
+/**
+ * Regulars week-ahead invites (owner, 15 September 2026): at most this many promotional texts per
+ * guest in any EVENT_PROMO_REGULARS_GAP_DAYS, across every event and staff bulk texts. A rolling
+ * window, measured from when each text was sent or held for quiet hours.
+ */
+export const EVENT_PROMO_REGULARS_GAP_DAYS = 2
+export const EVENT_PROMO_REGULARS_TEXTS_PER_GAP = 1
+
 // ---------------------------------------------------------------------------
 // Flags
 // ---------------------------------------------------------------------------
@@ -99,9 +125,17 @@ export const EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH = 45
 export type EventPromoFlags =
   | {
       state: 'known'
+      /**
+       * `event_promo_regulars_week_ahead`: one week-ahead invite to guests who have been to that
+       * kind of night, and no other promotion text. Wins over `lastPush` when both are on.
+       */
+      regularsWeekAhead: boolean
       /** `event_promo_last_push`: no intro, no follow-up, one last push under the rules above. */
       lastPush: boolean
-      /** `event_promo_intro_sms_no_email`, honoured only while the last push is on. */
+      /**
+       * `event_promo_intro_sms_no_email`, honoured only while the regulars invite or the last push
+       * is on: guests the guest campaigns can email get no promotion text.
+       */
       introForGuestsWithoutEmail: boolean
     }
   | {
@@ -111,19 +145,26 @@ export type EventPromoFlags =
     }
 
 /**
- * Reads both flags. A missing row, false or a malformed value is off, which is today's
+ * Reads the flags. A missing row, false or a malformed value is off, which is today's
  * behaviour. A failed read is unknown and never off: off runs the 7-day intro and the 24-hour
  * follow-up, the noisier texts the owner switched away from, so a flag that has been on for
- * weeks must not fall back to them because one read timed out. The second flag is read only
- * while the first is on, and a failure on either makes the whole answer unknown.
+ * weeks must not fall back to them because one read timed out. The regulars and last-push flags
+ * are always read, the no-email flag only while one of them is on, and a failure on any read
+ * makes the whole answer unknown.
  */
 export async function resolveEventPromoFlags(): Promise<EventPromoFlags> {
+  const regulars = await readMessagingFlagState('event_promo_regulars_week_ahead')
+  if (regulars.state === 'unknown') {
+    return { state: 'unknown', failure: regulars.failure }
+  }
+
   const lastPush = await readMessagingFlagState('event_promo_last_push')
   if (lastPush.state === 'unknown') {
     return { state: 'unknown', failure: lastPush.failure }
   }
-  if (lastPush.state === 'off') {
-    return { state: 'known', lastPush: false, introForGuestsWithoutEmail: false }
+
+  if (regulars.state === 'off' && lastPush.state === 'off') {
+    return { state: 'known', regularsWeekAhead: false, lastPush: false, introForGuestsWithoutEmail: false }
   }
 
   const intro = await readMessagingFlagState('event_promo_intro_sms_no_email')
@@ -131,7 +172,12 @@ export async function resolveEventPromoFlags(): Promise<EventPromoFlags> {
     return { state: 'unknown', failure: intro.failure }
   }
 
-  return { state: 'known', lastPush: true, introForGuestsWithoutEmail: intro.state === 'on' }
+  return {
+    state: 'known',
+    regularsWeekAhead: regulars.state === 'on',
+    lastPush: lastPush.state === 'on',
+    introForGuestsWithoutEmail: intro.state === 'on',
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -312,8 +358,8 @@ export function resolvePromoTextDayStart(now: Date = new Date()): Date | null {
 }
 
 export type PromoTextCounts = {
-  /** Promotional texts in the last 30 days, by customer. */
-  last30Days: Map<string, number>
+  /** Promotional texts inside the window read (30 days unless the caller asks for fewer), by customer. */
+  inWindow: Map<string, number>
   /**
    * Promotional texts landing on the London day a text sent now would land on, by customer:
    * sent today, or sent last night and held by quiet hours until 09:00.
@@ -359,8 +405,9 @@ function isWrittenSince(createdAt: string | null | undefined, sinceMs: number): 
 }
 
 /**
- * Promotional texts each guest has had in the last 30 days, and the ones landing on the same
- * London day as a text sent now would, or null when a read failed (the caller then sends
+ * Promotional texts each guest has had in the last `windowDays` (30 unless the caller asks for
+ * fewer), and the ones landing on the same London day as a text sent now would, or null when a
+ * read failed (the caller then sends
  * nothing: fail closed). Both counts come from one read, so they always agree.
  *
  * Two sources, because neither is complete on its own:
@@ -377,10 +424,11 @@ function isWrittenSince(createdAt: string | null | undefined, sinceMs: number): 
 export async function loadPromoTextCounts(
   db: AdminClient,
   customerIds: string[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  windowDays: number = EVENT_PROMO_TEXT_CAP_WINDOW_DAYS
 ): Promise<PromoTextCounts | null> {
   const uniqueIds = Array.from(new Set(customerIds.filter(Boolean)))
-  if (uniqueIds.length === 0) return { last30Days: new Map(), sameDay: new Map() }
+  if (uniqueIds.length === 0) return { inWindow: new Map(), sameDay: new Map() }
 
   const dayStart = resolvePromoTextDayStart(now)
   if (!dayStart) {
@@ -391,8 +439,8 @@ export async function loadPromoTextCounts(
   }
   const dayStartMs = dayStart.getTime()
 
-  const sinceIso = new Date(now.getTime() - EVENT_PROMO_TEXT_CAP_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
-  const last30Days = emptyTally()
+  const sinceIso = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000).toISOString()
+  const inWindow = emptyTally()
   const sameDay = emptyTally()
 
   for (const ids of chunk(uniqueIds, CAP_LOOKUP_CHUNK_SIZE)) {
@@ -420,7 +468,7 @@ export async function loadPromoTextCounts(
     }>) {
       if (!row.customer_id) continue
       const isEngine = isEventPromoTemplateKey(row.template_key)
-      addOne(isEngine ? last30Days.engineFromMessages : last30Days.otherFromMessages, row.customer_id)
+      addOne(isEngine ? inWindow.engineFromMessages : inWindow.otherFromMessages, row.customer_id)
       if (isWrittenSince(row.created_at, dayStartMs)) {
         addOne(isEngine ? sameDay.engineFromMessages : sameDay.otherFromMessages, row.customer_id)
       }
@@ -442,17 +490,17 @@ export async function loadPromoTextCounts(
 
     for (const row of (contextRows ?? []) as Array<{ customer_id: string | null; created_at: string | null }>) {
       if (!row.customer_id) continue
-      addOne(last30Days.engineFromContext, row.customer_id)
+      addOne(inWindow.engineFromContext, row.customer_id)
       if (isWrittenSince(row.created_at, dayStartMs)) {
         addOne(sameDay.engineFromContext, row.customer_id)
       }
     }
   }
 
-  return { last30Days: totalsOf(last30Days, uniqueIds), sameDay: totalsOf(sameDay, uniqueIds) }
+  return { inWindow: totalsOf(inWindow, uniqueIds), sameDay: totalsOf(sameDay, uniqueIds) }
 }
 
-/** Takes the `last30Days` counts from loadPromoTextCounts. */
+/** Takes the `inWindow` counts from loadPromoTextCounts, read over the default 30 days. */
 export function isUnderPromoTextCap(counts: Map<string, number>, customerId: string): boolean {
   return (counts.get(customerId) ?? 0) < EVENT_PROMO_TEXT_CAP
 }
@@ -460,6 +508,15 @@ export function isUnderPromoTextCap(counts: Map<string, number>, customerId: str
 /** Takes the `sameDay` counts from loadPromoTextCounts. */
 export function isUnderDailyPromoTextLimit(counts: Map<string, number>, customerId: string): boolean {
   return (counts.get(customerId) ?? 0) < EVENT_PROMO_TEXTS_PER_DAY
+}
+
+/**
+ * Takes the `inWindow` counts from loadPromoTextCounts read over EVENT_PROMO_REGULARS_GAP_DAYS:
+ * true while the guest has had fewer than EVENT_PROMO_REGULARS_TEXTS_PER_GAP promotional texts in
+ * that window.
+ */
+export function isUnderRegularsTextGap(counts: Map<string, number>, customerId: string): boolean {
+  return (counts.get(customerId) ?? 0) < EVENT_PROMO_REGULARS_TEXTS_PER_GAP
 }
 
 // ---------------------------------------------------------------------------

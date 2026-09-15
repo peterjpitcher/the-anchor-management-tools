@@ -1928,17 +1928,25 @@ type UpcomingPromoEvent = {
   category_id: string | null
 }
 
+type PromoStageDisabledReason =
+  | 'event_promo_last_push'
+  | 'event_promo_regulars_week_ahead'
+  | 'messaging_flags_unreadable'
+
 type PromoStageResult = {
   sent: number
   skipped: number
   errors: number
   eventsProcessed: number
   disabled?: true
-  reason?: 'event_promo_last_push' | 'messaging_flags_unreadable'
+  reason?: PromoStageDisabledReason
 }
 
-function disabledPromoStage(): PromoStageResult {
-  return { sent: 0, skipped: 0, errors: 0, eventsProcessed: 0, disabled: true, reason: 'event_promo_last_push' }
+/** A promotion stage switched off by a messaging flag; `reason` names the flag. */
+function disabledPromoStage(
+  reason: Exclude<PromoStageDisabledReason, 'messaging_flags_unreadable'> = 'event_promo_last_push'
+): PromoStageResult {
+  return { sent: 0, skipped: 0, errors: 0, eventsProcessed: 0, disabled: true, reason }
 }
 
 /** A promotion stage that did not run because the messaging flags could not be read. */
@@ -2362,9 +2370,11 @@ export async function GET(request: NextRequest) {
     // Stage 3: Promotional SMS (marketing — runs last, after all transactional stages)
     const promoBudget = { value: MAX_EVENT_PROMOS_PER_RUN }
 
-    // Owner decision, 11 September 2026: promotions go by email first. With the flag on, the
-    // intro and the 24-hour follow-up stop and the only text is one last push close to a quiet
-    // night. With it off (a missing row or false) this stage is exactly what it was.
+    // Owner decisions. 11 September 2026: promotions go by email first; with event_promo_last_push
+    // on, the intro and the 24-hour follow-up stop and the only text is one last push close to a
+    // quiet night. 15 September 2026: event_promo_regulars_week_ahead replaces both with one
+    // week-ahead invite to guests who have been to that kind of night. With both flags off (a
+    // missing row or false) this stage is exactly what it was.
     const promoFlags = await resolveEventPromoFlags()
 
     let followUp24h: PromoStageResult
@@ -2380,6 +2390,18 @@ export async function GET(request: NextRequest) {
       followUp24h = heldPromoStage()
       crossPromo = heldPromoStage()
       lastPush = heldPromoStage()
+    } else if (promoFlags.regularsWeekAhead) {
+      // One invite a week ahead, only to guests who have been to that kind of night before, and at
+      // most one promotional text per guest in any two days. No 24-hour follow-up and no last push,
+      // whatever event_promo_last_push says. With event_promo_intro_sms_no_email on, guests the
+      // guest campaigns can email get no text.
+      followUp24h = disabledPromoStage('event_promo_regulars_week_ahead')
+      crossPromo = await processCrossPromo(
+        supabase,
+        runStartMs,
+        promoBudget,
+        promoFlags.introForGuestsWithoutEmail ? 'regulars_no_email' : 'regulars'
+      )
     } else if (!promoFlags.lastPush) {
       // 24h follow-ups for customers who received the 7d intro and have not booked
       followUp24h = await processFollowUps(supabase, '24h', 1, 1, 1, runStartMs, promoBudget)

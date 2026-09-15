@@ -26,9 +26,14 @@ import { logger } from '@/lib/logger'
  *    because someone saved the text "true" instead of the boolean.
  */
 export const MESSAGING_FLAG_KEYS = [
+  // Regulars week-ahead invites (owner, 15 September 2026). While on, the only event promotion
+  // text is one invite a week ahead to guests who have been to that kind of night before, with at
+  // most one promotional text per guest in any two days. It replaces the 7-day intro, the 24-hour
+  // follow-up and the last push, whatever event_promo_last_push says.
+  'event_promo_regulars_week_ahead',
   'event_promo_last_push',
-  // Only read while event_promo_last_push is on: guests with no usable email address keep
-  // the 7-day intro text, inside the same two-a-month cap.
+  // Only read while event_promo_last_push or event_promo_regulars_week_ahead is on: guests with no
+  // usable email address are the only ones texted, because the guest campaigns reach the rest.
   'event_promo_intro_sms_no_email',
   'table_cancelled_email_first',
   'table_deposit_confirmed_email_first',
