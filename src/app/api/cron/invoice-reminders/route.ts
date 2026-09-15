@@ -62,6 +62,7 @@ export async function GET(request: Request) {
           name,
           email,
           contact_name,
+          paypal_payments_enabled,
           contacts:invoice_vendor_contacts(
             email,
             is_primary
