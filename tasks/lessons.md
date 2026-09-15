@@ -360,3 +360,19 @@ not as belt and braces. It is the only check that finds this class of caller. Th
 same applies to a column rename inside a function body. `drop ... cascade` is not
 the answer when this search comes back positive: fix the function in the same
 migration, per the prod-migrate workflow.
+
+## 15 September 2026: a clash is only a clash if both sides are capped
+
+**Mistake:** Reviewing the event email schedule, I told the owner three guest emails would be
+emptied by the 4-day frequency cap (1 October, 28 October and 4 December), because each sat within
+four days of another guest email. Two of the three were next to a monthly round-up, and round-ups
+carry `ignores_frequency_cap = true`: `claim_marketing_recipients` does not block them and
+`finalise_marketing_send` does not advance `marketing_last_email_at` for them, so they neither get
+blocked nor block the next email. Only 28 October was real. The owner had approved moving all three
+before I checked.
+
+**Rule:** Before calling two scheduled sends a collision, read the rule that decides it, not just
+the gap between them. For marketing email that means `ignores_frequency_cap` on both campaigns and
+the live `marketing_settings.frequency_cap_days`, and simulating only the sends that advance the
+timestamp. The same goes for any cap with exemptions: the SMS promotion limits count only the keys
+in `PROMOTIONAL_SMS_TEMPLATE_KEYS`. When reporting a clash, say which rule was checked.
