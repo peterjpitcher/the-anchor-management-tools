@@ -14,6 +14,7 @@ import { readMessagingFlagState, type MessagingFlagState } from '@/lib/messaging
 import { resolveSmsSuspensionReason } from '@/lib/sms/suspension'
 import { resolveNotificationRoute } from '@/lib/notifications/routing-matrix'
 import {
+  canPrepareRegularsInvitesNow,
   decideLastPushCapacity,
   decideLastPushTiming,
   EVENT_PROMO_TEMPLATE_KEYS,
@@ -702,6 +703,24 @@ describe('resolveEventPromoFlags', () => {
   it('is unknown when the regulars invite is on and the no-email read fails', async () => {
     flags(OFF, UNKNOWN, ON)
     expect(await resolveEventPromoFlags()).toEqual({ state: 'unknown', failure: FAILURE })
+  })
+})
+
+describe('canPrepareRegularsInvitesNow: only when every text in the run can go out at once', () => {
+  it.each([
+    // Tuesday 15 September 2026, BST.
+    ['2026-09-14T23:15:00Z', '00:15 BST, quiet hours', false],
+    ['2026-09-15T07:59:59Z', '08:59:59 BST, quiet hours', false],
+    ['2026-09-15T08:00:00Z', '09:00 BST, the first minute texts can go', true],
+    ['2026-09-15T11:00:00Z', 'midday BST', true],
+    ['2026-09-15T19:54:59Z', '20:54:59 BST, a full run still ends before 21:00', true],
+    ['2026-09-15T19:55:00Z', '20:55 BST, a run could still be sending at 21:00', false],
+    ['2026-09-15T20:30:00Z', '21:30 BST, quiet hours', false],
+    // Monday 26 October 2026, the first morning after the clocks go back: GMT.
+    ['2026-10-26T08:59:00Z', '08:59 GMT, quiet hours', false],
+    ['2026-10-26T09:00:00Z', '09:00 GMT, the first minute texts can go', true],
+  ])('at %s (%s) is %s', (instant, _londonTime, expected) => {
+    expect(canPrepareRegularsInvitesNow(new Date(instant))).toBe(expected)
   })
 })
 

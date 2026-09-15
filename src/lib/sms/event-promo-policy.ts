@@ -11,6 +11,8 @@
  *  - to guests who have been to an event of the same category before, however long ago;
  *  - with at most one promotional text per guest in any two days, across every event and staff
  *    bulk texts;
+ *  - prepared only when it can be sent straight away (09:00 to 20:55 London, see
+ *    canPrepareRegularsInvitesNow), so the booking check happens at the moment of sending;
  *  - and, with `event_promo_intro_sms_no_email` on, only to guests the guest marketing campaigns
  *    cannot reach.
  *
@@ -517,6 +519,27 @@ export function isUnderDailyPromoTextLimit(counts: Map<string, number>, customer
  */
 export function isUnderRegularsTextGap(counts: Map<string, number>, customerId: string): boolean {
   return (counts.get(customerId) ?? 0) < EVENT_PROMO_REGULARS_TEXTS_PER_GAP
+}
+
+/**
+ * The longest one run of the event guest engagement cron can take: its route `maxDuration` of 300
+ * seconds. A run started this close to quiet hours could still be sending when they begin.
+ */
+export const EVENT_PROMO_RUN_TIME_LIMIT_MS = 5 * 60 * 1000
+
+/**
+ * Whether the regulars invite may be prepared now (owner, 15 September 2026): only when every text
+ * in the run can go out at once. Never in SMS quiet hours (21:00 to 09:00 London), and never in the
+ * last EVENT_PROMO_RUN_TIME_LIMIT_MS before they begin, so in practice from 09:00 to 20:55.
+ *
+ * A text prepared in quiet hours is held until 09:00 and then replayed by the job queue, which
+ * re-checks consent and number status but not bookings, so a guest who booked overnight still got
+ * the invite. Prepared at the moment it can be sent, the audience function's booking check is the
+ * last word. The first cron run at or after 09:00 prepares the morning's invites.
+ */
+export function canPrepareRegularsInvitesNow(now: Date = new Date()): boolean {
+  if (evaluateSmsQuietHours(now).inQuietHours) return false
+  return !evaluateSmsQuietHours(new Date(now.getTime() + EVENT_PROMO_RUN_TIME_LIMIT_MS)).inQuietHours
 }
 
 // ---------------------------------------------------------------------------
