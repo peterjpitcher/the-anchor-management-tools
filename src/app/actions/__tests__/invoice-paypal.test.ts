@@ -56,7 +56,11 @@ function invoice(overrides: Record<string, unknown> = {}) {
     paypal_order_id: null,
     sent_at: '2026-09-01T12:05:00Z',
     updated_at: '2026-09-01T12:00:00Z',
-    vendor: { name: 'Kim Renyard', email: 'kim@example.com' },
+    vendor: {
+      name: 'Kim Renyard',
+      email: 'kim@example.com',
+      paypal_payments_enabled: true,
+    },
     ...overrides,
   }
 }
@@ -111,13 +115,17 @@ beforeEach(() => {
 
 describe('getInvoicePortalLink', () => {
   it('returns a portal URL on our own domain, never a raw PayPal link', async () => {
-    vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice()))
+    const admin = mockAdmin(invoice())
+    vi.mocked(createAdminClient).mockReturnValue(admin)
 
     const result = await getInvoicePortalLink(INVOICE_ID)
 
     expect(result.error).toBeUndefined()
     expect(result.url).toMatch(/^https:\/\/management\.orangejelly\.co\.uk\/invoice-portal\/[A-Za-z0-9_-]{88}$/)
     expect(result.url).not.toContain('paypal')
+    expect(admin.from.mock.results[0].value.select).toHaveBeenCalledWith(
+      expect.stringContaining('paypal_payments_enabled'),
+    )
   })
 
   it('refuses when the caller cannot view invoices', async () => {
@@ -162,6 +170,28 @@ describe('getInvoicePortalLink', () => {
     const result = await getInvoicePortalLink(INVOICE_ID)
     expect(result.error).toMatch(/nothing left to pay/i)
   })
+
+  it.each([
+    ['disabled', { name: 'Kim Renyard', email: 'kim@example.com', paypal_payments_enabled: false }],
+    ['missing', { name: 'Kim Renyard', email: 'kim@example.com' }],
+  ])('refuses when the vendor setting is %s', async (_setting, vendor) => {
+    vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice({ vendor })))
+
+    const result = await getInvoicePortalLink(INVOICE_ID)
+
+    expect(result.error).toBe('PayPal payments are not enabled for this vendor.')
+  })
+
+  it('keeps the paid status message when the vendor is disabled', async () => {
+    vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice({
+      status: 'paid',
+      vendor: { name: 'Kim Renyard', email: 'kim@example.com', paypal_payments_enabled: false },
+    })))
+
+    const result = await getInvoicePortalLink(INVOICE_ID)
+
+    expect(result.error).toBe('This invoice is already paid in full. Thank you.')
+  })
 })
 
 describe('sendInvoicePaymentLink', () => {
@@ -196,6 +226,19 @@ describe('sendInvoicePaymentLink', () => {
     expect(result.success).toBeUndefined()
     expect(result.error).toBe('Mailbox unavailable')
   })
+
+  it.each([
+    ['disabled', { name: 'Kim Renyard', email: 'kim@example.com', paypal_payments_enabled: false }],
+    ['missing', { name: 'Kim Renyard', email: 'kim@example.com' }],
+  ])('does not create or email a payment link when the vendor setting is %s', async (_setting, vendor) => {
+    vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice({ vendor })))
+
+    const result = await sendInvoicePaymentLink(INVOICE_ID)
+
+    expect(result.error).toBe('PayPal payments are not enabled for this vendor.')
+    expect(createSimplePayPalOrder).not.toHaveBeenCalled()
+    expect(sendInvoicePaymentLinkEmail).not.toHaveBeenCalled()
+  })
 })
 
 describe('createInvoicePaymentOrderByToken', () => {
@@ -212,6 +255,18 @@ describe('createInvoicePaymentOrderByToken', () => {
 
     expect(result.error).toBeUndefined()
     expect(result.approveUrl).toContain('paypal.com')
+  })
+
+  it.each([
+    ['disabled', { name: 'Kim Renyard', email: 'kim@example.com', paypal_payments_enabled: false }],
+    ['missing', { name: 'Kim Renyard', email: 'kim@example.com' }],
+  ])('does not mint an order when the vendor setting is %s', async (_setting, vendor) => {
+    vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice({ vendor })))
+
+    const result = await createInvoicePaymentOrderByToken(generateInvoiceToken(INVOICE_ID))
+
+    expect(result.error).toBe('PayPal payments are not enabled for this vendor.')
+    expect(createSimplePayPalOrder).not.toHaveBeenCalled()
   })
 
   it('reuses an in-flight order when the amount still matches', async () => {
@@ -361,6 +416,51 @@ describe('invoice capture recovery and guards', () => {
     expect(admin.rpc).toHaveBeenCalledWith('record_invoice_paypal_payment_atomic', expect.objectContaining({
       p_capture_id: 'CAPTURE-1', p_amount: 725.6, p_captured_at: '2026-09-04T13:38:30Z',
     }))
+  })
+
+  it('records a completed payment after the vendor is disabled', async () => {
+    const admin = mockAdmin(invoice({
+      vendor: { name: 'Kim Renyard', email: 'kim@example.com', paypal_payments_enabled: false },
+    }))
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder('COMPLETED'))
+
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+
+    expect(result.success).toBe(true)
+    expect(admin.rpc).toHaveBeenCalledWith(
+      'record_invoice_paypal_payment_atomic',
+      expect.objectContaining({ p_capture_id: 'CAPTURE-1', p_amount: 725.6 }),
+    )
+    expect(capturePayPalPayment).not.toHaveBeenCalled()
+  })
+
+  it('does not capture an approved payment after the vendor is disabled', async () => {
+    const admin = mockAdmin(invoice({
+      vendor: { name: 'Kim Renyard', email: 'kim@example.com', paypal_payments_enabled: false },
+    }))
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder('APPROVED'))
+
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+
+    expect(result.error).toBe('PayPal payments are not enabled for this vendor.')
+    expect(capturePayPalPayment).not.toHaveBeenCalled()
+    expect(admin.rpc).not.toHaveBeenCalled()
+  })
+
+  it('does not capture an approved payment when the vendor setting is missing', async () => {
+    const admin = mockAdmin(invoice({
+      vendor: { name: 'Kim Renyard', email: 'kim@example.com' },
+    }))
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder('APPROVED'))
+
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+
+    expect(result.error).toBe('PayPal payments are not enabled for this vendor.')
+    expect(capturePayPalPayment).not.toHaveBeenCalled()
+    expect(admin.rpc).not.toHaveBeenCalled()
   })
 
   it('does not credit a pending capture on a completed order', async () => {

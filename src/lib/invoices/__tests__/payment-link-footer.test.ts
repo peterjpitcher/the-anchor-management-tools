@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   buildInvoicePaymentLinkFooter,
+  invoiceCanOfferPayPal,
   invoiceHasBalanceToCollect,
   withInvoicePaymentLink,
 } from '../payment-link-footer'
@@ -14,7 +15,14 @@ beforeEach(() => {
 })
 
 function invoice(overrides: Record<string, unknown> = {}) {
-  return { id: INVOICE_ID, status: 'sent', total_amount: 975.6, paid_amount: 0, ...overrides }
+  return {
+    id: INVOICE_ID,
+    status: 'sent',
+    total_amount: 975.6,
+    paid_amount: 0,
+    vendor: { paypal_payments_enabled: true },
+    ...overrides,
+  }
 }
 
 describe('invoiceHasBalanceToCollect', () => {
@@ -62,6 +70,27 @@ describe('buildInvoicePaymentLinkFooter', () => {
   it('returns nothing when there is no balance to collect', () => {
     expect(buildInvoicePaymentLinkFooter(invoice({ status: 'paid' }))).toBe('')
     expect(buildInvoicePaymentLinkFooter(invoice({ status: 'void' }))).toBe('')
+  })
+
+  it.each([
+    ['a disabled vendor', { vendor: { paypal_payments_enabled: false } }],
+    ['a null setting', { vendor: { paypal_payments_enabled: null } }],
+    ['a missing vendor', { vendor: null }],
+    ['a missing setting', { vendor: {} }],
+  ])('returns nothing for %s', (_case, overrides) => {
+    expect(buildInvoicePaymentLinkFooter(invoice(overrides))).toBe('')
+  })
+
+  it('returns the portal link for an enabled vendor with an outstanding balance', () => {
+    expect(buildInvoicePaymentLinkFooter(invoice())).toContain('/invoice-portal/')
+  })
+})
+
+describe('invoiceCanOfferPayPal', () => {
+  it('requires both explicit vendor approval and an outstanding balance', () => {
+    expect(invoiceCanOfferPayPal(invoice())).toBe(true)
+    expect(invoiceCanOfferPayPal(invoice({ vendor: null }))).toBe(false)
+    expect(invoiceCanOfferPayPal(invoice({ status: 'paid' }))).toBe(false)
   })
 })
 

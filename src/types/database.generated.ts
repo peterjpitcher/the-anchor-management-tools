@@ -6481,11 +6481,13 @@ export type Database = {
           address: string | null
           contact_name: string | null
           created_at: string | null
+          customer_id: string | null
           email: string | null
           id: string
           is_active: boolean | null
           name: string
           notes: string | null
+          paypal_payments_enabled: boolean
           payment_terms: number | null
           phone: string | null
           updated_at: string | null
@@ -6495,11 +6497,13 @@ export type Database = {
           address?: string | null
           contact_name?: string | null
           created_at?: string | null
+          customer_id?: string | null
           email?: string | null
           id?: string
           is_active?: boolean | null
           name: string
           notes?: string | null
+          paypal_payments_enabled?: boolean
           payment_terms?: number | null
           phone?: string | null
           updated_at?: string | null
@@ -6509,11 +6513,13 @@ export type Database = {
           address?: string | null
           contact_name?: string | null
           created_at?: string | null
+          customer_id?: string | null
           email?: string | null
           id?: string
           is_active?: boolean | null
           name?: string
           notes?: string | null
+          paypal_payments_enabled?: boolean
           payment_terms?: number | null
           phone?: string | null
           updated_at?: string | null

@@ -19,6 +19,7 @@ export class VendorService {
     vat_number?: string | null;
     payment_terms: number;
     notes?: string | null;
+    paypal_payments_enabled: boolean;
   }) {
     const supabase = await createClient();
     
@@ -30,7 +31,8 @@ export class VendorService {
       address: emptyToNull(input.address),
       vat_number: emptyToNull(input.vat_number),
       payment_terms: input.payment_terms,
-      notes: emptyToNull(input.notes)
+      notes: emptyToNull(input.notes),
+      paypal_payments_enabled: input.paypal_payments_enabled,
     };
 
     const { data: vendor, error } = await supabase
@@ -56,6 +58,7 @@ export class VendorService {
     vat_number?: string | null;
     payment_terms: number;
     notes?: string | null;
+    paypal_payments_enabled: boolean;
   }) {
     const supabase = await createClient();
 
@@ -67,7 +70,8 @@ export class VendorService {
       address: emptyToNull(input.address),
       vat_number: emptyToNull(input.vat_number),
       payment_terms: input.payment_terms,
-      notes: emptyToNull(input.notes)
+      notes: emptyToNull(input.notes),
+      paypal_payments_enabled: input.paypal_payments_enabled,
     };
 
     const { data: vendor, error } = await supabase

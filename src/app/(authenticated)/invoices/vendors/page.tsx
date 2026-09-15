@@ -77,6 +77,7 @@ interface VendorFormData {
   vat_number: string
   payment_terms: number
   notes: string
+  paypal_payments_enabled: boolean
 }
 
 export default function VendorsPage() {
@@ -98,7 +99,8 @@ export default function VendorsPage() {
     address: '',
     vat_number: '',
     payment_terms: DEFAULT_PAYMENT_TERMS_DAYS,
-    notes: ''
+    notes: '',
+    paypal_payments_enabled: false,
   })
   const [formLoading, setFormLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -242,7 +244,8 @@ export default function VendorsPage() {
         address: vendor.address || '',
         vat_number: vendor.vat_number || '',
         payment_terms: vendor.payment_terms ?? DEFAULT_PAYMENT_TERMS_DAYS,
-        notes: vendor.notes || ''
+        notes: vendor.notes || '',
+        paypal_payments_enabled: vendor.paypal_payments_enabled === true,
       })
     } else {
       setEditingVendor(null)
@@ -252,7 +255,8 @@ export default function VendorsPage() {
         address: '',
         vat_number: '',
         payment_terms: DEFAULT_PAYMENT_TERMS_DAYS,
-        notes: ''
+        notes: '',
+        paypal_payments_enabled: false,
       })
     }
     setShowForm(true)
@@ -587,6 +591,17 @@ export default function VendorsPage() {
                       setFormData({ ...formData, payment_terms: nextValue })
                     }}
                     min="0"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <Checkbox
+                    checked={formData.paypal_payments_enabled}
+                    onChange={(checked: boolean) =>
+                      setFormData({ ...formData, paypal_payments_enabled: checked })
+                    }
+                    label="Offer PayPal/card payment"
+                    description="Adds a secure online payment link to this vendor's invoice emails."
                   />
                 </div>
 
