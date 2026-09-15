@@ -73,11 +73,11 @@ export function getTaxYearBounds(tripDate: string): TaxYearBounds {
 }
 
 /** Miles held to one decimal place, as whole tenths. 3.4 becomes 34. */
-export function milesToTenths(miles: number): number {
+function milesToTenths(miles: number): number {
   return Math.round(miles * 10)
 }
 
-export function tenthsToMiles(tenths: number): number {
+function tenthsToMiles(tenths: number): number {
   return tenths / 10
 }
 
