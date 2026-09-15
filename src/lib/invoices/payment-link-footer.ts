@@ -26,6 +26,7 @@ export type PaymentLinkInvoice = {
   status?: string | null
   total_amount?: number | string | null
   paid_amount?: number | string | null
+  vendor?: { paypal_payments_enabled?: boolean | null } | null
 }
 
 export function invoiceHasBalanceToCollect(invoice: PaymentLinkInvoice): boolean {
@@ -35,13 +36,18 @@ export function invoiceHasBalanceToCollect(invoice: PaymentLinkInvoice): boolean
   return Math.round((total - paid) * 100) / 100 > 0
 }
 
+export function invoiceCanOfferPayPal(invoice: PaymentLinkInvoice): boolean {
+  return invoice.vendor?.paypal_payments_enabled === true
+    && invoiceHasBalanceToCollect(invoice)
+}
+
 export function invoicePortalUrl(invoiceId: string): string {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'
   return `${appUrl}/invoice-portal/${generateInvoiceToken(invoiceId)}`
 }
 
 /**
- * Returns the block to append, or '' when the invoice has nothing outstanding.
+ * Returns the block to append, or '' when the vendor or balance is ineligible.
  *
  * A `draft` invoice is included on purpose: every caller appends this to the
  * email that is issuing or chasing the invoice, and the status flip to `sent`
@@ -49,7 +55,7 @@ export function invoicePortalUrl(invoiceId: string): string {
  * link from the 07:00 auto-send, which is the very run that issues most of them.
  */
 export function buildInvoicePaymentLinkFooter(invoice: PaymentLinkInvoice): string {
-  if (!invoiceHasBalanceToCollect(invoice)) return ''
+  if (!invoiceCanOfferPayPal(invoice)) return ''
 
   return `
 

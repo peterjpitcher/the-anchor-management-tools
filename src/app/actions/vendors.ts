@@ -22,7 +22,8 @@ const VendorSchema = z.object({
   vat_number: z.string().optional().or(z.literal('')),
   // Owner rule 2026-08-31: net-7 unless a customer has been given longer.
   payment_terms: z.number().min(0).default(DEFAULT_PAYMENT_TERMS_DAYS),
-  notes: z.string().optional().or(z.literal(''))
+  notes: z.string().optional().or(z.literal('')),
+  paypal_payments_enabled: z.boolean().default(false),
 })
 
 export async function getVendors() {
@@ -69,7 +70,8 @@ export async function createVendor(formData: FormData) {
       address: formData.get('address') || undefined,
       vat_number: formData.get('vat_number') || undefined,
       payment_terms: parsePaymentTermsValue(formData.get('payment_terms')),
-      notes: formData.get('notes') || undefined
+      notes: formData.get('notes') || undefined,
+      paypal_payments_enabled: formData.get('paypal_payments_enabled') === 'true',
     })
 
     const vendor = await VendorService.createVendor(validatedData);
@@ -79,7 +81,10 @@ export async function createVendor(formData: FormData) {
       resource_type: 'vendor',
       resource_id: vendor.id,
       operation_status: 'success',
-      new_values: { name: vendor.name }
+      new_values: {
+        name: vendor.name,
+        paypal_payments_enabled: vendor.paypal_payments_enabled,
+      }
     })
 
     revalidatePath('/invoices/vendors')
@@ -117,7 +122,8 @@ export async function updateVendor(formData: FormData) {
       address: formData.get('address') || undefined,
       vat_number: formData.get('vat_number') || undefined,
       payment_terms: parsePaymentTermsValue(formData.get('payment_terms')),
-      notes: formData.get('notes') || undefined
+      notes: formData.get('notes') || undefined,
+      paypal_payments_enabled: formData.get('paypal_payments_enabled') === 'true',
     })
 
     const vendor = await VendorService.updateVendor(vendorId, validatedData);
@@ -127,7 +133,10 @@ export async function updateVendor(formData: FormData) {
       resource_type: 'vendor',
       resource_id: vendor.id,
       operation_status: 'success',
-      new_values: { name: vendor.name }
+      new_values: {
+        name: vendor.name,
+        paypal_payments_enabled: vendor.paypal_payments_enabled,
+      }
     })
 
     revalidatePath('/invoices/vendors')

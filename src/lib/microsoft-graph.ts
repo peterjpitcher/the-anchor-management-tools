@@ -182,10 +182,10 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`)
       })
     }
 
-    // Every invoice email that asks for money carries the pay-online link:
-    // the manual send, the chase, the reminder cron and the 07:00 auto-send all
-    // funnel through here, so appending once covers all four rather than
-    // leaving one of them silently without it.
+    // Every invoice email that may offer online payment passes through the
+    // vendor eligibility check here. The manual send, chase, reminder cron and
+    // 07:00 auto-send all funnel through this path, so enabled vendors receive
+    // the link consistently and disabled vendors never receive it.
     //
     // Appended here rather than in the operator's draft because the draft is
     // composed in the browser and the signed token must never be minted there.

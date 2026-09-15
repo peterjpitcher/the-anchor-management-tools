@@ -535,6 +535,7 @@ export default function InvoiceDetailClient({
   // still has something outstanding.
   const canShowPaymentLinkActions =
     canEdit &&
+    invoice.vendor?.paypal_payments_enabled === true &&
     ['sent', 'overdue', 'partially_paid'].includes(invoice.status) &&
     Number(invoice.total_amount || 0) - Number(invoice.paid_amount || 0) > 0
 

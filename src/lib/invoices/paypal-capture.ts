@@ -13,6 +13,7 @@ type InvoicePaymentState = {
   total_amount: number | null
   paid_amount: number | null
   sent_at?: string | null
+  vendor?: { paypal_payments_enabled?: boolean | null } | null
 }
 
 type InvoiceOrder = {
@@ -63,6 +64,9 @@ export async function settleInvoicePayPalOrder(
     const payable = ['sent', 'overdue', 'partially_paid'].includes(invoice.status ?? '')
       || (invoice.status === 'draft' && Boolean(invoice.sent_at))
     if (!payable) return { error: 'This invoice cannot be paid online.' }
+    if (invoice.vendor?.paypal_payments_enabled !== true) {
+      return { error: 'PayPal payments are not enabled for this vendor.' }
+    }
     const due = Math.round((Number(invoice.total_amount) - Number(invoice.paid_amount)) * 100)
     if (due <= 0 || positivePennies(unit.amount?.value) !== due) {
       return { error: 'The amount due has changed. Reload the invoice before paying.' }
