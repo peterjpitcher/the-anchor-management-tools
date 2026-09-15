@@ -137,7 +137,9 @@ function buildDatabase(options: { bookings?: unknown[] } = {}) {
   })
 }
 
-type CronFlags = { lastPush: boolean; introForGuestsWithoutEmail: boolean } | 'unreadable'
+type CronFlags =
+  | { lastPush: boolean; introForGuestsWithoutEmail: boolean; regularsWeekAhead?: boolean }
+  | 'unreadable'
 
 const READ_FAILURE = { code: '57014', message: 'canceling statement due to statement timeout', details: null, hint: null }
 
@@ -145,6 +147,7 @@ async function runCron(flags: CronFlags, options: { bookings?: unknown[] } = {})
   vi.mocked(readMessagingFlagState).mockImplementation(async (key) => {
     if (flags === 'unreadable') return { state: 'unknown', failure: READ_FAILURE }
     const on =
+      (key === 'event_promo_regulars_week_ahead' && flags.regularsWeekAhead === true) ||
       (key === 'event_promo_last_push' && flags.lastPush) ||
       (key === 'event_promo_intro_sms_no_email' && flags.introForGuestsWithoutEmail)
     return { state: on ? 'on' : 'off' }
@@ -254,6 +257,51 @@ describe('event promotion stage and the messaging flags', () => {
       calls.findLastIndex((call) => call.mode === 'last_push')
     )
     expect(payload.crossPromo.disabled).toBeUndefined()
+  })
+
+  it('with the regulars flag on, sends only the week-ahead invite, whatever the last push flag says', async () => {
+    const { db, payload } = await runCron({ regularsWeekAhead: true, lastPush: true, introForGuestsWithoutEmail: false })
+
+    expect(payload.success).toBe(true)
+    // No 24-hour follow-up and no last push.
+    expect(db.rpc).not.toHaveBeenCalledWith('get_follow_up_recipients', expect.anything())
+    expect(sendFollowUpForEvent).not.toHaveBeenCalled()
+    const lastPushQuery = db.queries.find(
+      (query) => query.table === 'events' && String(argsOf(query, 'select')[0]?.[0]).includes('start_datetime')
+    )
+    expect(lastPushQuery).toBeUndefined()
+
+    // The invite keeps the intro window, one to seven London days ahead (the mock returns every
+    // event; the real query asks for D+1 to D+7).
+    const inviteQuery = db.queries.find(
+      (query) => query.table === 'events' && !String(argsOf(query, 'select')[0]?.[0]).includes('start_datetime')
+    )!
+    expect(argsOf(inviteQuery, 'gte')).toContainEqual(['date', '2026-09-16'])
+    expect(argsOf(inviteQuery, 'lte')).toContainEqual(['date', '2026-09-22'])
+    expect(promoCalls()).toEqual(EVENTS.map((event) => ({ eventId: event.id, mode: 'regulars', hasModeKey: true })))
+
+    expect(payload.followUp24h).toEqual(
+      expect.objectContaining({ disabled: true, reason: 'event_promo_regulars_week_ahead', sent: 0 })
+    )
+    expect(payload.crossPromo.disabled).toBeUndefined()
+    expect(payload.lastPush).toBeUndefined()
+  })
+
+  it('with the regulars and no-email flags on, invites only regulars the guest campaigns cannot reach', async () => {
+    await runCron({ regularsWeekAhead: true, lastPush: true, introForGuestsWithoutEmail: true })
+
+    expect(promoCalls()).toEqual(
+      EVENTS.map((event) => ({ eventId: event.id, mode: 'regulars_no_email', hasModeKey: true }))
+    )
+    expect(sendFollowUpForEvent).not.toHaveBeenCalled()
+  })
+
+  it('with the regulars flag on and the last push off, still sends no follow-up', async () => {
+    const { db } = await runCron({ regularsWeekAhead: true, lastPush: false, introForGuestsWithoutEmail: false })
+
+    expect(db.rpc).not.toHaveBeenCalledWith('get_follow_up_recipients', expect.anything())
+    expect(sendFollowUpForEvent).not.toHaveBeenCalled()
+    expect(promoCalls().every((call) => call.mode === 'regulars')).toBe(true)
   })
 
   it('when the flags row cannot be read, sends no promotion text at all, not the old intro and follow-up', async () => {

@@ -20,6 +20,7 @@ import {
   isEventPromoTemplateKey,
   isUnderDailyPromoTextLimit,
   isUnderPromoTextCap,
+  isUnderRegularsTextGap,
   loadCustomerIdsWithoutUsableEmail,
   loadPromoTextCounts,
   londonDateDaysAhead,
@@ -331,13 +332,13 @@ describe('loadPromoTextCounts: promotional texts in the last 30 days, and the on
     const counts = await loadPromoTextCounts(db.client as never, ['A', 'B', 'C', 'D', 'E', 'F', 'G'], NOW)
 
     expect(counts).not.toBeNull()
-    expect(counts?.last30Days.get('A')).toBe(2)
+    expect(counts?.inWindow.get('A')).toBe(2)
     // The bulk text counts on top of the engine's own promo.
-    expect(counts?.last30Days.get('B')).toBe(2)
+    expect(counts?.inWindow.get('B')).toBe(2)
     // Deferred promos count before they reach messages.
-    expect(counts?.last30Days.get('C')).toBe(2)
-    expect(counts?.last30Days.get('D')).toBe(1)
-    expect(counts?.last30Days.has('E')).toBe(false)
+    expect(counts?.inWindow.get('C')).toBe(2)
+    expect(counts?.inWindow.get('D')).toBe(1)
+    expect(counts?.inWindow.has('E')).toBe(false)
   })
 
   it('counts the texts landing today, including those sent last night and held until 09:00', async () => {
@@ -386,6 +387,25 @@ describe('loadPromoTextCounts: promotional texts in the last 30 days, and the on
     expect(isUnderPromoTextCap(counts, 'one')).toBe(true)
     expect(isUnderPromoTextCap(counts, 'two')).toBe(false)
     expect(isUnderPromoTextCap(counts, 'three')).toBe(false)
+  })
+
+  it('looks back only as far as it is asked: two days for the regulars invite', async () => {
+    const db = build()
+    const counts = await loadPromoTextCounts(db.client as never, ['A', 'B', 'C', 'D'], NOW, 2)
+
+    expect(counts).not.toBeNull()
+    // 09:00 BST on Sunday 13 September, both in the messages log and in the context ledger.
+    const messagesQuery = db.queries.find((query) => query.table === 'messages')!
+    expect(argsOf(messagesQuery, 'gte')).toContainEqual(['created_at', '2026-09-13T08:00:00.000Z'])
+    const contextQuery = db.queries.find((query) => query.table === 'sms_promo_context')!
+    expect(argsOf(contextQuery, 'gte')).toContainEqual(['created_at', '2026-09-13T08:00:00.000Z'])
+  })
+
+  it('lets a regular through with no promotional text in the window and stops them at one', () => {
+    const counts = new Map([['one', 1], ['two', 2]])
+    expect(isUnderRegularsTextGap(counts, 'none')).toBe(true)
+    expect(isUnderRegularsTextGap(counts, 'one')).toBe(false)
+    expect(isUnderRegularsTextGap(counts, 'two')).toBe(false)
   })
 })
 
@@ -595,39 +615,92 @@ describe('resolveEventPromoFlags', () => {
   const FAILURE = { code: '57014', message: 'canceling statement due to statement timeout', details: null, hint: null }
   const UNKNOWN: MessagingFlagState = { state: 'unknown', failure: FAILURE }
 
-  function flags(lastPush: MessagingFlagState, intro: MessagingFlagState) {
-    mockFlag.mockImplementation(async (key) => (key === 'event_promo_last_push' ? lastPush : intro))
+  function flags(lastPush: MessagingFlagState, intro: MessagingFlagState, regulars: MessagingFlagState = OFF) {
+    mockFlag.mockImplementation(async (key) => {
+      if (key === 'event_promo_regulars_week_ahead') return regulars
+      return key === 'event_promo_last_push' ? lastPush : intro
+    })
   }
 
-  it('reads as today when the last push is off, without even reading the second flag', async () => {
+  it('reads as today when the regulars invite and the last push are off, without reading the no-email flag', async () => {
     flags(OFF, ON)
-    expect(await resolveEventPromoFlags()).toEqual({ state: 'known', lastPush: false, introForGuestsWithoutEmail: false })
-    expect(mockFlag).toHaveBeenCalledTimes(1)
+    expect(await resolveEventPromoFlags()).toEqual({
+      state: 'known',
+      regularsWeekAhead: false,
+      lastPush: false,
+      introForGuestsWithoutEmail: false,
+    })
+    expect(mockFlag).toHaveBeenCalledTimes(2)
+    expect(mockFlag).toHaveBeenCalledWith('event_promo_regulars_week_ahead')
     expect(mockFlag).toHaveBeenCalledWith('event_promo_last_push')
+    expect(mockFlag).not.toHaveBeenCalledWith('event_promo_intro_sms_no_email')
   })
 
   it('ignores the no-email intro flag on its own', async () => {
     flags(OFF, ON)
-    expect(await resolveEventPromoFlags()).toEqual({ state: 'known', lastPush: false, introForGuestsWithoutEmail: false })
+    expect(await resolveEventPromoFlags()).toEqual({
+      state: 'known',
+      regularsWeekAhead: false,
+      lastPush: false,
+      introForGuestsWithoutEmail: false,
+    })
   })
 
-  it('turns on the no-email intro only with the last push', async () => {
+  it('turns on the no-email intro only with the last push or the regulars invite', async () => {
     flags(ON, ON)
-    expect(await resolveEventPromoFlags()).toEqual({ state: 'known', lastPush: true, introForGuestsWithoutEmail: true })
+    expect(await resolveEventPromoFlags()).toEqual({
+      state: 'known',
+      regularsWeekAhead: false,
+      lastPush: true,
+      introForGuestsWithoutEmail: true,
+    })
 
     flags(ON, OFF)
-    expect(await resolveEventPromoFlags()).toEqual({ state: 'known', lastPush: true, introForGuestsWithoutEmail: false })
+    expect(await resolveEventPromoFlags()).toEqual({
+      state: 'known',
+      regularsWeekAhead: false,
+      lastPush: true,
+      introForGuestsWithoutEmail: false,
+    })
+  })
+
+  it('turns on the regulars invite with or without the last push, and reads the no-email flag for it', async () => {
+    flags(OFF, ON, ON)
+    expect(await resolveEventPromoFlags()).toEqual({
+      state: 'known',
+      regularsWeekAhead: true,
+      lastPush: false,
+      introForGuestsWithoutEmail: true,
+    })
+
+    flags(ON, OFF, ON)
+    expect(await resolveEventPromoFlags()).toEqual({
+      state: 'known',
+      regularsWeekAhead: true,
+      lastPush: true,
+      introForGuestsWithoutEmail: false,
+    })
   })
 
   it('is unknown, never off, when the flags row cannot be read', async () => {
-    flags(UNKNOWN, UNKNOWN)
+    flags(UNKNOWN, UNKNOWN, UNKNOWN)
     expect(await resolveEventPromoFlags()).toEqual({ state: 'unknown', failure: FAILURE })
     // No second read once the first has failed.
     expect(mockFlag).toHaveBeenCalledTimes(1)
   })
 
-  it('is unknown when the last push is on and the second read fails', async () => {
+  it('is unknown when the regulars flag reads but the last push read fails', async () => {
+    flags(UNKNOWN, OFF, OFF)
+    expect(await resolveEventPromoFlags()).toEqual({ state: 'unknown', failure: FAILURE })
+  })
+
+  it('is unknown when the last push is on and the no-email read fails', async () => {
     flags(ON, UNKNOWN)
+    expect(await resolveEventPromoFlags()).toEqual({ state: 'unknown', failure: FAILURE })
+  })
+
+  it('is unknown when the regulars invite is on and the no-email read fails', async () => {
+    flags(OFF, UNKNOWN, ON)
     expect(await resolveEventPromoFlags()).toEqual({ state: 'unknown', failure: FAILURE })
   })
 })
