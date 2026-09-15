@@ -38,6 +38,7 @@ type PendingInvoice = {
   status: string | null
   sent_at: string | null
   paypal_reconciliation_attempts: number | null
+  vendor: { paypal_payments_enabled?: boolean | null } | null
 }
 
 function summariseError(error: unknown): string {
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
   try {
     const { data, error } = await admin
       .from('invoices')
-      .select('id, invoice_number, paypal_order_id, total_amount, paid_amount, status, sent_at, paypal_reconciliation_attempts')
+      .select('id, invoice_number, paypal_order_id, total_amount, paid_amount, status, sent_at, paypal_reconciliation_attempts, vendor:invoice_vendors(paypal_payments_enabled)')
       .not('paypal_order_id', 'is', null)
       .in('status', PAYABLE_STATUSES)
       .is('deleted_at', null)
@@ -97,6 +98,13 @@ export async function GET(request: NextRequest) {
       try {
         const order = await getPayPalOrder(orderId)
         const status = order?.status
+
+        // Disabling PayPal withdraws permission to capture an approved order.
+        // Keep its reference in case PayPal later reports it as completed, but
+        // do not turn the owner's policy change into a recurring cron failure.
+        if (status === 'APPROVED' && invoice.vendor?.paypal_payments_enabled !== true) {
+          continue
+        }
 
         if (status === 'COMPLETED' || status === 'APPROVED') {
           const result = await settleInvoicePayPalOrder(invoice, orderId, 'reconciliation', order)
