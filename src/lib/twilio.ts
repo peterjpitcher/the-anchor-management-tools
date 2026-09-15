@@ -12,6 +12,7 @@ import { shortenUrlsInSmsBody } from '@/lib/sms/link-shortening';
 import { countSmsSegments, normaliseToGsm7 } from '@/lib/sms/gsm7';
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils';
 import { getErrorMessage, getErrorCode } from '@/lib/errors';
+import { markCustomerNumberUndeliverable } from '@/lib/sms/undeliverable-number';
 import {
   buildSmsDedupContext,
   claimSmsIdempotency,
@@ -775,6 +776,14 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
             metadata: { to }
           })
         }
+      }
+
+      // A number Twilio refuses outright (invalid, not a mobile, cannot receive texts) will refuse
+      // every later send too, and no delivery status callback ever reports it. Stop texting it now
+      // rather than trying it again on every send (src/lib/sms/undeliverable-number.ts).
+      const refusedCustomerId = resolvedCustomerId ?? options.customerId;
+      if (errCode !== undefined && refusedCustomerId && supabase) {
+        await markCustomerNumberUndeliverable(supabase, refusedCustomerId, errCode);
       }
 
       // Provide user-friendly error messages
