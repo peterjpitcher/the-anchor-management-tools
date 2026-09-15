@@ -11,6 +11,7 @@ export interface InvoiceVendor {
   vat_number?: string
   payment_terms?: number
   notes?: string
+  paypal_payments_enabled: boolean
   is_active: boolean
   created_at: string
   updated_at: string
