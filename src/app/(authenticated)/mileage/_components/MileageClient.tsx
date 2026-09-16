@@ -33,7 +33,8 @@ import type { MileageDriver } from '@/app/actions/mileage-drivers'
 import { REDUCED_RATE, getStandardRate } from '@/lib/mileage/hmrcRates'
 import type { MileageHeadlineStats } from '@/lib/mileage/stats'
 import { TripForm } from './TripForm'
-import { formatDateInLondon } from '@/lib/dateUtils'
+import { MileageReportDialog } from './MileageReportDialog'
+import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 import { useSort } from '@/hooks/useSort'
 import {
   PlusIcon,
@@ -42,6 +43,7 @@ import {
   MapPinIcon,
   ArrowPathIcon,
   ArrowDownTrayIcon,
+  DocumentArrowDownIcon,
   FunnelIcon,
 } from '@heroicons/react/24/outline'
 
@@ -89,6 +91,7 @@ export function MileageClient({
   const [stats, setStats] = useState(initialStats)
   const [isPending, startTransition] = useTransition()
   const [isExporting, setIsExporting] = useState(false)
+  const [showReportDialog, setShowReportDialog] = useState(false)
 
   // Trip form state
   const [showTripForm, setShowTripForm] = useState(false)
@@ -120,7 +123,7 @@ export function MileageClient({
     toggleSort: toggleTripSort,
   } = useSort<MileageTrip, TripSortKey>(trips, 'date', 'desc', tripComparators)
 
-  // Filter state — initialised from URL search params if present
+  // Filter state, initialised from URL search params if present
   const [showFilters, setShowFilters] = useState(false)
   const [dateFrom, setDateFrom] = useState(() => searchParams.get('from') ?? '')
   const [dateTo, setDateTo] = useState(() => searchParams.get('to') ?? '')
@@ -270,7 +273,7 @@ export function MileageClient({
 
       {/* Action bar */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {canManage && (
             <Button variant="primary" size="sm" icon={<PlusIcon className="h-4 w-4" />} onClick={openNewTrip}>
               New Trip
@@ -292,6 +295,14 @@ export function MileageClient({
             loading={isExporting}
           >
             Export
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<DocumentArrowDownIcon className="h-4 w-4" />}
+            onClick={() => setShowReportDialog(true)}
+          >
+            Download report
           </Button>
         </div>
         <Button
@@ -475,6 +486,14 @@ export function MileageClient({
           tone="danger"
         />
       )}
+
+      {/* Mileage claim report */}
+      <MileageReportDialog
+        open={showReportDialog}
+        onClose={() => setShowReportDialog(false)}
+        drivers={drivers}
+        today={getTodayIsoDate()}
+      />
     </div>
   )
 }
