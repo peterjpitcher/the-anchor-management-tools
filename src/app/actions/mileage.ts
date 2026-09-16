@@ -47,11 +47,58 @@ const distanceCacheSchema = z.object({
     .refine(hasAtMostOneDecimalPlace, 'Miles must be rounded to 1 decimal place'),
 })
 
+const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format')
+
+const tripReasonSchema = z
+  .string()
+  .trim()
+  .min(1, 'Enter the reason for the trip')
+  .max(500, 'Keep the reason to 500 characters or fewer')
+
 const createTripSchema = z.object({
-  tripDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
-  description: z.string().optional().or(z.literal('')),
+  tripDate: isoDateSchema,
+  description: tripReasonSchema,
+  driverId: z.string().uuid('Choose who drove'),
+  requestId: z.string().uuid('Reload the form and try again'),
   legs: z.array(tripLegSchema).min(1, 'At least one leg is required'),
 })
+
+const updateTripSchema = z.object({
+  id: z.string().uuid(),
+  tripDate: isoDateSchema,
+  description: tripReasonSchema,
+  driverId: z.string().uuid('Choose who drove'),
+  expectedUpdatedAt: z.string().min(1, 'Reload the trip before editing it'),
+  legs: z.array(tripLegSchema).min(1, 'At least one leg is required'),
+})
+
+// The v02 save functions raise these codes; anything else is logged and shown as a failed save.
+const MILEAGE_SAVE_ERRORS: Record<string, string> = {
+  MILEAGE_DRIVER_REQUIRED: 'Choose who drove.',
+  MILEAGE_REASON_REQUIRED: 'Enter the reason for the trip.',
+  MILEAGE_TRIP_DATE_IN_FUTURE: "Trips can't be dated in the future.",
+  MILEAGE_TRIP_CONFLICT: 'This trip was changed elsewhere. Reload it and try again.',
+  MILEAGE_TRIP_NOT_FOUND: 'Trip not found.',
+  MILEAGE_OJ_TRIP_READ_ONLY: 'OJ Projects trips are changed in OJ Projects.',
+  MILEAGE_APP_OUTDATED: 'Mileage was updated. Reload the page.',
+}
+
+function mapMileageSaveError(error: {
+  code?: string
+  message: string
+  details?: string | null
+  hint?: string | null
+}): string {
+  const known = Object.keys(MILEAGE_SAVE_ERRORS).find((code) => error.message.includes(code))
+  if (known) return MILEAGE_SAVE_ERRORS[known]
+  console.error('[mileage] trip save failed', {
+    code: error.code,
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+  })
+  return 'Failed to save the trip. Nothing was changed. Try again.'
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -77,6 +124,8 @@ interface MileageTripLeg {
   miles: number
 }
 
+export type MileageDriverBasis = 'entered' | 'owner_statement' | 'oj_projects'
+
 export interface MileageTrip {
   id: string
   tripDate: string
@@ -90,6 +139,12 @@ export interface MileageTrip {
   legs: MileageTripLeg[]
   /** Human-readable route summary, e.g. "The Anchor -> Costco -> B&M -> The Anchor" */
   routeSummary: string
+  /** Null until the historic backfill has set who drove. */
+  driverId: string | null
+  driverName: string | null
+  driverBasis: MileageDriverBasis | null
+  /** Exactly as PostgREST returned it; sent back unchanged for the stale-edit check. */
+  updatedAt: string
 }
 
 export interface DistanceCacheEntry {
@@ -440,7 +495,7 @@ export async function getTrips(filters?: {
 
     let query = db
       .from('mileage_trips')
-      .select('*', { count: 'exact' })
+      .select('*, driver:mileage_drivers(display_name)', { count: 'exact' })
       .order('trip_date', { ascending: false })
       .order('created_at', { ascending: false })
 
@@ -529,6 +584,11 @@ export async function getTrips(filters?: {
         createdAt: t.created_at,
         legs,
         routeSummary: buildRouteSummary(legs, t.description),
+        driverId: t.driver_id ?? null,
+        // Embedded through the driver_id foreign key, so one object or null.
+        driverName: (t.driver as { display_name: string } | null)?.display_name ?? null,
+        driverBasis: (t.driver_basis as MileageDriverBasis | null) ?? null,
+        updatedAt: t.updated_at,
       }
     })
 
@@ -622,38 +682,44 @@ export async function exportMileageTripsCsv(filters?: {
 
 export async function getRatePreviewContext(input: {
   tripDate: string
+  driverId: string | null
   excludeTripId?: string | null
 }): Promise<{ data?: { cumulativeMilesBefore: number }; error?: string }> {
   try {
     await requireMileagePermission('view')
-    const parsed = z.object({
-      tripDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
-      excludeTripId: z.string().uuid().optional().nullable(),
-    }).safeParse(input)
+    const parsed = z
+      .object({
+        tripDate: isoDateSchema,
+        driverId: z.string().uuid().nullable(),
+        excludeTripId: z.string().uuid().optional().nullable(),
+      })
+      .safeParse(input)
     if (!parsed.success) {
       return { error: parsed.error.issues[0]?.message ?? 'Invalid trip date' }
     }
-
-    const { start } = getTaxYearBounds(parsed.data.tripDate)
-    const db = createAdminClient()
-    let query = db
-      .from('mileage_trips')
-      .select('id, total_miles')
-      .gte('trip_date', start)
-      .lt('trip_date', parsed.data.tripDate)
-
-    if (parsed.data.excludeTripId) {
-      query = query.neq('id', parsed.data.excludeTripId)
+    // The 10,000-mile limit is counted per driver, so there is nothing to count until one is chosen.
+    if (!parsed.data.driverId) {
+      return { data: { cumulativeMilesBefore: 0 } }
     }
 
-    const { data, error } = await query
-    if (error) throw error
+    const db = createAdminClient()
+    // p_trip_id defaults to null in the database; send it only when editing a saved trip.
+    const { data, error } = await db.rpc('mileage_rate_preview_v01', {
+      p_driver_id: parsed.data.driverId,
+      p_trip_date: parsed.data.tripDate,
+      ...(parsed.data.excludeTripId ? { p_trip_id: parsed.data.excludeTripId } : {}),
+    })
+    if (error) {
+      console.error('[mileage] rate preview failed', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      })
+      return { error: 'Failed to calculate the rate preview' }
+    }
 
-    const cumulativeMilesBefore = roundMiles(
-      (data ?? []).reduce((sum, trip) => sum + Number(trip.total_miles), 0)
-    )
-
-    return { data: { cumulativeMilesBefore } }
+    return { data: { cumulativeMilesBefore: roundMiles(Number(data ?? 0)) } }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to calculate mileage preview'
     return { error: message }
@@ -1166,19 +1232,26 @@ export async function deleteDestination(
 
 export async function createTrip(input: {
   tripDate: string
-  description?: string
+  description: string
+  driverId: string
+  /** One per new trip form: a retried save with the same id returns the trip it created. */
+  requestId: string
   legs: Array<{ fromDestinationId: string; toDestinationId: string; miles: number }>
 }): Promise<{ success?: boolean; error?: string; data?: { id: string } }> {
   try {
     const { userId } = await requireMileagePermission('manage')
-    const db = createAdminClient()
 
     const parsed = createTripSchema.safeParse(input)
     if (!parsed.success) {
       return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
     }
 
-    const { tripDate, description } = parsed.data
+    const { tripDate, description, driverId, requestId } = parsed.data
+    if (tripDate > getTodayIsoDate()) {
+      return { error: "Trips can't be dated in the future." }
+    }
+
+    const db = createAdminClient()
 
     // Validate leg chain: first leg must start from home base, last must end at home base
     const { data: homeBase } = await db
@@ -1202,32 +1275,44 @@ export async function createTrip(input: {
     // for future prefill and cache write failures do not leave a partial trip.
     await cacheDistances(db, legs)
 
-    const { data: newTripId, error: tripError } = await (db.rpc as any)('create_manual_mileage_trip_v01', {
+    const { data, error: tripError } = await db.rpc('create_manual_mileage_trip_v02', {
       p_trip_date: tripDate,
-      p_description: description?.trim() || null,
+      p_description: description,
       p_total_miles: totalMiles,
       p_created_by: userId,
       p_legs: toMileageTripLegRpcPayload(legs),
+      p_driver_id: driverId,
+      p_request_id: requestId,
     })
 
-    if (tripError) throw tripError
-    if (!newTripId) throw new Error('Failed to create trip')
+    if (tripError) {
+      return { error: mapMileageSaveError(tripError) }
+    }
 
-    await logAuditEvent({
-      user_id: userId,
-      operation_type: 'create',
-      resource_type: 'mileage_trip',
-      resource_id: newTripId,
-      operation_status: 'success',
-      new_values: {
-        trip_date: tripDate,
-        total_miles: totalMiles,
-        legs: legs.length,
-      },
-    })
+    const saved = data as { id?: string; created?: boolean } | null
+    if (!saved?.id) {
+      return { error: 'Failed to save the trip. Nothing was changed. Try again.' }
+    }
+
+    // A retry that found the trip its first attempt created was already audited.
+    if (saved.created) {
+      await logAuditEvent({
+        user_id: userId,
+        operation_type: 'create',
+        resource_type: 'mileage_trip',
+        resource_id: saved.id,
+        operation_status: 'success',
+        new_values: {
+          trip_date: tripDate,
+          total_miles: totalMiles,
+          legs: legs.length,
+          driver_id: driverId,
+        },
+      })
+    }
 
     revalidateMileagePaths()
-    return { success: true, data: { id: newTripId } }
+    return { success: true, data: { id: saved.id } }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create trip'
     return { error: message }
@@ -1237,37 +1322,40 @@ export async function createTrip(input: {
 export async function updateTrip(input: {
   id: string
   tripDate: string
-  description?: string
+  description: string
+  driverId: string
+  /** updated_at exactly as it was loaded. Never parse it into a Date, which drops microseconds. */
+  expectedUpdatedAt: string
   legs: Array<{ fromDestinationId: string; toDestinationId: string; miles: number }>
 }): Promise<{ success?: boolean; error?: string }> {
   try {
     const { userId } = await requireMileagePermission('manage')
+
+    const parsed = updateTripSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+    }
+
+    const { id, tripDate, description, driverId, expectedUpdatedAt } = parsed.data
+    if (tripDate > getTodayIsoDate()) {
+      return { error: "Trips can't be dated in the future." }
+    }
+
     const db = createAdminClient()
 
     // Check if trip exists and is editable
     const { data: existing, error: fetchError } = await db
       .from('mileage_trips')
       .select('id, source, trip_date, total_miles')
-      .eq('id', input.id)
+      .eq('id', id)
       .single()
 
     if (fetchError || !existing) {
-      return { error: 'Trip not found' }
+      return { error: 'Trip not found.' }
     }
     if (existing.source === 'oj_projects') {
-      return { error: 'Cannot edit OJ Projects synced trips' }
+      return { error: 'OJ Projects trips are changed in OJ Projects.' }
     }
-
-    const parsed = createTripSchema.safeParse({
-      tripDate: input.tripDate,
-      description: input.description,
-      legs: input.legs,
-    })
-    if (!parsed.success) {
-      return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
-    }
-
-    const { tripDate, description } = parsed.data
 
     // Validate chain (same as create)
     const { data: homeBase } = await db
@@ -1289,21 +1377,25 @@ export async function updateTrip(input: {
     // existing trip is left untouched and the user can retry.
     await cacheDistances(db, legs)
 
-    const { error: updateError } = await (db.rpc as any)('update_manual_mileage_trip_v01', {
-      p_trip_id: input.id,
+    const { error: updateError } = await db.rpc('update_manual_mileage_trip_v02', {
+      p_trip_id: id,
       p_trip_date: tripDate,
-      p_description: description?.trim() || null,
+      p_description: description,
       p_total_miles: totalMiles,
       p_legs: toMileageTripLegRpcPayload(legs),
+      p_driver_id: driverId,
+      p_expected_updated_at: expectedUpdatedAt,
     })
 
-    if (updateError) throw updateError
+    if (updateError) {
+      return { error: mapMileageSaveError(updateError) }
+    }
 
     await logAuditEvent({
       user_id: userId,
       operation_type: 'update',
       resource_type: 'mileage_trip',
-      resource_id: input.id,
+      resource_id: id,
       operation_status: 'success',
       old_values: {
         trip_date: existing.trip_date,
@@ -1312,6 +1404,7 @@ export async function updateTrip(input: {
       new_values: {
         trip_date: tripDate,
         total_miles: totalMiles,
+        driver_id: driverId,
       },
     })
 

@@ -29,6 +29,7 @@ import {
   type MileageTrip,
   type MileageDestination,
 } from '@/app/actions/mileage'
+import type { MileageDriver } from '@/app/actions/mileage-drivers'
 import {
   REDUCED_RATE,
   getStandardRate,
@@ -55,6 +56,7 @@ interface MileageClientProps {
   initialPageSize: number
   initialStats: TaxYearStats
   destinations: MileageDestination[]
+  drivers: MileageDriver[]
   canManage: boolean
 }
 
@@ -69,6 +71,7 @@ export function MileageClient({
   initialPageSize,
   initialStats,
   destinations,
+  drivers,
   canManage,
 }: MileageClientProps): React.JSX.Element {
   const searchParams = useSearchParams()
@@ -370,6 +373,7 @@ export function MileageClient({
               <TableRow>
                 <TableHead sortable sortDirection={tripSort.column === 'date' ? tripSort.direction : null} onSort={() => toggleTripSort('date')}>Date</TableHead>
                 <TableHead sortable sortDirection={tripSort.column === 'route' ? tripSort.direction : null} onSort={() => toggleTripSort('route')}>Route</TableHead>
+                <TableHead>Driver</TableHead>
                 <TableHead sortable sortDirection={tripSort.column === 'miles' ? tripSort.direction : null} onSort={() => toggleTripSort('miles')} align="right">Miles</TableHead>
                 <TableHead sortable sortDirection={tripSort.column === 'rate' ? tripSort.direction : null} onSort={() => toggleTripSort('rate')} align="right">Rate</TableHead>
                 <TableHead sortable sortDirection={tripSort.column === 'amount' ? tripSort.direction : null} onSort={() => toggleTripSort('amount')} align="right">Amount</TableHead>
@@ -397,6 +401,7 @@ export function MileageClient({
                         {trip.routeSummary}
                       </span>
                     </TableCell>
+                    <TableCell>{trip.driverName ?? 'Not recorded'}</TableCell>
                     <TableCell align="right" className="font-medium">
                       {trip.totalMiles.toFixed(1)}
                     </TableCell>
@@ -458,11 +463,7 @@ export function MileageClient({
         onClose={() => setShowTripForm(false)}
         onSuccess={handleTripFormSuccess}
         destinations={destinations}
-        cumulativeMilesBefore={
-          editingTrip
-            ? stats.taxYearTotalMiles - editingTrip.totalMiles
-            : stats.taxYearTotalMiles
-        }
+        drivers={drivers}
         editingTrip={editingTrip}
       />
 
