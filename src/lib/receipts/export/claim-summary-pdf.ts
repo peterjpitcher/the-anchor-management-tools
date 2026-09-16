@@ -3,7 +3,7 @@
  *
  * Generates a cover sheet PDF using pdfkit, streamed directly into the archiver.
  * Page 1: summary totals for mileage, expenses, and MGD.
- * Page 2+: mileage trip detail table.
+ * Mileage trip detail is in Mileage_Report_Q{q}_{y}.pdf, not here.
  * Next page(s): expenses transaction detail table.
  * Final page(s): MGD collection detail table.
  */
@@ -11,13 +11,8 @@
 import PDFDocument from 'pdfkit'
 import { PassThrough } from 'stream'
 import type { Archiver } from 'archiver'
-import {
-  STANDARD_RATE_LEGACY,
-  STANDARD_RATE_CURRENT,
-  REDUCED_RATE,
-} from '@/lib/mileage/hmrcRates'
-import type { MileageSummary } from './mileage-csv'
-import type { MileageTripRow } from './mileage-csv'
+import { formatMilesText, formatPoundsText } from '@/lib/mileage/report/format'
+import type { ClaimSummaryMileage } from './mileage-files'
 import type { ExpensesSummary } from './expenses-csv'
 import type { ExpenseRow } from './expenses-csv'
 import type { MgdSummary } from './mgd-csv'
@@ -27,12 +22,12 @@ import { quarterMonthRange } from './csv-helpers'
 interface ClaimSummaryInput {
   year: number
   quarter: number
-  mileage: MileageSummary
+  /** Null when the person exporting has no mileage access, so the pack holds no mileage files. */
+  mileage: ClaimSummaryMileage | null
   expenses: ExpensesSummary
   mgd: MgdSummary
   mgdFileName: string
   hasExpenseImages: boolean
-  mileageRows: MileageTripRow[]
   expenseRows: ExpenseRow[]
   mgdRows: MgdCollectionRow[]
 }
@@ -48,6 +43,47 @@ interface TableOptions {
   columns: TableColumn[]
   rows: string[][]
   totalRow?: string[]
+}
+
+interface SummaryRow {
+  label: string
+  value: string
+  bold?: boolean
+}
+
+/** Section 1 (spec 6.4): the claim per person, the VAT figure and where the trips are listed. */
+export function mileageSummaryRows(mileage: ClaimSummaryMileage | null): SummaryRow[] {
+  if (!mileage) return [{ label: 'Mileage', value: 'Not included (no mileage access)' }]
+  return [
+    { label: 'Total trips', value: String(mileage.trips) },
+    { label: 'Total miles', value: formatMilesText(mileage.milesTenths) },
+    ...mileage.byDriver.map((driver) => ({
+      label: `${driver.driverName}: ${driver.trips} ${driver.trips === 1 ? 'trip' : 'trips'}, ${formatMilesText(driver.milesTenths)} miles`,
+      value: formatPoundsText(driver.amountPence),
+    })),
+    {
+      label: mileage.vatComplete ? 'VAT reclaimable on fuel' : 'VAT reclaimable on fuel (incomplete, see the report)',
+      value: formatPoundsText(mileage.vatPence),
+    },
+    { label: 'Mileage claim total', value: formatPoundsText(mileage.amountPence), bold: true },
+    { label: 'Trip detail', value: mileage.reportFileName },
+  ]
+}
+
+/** "Claimed for this quarter": mileage per person, expenses and the total, added up in pence. */
+export function claimedForQuarterRows(
+  mileage: ClaimSummaryMileage | null,
+  expensesGrossTotal: number
+): { rows: SummaryRow[]; total: string } {
+  const expensesPence = Math.round(expensesGrossTotal * 100)
+  const rows: SummaryRow[] = [
+    ...(mileage?.byDriver ?? []).map((driver) => ({
+      label: `Mileage: ${driver.driverName}`,
+      value: formatPoundsText(driver.amountPence),
+    })),
+    { label: 'Expenses', value: formatPoundsText(expensesPence) },
+  ]
+  return { rows, total: `Total claimed: ${formatPoundsText((mileage?.amountPence ?? 0) + expensesPence)}` }
 }
 
 /**
@@ -113,33 +149,9 @@ export async function appendClaimSummaryPdf(
     // ---- Section 1: Mileage ----
     sectionHeading(doc, '1. Mileage')
 
-    addRow(doc, 'Total trips', String(mileage.totalTrips))
-    addRow(doc, 'Total miles', formatMiles(mileage.totalMiles))
-
-    if (mileage.totalMilesAtStandardLegacy > 0) {
-      addRow(
-        doc,
-        `Miles @ \u00A3${STANDARD_RATE_LEGACY.toFixed(2)}`,
-        formatMiles(mileage.totalMilesAtStandardLegacy)
-      )
+    for (const row of mileageSummaryRows(mileage)) {
+      addRow(doc, row.label, row.value, row.bold)
     }
-    if (mileage.totalMilesAtStandardCurrent > 0) {
-      addRow(
-        doc,
-        `Miles @ \u00A3${STANDARD_RATE_CURRENT.toFixed(2)}`,
-        formatMiles(mileage.totalMilesAtStandardCurrent)
-      )
-    }
-    if (mileage.totalMilesAtReduced > 0) {
-      addRow(
-        doc,
-        `Miles @ \u00A3${REDUCED_RATE.toFixed(2)}`,
-        formatMiles(mileage.totalMilesAtReduced)
-      )
-    }
-
-    addRow(doc, 'Tax year cumulative miles', formatMiles(mileage.taxYearTotalMiles))
-    addRow(doc, 'Mileage claim total', formatGbp(mileage.totalClaimAmount), true)
     doc.moveDown(1)
 
     // ---- Section 2: Expenses ----
@@ -180,24 +192,18 @@ export async function appendClaimSummaryPdf(
       .stroke()
       .moveDown(0.8)
 
-    doc.fontSize(14).font('Helvetica-Bold').text('Amount to Transfer to Owner', { align: 'left' })
+    doc.fontSize(14).font('Helvetica-Bold').text('Claimed for this quarter', { align: 'left' })
     doc.moveDown(0.5)
 
     doc.fontSize(11).font('Helvetica')
-    addRow(doc, 'Mileage', formatGbp(mileage.totalClaimAmount))
-    addRow(doc, 'Expenses', formatGbp(expenses.grossTotal))
+    const claimed = claimedForQuarterRows(mileage, expenses.grossTotal)
+    for (const row of claimed.rows) {
+      addRow(doc, row.label, row.value)
+    }
 
     doc.moveDown(0.3)
-
-    const grandTotal = mileage.totalClaimAmount + expenses.grossTotal
-    doc
-      .fontSize(14)
-      .font('Helvetica-Bold')
-      .text(`Grand Total: ${formatGbp(grandTotal)}`, { align: 'right' })
-
-    doc.moveDown(0.5)
-    doc.fontSize(11).font('Helvetica')
-      .text(`Payment reference: Mileage Expenses ${year} Q${quarter}`, { align: 'right' })
+    doc.fontSize(14).font('Helvetica-Bold').text(claimed.total, { align: 'right' })
+    doc.font('Helvetica')
 
     doc.moveDown(1.5)
 
@@ -211,7 +217,7 @@ export async function appendClaimSummaryPdf(
 
     const docs = [
       `Receipts_Q${quarter}_${year}.csv`,
-      `Mileage_Q${quarter}_${year}.csv`,
+      ...(mileage ? [mileage.csvFileName, mileage.reportFileName] : []),
       `Expenses_Q${quarter}_${year}.csv`,
       mgdFileName,
     ]
@@ -227,31 +233,6 @@ export async function appendClaimSummaryPdf(
     doc.fillColor('#000000')
 
     // ---- Detail pages ----
-
-    // Mileage detail
-    const mileageTableRows = input.mileageRows.map(trip => [
-      formatDateDdMmYyyy(trip.trip_date),
-      buildRouteFromLegs(trip),
-      Number(trip.total_miles).toFixed(1),
-      formatGbp(Number(trip.amount_due)),
-    ])
-
-    drawTable(doc, {
-      title: 'Mileage \u2014 Trip Detail',
-      columns: [
-        { header: 'Date', width: 70, align: 'left' },
-        { header: 'Route', width: 255, align: 'left' },
-        { header: 'Miles', width: 60, align: 'right' },
-        { header: 'Amount (\u00A3)', width: 110, align: 'right' },
-      ],
-      rows: mileageTableRows,
-      totalRow: [
-        'Total',
-        '',
-        formatMiles(mileage.totalMiles),
-        formatGbp(mileage.totalClaimAmount),
-      ],
-    })
 
     // Expenses detail
     const expenseTableRows = input.expenseRows.map(exp => [
@@ -443,26 +424,6 @@ function drawTable(doc: PDFKit.PDFDocument, options: TableOptions): void {
 }
 
 /**
- * Builds a route string from trip legs (e.g. "Anchor → Stop → Anchor").
- * Falls back to trip description or "Trip" if no legs are present.
- */
-function buildRouteFromLegs(trip: MileageTripRow): string {
-  const legs = trip.mileage_trip_legs ?? []
-  if (legs.length === 0) return trip.description ?? 'Trip'
-  const sorted = [...legs].sort((a, b) => a.leg_order - b.leg_order)
-  const stops: string[] = []
-  const first = sorted[0]?.from_destination
-  const firstName = Array.isArray(first) ? first[0]?.name : first?.name
-  if (firstName) stops.push(firstName)
-  for (const leg of sorted) {
-    const to = leg.to_destination
-    const toName = Array.isArray(to) ? to[0]?.name : to?.name
-    if (toName) stops.push(toName)
-  }
-  return stops.join(' \u2192 ') || (trip.description ?? 'Trip')
-}
-
-/**
  * Formats a date string (YYYY-MM-DD) as DD/MM/YYYY.
  */
 function formatDateDdMmYyyy(dateStr: string): string {
@@ -479,11 +440,4 @@ function formatGbp(amount: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
-}
-
-function formatMiles(miles: number): string {
-  return miles.toLocaleString('en-GB', {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })
 }

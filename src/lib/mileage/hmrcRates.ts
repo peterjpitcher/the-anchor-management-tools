@@ -26,10 +26,8 @@ export const AMAP_RATE_PERIODS: readonly AmapRatePeriod[] = [
 
 const LATEST_PERIOD = AMAP_RATE_PERIODS[AMAP_RATE_PERIODS.length - 1]
 
-/** First date priced at 55p. Kept for the export code that labels the two standard rates. */
+/** First date priced at 55p. */
 export const RATE_CHANGE_DATE = LATEST_PERIOD.validFrom
-export const STANDARD_RATE_LEGACY = AMAP_RATE_PERIODS[0].standardPence / 100
-export const STANDARD_RATE_CURRENT = LATEST_PERIOD.standardPence / 100
 export const REDUCED_RATE = LATEST_PERIOD.reducedPence / 100
 export const THRESHOLD_MILES = LATEST_PERIOD.thresholdMiles
 

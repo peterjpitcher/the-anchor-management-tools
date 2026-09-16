@@ -9,7 +9,7 @@ import { receiptQuarterExportSchema } from '@/lib/validation'
 import type { ReceiptTransaction, ReceiptFile } from '@/types/database'
 import { appendOjProjectInvoices, loadOjProjectInvoicesPaidInQuarter } from '@/lib/receipts/export/oj-project-invoices'
 import {
-  buildMileageCsv,
+  buildQuarterMileageFiles,
   buildExpensesCsv,
   buildMgdCsv,
   appendExpenseImages,
@@ -61,11 +61,12 @@ export async function GET(request: NextRequest) {
 
     const { startDate, endDate } = deriveQuarterRange(parsed.data.year, parsed.data.quarter)
 
-    // Determine if the user is a super_admin — enhanced bundle includes
-    // mileage, expenses, MGD CSVs, expense receipt images, and claim PDF.
-    const [isSuperAdmin, canViewOjProjects] = await Promise.all([
+    // Super admins also get the expenses and MGD CSVs, expense receipt images and the claim
+    // summary PDF. The mileage files follow mileage.view instead (spec 6.4).
+    const [isSuperAdmin, canViewOjProjects, canViewMileage] = await Promise.all([
       checkIsSuperAdmin(),
       checkUserPermission('oj_projects', 'view'),
+      checkUserPermission('mileage', 'view'),
     ])
 
     const supabase = createAdminClient()
@@ -81,6 +82,12 @@ export async function GET(request: NextRequest) {
       console.error('Failed to fetch receipt transactions for export:', error)
       return NextResponse.json({ error: 'Failed to load transactions for export.' }, { status: 500 })
     }
+
+    // Mileage files come from one dataset call, before any receipt downloads. A failure throws, so
+    // the whole pack fails rather than leaving mileage out (spec 6.4).
+    const mileageFiles = canViewMileage
+      ? await buildQuarterMileageFiles(supabase, parsed.data.year, parsed.data.quarter as 1 | 2 | 3 | 4)
+      : null
 
     const rows = (transactions ?? []) as ReceiptTransactionRow[]
     const summaryCsv = await buildSummaryCsv(rows, parsed.data.year, parsed.data.quarter)
@@ -152,22 +159,23 @@ export async function GET(request: NextRequest) {
       endDate,
     })
 
+    if (mileageFiles) {
+      archive.append(mileageFiles.csv.content, { name: mileageFiles.csv.name })
+      archive.append(mileageFiles.pdf.content, { name: mileageFiles.pdf.name })
+    }
+
     // --- Enhanced bundle for super_admin users ---
     if (isSuperAdmin) {
       const q = parsed.data.quarter as 1 | 2 | 3 | 4
       const y = parsed.data.year
 
-      // Generate mileage, expenses, and MGD CSVs in parallel
-      const [mileageResult, expensesResult, mgdResult] = await Promise.all([
-        buildMileageCsv(supabase, startDate, endDate, y, q),
+      // Generate expenses and MGD CSVs in parallel
+      const [expensesResult, mgdResult] = await Promise.all([
         buildExpensesCsv(supabase, startDate, endDate, y, q),
         buildMgdCsv(supabase, y, q),
       ])
 
       // Append CSVs to archive
-      archive.append(mileageResult.csv, {
-        name: `Mileage_Q${q}_${y}.csv`,
-      })
       archive.append(expensesResult.csv, {
         name: `Expenses_Q${q}_${y}.csv`,
       })
@@ -183,18 +191,17 @@ export async function GET(request: NextRequest) {
       await appendClaimSummaryPdf(archive, {
         year: y,
         quarter: q,
-        mileage: mileageResult.summary,
+        mileage: mileageFiles?.summary ?? null,
         expenses: expensesResult.summary,
         mgd: mgdResult.summary,
         mgdFileName: mgdResult.fileName,
         hasExpenseImages: expenseImageCount > 0,
-        mileageRows: mileageResult.rows,
         expenseRows: expensesResult.rows,
         mgdRows: mgdResult.rows,
       })
     }
 
-    if (!rows.length && !ojProjectInvoices.length && !isSuperAdmin) {
+    if (!rows.length && !ojProjectInvoices.length && !isSuperAdmin && !mileageFiles) {
       const placeholder = Buffer.from('No transactions found for this quarter.', 'utf-8')
       archive.append(placeholder, { name: 'README.txt' })
     }
