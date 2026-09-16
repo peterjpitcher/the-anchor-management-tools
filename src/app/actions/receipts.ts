@@ -1077,17 +1077,37 @@ export async function requeueUnclassifiedTransactions(): Promise<{ success: bool
 // RETRO-RUN actions (kept here because they compose multiple service calls)
 // ---------------------------------------------------------------------------
 
+type RetroStepSuccessWithCursor = RetroStepSuccess & { nextCursor: string | null }
+type RetroStepResultWithCursor = RetroStepSuccessWithCursor | Extract<RetroStepResult, { success: false }>
+
+/**
+ * A retro run changes the very set it reads: applying a rule moves matched rows out of
+ * `pending`. Paging that set by offset skipped one unprocessed row for every row the previous
+ * chunk moved, and stopped early because the row count shrank under the cursor. Ordering by
+ * `transaction_date` made it worse: the date is not unique, so tied rows could be returned in a
+ * different order on the next request and be skipped or repeated even for the `all` scope.
+ *
+ * Paging is therefore by keyset on `id`, the primary key: each step asks for the next ids above
+ * the last id it saw. That ordering is total, it is unaffected by anything the rule changes
+ * underneath it, and it always moves forward, so the run visits every matching row once and
+ * terminates.
+ *
+ * `offset` and `nextOffset` are kept only as a progress tally of rows visited so far. They no
+ * longer drive paging; `cursor` and `nextCursor` do.
+ */
 export async function runReceiptRuleRetroactivelyStep({
   ruleId,
   scope = 'pending',
+  cursor = null,
   offset = 0,
   chunkSize = RETRO_CHUNK_SIZE,
 }: {
   ruleId: string
   scope?: 'pending' | 'all'
+  cursor?: string | null
   offset?: number
   chunkSize?: number
-}): Promise<RetroStepResult> {
+}): Promise<RetroStepResultWithCursor> {
   const startedAt = Date.now()
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
@@ -1116,22 +1136,28 @@ export async function runReceiptRuleRetroactivelyStep({
   let idsQuery = supabase
     .from('receipt_transactions')
     .select('id', { count: 'exact', head: false })
-    .order('transaction_date', { ascending: false })
+    .order('id', { ascending: true })
 
   if (scope === 'pending') {
     idsQuery = idsQuery.eq('status', 'pending')
   }
 
-  const { data: idRows, count, error: idsError } = await idsQuery.range(offset, offset + chunkSize - 1)
+  if (cursor) {
+    idsQuery = idsQuery.gt('id', cursor)
+  }
+
+  const { data: idRows, count, error: idsError } = await idsQuery.range(0, chunkSize - 1)
 
   if (idsError) {
-    console.error('[retro-step] failed to load ids', { idsError, ruleId, offset, chunkSize })
+    console.error('[retro-step] failed to load ids', { idsError, ruleId, cursor, chunkSize })
     return { success: false, error: 'Failed to load transactions' }
   }
 
   const ids = (idRows ?? []).map((row) => row.id ?? null).filter((value): value is string => Boolean(value))
 
-  const total = typeof count === 'number' ? count : offset + ids.length
+  // `count` is the number of rows still at or after the cursor, so the expected size of the
+  // whole run is the rows already visited plus the rows left.
+  const total = offset + (typeof count === 'number' ? count : ids.length)
 
   if (!ids.length) {
     return {
@@ -1144,6 +1170,7 @@ export async function runReceiptRuleRetroactivelyStep({
       expenseIntended: 0,
       samples: [],
       nextOffset: offset,
+      nextCursor: cursor,
       total,
       done: true,
       durationMs: Date.now() - startedAt,
@@ -1158,14 +1185,18 @@ export async function runReceiptRuleRetroactivelyStep({
   })
 
   const nextOffset = offset + ids.length
-  const done = nextOffset >= total
+  // The ids come back in ascending order, so the last one is where the next step starts.
+  const nextCursor = ids[ids.length - 1]
+  // A short page is the end of the set. Asking again after a full page is one cheap empty read,
+  // which is the price of never deciding "done" from a count the run itself is shrinking.
+  const done = ids.length < chunkSize
   const durationMs = Date.now() - startedAt
 
   logger.debug('[retro-step] processed chunk', {
     metadata: {
       ruleId,
       scope,
-      offset,
+      cursor,
       processed: ids.length,
       matched: summary.matched,
       statusAutoUpdated: summary.statusAutoUpdated,
@@ -1173,6 +1204,7 @@ export async function runReceiptRuleRetroactivelyStep({
       vendorIntended: summary.vendorIntended,
       expenseIntended: summary.expenseIntended,
       nextOffset,
+      nextCursor,
       total,
       done,
       durationMs,
@@ -1189,6 +1221,7 @@ export async function runReceiptRuleRetroactivelyStep({
     expenseIntended: summary.expenseIntended,
     samples: summary.samples,
     nextOffset,
+    nextCursor,
     total,
     done,
     durationMs,
@@ -1238,7 +1271,8 @@ async function runReceiptRuleRetroactively(
   const start = Date.now()
   const timeBudgetMs = 12_000
 
-  let offset = 0
+  let cursor: string | null = null
+  let visited = 0
   let totals = {
     reviewed: 0,
     matched: 0,
@@ -1251,7 +1285,7 @@ async function runReceiptRuleRetroactively(
   let totalRecords = 0
 
   while (true) {
-    const step = await runReceiptRuleRetroactivelyStep({ ruleId, scope, offset })
+    const step = await runReceiptRuleRetroactivelyStep({ ruleId, scope, cursor, offset: visited })
 
     if (!step.success) {
       return { error: step.error }
@@ -1270,7 +1304,8 @@ async function runReceiptRuleRetroactively(
       samples = step.samples
     }
 
-    offset = step.nextOffset
+    cursor = step.nextCursor
+    visited = step.nextOffset
     totalRecords = step.total
 
     if (step.done) {
@@ -1308,7 +1343,7 @@ async function runReceiptRuleRetroactively(
       console.warn('[retro] time budget exceeded, returning partial result', {
         ruleId,
         scope,
-        offset,
+        cursor,
         totals,
         totalRecords,
       })
@@ -1338,7 +1373,8 @@ async function runReceiptRuleRetroactively(
         scope,
         done: false,
         partial: true,
-        nextOffset: offset,
+        nextOffset: visited,
+        nextCursor: cursor,
         total: totalRecords,
         warning: `Time limit reached after processing ${totals.reviewed} transactions. Re-run to continue.`,
       }

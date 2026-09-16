@@ -31,7 +31,9 @@ export function useRetroRuleRunner(): RetroRunnerReturn {
     setActiveRuleId(ruleId)
     startRetroTransition(async () => {
       try {
-        let offset = 0
+        // Keyset cursor, not an offset: applying a rule moves rows out of the pending set, so an
+        // offset would skip the rows that shifted up under it. Null asks for the first chunk.
+        let cursor: string | null = null
         let iterations = 0
         let lastSamples: Array<Record<string, unknown>> = []
         const totals = {
@@ -47,7 +49,8 @@ export function useRetroRuleRunner(): RetroRunnerReturn {
           const step = await runReceiptRuleRetroactivelyStep({
             ruleId,
             scope,
-            offset,
+            cursor,
+            offset: totals.reviewed,
             chunkSize: CHUNK_SIZE,
           })
 
@@ -67,7 +70,6 @@ export function useRetroRuleRunner(): RetroRunnerReturn {
             lastSamples = step.samples
           }
 
-          offset = step.nextOffset
           iterations += 1
 
           if (step.done) {
@@ -100,9 +102,13 @@ export function useRetroRuleRunner(): RetroRunnerReturn {
             return
           }
 
-          if (step.reviewed === 0) {
+          // The cursor must move on every unfinished step, or the next request would read the
+          // same chunk again. Stop rather than loop.
+          if (!step.nextCursor || step.nextCursor === cursor || step.reviewed === 0) {
             break
           }
+
+          cursor = step.nextCursor
         }
 
         toast.error('Stopped before completion. Please run again to continue.')
