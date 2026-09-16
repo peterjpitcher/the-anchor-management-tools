@@ -18,7 +18,8 @@ import { SortableHeader } from '@/ds'
 const PERIOD_TABS = [
   { key: 'monthly' as const, label: 'Monthly' },
   { key: 'quarterly' as const, label: 'Quarterly' },
-  { key: 'annually' as const, label: 'Annually' },
+  // The financial year runs 1 January to 31 December, which is how the yearly bars group.
+  { key: 'annually' as const, label: 'Financial year' },
   { key: 'all' as const, label: 'All Time' },
 ]
 
@@ -37,7 +38,7 @@ function getPeriodEnd(periodStart: string, granularity: MileageGranularity): str
     const lastDay = new Date(y, endMonth, 0).getDate()
     return `${y}-${String(endMonth).padStart(2, '0')}-${lastDay}`
   }
-  // monthly — last day of the month
+  // monthly: last day of the month
   const lastDay = new Date(y, m, 0).getDate()
   return `${y}-${String(m).padStart(2, '0')}-${lastDay}`
 }
@@ -53,7 +54,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
   const [isPending, startTransition] = useTransition()
 
   // ---------------------------------------------------------------------------
-  // Sorting — By Destination table
+  // Sorting: By Destination table
   // ---------------------------------------------------------------------------
 
   type DestinationSortKey = 'destination' | 'miles' | 'amount' | 'trips'

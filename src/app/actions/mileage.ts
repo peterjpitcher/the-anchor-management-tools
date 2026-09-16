@@ -6,7 +6,7 @@ import { checkUserPermission } from './rbac'
 import { logAuditEvent } from './audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { fetchAllRows } from '@/lib/supabase/paged-read'
+import { fetchAllRows, type PagedReadResult } from '@/lib/supabase/paged-read'
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 import {
   getTaxYearBounds,
@@ -131,6 +131,22 @@ interface DistanceRow {
 
 interface DistanceEntryRow extends DistanceRow {
   last_used_at: string
+}
+
+interface InsightTripRow {
+  id: string
+  trip_date: string
+  total_miles: number | string
+  amount_due: number | string
+}
+
+interface InsightLegRow {
+  id: string
+  trip_id: string
+  miles: number | string
+  to_destination_id: string
+  /** Embedded through the to_destination_id foreign key, so one object, not a list. */
+  mileage_destinations: { name: string; is_home_base: boolean } | null
 }
 
 // ---------------------------------------------------------------------------
@@ -1396,15 +1412,20 @@ export async function getMileageInsights(
     await requireMileagePermission('view')
     const supabase = createAdminClient()
 
-    // Fetch all trips
-    const { data: trips, error: tripError } = await supabase
-      .from('mileage_trips')
-      .select('id, trip_date, total_miles, amount_due')
-      .order('trip_date', { ascending: true })
+    // Every trip, read in pages: an unpaged select stops silently at 1,000 rows. `id`
+    // breaks ties between trips on the same date so pages neither overlap nor skip.
+    const trips = await fetchAllRows<InsightTripRow>(
+      (from, to) =>
+        supabase
+          .from('mileage_trips')
+          .select('id, trip_date, total_miles, amount_due')
+          .order('trip_date', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to),
+      { label: 'mileage trips' }
+    )
 
-    if (tripError) return { success: false, error: 'Failed to fetch mileage trips' }
-
-    if (!trips || trips.length === 0) {
+    if (trips.length === 0) {
       return {
         success: true,
         data: {
@@ -1459,14 +1480,21 @@ export async function getMileageInsights(
       (a, b) => a.periodStart.localeCompare(b.periodStart)
     )
 
-    // Fetch trip legs with destination names for breakdown
-    const tripIds = trips.map((t) => t.id as string)
-    const { data: legs, error: legError } = await supabase
-      .from('mileage_trip_legs')
-      .select('trip_id, miles, to_destination_id, mileage_destinations!mileage_trip_legs_to_destination_id_fkey(name, is_home_base)')
-      .in('trip_id', tripIds)
-
-    if (legError) return { success: false, error: 'Failed to fetch trip legs' }
+    // Every leg with its destination name, read in pages. The old `.in('trip_id', ids)`
+    // filter was redundant (every leg belongs to a trip) and its list grew with every trip.
+    const legs = await fetchAllRows<InsightLegRow>(
+      (from, to) =>
+        // The untyped client guesses the embed is a list; a to-one foreign key returns
+        // one object, so the rows are cast to their real shape.
+        supabase
+          .from('mileage_trip_legs')
+          .select(
+            'id, trip_id, miles, to_destination_id, mileage_destinations!mileage_trip_legs_to_destination_id_fkey(name, is_home_base)'
+          )
+          .order('id', { ascending: true })
+          .range(from, to) as unknown as PromiseLike<PagedReadResult<InsightLegRow>>,
+      { label: 'mileage trip legs' }
+    )
 
     // Build trip lookup for amount_due proportioning
     const tripLookup = new Map(trips.map((t) => [t.id as string, { totalMiles: Number(t.total_miles), amountDue: Number(t.amount_due) }]))
@@ -1474,8 +1502,8 @@ export async function getMileageInsights(
     // Group legs by destination (excluding home base)
     const destMap = new Map<string, { totalMiles: number; amountDue: number; tripIds: Set<string> }>()
 
-    for (const leg of legs ?? []) {
-      const dest = leg.mileage_destinations as unknown as { name: string; is_home_base: boolean } | null
+    for (const leg of legs) {
+      const dest = leg.mileage_destinations
       if (!dest || dest.is_home_base) continue
 
       const destName = dest.name
