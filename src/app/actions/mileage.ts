@@ -9,6 +9,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows, type PagedReadResult } from '@/lib/supabase/paged-read'
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 import { parseHeadlineStats, type MileageHeadlineStats } from '@/lib/mileage/stats'
+import { loadAllMileageTrips, loadMileageTripsPage, MileageListError, type MileageTripsPageResult } from '@/lib/mileage/list'
+import type { MileageListQuery } from '@/lib/mileage/list-query'
+import { formatLongDate } from '@/lib/mileage/periods'
+import { buildMileageCsv } from '@/lib/mileage/report/csv'
+import { MILEAGE_REPORT_MAX_TRIPS } from '@/lib/mileage/report/dataset'
+import type { ReportDriverSummary } from '@/lib/mileage/report/model'
 
 // ---------------------------------------------------------------------------
 // Zod Schemas
@@ -68,6 +74,22 @@ const updateTripSchema = z.object({
   legs: z.array(tripLegSchema).min(1, 'At least one leg is required'),
 })
 
+/**
+ * The trips page query as a server action receives it. Shape only: mileage_trips_page_v01 checks
+ * the values themselves (real dates, search length, page bounds) and refuses anything it rejects.
+ */
+const mileageListQuerySchema = z.object({
+  from: isoDateSchema.nullable(),
+  to: isoDateSchema.nullable(),
+  q: z.string(),
+  placeId: z.string().uuid().nullable(),
+  source: z.enum(['manual', 'oj_projects']).nullable(),
+  driverId: z.string().uuid().nullable(),
+  sort: z.enum(['date', 'miles', 'amount']),
+  dir: z.enum(['asc', 'desc']),
+  page: z.number().int().min(1),
+})
+
 // The v02 save functions raise these codes; anything else is logged and shown as a failed save.
 const MILEAGE_SAVE_ERRORS: Record<string, string> = {
   MILEAGE_DRIVER_REQUIRED: 'Choose who drove.',
@@ -94,6 +116,16 @@ function mapMileageSaveError(error: {
     hint: error.hint,
   })
   return 'Failed to save the trip. Nothing was changed. Try again.'
+}
+
+const TRIPS_LOAD_ERROR = "Couldn't load trips. Try again."
+const TRIP_LOAD_ERROR = "Couldn't load the trip. Try again."
+
+function logMileageReadError(
+  label: string,
+  error: { code?: string; message: string; details?: string | null; hint?: string | null }
+): void {
+  console.error(label, { code: error.code, message: error.message, details: error.details, hint: error.hint })
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +214,34 @@ interface DistanceRow {
 
 interface DistanceEntryRow extends DistanceRow {
   last_used_at: string
+}
+
+/** A mileage_trips row read with select('*, driver:mileage_drivers(display_name)'). */
+interface TripRow {
+  id: string
+  trip_date: string
+  description: string | null
+  total_miles: number | string
+  miles_at_standard_rate: number | string
+  miles_at_reduced_rate: number | string
+  amount_due: number | string
+  source: string
+  created_at: string
+  /** Absent or null until the historic backfill has set who drove. */
+  driver_id?: string | null
+  driver_basis?: string | null
+  updated_at: string
+  /** Embedded through the driver_id foreign key, so one object or null. */
+  driver?: { display_name: string } | null
+}
+
+interface TripLegRow {
+  id: string
+  trip_id: string
+  leg_order: number
+  from_destination_id: string
+  to_destination_id: string
+  miles: number | string
 }
 
 interface InsightTripRow {
@@ -520,73 +580,7 @@ export async function getTrips(filters?: {
       }
     }
 
-    // Fetch legs for all trips
-    const tripIds = trips.map((t) => t.id)
-    const { data: allLegs, error: legsError } = await db
-      .from('mileage_trip_legs')
-      .select('*')
-      .in('trip_id', tripIds)
-      .order('leg_order')
-
-    if (legsError) throw legsError
-
-    // Fetch destination names
-    const destIds = new Set<string>()
-    for (const leg of allLegs ?? []) {
-      destIds.add(leg.from_destination_id)
-      destIds.add(leg.to_destination_id)
-    }
-
-    const destNameMap = new Map<string, string>()
-    if (destIds.size > 0) {
-      const { data: dests, error: destsError } = await db
-        .from('mileage_destinations')
-        .select('id, name')
-        .in('id', Array.from(destIds))
-
-      if (destsError) throw destsError
-      for (const d of dests ?? []) {
-        destNameMap.set(d.id, d.name)
-      }
-    }
-
-    // Group legs by trip
-    const legsByTrip = new Map<string, MileageTripLeg[]>()
-    for (const leg of allLegs ?? []) {
-      const tripLegs = legsByTrip.get(leg.trip_id) ?? []
-      tripLegs.push({
-        id: leg.id,
-        legOrder: leg.leg_order,
-        fromDestinationId: leg.from_destination_id,
-        fromDestinationName: destNameMap.get(leg.from_destination_id) ?? 'Unknown',
-        toDestinationId: leg.to_destination_id,
-        toDestinationName: destNameMap.get(leg.to_destination_id) ?? 'Unknown',
-        miles: Number(leg.miles),
-      })
-      legsByTrip.set(leg.trip_id, tripLegs)
-    }
-
-    const result: MileageTrip[] = trips.map((t) => {
-      const legs = legsByTrip.get(t.id) ?? []
-      return {
-        id: t.id,
-        tripDate: t.trip_date,
-        description: t.description,
-        totalMiles: Number(t.total_miles),
-        milesAtStandardRate: Number(t.miles_at_standard_rate),
-        milesAtReducedRate: Number(t.miles_at_reduced_rate),
-        amountDue: Number(t.amount_due),
-        source: t.source as 'manual' | 'oj_projects',
-        createdAt: t.created_at,
-        legs,
-        routeSummary: buildRouteSummary(legs, t.description),
-        driverId: t.driver_id ?? null,
-        // Embedded through the driver_id foreign key, so one object or null.
-        driverName: (t.driver as { display_name: string } | null)?.display_name ?? null,
-        driverBasis: (t.driver_basis as MileageDriverBasis | null) ?? null,
-        updatedAt: t.updated_at,
-      }
-    })
+    const result = await hydrateTrips(db, trips)
 
     return {
       success: true,
@@ -596,6 +590,49 @@ export async function getTrips(filters?: {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to fetch trips'
     return { error: message }
+  }
+}
+
+/** One page of the trips table, with totals covering every matching trip (spec 7.1). */
+export async function listMileageTrips(
+  query: MileageListQuery
+): Promise<{ success?: boolean; error?: string; data?: MileageTripsPageResult }> {
+  try {
+    await requireMileagePermission('view')
+    const parsed = mileageListQuerySchema.safeParse(query)
+    if (!parsed.success) return { error: TRIPS_LOAD_ERROR }
+
+    const data = await loadMileageTripsPage(createAdminClient(), parsed.data)
+    return { success: true, data }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : TRIPS_LOAD_ERROR }
+  }
+}
+
+/** Loads one trip fresh for the edit form, with the exact updated_at the stale-edit check needs. */
+export async function getTripForEdit(id: string): Promise<{ success?: boolean; error?: string; data?: MileageTrip }> {
+  try {
+    await requireMileagePermission('manage')
+    if (!z.string().uuid().safeParse(id).success) return { error: 'Trip not found.' }
+
+    const db = createAdminClient()
+    const { data, error } = await db
+      .from('mileage_trips')
+      .select('*, driver:mileage_drivers(display_name)')
+      .eq('id', id)
+      .single()
+    if (error) {
+      // PGRST116 means no row has this id: the trip was deleted after the list loaded.
+      if (error.code === 'PGRST116') return { error: 'Trip not found.' }
+      logMileageReadError('[mileage] trip for edit failed', error)
+      return { error: TRIP_LOAD_ERROR }
+    }
+    if (!data) return { error: 'Trip not found.' }
+
+    const [trip] = await hydrateTrips(db, [data as TripRow])
+    return { success: true, data: trip }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : TRIP_LOAD_ERROR }
   }
 }
 
@@ -676,6 +713,83 @@ export async function exportMileageTripsCsv(filters?: {
   }
 }
 
+/**
+ * The CSV of every trip matching the table's filters, in the table's order (spec 6.3 and 7.1).
+ * Refuses more trips than one file supports rather than cutting the list short.
+ */
+export async function exportMileageListCsv(
+  query: MileageListQuery
+): Promise<{ data?: string; filename?: string; error?: string }> {
+  try {
+    await requireMileagePermission('view')
+    const parsed = mileageListQuerySchema.safeParse(query)
+    if (!parsed.success) return { error: TRIPS_LOAD_ERROR }
+    const filters = parsed.data
+    const db = createAdminClient()
+
+    const result = await loadAllMileageTrips(db, filters, MILEAGE_REPORT_MAX_TRIPS)
+
+    const datesText = describeDates(filters.from, filters.to)
+    const scope: string[] = []
+    if (datesText) scope.push(`Dates: ${datesText}`)
+    if (filters.q) scope.push(`Search: ${filters.q}`)
+    if (filters.placeId) {
+      const { data: place, error: placeError } = await db
+        .from('mileage_destinations')
+        .select('name')
+        .eq('id', filters.placeId)
+        .maybeSingle()
+      if (placeError) {
+        logMileageReadError('[mileage] export place name failed', placeError)
+        throw new MileageListError()
+      }
+      scope.push(`Place: ${place?.name ?? 'Unknown place'}`)
+    }
+    if (filters.source) scope.push(`Source: ${filters.source === 'oj_projects' ? 'OJ Projects' : 'Logged'}`)
+    if (filters.driverId) {
+      const { data: driver, error: driverError } = await db
+        .from('mileage_drivers')
+        .select('display_name')
+        .eq('id', filters.driverId)
+        .maybeSingle()
+      if (driverError) {
+        logMileageReadError('[mileage] export driver name failed', driverError)
+        throw new MileageListError()
+      }
+      scope.push(`Driver: ${driver?.display_name ?? 'Unknown driver'}`)
+    }
+
+    const byDriver = new Map<string, ReportDriverSummary>()
+    for (const trip of result.rows) {
+      const row = byDriver.get(trip.driverId) ?? {
+        driverId: trip.driverId,
+        driverName: trip.driverName,
+        trips: 0,
+        milesTenths: 0,
+        amountPence: 0,
+      }
+      row.trips += 1
+      row.milesTenths += trip.totalMilesTenths
+      row.amountPence += trip.amountPence
+      byDriver.set(trip.driverId, row)
+    }
+
+    const csv = buildMileageCsv({
+      periodLabel: datesText ?? 'All dates',
+      // An instant, printed in UK time by the CSV builder.
+      generatedAt: new Date().toISOString(),
+      scopeLines: scope.length > 0 ? scope : ['All trips'],
+      trips: result.rows,
+      totals: result.totals,
+      byDriver: [...byDriver.values()].sort((a, b) => a.driverName.localeCompare(b.driverName, 'en-GB')),
+    })
+
+    return { data: csv.toString('utf8'), filename: `Mileage_Trips_${getTodayIsoDate()}.csv` }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Failed to export trips' }
+  }
+}
+
 export async function getRatePreviewContext(input: {
   tripDate: string
   driverId: string | null
@@ -731,6 +845,81 @@ function buildRouteSummary(legs: MileageTripLeg[], description?: string | null):
     stops.push(leg.toDestinationName)
   }
   return stops.join(' \u2192 ')
+}
+
+/** Turns trip rows into MileageTrip objects with their legs and place names. */
+async function hydrateTrips(
+  db: ReturnType<typeof createAdminClient>,
+  trips: TripRow[]
+): Promise<MileageTrip[]> {
+  if (trips.length === 0) return []
+
+  const { data: legRows, error: legsError } = await db
+    .from('mileage_trip_legs')
+    .select('*')
+    .in('trip_id', trips.map((trip) => trip.id))
+    .order('leg_order')
+  if (legsError) throw legsError
+  const allLegs: TripLegRow[] = legRows ?? []
+
+  const destinationIds = new Set<string>()
+  for (const leg of allLegs) {
+    destinationIds.add(leg.from_destination_id)
+    destinationIds.add(leg.to_destination_id)
+  }
+
+  const destinationNames = new Map<string, string>()
+  if (destinationIds.size > 0) {
+    const { data: destinations, error: destinationsError } = await db
+      .from('mileage_destinations')
+      .select('id, name')
+      .in('id', Array.from(destinationIds))
+    if (destinationsError) throw destinationsError
+    for (const destination of destinations ?? []) destinationNames.set(destination.id, destination.name)
+  }
+
+  const legsByTrip = new Map<string, MileageTripLeg[]>()
+  for (const leg of allLegs) {
+    const tripLegs = legsByTrip.get(leg.trip_id) ?? []
+    tripLegs.push({
+      id: leg.id,
+      legOrder: leg.leg_order,
+      fromDestinationId: leg.from_destination_id,
+      fromDestinationName: destinationNames.get(leg.from_destination_id) ?? 'Unknown',
+      toDestinationId: leg.to_destination_id,
+      toDestinationName: destinationNames.get(leg.to_destination_id) ?? 'Unknown',
+      miles: Number(leg.miles),
+    })
+    legsByTrip.set(leg.trip_id, tripLegs)
+  }
+
+  return trips.map((t) => {
+    const legs = legsByTrip.get(t.id) ?? []
+    return {
+      id: t.id,
+      tripDate: t.trip_date,
+      description: t.description,
+      totalMiles: Number(t.total_miles),
+      milesAtStandardRate: Number(t.miles_at_standard_rate),
+      milesAtReducedRate: Number(t.miles_at_reduced_rate),
+      amountDue: Number(t.amount_due),
+      source: t.source as 'manual' | 'oj_projects',
+      createdAt: t.created_at,
+      legs,
+      routeSummary: buildRouteSummary(legs, t.description),
+      driverId: t.driver_id ?? null,
+      driverName: t.driver?.display_name ?? null,
+      driverBasis: (t.driver_basis as MileageDriverBasis | null | undefined) ?? null,
+      updatedAt: t.updated_at,
+    }
+  })
+}
+
+function describeDates(from: string | null, to: string | null): string | null {
+  if (from && to) return `${formatLongDate(from)} to ${formatLongDate(to)}`
+  if (from) return `From ${formatLongDate(from)}`
+  if (to) return `Up to ${formatLongDate(to)}`
+  return null
 }
 
 /**
