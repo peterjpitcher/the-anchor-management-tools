@@ -426,7 +426,9 @@ describe('CashingUpService.getWeeklyReportData', () => {
 });
 
 describe('CashingUpService.getInsightsData', () => {
-  function createInsightsQuery(response: { data: unknown[]; error: null }, terminalMethod: 'lte' | 'order') {
+  // The two breakdown reads page past the 1,000-row cap, so they end at
+  // .order().range() and serve the requested slice; the rest end at their last filter.
+  function createInsightsQuery(response: { data: unknown[]; error: null }, terminalMethod: 'lte' | 'order' | 'range') {
     const chain: Record<string, ReturnType<typeof vi.fn>> = {};
     chain.select = vi.fn(() => chain);
     chain.eq = vi.fn(() => chain);
@@ -434,6 +436,10 @@ describe('CashingUpService.getInsightsData', () => {
     chain.gte = vi.fn(() => chain);
     chain.lte = vi.fn(() => (terminalMethod === 'lte' ? response : chain));
     chain.order = vi.fn(() => (terminalMethod === 'order' ? response : chain));
+    chain.range = vi.fn((from: number, to: number) => ({
+      data: response.data.slice(from, to + 1),
+      error: response.error,
+    }));
     return chain;
   }
 
@@ -449,7 +455,7 @@ describe('CashingUpService.getInsightsData', () => {
       cashup_payment_breakdowns: createInsightsQuery({
         data: [{ payment_type_label: 'Card', counted_amount: 300 }],
         error: null,
-      }, 'lte'),
+      }, 'range'),
       cashup_sales_breakdowns: createInsightsQuery({
         data: [
           { sales_category: 'drinks_sales', amount: 150, cashup_sessions: { session_date: '2026-01-02' } },
@@ -457,7 +463,7 @@ describe('CashingUpService.getInsightsData', () => {
           { sales_category: 'other_sales', amount: 50, cashup_sessions: { session_date: '2026-01-02' } },
         ],
         error: null,
-      }, 'lte'),
+      }, 'range'),
       pnl_sales_imports: createInsightsQuery({ data: [], error: null }, 'lte'),
     };
     const supabase = {
@@ -496,7 +502,7 @@ describe('CashingUpService.getInsightsData', () => {
       cashup_payment_breakdowns: createInsightsQuery({
         data: [{ payment_type_label: 'Card', counted_amount: 300 }],
         error: null,
-      }, 'lte'),
+      }, 'range'),
       cashup_sales_breakdowns: createInsightsQuery({
         data: [
           { sales_category: 'drinks_sales', amount: 999 },
@@ -504,7 +510,7 @@ describe('CashingUpService.getInsightsData', () => {
           { sales_category: 'other_sales', amount: 999 },
         ],
         error: null,
-      }, 'lte'),
+      }, 'range'),
       pnl_sales_imports: createInsightsQuery({
         data: [
           { sale_date: '2026-01-02', drinks_sales: 80, food_sales: 20, other_sales: 10 },
@@ -543,7 +549,7 @@ describe('CashingUpService.getInsightsData', () => {
         error: null,
       }, 'lte'),
       cashup_targets: createInsightsQuery({ data: [], error: null }, 'order'),
-      cashup_payment_breakdowns: createInsightsQuery({ data: [], error: null }, 'lte'),
+      cashup_payment_breakdowns: createInsightsQuery({ data: [], error: null }, 'range'),
       cashup_sales_breakdowns: createInsightsQuery({
         data: [
           { sales_category: 'drinks_sales', amount: 999, cashup_sessions: { session_date: '2026-05-25' } },
@@ -552,7 +558,7 @@ describe('CashingUpService.getInsightsData', () => {
           { sales_category: 'food_sales', amount: 40, cashup_sessions: { session_date: '2026-06-01' } },
         ],
         error: null,
-      }, 'lte'),
+      }, 'range'),
       pnl_sales_imports: createInsightsQuery({
         data: [
           { sale_date: '2026-05-25', drinks_sales: 80, food_sales: 20, other_sales: 10 },
