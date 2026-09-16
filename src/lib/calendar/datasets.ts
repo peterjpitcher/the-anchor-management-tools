@@ -3,6 +3,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { displayName } from '@/lib/employees/display-name'
 import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 import {
   buildPrivateBookingBalanceDueSummaries,
   type DashboardPrivateBookingBalanceDueSummary,
@@ -388,24 +389,42 @@ export async function readCoversByDate(
   return ok([...byDate.entries()].map(([date, covers]) => ({ date, covers })))
 }
 
+/** One rota shift as the calendar reads it. */
+type CalendarShiftRow = {
+  employee_id: string | null
+  shift_date: string | null
+  start_time: string | null
+}
+
 export async function readStaffByDate(
   client: SupabaseClient,
   startIso: string,
   endIso: string,
 ): Promise<CalendarDataset<{ date: string; staff: string[] }>> {
-  const { data: shiftRows, error } = await client
-    .from('rota_shifts')
-    .select('employee_id, shift_date, start_time')
-    .gte('shift_date', startIso)
-    .lte('shift_date', endIso)
-    .range(0, 4999)
-
-  if (error) {
+  // Paged. Asking for 5,000 rows was misleading: Supabase returns at most 1,000 per
+  // request and says nothing when it cuts a result short, so the window (90 days back,
+  // 180 ahead) would have started losing shifts the moment it passed 1,000 rows, with
+  // December staffing the obvious trigger. 437 rows today out of 1,705 in the table.
+  // `id` is the primary key, so ordering by it keeps the page boundaries stable.
+  let shiftRows: CalendarShiftRow[]
+  try {
+    shiftRows = await fetchAllRows<CalendarShiftRow>(
+      (from, to) =>
+        client
+          .from('rota_shifts')
+          .select('employee_id, shift_date, start_time')
+          .gte('shift_date', startIso)
+          .lte('shift_date', endIso)
+          .order('id')
+          .range(from, to),
+      { label: 'calendar rota shifts' },
+    )
+  } catch (error) {
     console.error('Failed to load rota shifts for the calendar:', error)
     return failed('Who is working could not be loaded.')
   }
 
-  const employeeIds = [...new Set((shiftRows ?? []).map((s) => String(s.employee_id)))]
+  const employeeIds = [...new Set(shiftRows.map((s) => String(s.employee_id)))]
   if (employeeIds.length === 0) return ok([])
 
   const { data: employees, error: employeeError } = await client
@@ -437,7 +456,7 @@ export async function readStaffByDate(
   }
 
   const earliestByDate = new Map<string, Map<string, string | null>>()
-  for (const shift of shiftRows ?? []) {
+  for (const shift of shiftRows) {
     const employeeId = String(shift.employee_id)
     const date = shift.shift_date ? String(shift.shift_date) : null
     if (!date || !nameById.has(employeeId)) continue
