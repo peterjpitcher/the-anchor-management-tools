@@ -11,11 +11,19 @@ import { Alert, Button, Input, Modal, Select } from '@/ds'
 import type { MileageDriver } from '@/app/actions/mileage-drivers'
 import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
 import { financialYearOptions, quarterOptions, taxYearOptions } from '@/lib/mileage/period-options'
-import { customPeriod, daysBetween, lastCompletedQuarter, MAX_REPORT_DAYS, type ReportPeriod } from '@/lib/mileage/periods'
+import {
+  customPeriod,
+  daysBetween,
+  describePeriod,
+  lastCompletedQuarter,
+  MAX_REPORT_DAYS,
+  type ReportPeriod,
+} from '@/lib/mileage/periods'
 import { LOG_START_DATE } from '@/lib/mileage/report/model'
 
 type ListPeriodType = 'quarter' | 'financial_year' | 'tax_year'
 type PeriodType = ListPeriodType | 'custom'
+type PeriodOption = ReturnType<typeof quarterOptions>[number]
 
 const PERIOD_TYPE_OPTIONS: Array<{ value: PeriodType; label: string }> = [
   { value: 'quarter', label: 'Quarter' },
@@ -32,9 +40,52 @@ interface MileageReportDialogProps {
   drivers: MileageDriver[]
   /** Today's London date as YYYY-MM-DD. */
   today: string
+  /** The trips table's dates. A listed quarter, financial year or tax year opens on that period; other dates open as custom. */
+  initialRange?: { from: string | null; to: string | null }
+  /** The trips table's driver filter. A driver not in the list opens on all drivers. */
+  initialDriverId?: string | null
+  /** Table filters the PDF does not apply, named in the dialog (spec 6.4). */
+  ignoredFilters?: string[]
 }
 
-export function MileageReportDialog({ open, onClose, drivers, today }: MileageReportDialogProps): React.JSX.Element {
+interface InitialChoice {
+  periodType: PeriodType
+  listValue: string | null
+  customFrom: string
+  customTo: string
+}
+
+function initialChoice(
+  today: string,
+  lists: Record<ListPeriodType, PeriodOption[]>,
+  range?: { from: string | null; to: string | null }
+): InitialChoice {
+  if (range?.from && range.to) {
+    const period = describePeriod(range.from, range.to)
+    if (period.kind !== 'custom' && lists[period.kind].some((option) => option.value === period.fileLabel)) {
+      return { periodType: period.kind, listValue: period.fileLabel, customFrom: '', customTo: '' }
+    }
+  }
+  // Dates that match no listed period, or only one of the two dates, open as custom dates to finish or check.
+  if (range?.from || range?.to) {
+    return { periodType: 'custom', listValue: null, customFrom: range.from ?? '', customTo: range.to ?? '' }
+  }
+  return { periodType: 'quarter', listValue: lastCompletedQuarter(today).fileLabel, customFrom: '', customTo: '' }
+}
+
+function joinWords(words: string[]): string {
+  return words.length <= 1 ? words.join('') : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
+}
+
+export function MileageReportDialog({
+  open,
+  onClose,
+  drivers,
+  today,
+  initialRange,
+  initialDriverId,
+  ignoredFilters = [],
+}: MileageReportDialogProps): React.JSX.Element {
   const lists = useMemo(
     () => ({
       quarter: quarterOptions(LOG_START_DATE, today),
@@ -43,15 +94,20 @@ export function MileageReportDialog({ open, onClose, drivers, today }: MileageRe
     }),
     [today]
   )
-  const [periodType, setPeriodType] = useState<PeriodType>('quarter')
+  // The trips page mounts the dialog only while it is open, so each opening starts from the table.
+  const [initial] = useState(() => initialChoice(today, lists, initialRange))
+  const [periodType, setPeriodType] = useState<PeriodType>(initial.periodType)
   const [selected, setSelected] = useState<Record<ListPeriodType, string>>(() => ({
-    quarter: lastCompletedQuarter(today).fileLabel,
-    financial_year: lists.financial_year[0]?.value ?? '',
-    tax_year: lists.tax_year[0]?.value ?? '',
+    quarter: initial.periodType === 'quarter' && initial.listValue ? initial.listValue : lastCompletedQuarter(today).fileLabel,
+    financial_year:
+      initial.periodType === 'financial_year' && initial.listValue ? initial.listValue : (lists.financial_year[0]?.value ?? ''),
+    tax_year: initial.periodType === 'tax_year' && initial.listValue ? initial.listValue : (lists.tax_year[0]?.value ?? ''),
   }))
-  const [customFrom, setCustomFrom] = useState('')
-  const [customTo, setCustomTo] = useState('')
-  const [driver, setDriver] = useState('all')
+  const [customFrom, setCustomFrom] = useState(initial.customFrom)
+  const [customTo, setCustomTo] = useState(initial.customTo)
+  const [driver, setDriver] = useState(() =>
+    initialDriverId && drivers.some((entry) => entry.id === initialDriverId) ? initialDriverId : 'all'
+  )
   const [dateError, setDateError] = useState<string | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
@@ -70,7 +126,8 @@ export function MileageReportDialog({ open, onClose, drivers, today }: MileageRe
   }
 
   // While a report builds the dialog stays open, so a failure is always seen rather than landing on a
-  // closed dialog. Closing clears old messages so the next visit starts clean; the choices are kept.
+  // closed dialog. Closing clears old messages so the next visit starts clean. Choices survive an error
+  // within one opening; the trips page remounts the dialog, so the next opening starts from the table.
   function handleClose(): void {
     if (isDownloading) return
     setDateError(null)
@@ -157,6 +214,13 @@ export function MileageReportDialog({ open, onClose, drivers, today }: MileageRe
         <p className="text-sm text-text-muted">
           The report lists every trip in these dates, OJ Projects trips included. Downloading it does not record a payment.
         </p>
+        {ignoredFilters.length > 0 && (
+          <p className="rounded-md bg-surface-2 p-3 text-sm text-text">
+            {`The PDF uses the dates and driver only. It ignores the ${joinWords(ignoredFilters)} ${
+              ignoredFilters.length === 1 ? 'filter' : 'filters'
+            } on the trips table, so it lists every trip in these dates.`}
+          </p>
+        )}
         {downloadError && (
           <Alert tone="danger" title="Nothing was downloaded">
             {downloadError}

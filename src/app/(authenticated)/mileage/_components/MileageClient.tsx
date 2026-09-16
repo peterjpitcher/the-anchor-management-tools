@@ -23,6 +23,7 @@ import { downloadBlob } from '@/lib/download-file'
 import type { MileageTripsPageResult } from '@/lib/mileage/list'
 import {
   hasActiveFilters,
+  ignoredReportFilters,
   MILEAGE_LIST_PAGE_SIZE,
   nextSort,
   serialiseMileageListQuery,
@@ -268,7 +269,18 @@ export function MileageClient({
         />
       )}
 
-      <MileageReportDialog open={showReportDialog} onClose={() => setShowReportDialog(false)} drivers={drivers} today={today} />
+      {/* Mounted only while open, so every opening starts from the table's current dates and driver. */}
+      {showReportDialog && (
+        <MileageReportDialog
+          open
+          onClose={() => setShowReportDialog(false)}
+          drivers={drivers}
+          today={today}
+          initialRange={{ from: query.from, to: query.to }}
+          initialDriverId={query.driverId}
+          ignoredFilters={ignoredReportFilters(query)}
+        />
+      )}
     </div>
   )
 }
