@@ -124,7 +124,7 @@ interface MileageTripLeg {
   miles: number
 }
 
-export type MileageDriverBasis = 'entered' | 'owner_statement' | 'oj_projects'
+type MileageDriverBasis = 'entered' | 'owner_statement' | 'oj_projects'
 
 export interface MileageTrip {
   id: string
