@@ -20683,7 +20683,7 @@ export type Database = {
         Returns: undefined
       }
       mileage_rate_preview_v01: {
-        Args: { p_driver_id: string; p_trip_date: string; p_trip_id: string | null }
+        Args: { p_driver_id: string; p_trip_date: string; p_trip_id?: string }
         Returns: number
       }
       move_table_booking_assignments_v05: {
