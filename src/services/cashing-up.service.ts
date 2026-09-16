@@ -185,6 +185,8 @@ export class CashingUpService {
     // rather than silently showing a mix built from an arbitrary slice of it. They keep
     // throwing on failure, which is the contract the caller already relies on. The
     // pnl_sales_imports read stays as it is: one row per date, at most 366.
+    // Voided cash-ups are left out of both mixes, as they are from the takings read above,
+    // so the cards on this page describe the same sessions.
     const [breakdowns, salesBreakdowns, importedSalesRes] = await Promise.all([
       fetchAllRows<InsightsPaymentBreakdownRow>(
         (from, to) =>
@@ -192,6 +194,7 @@ export class CashingUpService {
             .from('cashup_payment_breakdowns')
             .select('payment_type_label, counted_amount, cashup_sessions!inner(site_id, session_date)')
             .eq('cashup_sessions.site_id', siteId)
+            .is('cashup_sessions.voided_at', null)
             .gte('cashup_sessions.session_date', startDateStr)
             .lte('cashup_sessions.session_date', endDateStr)
             .order('id')
@@ -204,6 +207,7 @@ export class CashingUpService {
             .from('cashup_sales_breakdowns')
             .select('sales_category, amount, cashup_sessions!inner(site_id, session_date)')
             .eq('cashup_sessions.site_id', siteId)
+            .is('cashup_sessions.voided_at', null)
             .gte('cashup_sessions.session_date', startDateStr)
             .lte('cashup_sessions.session_date', endDateStr)
             .order('id')
