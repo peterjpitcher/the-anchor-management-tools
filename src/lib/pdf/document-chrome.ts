@@ -45,6 +45,11 @@ export interface DocumentHeadOptions {
   numberClass: string
   /** This document's own body CSS, emitted verbatim between the shared rules. */
   bodyCss: string
+  /**
+   * Trusted markup placed straight after the charset meta, for example a content security policy.
+   * Invoices, quotes and statements leave it out, so their output stays byte-for-byte unchanged.
+   */
+  headExtraHtml?: string
 }
 
 /** Everything from the doctype to the closing `</head>`, stylesheet included. */
@@ -52,7 +57,7 @@ export function renderDocumentHead(options: DocumentHeadOptions): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8">${options.headExtraHtml ?? ''}
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${options.titleHtml}</title>
   <style>

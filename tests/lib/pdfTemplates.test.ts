@@ -18,6 +18,11 @@ import { generateCompactQuoteHTML } from '@/lib/quote-template-compact'
 import { generateStatementHTML } from '@/lib/oj-statement'
 import { LOGO_MAX_WIDTH_PX } from '@/lib/pdf/document-chrome'
 import { buildStatementAgeing } from '@/lib/oj-projects/statement-ageing'
+import { renderMileageReportHtml } from '@/lib/mileage/report/template'
+import { buildMileageReport } from '@/lib/mileage/report/model'
+import { parseMileageReportDataset } from '@/lib/mileage/report/dataset'
+import { quarterPeriod } from '@/lib/mileage/periods'
+import { buildDatasetJson } from '../fixtures/mileage/reportDataset'
 
 const VENDOR = {
   id: 'vendor-1',
@@ -138,6 +143,12 @@ const DOCUMENTS = [
   { name: 'invoice', html: generateCompactInvoiceHTML({ invoice: INVOICE }) },
   { name: 'quote', html: generateCompactQuoteHTML({ quote: QUOTE }) },
   { name: 'statement', html: generateStatementHTML(STATEMENT) },
+  {
+    name: 'mileage report',
+    html: renderMileageReportHtml(
+      buildMileageReport(parseMileageReportDataset(buildDatasetJson()), { period: quarterPeriod(2026, 2), driverId: null })
+    ),
+  },
 ]
 
 describe('the registered document templates agree on shared styling', () => {
