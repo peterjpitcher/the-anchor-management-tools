@@ -103,3 +103,74 @@ describe('MileageReportDialog', () => {
     expect(await screen.findByRole('button', { name: /Building report/ })).toBeDisabled()
   })
 })
+
+describe('MileageReportDialog opened from the trips table', () => {
+  it('opens on the table period and driver', () => {
+    render(
+      <MileageReportDialog
+        open
+        onClose={vi.fn()}
+        drivers={DRIVERS}
+        today="2026-09-15"
+        initialRange={{ from: '2025-04-06', to: '2026-04-05' }}
+        initialDriverId={DRIVERS[1].id}
+      />
+    )
+    expect(screen.getByLabelText('Period type')).toHaveValue('tax_year')
+    expect(screen.getByLabelText('Period')).toHaveValue('TY2025-26')
+    expect(screen.getByLabelText('Driver')).toHaveValue(DRIVERS[1].id)
+  })
+
+  it('opens on a quarter and keeps the other lists on their own defaults', () => {
+    render(
+      <MileageReportDialog open onClose={vi.fn()} drivers={DRIVERS} today="2026-09-15" initialRange={{ from: '2025-10-01', to: '2025-12-31' }} />
+    )
+    expect(screen.getByLabelText('Period type')).toHaveValue('quarter')
+    expect(screen.getByLabelText('Period')).toHaveValue('2025-Q4')
+    fireEvent.change(screen.getByLabelText('Period type'), { target: { value: 'financial_year' } })
+    expect(screen.getByLabelText('Period')).toHaveValue('FY2026')
+  })
+
+  it('opens custom dates when the table dates match no period', () => {
+    render(<MileageReportDialog open onClose={vi.fn()} drivers={DRIVERS} today="2026-09-15" initialRange={{ from: '2026-04-03', to: '2026-04-20' }} />)
+    expect(screen.getByLabelText('Period type')).toHaveValue('custom')
+    expect(screen.getByLabelText('From')).toHaveValue('2026-04-03')
+    expect(screen.getByLabelText('To')).toHaveValue('2026-04-20')
+  })
+
+  it('opens custom dates when the table has only one of the two dates', () => {
+    render(<MileageReportDialog open onClose={vi.fn()} drivers={DRIVERS} today="2026-09-15" initialRange={{ from: '2026-04-03', to: null }} />)
+    expect(screen.getByLabelText('Period type')).toHaveValue('custom')
+    expect(screen.getByLabelText('From')).toHaveValue('2026-04-03')
+    expect(screen.getByLabelText('To')).toHaveValue('')
+  })
+
+  it('names the table filters the PDF ignores', () => {
+    render(<MileageReportDialog open onClose={vi.fn()} drivers={DRIVERS} today="2026-09-15" ignoredFilters={['search', 'place', 'source']} />)
+    expect(
+      screen.getByText(
+        'The PDF uses the dates and driver only. It ignores the search, place and source filters on the trips table, so it lists every trip in these dates.'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing about ignored filters when there are none', () => {
+    render(<MileageReportDialog open onClose={vi.fn()} drivers={DRIVERS} today="2026-09-15" ignoredFilters={[]} />)
+    expect(screen.queryByText(/The PDF uses the dates and driver only/)).not.toBeInTheDocument()
+  })
+
+  it('falls back to the last completed quarter and all drivers', () => {
+    render(
+      <MileageReportDialog
+        open
+        onClose={vi.fn()}
+        drivers={DRIVERS}
+        today="2026-09-15"
+        initialRange={{ from: null, to: null }}
+        initialDriverId="00000000-0000-4000-8000-00000000ffff"
+      />
+    )
+    expect(screen.getByLabelText('Period')).toHaveValue('2026-Q2')
+    expect(screen.getByLabelText('Driver')).toHaveValue('all')
+  })
+})

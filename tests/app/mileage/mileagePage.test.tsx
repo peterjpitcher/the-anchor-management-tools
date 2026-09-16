@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -160,5 +160,20 @@ describe('MileagePage', () => {
     mocks.listMileageTrips.mockResolvedValue(pageResult([], 0))
     render(await page())
     expect(screen.getByText('No trips recorded')).toBeInTheDocument()
+  })
+
+  it('opens the report dialog on the table dates and driver, and names the ignored filters', async () => {
+    const driverB = { id: '00000000-0000-4000-8000-0000000000b1', displayName: 'Driver B', drivesOjProjects: false }
+    mocks.getMileageDrivers.mockResolvedValue({ success: true, data: [driverB] })
+    render(await page({ from: '2026-04-01', to: '2026-06-30', q: 'shop', driver: driverB.id }))
+
+    expect(screen.queryByLabelText('Period type')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Download report' }))
+
+    expect(await screen.findByLabelText('Period type')).toHaveValue('quarter')
+    // The filter bar and the dialog each have Period and Driver selects; the dialog renders last.
+    expect(screen.getAllByLabelText('Period').at(-1)).toHaveValue('2026-Q2')
+    expect(screen.getAllByLabelText('Driver').at(-1)).toHaveValue(driverB.id)
+    expect(screen.getByText(/It ignores the search filter on the trips table/)).toBeInTheDocument()
   })
 })
