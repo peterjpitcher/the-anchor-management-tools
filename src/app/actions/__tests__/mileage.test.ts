@@ -75,7 +75,9 @@ vi.mock('@/lib/audit-helpers', () => ({
   }),
 }))
 
-vi.mock('@/lib/dateUtils', () => ({
+// The real helpers stay available: the trip row parser checks dates with isValidIsoDate.
+vi.mock('@/lib/dateUtils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/dateUtils')>()),
   getTodayIsoDate: vi.fn(() => '2026-05-05'),
   formatDateInLondon: vi.fn((value: string) => value),
 }))
@@ -93,14 +95,18 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import {
   createTrip,
   deleteTrip,
+  exportMileageListCsv,
   getDestinations,
   getDistanceEntries,
   getMileageInsights,
   getRatePreviewContext,
+  getTripForEdit,
   getTrips,
   getTripStats,
+  listMileageTrips,
   updateTrip,
 } from '../mileage'
+import { buildDatasetJson } from '../../../../tests/fixtures/mileage/reportDataset'
 
 const HOME_ID = '00000000-0000-4000-8000-000000000001'
 const DEST_ID = '00000000-0000-4000-8000-000000000002'
@@ -774,5 +780,253 @@ describe('getMileageInsights', () => {
     expect(result.success).toBe(false)
     expect(result.data).toBeUndefined()
     expect(result.error).toContain('statement timeout')
+  })
+})
+
+const TRIP_ID = '00000000-0000-4000-8000-000000000101'
+
+/** A query chain that resolves to the given rows, whatever filters are applied. */
+function createResolvedChain(data: unknown) {
+  const chain: Record<string, unknown> = {}
+  for (const method of ['select', 'in', 'eq', 'order']) chain[method] = vi.fn(() => chain)
+  chain.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
+    Promise.resolve({ data, error: null }).then(resolve, reject)
+  return chain
+}
+
+function createMaybeSingleBuilder(data: unknown, error: unknown = null) {
+  const maybeSingle = vi.fn().mockResolvedValue({ data, error })
+  const eq = vi.fn(() => ({ maybeSingle }))
+  const select = vi.fn(() => ({ eq }))
+  return { select, eq, maybeSingle }
+}
+
+const NO_FILTERS = { from: null, to: null, q: '', placeId: null, source: null, driverId: null, sort: 'date', dir: 'desc', page: 1 } as const
+
+function fixturePage() {
+  const json = buildDatasetJson()
+  return { data: { rows: json.trips, total_count: 3, totals: { trips: 3, miles_tenths: 570, amount_pence: 3101 } }, error: null }
+}
+
+describe('listMileageTrips', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockRpc.mockReset()
+  })
+
+  it('loads the requested page and the totals of every matching trip', async () => {
+    mockRpc.mockResolvedValue(fixturePage())
+
+    const result = await listMileageTrips({ ...NO_FILTERS, driverId: DRIVER_ID, sort: 'miles', page: 2 })
+
+    expect(mockRpc).toHaveBeenCalledWith('mileage_trips_page_v01', {
+      p_filters: { driver_id: DRIVER_ID },
+      p_sort: 'miles',
+      p_direction: 'desc',
+      p_limit: 25,
+      p_offset: 25,
+    })
+    expect(result.success).toBe(true)
+    expect(result.data?.rows).toHaveLength(3)
+    expect(result.data?.totals).toEqual({ trips: 3, milesTenths: 570, amountPence: 3101 })
+  })
+
+  it('returns a plain error, not an empty list, when the database refuses', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockRpc.mockResolvedValue({ data: null, error: { code: '57014', message: 'timeout', details: null, hint: null } })
+
+    await expect(listMileageTrips(NO_FILTERS)).resolves.toEqual({ error: "Couldn't load trips. Try again." })
+    consoleError.mockRestore()
+  })
+
+  it('refuses a malformed query without reading anything', async () => {
+    const result = await listMileageTrips({ ...NO_FILTERS, sort: 'route' } as never)
+
+    expect(result).toEqual({ error: "Couldn't load trips. Try again." })
+    expect(mockRpc).not.toHaveBeenCalled()
+  })
+
+  it('checks permission before reading anything', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValueOnce(false)
+
+    await expect(listMileageTrips(NO_FILTERS)).resolves.toEqual({ error: 'Insufficient permissions' })
+    expect(mockRpc).not.toHaveBeenCalled()
+  })
+})
+
+describe('exportMileageListCsv', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockRpc.mockReset()
+  })
+
+  it('exports every matching trip in the table order and names the filters in the summary', async () => {
+    mockRpc.mockResolvedValue(fixturePage())
+
+    const result = await exportMileageListCsv({ ...NO_FILTERS, from: '2026-04-01', to: '2026-06-30', q: 'shop', page: 4 })
+
+    // Every matching trip from the first row, whatever page the table is on.
+    expect(mockRpc).toHaveBeenCalledTimes(1)
+    expect(mockRpc).toHaveBeenCalledWith('mileage_trips_page_v01', {
+      p_filters: { from: '2026-04-01', to: '2026-06-30', search: 'shop' },
+      p_sort: 'date',
+      p_direction: 'desc',
+      p_limit: 1000,
+      p_offset: 0,
+    })
+    expect(result.error).toBeUndefined()
+    expect(result.filename).toBe('Mileage_Trips_2026-05-05.csv')
+    expect(result.data).toContain('Period,1 April 2026 to 30 June 2026')
+    expect(result.data).toContain('Scope,Dates: 1 April 2026 to 30 June 2026; Search: shop')
+    expect(result.data).toContain('Total claim (£),31.01')
+    expect(result.data).toContain('Claim for Driver A (£),23.53')
+    expect(result.data).toContain('Claim for Driver B (£),7.48')
+  })
+
+  it('names the place, source and driver it was filtered to', async () => {
+    mockRpc.mockResolvedValue(fixturePage())
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_destinations') return createMaybeSingleBuilder({ name: 'Shop One' })
+      if (table === 'mileage_drivers') return createMaybeSingleBuilder({ display_name: 'Driver A' })
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await exportMileageListCsv({ ...NO_FILTERS, placeId: DEST_ID, source: 'manual', driverId: DRIVER_ID })
+
+    expect(result.data).toContain('Period,All dates')
+    expect(result.data).toContain('Scope,Place: Shop One; Source: Logged; Driver: Driver A')
+  })
+
+  it('returns an error instead of a file when a filter name cannot be read', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockRpc.mockResolvedValue(fixturePage())
+    mockFrom.mockImplementation(() =>
+      createMaybeSingleBuilder(null, { code: '57014', message: 'timeout', details: null, hint: null })
+    )
+
+    const result = await exportMileageListCsv({ ...NO_FILTERS, placeId: DEST_ID })
+
+    expect(result).toEqual({ error: "Couldn't load trips. Try again." })
+    expect(consoleError).toHaveBeenCalledWith('[mileage] export place name failed', {
+      code: '57014',
+      message: 'timeout',
+      details: null,
+      hint: null,
+    })
+    consoleError.mockRestore()
+  })
+
+  it('refuses more trips than one export supports', async () => {
+    mockRpc.mockResolvedValue({ data: { rows: [], total_count: 5001, totals: { trips: 5001, miles_tenths: 1, amount_pence: 1 } }, error: null })
+
+    const result = await exportMileageListCsv(NO_FILTERS)
+
+    expect(result.data).toBeUndefined()
+    expect(result.error).toBe('Too many trips to export at once. Narrow the dates and try again.')
+    expect(mockRpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns an error instead of an empty file when the database refuses', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockRpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'MILEAGE_LIST_INVALID_FILTERS', details: null, hint: null } })
+
+    const result = await exportMileageListCsv(NO_FILTERS)
+
+    expect(result.data).toBeUndefined()
+    expect(result.error).toBe("Couldn't load trips. Try again.")
+    consoleError.mockRestore()
+  })
+
+  it('returns an error instead of a partial file when a row is malformed', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const [good, bad] = buildDatasetJson().trips
+    mockRpc.mockResolvedValue({
+      data: { rows: [good, { ...bad, amount_pence: 'lots' }], total_count: 2, totals: { trips: 2, miles_tenths: 170, amount_pence: 901 } },
+      error: null,
+    })
+
+    const result = await exportMileageListCsv(NO_FILTERS)
+
+    expect(result).toEqual({ error: "Couldn't load trips. Try again." })
+    consoleError.mockRestore()
+  })
+})
+
+describe('getTripForEdit', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('refuses an id that is not a UUID without querying', async () => {
+    const result = await getTripForEdit('not-a-uuid')
+    expect(result.error).toBe('Trip not found.')
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it('loads the trip with its legs, driver and exact updated_at', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_trips') {
+        return createSingleBuilder({
+          id: TRIP_ID, trip_date: '2026-04-04', description: 'Shop One', total_miles: 3.4, miles_at_standard_rate: 3.4,
+          miles_at_reduced_rate: 0, amount_due: 1.53, source: 'manual', created_at: '2026-04-04T10:00:00+00:00',
+          driver_id: 'driver-1', driver_basis: 'entered', updated_at: '2026-09-15T15:08:08.431218+00:00',
+          driver: { display_name: 'Driver A' },
+        })
+      }
+      if (table === 'mileage_trip_legs') {
+        return createResolvedChain([
+          { id: 'leg-1', trip_id: TRIP_ID, leg_order: 1, from_destination_id: HOME_ID, to_destination_id: DEST_ID, miles: 1.7 },
+          { id: 'leg-2', trip_id: TRIP_ID, leg_order: 2, from_destination_id: DEST_ID, to_destination_id: HOME_ID, miles: 1.7 },
+        ])
+      }
+      return createResolvedChain([{ id: HOME_ID, name: 'The Anchor' }, { id: DEST_ID, name: 'Shop One' }])
+    })
+
+    const result = await getTripForEdit(TRIP_ID)
+
+    expect(result.error).toBeUndefined()
+    expect(result.data).toMatchObject({
+      id: TRIP_ID,
+      driverName: 'Driver A',
+      driverBasis: 'entered',
+      updatedAt: '2026-09-15T15:08:08.431218+00:00',
+      routeSummary: 'The Anchor → Shop One → The Anchor',
+      legs: [
+        { fromDestinationName: 'The Anchor', toDestinationName: 'Shop One', miles: 1.7 },
+        { fromDestinationName: 'Shop One', toDestinationName: 'The Anchor', miles: 1.7 },
+      ],
+    })
+  })
+
+  it('says the trip is gone when it was deleted after the list loaded', async () => {
+    mockFrom.mockImplementation(() =>
+      createSingleBuilder(null, { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned', details: null, hint: null })
+    )
+
+    await expect(getTripForEdit(TRIP_ID)).resolves.toEqual({ error: 'Trip not found.' })
+  })
+
+  it('reports a failed read as a failure, not as a missing trip', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockFrom.mockImplementation(() =>
+      createSingleBuilder(null, { code: '57014', message: 'canceling statement due to statement timeout', details: null, hint: null })
+    )
+
+    await expect(getTripForEdit(TRIP_ID)).resolves.toEqual({ error: "Couldn't load the trip. Try again." })
+    expect(consoleError).toHaveBeenCalledWith('[mileage] trip for edit failed', {
+      code: '57014',
+      message: 'canceling statement due to statement timeout',
+      details: null,
+      hint: null,
+    })
+    consoleError.mockRestore()
+  })
+
+  it('checks the manage permission before reading anything', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValueOnce(false)
+
+    await expect(getTripForEdit(TRIP_ID)).resolves.toEqual({ error: 'Insufficient permissions' })
+    expect(vi.mocked(checkUserPermission)).toHaveBeenCalledWith('mileage', 'manage')
+    expect(mockFrom).not.toHaveBeenCalled()
   })
 })
