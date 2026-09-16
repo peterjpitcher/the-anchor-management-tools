@@ -133,9 +133,15 @@ function buildBaseSupabase(options: {
         }
       }
       if (table === 'bookings' || table === 'table_bookings' || table === 'parking_bookings') {
+        // The first-visit review check pages these reads, so the chain ends
+        // .in().order().range() and an empty page tells the pager it is done.
         return {
           select: () => ({
-            in: vi.fn().mockResolvedValue({ data: [], error: null })
+            in: vi.fn(() => ({
+              order: vi.fn(() => ({
+                range: vi.fn().mockResolvedValue({ data: [], error: null })
+              }))
+            }))
           })
         }
       }
@@ -189,18 +195,24 @@ function buildBaseSupabase(options: {
               }
             }
             if (columns.includes('customer_id') && columns.includes('event_date') && columns.includes('created_at')) {
+              // The first-visit review check pages this read, so the chain ends
+              // .in().order().range() and serves the requested slice.
+              const historyRows = (options.reviewSmsRows ?? []).map((row) => ({
+                id: row.id,
+                customer_id: row.customer_id,
+                status: row.status ?? 'confirmed',
+                event_date: row.event_date,
+                start_time: row.start_time ?? '00:00:00',
+                created_at: row.created_at ?? `${row.event_date}T00:00:00`
+              }))
               return {
-                in: vi.fn().mockResolvedValue({
-                  data: (options.reviewSmsRows ?? []).map((row) => ({
-                    id: row.id,
-                    customer_id: row.customer_id,
-                    status: row.status ?? 'confirmed',
-                    event_date: row.event_date,
-                    start_time: row.start_time ?? '00:00:00',
-                    created_at: row.created_at ?? `${row.event_date}T00:00:00`
-                  })),
-                  error: null
-                })
+                in: vi.fn(() => ({
+                  order: vi.fn(() => ({
+                    range: vi.fn((from: number, to: number) =>
+                      Promise.resolve({ data: historyRows.slice(from, to + 1), error: null })
+                    )
+                  }))
+                }))
               }
             }
             if (columns.includes('start_time, guest_count')) {
