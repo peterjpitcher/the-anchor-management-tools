@@ -147,7 +147,8 @@ function vehicleOn(vehicles: MileageReportVehicle[], driverId: string, tripDate:
   return match
 }
 
-function describeRoute(trip: MileageReportTrip): string {
+/** The place names joined by arrows, or why the route is not recorded (spec 6.2). Shared with the CSV. */
+export function describeTripRoute(trip: MileageReportTrip): string {
   if (trip.legs.length > 0) {
     return [trip.legs[0].fromName, ...trip.legs.map((leg) => leg.toName)].join(' → ')
   }
@@ -300,7 +301,7 @@ export function buildMileageReport(dataset: MileageReportDataset, scope: ReportS
       driverName: trip.driverName,
       basis: trip.driverBasis,
       reason: trip.description?.trim() || 'Not recorded',
-      route: describeRoute(trip),
+      route: describeTripRoute(trip),
       milesTenths: trip.totalMilesTenths,
       rateLabel: describeRate(trip),
       amountPence: trip.amountPence,
