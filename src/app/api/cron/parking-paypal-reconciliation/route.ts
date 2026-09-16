@@ -25,6 +25,63 @@ import type { ParkingBooking } from '@/types/parking'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+/*
+ * PayPal keeps completed orders, so one it no longer has was never paid. A
+ * pending row pointing at it can never settle, and while it stays pending
+ * createParkingPaymentOrder keeps handing the customer its dead approve link.
+ * Expiring it lets the next payment request mint a fresh order. The grace period
+ * only guards against a read landing just after the order was created.
+ */
+const MISSING_ORDER_GRACE_MS = 60 * 60 * 1000
+
+type PendingParkingPayment = {
+  id: string
+  booking_id: string | null
+  paypal_order_id: string | null
+  created_at: string | null
+  metadata: Record<string, unknown> | null
+}
+
+/**
+ * Expires a pending parking payment whose PayPal order no longer exists.
+ * Returns true when the row was expired. Guarded on `status = 'pending'` so a
+ * capture recorded at the same moment is never overwritten.
+ */
+async function expireAbandonedPayment(
+  supabase: ReturnType<typeof createAdminClient>,
+  row: PendingParkingPayment
+): Promise<boolean> {
+  const createdAt = row.created_at ? Date.parse(row.created_at) : Number.NaN
+  if (!Number.isFinite(createdAt) || Date.now() - createdAt < MISSING_ORDER_GRACE_MS) {
+    return false
+  }
+
+  const nowIso = new Date().toISOString()
+  const { error } = await supabase
+    .from('parking_booking_payments')
+    .update({
+      status: 'expired',
+      metadata: {
+        ...(row.metadata ?? {}),
+        abandoned_at: nowIso,
+        abandoned_reason: 'paypal_order_not_found',
+      },
+    })
+    .eq('id', row.id)
+    .eq('status', 'pending')
+
+  if (error) {
+    // Left unwritten this row comes back every run, so this must stay visible.
+    logger.error('[parking-reconciliation] could not expire an abandoned payment', {
+      error: new Error(error.message),
+      metadata: { paymentId: row.id, bookingId: row.booking_id, orderId: row.paypal_order_id },
+    })
+    return false
+  }
+
+  return true
+}
+
 export async function GET(request: NextRequest) {
   const auth = authorizeCronRequest(request)
   if (!auth.authorized) {
@@ -32,7 +89,7 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createAdminClient()
-  const summary = { checked: 0, recorded: 0, untouched: 0, failed: 0 }
+  const summary = { checked: 0, recorded: 0, untouched: 0, expired: 0, failed: 0 }
   // `untouched` covers both the ordinary case (customer never paid) and the one
   // that needs a person (money taken against a lapsed booking). The distinction
   // is in the logs, which is where anyone chasing it will be looking.
@@ -40,7 +97,7 @@ export async function GET(request: NextRequest) {
   try {
     const { data: pending, error } = await supabase
       .from('parking_booking_payments')
-      .select('id, booking_id, paypal_order_id')
+      .select('id, booking_id, paypal_order_id, created_at, metadata')
       .eq('status', 'pending')
       .not('paypal_order_id', 'is', null)
       .not('booking_id', 'is', null)
@@ -48,7 +105,7 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error
 
-    for (const row of pending ?? []) {
+    for (const row of (pending ?? []) as PendingParkingPayment[]) {
       summary.checked += 1
 
       try {
@@ -83,6 +140,9 @@ export async function GET(request: NextRequest) {
         // PayPal purges orders that were never completed.
         if (isPayPalOrderNotFoundError(rowError)) {
           summary.untouched += 1
+          if (await expireAbandonedPayment(supabase, row)) {
+            summary.expired += 1
+          }
           continue
         }
 
