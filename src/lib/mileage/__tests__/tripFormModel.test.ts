@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isRoundTripFromHome,
   mapTripLegsToFormModel,
   validateAndBuildTripLegs,
   type TripFormMileageLeg,
@@ -79,5 +80,33 @@ describe('trip form model', () => {
 
     expect(sameLocation.stopErrors.get(0)).toBe('Choose a different destination')
     expect(tooPrecise.stopErrors.get(0)).toBe('Enter miles')
+  })
+})
+
+describe('isRoundTripFromHome', () => {
+  const HOME = 'home'
+
+  it('accepts a trip that starts and ends at the home base', () => {
+    expect(
+      isRoundTripFromHome(
+        [
+          { fromDestinationId: HOME, toDestinationId: 'shop', miles: 1.7 },
+          { fromDestinationId: 'shop', toDestinationId: HOME, miles: 1.7 },
+        ],
+        HOME
+      )
+    ).toBe(true)
+  })
+
+  it('rejects a one-way drive up', () => {
+    expect(isRoundTripFromHome([{ fromDestinationId: HOME, toDestinationId: 'venue', miles: 194 }], HOME)).toBe(false)
+  })
+
+  it('rejects a one-way drive home', () => {
+    expect(isRoundTripFromHome([{ fromDestinationId: 'venue', toDestinationId: HOME, miles: 194 }], HOME)).toBe(false)
+  })
+
+  it('rejects a trip with no legs', () => {
+    expect(isRoundTripFromHome([], HOME)).toBe(false)
   })
 })

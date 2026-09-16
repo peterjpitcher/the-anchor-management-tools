@@ -147,6 +147,12 @@ export function validateAndBuildTripLegs(
   return { legs, stopErrors, returnMilesError: null, formError: null }
 }
 
+/** True when saved legs start and end at the home base: the only shape this form can edit safely. */
+export function isRoundTripFromHome(legs: TripFormMileageLeg[], homeBaseId: string): boolean {
+  if (legs.length === 0) return false
+  return legs[0].fromDestinationId === homeBaseId && legs[legs.length - 1].toDestinationId === homeBaseId
+}
+
 function isValidMileageInput(value: string): boolean {
   const miles = parseFloat(value)
   return Number.isFinite(miles) && miles > 0 && hasAtMostOneDecimalPlace(value)

@@ -1,6 +1,7 @@
 import { Alert, PageHeader, SectionNav } from '@/ds'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getTrips, getTripStats, getDestinations } from '@/app/actions/mileage'
+import { getMileageDrivers } from '@/app/actions/mileage-drivers'
 import { redirect } from 'next/navigation'
 import { MileageClient } from './_components/MileageClient'
 
@@ -16,14 +17,16 @@ export default async function MileagePage(): Promise<React.JSX.Element> {
 
   const canManage = await checkUserPermission('mileage', 'manage')
 
-  const [tripsResult, statsResult, destsResult] = await Promise.all([
+  const [tripsResult, statsResult, destsResult, driversResult] = await Promise.all([
     getTrips(),
     getTripStats(),
     getDestinations(),
+    getMileageDrivers(),
   ])
 
   // A failed read used to render as "No trips recorded"; say what went wrong instead.
-  const loadError = tripsResult.error ?? statsResult.error ?? destsResult.error
+  // Drivers count too: without them no trip can be saved.
+  const loadError = tripsResult.error ?? statsResult.error ?? destsResult.error ?? driversResult.error
   if (loadError) {
     return (
       <div className="space-y-6">
@@ -71,6 +74,7 @@ export default async function MileagePage(): Promise<React.JSX.Element> {
         initialPageSize={tripPageSize}
         initialStats={stats}
         destinations={destinations}
+        drivers={driversResult.data ?? []}
         canManage={canManage}
       />
     </div>

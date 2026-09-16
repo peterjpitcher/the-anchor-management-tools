@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition, useCallback } from 'react'
-import { Button, Input, Modal, Select } from '@/ds'
+import { Alert, Button, Input, Modal, Select } from '@/ds'
 import {
   createTrip,
   updateTrip,
@@ -10,6 +10,7 @@ import {
   type MileageDestination,
   type MileageTrip,
 } from '@/app/actions/mileage'
+import type { MileageDriver } from '@/app/actions/mileage-drivers'
 import {
   calculateHmrcRateSplit,
   getStandardRate,
@@ -18,6 +19,7 @@ import {
 } from '@/lib/mileage/hmrcRates'
 import {
   createEmptyStop,
+  isRoundTripFromHome,
   mapTripLegsToFormModel,
   validateAndBuildTripLegs,
   type TripFormStop,
@@ -30,8 +32,7 @@ interface TripFormProps {
   onClose: () => void
   onSuccess: () => void
   destinations: MileageDestination[]
-  /** Current tax year cumulative miles (excluding the editing trip) */
-  cumulativeMilesBefore: number
+  drivers: MileageDriver[]
   editingTrip?: MileageTrip | null
 }
 
@@ -40,7 +41,7 @@ export function TripForm({
   onClose,
   onSuccess,
   destinations,
-  cumulativeMilesBefore,
+  drivers,
   editingTrip,
 }: TripFormProps): React.JSX.Element {
   const [isPending, startTransition] = useTransition()
@@ -50,12 +51,17 @@ export function TripForm({
 
   const homeBase = destinations.find((d) => d.isHomeBase)
   const nonHomeDestinations = destinations.filter((d) => !d.isHomeBase)
+  // One-way trips (for example a drive up and a drive home on different days) cannot be edited
+  // in this round-trip form without doubling their miles, so the form locks them.
+  const isLockedShape = Boolean(editingTrip && homeBase && !isRoundTripFromHome(editingTrip.legs, homeBase.id))
 
   const [tripDate, setTripDate] = useState(getTodayIsoDate())
   const [description, setDescription] = useState('')
   const [stops, setStops] = useState<TripFormStop[]>([createEmptyStop()])
   const [returnMiles, setReturnMiles] = useState('')
-  const [previewCumulativeMiles, setPreviewCumulativeMiles] = useState(cumulativeMilesBefore)
+  const [previewCumulativeMiles, setPreviewCumulativeMiles] = useState(0)
+  const [driverId, setDriverId] = useState('')
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID())
 
   const getDestinationName = useCallback(
     (id: string | undefined): string | null => {
@@ -81,18 +87,23 @@ export function TripForm({
       setDescription(editingTrip.description ?? '')
       setStops(model.stops)
       setReturnMiles(model.returnMiles)
+      // Trips from before the driver backfill have no driver, so staff choose one when editing.
+      setDriverId(editingTrip.driverId ?? '')
     } else if (!editingTrip) {
       setTripDate(getTodayIsoDate())
       setDescription('')
       setStops([createEmptyStop()])
       setReturnMiles('')
+      setDriverId('')
+      // A fresh reference per new trip: retrying the same save returns the trip it created.
+      setRequestId(crypto.randomUUID())
     }
 
     setError(null)
     setReturnMilesError(null)
     setStopErrors(new Map())
-    setPreviewCumulativeMiles(cumulativeMilesBefore)
-  }, [editingTrip, homeBase, open, cumulativeMilesBefore])
+    setPreviewCumulativeMiles(0)
+  }, [editingTrip, homeBase, open])
 
   useEffect(() => {
     if (!open || !tripDate) return
@@ -100,6 +111,7 @@ export function TripForm({
 
     getRatePreviewContext({
       tripDate,
+      driverId: driverId || null,
       excludeTripId: editingTrip?.id ?? null,
     }).then((result) => {
       if (cancelled || result.error || !result.data) return
@@ -109,7 +121,7 @@ export function TripForm({
     return () => {
       cancelled = true
     }
-  }, [open, tripDate, editingTrip?.id])
+  }, [open, tripDate, driverId, editingTrip?.id])
 
   function fillStopMilesFromCache(index: number, destId: string, prevDestId: string): void {
     fetchCachedDistance(prevDestId, destId).then((cachedMiles) => {
@@ -234,6 +246,16 @@ export function TripForm({
     rateSplit.milesAtStandardRate > 0 && rateSplit.milesAtReducedRate > 0
 
   function handleSubmit(): void {
+    if (isLockedShape) return
+    if (!driverId) {
+      setError('Choose who drove.')
+      return
+    }
+    if (!description.trim()) {
+      setError('Enter the reason for the trip.')
+      return
+    }
+
     const validation = validateAndBuildTripLegs(homeBase?.id, stops, returnMiles)
     setError(validation.formError)
     setStopErrors(validation.stopErrors)
@@ -246,12 +268,17 @@ export function TripForm({
         ? await updateTrip({
             id: editingTrip.id,
             tripDate,
-            description: description.trim() || undefined,
+            description: description.trim(),
+            driverId,
+            // Sent exactly as loaded: never parse it into a Date, which drops microseconds.
+            expectedUpdatedAt: editingTrip.updatedAt,
             legs: validation.legs,
           })
         : await createTrip({
             tripDate,
-            description: description.trim() || undefined,
+            description: description.trim(),
+            driverId,
+            requestId,
             legs: validation.legs,
           })
 
@@ -276,7 +303,7 @@ export function TripForm({
           <Button variant="secondary" size="sm" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" onClick={handleSubmit} loading={isPending}>
+          <Button variant="primary" size="sm" onClick={handleSubmit} loading={isPending} disabled={isLockedShape}>
             {editingTrip ? 'Save Changes' : 'Save Trip'}
           </Button>
         </div>
@@ -287,27 +314,58 @@ export function TripForm({
           <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {isLockedShape && (
+          <Alert
+            tone="warning"
+            title="This trip can't be edited here yet"
+            description="It was recorded one way, for example a drive up and a drive home on different days. Saving it in this form would turn it into a round trip, so the form is locked for it."
+          />
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <label htmlFor="trip-date" className="block text-sm font-medium text-gray-700 mb-1">
-              Trip Date <span className="text-red-500">*</span>
+            <label htmlFor="trip-date" className="mb-1 block text-sm font-medium text-text">
+              Trip date <span aria-hidden="true">*</span>
             </label>
             <Input
               id="trip-date"
               type="date"
+              max={getTodayIsoDate()}
               value={tripDate}
               onChange={(e) => setTripDate(e.target.value)}
+              disabled={isLockedShape}
             />
           </div>
           <div>
-            <label htmlFor="trip-desc" className="block text-sm font-medium text-gray-700 mb-1">
-              Description
+            <label htmlFor="trip-driver" className="mb-1 block text-sm font-medium text-text">
+              Who drove <span aria-hidden="true">*</span>
+            </label>
+            <Select
+              id="trip-driver"
+              className="w-full"
+              value={driverId}
+              onChange={(e) => setDriverId(e.target.value)}
+              placeholder="Choose who drove"
+              disabled={isLockedShape}
+            >
+              {drivers.map((driver) => (
+                <option key={driver.id} value={driver.id}>
+                  {driver.displayName}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label htmlFor="trip-desc" className="mb-1 block text-sm font-medium text-text">
+              Reason for trip <span aria-hidden="true">*</span>
             </label>
             <Input
               id="trip-desc"
               value={description}
+              maxLength={500}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. Supply run"
+              placeholder="e.g. Collect wholesale order"
+              disabled={isLockedShape}
             />
           </div>
         </div>

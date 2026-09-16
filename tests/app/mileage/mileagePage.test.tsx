@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const getTripsMock = vi.hoisted(() => vi.fn())
 const getTripStatsMock = vi.hoisted(() => vi.fn())
 const getDestinationsMock = vi.hoisted(() => vi.fn())
+const getMileageDriversMock = vi.hoisted(() => vi.fn())
 
 vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
@@ -17,10 +18,16 @@ vi.mock('@/app/actions/mileage', () => ({
   getTripStats: getTripStatsMock,
   getDestinations: getDestinationsMock,
 }))
+vi.mock('@/app/actions/mileage-drivers', () => ({
+  getMileageDrivers: getMileageDriversMock,
+}))
 // The trip list has its own tests; here it only needs to show whether it rendered.
 vi.mock('@/app/(authenticated)/mileage/_components/MileageClient', () => ({
-  MileageClient: ({ initialTrips }: { initialTrips: unknown[] }) => (
-    <p>{initialTrips.length === 0 ? 'No trips recorded' : `${initialTrips.length} trips`}</p>
+  MileageClient: ({ initialTrips, drivers }: { initialTrips: unknown[]; drivers: Array<{ displayName: string }> }) => (
+    <>
+      <p>{initialTrips.length === 0 ? 'No trips recorded' : `${initialTrips.length} trips`}</p>
+      <p>Drivers: {drivers.map((driver) => driver.displayName).join(', ')}</p>
+    </>
   ),
 }))
 
@@ -43,6 +50,20 @@ describe('MileagePage', () => {
     getTripsMock.mockResolvedValue({ success: true, data: [], pageInfo: { trips: [], total: 0, page: 1, pageSize: 25 } })
     getTripStatsMock.mockResolvedValue({ success: true, data: STATS })
     getDestinationsMock.mockResolvedValue({ success: true, data: [] })
+    getMileageDriversMock.mockResolvedValue({
+      success: true,
+      data: [{ id: 'driver-1', displayName: 'Driver A', drivesOjProjects: true }],
+    })
+  })
+
+  it('shows an error when drivers fail to load, because trips cannot be saved without one', async () => {
+    getMileageDriversMock.mockResolvedValue({ error: 'Failed to load drivers' })
+
+    render(await MileagePage())
+
+    expect(screen.getByText("Couldn't load mileage")).toBeInTheDocument()
+    expect(screen.getByText('Failed to load drivers')).toBeInTheDocument()
+    expect(screen.queryByText('No trips recorded')).not.toBeInTheDocument()
   })
 
   it('shows an error instead of an empty trip list when trips fail to load', async () => {
@@ -78,6 +99,7 @@ describe('MileagePage', () => {
     render(await MileagePage())
 
     expect(screen.getByText('No trips recorded')).toBeInTheDocument()
+    expect(screen.getByText('Drivers: Driver A')).toBeInTheDocument()
     expect(screen.queryByText("Couldn't load mileage")).not.toBeInTheDocument()
   })
 })

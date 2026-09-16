@@ -88,12 +88,14 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))
 
+import { logAuditEvent } from '@/app/actions/audit'
 import {
   createTrip,
   deleteTrip,
   getDestinations,
   getDistanceEntries,
   getMileageInsights,
+  getRatePreviewContext,
   getTrips,
   getTripStats,
   updateTrip,
@@ -101,6 +103,8 @@ import {
 
 const HOME_ID = '00000000-0000-4000-8000-000000000001'
 const DEST_ID = '00000000-0000-4000-8000-000000000002'
+const DRIVER_ID = '00000000-0000-4000-8000-000000000010'
+const REQUEST_ID = '00000000-0000-4000-8000-000000000011'
 
 function createSingleBuilder(data: unknown, error: unknown = null) {
   const single = vi.fn().mockResolvedValue({ data, error })
@@ -156,6 +160,10 @@ describe('getTrips', () => {
         amount_due: 11,
         source: 'manual',
         created_at: '2026-07-24T12:00:00Z',
+        driver_id: 'driver-1',
+        driver_basis: 'entered',
+        updated_at: '2026-07-24T12:00:00Z',
+        driver: { display_name: 'Driver A' },
       },
       {
         id: 'trip-2',
@@ -221,10 +229,18 @@ describe('getTrips', () => {
     const result = await getTrips({ page: 2, pageSize: 25 })
 
     expect(result.success).toBe(true)
-    expect(tripSelect).toHaveBeenCalledWith('*', { count: 'exact' })
+    expect(tripSelect).toHaveBeenCalledWith('*, driver:mileage_drivers(display_name)', { count: 'exact' })
     expect(tripRange).toHaveBeenCalledWith(25, 49)
     expect(result.pageInfo).toMatchObject({ total: 52, page: 2, pageSize: 25 })
     expect(result.data?.[0]?.routeSummary).toBe('The Anchor → Costco → The Anchor')
+    expect(result.data?.[0]).toMatchObject({
+      driverId: 'driver-1',
+      driverName: 'Driver A',
+      driverBasis: 'entered',
+      updatedAt: '2026-07-24T12:00:00Z',
+    })
+    // A trip from before the backfill has no driver yet.
+    expect(result.data?.[1]).toMatchObject({ driverId: null, driverName: null, driverBasis: null })
   })
 })
 
@@ -235,22 +251,20 @@ describe('manual mileage trip mutations', () => {
     mockRpc.mockReset()
   })
 
-  it('creates manual trips through the atomic mileage RPC', async () => {
+  it('creates manual trips through the v02 RPC with the driver and request id', async () => {
     const upsertDistance = vi.fn().mockResolvedValue({ error: null })
-    mockRpc.mockResolvedValue({ data: 'trip-1', error: null })
+    mockRpc.mockResolvedValue({ data: { id: 'trip-1', created: true }, error: null })
     mockFrom.mockImplementation((table: string) => {
-      if (table === 'mileage_destinations') {
-        return createSingleBuilder({ id: HOME_ID })
-      }
-      if (table === 'mileage_destination_distances') {
-        return { upsert: upsertDistance }
-      }
+      if (table === 'mileage_destinations') return createSingleBuilder({ id: HOME_ID })
+      if (table === 'mileage_destination_distances') return { upsert: upsertDistance }
       throw new Error(`Unexpected table: ${table}`)
     })
 
     const result = await createTrip({
-      tripDate: '2026-07-24',
+      tripDate: '2026-04-24',
       description: 'Supplier run',
+      driverId: DRIVER_ID,
+      requestId: REQUEST_ID,
       legs: [
         { fromDestinationId: HOME_ID, toDestinationId: DEST_ID, miles: 10 },
         { fromDestinationId: DEST_ID, toDestinationId: HOME_ID, miles: 10 },
@@ -258,8 +272,8 @@ describe('manual mileage trip mutations', () => {
     })
 
     expect(result).toEqual({ success: true, data: { id: 'trip-1' } })
-    expect(mockRpc).toHaveBeenCalledWith('create_manual_mileage_trip_v01', {
-      p_trip_date: '2026-07-24',
+    expect(mockRpc).toHaveBeenCalledWith('create_manual_mileage_trip_v02', {
+      p_trip_date: '2026-04-24',
       p_description: 'Supplier run',
       p_total_miles: 20,
       p_created_by: 'test-user-id',
@@ -267,35 +281,109 @@ describe('manual mileage trip mutations', () => {
         { from_destination_id: HOME_ID, to_destination_id: DEST_ID, miles: 10 },
         { from_destination_id: DEST_ID, to_destination_id: HOME_ID, miles: 10 },
       ],
+      p_driver_id: DRIVER_ID,
+      p_request_id: REQUEST_ID,
     })
     expect(mockFrom).not.toHaveBeenCalledWith('mileage_trip_legs')
+    expect(vi.mocked(logAuditEvent)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(logAuditEvent)).toHaveBeenCalledWith(
+      expect.objectContaining({ new_values: expect.objectContaining({ driver_id: DRIVER_ID }) })
+    )
   })
 
-  it('updates manual trips through the atomic mileage RPC without deleting legs in the app', async () => {
-    const upsertDistance = vi.fn().mockResolvedValue({ error: null })
+  it('does not audit a retried create that returned the original trip', async () => {
+    mockRpc.mockResolvedValue({ data: { id: 'trip-1', created: false }, error: null })
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_destinations') return createSingleBuilder({ id: HOME_ID })
+      if (table === 'mileage_destination_distances') return { upsert: vi.fn().mockResolvedValue({ error: null }) }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await createTrip({
+      tripDate: '2026-04-24',
+      description: 'Supplier run',
+      driverId: DRIVER_ID,
+      requestId: REQUEST_ID,
+      legs: [
+        { fromDestinationId: HOME_ID, toDestinationId: DEST_ID, miles: 10 },
+        { fromDestinationId: DEST_ID, toDestinationId: HOME_ID, miles: 10 },
+      ],
+    })
+
+    expect(result).toEqual({ success: true, data: { id: 'trip-1' } })
+    expect(vi.mocked(logAuditEvent)).not.toHaveBeenCalled()
+  })
+
+  it('refuses a trip dated after today', async () => {
+    const result = await createTrip({
+      tripDate: '2026-05-06',
+      description: 'Supplier run',
+      driverId: DRIVER_ID,
+      requestId: REQUEST_ID,
+      legs: [
+        { fromDestinationId: HOME_ID, toDestinationId: DEST_ID, miles: 10 },
+        { fromDestinationId: DEST_ID, toDestinationId: HOME_ID, miles: 10 },
+      ],
+    })
+    expect(result).toEqual({ error: "Trips can't be dated in the future." })
+    expect(mockRpc).not.toHaveBeenCalled()
+  })
+
+  it('asks who drove and for a reason before saving', async () => {
+    const legs = [
+      { fromDestinationId: HOME_ID, toDestinationId: DEST_ID, miles: 10 },
+      { fromDestinationId: DEST_ID, toDestinationId: HOME_ID, miles: 10 },
+    ]
+
+    await expect(
+      createTrip({ tripDate: '2026-04-24', description: 'Supplier run', driverId: '', requestId: REQUEST_ID, legs })
+    ).resolves.toEqual({ error: 'Choose who drove' })
+    await expect(
+      createTrip({ tripDate: '2026-04-24', description: '   ', driverId: DRIVER_ID, requestId: REQUEST_ID, legs })
+    ).resolves.toEqual({ error: 'Enter the reason for the trip' })
+    expect(mockRpc).not.toHaveBeenCalled()
+  })
+
+  it('maps a database refusal to plain words', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'MILEAGE_DRIVER_REQUIRED', details: null, hint: null } })
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_destinations') return createSingleBuilder({ id: HOME_ID })
+      if (table === 'mileage_destination_distances') return { upsert: vi.fn().mockResolvedValue({ error: null }) }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await createTrip({
+      tripDate: '2026-04-24',
+      description: 'Supplier run',
+      driverId: DRIVER_ID,
+      requestId: REQUEST_ID,
+      legs: [
+        { fromDestinationId: HOME_ID, toDestinationId: DEST_ID, miles: 10 },
+        { fromDestinationId: DEST_ID, toDestinationId: HOME_ID, miles: 10 },
+      ],
+    })
+
+    expect(result).toEqual({ error: 'Choose who drove.' })
+    expect(vi.mocked(logAuditEvent)).not.toHaveBeenCalled()
+  })
+
+  it('updates through the v02 RPC with the loaded updated_at', async () => {
     mockRpc.mockResolvedValue({ data: { id: 'trip-1' }, error: null })
     mockFrom.mockImplementation((table: string) => {
       if (table === 'mileage_trips') {
-        return createSingleBuilder({
-          id: 'trip-1',
-          source: 'manual',
-          trip_date: '2026-07-20',
-          total_miles: 12,
-        })
+        return createSingleBuilder({ id: 'trip-1', source: 'manual', trip_date: '2026-04-20', total_miles: 12 })
       }
-      if (table === 'mileage_destinations') {
-        return createSingleBuilder({ id: HOME_ID })
-      }
-      if (table === 'mileage_destination_distances') {
-        return { upsert: upsertDistance }
-      }
+      if (table === 'mileage_destinations') return createSingleBuilder({ id: HOME_ID })
+      if (table === 'mileage_destination_distances') return { upsert: vi.fn().mockResolvedValue({ error: null }) }
       throw new Error(`Unexpected table: ${table}`)
     })
 
     const result = await updateTrip({
-      id: 'trip-1',
-      tripDate: '2026-07-24',
+      id: '00000000-0000-4000-8000-000000000020',
+      tripDate: '2026-04-24',
       description: 'Updated run',
+      driverId: DRIVER_ID,
+      expectedUpdatedAt: '2026-09-15T15:08:08.431218+00:00',
       legs: [
         { fromDestinationId: HOME_ID, toDestinationId: DEST_ID, miles: 8 },
         { fromDestinationId: DEST_ID, toDestinationId: HOME_ID, miles: 8 },
@@ -303,17 +391,124 @@ describe('manual mileage trip mutations', () => {
     })
 
     expect(result).toEqual({ success: true })
-    expect(mockRpc).toHaveBeenCalledWith('update_manual_mileage_trip_v01', {
-      p_trip_id: 'trip-1',
-      p_trip_date: '2026-07-24',
+    expect(mockRpc).toHaveBeenCalledWith('update_manual_mileage_trip_v02', {
+      p_trip_id: '00000000-0000-4000-8000-000000000020',
+      p_trip_date: '2026-04-24',
       p_description: 'Updated run',
       p_total_miles: 16,
       p_legs: [
         { from_destination_id: HOME_ID, to_destination_id: DEST_ID, miles: 8 },
         { from_destination_id: DEST_ID, to_destination_id: HOME_ID, miles: 8 },
       ],
+      p_driver_id: DRIVER_ID,
+      p_expected_updated_at: '2026-09-15T15:08:08.431218+00:00',
     })
     expect(mockFrom).not.toHaveBeenCalledWith('mileage_trip_legs')
+    expect(vi.mocked(logAuditEvent)).toHaveBeenCalledTimes(1)
+  })
+
+  it('maps a stale edit to a reload message and does not audit it', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'MILEAGE_TRIP_CONFLICT', details: null, hint: null } })
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_trips') {
+        return createSingleBuilder({ id: 'trip-1', source: 'manual', trip_date: '2026-04-20', total_miles: 12 })
+      }
+      if (table === 'mileage_destinations') return createSingleBuilder({ id: HOME_ID })
+      if (table === 'mileage_destination_distances') return { upsert: vi.fn().mockResolvedValue({ error: null }) }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await updateTrip({
+      id: '00000000-0000-4000-8000-000000000020',
+      tripDate: '2026-04-24',
+      description: 'Updated run',
+      driverId: DRIVER_ID,
+      expectedUpdatedAt: '2026-09-15T15:08:08.431218+00:00',
+      legs: [
+        { fromDestinationId: HOME_ID, toDestinationId: DEST_ID, miles: 8 },
+        { fromDestinationId: DEST_ID, toDestinationId: HOME_ID, miles: 8 },
+      ],
+    })
+
+    expect(result).toEqual({ error: 'This trip was changed elsewhere. Reload it and try again.' })
+    expect(mockRpc).toHaveBeenCalledWith(
+      'update_manual_mileage_trip_v02',
+      expect.objectContaining({ p_expected_updated_at: '2026-09-15T15:08:08.431218+00:00', p_driver_id: DRIVER_ID })
+    )
+    expect(vi.mocked(logAuditEvent)).not.toHaveBeenCalled()
+  })
+
+  it('logs an unknown save failure field by field and tells the user nothing changed', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: '23514', message: 'new row violates check constraint', details: 'Failing row', hint: null },
+    })
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_destinations') return createSingleBuilder({ id: HOME_ID })
+      if (table === 'mileage_destination_distances') return { upsert: vi.fn().mockResolvedValue({ error: null }) }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await createTrip({
+      tripDate: '2026-04-24',
+      description: 'Supplier run',
+      driverId: DRIVER_ID,
+      requestId: REQUEST_ID,
+      legs: [
+        { fromDestinationId: HOME_ID, toDestinationId: DEST_ID, miles: 10 },
+        { fromDestinationId: DEST_ID, toDestinationId: HOME_ID, miles: 10 },
+      ],
+    })
+
+    expect(result).toEqual({ error: 'Failed to save the trip. Nothing was changed. Try again.' })
+    expect(consoleError).toHaveBeenCalledWith('[mileage] trip save failed', {
+      code: '23514',
+      message: 'new row violates check constraint',
+      details: 'Failing row',
+      hint: null,
+    })
+    consoleError.mockRestore()
+  })
+})
+
+describe('getRatePreviewContext', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockRpc.mockReset()
+  })
+
+  it('counts nothing until a driver is chosen', async () => {
+    await expect(getRatePreviewContext({ tripDate: '2026-04-24', driverId: null })).resolves.toEqual({
+      data: { cumulativeMilesBefore: 0 },
+    })
+    expect(mockRpc).not.toHaveBeenCalled()
+  })
+
+  it('leaves the trip id out for a new trip', async () => {
+    mockRpc.mockResolvedValue({ data: 9876.54, error: null })
+
+    await expect(getRatePreviewContext({ tripDate: '2026-04-24', driverId: DRIVER_ID })).resolves.toEqual({
+      data: { cumulativeMilesBefore: 9876.5 },
+    })
+    expect(mockRpc).toHaveBeenCalledWith('mileage_rate_preview_v01', {
+      p_driver_id: DRIVER_ID,
+      p_trip_date: '2026-04-24',
+    })
+  })
+
+  it('passes the trip id when editing', async () => {
+    mockRpc.mockResolvedValue({ data: '120.0', error: null })
+    const tripId = '00000000-0000-4000-8000-000000000020'
+
+    await expect(
+      getRatePreviewContext({ tripDate: '2026-04-24', driverId: DRIVER_ID, excludeTripId: tripId })
+    ).resolves.toEqual({ data: { cumulativeMilesBefore: 120 } })
+    expect(mockRpc).toHaveBeenCalledWith('mileage_rate_preview_v01', {
+      p_driver_id: DRIVER_ID,
+      p_trip_date: '2026-04-24',
+      p_trip_id: tripId,
+    })
   })
 })
 
