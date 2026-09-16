@@ -473,6 +473,10 @@ describe('CashingUpService.getInsightsData', () => {
     const data = await CashingUpService.getInsightsData(supabase, 'site-1', 2026);
 
     expect((supabase.from as unknown as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('cashup_sales_breakdowns');
+    // Takings already leave out voided cash-ups, so both mixes must too, or the
+    // cards on the same page disagree.
+    expect(queries.cashup_payment_breakdowns.is).toHaveBeenCalledWith('cashup_sessions.voided_at', null);
+    expect(queries.cashup_sales_breakdowns.is).toHaveBeenCalledWith('cashup_sessions.voided_at', null);
     expect(data.salesMix.map(({ label, value, color }) => ({ label, value, color }))).toEqual([
       { label: 'Drinks', value: 150, color: '#2563EB' },
       { label: 'Food', value: 100, color: '#16A34A' },
