@@ -1,121 +1,164 @@
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const getTripsMock = vi.hoisted(() => vi.fn())
-const getTripStatsMock = vi.hoisted(() => vi.fn())
-const getDestinationsMock = vi.hoisted(() => vi.fn())
-const getMileageDriversMock = vi.hoisted(() => vi.fn())
+const mocks = vi.hoisted(() => ({
+  redirect: vi.fn(),
+  listMileageTrips: vi.fn(),
+  getTripStats: vi.fn(),
+  getDestinations: vi.fn(),
+  getTripDateRange: vi.fn(),
+  getMileageDrivers: vi.fn(),
+}))
 
 vi.mock('next/navigation', () => ({
-  redirect: vi.fn(),
-  useSearchParams: () => new URLSearchParams(),
+  redirect: mocks.redirect,
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
   usePathname: () => '/mileage',
+  useSearchParams: () => new URLSearchParams(),
+}))
+vi.mock('@/lib/dateUtils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/dateUtils')>()),
+  getTodayIsoDate: () => '2026-09-15',
 }))
 vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: vi.fn().mockResolvedValue(true) }))
 vi.mock('@/app/actions/mileage', () => ({
-  getTrips: getTripsMock,
-  getTripStats: getTripStatsMock,
-  getDestinations: getDestinationsMock,
+  listMileageTrips: mocks.listMileageTrips,
+  getTripStats: mocks.getTripStats,
+  getDestinations: mocks.getDestinations,
+  getTripDateRange: mocks.getTripDateRange,
+  getTripForEdit: vi.fn(),
+  deleteTrip: vi.fn(),
+  exportMileageListCsv: vi.fn(),
 }))
 vi.mock('@/app/actions/mileage-drivers', () => ({
-  getMileageDrivers: getMileageDriversMock,
+  getMileageDrivers: mocks.getMileageDrivers,
 }))
-// The trip list has its own tests; here it only needs to show whether it rendered.
-vi.mock('@/app/(authenticated)/mileage/_components/MileageClient', () => ({
-  MileageClient: ({
-    initialTrips,
-    initialStats,
-    drivers,
-  }: {
-    initialTrips: unknown[]
-    initialStats: { financialYear: { trips: number } }
-    drivers: Array<{ displayName: string }>
-  }) => (
-    <>
-      <p>{initialTrips.length === 0 ? 'No trips recorded' : `${initialTrips.length} trips`}</p>
-      <p>Trips this financial year: {initialStats.financialYear.trips}</p>
-      <p>Drivers: {drivers.map((driver) => driver.displayName).join(', ')}</p>
-    </>
-  ),
-}))
+// The trip form has its own tests and loads rate previews when opened.
+vi.mock('@/app/(authenticated)/mileage/_components/TripForm', () => ({ TripForm: () => null }))
 
 import MileagePage from '@/app/(authenticated)/mileage/page'
+import { parseMileageReportDataset } from '@/lib/mileage/report/dataset'
+import { buildDatasetJson } from '../../fixtures/mileage/reportDataset'
 
 const STATS = {
   quarter: { from: '2026-07-01', to: '2026-09-30', trips: 0, milesTenths: 0, amountPence: 0 },
-  financialYear: { from: '2026-01-01', to: '2026-12-31', trips: 12, milesTenths: 3312, amountPence: 14904 },
-  taxYear: { from: '2026-04-06', to: '2027-04-05', trips: 0, milesTenths: 0, amountPence: 0 },
-  drivers: [{ driverId: 'driver-1', displayName: 'Driver A', taxYearMilesTenths: 0, standardMilesLeftTenths: 100000 }],
+  financialYear: { from: '2026-01-01', to: '2026-12-31', trips: 3, milesTenths: 570, amountPence: 3101 },
+  taxYear: { from: '2026-04-06', to: '2027-04-05', trips: 2, milesTenths: 536, amountPence: 2948 },
+  drivers: [],
 }
 
+function page(params: Record<string, string> = {}) {
+  return MileagePage({ searchParams: Promise.resolve(params) })
+}
+
+function pageResult(rows: unknown[], totalCount: number, totals = { trips: totalCount, milesTenths: 0, amountPence: 0 }) {
+  return { success: true, data: { rows, totalCount, totals } }
+}
+
+function expectLoadError(message: string): void {
+  expect(screen.getByText("Couldn't load mileage")).toBeInTheDocument()
+  expect(screen.getByText(message)).toBeInTheDocument()
+  expect(screen.queryByText('No trips recorded')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Period')).not.toBeInTheDocument()
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  mocks.getTripStats.mockResolvedValue({ success: true, data: STATS })
+  mocks.getDestinations.mockResolvedValue({ success: true, data: [] })
+  mocks.getTripDateRange.mockResolvedValue({ success: true, data: { first: '2024-01-05', last: '2026-09-14' } })
+  mocks.getMileageDrivers.mockResolvedValue({ success: true, data: [] })
+  mocks.listMileageTrips.mockResolvedValue(
+    pageResult(parseMileageReportDataset(buildDatasetJson()).trips, 3, { trips: 3, milesTenths: 570, amountPence: 3101 })
+  )
+})
+
 describe('MileagePage', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    getTripsMock.mockResolvedValue({ success: true, data: [], pageInfo: { trips: [], total: 0, page: 1, pageSize: 25 } })
-    getTripStatsMock.mockResolvedValue({ success: true, data: STATS })
-    getDestinationsMock.mockResolvedValue({ success: true, data: [] })
-    getMileageDriversMock.mockResolvedValue({
-      success: true,
-      data: [{ id: 'driver-1', displayName: 'Driver A', drivesOjProjects: true }],
-    })
-  })
-
-  it('shows an error when drivers fail to load, because trips cannot be saved without one', async () => {
-    getMileageDriversMock.mockResolvedValue({ error: 'Failed to load drivers' })
-
-    render(await MileagePage())
-
-    expect(screen.getByText("Couldn't load mileage")).toBeInTheDocument()
-    expect(screen.getByText('Failed to load drivers')).toBeInTheDocument()
-    expect(screen.queryByText('No trips recorded')).not.toBeInTheDocument()
-  })
-
   it('shows an error instead of an empty trip list when trips fail to load', async () => {
-    getTripsMock.mockResolvedValue({ error: 'Failed to fetch trips' })
+    mocks.listMileageTrips.mockResolvedValue({ error: "Couldn't load trips. Try again." })
 
-    render(await MileagePage())
+    render(await page())
 
-    expect(screen.getByText("Couldn't load mileage")).toBeInTheDocument()
-    expect(screen.getByText('Failed to fetch trips')).toBeInTheDocument()
-    expect(screen.queryByText('No trips recorded')).not.toBeInTheDocument()
+    expectLoadError("Couldn't load trips. Try again.")
   })
 
   it('shows an error when the totals fail to load', async () => {
-    getTripStatsMock.mockResolvedValue({ error: 'Failed to fetch trip stats' })
-
-    render(await MileagePage())
-
-    expect(screen.getByText("Couldn't load mileage")).toBeInTheDocument()
-    expect(screen.getByText('Failed to fetch trip stats')).toBeInTheDocument()
-    expect(screen.queryByText('No trips recorded')).not.toBeInTheDocument()
+    mocks.getTripStats.mockResolvedValue({ error: 'Failed to fetch trip stats' })
+    render(await page())
+    expectLoadError('Failed to fetch trip stats')
   })
 
   it('shows an error rather than made-up zeros when the totals come back empty', async () => {
-    getTripStatsMock.mockResolvedValue({ success: true, data: undefined })
+    mocks.getTripStats.mockResolvedValue({ success: true, data: undefined })
+    render(await page())
+    expectLoadError('Mileage totals are unavailable')
+  })
 
-    render(await MileagePage())
-
-    expect(screen.getByText("Couldn't load mileage")).toBeInTheDocument()
-    expect(screen.getByText('Mileage totals are unavailable')).toBeInTheDocument()
-    expect(screen.queryByText('No trips recorded')).not.toBeInTheDocument()
+  it('shows an error when drivers fail to load, because trips cannot be saved without one', async () => {
+    mocks.getMileageDrivers.mockResolvedValue({ error: 'Failed to load drivers' })
+    render(await page())
+    expectLoadError('Failed to load drivers')
   })
 
   it('shows an error when destinations fail to load', async () => {
-    getDestinationsMock.mockResolvedValue({ error: 'mileage trip legs failed: timeout' })
-
-    render(await MileagePage())
-
-    expect(screen.getByText("Couldn't load mileage")).toBeInTheDocument()
-    expect(screen.getByText('mileage trip legs failed: timeout')).toBeInTheDocument()
+    mocks.getDestinations.mockResolvedValue({ error: 'mileage trip legs failed: timeout' })
+    render(await page())
+    expectLoadError('mileage trip legs failed: timeout')
   })
 
-  it('shows the trip list when everything loads', async () => {
-    render(await MileagePage())
+  it('shows an error when the trip dates for the period list fail to load', async () => {
+    mocks.getTripDateRange.mockResolvedValue({ error: 'Failed to load trip dates' })
+    render(await page())
+    expectLoadError('Failed to load trip dates')
+  })
 
+  it('loads the trips the address asks for and shows the results line', async () => {
+    render(await page({ from: '2026-04-01', to: '2026-06-30', q: 'shop', sort: 'amount' }))
+
+    expect(mocks.listMileageTrips).toHaveBeenCalledWith(
+      expect.objectContaining({ from: '2026-04-01', to: '2026-06-30', q: 'shop', sort: 'amount', page: 1 })
+    )
+    expect(screen.getByText('3 trips, 57.0 miles, £31.01')).toBeInTheDocument()
+    expect(screen.getByLabelText('Period')).toHaveValue('2026-Q2')
+  })
+
+  it('keeps the headline cards, which never follow the filters, and the export and report buttons', async () => {
+    render(await page({ q: 'shop' }))
+
+    for (const label of ['This quarter', 'This financial year', 'This tax year', 'Miles left before 25p']) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
+    expect(screen.getByText('This financial year').parentElement).toHaveTextContent('57.0 mi')
+    expect(screen.getByText('This tax year').parentElement).toHaveTextContent('£29.48')
+    expect(screen.getByText('Miles left before 25p').parentElement).toHaveTextContent('No drivers set up')
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Download report' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New Trip' })).toBeInTheDocument()
+  })
+
+  it('warns and shows all dates when the dates in the address are invalid', async () => {
+    render(await page({ from: '2026-06-30', to: '2026-04-01' }))
+
+    expect(screen.getByText("Those dates weren't valid, so all dates are shown.")).toBeInTheDocument()
+    expect(mocks.listMileageTrips).toHaveBeenCalledWith(expect.objectContaining({ from: null, to: null }))
+  })
+
+  it('sends a page past the end to the last page', async () => {
+    mocks.listMileageTrips.mockResolvedValue(pageResult([], 30))
+    await page({ q: 'shop', page: '9' })
+    expect(mocks.redirect).toHaveBeenCalledWith('/mileage?q=shop&page=2')
+  })
+
+  it('says when no trips match the filters', async () => {
+    mocks.listMileageTrips.mockResolvedValue(pageResult([], 0))
+    render(await page({ q: 'nowhere' }))
+    expect(screen.getByText('No trips match these filters')).toBeInTheDocument()
+    expect(screen.getByText('0 trips, 0.0 miles, £0.00')).toBeInTheDocument()
+  })
+
+  it('says when there are no trips at all', async () => {
+    mocks.listMileageTrips.mockResolvedValue(pageResult([], 0))
+    render(await page())
     expect(screen.getByText('No trips recorded')).toBeInTheDocument()
-    expect(screen.getByText('Trips this financial year: 12')).toBeInTheDocument()
-    expect(screen.getByText('Drivers: Driver A')).toBeInTheDocument()
-    expect(screen.queryByText("Couldn't load mileage")).not.toBeInTheDocument()
   })
 })

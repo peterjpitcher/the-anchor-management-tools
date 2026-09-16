@@ -7,7 +7,7 @@ import { logAuditEvent } from './audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows, type PagedReadResult } from '@/lib/supabase/paged-read'
-import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import { parseHeadlineStats, type MileageHeadlineStats } from '@/lib/mileage/stats'
 import { loadAllMileageTrips, loadMileageTripsPage, MileageListError, type MileageTripsPageResult } from '@/lib/mileage/list'
 import type { MileageListQuery } from '@/lib/mileage/list-query'
@@ -287,13 +287,6 @@ export interface MileageInsightsData {
   byDestination: MileageDestinationBreakdown[]
 }
 
-export interface MileageTripsPage {
-  trips: MileageTrip[]
-  total: number
-  page: number
-  pageSize: number
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -331,22 +324,6 @@ function hasAtMostOneDecimalPlace(miles: number): boolean {
 
 function roundMiles(miles: number): number {
   return Math.round(miles * 10) / 10
-}
-
-function sanitizeMileageSearchTerm(value: string | null | undefined): string {
-  return (value ?? '')
-    .replace(/[,%_()"'\\]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 80)
-}
-
-function escapeCsvCell(rawValue: string): string {
-  const safeValue = /^[=+\-@\t\r\n]/.test(rawValue) ? `'${rawValue}` : rawValue
-  if (safeValue.includes(',') || safeValue.includes('"') || safeValue.includes('\n') || safeValue.includes('\r')) {
-    return `"${safeValue.replace(/"/g, '""')}"`
-  }
-  return safeValue
 }
 
 function validateManualTripLegs(
@@ -509,91 +486,6 @@ export async function getDestinations(): Promise<{
   }
 }
 
-export async function getTrips(filters?: {
-  dateFrom?: string
-  dateTo?: string
-  searchTerm?: string
-  page?: number
-  pageSize?: number
-}): Promise<{ success?: boolean; error?: string; data?: MileageTrip[]; pageInfo?: MileageTripsPage }> {
-  try {
-    await requireMileagePermission('view')
-    const db = createAdminClient()
-    const pageSize = Math.min(Math.max(Number(filters?.pageSize ?? 25), 1), 100)
-    const page = Math.max(Number(filters?.page ?? 1), 1)
-    const from = (page - 1) * pageSize
-    const to = from + pageSize - 1
-    const searchTerm = sanitizeMileageSearchTerm(filters?.searchTerm)
-
-    let matchingTripIds: string[] = []
-    if (searchTerm) {
-      const searchPattern = `%${searchTerm}%`
-      const { data: matchingDestinations, error: destinationSearchError } = await db
-        .from('mileage_destinations')
-        .select('id')
-        .ilike('name', searchPattern)
-        .limit(100)
-
-      if (destinationSearchError) throw destinationSearchError
-
-      const destinationIds = (matchingDestinations ?? []).map((destination) => destination.id)
-      if (destinationIds.length > 0) {
-        const { data: matchingLegs, error: legSearchError } = await db
-          .from('mileage_trip_legs')
-          .select('trip_id')
-          .or(
-            `from_destination_id.in.(${destinationIds.join(',')}),to_destination_id.in.(${destinationIds.join(',')})`
-          )
-
-        if (legSearchError) throw legSearchError
-        matchingTripIds = Array.from(new Set((matchingLegs ?? []).map((leg) => leg.trip_id)))
-      }
-    }
-
-    let query = db
-      .from('mileage_trips')
-      .select('*, driver:mileage_drivers(display_name)', { count: 'exact' })
-      .order('trip_date', { ascending: false })
-      .order('created_at', { ascending: false })
-
-    if (filters?.dateFrom) {
-      query = query.gte('trip_date', filters.dateFrom)
-    }
-    if (filters?.dateTo) {
-      query = query.lte('trip_date', filters.dateTo)
-    }
-    if (searchTerm) {
-      const searchPattern = `%${searchTerm}%`
-      const clauses = [`description.ilike.${searchPattern}`]
-      if (matchingTripIds.length > 0) {
-        clauses.push(`id.in.(${matchingTripIds.join(',')})`)
-      }
-      query = query.or(clauses.join(','))
-    }
-
-    const { data: trips, error: tripError, count } = await query.range(from, to)
-    if (tripError) throw tripError
-    if (!trips || trips.length === 0) {
-      return {
-        success: true,
-        data: [],
-        pageInfo: { trips: [], total: count ?? 0, page, pageSize },
-      }
-    }
-
-    const result = await hydrateTrips(db, trips)
-
-    return {
-      success: true,
-      data: result,
-      pageInfo: { trips: result, total: count ?? result.length, page, pageSize },
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch trips'
-    return { error: message }
-  }
-}
-
 /** One page of the trips table, with totals covering every matching trip (spec 7.1). */
 export async function listMileageTrips(
   query: MileageListQuery
@@ -661,83 +553,6 @@ export async function getTripForEdit(id: string): Promise<{ success?: boolean; e
     return { success: true, data: trip }
   } catch (error) {
     return { error: error instanceof Error ? error.message : TRIP_LOAD_ERROR }
-  }
-}
-
-export async function exportMileageTripsCsv(filters?: {
-  dateFrom?: string
-  dateTo?: string
-  searchTerm?: string
-}): Promise<{ data?: string; filename?: string; error?: string }> {
-  try {
-    await requireMileagePermission('view')
-    const result = await getTrips({
-      dateFrom: filters?.dateFrom,
-      dateTo: filters?.dateTo,
-      searchTerm: filters?.searchTerm,
-      page: 1,
-      pageSize: 100,
-    })
-
-    if (result.error) return { error: result.error }
-
-    const total = result.pageInfo?.total ?? result.data?.length ?? 0
-    const pageSize = 100
-    let trips = result.data ?? []
-
-    if (total > pageSize) {
-      const pageCount = Math.ceil(total / pageSize)
-      const remainingPages = await Promise.all(
-        Array.from({ length: pageCount - 1 }, (_, index) =>
-          getTrips({
-            dateFrom: filters?.dateFrom,
-            dateTo: filters?.dateTo,
-            searchTerm: filters?.searchTerm,
-            page: index + 2,
-            pageSize,
-          })
-        )
-      )
-
-      for (const pageResult of remainingPages) {
-        if (pageResult.error) return { error: pageResult.error }
-        trips = trips.concat(pageResult.data ?? [])
-      }
-    }
-
-    const headers = [
-      'Date',
-      'Description',
-      'Route',
-      'Total Miles',
-      'Standard Miles',
-      'Reduced Miles',
-      'Amount Due',
-      'Source',
-    ]
-    const rows = trips.map((trip) => [
-      formatDateInLondon(trip.tripDate, { day: '2-digit', month: '2-digit', year: 'numeric' }),
-      trip.description ?? '',
-      trip.routeSummary,
-      trip.totalMiles.toFixed(1),
-      trip.milesAtStandardRate.toFixed(1),
-      trip.milesAtReducedRate.toFixed(1),
-      trip.amountDue.toFixed(2),
-      trip.source === 'oj_projects' ? 'OJ Projects' : 'Manual',
-    ])
-
-    const csv = [
-      headers.map(escapeCsvCell).join(','),
-      ...rows.map((row) => row.map(escapeCsvCell).join(',')),
-    ].join('\n')
-
-    return {
-      data: csv,
-      filename: `mileage-trips-${getTodayIsoDate()}.csv`,
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to export trips'
-    return { error: message }
   }
 }
 
