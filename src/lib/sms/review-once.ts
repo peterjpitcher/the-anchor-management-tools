@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllRows, type PagedReadResult } from '@/lib/supabase/paged-read'
 
 export type ReviewVisitChannel = 'event' | 'table' | 'private'
 
@@ -60,6 +61,18 @@ export function reviewVisitCandidateKey(candidate: {
   return `${candidate.channel}:${candidate.bookingId ?? ''}`
 }
 
+/** A raw booking row from any of the four history tables, before it is normalised below. */
+type ReviewHistoryRow = Record<string, unknown>
+
+/**
+ * PostgREST's generated types describe a nested embed as an array even where the relation is
+ * to-one, and the normalisers below already accept either shape at runtime, so the paged read
+ * asserts the row shape rather than fighting the generated types.
+ */
+function asHistoryRows(builder: unknown): PromiseLike<PagedReadResult<ReviewHistoryRow>> {
+  return builder as PromiseLike<PagedReadResult<ReviewHistoryRow>>
+}
+
 /**
  * Return the review candidates that represent a customer's first visit.
  *
@@ -96,70 +109,105 @@ export async function getFirstVisitReviewEligibleCandidateKeys(
   }
 
   const customerIds = [...new Set(normalizedCandidates.map((candidate) => candidate.customerId))]
-  const [eventBookings, tableBookings, privateBookings, parkingBookings] = await Promise.all([
-    db
-      .from('bookings')
-      .select(`
-        id,
-        customer_id,
-        status,
-        is_reminder_only,
-        created_at,
-        event:events(
-          start_datetime,
-          date,
-          time,
-          event_status
-        )
-      `)
-      .in('customer_id', customerIds),
-    db
-      .from('table_bookings')
-      .select('id, customer_id, status, start_datetime, booking_date, booking_time, created_at')
-      .in('customer_id', customerIds),
-    db
-      .from('private_bookings')
-      .select('id, customer_id, status, event_date, start_time, created_at')
-      .in('customer_id', customerIds),
-    db
-      .from('parking_bookings')
-      .select('id, customer_id, status, start_at, created_at')
-      .in('customer_id', customerIds),
-  ])
 
-  const queryErrors = [
-    eventBookings.error,
-    tableBookings.error,
-    privateBookings.error,
-    parkingBookings.error,
-  ].filter((error): error is NonNullable<typeof error> => error != null)
+  // Every read pages. Supabase caps a request at 1,000 rows and reports no error when it
+  // truncates, so a regular whose earlier visits fell past the cap looked like a first-timer
+  // and got the review text this rule exists to prevent. Ordering by id keeps the pages from
+  // overlapping or skipping.
+  let historyRows: [ReviewHistoryRow[], ReviewHistoryRow[], ReviewHistoryRow[], ReviewHistoryRow[]]
 
-  if (queryErrors.length > 0) {
-    const message = queryErrors.map(errorMessage).join('; ')
-    throw new Error(`Failed to load first-visit review history: ${message}`)
+  try {
+    historyRows = await Promise.all([
+      fetchAllRows<ReviewHistoryRow>(
+        (from, to) =>
+          asHistoryRows(
+            db
+              .from('bookings')
+              .select(`
+                id,
+                customer_id,
+                status,
+                is_reminder_only,
+                created_at,
+                event:events(
+                  start_datetime,
+                  date,
+                  time,
+                  event_status
+                )
+              `)
+              .in('customer_id', customerIds)
+              .order('id')
+              .range(from, to)
+          ),
+        { label: 'first-visit event bookings' }
+      ),
+      fetchAllRows<ReviewHistoryRow>(
+        (from, to) =>
+          asHistoryRows(
+            db
+              .from('table_bookings')
+              .select('id, customer_id, status, start_datetime, booking_date, booking_time, created_at')
+              .in('customer_id', customerIds)
+              .order('id')
+              .range(from, to)
+          ),
+        { label: 'first-visit table bookings' }
+      ),
+      fetchAllRows<ReviewHistoryRow>(
+        (from, to) =>
+          asHistoryRows(
+            db
+              .from('private_bookings')
+              .select('id, customer_id, status, event_date, start_time, created_at')
+              .in('customer_id', customerIds)
+              .order('id')
+              .range(from, to)
+          ),
+        { label: 'first-visit private bookings' }
+      ),
+      fetchAllRows<ReviewHistoryRow>(
+        (from, to) =>
+          asHistoryRows(
+            db
+              .from('parking_bookings')
+              .select('id, customer_id, status, start_at, created_at')
+              .in('customer_id', customerIds)
+              .order('id')
+              .range(from, to)
+          ),
+        { label: 'first-visit parking bookings' }
+      ),
+    ])
+  } catch (error) {
+    // Same contract as before: a failed read throws rather than letting a partial history
+    // decide that a returning customer is on their first visit.
+    throw new Error(`Failed to load first-visit review history: ${errorMessage(error)}`)
   }
+
+  const [eventBookingRows, tableBookingRows, privateBookingRows, parkingBookingRows] = historyRows
 
   const visitsByCustomer = new Map<string, ReviewVisitRecord[]>()
   for (const candidate of normalizedCandidates) {
     appendVisit(visitsByCustomer, candidate)
   }
 
-  for (const row of eventBookings.data ?? []) {
+  for (const row of eventBookingRows) {
     const record = normalizeEventBookingVisit(row)
     if (record) appendVisit(visitsByCustomer, record)
   }
 
-  for (const row of tableBookings.data ?? []) {
+  for (const row of tableBookingRows) {
     const record = normalizeTableBookingVisit(row)
     if (record) appendVisit(visitsByCustomer, record)
   }
 
-  for (const row of privateBookings.data ?? []) {
+  for (const row of privateBookingRows) {
     const record = normalizePrivateBookingVisit(row)
     if (record) appendVisit(visitsByCustomer, record)
   }
 
-  for (const row of parkingBookings.data ?? []) {
+  for (const row of parkingBookingRows) {
     const record = normalizeParkingBookingVisit(row)
     if (record) appendVisit(visitsByCustomer, record)
   }

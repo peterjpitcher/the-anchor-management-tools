@@ -23,13 +23,17 @@ type FakeRow = Record<string, unknown>
 
 /**
  * Build a chained Supabase query mock that resolves with the supplied rows.
- * Supports .from().select().in().not() chaining.
+ * Supports .from().select().in().order().range().not() chaining. The first-visit
+ * reads page, so they add .order().range(); every fixture here is a short first
+ * page, which is the whole set, so each read still makes one request.
  */
 function makeQueryChain(rows: FakeRow[], error: unknown = null) {
   const chain: Record<string, unknown> = {}
   const result = Promise.resolve({ data: error ? null : rows, error })
   chain.select = vi.fn().mockReturnValue(chain)
   chain.in = vi.fn().mockReturnValue(chain)
+  chain.order = vi.fn().mockReturnValue(chain)
+  chain.range = vi.fn().mockReturnValue(chain)
   chain.not = vi.fn().mockResolvedValue({ data: error ? null : rows, error })
   chain.then = result.then.bind(result)
   chain.catch = result.catch.bind(result)
