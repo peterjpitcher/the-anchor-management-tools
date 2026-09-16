@@ -205,7 +205,7 @@ $function$;
 
 -- Miles the driver had already logged in the tax year before this trip's position.
 -- A new trip (p_trip_id null) counts after every existing trip on the same day.
-CREATE OR REPLACE FUNCTION public.mileage_rate_preview_v01(p_driver_id uuid, p_trip_date date, p_trip_id uuid)
+CREATE OR REPLACE FUNCTION public.mileage_rate_preview_v01(p_driver_id uuid, p_trip_date date, p_trip_id uuid DEFAULT NULL)
 RETURNS numeric
 LANGUAGE sql
 STABLE
