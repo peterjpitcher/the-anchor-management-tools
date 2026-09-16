@@ -9,6 +9,7 @@
 import { useMemo, useState } from 'react'
 import { Alert, Button, Input, Modal, Select } from '@/ds'
 import type { MileageDriver } from '@/app/actions/mileage-drivers'
+import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
 import { financialYearOptions, quarterOptions, taxYearOptions } from '@/lib/mileage/period-options'
 import { customPeriod, daysBetween, lastCompletedQuarter, MAX_REPORT_DAYS, type ReportPeriod } from '@/lib/mileage/periods'
 import { LOG_START_DATE } from '@/lib/mileage/report/model'
@@ -92,13 +93,8 @@ export function MileageReportDialog({ open, onClose, drivers, today }: MileageRe
         return
       }
 
-      const fileName = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? 'Mileage_Report.pdf'
-      const url = URL.createObjectURL(await response.blob())
-      const link = document.createElement('a')
-      link.href = url
-      link.download = fileName
-      link.click()
-      URL.revokeObjectURL(url)
+      const fileName = filenameFromContentDisposition(response.headers.get('Content-Disposition'), 'Mileage_Report.pdf')
+      downloadBlob(await response.blob(), fileName)
       onClose()
     } catch {
       setDownloadError(RENDER_FAILED)
