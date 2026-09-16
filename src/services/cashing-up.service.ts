@@ -9,6 +9,7 @@ import {
 } from '@/types/cashing-up';
 import { addDays, endOfMonth, subDays, format, subMonths } from 'date-fns';
 import { normalizeCashCountInputs } from '@/lib/cashing-up/cash-counts';
+import { fetchAllRows } from '@/lib/supabase/paged-read';
 
 const SALES_CATEGORIES: CashupSalesCategory[] = ['drinks_sales', 'food_sales', 'other_sales'];
 const SALES_CATEGORY_META: Record<CashupSalesCategory, { label: string; color: string }> = {
@@ -37,6 +38,14 @@ type JoinedSessionDateRow = {
 type WeeklyPaymentBreakdownRow = JoinedSessionDateRow & {
   payment_type_code?: string | null;
   counted_amount?: number | string | null;
+};
+type InsightsPaymentBreakdownRow = {
+  payment_type_label?: string | null;
+  counted_amount?: number | null;
+};
+type InsightsSalesBreakdownRow = JoinedSessionDateRow & {
+  sales_category?: string | null;
+  amount?: number | null;
 };
 
 function roundCurrency(value: number): number {
@@ -170,20 +179,37 @@ export class CashingUpService {
     const sessions = sessionsRes.data ?? [];
     const targetRows = targetsRes.data ?? [];
 
-    // Fetch Breakdowns for Payment Mix and Sales Mix
-    const [paymentBreakdownsRes, salesBreakdownsRes, importedSalesRes] = await Promise.all([
-      supabase
-        .from('cashup_payment_breakdowns')
-        .select('payment_type_label, counted_amount, cashup_sessions!inner(site_id, session_date)')
-        .eq('cashup_sessions.site_id', siteId)
-        .gte('cashup_sessions.session_date', startDateStr)
-        .lte('cashup_sessions.session_date', endDateStr),
-      supabase
-        .from('cashup_sales_breakdowns')
-        .select('sales_category, amount, cashup_sessions!inner(site_id, session_date)')
-        .eq('cashup_sessions.site_id', siteId)
-        .gte('cashup_sessions.session_date', startDateStr)
-        .lte('cashup_sessions.session_date', endDateStr),
+    // Fetch Breakdowns for Payment Mix and Sales Mix.
+    // A 12-month window already matches more than the 1,000 rows Supabase returns per
+    // request, and it never gets shorter, so both breakdown reads page through the set
+    // rather than silently showing a mix built from an arbitrary slice of it. They keep
+    // throwing on failure, which is the contract the caller already relies on. The
+    // pnl_sales_imports read stays as it is: one row per date, at most 366.
+    const [breakdowns, salesBreakdowns, importedSalesRes] = await Promise.all([
+      fetchAllRows<InsightsPaymentBreakdownRow>(
+        (from, to) =>
+          supabase
+            .from('cashup_payment_breakdowns')
+            .select('payment_type_label, counted_amount, cashup_sessions!inner(site_id, session_date)')
+            .eq('cashup_sessions.site_id', siteId)
+            .gte('cashup_sessions.session_date', startDateStr)
+            .lte('cashup_sessions.session_date', endDateStr)
+            .order('id')
+            .range(from, to),
+        { label: 'cash-up insights payment breakdowns' }
+      ),
+      fetchAllRows<InsightsSalesBreakdownRow>(
+        (from, to) =>
+          supabase
+            .from('cashup_sales_breakdowns')
+            .select('sales_category, amount, cashup_sessions!inner(site_id, session_date)')
+            .eq('cashup_sessions.site_id', siteId)
+            .gte('cashup_sessions.session_date', startDateStr)
+            .lte('cashup_sessions.session_date', endDateStr)
+            .order('id')
+            .range(from, to),
+        { label: 'cash-up insights sales breakdowns' }
+      ),
       supabase
         .from('pnl_sales_imports')
         .select('sale_date, drinks_sales, food_sales, other_sales')
@@ -194,14 +220,10 @@ export class CashingUpService {
         .lte('sale_date', endDateStr),
     ]);
 
-    if (paymentBreakdownsRes.error) throw paymentBreakdownsRes.error;
-    if (salesBreakdownsRes.error) throw salesBreakdownsRes.error;
     if (importedSalesRes.error && !importedSalesRes.error.message.includes('pnl_sales_imports')) {
       throw importedSalesRes.error;
     }
 
-    const breakdowns = paymentBreakdownsRes.data ?? [];
-    const salesBreakdowns = salesBreakdownsRes.data ?? [];
     const importedSalesRows = importedSalesRes.error ? [] : (importedSalesRes.data ?? []);
 
     // --- 1. Day of Week Analysis ---
