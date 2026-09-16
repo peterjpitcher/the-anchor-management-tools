@@ -20687,6 +20687,10 @@ export type Database = {
         Args: { p_driver_id: string; p_trip_date: string; p_trip_id?: string }
         Returns: number
       }
+      mileage_report_dataset_v01: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
       move_table_booking_assignments_v05: {
         Args: {
           p_end_datetime: string
