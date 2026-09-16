@@ -13,16 +13,31 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 
-# Named explicitly and in order. Never glob: other sessions add neighbouring migrations.
-MILEAGE_MIGRATIONS="
-20260915185549_mileage_rate_schedule_and_recalc_trigger.sql
-20260916155342_mileage_drivers_foundation.sql
-"
-
-# Test files that run after the migrations. Each prints its own PASS marker.
-MILEAGE_TESTS="
-rates-and-recalc.test.sql
-drivers.test.sql
+# Ordered steps: each test runs straight after the migrations it covers, before later ones, because
+# a later migration can forbid data an earlier test inserts. Named explicitly. Never glob: other
+# sessions add neighbouring migrations. One step per line; blank lines and # lines are ignored.
+#
+#   migration:<file>          apply supabase/migrations/<file>; it must succeed
+#   refused:<file>:<CODE>     apply supabase/migrations/<file>; it must fail with error <CODE>
+#   test:<file>[:<phase>]     run tests/sql/mileage/<file> with psql variable phase=<phase>; the
+#                             output must contain the file's PASS marker, followed by " (<phase>)"
+#                             when a phase is given
+MILEAGE_STEPS="
+migration:20260915185549_mileage_rate_schedule_and_recalc_trigger.sql
+test:rates-and-recalc.test.sql
+migration:20260916155342_mileage_drivers_foundation.sql
+test:drivers.test.sql
+# Release 3 cutover: refused before the backfill and whenever a stored amount would change, then
+# applied over backfilled trips.
+test:driver-cutover.test.sql:no_driver
+refused:20260916162417_mileage_driver_cutover.sql:MILEAGE_DRIVER_CUTOVER_NULL_DRIVERS
+test:driver-cutover.test.sql:no_oj_driver
+refused:20260916162417_mileage_driver_cutover.sql:MILEAGE_DRIVER_CUTOVER_OJ_DRIVER
+test:driver-cutover.test.sql:amounts_change
+refused:20260916162417_mileage_driver_cutover.sql:MILEAGE_DRIVER_CUTOVER_CHANGED_AMOUNTS
+test:driver-cutover.test.sql:backfilled
+migration:20260916162417_mileage_driver_cutover.sql
+test:driver-cutover.test.sql:after
 "
 
 ENGINE=""
@@ -84,31 +99,90 @@ if ! grep -q "MILEAGE BASELINE TESTS PASSED" <<<"$baseline_output"; then
 fi
 echo "  baseline.test.sql: pass"
 
-for name in $MILEAGE_MIGRATIONS; do
-  printf '  applying %s ... ' "$name"
-  if run_sql < "$ROOT/supabase/migrations/$name" >/dev/null 2>&1; then
-    echo "ok"
-  else
-    echo "FAILED"
-    run_sql < "$ROOT/supabase/migrations/$name"
-    exit 1
-  fi
-done
-
 AMAP_CASES="$(cat "$ROOT/tests/fixtures/mileage/amap-rate-cases.json")"
 failed=0
-for test in $MILEAGE_TESTS; do
-  marker="$(grep -m1 -oE "MILEAGE [A-Z0-9 ]+ TESTS PASSED" "$HERE/$test")"
-  # Captured rather than piped: grep -q closing the pipe early makes psql fail under pipefail.
-  output="$(run_sql -v amap_cases="$AMAP_CASES" < "$HERE/$test" 2>&1 || true)"
-  if grep -q "$marker" <<<"$output"; then
-    echo "  $test: pass"
-  else
-    echo "  $test: FAIL"
-    echo "$output" | tail -25
-    failed=1
+# Steps are read from descriptor 3 so nothing inside the loop can consume them from stdin.
+while IFS= read -r step <&3; do
+  case "$step" in
+    '' | '#'*) continue ;;
+  esac
+  kind="${step%%:*}"
+  rest="${step#*:}"
+  name="${rest%%:*}"
+  arg=""
+  if [ "$rest" != "$name" ]; then
+    arg="${rest#*:}"
   fi
-done
+
+  case "$kind" in
+    migration)
+      printf '  applying %s ... ' "$name"
+      if [ -f "$ROOT/supabase/migrations/$name" ] && run_sql < "$ROOT/supabase/migrations/$name" >/dev/null 2>&1; then
+        echo "ok"
+      else
+        echo "FAILED"
+        if [ -f "$ROOT/supabase/migrations/$name" ]; then
+          run_sql < "$ROOT/supabase/migrations/$name" || true
+        else
+          echo "    missing supabase/migrations/$name"
+        fi
+        failed=1
+        break
+      fi
+      ;;
+    refused)
+      printf '  refusing %s with %s ... ' "$name" "$arg"
+      output=""
+      status=0
+      if [ -n "$arg" ] && [ -f "$ROOT/supabase/migrations/$name" ]; then
+        output="$(run_sql < "$ROOT/supabase/migrations/$name" 2>&1)" || status=$?
+      else
+        output="missing supabase/migrations/$name or the expected error code"
+      fi
+      if [ "$status" -ne 0 ] && grep -qE "ERROR: +$arg" <<<"$output"; then
+        echo "ok"
+      else
+        echo "FAILED"
+        echo "$output" | tail -25
+        failed=1
+        break
+      fi
+      ;;
+    test)
+      label="$name"
+      if [ -n "$arg" ]; then
+        label="$name ($arg)"
+      fi
+      marker=""
+      if [ -f "$HERE/$name" ]; then
+        marker="$(grep -m1 -oE "MILEAGE [A-Z0-9 ]+ TESTS PASSED" "$HERE/$name" || true)"
+      fi
+      if [ -z "$marker" ]; then
+        echo "  $label: FAIL (missing file or PASS marker)"
+        failed=1
+        break
+      fi
+      expected="$marker"
+      if [ -n "$arg" ]; then
+        expected="$marker ($arg)"
+      fi
+      # Captured rather than piped: grep -q closing the pipe early makes psql fail under pipefail.
+      output="$(run_sql -v amap_cases="$AMAP_CASES" -v phase="$arg" < "$HERE/$name" 2>&1 || true)"
+      if grep -qF -- "$expected" <<<"$output"; then
+        echo "  $label: pass"
+      else
+        echo "  $label: FAIL"
+        echo "$output" | tail -25
+        failed=1
+        break
+      fi
+      ;;
+    *)
+      echo "Unknown step: $step" >&2
+      exit 1
+      ;;
+  esac
+done 3<<<"$MILEAGE_STEPS"
 
 if [ "$failed" -ne 0 ]; then
   echo "FAIL: mileage SQL tests" >&2

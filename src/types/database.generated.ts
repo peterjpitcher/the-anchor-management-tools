@@ -9113,8 +9113,8 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
-          driver_basis: string | null
-          driver_id: string | null
+          driver_basis: string
+          driver_id: string
           id: string
           miles_at_reduced_rate: number
           miles_at_standard_rate: number
@@ -9130,8 +9130,8 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
-          driver_basis?: string | null
-          driver_id?: string | null
+          driver_basis: string
+          driver_id: string
           id?: string
           miles_at_reduced_rate?: number
           miles_at_standard_rate?: number
@@ -9147,8 +9147,8 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
-          driver_basis?: string | null
-          driver_id?: string | null
+          driver_basis?: string
+          driver_id?: string
           id?: string
           miles_at_reduced_rate?: number
           miles_at_standard_rate?: number
@@ -20682,6 +20682,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      mileage_headline_totals_v01: { Args: { p_today: string }; Returns: Json }
       mileage_rate_preview_v01: {
         Args: { p_driver_id: string; p_trip_date: string; p_trip_id?: string }
         Returns: number
@@ -20781,6 +20782,10 @@ export type Database = {
       rebuild_customer_category_stats: { Args: never; Returns: number }
       recalculate_invoice_settlement: {
         Args: { p_invoice_id: string }
+        Returns: undefined
+      }
+      recalculate_mileage_driver_tax_year_v01: {
+        Args: { p_driver_id: string; p_tax_year_start: string }
         Returns: undefined
       }
       recalculate_mileage_tax_year_v01: {
