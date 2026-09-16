@@ -11,6 +11,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { selectBestReceiptRule } from '@/lib/receipts/rule-matching'
 import { logger } from '@/lib/logger'
 import { receiptRuleSchema, receiptMarkSchema } from '@/lib/validation'
@@ -1980,41 +1981,54 @@ export async function performApplyReceiptGroupClassification(
 // @requires Caller must verify user auth and 'receipts.manage' permission
 // ---------------------------------------------------------------------------
 
+type UnclassifiedTransactionRow = { id: string; batch_id: string | null }
+
 export async function performRequeueUnclassifiedTransactions(): Promise<{ success: boolean; queued?: number; error?: string }> {
   const supabase = createAdminClient()
 
-  // Query 1: transactions with no vendor classification at all
-  const { data: vendorMissing, error: vendorError } = await supabase
-    .from('receipt_transactions')
-    .select('id, batch_id')
-    .is('vendor_name', null)
-    .is('vendor_source', null)
-    .limit(5000)
+  let vendorMissing: UnclassifiedTransactionRow[]
+  let expenseMissing: UnclassifiedTransactionRow[]
 
-  if (vendorError) {
-    console.error('Failed to load vendor-unclassified transactions for requeue', vendorError)
-    return { success: false, error: 'Failed to load transactions' }
-  }
+  // Both reads page in 1,000s and order by id: Supabase caps a single request at
+  // 1,000 rows without saying so, and an unordered read would re-queue the same
+  // rows on every click instead of working through the backlog.
+  try {
+    // Query 1: transactions with no vendor classification at all
+    vendorMissing = await fetchAllRows<UnclassifiedTransactionRow>(
+      (from, to) =>
+        supabase
+          .from('receipt_transactions')
+          .select('id, batch_id')
+          .is('vendor_name', null)
+          .is('vendor_source', null)
+          .order('id', { ascending: true })
+          .range(from, to),
+      { label: 'vendor-unclassified transactions for requeue' }
+    )
 
-  // Query 2: outgoing transactions that have a vendor but no expense category
-  const { data: expenseMissing, error: expenseError } = await supabase
-    .from('receipt_transactions')
-    .select('id, batch_id')
-    .is('expense_category', null)
-    .is('expense_category_source', null)
-    .not('amount_out', 'is', null)
-    .gt('amount_out', 0)
-    .limit(5000)
-
-  if (expenseError) {
-    console.error('Failed to load expense-unclassified transactions for requeue', expenseError)
+    // Query 2: outgoing transactions that have a vendor but no expense category
+    expenseMissing = await fetchAllRows<UnclassifiedTransactionRow>(
+      (from, to) =>
+        supabase
+          .from('receipt_transactions')
+          .select('id, batch_id')
+          .is('expense_category', null)
+          .is('expense_category_source', null)
+          .not('amount_out', 'is', null)
+          .gt('amount_out', 0)
+          .order('id', { ascending: true })
+          .range(from, to),
+      { label: 'expense-unclassified transactions for requeue' }
+    )
+  } catch (err) {
+    console.error('Failed to load unclassified transactions for requeue', err)
     return { success: false, error: 'Failed to load transactions' }
   }
 
   // Merge and de-duplicate by ID
   const seenIds = new Set<string>()
   const rows: Array<{ id: string; batch_id: string | null }> = []
-  for (const row of [...(vendorMissing ?? []), ...(expenseMissing ?? [])]) {
+  for (const row of [...vendorMissing, ...expenseMissing]) {
     if (!seenIds.has(row.id)) {
       seenIds.add(row.id)
       rows.push(row)
