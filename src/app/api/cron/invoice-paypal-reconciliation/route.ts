@@ -3,6 +3,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   getPayPalOrder,
+  isPayPalOrderNotFoundError,
   PayPalApiError,
 } from '@/lib/paypal'
 import { reportCronFailure } from '@/lib/cron/alerting'
@@ -29,6 +30,14 @@ export const maxDuration = 60
 // uncollectable states are excluded, and the RPC refuses those anyway.
 const PAYABLE_STATUSES = ['draft', 'sent', 'overdue', 'partially_paid']
 
+/*
+ * PayPal keeps completed orders (checked against the live account back to
+ * October 2025), so an order it no longer has was never paid. A missing order is
+ * only acted on once the invoice has sat untouched for this long, so a read that
+ * lands just after the portal attached a new order is never mistaken for one.
+ */
+const MISSING_ORDER_GRACE_MS = 60 * 60 * 1000
+
 type PendingInvoice = {
   id: string
   invoice_number: string
@@ -37,6 +46,7 @@ type PendingInvoice = {
   paid_amount: number | null
   status: string | null
   sent_at: string | null
+  updated_at: string | null
   paypal_reconciliation_attempts: number | null
   vendor: { paypal_payments_enabled?: boolean | null } | null
 }
@@ -81,7 +91,7 @@ export async function GET(request: NextRequest) {
   try {
     const { data, error } = await admin
       .from('invoices')
-      .select('id, invoice_number, paypal_order_id, total_amount, paid_amount, status, sent_at, paypal_reconciliation_attempts, vendor:invoice_vendors(paypal_payments_enabled)')
+      .select('id, invoice_number, paypal_order_id, total_amount, paid_amount, status, sent_at, updated_at, paypal_reconciliation_attempts, vendor:invoice_vendors(paypal_payments_enabled)')
       .not('paypal_order_id', 'is', null)
       .in('status', PAYABLE_STATUSES)
       .is('deleted_at', null)
@@ -96,7 +106,23 @@ export async function GET(request: NextRequest) {
       summary.checked += 1
 
       try {
-        const order = await getPayPalOrder(orderId)
+        let order: Awaited<ReturnType<typeof getPayPalOrder>>
+        try {
+          order = await getPayPalOrder(orderId)
+        } catch (lookupError) {
+          if (!isPayPalOrderNotFoundError(lookupError)) throw lookupError
+
+          // An abandoned checkout. Clear it as for a voided order: left in place
+          // it alerted every run, and the portal refused the customer's next
+          // attempt to pay because it could not read the old order.
+          const touchedAt = invoice.updated_at ? Date.parse(invoice.updated_at) : Number.NaN
+          if (Number.isFinite(touchedAt) && Date.now() - touchedAt < MISSING_ORDER_GRACE_MS) {
+            continue
+          }
+          await clearOrder(admin, invoice.id, orderId, 'Order no longer exists at PayPal')
+          summary.cleared += 1
+          continue
+        }
         const status = order?.status
 
         // Disabling PayPal withdraws permission to capture an approved order.
@@ -133,8 +159,8 @@ export async function GET(request: NextRequest) {
           metadata: { invoiceId: invoice.id, orderId, attempts },
         })
 
-        // A timeout, missing order or unreadable capture does not prove that
-        // no money moved. Keep its reference available for the next recovery.
+        // A timeout or unreadable capture does not prove that no money moved.
+        // Keep its reference available for the next recovery.
         const { error: updateError } = await admin
           .from('invoices')
           .update({
