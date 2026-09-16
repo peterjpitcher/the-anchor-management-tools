@@ -53,27 +53,27 @@ export async function listAuditLogUsers(): Promise<{ users?: AuditLogUser[]; err
 
     const supabase = createAdminClient()
 
-    // Fetch distinct user_id + user_email combinations that have appeared in audit logs
-    const { data, error } = await supabase
-      .from('audit_logs')
-      .select('user_id, user_email')
-      .not('user_id', 'is', null)
-      .order('user_email', { ascending: true })
+    // The distinct lives in the database (migration 20260916093000). Reading every audit_logs
+    // row to build this list hit Supabase's silent 1,000-row cap, so the dropdown showed only
+    // the first handful of staff and the rest could not be filtered on.
+    const { data, error } = await supabase.rpc('get_audit_log_users')
 
     if (error) {
       console.error('Error loading audit log users:', error)
       return { error: 'Failed to load users' }
     }
 
-    // Deduplicate by user_id
-    const seen = new Set<string>()
-    const users: AuditLogUser[] = []
-    for (const row of data ?? []) {
-      if (row.user_id && !seen.has(row.user_id)) {
-        seen.add(row.user_id)
-        users.push({ user_id: row.user_id, user_email: row.user_email ?? null })
-      }
-    }
+    const rows = (data ?? []) as AuditLogUser[]
+
+    // The function must order by user_id for its DISTINCT ON, so sort for the dropdown here:
+    // by email, with the rare user who has none last, as the old query did.
+    const users: AuditLogUser[] = rows
+      .map((row) => ({ user_id: row.user_id, user_email: row.user_email ?? null }))
+      .sort((a, b) => {
+        if (!a.user_email) return b.user_email ? 1 : 0
+        if (!b.user_email) return -1
+        return a.user_email.localeCompare(b.user_email, 'en-GB')
+      })
 
     return { users }
   } catch (error) {
