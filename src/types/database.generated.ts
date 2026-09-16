@@ -9030,6 +9030,33 @@ export type Database = {
           },
         ]
       }
+      mileage_drivers: {
+        Row: {
+          created_at: string
+          display_name: string
+          drives_oj_projects: boolean
+          id: string
+          is_active: boolean
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          drives_oj_projects?: boolean
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          drives_oj_projects?: boolean
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       mileage_trip_legs: {
         Row: {
           from_destination_id: string
@@ -9082,9 +9109,12 @@ export type Database = {
       mileage_trips: {
         Row: {
           amount_due: number
+          create_request_id: string | null
           created_at: string
           created_by: string | null
           description: string | null
+          driver_basis: string | null
+          driver_id: string | null
           id: string
           miles_at_reduced_rate: number
           miles_at_standard_rate: number
@@ -9096,9 +9126,12 @@ export type Database = {
         }
         Insert: {
           amount_due: number
+          create_request_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
+          driver_basis?: string | null
+          driver_id?: string | null
           id?: string
           miles_at_reduced_rate?: number
           miles_at_standard_rate?: number
@@ -9110,9 +9143,12 @@ export type Database = {
         }
         Update: {
           amount_due?: number
+          create_request_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
+          driver_basis?: string | null
+          driver_id?: string | null
           id?: string
           miles_at_reduced_rate?: number
           miles_at_standard_rate?: number
@@ -9131,10 +9167,55 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "mileage_trips_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "mileage_drivers"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "mileage_trips_oj_entry_id_fkey"
             columns: ["oj_entry_id"]
             isOneToOne: true
             referencedRelation: "oj_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mileage_vehicles: {
+        Row: {
+          created_at: string
+          description: string | null
+          driver_id: string
+          engine_cc: number | null
+          fuel_type: string
+          id: string
+          valid_from: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          driver_id: string
+          engine_cc?: number | null
+          fuel_type: string
+          id?: string
+          valid_from: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          driver_id?: string
+          engine_cc?: number | null
+          fuel_type?: string
+          id?: string
+          valid_from?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mileage_vehicles_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "mileage_drivers"
             referencedColumns: ["id"]
           },
         ]
@@ -19507,6 +19588,18 @@ export type Database = {
         }
         Returns: string
       }
+      create_manual_mileage_trip_v02: {
+        Args: {
+          p_created_by: string
+          p_description: string
+          p_driver_id: string
+          p_legs: Json
+          p_request_id: string
+          p_total_miles: number
+          p_trip_date: string
+        }
+        Returns: Json
+      }
       create_next_waitlist_offer_v05: {
         Args: { p_event_id: string }
         Returns: Json
@@ -20580,6 +20673,19 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      mileage_assert_trip_input_v01: {
+        Args: {
+          p_description: string
+          p_driver_id: string
+          p_total_miles: number
+          p_trip_date: string
+        }
+        Returns: undefined
+      }
+      mileage_rate_preview_v01: {
+        Args: { p_driver_id: string; p_trip_date: string; p_trip_id: string | null }
+        Returns: number
+      }
       move_table_booking_assignments_v05: {
         Args: {
           p_end_datetime: string
@@ -21201,6 +21307,18 @@ export type Database = {
       update_manual_mileage_trip_v01: {
         Args: {
           p_description: string
+          p_legs: Json
+          p_total_miles: number
+          p_trip_date: string
+          p_trip_id: string
+        }
+        Returns: Json
+      }
+      update_manual_mileage_trip_v02: {
+        Args: {
+          p_description: string
+          p_driver_id: string
+          p_expected_updated_at: string
           p_legs: Json
           p_total_miles: number
           p_trip_date: string

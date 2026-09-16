@@ -16,11 +16,13 @@ ROOT="$(cd "$HERE/../../.." && pwd)"
 # Named explicitly and in order. Never glob: other sessions add neighbouring migrations.
 MILEAGE_MIGRATIONS="
 20260915185549_mileage_rate_schedule_and_recalc_trigger.sql
+20260916155342_mileage_drivers_foundation.sql
 "
 
 # Test files that run after the migrations. Each prints its own PASS marker.
 MILEAGE_TESTS="
 rates-and-recalc.test.sql
+drivers.test.sql
 "
 
 ENGINE=""
