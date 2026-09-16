@@ -27,6 +27,14 @@ import { queryReceiptVendorDetail, queryReceiptVendorMonthTransactions, queryRec
 
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 
+// The vendor movement query pages the monthly-totals function, so its mock has to
+// expose `.range()` the way the PostgREST builder does.
+function pagedRpcMock(rows: unknown[]): Mock {
+  return vi.fn(() => ({
+    range: (from: number, to: number) => Promise.resolve({ data: rows.slice(from, to + 1), error: null }),
+  }))
+}
+
 describe('receipt vendor queries', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -160,27 +168,24 @@ describe('receipt vendor queries', () => {
   })
 
   it('loads all-history vendor movements without applying the 24-month cap', async () => {
-    const movementRpc = vi.fn().mockResolvedValue({
-      data: [
-        {
-          vendor_key: 'canonical brewery',
-          vendor_label: 'Canonical Brewery',
-          month_start: '2023-01-01',
-          total_outgoing: 100,
-          total_income: 0,
-          transaction_count: 1,
-        },
-        {
-          vendor_key: 'canonical brewery',
-          vendor_label: 'Canonical Brewery',
-          month_start: '2026-06-01',
-          total_outgoing: 300,
-          total_income: 0,
-          transaction_count: 2,
-        },
-      ],
-      error: null,
-    })
+    const movementRpc = pagedRpcMock([
+      {
+        vendor_key: 'canonical brewery',
+        vendor_label: 'Canonical Brewery',
+        month_start: '2023-01-01',
+        total_outgoing: 100,
+        total_income: 0,
+        transaction_count: 1,
+      },
+      {
+        vendor_key: 'canonical brewery',
+        vendor_label: 'Canonical Brewery',
+        month_start: '2026-06-01',
+        total_outgoing: 300,
+        total_income: 0,
+        transaction_count: 2,
+      },
+    ])
 
     mockedCreateAdminClient.mockReturnValue({ rpc: movementRpc })
 
@@ -203,27 +208,24 @@ describe('receipt vendor queries', () => {
   })
 
   it('filters vendor movements to watched vendors', async () => {
-    const movementRpc = vi.fn().mockResolvedValue({
-      data: [
-        {
-          vendor_key: 'canonical brewery',
-          vendor_label: 'Canonical Brewery',
-          month_start: '2026-06-01',
-          total_outgoing: 300,
-          total_income: 0,
-          transaction_count: 2,
-        },
-        {
-          vendor_key: 'food supplier',
-          vendor_label: 'Food Supplier',
-          month_start: '2026-06-01',
-          total_outgoing: 200,
-          total_income: 0,
-          transaction_count: 1,
-        },
-      ],
-      error: null,
-    })
+    const movementRpc = pagedRpcMock([
+      {
+        vendor_key: 'canonical brewery',
+        vendor_label: 'Canonical Brewery',
+        month_start: '2026-06-01',
+        total_outgoing: 300,
+        total_income: 0,
+        transaction_count: 2,
+      },
+      {
+        vendor_key: 'food supplier',
+        vendor_label: 'Food Supplier',
+        month_start: '2026-06-01',
+        total_outgoing: 200,
+        total_income: 0,
+        transaction_count: 1,
+      },
+    ])
     const watchOrder = vi.fn().mockResolvedValue({
       data: [{
         user_id: 'user-1',

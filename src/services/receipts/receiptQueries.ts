@@ -6,6 +6,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { classifyReceiptTransaction, summarizeReceiptVendorCostReview } from '@/lib/openai'
 import { getOpenAIConfig } from '@/lib/openai/config'
 import { getRuleMatch } from '@/lib/receipts/rule-matching'
@@ -973,46 +974,59 @@ async function queryReceiptVendorMonthlyMovementSources(
 ): Promise<{ sources: Array<{ vendorLabel: string; months: ReceiptVendorTrendMonth[] }>; error?: unknown }> {
   const supabase = createAdminClient()
   const rangeMonths = queryRangeMonthsForMovement(range)
-  const { data, error } = await supabase.rpc('get_receipt_vendor_monthly_totals', {
-    range_months: rangeMonths,
-  })
 
-  if (!error) {
-    return { sources: groupVendorMonthlyTotals((Array.isArray(data) ? data : []) as VendorMonthlyTotalRow[]) }
+  // Paged: the function returns 1,556 rows over a 48 month range, so a single
+  // request stopped part-way through the alphabet and dropped 92 vendors. The
+  // page error is kept so the missing-function fallback below still sees the
+  // database error itself rather than the wrapped one the helper throws.
+  let rpcPageError: unknown = null
+  let totals: VendorMonthlyTotalRow[] | null = null
+
+  try {
+    totals = await fetchAllRows<VendorMonthlyTotalRow>(
+      async (from, to) => {
+        const page = await supabase
+          .rpc('get_receipt_vendor_monthly_totals', { range_months: rangeMonths })
+          .range(from, to)
+        if (page.error) rpcPageError = page.error
+        return page
+      },
+      { label: 'receipt vendor monthly totals' },
+    )
+  } catch (thrown) {
+    const error = rpcPageError ?? thrown
+    if (!isMissingVendorMonthlyTotalsRpcError(error)) {
+      return { sources: [], error }
+    }
   }
 
-  if (!isMissingVendorMonthlyTotalsRpcError(error)) {
-    return { sources: [], error }
+  if (totals) {
+    return { sources: groupVendorMonthlyTotals(totals) }
   }
 
   console.warn('Receipt vendor monthly totals RPC is unavailable; falling back to paged transaction scan')
 
-  const rows: VendorTransactionRow[] = []
-  let from = 0
+  let scanPageError: unknown = null
 
-  while (true) {
-    const to = from + VENDOR_HISTORY_FALLBACK_PAGE_SIZE - 1
-    const page = await supabase
-      .from('receipt_transactions')
-      .select(VENDOR_TRANSACTION_SELECT)
-      .order('transaction_date', { ascending: false })
-      .range(from, to)
+  try {
+    const rows = await fetchAllRows<VendorTransactionRow>(
+      async (from, to) => {
+        const page = await supabase
+          .from('receipt_transactions')
+          .select(VENDOR_TRANSACTION_SELECT)
+          .order('transaction_date', { ascending: false })
+          .order('id')
+          .range(from, to)
+        if (page.error) scanPageError = page.error
+        return page
+      },
+      { pageSize: VENDOR_HISTORY_FALLBACK_PAGE_SIZE, label: 'receipt vendor monthly totals fallback scan' },
+    )
 
-    if (page.error) {
-      return { sources: [], error: page.error }
-    }
-
-    const pageRows = Array.isArray(page.data) ? (page.data as VendorTransactionRow[]) : []
-    rows.push(...pageRows)
-
-    if (pageRows.length < VENDOR_HISTORY_FALLBACK_PAGE_SIZE) {
-      break
-    }
-
-    from += VENDOR_HISTORY_FALLBACK_PAGE_SIZE
+    return { sources: groupVendorTransactionsByMonth(rows) }
+  } catch (thrown) {
+    return { sources: [], error: scanPageError ?? thrown }
   }
-
-  return { sources: groupVendorTransactionsByMonth(rows) }
 }
 
 function isMissingVendorHistoryRpcError(error: any): boolean {
@@ -1546,24 +1560,34 @@ export async function queryReceiptVendorReviews(userId: string): Promise<Receipt
 // getReceiptMissingExpenseSummary
 // ---------------------------------------------------------------------------
 
+type MissingExpenseRow = {
+  vendor_name: string | null
+  amount_out: number | string | null
+  amount_in: number | string | null
+  transaction_date: string | null
+}
+
 export async function queryReceiptMissingExpenseSummary(): Promise<ReceiptMissingExpenseSummaryItem[]> {
   const supabase = createAdminClient()
 
-  const { data, error } = await supabase
-    .from('receipt_transactions')
-    .select('vendor_name, amount_out, amount_in, transaction_date')
-    .is('expense_category', null)
-    .not('amount_out', 'is', null)
-    .limit(5000)
-
-  if (error) {
-    console.error('Failed to load missing expense summary', error)
-    throw error
-  }
+  // Paged: 3,387 rows match today, so a single request would silently return the
+  // first 1,000 and under-report the backlog. `id` is the unique tiebreak that
+  // keeps the page boundaries stable.
+  const rows = await fetchAllRows<MissingExpenseRow>(
+    (from, to) =>
+      supabase
+        .from('receipt_transactions')
+        .select('vendor_name, amount_out, amount_in, transaction_date')
+        .is('expense_category', null)
+        .not('amount_out', 'is', null)
+        .order('id')
+        .range(from, to),
+    { label: 'receipt missing expense summary' },
+  )
 
   const summaryMap = new Map<string, ReceiptMissingExpenseSummaryItem>()
 
-  ;(data ?? []).forEach((row: any) => {
+  rows.forEach((row) => {
     const normalizedVendorName = normalizeVendorInput(row.vendor_name)
     const label = normalizedVendorName ?? 'Unassigned vendor'
     const existing = summaryMap.get(label) ?? {
