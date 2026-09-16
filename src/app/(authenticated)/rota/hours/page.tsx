@@ -14,6 +14,7 @@ import {
   plannedShiftHours,
   generateWeeks,
 } from '@/lib/rota/hours-report';
+import { loadHoursReportData, type EmployeeRow } from '@/lib/rota/hours-report-data';
 import { displayName } from '@/lib/employees/display-name';
 import { PageLayout } from '@/ds';
 import { rotaNavItems } from '../nav';
@@ -50,46 +51,6 @@ interface HoursPageProps {
   }>;
 }
 
-type SessionRow = {
-  id: string;
-  employee_id: string;
-  work_date: string;
-  clock_in_at: string;
-  clock_out_at: string | null;
-};
-
-type EmployeeRow = {
-  employee_id: string;
-  first_name: string | null;
-  last_name: string | null;
-  preferred_name: string | null;
-  job_title: string | null;
-  status: string | null;
-};
-
-type LeaveDayRow = {
-  employee_id: string;
-  leave_date: string;
-  request_id: string;
-};
-
-type SickShiftRow = {
-  id: string;
-  employee_id: string;
-  shift_date: string;
-  sick_reason: string | null;
-};
-
-type PlannedShiftRow = {
-  id: string;
-  employee_id: string;
-  shift_date: string;
-  start_time: string;
-  end_time: string;
-  unpaid_break_minutes: number;
-  is_overnight: boolean;
-};
-
 // Hours by employee is a planning screen, not a payroll record, so it shows the
 // name the team uses. Payroll itself still reports on the legal name.
 function employeeName(employee: Pick<EmployeeRow, 'first_name' | 'last_name' | 'preferred_name'>): string {
@@ -122,52 +83,12 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
   const requestedEmployeeIds = normalizeEmployeeParams(params.employee);
   const supabase = createAdminClient();
 
-  const [employeesResult, sessionsResult, leaveDaysResult, sickShiftsResult, plannedShiftsResult] = await Promise.all([
-    supabase
-      .from('employees')
-      .select('employee_id, first_name, last_name, preferred_name, job_title, status')
-      .order('first_name')
-      .order('last_name'),
-    supabase
-      .from('timeclock_sessions')
-      .select('id, employee_id, work_date, clock_in_at, clock_out_at')
-      .gte('work_date', fromDate)
-      .lte('work_date', toDate)
-      .order('work_date')
-      .order('clock_in_at'),
-    supabase
-      .from('leave_days')
-      .select('employee_id, leave_date, request_id, leave_requests!inner(status)')
-      .gte('leave_date', fromDate)
-      .lte('leave_date', toDate)
-      .eq('leave_requests.status', 'approved')
-      .order('leave_date'),
-    supabase
-      .from('rota_shifts')
-      .select('id, employee_id, shift_date, sick_reason')
-      .gte('shift_date', fromDate)
-      .lte('shift_date', toDate)
-      .eq('status', 'sick')
-      .not('employee_id', 'is', null)
-      .order('shift_date'),
-    supabase
-      .from('rota_shifts')
-      .select('id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, is_overnight')
-      .gte('shift_date', fromDate)
-      .lte('shift_date', toDate)
-      .gt('shift_date', today)
-      .eq('status', 'scheduled')
-      .eq('is_open_shift', false)
-      .not('employee_id', 'is', null)
-      .order('shift_date')
-      .order('start_time'),
-  ]);
+  const { employees, sessions, leaveDays, sickShifts, plannedShifts } = await loadHoursReportData(supabase, {
+    fromDate,
+    toDate,
+    today,
+  });
 
-  const employees = (employeesResult.data ?? []) as EmployeeRow[];
-  const sessions = (sessionsResult.data ?? []) as SessionRow[];
-  const leaveDays = (leaveDaysResult.data ?? []) as LeaveDayRow[];
-  const sickShifts = (sickShiftsResult.data ?? []) as SickShiftRow[];
-  const plannedShifts = (plannedShiftsResult.data ?? []) as PlannedShiftRow[];
   const employeeMap = new Map(employees.map(employee => [employee.employee_id, employee]));
   const validEmployeeIds = new Set(employees.map(employee => employee.employee_id));
   const selectedEmployeeIds = requestedEmployeeIds.filter(id => validEmployeeIds.has(id));
