@@ -44,7 +44,7 @@ export interface DriverBackfillInput {
 
 type BackfillRule = 'oj_projects' | 'roadshow' | 'everything_else'
 
-export interface BackfillAssignment {
+interface BackfillAssignment {
   tripId: string
   driverId: string
   basis: 'owner_statement' | 'oj_projects'
