@@ -10,6 +10,8 @@ import {
   validateInsightsRange,
 } from '@/lib/short-link-insights-timeframes';
 import { legacyReportLocationLabel } from '@/lib/short-links/legacy-report';
+import { fetchAllRows } from '@/lib/supabase/paged-read';
+import type { Database } from '@/types/database';
 import type {
   LegacyDomainLinkUsage,
   LegacyDomainRecentClick,
@@ -922,18 +924,29 @@ export class ShortLinkService {
   static async getShortLinkVolumeAdvanced(input: GetShortLinkVolumeAdvancedInput) {
     const supabase = await createClient();
 
-    const { data, error } = await supabase
-      .rpc('get_all_links_analytics_v2', {
-        p_start_at: input.start_at,
-        p_end_at: input.end_at,
-        p_granularity: input.granularity,
-        p_include_bots: input.include_bots ?? false,
-        p_timezone: input.timezone ?? SHORT_LINK_INSIGHTS_TIMEZONE,
-      });
+    // The function gives back one row per link clicked in the window, and the Insights
+    // screen sums every row for its totals, unique visitors and daily chart. Supabase
+    // caps a function result at 1,000 rows like any other read and says nothing when it
+    // does, so a busy window would quietly under-report. Page it instead.
+    type AnalyticsRow = Database['public']['Functions']['get_all_links_analytics_v2']['Returns'][number];
 
-    if (error) throw new Error('Failed to load analytics');
-
-    return data;
+    try {
+      return await fetchAllRows<AnalyticsRow>(
+        (from, to) =>
+          supabase
+            .rpc('get_all_links_analytics_v2', {
+              p_start_at: input.start_at,
+              p_end_at: input.end_at,
+              p_granularity: input.granularity,
+              p_include_bots: input.include_bots ?? false,
+              p_timezone: input.timezone ?? SHORT_LINK_INSIGHTS_TIMEZONE,
+            })
+            .range(from, to),
+        { label: 'short link advanced analytics' }
+      );
+    } catch (error) {
+      throw new Error('Failed to load analytics', { cause: error });
+    }
   }
 
   static async getLegacyDomainUsage(days: number = 90): Promise<LegacyDomainUsage> {

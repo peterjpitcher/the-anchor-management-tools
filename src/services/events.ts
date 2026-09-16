@@ -11,6 +11,7 @@ import { logger } from '@/lib/logger';
 import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/events/pricing';
 import { formatEventWhenCompactLondon, resolveEventStartIso } from '@/lib/events/event-when';
 import { buildEventBookingStats } from '@/lib/events/stats';
+import { fetchAllRows } from '@/lib/supabase/paged-read';
 
 function sanitizeEventSearchTerm(value: string): string {
   return value
@@ -1054,18 +1055,36 @@ export class EventService {
     if (eventIds.length > 0) {
       const adminDb = createAdminClient()
       const orFilter = eventIds.map(id => `metadata.cs.{"event_id":"${id}"}`).join(',')
-      const { data: linkRows } = await adminDb
-        .from('short_links')
-        .select('metadata, click_count')
-        .or(orFilter)
 
-      if (linkRows) {
+      // One event owns many ad variants, so this read passes the 1,000 rows Supabase
+      // returns per request well before the events list itself does: the calendar and
+      // the transfer list ask for 500 events at a time and already match 1,303 links.
+      // A cut result understates the click counts with no error, so page the read and
+      // order it so the pages cannot overlap or skip a row.
+      try {
+        const linkRows = await fetchAllRows<{ metadata: unknown; click_count: number | null }>(
+          (from, to) =>
+            adminDb
+              .from('short_links')
+              .select('metadata, click_count')
+              .or(orFilter)
+              .order('id')
+              .range(from, to),
+          { label: 'event link clicks' }
+        )
+
         for (const row of linkRows) {
           const eid = (row.metadata as Record<string, unknown>)?.event_id as string
           if (eid) {
             clickCountMap[eid] = (clickCountMap[eid] || 0) + ((row.click_count as number) || 0)
           }
         }
+      } catch (error) {
+        // Link clicks are a nice-to-have column on the list. As before, a failed read
+        // leaves every count at zero rather than taking the whole events page down.
+        logger.error('Error fetching event link clicks', {
+          error: error instanceof Error ? error : new Error(String(error)),
+        })
       }
     }
 

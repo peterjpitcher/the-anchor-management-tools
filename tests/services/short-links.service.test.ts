@@ -255,9 +255,13 @@ describe('ShortLinkService', () => {
   })
 
   it('getShortLinkVolumeAdvanced calls v2 analytics RPC with validated payload fields', async () => {
-    mockRpc.mockResolvedValueOnce({
-      data: [{ short_code: 'abc123', click_counts: [1, 2] }],
-      error: null,
+    // The read pages now, so the rpc call ends at .range(). One short page stops the
+    // paginator; the paging itself is covered in short-link-volume-paging.test.ts.
+    mockRpc.mockReturnValueOnce({
+      range: vi.fn().mockResolvedValue({
+        data: [{ short_code: 'abc123', click_counts: [1, 2] }],
+        error: null,
+      }),
     })
 
     await ShortLinkService.getShortLinkVolumeAdvanced({
