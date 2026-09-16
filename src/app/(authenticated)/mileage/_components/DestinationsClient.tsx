@@ -399,7 +399,7 @@ export function DestinationsClient({
         </div>
       ) : (
         <>
-        {/* Desktop table (hidden on mobile — a card list renders below instead) */}
+        {/* Desktop table (hidden on mobile, where a card list renders below instead) */}
         <div className="hidden overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm md:block">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -414,7 +414,7 @@ export function DestinationsClient({
                   Miles from Anchor
                 </th>
                 <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Trip Legs
+                  Trips
                 </th>
                 {canManage && (
                   <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
@@ -515,7 +515,7 @@ export function DestinationsClient({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-gray-900">{dest.name}</p>
-                  <p className="mt-0.5 text-xs text-gray-500">{dest.postcode ?? '—'}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">{dest.postcode ?? '\u2014'}</p>
                 </div>
                 {canManage && (
                   <div className="flex shrink-0 items-center gap-1">
@@ -539,7 +539,7 @@ export function DestinationsClient({
               </div>
 
               <div className="mt-3 text-sm">
-                <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Trip Legs</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Trips</p>
                 <p className="mt-0.5 text-gray-900">{dest.tripCount}</p>
               </div>
 
@@ -587,7 +587,7 @@ export function DestinationsClient({
                   </div>
                 ) : (
                   <p className="mt-0.5 text-sm text-gray-900">
-                    {dest.milesFromAnchor != null ? `${dest.milesFromAnchor} mi` : '—'}
+                    {dest.milesFromAnchor != null ? `${dest.milesFromAnchor} mi` : '\u2014'}
                   </p>
                 )}
               </div>
@@ -679,7 +679,7 @@ export function DestinationsClient({
           </div>
         ) : (
           <>
-          {/* Desktop table (hidden on mobile — a card list renders below instead) */}
+          {/* Desktop table (hidden on mobile, where a card list renders below instead) */}
           <div className="hidden overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm md:block">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -821,6 +821,12 @@ export function DestinationsClient({
               maxLength={200}
               autoFocus
             />
+            {editingDest && (
+              <p className="mt-1 text-xs text-text-muted">
+                If this place has moved, add it as a new destination instead, so earlier trips keep
+                the address they used.
+              </p>
+            )}
           </div>
           <div>
             <label htmlFor="dest-postcode" className="block text-sm font-medium text-gray-700 mb-1">

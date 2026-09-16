@@ -88,7 +88,15 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))
 
-import { createTrip, deleteTrip, getTrips, getTripStats, updateTrip } from '../mileage'
+import {
+  createTrip,
+  deleteTrip,
+  getDestinations,
+  getDistanceEntries,
+  getTrips,
+  getTripStats,
+  updateTrip,
+} from '../mileage'
 
 const HOME_ID = '00000000-0000-4000-8000-000000000001'
 const DEST_ID = '00000000-0000-4000-8000-000000000002'
@@ -329,5 +337,123 @@ describe('deleteTrip', () => {
     expect(result).toEqual({ success: true })
     expect(deleteEq).toHaveBeenCalledWith('id', 'trip-1')
     expect(mockRpc).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * A table that behaves like PostgREST: every request returns at most 1,000 rows, so
+ * a read only sees every row if it pages with `.range()`. Awaiting the builder
+ * without a range fails, rather than quietly handing back the first page.
+ */
+function pagedTable<T>(rows: T[]) {
+  const range = vi.fn(async (from: number, to: number) => ({
+    data: rows.slice(from, Math.min(to + 1, from + 1000)),
+    error: null,
+  }))
+  const order = vi.fn(() => builder)
+  const builder = { order, range }
+  const select = vi.fn(() => builder)
+  return { select, order, range }
+}
+
+const TESCO_ID = '00000000-0000-4000-8000-000000000003'
+
+describe('getDestinations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockRpc.mockReset()
+  })
+
+  it('counts distinct trips from every leg, not the first 1,000', async () => {
+    // 650 round trips = 1,300 legs, more than one Supabase page.
+    const legs = Array.from({ length: 650 }).flatMap((_, index) => [
+      { id: `leg-${index}-a`, trip_id: `trip-${index}`, from_destination_id: HOME_ID, to_destination_id: TESCO_ID },
+      { id: `leg-${index}-b`, trip_id: `trip-${index}`, from_destination_id: TESCO_ID, to_destination_id: HOME_ID },
+    ])
+    const legsTable = pagedTable(legs)
+    const destinationsTable = pagedTable([
+      { id: HOME_ID, name: 'The Anchor', postcode: 'TW19 6AQ', is_home_base: true },
+      { id: TESCO_ID, name: 'Tesco Ashford', postcode: null, is_home_base: false },
+    ])
+    const distancesTable = pagedTable([
+      { id: 'distance-1', from_destination_id: HOME_ID, to_destination_id: TESCO_ID, miles: 1.7 },
+    ])
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_trip_legs') return legsTable
+      if (table === 'mileage_destinations') return destinationsTable
+      if (table === 'mileage_destination_distances') return distancesTable
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await getDestinations()
+
+    expect(result.error).toBeUndefined()
+    expect(legsTable.range).toHaveBeenCalledTimes(2)
+    expect(legsTable.range).toHaveBeenNthCalledWith(2, 1000, 1999)
+    // Pages only line up when the order is unique, so every paged read ends on the id.
+    expect(legsTable.order).toHaveBeenLastCalledWith('id')
+    expect(destinationsTable.order).toHaveBeenLastCalledWith('id')
+    expect(distancesTable.order).toHaveBeenLastCalledWith('id')
+    expect(result.data).toEqual([
+      { id: HOME_ID, name: 'The Anchor', postcode: 'TW19 6AQ', isHomeBase: true, tripCount: 650, milesFromAnchor: 0 },
+      { id: TESCO_ID, name: 'Tesco Ashford', postcode: null, isHomeBase: false, tripCount: 650, milesFromAnchor: 1.7 },
+    ])
+  })
+
+  it('returns an error instead of partial counts when a page fails', async () => {
+    const failing = {
+      select: vi.fn(() => {
+        const builder = {
+          order: vi.fn(() => builder),
+          range: vi.fn(async () => ({ data: null, error: { message: 'timeout' } })),
+        }
+        return builder
+      }),
+    }
+    mockFrom.mockImplementation(() => failing)
+
+    const result = await getDestinations()
+
+    expect(result.data).toBeUndefined()
+    expect(result.error).toContain('timeout')
+  })
+})
+
+describe('getDistanceEntries', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockRpc.mockReset()
+  })
+
+  it('reads every saved distance, most recently used first', async () => {
+    const distances = Array.from({ length: 1001 }, (_, index) => ({
+      id: `distance-${index}`,
+      from_destination_id: HOME_ID,
+      to_destination_id: TESCO_ID,
+      miles: 1.7,
+      last_used_at: '2026-09-01T10:00:00Z',
+    }))
+    const distancesTable = pagedTable(distances)
+    const destinationsIn = vi.fn().mockResolvedValue({
+      data: [
+        { id: HOME_ID, name: 'The Anchor' },
+        { id: TESCO_ID, name: 'Tesco Ashford' },
+      ],
+      error: null,
+    })
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_destination_distances') return distancesTable
+      if (table === 'mileage_destinations') return { select: vi.fn(() => ({ in: destinationsIn })) }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await getDistanceEntries()
+
+    expect(result.error).toBeUndefined()
+    expect(result.data).toHaveLength(1001)
+    expect(distancesTable.range).toHaveBeenCalledTimes(2)
+    expect(distancesTable.order).toHaveBeenNthCalledWith(1, 'last_used_at', { ascending: false })
+    expect(distancesTable.order).toHaveBeenNthCalledWith(2, 'id')
+    expect(result.data?.[1000]).toMatchObject({ fromDestinationName: 'The Anchor', toDestinationName: 'Tesco Ashford' })
   })
 })

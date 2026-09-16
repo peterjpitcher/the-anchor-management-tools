@@ -1,4 +1,4 @@
-import { PageLayout } from '@/ds'
+import { Alert, PageLayout } from '@/ds'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getDestinations, getDistanceEntries } from '@/app/actions/mileage'
 import { redirect } from 'next/navigation'
@@ -20,6 +20,17 @@ export default async function MileageDestinationsPage(): Promise<React.JSX.Eleme
     getDestinations(),
     getDistanceEntries(),
   ])
+
+  // A failed read must not look like an empty list or zero trips.
+  const loadError = destinationsResult.error ?? distancesResult.error
+  if (loadError) {
+    return (
+      <PageLayout title="Mileage" subtitle="Destinations" navItems={navItems}>
+        <Alert variant="error" title="Couldn't load destinations" description={loadError} />
+      </PageLayout>
+    )
+  }
+
   const destinations = destinationsResult.data ?? []
   const distances = distancesResult.data ?? []
 
