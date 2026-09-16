@@ -617,9 +617,12 @@ export async function applyAutomationRules(
 // enqueueReceiptAiClassificationJobs
 // ---------------------------------------------------------------------------
 
-async function enqueueReceiptAiClassificationJobs(transactionIds: string[], batchId: string): Promise<{ queued: number; failed: number }> {
+async function enqueueReceiptAiClassificationJobs(
+  transactionIds: string[],
+  batchId: string
+): Promise<{ queued: number; failed: number; queuedTransactions: number }> {
   if (!transactionIds.length) {
-    return { queued: 0, failed: 0 }
+    return { queued: 0, failed: 0, queuedTransactions: 0 }
   }
 
   const chunks = chunkArray(transactionIds, RECEIPT_AI_JOB_CHUNK_SIZE)
@@ -633,6 +636,13 @@ async function enqueueReceiptAiClassificationJobs(transactionIds: string[], batc
   )
 
   const failed = results.filter((result) => !result.success).length
+  // `queued` counts jobs, each carrying up to RECEIPT_AI_JOB_CHUNK_SIZE transactions.
+  // Anything shown to staff as a transaction count needs the transactions inside the
+  // jobs that actually queued.
+  const queuedTransactions = chunks.reduce(
+    (total, chunk, index) => (results[index].success ? total + chunk.length : total),
+    0
+  )
 
   if (failed > 0) {
     console.error('Failed to enqueue receipt AI classification jobs', {
@@ -642,7 +652,7 @@ async function enqueueReceiptAiClassificationJobs(transactionIds: string[], batc
     })
   }
 
-  return { queued: results.length - failed, failed }
+  return { queued: results.length - failed, failed, queuedTransactions }
 }
 
 // ---------------------------------------------------------------------------
@@ -2044,7 +2054,9 @@ export async function performRequeueUnclassifiedTransactions(): Promise<{ succes
 
   try {
     const result = await enqueueReceiptAiClassificationJobs(ids, batchId)
-    return { success: true, queued: result.queued }
+    // The button reports this as a number of transactions, so return transactions,
+    // not the ten-transaction jobs they travel in.
+    return { success: true, queued: result.queuedTransactions }
   } catch (err) {
     console.error('Failed to enqueue requeue jobs', err)
     return { success: false, error: 'Failed to queue classification jobs' }

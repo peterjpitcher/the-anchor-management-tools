@@ -383,7 +383,9 @@ describe('requeueUnclassifiedTransactions', () => {
 
     const result = await requeueUnclassifiedTransactions()
 
-    expect(result).toEqual({ success: true, queued: 1 })
+    // Two unique transactions (tx-1 appears in both reads) travel in one job;
+    // the count reported and logged is transactions, not jobs.
+    expect(result).toEqual({ success: true, queued: 2 })
     expect(mockedLogAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
       user_id: 'user-1',
       user_email: 'test@example.com',
@@ -392,7 +394,7 @@ describe('requeueUnclassifiedTransactions', () => {
       operation_status: 'success',
       additional_info: {
         action: 'requeue_unclassified_transactions',
-        queued: 1,
+        queued: 2,
       },
     }))
     expect(mockedLogAuditEvent.mock.calls[0][0].additional_info.transaction_ids).toBeUndefined()

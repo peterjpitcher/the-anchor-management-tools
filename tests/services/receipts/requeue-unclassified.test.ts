@@ -178,12 +178,21 @@ describe('performRequeueUnclassifiedTransactions', () => {
     expect(enqueue).not.toHaveBeenCalled()
   })
 
-  it('reports queued jobs, not queued transactions', async () => {
+  it('reports how many transactions were queued, not how many jobs', async () => {
     const result = await performRequeueUnclassifiedTransactions()
 
-    // Pre-existing behaviour, unchanged here: the count returned is the number
-    // of ten-transaction classification jobs, while the button's toast calls it
-    // a transaction count. 5,127 transactions are queued as 513 jobs.
-    expect(result.queued).toBe(Math.ceil(UNIQUE_COUNT / 10))
+    // The button's toast reads this as a transaction count. The 5,127
+    // transactions travel in 513 ten-transaction jobs, and the toast used to say
+    // 513, a tenfold under-report.
+    expect(result.queued).toBe(UNIQUE_COUNT)
+  })
+
+  it('leaves out the transactions whose job failed to queue', async () => {
+    enqueue.mockResolvedValueOnce({ success: false })
+
+    const result = await performRequeueUnclassifiedTransactions()
+
+    // The first job holds the first ten transactions.
+    expect(result.queued).toBe(UNIQUE_COUNT - 10)
   })
 })
