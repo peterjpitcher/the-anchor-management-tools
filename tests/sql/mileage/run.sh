@@ -40,6 +40,8 @@ migration:20260916162417_mileage_driver_cutover.sql
 test:driver-cutover.test.sql:after
 migration:20260916165129_mileage_report_dataset.sql
 test:report-dataset.test.sql
+migration:20260916165211_mileage_trips_page.sql
+test:trips-page.test.sql
 "
 
 ENGINE=""

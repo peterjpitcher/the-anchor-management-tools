@@ -20691,6 +20691,10 @@ export type Database = {
         Args: { p_from: string; p_to: string }
         Returns: Json
       }
+      mileage_trips_page_v01: {
+        Args: { p_direction: string; p_filters: Json; p_limit: number; p_offset: number; p_sort: string }
+        Returns: Json
+      }
       move_table_booking_assignments_v05: {
         Args: {
           p_end_datetime: string
