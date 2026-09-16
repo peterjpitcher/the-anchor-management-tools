@@ -345,21 +345,25 @@ describe('requeueUnclassifiedTransactions', () => {
   })
 
   it('logs the requeue result without transaction details', async () => {
-    const vendorLimit = vi.fn().mockResolvedValue({
+    // Both reads page now, so each chain ends .order().range() rather than .limit().
+    // A first page shorter than the page size tells the pager it has everything.
+    const vendorRange = vi.fn().mockResolvedValue({
       data: [{ id: 'tx-1', batch_id: 'batch-1' }],
       error: null,
     })
-    const vendorSecondIs = vi.fn().mockReturnValue({ limit: vendorLimit })
+    const vendorOrder = vi.fn().mockReturnValue({ range: vendorRange })
+    const vendorSecondIs = vi.fn().mockReturnValue({ order: vendorOrder })
     const vendorFirstIs = vi.fn().mockReturnValue({ is: vendorSecondIs })
 
-    const expenseLimit = vi.fn().mockResolvedValue({
+    const expenseRange = vi.fn().mockResolvedValue({
       data: [
         { id: 'tx-1', batch_id: 'batch-1' },
         { id: 'tx-2', batch_id: 'batch-1' },
       ],
       error: null,
     })
-    const expenseGt = vi.fn().mockReturnValue({ limit: expenseLimit })
+    const expenseOrder = vi.fn().mockReturnValue({ range: expenseRange })
+    const expenseGt = vi.fn().mockReturnValue({ order: expenseOrder })
     const expenseNot = vi.fn().mockReturnValue({ gt: expenseGt })
     const expenseSecondIs = vi.fn().mockReturnValue({ not: expenseNot })
     const expenseFirstIs = vi.fn().mockReturnValue({ is: expenseSecondIs })
