@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { getRuleMatch } from '@/lib/receipts/rule-matching'
 import type {
   ReceiptClassificationSignal,
@@ -24,6 +25,11 @@ type SignalInsert = Omit<ReceiptClassificationSignal, 'id'> & {
 type SuggestionApprovalOptions = {
   active?: boolean
 }
+
+type ConflictTransactionRow = Pick<
+  ReceiptTransaction,
+  'id' | 'details' | 'transaction_type' | 'amount_in' | 'amount_out'
+>
 
 export async function resolveReceiptVendorId(
   supabase: AdminClient,
@@ -185,30 +191,34 @@ export async function performDetectReceiptRuleConflicts(): Promise<{
   conflicts: number
 }> {
   const supabase = createAdminClient()
-  const [{ data: rules, error: rulesError }, { data: transactions, error: transactionsError }] = await Promise.all([
+  // Every transaction, not a sample. The old single request returned the newest
+  // 1,000 of 8,202, so the overlap warnings staff act on were drawn from about
+  // 12% of the history. `id` is the unique tiebreak that keeps the page
+  // boundaries stable.
+  const [{ data: rules, error: rulesError }, txRows] = await Promise.all([
     supabase
       .from('receipt_rules')
       .select('*')
       .eq('is_active', true)
       .order('priority', { ascending: true })
       .order('created_at', { ascending: true }),
-    supabase
-      .from('receipt_transactions')
-      .select('id, details, transaction_type, amount_in, amount_out')
-      .order('transaction_date', { ascending: false })
-      .limit(2000),
+    fetchAllRows<ConflictTransactionRow>(
+      (from, to) =>
+        supabase
+          .from('receipt_transactions')
+          .select('id, details, transaction_type, amount_in, amount_out')
+          .order('transaction_date', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to),
+      { maxRows: 20000, label: 'receipt rule conflict transactions' },
+    ),
   ])
 
   if (rulesError) {
     throw new Error(`Failed to load receipt rules: ${rulesError.message}`)
   }
 
-  if (transactionsError) {
-    throw new Error(`Failed to load receipt transactions: ${transactionsError.message}`)
-  }
-
   const activeRules = (rules ?? []) as ReceiptRule[]
-  const txRows = (transactions ?? []) as Array<Pick<ReceiptTransaction, 'id' | 'details' | 'transaction_type' | 'amount_in' | 'amount_out'>>
   const pairMap = new Map<string, {
     ruleId: string
     overlappingRuleId: string

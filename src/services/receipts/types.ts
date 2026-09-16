@@ -503,7 +503,12 @@ const MAX_RECEIPT_STATEMENT_UPLOAD_SIZE = MAX_RECEIPT_STATEMENT_UPLOAD_BYTES
 const MAX_RECEIPT_FILE_UPLOAD_SIZE = MAX_RECEIPT_FILE_UPLOAD_BYTES
 const MAX_RECEIPT_UPLOAD_SIZE = MAX_RECEIPT_STATEMENT_UPLOAD_SIZE
 export const DEFAULT_PAGE_SIZE = 25
-export const MAX_MONTH_PAGE_SIZE = 5000
+// Supabase returns at most 1,000 rows per request and reports no error when it
+// truncates, so asking for more than this hands back 1,000 rows while the pager
+// still divides the total by the requested size. At 5,000 the month and
+// group-by-vendor views showed the first 1,000 rows and then jumped to row
+// 5,001, making everything between unreachable.
+export const MAX_MONTH_PAGE_SIZE = 1000
 export const RECEIPT_AI_JOB_CHUNK_SIZE = 10
 export const RETRO_CHUNK_SIZE = 100
 export const OUTSTANDING_STATUSES: ReceiptTransaction['status'][] = ['pending']

@@ -104,7 +104,7 @@ function MatchDescriptionTokenPreview({ value }: { value: string }) {
 function RulePreviewPanel({ preview }: { preview: RulePreviewResult }) {
   return (
     <div className="rounded-md border border-border bg-info-soft p-3 text-xs text-info-fg space-y-2">
-      <p className="font-semibold">Rule preview (sample of up to 2000 transactions)</p>
+      <p className="font-semibold">Rule preview (every transaction)</p>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
         <span>Total matching</span><span className="font-medium">{preview.totalMatching}</span>
         <span>Pending matching</span><span className="font-medium">{preview.pendingMatching}</span>
