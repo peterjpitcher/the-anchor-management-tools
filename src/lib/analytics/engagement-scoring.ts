@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { fetchAllRows, type PagedReadResult } from '@/lib/supabase/paged-read'
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000
@@ -20,6 +21,40 @@ type EventRelationRecord = {
 }
 
 type EventRelation = EventRelationRecord | EventRelationRecord[] | null
+
+type CustomerRow = {
+  id: string
+}
+
+type EventBookingRow = {
+  customer_id: string | null
+  created_at: string | null
+  event?: EventRelation
+}
+
+type TableBookingRow = {
+  customer_id: string | null
+  created_at: string | null
+}
+
+type PrivateBookingRow = {
+  customer_id: string | null
+  created_at: string | null
+  status: string | null
+}
+
+type WaitlistRow = {
+  customer_id: string | null
+  event?: EventRelation
+}
+
+// PostgREST's generated types describe a nested embed as an array even where the relation is
+// to-one, so an `event:events(...)` row never matches EventRelation on its own. The previous
+// code asserted the row shape with `as Array<...>` after awaiting the read; this keeps that
+// same assertion, now at the read itself. resolveEventType still handles both shapes at runtime.
+function asEmbedRows<T>(builder: unknown): PromiseLike<PagedReadResult<T>> {
+  return builder as PromiseLike<PagedReadResult<T>>
+}
 
 function normalizeEventType(input?: string | null): string | null {
   const trimmed = input?.trim()
@@ -171,50 +206,66 @@ export async function recalculateEngagementScoresAndLabels(
 ): Promise<EngagementScoringSummary> {
   const nowMs = Date.now()
 
-  const [customersResult, eventBookingsResult, tableBookingsResult, privateBookingsResult, waitlistEntriesResult] =
-    await Promise.all([
-      supabase.from('customers').select('id'),
-      supabase
-        .from('bookings')
-        .select('customer_id, created_at, event:events(event_type, category:event_categories(name))')
-        .not('customer_id', 'is', null),
-      supabase
-        .from('table_bookings')
-        .select('customer_id, created_at')
-        .not('customer_id', 'is', null),
-      supabase
-        .from('private_bookings')
-        .select('customer_id, created_at, status')
-        .not('customer_id', 'is', null),
-      supabase
-        .from('waitlist_entries')
-        .select('customer_id, event:events(event_type, category:event_categories(name))')
-        .not('customer_id', 'is', null)
-    ])
-
-  const errors: string[] = []
-  const results = [customersResult, eventBookingsResult, tableBookingsResult, privateBookingsResult, waitlistEntriesResult]
-  for (const result of results) {
-    if (result.error) {
-      errors.push(result.error.message)
-    }
-  }
-  if (errors.length > 0) {
-    throw new Error(`Failed to load engagement scoring inputs: ${errors.join('; ')}`)
-  }
+  // Every read pages. Supabase caps a request at 1,000 rows and reports no error when it
+  // truncates, so an unpaged read quietly scored a slice of the customers and undercounted
+  // their bookings. `fetchAllRows` throws on the first failed page, which is what the cron
+  // already reports, so there is no error collection to do here.
+  const [customerRows, eventBookingRows, tableBookingRows, privateBookingRows, waitlistRows] = await Promise.all([
+    fetchAllRows<CustomerRow>(
+      (from, to) => supabase.from('customers').select('id').order('id').range(from, to),
+      { label: 'engagement scoring customers' }
+    ),
+    fetchAllRows<EventBookingRow>(
+      (from, to) =>
+        asEmbedRows<EventBookingRow>(
+          supabase
+            .from('bookings')
+            .select('customer_id, created_at, event:events(event_type, category:event_categories(name))')
+            .not('customer_id', 'is', null)
+            .order('id')
+            .range(from, to)
+        ),
+      { label: 'engagement scoring event bookings' }
+    ),
+    fetchAllRows<TableBookingRow>(
+      (from, to) =>
+        supabase
+          .from('table_bookings')
+          .select('customer_id, created_at')
+          .not('customer_id', 'is', null)
+          .order('id')
+          .range(from, to),
+      { label: 'engagement scoring table bookings' }
+    ),
+    fetchAllRows<PrivateBookingRow>(
+      (from, to) =>
+        supabase
+          .from('private_bookings')
+          .select('customer_id, created_at, status')
+          .not('customer_id', 'is', null)
+          .order('id')
+          .range(from, to),
+      { label: 'engagement scoring private bookings' }
+    ),
+    fetchAllRows<WaitlistRow>(
+      (from, to) =>
+        asEmbedRows<WaitlistRow>(
+          supabase
+            .from('waitlist_entries')
+            .select('customer_id, event:events(event_type, category:event_categories(name))')
+            .not('customer_id', 'is', null)
+            .order('id')
+            .range(from, to)
+        ),
+      { label: 'engagement scoring waitlist entries' }
+    )
+  ])
 
   const bucketByCustomer = new Map<string, CustomerBucket>()
 
-  const allCustomerRows = (customersResult.data || []) as Array<{ id: string }>
-  for (const row of allCustomerRows) {
+  for (const row of customerRows) {
     getOrCreateBucket(bucketByCustomer, row.id)
   }
-
-  const eventBookingRows = (eventBookingsResult.data || []) as Array<{
-    customer_id: string | null
-    created_at: string | null
-    event?: EventRelation
-  }>
 
   for (const row of eventBookingRows) {
     if (!row.customer_id) continue
@@ -230,11 +281,6 @@ export async function recalculateEngagementScoresAndLabels(
     if (eventType) bucket.interestEventTypes.add(eventType)
   }
 
-  const tableBookingRows = (tableBookingsResult.data || []) as Array<{
-    customer_id: string | null
-    created_at: string | null
-  }>
-
   for (const row of tableBookingRows) {
     if (!row.customer_id) continue
     const bucket = getOrCreateBucket(bucketByCustomer, row.customer_id)
@@ -245,12 +291,6 @@ export async function recalculateEngagementScoresAndLabels(
       bucket.scoredBookingTimestampsMs.push(createdAtMs)
     }
   }
-
-  const privateBookingRows = (privateBookingsResult.data || []) as Array<{
-    customer_id: string | null
-    created_at: string | null
-    status: string | null
-  }>
 
   for (const row of privateBookingRows) {
     if (!row.customer_id) continue
@@ -264,11 +304,6 @@ export async function recalculateEngagementScoresAndLabels(
       bucket.scoredBookingTimestampsMs.push(createdAtMs)
     }
   }
-
-  const waitlistRows = (waitlistEntriesResult.data || []) as Array<{
-    customer_id: string | null
-    event?: EventRelation
-  }>
 
   for (const row of waitlistRows) {
     if (!row.customer_id) continue
