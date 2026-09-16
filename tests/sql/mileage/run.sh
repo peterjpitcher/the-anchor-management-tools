@@ -38,6 +38,8 @@ refused:20260916162417_mileage_driver_cutover.sql:MILEAGE_DRIVER_CUTOVER_CHANGED
 test:driver-cutover.test.sql:backfilled
 migration:20260916162417_mileage_driver_cutover.sql
 test:driver-cutover.test.sql:after
+migration:20260916165129_mileage_report_dataset.sql
+test:report-dataset.test.sql
 "
 
 ENGINE=""
