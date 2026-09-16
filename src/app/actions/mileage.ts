@@ -120,6 +120,7 @@ function mapMileageSaveError(error: {
 
 const TRIPS_LOAD_ERROR = "Couldn't load trips. Try again."
 const TRIP_LOAD_ERROR = "Couldn't load the trip. Try again."
+const TRIP_DATES_LOAD_ERROR = 'Failed to load trip dates'
 
 function logMileageReadError(
   label: string,
@@ -606,6 +607,33 @@ export async function listMileageTrips(
     return { success: true, data }
   } catch (error) {
     return { error: error instanceof Error ? error.message : TRIPS_LOAD_ERROR }
+  }
+}
+
+/**
+ * The first and latest trip dates, which bound the period presets on the trips page (spec 7.1).
+ * Both are null when there are no trips. A failed read is an error, never "no trips".
+ */
+export async function getTripDateRange(): Promise<{
+  success?: boolean
+  error?: string
+  data?: { first: string | null; last: string | null }
+}> {
+  try {
+    await requireMileagePermission('view')
+    const db = createAdminClient()
+    const [first, last] = await Promise.all([
+      db.from('mileage_trips').select('trip_date').order('trip_date', { ascending: true }).limit(1).maybeSingle(),
+      db.from('mileage_trips').select('trip_date').order('trip_date', { ascending: false }).limit(1).maybeSingle(),
+    ])
+    const readError = first.error ?? last.error
+    if (readError) {
+      logMileageReadError('[mileage] trip date range failed', readError)
+      return { error: TRIP_DATES_LOAD_ERROR }
+    }
+    return { success: true, data: { first: first.data?.trip_date ?? null, last: last.data?.trip_date ?? null } }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : TRIP_DATES_LOAD_ERROR }
   }
 }
 

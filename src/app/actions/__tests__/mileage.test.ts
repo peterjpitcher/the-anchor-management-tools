@@ -100,6 +100,7 @@ import {
   getDistanceEntries,
   getMileageInsights,
   getRatePreviewContext,
+  getTripDateRange,
   getTripForEdit,
   getTrips,
   getTripStats,
@@ -1027,6 +1028,60 @@ describe('getTripForEdit', () => {
 
     await expect(getTripForEdit(TRIP_ID)).resolves.toEqual({ error: 'Insufficient permissions' })
     expect(vi.mocked(checkUserPermission)).toHaveBeenCalledWith('mileage', 'manage')
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+})
+
+function createDateRangeQuery(result: (ascending: boolean) => { data: unknown; error: unknown }) {
+  const chain: Record<string, unknown> = {}
+  let ascending = true
+  chain.select = vi.fn(() => chain)
+  chain.order = vi.fn((_column: string, options: { ascending: boolean }) => {
+    ascending = options.ascending
+    return chain
+  })
+  chain.limit = vi.fn(() => chain)
+  chain.maybeSingle = vi.fn(async () => result(ascending))
+  return chain
+}
+
+describe('getTripDateRange', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns the first and latest trip dates', async () => {
+    mockFrom.mockImplementation(() =>
+      createDateRangeQuery((ascending) => ({ data: { trip_date: ascending ? '2024-01-05' : '2026-09-14' }, error: null }))
+    )
+    expect(await getTripDateRange()).toEqual({ success: true, data: { first: '2024-01-05', last: '2026-09-14' } })
+    expect(mockFrom).toHaveBeenCalledWith('mileage_trips')
+  })
+
+  it('returns no dates when there are no trips', async () => {
+    mockFrom.mockImplementation(() => createDateRangeQuery(() => ({ data: null, error: null })))
+    expect(await getTripDateRange()).toEqual({ success: true, data: { first: null, last: null } })
+  })
+
+  it('returns an error rather than empty dates when the query fails', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockFrom.mockImplementation(() =>
+      createDateRangeQuery(() => ({ data: null, error: { code: '08006', message: 'connection reset', details: null, hint: null } }))
+    )
+    expect(await getTripDateRange()).toEqual({ error: 'Failed to load trip dates' })
+    expect(consoleError).toHaveBeenCalledWith('[mileage] trip date range failed', {
+      code: '08006',
+      message: 'connection reset',
+      details: null,
+      hint: null,
+    })
+    consoleError.mockRestore()
+  })
+
+  it('checks permission before reading anything', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValueOnce(false)
+
+    await expect(getTripDateRange()).resolves.toEqual({ error: 'Insufficient permissions' })
     expect(mockFrom).not.toHaveBeenCalled()
   })
 })
