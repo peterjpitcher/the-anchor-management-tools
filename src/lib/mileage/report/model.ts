@@ -159,7 +159,8 @@ export function describeTripRoute(trip: MileageReportTrip): string {
   return 'Not recorded'
 }
 
-function describeRate(trip: MileageReportTrip): string {
+/** The AMAP rate or rates a trip was paid at, for example "45p" or "45p and 25p". Shared with the trips table. */
+export function describeTripRate(trip: MileageReportTrip): string {
   const rates = getAmapRates(trip.tripDate)
   if (trip.standardMilesTenths > 0 && trip.reducedMilesTenths > 0) {
     return `${rates.standardPence}p and ${rates.reducedPence}p`
@@ -303,7 +304,7 @@ export function buildMileageReport(dataset: MileageReportDataset, scope: ReportS
       reason: trip.description?.trim() || 'Not recorded',
       route: describeTripRoute(trip),
       milesTenths: trip.totalMilesTenths,
-      rateLabel: describeRate(trip),
+      rateLabel: describeTripRate(trip),
       amountPence: trip.amountPence,
     })),
     places: [...places.values()]

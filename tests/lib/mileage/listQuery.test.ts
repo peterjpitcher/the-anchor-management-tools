@@ -3,6 +3,7 @@ import {
   DEFAULT_MILEAGE_LIST_QUERY,
   hasActiveFilters,
   ignoredReportFilters,
+  nextSort,
   parseMileageListQuery,
   serialiseMileageListQuery,
   toPageFilters,
@@ -105,5 +106,20 @@ describe('query helpers', () => {
       driver_id: DRIVER,
     })
     expect(toPageFilters(DEFAULT_MILEAGE_LIST_QUERY)).toEqual({})
+  })
+})
+
+describe('nextSort', () => {
+  it('flips the active column and starts another column with the newest or largest first', () => {
+    expect(nextSort({ ...DEFAULT_MILEAGE_LIST_QUERY, page: 4 }, 'date')).toMatchObject({ sort: 'date', dir: 'asc', page: 1 })
+    expect(nextSort({ ...DEFAULT_MILEAGE_LIST_QUERY, dir: 'asc' }, 'date')).toMatchObject({ sort: 'date', dir: 'desc', page: 1 })
+    expect(nextSort({ ...DEFAULT_MILEAGE_LIST_QUERY, q: 'shop', page: 4 }, 'amount')).toEqual({
+      ...DEFAULT_MILEAGE_LIST_QUERY,
+      q: 'shop',
+      sort: 'amount',
+      dir: 'desc',
+      page: 1,
+    })
+    expect(nextSort({ ...DEFAULT_MILEAGE_LIST_QUERY, sort: 'miles', dir: 'asc' }, 'amount')).toMatchObject({ sort: 'amount', dir: 'desc', page: 1 })
   })
 })

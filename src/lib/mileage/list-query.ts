@@ -140,3 +140,9 @@ export function toPageFilters(query: MileageListQuery): Record<string, string> {
   if (query.driverId) filters.driver_id = query.driverId
   return filters
 }
+
+/** A header click: the active column flips direction; another column starts with the newest or largest first. */
+export function nextSort(query: MileageListQuery, column: MileageListSort): MileageListQuery {
+  const dir: MileageListDirection = query.sort === column && query.dir === 'desc' ? 'asc' : 'desc'
+  return { ...query, sort: column, dir, page: 1 }
+}
