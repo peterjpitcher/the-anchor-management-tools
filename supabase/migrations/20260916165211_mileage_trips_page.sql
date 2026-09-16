@@ -2,7 +2,7 @@
 -- one snapshot (spec 7.1). Read-only; no data changes.
 --
 -- Spec: tasks/spec-2026-09-15-mileage-section-design.md section 7.1.
--- Must sort after 20260916162107_mileage_report_dataset.sql, whose mileage_trip_rows_v01 view it
+-- Must sort after 20260916165129_mileage_report_dataset.sql, whose mileage_trip_rows_v01 view it
 -- reads. Works before and after the Release 3 cutover: a trip with no driver is listed, and only a
 -- driver filter leaves it out.
 --
