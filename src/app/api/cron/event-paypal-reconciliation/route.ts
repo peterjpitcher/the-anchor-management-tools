@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPayPalOrder, getPayPalRefund } from '@/lib/paypal'
+import { getPayPalOrder, getPayPalRefund, isPayPalOrderNotFoundError } from '@/lib/paypal'
 import { logger } from '@/lib/logger'
 import {
   sendEventPaymentConfirmationSms,
@@ -12,6 +12,65 @@ import {
   sendEventPaymentManualReviewEmail,
 } from '@/lib/email/event-ticket-emails'
 import { reconcileEventRefund } from '@/lib/events/refund-reconciliation'
+
+/*
+ * PayPal purges an order the customer never completed, so a 404 on one is the
+ * ordinary end state of an abandoned checkout, not a failure worth an error
+ * log. The seat hold is 15 minutes, so once a pending row is a day old nothing
+ * can ever complete it: write it off rather than re-reading a dead order every
+ * 15 minutes forever.
+ */
+const ABANDONED_AFTER_MS = 24 * 60 * 60 * 1000
+
+type PendingEventPayment = {
+  id: string
+  event_booking_id: string | null
+  paypal_order_id: string | null
+  created_at: string | null
+  metadata: Record<string, unknown> | null
+}
+
+/**
+ * Marks a pending event payment whose PayPal order no longer exists as failed,
+ * so the reconciliation sweep stops picking it up. Returns true when the row
+ * was written off. Guarded on `status = 'pending'` so a confirmation landing at
+ * the same moment is never overwritten.
+ */
+async function writeOffAbandonedPayment(
+  supabase: ReturnType<typeof createAdminClient>,
+  row: PendingEventPayment
+): Promise<boolean> {
+  const createdAt = row.created_at ? Date.parse(row.created_at) : Number.NaN
+  if (!Number.isFinite(createdAt) || Date.now() - createdAt < ABANDONED_AFTER_MS) {
+    return false
+  }
+
+  const nowIso = new Date().toISOString()
+  const { error } = await supabase
+    .from('payments')
+    .update({
+      status: 'failed',
+      updated_at: nowIso,
+      metadata: {
+        ...(row.metadata ?? {}),
+        abandoned_at: nowIso,
+        abandoned_reason: 'paypal_order_not_found',
+      },
+    })
+    .eq('id', row.id)
+    .eq('status', 'pending')
+
+  if (error) {
+    // Left unwritten this row comes back every run, so this must stay visible.
+    logger.error('Failed to write off an abandoned event PayPal payment', {
+      error: new Error(error.message),
+      metadata: { paymentId: row.id, bookingId: row.event_booking_id, orderId: row.paypal_order_id },
+    })
+    return false
+  }
+
+  return true
+}
 
 function extractCapture(order: any): { id: string; amount: number; currency: string } | null {
   const capture = order?.purchase_units?.[0]?.payments?.captures?.[0]
@@ -36,6 +95,8 @@ export async function GET(request: NextRequest) {
     confirmed: 0,
     manualReview: 0,
     skipped: 0,
+    abandoned: 0,
+    abandonedWrittenOff: 0,
     failed: 0,
     refundsChecked: 0,
     refundsResolved: 0,
@@ -44,7 +105,7 @@ export async function GET(request: NextRequest) {
 
   const { data: rows, error } = await supabase
     .from('payments')
-    .select('id, event_booking_id, paypal_order_id')
+    .select('id, event_booking_id, paypal_order_id, created_at, metadata')
     .eq('payment_provider', 'paypal')
     .eq('charge_type', 'prepaid_event')
     .eq('status', 'pending')
@@ -60,7 +121,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to load payments' }, { status: 500 })
   }
 
-  for (const row of rows || []) {
+  for (const row of (rows || []) as PendingEventPayment[]) {
     result.checked++
     try {
       const order = await getPayPalOrder(row.paypal_order_id as string)
@@ -113,6 +174,15 @@ export async function GET(request: NextRequest) {
         result.skipped++
       }
     } catch (err) {
+      if (isPayPalOrderNotFoundError(err)) {
+        // Abandoned checkout: no money moved and none ever will.
+        result.abandoned++
+        if (await writeOffAbandonedPayment(supabase, row)) {
+          result.abandonedWrittenOff++
+        }
+        continue
+      }
+
       result.failed++
       logger.error('Failed to reconcile event PayPal payment', {
         error: err instanceof Error ? err : new Error(String(err)),
