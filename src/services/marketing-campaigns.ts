@@ -206,6 +206,9 @@ async function fetchSummaries(
           .from('marketing_campaign_recipients')
           .select('campaign_id, status')
           .in('campaign_id', part)
+          // Offset paging with no order lets consecutive pages overlap or skip rows, so the
+          // counts wobbled while the five-minute send cron moved statuses underneath the read.
+          .order('id')
           .range(from, to),
     )
 
@@ -1162,8 +1165,13 @@ export async function listRecipients(
 
   if (options.status) query = query.eq('status', options.status)
 
+  // `id` is the tiebreak, not decoration. Recipients are written by one `insert ... select`, so
+  // every recipient of a campaign shares a single `created_at`. Ordering by that alone leaves the
+  // database free to return tied rows in a different order per request, which on an offset-paged
+  // list shows staff some people twice and never shows them others.
   const { data, error, count } = await query
     .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
     .range(from, from + pageSize - 1)
 
   if (error) throw new Error(error.message)
