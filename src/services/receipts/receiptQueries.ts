@@ -86,6 +86,8 @@ import { queryReceiptGovernanceItems } from './receiptGovernance'
 
 const RECEIPT_HISTORY_PAGE_SIZE = 1000
 
+type CanonicalVendorRow = { canonical_name: string | null }
+
 // ---------------------------------------------------------------------------
 // buildGroupSuggestion — AI-assisted classification for bulk review groups
 // ---------------------------------------------------------------------------
@@ -238,8 +240,11 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
   const maxPageSize = useExpandedPage ? MAX_MONTH_PAGE_SIZE : 100
   const requestedPageSize = filters.pageSize ?? (useExpandedPage ? MAX_MONTH_PAGE_SIZE : DEFAULT_PAGE_SIZE)
   const pageSize = Math.min(requestedPageSize, maxPageSize)
-  const page = isMonthScoped ? 1 : Math.max(filters.page ?? 1, 1)
-  const offset = isMonthScoped ? 0 : (page - 1) * pageSize
+  // Every view honours the requested page. Pinning the month view to page 1 left
+  // the pager offering pages the query never fetched, so later rows were simply
+  // unreachable.
+  const page = Math.max(filters.page ?? 1, 1)
+  const offset = (page - 1) * pageSize
 
   const isAllTimeView = !filters.month
   const defaultSortColumn: ReceiptSortColumn = isAllTimeView ? 'amount_total' : 'transaction_date'
@@ -317,17 +322,25 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
 
   baseQuery = baseQuery.range(offset, offset + pageSize - 1)
 
-  const vendorQuery = supabase
-    .from('receipt_transactions')
-    .select('vendor_name, receipt_vendors(canonical_name)')
-    .order('vendor_name', { ascending: true })
-    .limit(2000)
-
-  const canonicalVendorQuery = supabase
-    .from('receipt_vendors')
-    .select('canonical_name')
-    .order('canonical_name', { ascending: true })
-    .limit(2000)
+  // Vendor suggestions come from the canonical vendor table, the rules and the
+  // rows already on screen. They used to come from a `receipt_transactions` scan
+  // ordered by vendor name as well, which returned 1,000 rows holding only 61 of
+  // the 254 vendor names, so anything late in the alphabet never appeared.
+  // Paged, so the list is whole or it is empty: a failure logs and leaves the
+  // suggestions to the other two sources rather than breaking the workspace.
+  const canonicalVendorQuery = fetchAllRows<CanonicalVendorRow>(
+    (from, to) =>
+      supabase
+        .from('receipt_vendors')
+        .select('canonical_name')
+        .order('canonical_name', { ascending: true })
+        .order('id')
+        .range(from, to),
+    { label: 'receipt canonical vendors' },
+  ).catch((canonicalVendorError: unknown) => {
+    console.error('Failed to load canonical receipt vendors:', canonicalVendorError)
+    return [] as CanonicalVendorRow[]
+  })
 
   const monthsQuery = supabase.rpc('get_receipt_monthly_summary', {
     limit_months: 1000,
@@ -339,8 +352,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     { data: transactions, count, error },
     { data: rules },
     summary,
-    { data: vendorRecords, error: vendorError },
-    { data: canonicalVendorRecords, error: canonicalVendorError },
+    canonicalVendorRecords,
     { data: monthSummary, error: monthError },
     { data: cardMemberRows, error: cardMemberError },
     governance,
@@ -352,7 +364,6 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
       .order('priority', { ascending: true })
       .order('created_at', { ascending: true }),
     fetchSummary(),
-    vendorQuery,
     canonicalVendorQuery,
     monthsQuery,
     cardMembersQuery,
@@ -362,14 +373,6 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
   if (error) {
     console.error('Failed to load receipts workspace:', error)
     throw error
-  }
-
-  if (vendorError) {
-    console.error('Failed to load vendor list for receipts workspace:', vendorError)
-  }
-
-  if (canonicalVendorError) {
-    console.error('Failed to load canonical receipt vendors:', canonicalVendorError)
   }
 
   if (monthError) {
@@ -388,16 +391,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
 
   const knownVendorSet = new Set<string>()
 
-  ;(vendorRecords ?? []).forEach((record: any) => {
-    const join = record.receipt_vendors
-    const canonicalName = Array.isArray(join) ? join[0]?.canonical_name : join?.canonical_name
-    const normalized = normalizeVendorInput(canonicalName ?? record.vendor_name)
-    if (normalized) {
-      knownVendorSet.add(normalized)
-    }
-  })
-
-  ;(canonicalVendorRecords ?? []).forEach((record: any) => {
+  ;(canonicalVendorRecords ?? []).forEach((record) => {
     const normalized = normalizeVendorInput(record.canonical_name)
     if (normalized) {
       knownVendorSet.add(normalized)
@@ -1040,67 +1034,100 @@ async function queryReceiptVendorHistoryRows(
   vendorLabel: string,
   vendorKey: string,
 ): Promise<{ rows: VendorTransactionRow[]; error?: unknown }> {
-  const { data, error } = await supabase.rpc('get_receipt_vendor_transactions', {
-    target_vendor_label: vendorLabel,
-  })
+  // Paged: the busiest vendor has 647 transactions today, but the function result
+  // is capped at 1,000 rows like any other read, so an unpaged call would quietly
+  // cut a longer history short. The page error is kept so the missing-function
+  // fallback below still sees the database error itself rather than the wrapped
+  // one the helper throws.
+  let rpcPageError: unknown = null
 
-  if (!error) {
-    return { rows: (Array.isArray(data) ? data : []) as VendorTransactionRow[] }
-  }
+  try {
+    const rows = await fetchAllRows<VendorTransactionRow>(
+      async (from, to) => {
+        const page = await supabase
+          .rpc('get_receipt_vendor_transactions', { target_vendor_label: vendorLabel })
+          .range(from, to)
+        if (page.error) rpcPageError = page.error
+        return page
+      },
+      { label: 'receipt vendor transaction history' },
+    )
 
-  if (!isMissingVendorHistoryRpcError(error)) {
-    return { rows: [], error }
+    return { rows }
+  } catch (thrown) {
+    const error = rpcPageError ?? thrown
+    if (!isMissingVendorHistoryRpcError(error)) {
+      return { rows: [], error }
+    }
   }
 
   console.warn('Receipt vendor history RPC is unavailable; falling back to paged transaction scan')
 
-  const rows: VendorTransactionRow[] = []
-  let from = 0
+  let scanPageError: unknown = null
 
-  while (true) {
-    const to = from + VENDOR_HISTORY_FALLBACK_PAGE_SIZE - 1
-    const page = await supabase
-      .from('receipt_transactions')
-      .select(VENDOR_TRANSACTION_SELECT)
-      .order('transaction_date', { ascending: false })
-      .range(from, to)
+  try {
+    const scanned = await fetchAllRows<VendorTransactionRow>(
+      async (from, to) => {
+        const page = await supabase
+          .from('receipt_transactions')
+          .select(VENDOR_TRANSACTION_SELECT)
+          .order('transaction_date', { ascending: false })
+          .order('id')
+          .range(from, to)
+        if (page.error) scanPageError = page.error
+        return page
+      },
+      { pageSize: VENDOR_HISTORY_FALLBACK_PAGE_SIZE, label: 'receipt vendor history fallback scan' },
+    )
 
-    if (page.error) {
-      return { rows: [], error: page.error }
-    }
-
-    const pageRows = Array.isArray(page.data) ? (page.data as VendorTransactionRow[]) : []
-    rows.push(...pageRows.filter((row) => getCanonicalVendorKey(row) === vendorKey))
-
-    if (pageRows.length < VENDOR_HISTORY_FALLBACK_PAGE_SIZE) {
-      break
-    }
-
-    from += VENDOR_HISTORY_FALLBACK_PAGE_SIZE
+    return { rows: scanned.filter((row) => getCanonicalVendorKey(row) === vendorKey) }
+  } catch (thrown) {
+    return { rows: [], error: scanPageError ?? thrown }
   }
-
-  return { rows }
 }
 
 // ---------------------------------------------------------------------------
 // getReceiptVendorSummary
 // ---------------------------------------------------------------------------
 
+type VendorTrendRow = {
+  vendor_label: string | null
+  month_start: string
+  total_outgoing: number | string | null
+  total_income: number | string | null
+  transaction_count: number | string | null
+}
+
 export async function queryReceiptVendorSummary(monthWindow = 12): Promise<ReceiptVendorSummary[]> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase.rpc('get_receipt_vendor_trends', {
-    month_window: monthWindow,
-  })
 
-  if (error) {
+  // Paged: the function returns 604 rows over a 12 month window and 1,154 over
+  // 24, so a single request would quietly drop the tail as soon as the window
+  // widened. The page error is kept so the caller still sees the database error
+  // rather than the wrapped one the helper throws.
+  let rpcPageError: unknown = null
+  let rows: VendorTrendRow[]
+
+  try {
+    rows = await fetchAllRows<VendorTrendRow>(
+      async (from, to) => {
+        const page = await supabase
+          .rpc('get_receipt_vendor_trends', { month_window: monthWindow })
+          .range(from, to)
+        if (page.error) rpcPageError = page.error
+        return page
+      },
+      { label: 'receipt vendor trends' },
+    )
+  } catch (thrown) {
+    const error = rpcPageError ?? thrown
     console.error('Failed to load vendor trends', error)
     throw error
   }
 
-  const rows = Array.isArray(data) ? data : []
   const grouped = new Map<string, ReceiptVendorTrendMonth[]>()
 
-  rows.forEach((row: any) => {
+  rows.forEach((row) => {
     const vendorLabel = row.vendor_label ?? 'Uncategorised'
     const list = grouped.get(vendorLabel) ?? []
     list.push({
@@ -1653,6 +1680,11 @@ export async function queryAIUsageBreakdown(): Promise<{ success: boolean; break
 // previewReceiptRule
 // ---------------------------------------------------------------------------
 
+type RulePreviewTransactionRow = Pick<
+  ReceiptTransaction,
+  'id' | 'details' | 'transaction_type' | 'amount_in' | 'amount_out' | 'status' | 'vendor_name' | 'expense_category'
+>
+
 export async function queryPreviewReceiptRule(ruleData: {
   name: string
   // Null when the form is clearing the description; the preview only reads the match fields.
@@ -1668,22 +1700,28 @@ export async function queryPreviewReceiptRule(ruleData: {
 }): Promise<RulePreviewResult> {
   const supabase = createAdminClient()
 
-  // Load active rules and sample transactions in parallel
-  const [{ data: activeRules }, { data: transactions }] = await Promise.all([
+  // Every transaction, not a sample. The old single request returned the newest
+  // 1,000 of 8,202, so the "would change" figures described about 12% of the
+  // history while an "all" retro run applies the rule to the lot. `id` is the
+  // unique tiebreak that keeps the page boundaries stable.
+  const [{ data: activeRules }, txRows] = await Promise.all([
     supabase
       .from('receipt_rules')
       .select('*')
       .eq('is_active', true),
-    supabase
-      .from('receipt_transactions')
-      .select('id, details, transaction_type, amount_in, amount_out, status, vendor_name, expense_category')
-      .order('transaction_date', { ascending: false })
-      .limit(2000),
+    fetchAllRows<RulePreviewTransactionRow>(
+      (from, to) =>
+        supabase
+          .from('receipt_transactions')
+          .select('id, details, transaction_type, amount_in, amount_out, status, vendor_name, expense_category')
+          .order('transaction_date', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to),
+      { maxRows: 20000, label: 'receipt rule preview transactions' },
+    ),
   ])
 
   const rules = (activeRules ?? []) as ReceiptRule[]
-
-  const txRows = (transactions ?? []) as Array<Pick<ReceiptTransaction, 'id' | 'details' | 'transaction_type' | 'amount_in' | 'amount_out' | 'status' | 'vendor_name' | 'expense_category'>>
 
   const candidateRule = {
     id: '__preview__',

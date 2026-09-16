@@ -27,8 +27,9 @@ import { queryReceiptVendorDetail, queryReceiptVendorMonthTransactions, queryRec
 
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 
-// The vendor movement query pages the monthly-totals function, so its mock has to
-// expose `.range()` the way the PostgREST builder does.
+// The vendor queries page the monthly-totals, trends and vendor-history
+// functions, so their mocks have to expose `.range()` the way the PostgREST
+// builder does.
 function pagedRpcMock(rows: unknown[]): Mock {
   return vi.fn(() => ({
     range: (from: number, to: number) => Promise.resolve({ data: rows.slice(from, to + 1), error: null }),
@@ -130,17 +131,14 @@ describe('receipt vendor queries', () => {
       }
     })
 
-    const summaryRpc = vi.fn().mockResolvedValue({
-      data: [{
-        vendor_label: 'Canonical Brewery',
-        month_start: '2026-06-01',
-        total_outgoing: 30,
-        total_income: 0,
-        transaction_count: 3,
-      }],
-      error: null,
-    })
-    const historyRpc = vi.fn().mockResolvedValue({ data: historyRows, error: null })
+    const summaryRpc = pagedRpcMock([{
+      vendor_label: 'Canonical Brewery',
+      month_start: '2026-06-01',
+      total_outgoing: 30,
+      total_income: 0,
+      transaction_count: 3,
+    }])
+    const historyRpc = pagedRpcMock(historyRows)
 
     mockedCreateAdminClient
       .mockReturnValueOnce({ rpc: summaryRpc })
