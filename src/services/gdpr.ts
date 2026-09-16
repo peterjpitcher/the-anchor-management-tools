@@ -1,6 +1,9 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { logger } from '@/lib/logger'
+// Aliased because this file still has its own older fetchAllRows below, which
+// takes a query builder rather than a page range.
+import { fetchAllRows as fetchAllPagedRows } from '@/lib/supabase/paged-read'
 import { generatePhoneVariants } from '@/lib/utils'
 
 const COMMUNICATION_ATTACHMENT_BUCKET = 'communication-attachments'
@@ -568,14 +571,26 @@ export class GdprService {
       ])
     }
 
-    const { data: auditLogs } = await adminClient
-      .from('audit_logs')
-      .select('*')
-      .eq('user_id', targetUserId)
-      .order('created_at', { ascending: false })
-      .limit(1000)
+    /*
+     * A subject access request has to be answered in full, so the audit history
+     * is paged rather than capped. It used to stop at the newest 1,000 rows,
+     * which already silently truncated three staff accounts, the largest holding
+     * 3,083 rows. The secondary sort on id keeps paging stable: rows written in
+     * the same transaction share a created_at to the microsecond, and without a
+     * tie-break the database may order them differently on each request, which
+     * duplicates some rows across page boundaries and loses others.
+     */
+    exportData.auditLogs = await fetchAllPagedRows<ExportData['auditLogs'][number]>(
+      (from, to) =>
+        (adminClient.from('audit_logs') as any)
+          .select('*')
+          .eq('user_id', targetUserId)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to),
+      { label: 'GDPR export audit history' },
+    )
 
-    exportData.auditLogs = auditLogs || []
     exportData.storageAttachmentRefs = collectAttachmentPaths([
       ...exportData.messages,
       ...exportData.emailMessages,
