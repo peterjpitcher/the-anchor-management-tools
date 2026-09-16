@@ -93,6 +93,7 @@ import {
   deleteTrip,
   getDestinations,
   getDistanceEntries,
+  getMileageInsights,
   getTrips,
   getTripStats,
   updateTrip,
@@ -455,5 +456,91 @@ describe('getDistanceEntries', () => {
     expect(distancesTable.order).toHaveBeenNthCalledWith(1, 'last_used_at', { ascending: false })
     expect(distancesTable.order).toHaveBeenNthCalledWith(2, 'id')
     expect(result.data?.[1000]).toMatchObject({ fromDestinationName: 'The Anchor', toDestinationName: 'Tesco Ashford' })
+  })
+})
+
+describe('getMileageInsights', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockRpc.mockReset()
+  })
+
+  it('builds the totals and destination breakdown from every trip and leg', async () => {
+    // 1,001 round trips (2,002 legs), so both reads need more than one page.
+    const trips = Array.from({ length: 1001 }, (_, index) => ({
+      id: `trip-${index}`,
+      trip_date: '2026-05-01',
+      total_miles: 3.4,
+      amount_due: 1.8,
+    }))
+    const legs = trips.flatMap((trip) => [
+      {
+        id: `${trip.id}-a`,
+        trip_id: trip.id,
+        miles: 1.7,
+        to_destination_id: TESCO_ID,
+        mileage_destinations: { name: 'Tesco Ashford', is_home_base: false },
+      },
+      {
+        id: `${trip.id}-b`,
+        trip_id: trip.id,
+        miles: 1.7,
+        to_destination_id: HOME_ID,
+        mileage_destinations: { name: 'The Anchor', is_home_base: true },
+      },
+    ])
+    const tripsTable = pagedTable(trips)
+    const legsTable = pagedTable(legs)
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_trips') return tripsTable
+      if (table === 'mileage_trip_legs') return legsTable
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await getMileageInsights('monthly')
+
+    expect(result.error).toBeUndefined()
+    expect(result.success).toBe(true)
+    expect(tripsTable.range).toHaveBeenCalledTimes(2)
+    expect(legsTable.range).toHaveBeenCalledTimes(3)
+    expect(tripsTable.order).toHaveBeenNthCalledWith(1, 'trip_date', { ascending: true })
+    expect(tripsTable.order).toHaveBeenNthCalledWith(2, 'id', { ascending: true })
+    expect(legsTable.order).toHaveBeenLastCalledWith('id', { ascending: true })
+    // Tesco's share of each trip is 1.7 of 3.4 miles, so half of £1.80.
+    expect(result.data?.byDestination).toEqual([
+      { destinationName: 'Tesco Ashford', totalMiles: 1701.7, amountDue: 900.9, tripCount: 1001 },
+    ])
+    expect(result.data?.totals.tripCount).toBe(1001)
+    expect(result.data?.bars).toHaveLength(1)
+  })
+
+  it('returns an error instead of a partial breakdown when a page fails', async () => {
+    const trips = Array.from({ length: 3 }, (_, index) => ({
+      id: `trip-${index}`,
+      trip_date: '2026-05-01',
+      total_miles: 3.4,
+      amount_due: 1.8,
+    }))
+    const tripsTable = pagedTable(trips)
+    const failingLegs = {
+      select: vi.fn(() => {
+        const builder = {
+          order: vi.fn(() => builder),
+          range: vi.fn(async () => ({ data: null, error: { message: 'canceling statement due to statement timeout' } })),
+        }
+        return builder
+      }),
+    }
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_trips') return tripsTable
+      if (table === 'mileage_trip_legs') return failingLegs
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await getMileageInsights('monthly')
+
+    expect(result.success).toBe(false)
+    expect(result.data).toBeUndefined()
+    expect(result.error).toContain('statement timeout')
   })
 })
