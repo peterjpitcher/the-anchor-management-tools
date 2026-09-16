@@ -6,6 +6,7 @@ import { checkUserPermission } from './rbac'
 import { logAuditEvent } from './audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 import {
   getTaxYearBounds,
@@ -61,6 +62,7 @@ export interface MileageDestination {
   name: string
   postcode: string | null
   isHomeBase: boolean
+  /** Distinct trips that visit this destination, whichever leg it appears on. */
   tripCount: number
   milesFromAnchor: number | null
 }
@@ -103,6 +105,32 @@ export interface MileageDistance {
   toDestinationName: string
   miles: number
   lastUsedAt: string
+}
+
+// Row shapes for the paged reads. The admin client is untyped, and Postgres
+// numeric columns can arrive as strings, so miles and money go through Number().
+interface DestinationRow {
+  id: string
+  name: string
+  postcode: string | null
+  is_home_base: boolean
+}
+
+interface DestinationLegRow {
+  id: string
+  trip_id: string
+  from_destination_id: string
+  to_destination_id: string
+}
+
+interface DistanceRow {
+  from_destination_id: string
+  to_destination_id: string
+  miles: number | string
+}
+
+interface DistanceEntryRow extends DistanceRow {
+  last_used_at: string
 }
 
 // ---------------------------------------------------------------------------
@@ -277,46 +305,57 @@ export async function getDestinations(): Promise<{
     await requireMileagePermission('view')
     const db = createAdminClient()
 
-    // Get all destinations
-    const { data: destinations, error: destError } = await db
-      .from('mileage_destinations')
-      .select('id, name, postcode, is_home_base')
-      .order('name')
-
-    if (destError) throw destError
-    if (!destinations) return { success: true, data: [] }
+    // Every read below pages, because an unpaged select stops silently at 1,000 rows:
+    // on 15 September 2026 Destinations counted 1,000 of 1,275 trip legs. Each order
+    // ends on `id` so the page boundaries neither overlap nor skip.
+    const destinations = await fetchAllRows<DestinationRow>(
+      (from, to) =>
+        db
+          .from('mileage_destinations')
+          .select('id, name, postcode, is_home_base')
+          .order('name')
+          .order('id')
+          .range(from, to),
+      { label: 'mileage destinations' }
+    )
 
     // Get home base ID for distance lookups
     const homeBase = destinations.find((d) => d.is_home_base)
 
-    // Get trip counts per destination (count legs referencing each destination)
-    const { data: legCounts, error: legError } = await db
-      .from('mileage_trip_legs')
-      .select('from_destination_id, to_destination_id')
+    const legs = await fetchAllRows<DestinationLegRow>(
+      (from, to) =>
+        db
+          .from('mileage_trip_legs')
+          .select('id, trip_id, from_destination_id, to_destination_id')
+          .order('id')
+          .range(from, to),
+      { label: 'mileage trip legs' }
+    )
 
-    if (legError) throw legError
-
-    // Count how many legs reference each destination
-    const tripCountMap = new Map<string, number>()
-    for (const leg of legCounts ?? []) {
-      tripCountMap.set(
-        leg.from_destination_id,
-        (tripCountMap.get(leg.from_destination_id) ?? 0) + 1
-      )
-      tripCountMap.set(
-        leg.to_destination_id,
-        (tripCountMap.get(leg.to_destination_id) ?? 0) + 1
-      )
+    // Distinct trips per destination: a round trip visits its stop once, not twice.
+    const tripsByDestination = new Map<string, Set<string>>()
+    for (const leg of legs) {
+      for (const destinationId of [leg.from_destination_id, leg.to_destination_id]) {
+        const trips = tripsByDestination.get(destinationId) ?? new Set<string>()
+        trips.add(leg.trip_id)
+        tripsByDestination.set(destinationId, trips)
+      }
     }
 
     // Get distance cache for Anchor -> each destination
     const distanceMap = new Map<string, number>()
     if (homeBase) {
-      const { data: distances } = await db
-        .from('mileage_destination_distances')
-        .select('from_destination_id, to_destination_id, miles')
+      const distances = await fetchAllRows<DistanceRow>(
+        (from, to) =>
+          db
+            .from('mileage_destination_distances')
+            .select('from_destination_id, to_destination_id, miles')
+            .order('id')
+            .range(from, to),
+        { label: 'mileage destination distances' }
+      )
 
-      for (const d of distances ?? []) {
+      for (const d of distances) {
         // Only care about distances involving the home base
         if (d.from_destination_id === homeBase.id) {
           distanceMap.set(d.to_destination_id, Number(d.miles))
@@ -331,7 +370,7 @@ export async function getDestinations(): Promise<{
       name: d.name,
       postcode: d.postcode,
       isHomeBase: d.is_home_base,
-      tripCount: tripCountMap.get(d.id) ?? 0,
+      tripCount: tripsByDestination.get(d.id)?.size ?? 0,
       milesFromAnchor: d.is_home_base ? 0 : (distanceMap.get(d.id) ?? null),
     }))
 
@@ -756,13 +795,19 @@ export async function getDistanceEntries(): Promise<{
     await requireMileagePermission('view')
     const db = createAdminClient()
 
-    const { data: distances, error: distanceError } = await db
-      .from('mileage_destination_distances')
-      .select('from_destination_id, to_destination_id, miles, last_used_at')
-      .order('last_used_at', { ascending: false })
+    // Paged, with `id` breaking ties in last_used_at so no distance is skipped or repeated.
+    const distances = await fetchAllRows<DistanceEntryRow>(
+      (from, to) =>
+        db
+          .from('mileage_destination_distances')
+          .select('from_destination_id, to_destination_id, miles, last_used_at')
+          .order('last_used_at', { ascending: false })
+          .order('id')
+          .range(from, to),
+      { label: 'mileage destination distances' }
+    )
 
-    if (distanceError) throw distanceError
-    if (!distances || distances.length === 0) {
+    if (distances.length === 0) {
       return { success: true, data: [] }
     }
 
