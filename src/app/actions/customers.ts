@@ -16,6 +16,7 @@ import type { CustomerLabelAssignment } from './customer-labels'
 import { sendBulkSms } from '@/lib/sms/bulk'
 import { ConsentService } from '@/services/consent'
 import { generatePhoneVariants } from '@/lib/utils'
+import { fetchAllRows, type PagedReadResult } from '@/lib/supabase/paged-read'
 
 // ---------------------------------------------------------------------------
 // Customer list filtering and search
@@ -565,6 +566,16 @@ export async function updateCustomerNotes(id: string, notes: string) {
 // Win-Back Campaign
 // ---------------------------------------------------------------------------
 
+/**
+ * PostgREST's generated types describe an embed as an array even where the relation is to-one,
+ * so an embedded `customer:customers!inner(...)` row never matches the shape the audience
+ * filter reads. The row shape is asserted at the read; the filter still handles both shapes at
+ * runtime.
+ */
+function asScoreRows<T>(builder: unknown): PromiseLike<PagedReadResult<T>> {
+  return builder as PromiseLike<PagedReadResult<T>>
+}
+
 export interface WinBackCampaignParams {
   /** Send to customers with no booking in this many months (e.g. 3, 6, 12) */
   inactiveSinceMonths: number
@@ -648,36 +659,6 @@ export async function sendWinBackCampaign(
     //   3. Have a customer_scores row with last_booking_date older than the cutoff
     //      (or have a score row with null last_booking_date, meaning they have never booked)
     // We join via customer_scores to avoid a slow full-table subquery on private_bookings.
-    const { data: scoreRows, error: fetchError } = await admin
-      .from('customer_scores')
-      .select(
-        `
-        customer_id,
-        last_booking_date,
-        customer:customers!inner(
-          id,
-          first_name,
-          mobile_number,
-          mobile_e164,
-          sms_opt_in,
-          marketing_sms_opt_in,
-          sms_status
-        )
-      `
-      )
-      .or(`last_booking_date.is.null,last_booking_date.lt.${cutoffIso}`)
-
-    if (fetchError) {
-      console.error('[WinBackCampaign] Error fetching inactive customers:', fetchError)
-      return { error: 'Failed to fetch inactive customers' }
-    }
-
-    // Apply exactly the consent checks sendBulkSms applies, so the dry-run count
-    // staff see is the number of people who will actually be messaged. Before
-    // this, the preview only checked sms_opt_in and a phone number, while the
-    // send also demands marketing consent and an active sms_status, so the
-    // preview overstated the audience.
-    type ScoreRow = NonNullable<typeof scoreRows>[number]
     type CustomerRelation = {
       id: string
       first_name: string
@@ -687,8 +668,55 @@ export async function sendWinBackCampaign(
       marketing_sms_opt_in: boolean | null
       sms_status: string | null
     }
+    type ScoreRow = {
+      customer_id: string
+      last_booking_date: string | null
+      customer: CustomerRelation | CustomerRelation[] | null
+    }
 
-    const eligible = (scoreRows ?? []).filter((row: ScoreRow) => {
+    // The read pages. Supabase caps a request at 1,000 rows and reports no error when it
+    // truncates, and this filter already matched 997 rows at the 1-month setting, so both the
+    // preview count staff approve and the list that gets texted were about to start losing
+    // people at random. Ordered by customer_id so the pages neither overlap nor skip.
+    let scoreRows: ScoreRow[]
+    try {
+      scoreRows = await fetchAllRows<ScoreRow>(
+        (from, to) =>
+          asScoreRows<ScoreRow>(
+            admin
+              .from('customer_scores')
+              .select(
+                `
+                  customer_id,
+                  last_booking_date,
+                  customer:customers!inner(
+                    id,
+                    first_name,
+                    mobile_number,
+                    mobile_e164,
+                    sms_opt_in,
+                    marketing_sms_opt_in,
+                    sms_status
+                  )
+                `
+              )
+              .or(`last_booking_date.is.null,last_booking_date.lt.${cutoffIso}`)
+              .order('customer_id')
+              .range(from, to)
+          ),
+        { label: 'win-back inactive customers' }
+      )
+    } catch (fetchError) {
+      console.error('[WinBackCampaign] Error fetching inactive customers:', fetchError)
+      return { error: 'Failed to fetch inactive customers' }
+    }
+
+    // Apply exactly the consent checks sendBulkSms applies, so the dry-run count
+    // staff see is the number of people who will actually be messaged. Before
+    // this, the preview only checked sms_opt_in and a phone number, while the
+    // send also demands marketing consent and an active sms_status, so the
+    // preview overstated the audience.
+    const eligible = scoreRows.filter((row: ScoreRow) => {
       const customer = Array.isArray(row.customer)
         ? (row.customer[0] as CustomerRelation | undefined)
         : (row.customer as CustomerRelation | undefined)
