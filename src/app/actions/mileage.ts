@@ -8,11 +8,7 @@ import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows, type PagedReadResult } from '@/lib/supabase/paged-read'
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils'
-import {
-  getTaxYearBounds,
-  THRESHOLD_MILES,
-  type TaxYearStats,
-} from '@/lib/mileage/hmrcRates'
+import { parseHeadlineStats, type MileageHeadlineStats } from '@/lib/mileage/stats'
 
 // ---------------------------------------------------------------------------
 // Zod Schemas
@@ -737,101 +733,47 @@ function buildRouteSummary(legs: MileageTripLeg[], description?: string | null):
   return stops.join(' \u2192 ')
 }
 
+/**
+ * Headline totals for the trips page (spec 7.1), from one database function so nothing is cut
+ * at 1,000 rows. A failed or malformed read returns an error, never zeros.
+ */
 export async function getTripStats(): Promise<{
   success?: boolean
   error?: string
-  data?: TaxYearStats
+  data?: MileageHeadlineStats
 }> {
   try {
     await requireMileagePermission('view')
     const db = createAdminClient()
-
-    const today = getTodayIsoDate()
-    const { start: taxYearStart, end: taxYearEnd } = getTaxYearBounds(today)
-    const calendarYear = Number(today.slice(0, 4))
-    const calendarYearStart = `${calendarYear}-01-01`
-    const calendarYearEnd = `${calendarYear}-12-31`
-
-    // Tax year trips
-    const { data: taxYearTrips, error: tyError } = await db
-      .from('mileage_trips')
-      .select('total_miles, amount_due, trip_date')
-      .gte('trip_date', taxYearStart)
-      .lte('trip_date', taxYearEnd)
-
-    if (tyError) throw tyError
-
-    const { data: calendarYearTrips, error: cyError } = await db
-      .from('mileage_trips')
-      .select('total_miles, amount_due, trip_date')
-      .gte('trip_date', calendarYearStart)
-      .lte('trip_date', calendarYearEnd)
-
-    if (cyError) throw cyError
-
-    const taxYearTotalMiles = (taxYearTrips ?? []).reduce(
-      (sum, t) => sum + Number(t.total_miles),
-      0
-    )
-    const taxYearAmountDue = (taxYearTrips ?? []).reduce(
-      (sum, t) => sum + Number(t.amount_due),
-      0
-    )
-    const calendarYearTotalMiles = (calendarYearTrips ?? []).reduce(
-      (sum, t) => sum + Number(t.total_miles),
-      0
-    )
-    const calendarYearAmountDue = (calendarYearTrips ?? []).reduce(
-      (sum, t) => sum + Number(t.amount_due),
-      0
-    )
-
-    // Current quarter: determine quarter boundaries
-    const { quarterStart, quarterEnd } = getCurrentQuarter(today)
-
-    const quarterMiles = (calendarYearTrips ?? [])
-      .filter((t) => t.trip_date >= quarterStart && t.trip_date <= quarterEnd)
-      .reduce((sum, t) => sum + Number(t.total_miles), 0)
-
-    const quarterAmount = (calendarYearTrips ?? [])
-      .filter((t) => t.trip_date >= quarterStart && t.trip_date <= quarterEnd)
-      .reduce((sum, t) => sum + Number(t.amount_due), 0)
-
-    return {
-      success: true,
-      data: {
-        quarterTotalMiles: Math.round(quarterMiles * 10) / 10,
-        quarterAmountDue: Math.round(quarterAmount * 100) / 100,
-        calendarYear,
-        calendarYearTotalMiles: Math.round(calendarYearTotalMiles * 10) / 10,
-        calendarYearAmountDue: Math.round(calendarYearAmountDue * 100) / 100,
-        taxYearTotalMiles: Math.round(taxYearTotalMiles * 10) / 10,
-        taxYearAmountDue: Math.round(taxYearAmountDue * 100) / 100,
-        milesToThreshold: Math.max(0, THRESHOLD_MILES - taxYearTotalMiles),
-      },
+    const { data, error } = await db.rpc('mileage_headline_totals_v01', { p_today: getTodayIsoDate() })
+    if (error) {
+      console.error('[mileage] headline totals failed', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      })
+      return { error: 'Failed to fetch trip stats' }
     }
+
+    let stats: MileageHeadlineStats
+    try {
+      stats = parseHeadlineStats(data)
+    } catch (parseError) {
+      // Paths and codes only: the values include driver names.
+      console.error('[mileage] headline totals had an unexpected shape', {
+        issues:
+          parseError instanceof z.ZodError
+            ? parseError.issues.map((issue) => `${issue.path.join('.')}: ${issue.code}`)
+            : [parseError instanceof Error ? parseError.name : 'unknown'],
+      })
+      return { error: 'Failed to fetch trip stats' }
+    }
+
+    return { success: true, data: stats }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to fetch trip stats'
     return { error: message }
-  }
-}
-
-function getCurrentQuarter(
-  isoDate: string
-): { quarterStart: string; quarterEnd: string } {
-  const [yearStr, monthStr] = isoDate.split('-')
-  const year = parseInt(yearStr, 10)
-  const month = parseInt(monthStr, 10)
-
-  // Calendar quarters
-  if (month <= 3) {
-    return { quarterStart: `${year}-01-01`, quarterEnd: `${year}-03-31` }
-  } else if (month <= 6) {
-    return { quarterStart: `${year}-04-01`, quarterEnd: `${year}-06-30` }
-  } else if (month <= 9) {
-    return { quarterStart: `${year}-07-01`, quarterEnd: `${year}-09-30` }
-  } else {
-    return { quarterStart: `${year}-10-01`, quarterEnd: `${year}-12-31` }
   }
 }
 

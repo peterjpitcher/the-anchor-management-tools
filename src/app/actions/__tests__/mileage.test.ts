@@ -89,6 +89,7 @@ vi.mock('next/cache', () => ({
 }))
 
 import { logAuditEvent } from '@/app/actions/audit'
+import { checkUserPermission } from '@/app/actions/rbac'
 import {
   createTrip,
   deleteTrip,
@@ -118,27 +119,63 @@ describe('getTripStats', () => {
     vi.clearAllMocks()
     mockFrom.mockImplementation(() => createMileageTripsQuery())
     mockRpc.mockReset()
-    queryRanges.length = 0
   })
 
-  it('uses calendar-year totals for the annual stat while preserving tax-year threshold totals', async () => {
+  it('reads headline totals and miles left per driver from one database function', async () => {
+    mockRpc.mockResolvedValue({
+      data: {
+        quarter: { from: '2026-04-01', to: '2026-06-30', trips: 4, miles_tenths: 988, amount_pence: 4446 },
+        financial_year: { from: '2026-01-01', to: '2026-12-31', trips: 16, miles_tenths: 5136, amount_pence: 23112 },
+        tax_year: { from: '2026-04-06', to: '2027-04-05', trips: 3, miles_tenths: 954, amount_pence: 4293 },
+        drivers: [{ driver_id: 'd1', display_name: 'Driver A', tax_year_miles_tenths: 954, standard_miles_left_tenths: 99046 }],
+      },
+      error: null,
+    })
+
     const result = await getTripStats()
 
-    expect(result.success).toBe(true)
-    expect(result.data).toEqual({
-      quarterTotalMiles: 98.8,
-      quarterAmountDue: 44.46,
-      calendarYear: 2026,
-      calendarYearTotalMiles: 513.6,
-      calendarYearAmountDue: 231.12,
-      taxYearTotalMiles: 95.4,
-      taxYearAmountDue: 42.93,
-      milesToThreshold: 9904.6,
+    expect(mockRpc).toHaveBeenCalledTimes(1)
+    expect(mockRpc).toHaveBeenCalledWith('mileage_headline_totals_v01', { p_today: '2026-05-05' })
+    expect(mockFrom).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      success: true,
+      data: {
+        quarter: { from: '2026-04-01', to: '2026-06-30', trips: 4, milesTenths: 988, amountPence: 4446 },
+        financialYear: { from: '2026-01-01', to: '2026-12-31', trips: 16, milesTenths: 5136, amountPence: 23112 },
+        taxYear: { from: '2026-04-06', to: '2027-04-05', trips: 3, milesTenths: 954, amountPence: 4293 },
+        drivers: [{ driverId: 'd1', displayName: 'Driver A', taxYearMilesTenths: 954, standardMilesLeftTenths: 99046 }],
+      },
     })
-    expect(queryRanges).toEqual([
-      { gte: '2026-04-06', lte: '2027-04-05' },
-      { gte: '2026-01-01', lte: '2026-12-31' },
-    ])
+  })
+
+  it('returns an error instead of zeros when the query fails, and logs each error field', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockRpc.mockResolvedValue({ data: null, error: { code: '57014', message: 'timeout', details: null, hint: null } })
+
+    await expect(getTripStats()).resolves.toEqual({ error: 'Failed to fetch trip stats' })
+    expect(consoleError).toHaveBeenCalledWith('[mileage] headline totals failed', {
+      code: '57014',
+      message: 'timeout',
+      details: null,
+      hint: null,
+    })
+    consoleError.mockRestore()
+  })
+
+  it('returns a plain error when the database sends totals in an unexpected shape', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockRpc.mockResolvedValue({ data: { quarter: null }, error: null })
+
+    await expect(getTripStats()).resolves.toEqual({ error: 'Failed to fetch trip stats' })
+    expect(consoleError).toHaveBeenCalledWith('[mileage] headline totals had an unexpected shape', expect.any(Object))
+    consoleError.mockRestore()
+  })
+
+  it('checks permission before reading anything', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValueOnce(false)
+
+    await expect(getTripStats()).resolves.toEqual({ error: 'Insufficient permissions' })
+    expect(mockRpc).not.toHaveBeenCalled()
   })
 })
 

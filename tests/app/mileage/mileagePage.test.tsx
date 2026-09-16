@@ -23,9 +23,18 @@ vi.mock('@/app/actions/mileage-drivers', () => ({
 }))
 // The trip list has its own tests; here it only needs to show whether it rendered.
 vi.mock('@/app/(authenticated)/mileage/_components/MileageClient', () => ({
-  MileageClient: ({ initialTrips, drivers }: { initialTrips: unknown[]; drivers: Array<{ displayName: string }> }) => (
+  MileageClient: ({
+    initialTrips,
+    initialStats,
+    drivers,
+  }: {
+    initialTrips: unknown[]
+    initialStats: { financialYear: { trips: number } }
+    drivers: Array<{ displayName: string }>
+  }) => (
     <>
       <p>{initialTrips.length === 0 ? 'No trips recorded' : `${initialTrips.length} trips`}</p>
+      <p>Trips this financial year: {initialStats.financialYear.trips}</p>
       <p>Drivers: {drivers.map((driver) => driver.displayName).join(', ')}</p>
     </>
   ),
@@ -34,14 +43,10 @@ vi.mock('@/app/(authenticated)/mileage/_components/MileageClient', () => ({
 import MileagePage from '@/app/(authenticated)/mileage/page'
 
 const STATS = {
-  quarterTotalMiles: 0,
-  quarterAmountDue: 0,
-  calendarYear: 2026,
-  calendarYearTotalMiles: 0,
-  calendarYearAmountDue: 0,
-  taxYearTotalMiles: 0,
-  taxYearAmountDue: 0,
-  milesToThreshold: 10000,
+  quarter: { from: '2026-07-01', to: '2026-09-30', trips: 0, milesTenths: 0, amountPence: 0 },
+  financialYear: { from: '2026-01-01', to: '2026-12-31', trips: 12, milesTenths: 3312, amountPence: 14904 },
+  taxYear: { from: '2026-04-06', to: '2027-04-05', trips: 0, milesTenths: 0, amountPence: 0 },
+  drivers: [{ driverId: 'driver-1', displayName: 'Driver A', taxYearMilesTenths: 0, standardMilesLeftTenths: 100000 }],
 }
 
 describe('MileagePage', () => {
@@ -86,6 +91,16 @@ describe('MileagePage', () => {
     expect(screen.queryByText('No trips recorded')).not.toBeInTheDocument()
   })
 
+  it('shows an error rather than made-up zeros when the totals come back empty', async () => {
+    getTripStatsMock.mockResolvedValue({ success: true, data: undefined })
+
+    render(await MileagePage())
+
+    expect(screen.getByText("Couldn't load mileage")).toBeInTheDocument()
+    expect(screen.getByText('Mileage totals are unavailable')).toBeInTheDocument()
+    expect(screen.queryByText('No trips recorded')).not.toBeInTheDocument()
+  })
+
   it('shows an error when destinations fail to load', async () => {
     getDestinationsMock.mockResolvedValue({ error: 'mileage trip legs failed: timeout' })
 
@@ -99,6 +114,7 @@ describe('MileagePage', () => {
     render(await MileagePage())
 
     expect(screen.getByText('No trips recorded')).toBeInTheDocument()
+    expect(screen.getByText('Trips this financial year: 12')).toBeInTheDocument()
     expect(screen.getByText('Drivers: Driver A')).toBeInTheDocument()
     expect(screen.queryByText("Couldn't load mileage")).not.toBeInTheDocument()
   })

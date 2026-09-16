@@ -30,12 +30,8 @@ import {
   type MileageDestination,
 } from '@/app/actions/mileage'
 import type { MileageDriver } from '@/app/actions/mileage-drivers'
-import {
-  REDUCED_RATE,
-  getStandardRate,
-  type TaxYearStats,
-} from '@/lib/mileage/hmrcRates'
-import { getTodayIsoDate } from '@/lib/dateUtils'
+import { REDUCED_RATE, getStandardRate } from '@/lib/mileage/hmrcRates'
+import type { MileageHeadlineStats } from '@/lib/mileage/stats'
 import { TripForm } from './TripForm'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { useSort } from '@/hooks/useSort'
@@ -54,14 +50,25 @@ interface MileageClientProps {
   initialTotal: number
   initialPage: number
   initialPageSize: number
-  initialStats: TaxYearStats
+  initialStats: MileageHeadlineStats
   destinations: MileageDestination[]
   drivers: MileageDriver[]
   canManage: boolean
 }
 
-function formatCurrency(amount: number): string {
-  return `£${amount.toFixed(2)}`
+/** Whole tenths of a mile, shown with one decimal place, for example 9,904.6. */
+function formatMiles(tenths: number): string {
+  return (tenths / 10).toLocaleString('en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+}
+
+/** Whole pence, shown as pounds, for example £1,234.50. */
+function formatPounds(pence: number): string {
+  return (pence / 100).toLocaleString('en-GB', { style: 'currency', currency: 'GBP' })
+}
+
+function formatMilesLeft(drivers: MileageHeadlineStats['drivers']): string {
+  if (drivers.length === 0) return 'No drivers set up'
+  return drivers.map((driver) => `${driver.displayName}: ${formatMiles(driver.standardMilesLeftTenths)} mi`).join(', ')
 }
 
 export function MileageClient({
@@ -249,27 +256,16 @@ export function MileageClient({
 
   return (
     <div className="space-y-6">
-      {/* Stats cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* Headline cards: never filtered (spec 7.1) */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="This quarter" value={`${formatMiles(stats.quarter.milesTenths)} mi`} hint={formatPounds(stats.quarter.amountPence)} />
         <Stat
-          label="This Quarter"
-          value={`${stats.quarterTotalMiles.toFixed(1)} mi`}
-          hint={formatCurrency(stats.quarterAmountDue)}
+          label="This financial year"
+          value={`${formatMiles(stats.financialYear.milesTenths)} mi`}
+          hint={formatPounds(stats.financialYear.amountPence)}
         />
-        <Stat
-          label="Tax Year Total"
-          value={`${stats.taxYearTotalMiles.toFixed(1)} mi`}
-          hint={formatCurrency(stats.taxYearAmountDue)}
-        />
-        <Stat
-          label="Miles to Threshold"
-          value={`${stats.milesToThreshold.toFixed(1)} mi`}
-          hint={
-            stats.milesToThreshold > 0
-              ? `${stats.milesToThreshold.toLocaleString()} mi left at £${getStandardRate(getTodayIsoDate()).toFixed(2)}`
-              : `Now at reduced rate (£${REDUCED_RATE.toFixed(2)}/mi)`
-          }
-        />
+        <Stat label="This tax year" value={`${formatMiles(stats.taxYear.milesTenths)} mi`} hint={formatPounds(stats.taxYear.amountPence)} />
+        <Stat label="Miles left before 25p" value={formatMilesLeft(stats.drivers)} hint="Per person, this tax year" />
       </div>
 
       {/* Action bar */}
@@ -413,7 +409,7 @@ export function MileageClient({
                           : `£${getStandardRate(trip.tripDate).toFixed(2)}`}
                     </TableCell>
                     <TableCell align="right" className="font-medium">
-                      {formatCurrency(trip.amountDue)}
+                      {formatPounds(Math.round(trip.amountDue * 100))}
                     </TableCell>
                     <TableCell align="center">
                       <Badge tone={isOjProjects ? 'primary' : 'neutral'}>

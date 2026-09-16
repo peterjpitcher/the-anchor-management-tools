@@ -156,15 +156,3 @@ export function calculateHmrcRateSplit(
     amountDue: split.amountPence / 100,
   }
 }
-
-/** Stats about current tax year usage. Release 3 replaces this with per-driver totals. */
-export interface TaxYearStats {
-  quarterTotalMiles: number
-  quarterAmountDue: number
-  calendarYear: number
-  calendarYearTotalMiles: number
-  calendarYearAmountDue: number
-  taxYearTotalMiles: number
-  taxYearAmountDue: number
-  milesToThreshold: number
-}

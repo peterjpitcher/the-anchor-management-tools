@@ -27,7 +27,8 @@ export default async function MileagePage(): Promise<React.JSX.Element> {
   // A failed read used to render as "No trips recorded"; say what went wrong instead.
   // Drivers count too: without them no trip can be saved.
   const loadError = tripsResult.error ?? statsResult.error ?? destsResult.error ?? driversResult.error
-  if (loadError) {
+  // Totals with no data are never replaced by made-up zeros.
+  if (loadError || !statsResult.data) {
     return (
       <div className="space-y-6">
         <PageHeader
@@ -37,7 +38,7 @@ export default async function MileagePage(): Promise<React.JSX.Element> {
           className="mb-0"
         />
         <SectionNav items={MILEAGE_SECTION_NAV} activeId="trips" />
-        <Alert variant="error" title="Couldn't load mileage" description={loadError} />
+        <Alert variant="error" title="Couldn't load mileage" description={loadError ?? 'Mileage totals are unavailable'} />
       </div>
     )
   }
@@ -46,16 +47,7 @@ export default async function MileagePage(): Promise<React.JSX.Element> {
   const tripTotal = tripsResult.pageInfo?.total ?? trips.length
   const tripPage = tripsResult.pageInfo?.page ?? 1
   const tripPageSize = tripsResult.pageInfo?.pageSize ?? 25
-  const stats = statsResult.data ?? {
-    quarterTotalMiles: 0,
-    quarterAmountDue: 0,
-    calendarYear: new Date().getFullYear(),
-    calendarYearTotalMiles: 0,
-    calendarYearAmountDue: 0,
-    taxYearTotalMiles: 0,
-    taxYearAmountDue: 0,
-    milesToThreshold: 10_000,
-  }
+  const stats = statsResult.data
   const destinations = destsResult.data ?? []
 
   return (
