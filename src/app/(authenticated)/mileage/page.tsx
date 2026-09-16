@@ -1,4 +1,4 @@
-import { PageHeader, SectionNav } from '@/ds'
+import { Alert, PageHeader, SectionNav } from '@/ds'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getTrips, getTripStats, getDestinations } from '@/app/actions/mileage'
 import { redirect } from 'next/navigation'
@@ -21,6 +21,23 @@ export default async function MileagePage(): Promise<React.JSX.Element> {
     getTripStats(),
     getDestinations(),
   ])
+
+  // A failed read used to render as "No trips recorded"; say what went wrong instead.
+  const loadError = tripsResult.error ?? statsResult.error ?? destsResult.error
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          breadcrumbs={[{ label: 'Finance' }, { label: 'Mileage' }]}
+          title="Mileage"
+          subtitle="Business trip log with HMRC-rate reimbursement"
+          className="mb-0"
+        />
+        <SectionNav items={MILEAGE_SECTION_NAV} activeId="trips" />
+        <Alert variant="error" title="Couldn't load mileage" description={loadError} />
+      </div>
+    )
+  }
 
   const trips = tripsResult.data ?? []
   const tripTotal = tripsResult.pageInfo?.total ?? trips.length
