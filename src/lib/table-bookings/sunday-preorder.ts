@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getAppUrl } from '@/lib/env'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 
 type BookingItemType = 'main' | 'side' | 'extra'
@@ -99,7 +100,7 @@ export type SundayPreorderSaveInputItem = {
 }
 
 function resolveAppBaseUrl(appBaseUrl?: string): string {
-  return (appBaseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '')
+  return (appBaseUrl || getAppUrl()).replace(/\/+$/, '')
 }
 
 function computeTokenExpiry(bookingStartIso?: string | null): string {

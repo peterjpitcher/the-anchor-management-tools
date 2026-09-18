@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { createEventPaymentToken, sendEventPaymentRetrySms } from '@/lib/events/event-payments'
 import { sendEventPaymentLinkEmail } from '@/lib/email/event-ticket-emails'
@@ -101,7 +102,7 @@ export async function GET(request: NextRequest) {
     try {
       const smsResult = await sendEventPaymentRetrySms(supabase, {
         bookingId: row.id,
-        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+        appBaseUrl: getAppUrl(),
       })
 
       if (reminderId) {
@@ -166,7 +167,7 @@ export async function GET(request: NextRequest) {
         customerId: row.customer_id as string,
         bookingId: row.id,
         holdExpiresAt: row.hold_expires_at as string,
-        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+        appBaseUrl: getAppUrl(),
       })
       const emailResult = await sendEventPaymentLinkEmail(supabase, {
         bookingId: row.id,

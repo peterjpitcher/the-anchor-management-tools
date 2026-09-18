@@ -3,6 +3,7 @@
 import { after } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getAppUrl } from '@/lib/env';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { z } from 'zod';
@@ -194,10 +195,6 @@ type LatePublishGraceShift = {
   start_time: string;
   first_published_at: string | null;
 };
-
-function getAppBaseUrl(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
-}
 
 const ACCEPTANCE_RESET_FIELDS = new Set([
   'start_time',
@@ -2573,8 +2570,8 @@ export async function requestOpenShift(input: z.infer<typeof PortalOpenShiftRequ
       name: (shift.name as string | null | undefined) ?? null,
     },
   });
-  const autoAcceptUrl = `${getAppBaseUrl()}/api/rota/open-shift-requests/approve?token=${encodeURIComponent(approvalToken)}`;
-  const openRotaUrl = `${getAppBaseUrl()}/rota?week=${encodeURIComponent(shift.shift_date as string)}&shift=${encodeURIComponent(parsed.data.shiftId)}`;
+  const autoAcceptUrl = `${getAppUrl()}/api/rota/open-shift-requests/approve?token=${encodeURIComponent(approvalToken)}`;
+  const openRotaUrl = `${getAppUrl()}/rota?week=${encodeURIComponent(shift.shift_date as string)}&shift=${encodeURIComponent(parsed.data.shiftId)}`;
   const dayContext = await getOpenShiftRequestDayContext(admin, shift.shift_date as string);
 
   await sendRotaManagerAlert(admin, {

@@ -45,10 +45,6 @@ export type SubmitPrivateBookingFeedbackResult = {
   manager_email_sent?: boolean
 }
 
-function resolveAppBaseUrl(appBaseUrl?: string): string {
-  return (appBaseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '')
-}
-
 function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')

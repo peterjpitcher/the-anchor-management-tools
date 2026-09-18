@@ -9,6 +9,7 @@ import { EventService, eventSchema, CreateEventInput, UpdateEventInput } from '@
 import { EventBookingService } from '@/services/event-bookings'
 import { createClient } from '@/lib/supabase/server' // Required for getting user in action
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { londonLocalInputToUtcIso } from '@/lib/dateUtils'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
@@ -1037,7 +1038,7 @@ export async function createEventManualBooking(input: {
       source: 'admin',
       bookingMode,
       seatingPreference: parsed.data.seatingPreference,
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      appBaseUrl: getAppUrl(),
       shouldSendSms: true,
       supabaseClient: supabase,
       logTag: 'admin event booking',
@@ -1503,7 +1504,7 @@ export async function updateEventManualBookingSeats(input: {
           eventName: updateResult.event_name || null,
           oldSeats,
           newSeats,
-          appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+          appBaseUrl: getAppUrl()
         })
         const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
         const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
@@ -2509,7 +2510,7 @@ export async function markEventBookingPaidManually(input: {
         bookingId: parsed.data.bookingId,
         eventName: typeof confirm.event_name === 'string' ? confirm.event_name : 'your event',
         seats: typeof confirm.seats === 'number' ? confirm.seats : seatCount,
-        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        appBaseUrl: getAppUrl()
       })
       smsSent = smsResult.success === true || smsResult.logFailure === true
       smsMeta = smsResult
@@ -2524,7 +2525,7 @@ export async function markEventBookingPaidManually(input: {
         bookingId: parsed.data.bookingId,
         amount: expectedAmount,
         currency: 'GBP',
-        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        appBaseUrl: getAppUrl()
       })
     } else if (state === 'manual_review') {
       await sendEventPaymentManualReviewEmail(supabase, {
@@ -2607,7 +2608,7 @@ async function sendEventTransferSms(input: {
       customerId: input.customerId,
       bookingId: input.bookingId,
       eventStartIso: input.eventStartIso,
-      appBaseUrl: input.appBaseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      appBaseUrl: input.appBaseUrl || getAppUrl()
     })
     manageLink = token.url
   } catch {
@@ -2919,7 +2920,7 @@ export async function transferEventBooking(input: {
       source: 'admin',
       bookingMode,
       seatingPreference: bookingRow.event_seating_type === 'standing' ? 'standing' : 'seated',
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      appBaseUrl: getAppUrl(),
       shouldSendSms: false,
       supabaseClient: supabase,
       logTag: 'admin event transfer',
@@ -3195,7 +3196,7 @@ export async function transferEventBooking(input: {
         fromEventName: fromEvent?.name || 'your original event',
         toEventName: targetEvent.name || 'your new event',
         eventStartIso: resolveEventStartIso(targetEvent as EventWhenSource | null),
-        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+        appBaseUrl: getAppUrl(),
         overpayment
       })
       smsMeta = transferSmsMeta
@@ -3211,7 +3212,7 @@ export async function transferEventBooking(input: {
       // Quiz Night".
       fromEventStartIso: resolveEventStartIso(fromEvent as EventWhenSource | null),
       eventStartIso: resolveEventStartIso(targetEvent as EventWhenSource | null),
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      appBaseUrl: getAppUrl(),
       overpayment
     })
 

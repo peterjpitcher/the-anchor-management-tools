@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { logAuditEvent } from '@/app/actions/audit'
 
 type JobConfig = {
@@ -58,16 +59,6 @@ export type CronJobResponse =
       status?: number
       details?: unknown
     }
-
-function resolveBaseUrl() {
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL
-  }
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`
-  }
-  return 'http://localhost:3000'
-}
 
 export async function runCronJob(job: CronJobName): Promise<CronJobResponse> {
   const supabase = await createClient()
@@ -127,7 +118,7 @@ export async function runCronJob(job: CronJobName): Promise<CronJobResponse> {
   }
 
   const jobConfig = JOBS[job]
-  const baseUrl = resolveBaseUrl()
+  const baseUrl = getAppUrl()
 
   const cronSecret = process.env.CRON_SECRET?.trim()
   const headers: HeadersInit = {}

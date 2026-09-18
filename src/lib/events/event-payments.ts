@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createHash } from 'crypto'
+import { getAppUrl } from '@/lib/env'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import {
   capturePayPalPayment,
@@ -71,9 +72,7 @@ function parseIsoDate(value: string | null | undefined): Date | null {
 }
 
 function resolveBaseUrl(appBaseUrl?: string): string {
-  const fromEnv = process.env.NEXT_PUBLIC_APP_URL
-  const chosen = (appBaseUrl || fromEnv || 'http://localhost:3000').replace(/\/+$/, '')
-  return chosen
+  return (appBaseUrl || getAppUrl()).replace(/\/+$/, '')
 }
 
 function amountsMatch(left: number, right: number): boolean {

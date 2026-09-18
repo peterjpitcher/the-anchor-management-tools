@@ -3,6 +3,7 @@ import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/a
 import { z } from 'zod'
 import { createParkingPaymentOrder, sendParkingPaymentRequest } from '@/lib/parking/payments'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import type { ParkingBooking } from '@/types/parking'
@@ -327,7 +328,7 @@ export async function POST(request: NextRequest) {
           booking = { ...booking, payment_due_at: thirtyMinsFromNow }
         }
 
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const appUrl = getAppUrl()
         const paymentResult = await createParkingPaymentOrder(booking, {
           returnUrl: parkingPaymentReturnUrl(appUrl, booking.id),
           cancelUrl: parkingGuestUrl(appUrl, booking.id, 'cancelled'),

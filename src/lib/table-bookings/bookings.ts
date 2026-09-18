@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fromZonedTime } from 'date-fns-tz'
 import { toLocalIsoDate } from '@/lib/dateUtils'
+import { getAppUrl } from '@/lib/env'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
 import { notifyCustomer } from '@/lib/notifications/notify'
@@ -217,9 +218,7 @@ function endOfLondonBookingDay(bookingDate: string): Date {
 }
 
 function resolveBaseUrl(appBaseUrl?: string | null): string {
-  const fromEnv = process.env.NEXT_PUBLIC_APP_URL
-  const chosen = (appBaseUrl || fromEnv || 'http://localhost:3000').replace(/\/+$/, '')
-  return chosen
+  return (appBaseUrl || getAppUrl()).replace(/\/+$/, '')
 }
 
 function formatPence(amount: number): number {

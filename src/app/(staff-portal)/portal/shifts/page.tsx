@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getAppUrl } from '@/lib/env';
 import { redirect } from 'next/navigation';
 import { formatDateInLondon, formatDateTime12Hour, formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils';
 import {
@@ -667,9 +668,8 @@ export default async function MyShiftsPage({
   // A greeting, so use the name they go by. 'there' keeps "Hi there" readable
   // when an employee record somehow carries no name at all.
   const empName = displayName(employee, 'there');
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
   const calToken = generateCalendarToken(employee.employee_id);
-  const feedUrl = `${baseUrl}/api/portal/calendar-feed?employee_id=${employee.employee_id}&token=${calToken}`;
+  const feedUrl = `${getAppUrl()}/api/portal/calendar-feed?employee_id=${employee.employee_id}&token=${calToken}`;
 
   return (
     <div className="space-y-5">

@@ -11,6 +11,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
 import { getSmartFirstName } from '@/lib/sms/bulk'
@@ -60,10 +61,6 @@ export type EmailCaptureSendResult = {
   stoppedBy?: string
   /** Tally of why sends failed, keyed by the safety or provider code. */
   failureCodes: Record<string, number>
-}
-
-function resolveAppBaseUrl(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '')
 }
 
 /**
@@ -196,7 +193,7 @@ export async function sendEmailCaptureSms(options: {
     return stats
   }
 
-  const baseUrl = resolveAppBaseUrl()
+  const baseUrl = getAppUrl()
   const expiresAt = new Date(Date.now() + TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
   let processed = 0
