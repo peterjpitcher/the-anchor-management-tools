@@ -54,7 +54,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={id}
             className={cn(
-              'h-input-h px-3 text-ui bg-surface border border-border rounded-default w-full',
+              'h-input-h px-3 text-ui text-text bg-surface border border-border rounded-default w-full',
               'outline-hidden transition-[border-color,box-shadow] duration-[120ms]',
               'focus:border-border-focus focus:shadow-ring',
               'placeholder:text-text-subtle',
