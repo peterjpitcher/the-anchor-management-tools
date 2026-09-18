@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Badge, Button } from '@/ds';
 import { submitOnboardingProfile } from '@/app/actions/employeeInvite';
 import { useRouter } from 'next/navigation';
 
@@ -59,37 +60,39 @@ export default function ReviewStep({ token, savedSections }: ReviewStepProps) {
         {sections.map((section) => (
           <div key={section.key} className="flex items-center gap-3 rounded-md border border-border px-4 py-3">
             <span
-              className={`flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold ${
+              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${
                 savedSections[section.key]
-                  ? 'bg-success-soft text-green-700'
-                  : 'bg-yellow-100 text-warning-fg'
+                  ? 'border-success-border bg-success-soft text-success-fg'
+                  : 'border-warning-border bg-warning-soft text-warning-fg'
               }`}
             >
               {savedSections[section.key] ? '✓' : '!'}
             </span>
             <span className="text-sm text-text">{section.label}</span>
-            <span className={`ml-auto text-xs font-medium ${savedSections[section.key] ? 'text-green-600' : 'text-warning'}`}>
+            <Badge tone={savedSections[section.key] ? 'success' : 'warning'} size="sm" className="ml-auto">
               {savedSections[section.key] ? 'Complete' : 'Incomplete'}
-            </span>
+            </Badge>
           </div>
         ))}
       </div>
 
       {!allComplete && (
-        <p className="text-sm text-warning-fg bg-warning-soft rounded-md px-4 py-3">
+        <p className="rounded-md border border-warning-border bg-warning-soft px-4 py-3 text-sm text-warning-fg">
           Please complete all sections before submitting. Personal details (first and last name) must be completed before submitting.
         </p>
       )}
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
-      <button type="button"
+      <Button
+        type="button"
+        variant="primary"
+        className="w-full"
         onClick={handleSubmit}
         disabled={loading || !allComplete}
-        className="w-full rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"
       >
         {loading ? 'Submitting...' : 'Complete Profile'}
-      </button>
+      </Button>
     </div>
   );
 }

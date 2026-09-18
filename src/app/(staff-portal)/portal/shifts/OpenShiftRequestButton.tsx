@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { Badge, Button, Textarea } from '@/ds';
 import { requestOpenShift } from '@/app/actions/rota';
 
 type Props = {
@@ -18,9 +19,9 @@ export default function OpenShiftRequestButton({ shiftId, alreadyRequested }: Pr
 
   if (alreadyRequested) {
     return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-warning-fg">
+      <Badge tone="warning">
         Requested
-      </span>
+      </Badge>
     );
   }
 
@@ -40,49 +41,43 @@ export default function OpenShiftRequestButton({ shiftId, alreadyRequested }: Pr
 
   if (!requesting) {
     return (
-      <button
-        type="button"
-        onClick={() => setRequesting(true)}
-        className="rounded-md border border-amber-200 bg-surface px-3 py-1.5 text-xs font-medium text-warning-fg hover:bg-warning-soft"
-      >
+      <Button type="button" variant="secondary" size="sm" onClick={() => setRequesting(true)}>
         Request shift
-      </button>
+      </Button>
     );
   }
 
   return (
-    <div className="mt-2 rounded-lg border border-amber-200 bg-warning-soft p-3">
+    // Full width, so the wrapping card row drops it onto its own line below the shift details
+    // instead of squeezing a textarea beside them on a phone. The row's gap spaces it.
+    <div className="w-full rounded-lg border border-warning-border bg-warning-soft p-3">
       <p className="mb-2 text-xs font-medium text-warning-fg">
         Confirm you want to ask to work this shift.
       </p>
       <label htmlFor={`open-shift-note-${shiftId}`} className="text-xs font-medium text-warning-fg">
         Note for manager (optional)
       </label>
-      <textarea
+      <Textarea
         id={`open-shift-note-${shiftId}`}
         value={note}
         onChange={event => setNote(event.target.value)}
         maxLength={500}
         rows={3}
-        className="mt-1 w-full rounded-md border border-amber-100 bg-surface px-2 py-1.5 text-xs text-text outline-none focus:border-amber-300"
+        className="mt-1"
       />
       <div className="mt-2 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={submitRequest}
-          disabled={isPending}
-          className="rounded-md bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50"
-        >
+        <Button type="button" variant="primary" size="sm" onClick={submitRequest} disabled={isPending}>
           {isPending ? 'Sending...' : 'Confirm request'}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={() => { setRequesting(false); setNote(''); }}
           disabled={isPending}
-          className="rounded-md border border-amber-100 bg-surface px-3 py-1.5 text-xs font-medium text-warning-fg hover:bg-warning-soft disabled:opacity-50"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );
