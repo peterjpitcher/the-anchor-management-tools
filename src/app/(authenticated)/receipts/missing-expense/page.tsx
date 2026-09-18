@@ -1,5 +1,5 @@
 import { getReceiptMissingExpenseSummary } from '@/app/actions/receipts'
-import { Card, LinkButton } from '@/ds'
+import { Badge, Card, LinkButton } from '@/ds'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
@@ -76,7 +76,7 @@ export default async function ReceiptsMissingExpensePage() {
                       <td className="px-4 py-3 text-right text-sm">
                         <Link
                           href={`/receipts?needsExpense=1${item.vendorLabel !== 'Unassigned vendor' ? `&search=${encodeURIComponent(item.vendorLabel)}` : ''}`}
-                          className="text-success-fg hover:text-success-fg"
+                          className="rounded-sm font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
                         >
                           Review
                         </Link>
@@ -92,14 +92,14 @@ export default async function ReceiptsMissingExpensePage() {
         {/* Mobile: stacked cards (below 768px) */}
         <div className="space-y-3 md:hidden">
           {summary.length === 0 ? (
-            <Card variant="bordered">
+            <Card>
               <p className="py-4 text-center text-sm text-text-muted">
                 All transactions have an expense category assigned.
               </p>
             </Card>
           ) : (
             summary.map((item) => (
-              <Card key={item.vendorLabel} variant="bordered">
+              <Card key={item.vendorLabel}>
                 <div className="space-y-3">
                   <h3 className="text-sm font-semibold leading-snug text-text-strong">{item.vendorLabel}</h3>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
@@ -139,20 +139,20 @@ export default async function ReceiptsMissingExpensePage() {
 }
 
 function SummaryCard({ label, value, tone }: { label: string; value: string | number; tone: 'income' | 'spend' | 'warning' }) {
-  const toneStyles: Record<typeof tone, string> = {
-    income: 'bg-success-soft text-success-fg',
-    spend: 'bg-danger-soft text-danger-fg',
-    warning: 'bg-warning-soft text-warning-fg',
+  const badgeTone: Record<typeof tone, 'success' | 'danger' | 'warning'> = {
+    income: 'success',
+    spend: 'danger',
+    warning: 'warning',
   }
 
   return (
-    <Card variant="bordered" className="h-full">
+    <Card className="h-full">
       <div className="space-y-1.5">
         <p className="text-xs uppercase tracking-wide text-text-muted">{label}</p>
         <p className="text-2xl font-semibold text-text-strong">{value}</p>
-        <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-meta font-medium ${toneStyles[tone]}`}>
+        <Badge tone={badgeTone[tone]} size="sm" className="w-fit">
           {tone === 'spend' ? 'Awaiting categorisation' : tone === 'income' ? 'Incoming balance' : 'Needs attention'}
-        </span>
+        </Badge>
       </div>
     </Card>
   )

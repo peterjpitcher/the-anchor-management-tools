@@ -8,12 +8,13 @@ export const statusLabels: Record<ReceiptTransaction['status'], string> = {
   cant_find: "Can't find",
 }
 
-export const statusToneClasses: Record<ReceiptTransaction['status'], string> = {
-  pending: 'bg-warning-soft text-warning-fg',
-  completed: 'bg-success-soft text-success-fg',
-  auto_completed: 'bg-info-soft text-info-fg',
-  no_receipt_required: 'bg-surface-hover text-text',
-  cant_find: 'bg-danger-soft text-danger-fg',
+/** DS Badge tone for each receipt status: one map for the workspace, mobile cards and vendor history. */
+export const statusTone: Record<ReceiptTransaction['status'], 'neutral' | 'success' | 'warning' | 'danger' | 'info'> = {
+  pending: 'warning',
+  completed: 'success',
+  auto_completed: 'info',
+  no_receipt_required: 'neutral',
+  cant_find: 'danger',
 }
 
 export function formatCurrency(value: number | null) {

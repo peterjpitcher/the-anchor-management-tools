@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuote, updateQuoteStatus, convertQuoteToInvoice, deleteQuote } from '@/app/actions/quotes'
 import { getEmailConfigStatus } from '@/app/actions/email'
-import { FileText, Download, Mail, CheckCircle, XCircle, Edit, Copy, Trash2, Clock } from 'lucide-react'
+import { FileText, Download, Mail, CheckCircle, XCircle, Edit, Copy, Trash2 } from 'lucide-react'
 import { EmailQuoteModal } from '@/components/modals/EmailQuoteModal'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
 // UI v2 components
@@ -20,6 +20,7 @@ import { ConfirmDialog } from '@/ds'
 import { DataTable } from '@/ds'
 
 import { usePermissions } from '@/contexts/PermissionContext'
+import { quoteStatusLabel, quoteStatusTone } from '@/lib/invoices/status-ui'
 
 function formatCurrency(value: number | null | undefined): string {
   const amount = Number(value ?? 0)
@@ -205,26 +206,6 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
     }
   }
 
-  function getStatusVariant(status: QuoteStatus): 'default' | 'info' | 'success' | 'error' | 'warning' {
-    switch (status) {
-      case 'draft': return 'default'
-      case 'sent': return 'info'
-      case 'accepted': return 'success'
-      case 'rejected': return 'error'
-      case 'expired': return 'warning'
-      default: return 'default'
-    }
-  }
-
-  function getStatusIcon(status: QuoteStatus) {
-    switch (status) {
-      case 'accepted': return <CheckCircle className="h-4 w-4" />
-      case 'rejected': return <XCircle className="h-4 w-4" />
-      case 'expired': return <Clock className="h-4 w-4" />
-      default: return null
-    }
-  }
-
   // calculateLineTotal was unused; removed to satisfy lint
 
   const layoutProps = {
@@ -401,9 +382,8 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   return (
     <PageLayout {...layoutProps} headerActions={headerActions}>
       <div className="mb-2">
-        <Badge variant={getStatusVariant(quote.status)}>
-          {getStatusIcon(quote.status)}
-          {quote.status.charAt(0).toUpperCase() + quote.status.slice(1).replace('_', ' ')}
+        <Badge tone={quoteStatusTone(quote.status)} dot>
+          {quoteStatusLabel(quote.status)}
         </Badge>
       </div>
 
@@ -449,7 +429,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 sm:gap-6 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t">
+            <div className="grid grid-cols-2 gap-4 sm:gap-6 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-border">
               <div>
                 <p className="text-xs sm:text-sm text-text-muted">Quote Date</p>
                 <p className="font-medium text-sm sm:text-base">
@@ -476,7 +456,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                 { key: 'description', header: 'Description', cell: (it) => <span className="text-sm">{it.description}</span> },
                 { key: 'quantity', header: 'Qty', align: 'right', cell: (it) => <span className="text-sm">{it.quantity}</span> },
                 { key: 'unit_price', header: 'Unit Price', align: 'right', cell: (it) => <span className="text-sm">£{it.unit_price.toFixed(2)}</span> },
-                { key: 'discount', header: 'Discount', align: 'right', cell: (it) => <span className="text-sm text-green-600">{it.discount_percentage > 0 ? `-${it.discount_percentage}%` : ''}</span> },
+                { key: 'discount', header: 'Discount', align: 'right', cell: (it) => <span className="text-sm text-success-fg">{it.discount_percentage > 0 ? `-${it.discount_percentage}%` : ''}</span> },
                 { key: 'vat', header: 'VAT', align: 'right', cell: (it) => <span className="text-sm">{it.vat_rate}%</span> },
                 { key: 'total', header: 'Total', align: 'right', cell: (it) => {
                   const lineSubtotal = it.quantity * it.unit_price
@@ -498,15 +478,15 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                 const lineVat = lineAfterQuoteDiscount * (it.vat_rate / 100)
                 const lineTotal = lineAfterQuoteDiscount + lineVat
                 return (
-                  <div className="border rounded-lg p-3">
+                  <div className="border border-border rounded-lg p-3">
                     <p className="font-medium text-sm mb-2">{it.description}</p>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div><span className="text-text-muted">Qty:</span> {it.quantity}</div>
                       <div><span className="text-text-muted">Unit Price:</span> £{it.unit_price.toFixed(2)}</div>
-                      <div><span className="text-text-muted">Discount:</span> {it.discount_percentage > 0 ? (<span className="text-green-600"> -{it.discount_percentage}%</span>) : (<span>-</span>)}</div>
+                      <div><span className="text-text-muted">Discount:</span> {it.discount_percentage > 0 ? (<span className="text-success-fg"> -{it.discount_percentage}%</span>) : (<span>-</span>)}</div>
                       <div><span className="text-text-muted">VAT:</span> {it.vat_rate}%</div>
                     </div>
-                    <div className="mt-2 pt-2 border-t flex justify-between">
+                    <div className="mt-2 pt-2 border-t border-border flex justify-between">
                       <span className="text-sm font-medium">Total:</span>
                       <span className="text-sm font-medium">£{lineTotal.toFixed(2)}</span>
                     </div>
@@ -515,13 +495,13 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               }}
             />
 
-            <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t space-y-2">
+            <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-border space-y-2">
               <div className="flex justify-between text-xs sm:text-sm">
                 <span>Subtotal:</span>
                 <span>£{subtotal.toFixed(2)}</span>
               </div>
               {quote.quote_discount_percentage > 0 && (
-                <div className="flex justify-between text-xs sm:text-sm text-green-600">
+                <div className="flex justify-between text-xs sm:text-sm text-success-fg">
                   <span>Quote Discount ({quote.quote_discount_percentage}%):</span>
                   <span>-£{quoteDiscount.toFixed(2)}</span>
                 </div>
@@ -530,7 +510,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                 <span>VAT:</span>
                 <span>£{vat.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-base sm:text-lg font-semibold pt-2 border-t">
+              <div className="flex justify-between text-base sm:text-lg font-semibold pt-2 border-t border-border">
                 <span>Total:</span>
                 <span>{formatCurrency(quote.total_amount)}</span>
               </div>
@@ -551,7 +531,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               {quote.internal_notes && (
                 <div>
                   <h3 className="font-medium text-xs sm:text-sm text-text-muted mb-1">Internal Notes</h3>
-                  <p className="text-xs sm:text-sm whitespace-pre-wrap bg-warning-soft p-2 sm:p-3 rounded-md">
+                  <p className="text-xs sm:text-sm whitespace-pre-wrap rounded-md border border-warning-border bg-warning-soft p-2 sm:p-3 text-warning-fg">
                     {quote.internal_notes}
                   </p>
                 </div>
@@ -572,16 +552,15 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               
               <div>
                 <p className="text-xs sm:text-sm text-text-muted">Status</p>
-                <Badge variant={getStatusVariant(quote.status)}>
-                  {getStatusIcon(quote.status)}
-                  {quote.status.charAt(0).toUpperCase() + quote.status.slice(1).replace('_', ' ')}
+                <Badge tone={quoteStatusTone(quote.status)} dot>
+                  {quoteStatusLabel(quote.status)}
                 </Badge>
               </div>
               
               {quote.converted_to_invoice_id && (
                 <div>
                   <p className="text-xs sm:text-sm text-text-muted">Converted to Invoice</p>
-                  <p className="text-xs sm:text-sm font-medium text-green-600">
+                  <p className="text-xs sm:text-sm font-medium text-success-fg">
                     {quote.converted_invoice?.invoice_number}
                   </p>
                 </div>

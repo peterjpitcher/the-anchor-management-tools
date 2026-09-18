@@ -44,6 +44,7 @@ import {
 import { getEntryDatePeriod, isProjectSelectableForEntryDate } from '@/lib/oj-projects/retainers'
 import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
 import { clearPendingNavigation, rememberPendingNavigation } from '@/lib/navigation-recovery'
+import { invoiceStatusLabel } from '@/lib/invoices/status-ui'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -984,7 +985,7 @@ export function ProjectsOverview({
           {editForm.linked_invoice_number && (
             <Field label="Invoice">
               <Input
-                value={`${editForm.linked_invoice_number}${editForm.linked_invoice_status ? ` (${editForm.linked_invoice_status})` : ''}`}
+                value={`${editForm.linked_invoice_number}${editForm.linked_invoice_status ? ` (${invoiceStatusLabel(editForm.linked_invoice_status)})` : ''}`}
                 disabled
               />
             </Field>

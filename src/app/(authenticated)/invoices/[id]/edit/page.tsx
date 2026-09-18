@@ -245,7 +245,7 @@ export default function EditInvoicePage() {
         {error && <Alert variant="error" description={error} />}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <Card className="p-6">
+          <Card>
             <h2 className="mb-4 text-lg font-semibold">Invoice Details</h2>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -293,7 +293,7 @@ export default function EditInvoicePage() {
             </div>
           </Card>
 
-          <Card className="p-6">
+          <Card>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Line Items</h2>
               <Button
@@ -424,7 +424,7 @@ export default function EditInvoicePage() {
             </div>
           </Card>
 
-          <Card className="p-6">
+          <Card>
             <h2 className="mb-4 text-lg font-semibold">Additional Details</h2>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -461,7 +461,7 @@ export default function EditInvoicePage() {
             </div>
           </Card>
 
-          <Card className="p-6">
+          <Card>
             <h2 className="mb-4 text-lg font-semibold">Summary</h2>
 
             <div className="space-y-2">
@@ -479,7 +479,7 @@ export default function EditInvoicePage() {
                 <span>VAT</span>
                 <span>£{invoiceTotals.vatAmount.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between border-t pt-2 text-lg font-semibold">
+              <div className="flex justify-between border-t border-border pt-2 text-lg font-semibold">
                 <span>Total</span>
                 <span>£{invoiceTotals.totalAmount.toFixed(2)}</span>
               </div>

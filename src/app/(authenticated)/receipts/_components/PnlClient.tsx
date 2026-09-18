@@ -49,9 +49,9 @@ function varianceClass(value: number | null, invert = false) {
 }
 
 function healthClass(status: string) {
-  if (status === 'on_track') return 'border-border bg-success-soft text-success-fg'
-  if (status === 'watch') return 'border-border bg-warning-soft text-warning-fg'
-  if (status === 'off_track') return 'border-border bg-danger-soft text-danger-fg'
+  if (status === 'on_track') return 'border-success-border bg-success-soft text-success-fg'
+  if (status === 'watch') return 'border-warning-border bg-warning-soft text-warning-fg'
+  if (status === 'off_track') return 'border-danger-border bg-danger-soft text-danger-fg'
   return 'border-border bg-surface-2 text-text'
 }
 

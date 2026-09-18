@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { Alert, Button, LinkButton, Modal } from '@/ds'
 
 interface ExpenseFileViewerFile {
   id: string
@@ -20,8 +21,8 @@ interface ExpenseFileViewerProps {
 }
 
 /**
- * Lightbox viewer for expense receipt images and PDFs.
- * Traps focus within the modal and closes on Escape.
+ * Lightbox viewer for expense receipt images and PDFs, built on the DS Modal, which traps
+ * focus, locks the page scroll and closes on Escape or a click on the backdrop.
  */
 export function ExpenseFileViewer({
   files,
@@ -35,12 +36,10 @@ export function ExpenseFileViewer({
 
   const currentFile = files[currentIndex]
 
-  // Close on Escape
+  // Arrow keys step through the files. Escape is handled by the Modal.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        onClose()
-      } else if (e.key === 'ArrowLeft' && currentIndex > 0) {
+      if (e.key === 'ArrowLeft' && currentIndex > 0) {
         setCurrentIndex((i) => i - 1)
       } else if (e.key === 'ArrowRight' && currentIndex < files.length - 1) {
         setCurrentIndex((i) => i + 1)
@@ -48,15 +47,7 @@ export function ExpenseFileViewer({
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, currentIndex, files.length])
-
-  // Prevent body scroll when modal is open
-  useEffect(() => {
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [])
+  }, [currentIndex, files.length])
 
   const handleDelete = useCallback(async () => {
     if (!onDelete || !currentFile) return
@@ -87,114 +78,97 @@ export function ExpenseFileViewer({
   const isImage = currentFile.mime_type.startsWith('image/')
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Receipt file viewer"
-    >
-      <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col rounded-lg bg-surface shadow-lg sm:w-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3 ">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="truncate text-sm font-medium text-text ">
-              {currentFile.file_name}
-            </span>
-            {files.length > 1 && (
-              <span className="shrink-0 text-xs text-text-muted ">
+    <Modal
+      open
+      onClose={onClose}
+      title={currentFile.file_name}
+      width="xl"
+      footer={
+        <div className="flex w-full flex-wrap items-center gap-2">
+          {files.length > 1 && (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setCurrentIndex((i) => i - 1)}
+                disabled={currentIndex === 0}
+                aria-label="Previous file"
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setCurrentIndex((i) => i + 1)}
+                disabled={currentIndex === files.length - 1}
+                aria-label="Next file"
+              >
+                Next
+              </Button>
+              <span className="text-xs text-text-muted">
                 {currentIndex + 1} of {files.length}
               </span>
-            )}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
+            </>
+          )}
+          <div className="ml-auto flex items-center gap-2">
             {onDelete && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={handleDelete}
                 disabled={deleting}
-                className="rounded-sm px-2 py-1 text-sm text-danger hover:bg-danger-soft disabled:opacity-50  "
+                className="text-danger hover:bg-danger-soft"
               >
                 {deleting ? 'Deleting...' : 'Delete'}
-              </button>
+              </Button>
             )}
             {currentFile.signed_url && (
-              <a
+              <LinkButton
                 href={currentFile.signed_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded-sm px-2 py-1 text-sm text-blue-600 hover:bg-blue-50  "
+                variant="ghost"
+                size="sm"
+                className="text-primary hover:bg-primary-soft"
               >
                 Open
-              </a>
+              </LinkButton>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-sm px-2 py-1 text-sm text-text-muted hover:bg-surface-hover  "
-              aria-label="Close viewer"
-            >
-              {'\u00d7'}
-            </button>
+            <Button type="button" variant="secondary" size="sm" onClick={onClose} aria-label="Close viewer">
+              Close
+            </Button>
           </div>
         </div>
+      }
+    >
+      {deleteError && (
+        <Alert tone="danger" size="sm" className="mb-3">
+          {deleteError}
+        </Alert>
+      )}
 
-        {/* Error */}
-        {deleteError && (
-          <div className="bg-danger-soft px-4 py-2 text-sm text-red-700  ">
-            {deleteError}
-          </div>
-        )}
-
-        {/* Content */}
-        <div className="flex-1 overflow-auto p-4">
-          {isImage && currentFile.signed_url && (
-            <img
-              src={currentFile.signed_url}
-              alt={currentFile.file_name}
-              className="mx-auto max-h-[70vh] max-w-full rounded-sm object-contain"
-            />
-          )}
-          {isPdf && currentFile.signed_url && (
-            <iframe
-              src={currentFile.signed_url}
-              title={currentFile.file_name}
-              className="h-[70vh] w-full rounded-sm border-0"
-            />
-          )}
-          {!currentFile.signed_url && (
-            <p className="text-center text-sm text-text-muted ">
-              Unable to load file preview. The signed URL may have expired.
-            </p>
-          )}
-        </div>
-
-        {/* Navigation arrows */}
-        {files.length > 1 && (
-          <div className="flex items-center justify-center gap-4 border-t border-border px-4 py-3 ">
-            <button
-              type="button"
-              onClick={() => setCurrentIndex((i) => i - 1)}
-              disabled={currentIndex === 0}
-              className="rounded-sm px-3 py-1 text-sm text-text-muted hover:bg-surface-hover disabled:opacity-50  "
-              aria-label="Previous file"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentIndex((i) => i + 1)}
-              disabled={currentIndex === files.length - 1}
-              className="rounded-sm px-3 py-1 text-sm text-text-muted hover:bg-surface-hover disabled:opacity-50  "
-              aria-label="Next file"
-            >
-              Next
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+      {isImage && currentFile.signed_url && (
+        <img
+          src={currentFile.signed_url}
+          alt={currentFile.file_name}
+          className="mx-auto max-h-[70vh] max-w-full rounded-sm object-contain"
+        />
+      )}
+      {isPdf && currentFile.signed_url && (
+        <iframe
+          src={currentFile.signed_url}
+          title={currentFile.file_name}
+          className="h-[70vh] w-full rounded-sm border-0"
+        />
+      )}
+      {!currentFile.signed_url && (
+        <p className="text-center text-sm text-text-muted">
+          Unable to load file preview. The signed URL may have expired.
+        </p>
+      )}
+    </Modal>
   )
 }

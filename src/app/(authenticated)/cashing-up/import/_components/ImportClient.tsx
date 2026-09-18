@@ -5,7 +5,7 @@ import {
   Card, CardHeader, CardBody,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/ds'
-import { Button, Alert, FileUpload, ProgressBar } from '@/ds'
+import { Button, Alert, Checkbox, FileUpload, ProgressBar } from '@/ds'
 import Papa from 'papaparse'
 import { importCashupHistoryAction, ImportRow } from '@/app/actions/cashing-up-import'
 
@@ -192,7 +192,7 @@ export function ImportClient() {
                 <span>{Math.round((progress.processed / progress.total) * 100)}%</span>
               </div>
               <ProgressBar value={(progress.processed / progress.total) * 100} tone="primary" size="md" />
-              <p className="text-xs text-text-subtle text-center">
+              <p className="text-xs text-text-soft text-center">
                 Processed {progress.processed} of {progress.total} rows
               </p>
             </div>
@@ -220,15 +220,11 @@ export function ImportClient() {
             title={`Preview (${previewData.length} rows)`}
             action={
               <div className="flex flex-wrap items-center justify-end gap-3">
-                <label className="flex items-center gap-2 text-xs text-text-muted">
-                  <input
-                    type="checkbox"
-                    checked={confirmed}
-                    onChange={(event) => setConfirmed(event.target.checked)}
-                    className="h-4 w-4 rounded-sm border-border"
-                  />
-                  Confirm import
-                </label>
+                <Checkbox
+                  label="Confirm import"
+                  checked={confirmed}
+                  onChange={(checked) => setConfirmed(checked)}
+                />
                 <Button variant="primary" onClick={handleImport} loading={isPending} disabled={!confirmed}>
                   Import {previewData.length} Rows
                 </Button>
@@ -266,7 +262,7 @@ export function ImportClient() {
             </TableBody>
           </Table>
           {previewData.length > PREVIEW_PAGE_SIZE && (
-            <div className="flex items-center justify-between gap-3 border-t border-border bg-surface-2 px-4 py-2 text-xs text-text-subtle">
+            <div className="flex items-center justify-between gap-3 border-t border-border bg-surface-2 px-4 py-2 text-xs text-text-soft">
               <span>
                 Page {previewPage + 1} of {totalPreviewPages}
               </span>

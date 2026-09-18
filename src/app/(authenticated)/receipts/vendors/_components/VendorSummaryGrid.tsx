@@ -19,7 +19,8 @@ import {
   type ReceiptVendorMonthTransaction,
   type ReceiptVendorWatchlistItem,
 } from '@/app/actions/receipts'
-import { Alert, Button, Card, Drawer, Spinner } from '@/ds'
+import { Alert, Badge, Button, Card, Drawer, IconButton, Select, Spinner } from '@/ds'
+import { statusLabels, statusTone } from '@/app/(authenticated)/receipts/utils'
 import {
   ArrowTrendingDownIcon,
   ArrowTrendingUpIcon,
@@ -79,25 +80,16 @@ function formatHistoryDate(value: string) {
 }
 
 function signalTone(signal: ReceiptVendorCostSignal | { severity: 'medium' | 'high'; direction: 'spike' | 'drop' | 'new' | 'resumed' }) {
-  if (signal.severity === 'high') return 'bg-danger-soft text-danger-fg border-border'
-  if (signal.direction === 'drop') return 'bg-success-soft text-success-fg border-border'
-  return 'bg-warning-soft text-warning-fg border-border'
+  if (signal.severity === 'high') return 'bg-danger-soft text-danger-fg border-danger-border'
+  if (signal.direction === 'drop') return 'bg-success-soft text-success-fg border-success-border'
+  return 'bg-warning-soft text-warning-fg border-warning-border'
 }
 
-const statusLabels: Record<ReceiptVendorMonthTransaction['status'], string> = {
-  pending: 'Pending',
-  completed: 'Completed',
-  auto_completed: 'Auto completed',
-  no_receipt_required: 'No receipt required',
-  cant_find: "Can't find",
-}
-
-const statusTone: Record<ReceiptVendorMonthTransaction['status'], string> = {
-  pending: 'bg-warning-soft text-warning-fg',
-  completed: 'bg-success-soft text-success-fg',
-  auto_completed: 'bg-info-soft text-info-fg',
-  no_receipt_required: 'bg-surface-hover text-text',
-  cant_find: 'bg-danger-soft text-danger-fg',
+/** The same rule as signalTone, as a DS Badge tone for the compact chips. */
+function signalBadgeTone(signal: ReceiptVendorCostSignal | { severity: 'medium' | 'high'; direction: 'spike' | 'drop' | 'new' | 'resumed' }): 'danger' | 'success' | 'warning' {
+  if (signal.severity === 'high') return 'danger'
+  if (signal.direction === 'drop') return 'success'
+  return 'warning'
 }
 
 type VendorSummaryGridProps = {
@@ -319,7 +311,7 @@ function SegmentedControl({
           key={option.value}
           type="button"
           onClick={() => onChange(option.value)}
-          className={`rounded-sm px-3 py-1.5 text-xs font-semibold transition ${value === option.value ? 'bg-primary text-primary-fg' : 'text-text-muted hover:bg-surface-2'}`}
+          className={`rounded-sm px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-hidden focus-visible:shadow-ring ${value === option.value ? 'bg-primary text-primary-fg' : 'text-text-muted hover:bg-surface-2'}`}
         >
           {option.label}
         </button>
@@ -358,11 +350,11 @@ function MovementMetric({
   tone?: 'neutral' | 'up' | 'down' | 'attention'
 }) {
   const toneClass = tone === 'up'
-    ? 'border-border bg-danger-soft text-danger-fg'
+    ? 'border-danger-border bg-danger-soft text-danger-fg'
     : tone === 'down'
-      ? 'border-border bg-success-soft text-success-fg'
+      ? 'border-success-border bg-success-soft text-success-fg'
       : tone === 'attention'
-        ? 'border-border bg-warning-soft text-warning-fg'
+        ? 'border-warning-border bg-warning-soft text-warning-fg'
         : 'border-border bg-surface text-text-strong'
 
   return (
@@ -387,7 +379,7 @@ function DivergingMovementChart({ movements }: { movements: ReceiptVendorMovemen
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-[minmax(7rem,11rem)_1fr_5rem] items-center gap-3 text-meta font-semibold uppercase tracking-wide text-text-subtle">
+      <div className="grid grid-cols-[minmax(7rem,11rem)_1fr_5rem] items-center gap-3 text-meta font-semibold uppercase tracking-wide text-text-soft">
         <span>Vendor</span>
         <div className="grid grid-cols-2 text-center"><span>Down</span><span>Up</span></div>
         <span className="text-right">Movement</span>
@@ -401,7 +393,7 @@ function DivergingMovementChart({ movements }: { movements: ReceiptVendorMovemen
             <div className="relative h-5 rounded-sm bg-surface-2">
               <div className="absolute inset-y-0 left-1/2 w-px bg-border-strong" />
               <div
-                className={`absolute inset-y-1 rounded-sm ${delta > 0 ? 'left-1/2 bg-rose-500' : 'right-1/2 bg-emerald-500'}`}
+                className={`absolute inset-y-1 rounded-sm ${delta > 0 ? 'left-1/2 bg-danger' : 'right-1/2 bg-success'}`}
                 style={{ width: `${width}%` }}
               />
             </div>
@@ -591,7 +583,7 @@ function VendorMovementPanel({
                   key={option.value}
                   type="button"
                   onClick={() => setView(option.value)}
-                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${view === option.value ? 'bg-primary text-primary-fg' : 'bg-surface-2 text-text-muted hover:bg-surface-hover'}`}
+                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-hidden focus-visible:shadow-ring-inset ${view === option.value ? 'bg-primary text-primary-fg' : 'bg-surface-2 text-text-muted hover:bg-surface-hover'}`}
                 >
                   {option.label}
                 </button>
@@ -624,8 +616,8 @@ function VendorMovementPanel({
                             <td className="max-w-[15rem] px-3 py-3">
                               <div className="truncate font-semibold text-text-strong" title={movement.vendorLabel}>{movement.vendorLabel}</div>
                               <div className="mt-1 flex items-center gap-2">
-                                {movement.signal && <span className={`inline-flex rounded-full border px-2 py-0.5 font-medium capitalize ${signalTone(movement.signal)}`}>{movement.signal.direction}</span>}
-                                <span className="text-text-subtle">{movement.latestTransactionCount.toLocaleString('en-GB')} transactions</span>
+                                {movement.signal && <Badge tone={signalBadgeTone(movement.signal)} className="capitalize">{movement.signal.direction}</Badge>}
+                                <span className="text-text-soft">{movement.latestTransactionCount.toLocaleString('en-GB')} transactions</span>
                               </div>
                             </td>
                             <td className="px-3 py-3 text-right font-medium tabular-nums text-text-strong">{formatCurrency(movement.latestOutgoing)}</td>
@@ -635,28 +627,27 @@ function VendorMovementPanel({
                               <div className="mt-1 text-meta font-medium opacity-75">{movement.baselineOutgoing === 0 && movement.latestOutgoing > 0 ? 'New' : formatSignedPercent(movement.percentageChange)}</div>
                             </td>
                             <td className="px-3 py-3">
-                              <select
+                              <Select
                                 value={status}
                                 disabled={!movement.latestMonthStart || updatingReview === key}
                                 onChange={(event) => onUpdateReview(movement, event.target.value as ReceiptVendorReviewStatus)}
-                                className="rounded-md border border-border bg-surface px-2 py-1.5 text-xs font-medium text-text"
                                 aria-label={`Review status for ${movement.vendorLabel}`}
                               >
                                 {Object.entries(reviewStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                              </select>
+                              </Select>
                             </td>
                             <td className="px-3 py-3 text-right">
                               <div className="inline-flex items-center gap-2">
-                                <button
+                                <IconButton
                                   type="button"
+                                  size="sm"
                                   disabled={updatingWatchVendor === movement.vendorLabel}
                                   onClick={() => onToggleWatched(movement.vendorLabel, !watched)}
-                                  className={`rounded-sm p-1.5 ${watched ? 'bg-warning-soft text-warning-fg' : 'text-text-subtle hover:bg-surface-2 hover:text-warning-fg'}`}
-                                  aria-label={`${watched ? 'Stop watching' : 'Watch'} ${movement.vendorLabel}`}
-                                >
-                                  <StarIcon className="h-4 w-4" />
-                                </button>
-                                <button type="button" className="font-semibold text-info-fg hover:text-info-fg" onClick={() => onViewDetails(movement.vendorLabel)}>View details</button>
+                                  className={watched ? 'bg-warning-soft text-warning-fg hover:bg-warning-soft' : 'text-text-subtle hover:text-warning-fg'}
+                                  label={`${watched ? 'Stop watching' : 'Watch'} ${movement.vendorLabel}`}
+                                  icon={<StarIcon className="h-4 w-4" />}
+                                />
+                                <Button type="button" variant="link" size="sm" onClick={() => onViewDetails(movement.vendorLabel)}>View details</Button>
                               </div>
                             </td>
                           </tr>
@@ -684,17 +675,25 @@ function VendorMovementPanel({
                           </div>
                         </div>
                         <div className="mt-3 flex items-center gap-2">
-                          <select
-                            value={status}
-                            disabled={!movement.latestMonthStart || updatingReview === key}
-                            onChange={(event) => onUpdateReview(movement, event.target.value as ReceiptVendorReviewStatus)}
-                            className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-2 text-xs font-medium text-text"
-                            aria-label={`Review status for ${movement.vendorLabel}`}
-                          >
-                            {Object.entries(reviewStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                          </select>
-                          <button type="button" onClick={() => onToggleWatched(movement.vendorLabel, !watched)} className={`rounded-md p-2 ${watched ? 'bg-warning-soft text-warning-fg' : 'bg-surface-2 text-text-muted'}`} aria-label={`${watched ? 'Stop watching' : 'Watch'} ${movement.vendorLabel}`}><StarIcon className="h-4 w-4" /></button>
-                          <button type="button" onClick={() => onViewDetails(movement.vendorLabel)} className="rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-fg">Details</button>
+                          <div className="min-w-0 flex-1">
+                            <Select
+                              value={status}
+                              disabled={!movement.latestMonthStart || updatingReview === key}
+                              onChange={(event) => onUpdateReview(movement, event.target.value as ReceiptVendorReviewStatus)}
+                              aria-label={`Review status for ${movement.vendorLabel}`}
+                            >
+                              {Object.entries(reviewStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                            </Select>
+                          </div>
+                          <IconButton
+                            type="button"
+                            variant="secondary"
+                            onClick={() => onToggleWatched(movement.vendorLabel, !watched)}
+                            className={watched ? 'border-warning-border bg-warning-soft text-warning-fg hover:bg-warning-soft' : 'text-text-muted'}
+                            label={`${watched ? 'Stop watching' : 'Watch'} ${movement.vendorLabel}`}
+                            icon={<StarIcon className="h-4 w-4" />}
+                          />
+                          <Button type="button" variant="primary" size="sm" onClick={() => onViewDetails(movement.vendorLabel)}>Details</Button>
                         </div>
                       </div>
                     )
@@ -806,10 +805,10 @@ function VendorDetailDrawer({
             )}
 
             {aiState?.review && (
-              <div className="rounded-md border border-border bg-info-soft p-3 text-sm text-info-fg">
+              <div className="rounded-md border border-info-border bg-info-soft p-3 text-sm text-info-fg">
                 <p>{aiState.review.overview}</p>
                 {aiState.review.reviewItems.map((item) => (
-                  <div key={`${item.vendorLabel}-${item.direction}`} className="mt-3 border-t border-border pt-3">
+                  <div key={`${item.vendorLabel}-${item.direction}`} className="mt-3 border-t border-info-border pt-3">
                     <p className="font-semibold">{item.direction} · {item.severity}</p>
                     <p className="mt-1">{item.reason}</p>
                     <p className="mt-1 text-xs text-info-fg">{item.suggestedReview}</p>
@@ -941,9 +940,9 @@ function TransactionTable({
               <td className="px-2 py-2 text-right tabular-nums text-text-strong">{formatCurrency(transaction.amount_out)}</td>
               <td className="px-2 py-2 text-right tabular-nums text-text-strong">{formatCurrency(transaction.amount_in)}</td>
               <td className="px-2 py-2">
-                <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${statusTone[transaction.status]}`}>
+                <Badge tone={statusTone[transaction.status]} size="sm" className="whitespace-nowrap">
                   {statusLabels[transaction.status]}
-                </span>
+                </Badge>
               </td>
             </tr>
           ))}

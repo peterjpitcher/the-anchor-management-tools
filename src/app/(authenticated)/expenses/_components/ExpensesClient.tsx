@@ -20,6 +20,7 @@ import {
   Alert,
   ProgressBar,
   Modal,
+  IconButton,
 } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import {
@@ -338,27 +339,29 @@ export function ExpensesClient({
                       </TableCell>
                       <TableCell align="center">
                         {expense.file_count > 0 ? (
-                          <button
+                          <IconButton
                             type="button"
+                            size="sm"
                             onClick={(e) => { e.stopPropagation(); handleViewFiles(expense.id) }}
-                            className="text-success hover:text-success/80"
-                            aria-label={`View ${expense.file_count} receipt(s)`}
-                          >
-                            <CheckIcon />
-                          </button>
+                            className="text-success hover:text-success-fg"
+                            label={`View ${expense.file_count} receipt(s)`}
+                            icon={<CheckIcon />}
+                          />
                         ) : (
                           <span className="text-danger"><CrossIcon /></span>
                         )}
                       </TableCell>
                       <TableCell align="right">
-                        <button
+                        <Button
                           type="button"
+                          variant="link"
+                          size="sm"
                           onClick={(e) => { e.stopPropagation(); handleDeleteExpense(expense.id) }}
-                          className="text-danger text-sm hover:text-danger/80"
+                          className="text-danger"
                           aria-label={`Delete expense from ${expense.company_ref}`}
                         >
                           Delete
-                        </button>
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}

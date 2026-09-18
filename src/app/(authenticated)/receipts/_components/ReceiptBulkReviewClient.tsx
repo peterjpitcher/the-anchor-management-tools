@@ -587,7 +587,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                   </div>
 
                   {activeRuleGroup === group.details && ruleDraft && (
-                    <div className="mt-4 space-y-3 rounded-md border border-border bg-success-soft p-4">
+                    <div className="mt-4 space-y-3 rounded-md border border-success-border bg-success-soft p-4">
                       <div className="flex items-center gap-2 text-sm font-medium text-success-fg">
                         <RocketLaunchIcon className="h-5 w-5" />
                         Create automation rule

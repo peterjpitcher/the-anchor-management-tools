@@ -243,7 +243,7 @@ export default function NewInvoicePage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-        <Card className="p-6 overflow-visible">
+        <Card className="overflow-visible">
           <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -297,7 +297,7 @@ export default function NewInvoicePage() {
           </div>
         </Card>
 
-        <Card className="p-6">
+        <Card>
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4">
             <h2 className="text-lg font-semibold">Line Items</h2>
             <div className="flex flex-wrap gap-2">
@@ -330,7 +330,7 @@ export default function NewInvoicePage() {
                 const lineTotal = breakdown ? breakdown.total : 0
 
                 return (
-                  <div key={item.id} className="border rounded-lg p-4">
+                  <div key={item.id} className="border border-border rounded-lg p-4">
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
                     <div className="lg:col-span-5">
                       <label className="block text-sm font-medium mb-1">
@@ -413,7 +413,7 @@ export default function NewInvoicePage() {
                     </div>
                   </div>
 
-                  <div className="mt-3 pt-3 border-t flex justify-between items-center">
+                  <div className="mt-3 pt-3 border-t border-border flex justify-between items-center">
                     <span className="text-sm text-text-muted">Line Total:</span>
                     <span className="font-semibold">£{lineTotal.toFixed(2)}</span>
                   </div>
@@ -424,7 +424,7 @@ export default function NewInvoicePage() {
           )}
         </Card>
 
-        <Card className="p-6">
+        <Card>
           <h2 className="text-lg font-semibold mb-4">Invoice Summary</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -469,7 +469,7 @@ export default function NewInvoicePage() {
                   </span>
                 </div>
                 {invoiceTotals.invoiceDiscountAmount > 0 && (
-                  <div className="flex justify-between text-green-600">
+                  <div className="flex justify-between text-success-fg">
                     <span>Discount:</span>
                     <span>-£{invoiceTotals.invoiceDiscountAmount.toFixed(2)}</span>
                   </div>
@@ -478,7 +478,7 @@ export default function NewInvoicePage() {
                   <span>VAT:</span>
                   <span className="font-medium">£{invoiceTotals.vatAmount.toFixed(2)}</span>
                 </div>
-                <div className="border-t pt-2">
+                <div className="border-t border-border pt-2">
                   <div className="flex justify-between text-lg font-semibold">
                     <span>Total:</span>
                     <span>£{invoiceTotals.totalAmount.toFixed(2)}</span>
@@ -489,7 +489,7 @@ export default function NewInvoicePage() {
           </div>
         </Card>
 
-        <div className="sticky bottom-0 -mx-6 border-t bg-surface px-6 py-4 sm:relative sm:mx-0 sm:border-0 sm:px-0 sm:py-0">
+        <div className="sticky bottom-0 -mx-6 border-t border-border bg-surface px-6 py-4 sm:relative sm:mx-0 sm:border-0 sm:px-0 sm:py-0">
           <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
             <Button
               type="button"
@@ -529,7 +529,7 @@ export default function NewInvoicePage() {
                     addFromCatalog(item)
                     setIsCatalogModalOpen(false)
                   }}
-                  className="w-full text-left rounded-md border border-border p-3 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full text-left rounded-md border border-border p-3 hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                 >
                   <div className="font-medium text-text">{item.name}</div>
                   {item.description && (

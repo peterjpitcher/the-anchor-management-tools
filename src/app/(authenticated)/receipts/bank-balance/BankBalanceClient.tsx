@@ -163,7 +163,7 @@ export function BankBalanceClient({ points, sourceRowCount }: Props) {
                 aria-pressed={range === option.key}
                 onClick={() => setRange(option.key)}
                 className={clsx(
-                  'shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus',
+                  'shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset',
                   range === option.key
                     ? 'bg-primary text-primary-fg shadow-sm'
                     : 'text-text-muted hover:bg-surface-hover hover:text-text-strong',
