@@ -26,6 +26,7 @@ import { getSmartFirstName } from '@/lib/sms/name-utils'
 import { countSmsSeptets, normaliseToGsm7, GSM7_SINGLE_SEGMENT_LIMIT } from '@/lib/sms/gsm7'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { GUEST } from '@/lib/brand/palette'
 import {
   GUEST_EMAIL_SIGN_OFF,
   guestContactHtmlBlock,
@@ -256,7 +257,7 @@ export function buildVoucherReminderEmail(input: ReminderCopyInput): VoucherRemi
     subject,
     text: [...bodyLines, guestContactTextLine(), 'See you soon,', GUEST_EMAIL_SIGN_OFF].join('\n\n'),
     html: [
-      '<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">',
+      `<div style="font-family:Arial,sans-serif;line-height:1.5;color:${GUEST.text}">`,
       ...bodyLines.map((line) => `<p>${escapeHtml(line)}</p>`),
       guestContactHtmlBlock(),
       `<p style="margin:16px 0 0">See you soon,<br/>${escapeHtml(GUEST_EMAIL_SIGN_OFF)}</p>`,

@@ -1,5 +1,6 @@
 import { sendEmail } from '@/lib/email/emailService'
 import { getErrorMessage } from '@/lib/errors'
+import { STAFF } from '@/lib/brand/palette'
 
 /**
  * Escapes HTML special characters to prevent injection in alert emails.
@@ -91,7 +92,7 @@ export async function reportCronFailure(
   const subject = `[CRON FAILURE] ${cronName} - ${environment}`
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:600px;">
-      <h2 style="color:#dc2626;">Cron Job Failure Alert</h2>
+      <h2 style="color:${STAFF.danger};">Cron Job Failure Alert</h2>
       <table style="border-collapse:collapse;width:100%;font-size:14px;">
         <tr><td style="padding:4px 8px;font-weight:bold;">Job</td><td style="padding:4px 8px;">${safeCronName}</td></tr>
         <tr><td style="padding:4px 8px;font-weight:bold;">Time</td><td style="padding:4px 8px;">${safeTimestamp}</td></tr>
@@ -99,7 +100,7 @@ export async function reportCronFailure(
         <tr><td style="padding:4px 8px;font-weight:bold;">App URL</td><td style="padding:4px 8px;">${safeAppUrl}</td></tr>
       </table>
       <h3 style="margin-top:16px;">Error</h3>
-      <pre style="background:#fef2f2;border:1px solid #fecaca;padding:12px;border-radius:4px;white-space:pre-wrap;font-size:13px;">${safeErrorMessage}</pre>
+      <pre style="background:${STAFF.dangerSoft};border:1px solid ${STAFF.dangerBorder};padding:12px;border-radius:4px;white-space:pre-wrap;font-size:13px;">${safeErrorMessage}</pre>
       ${contextHtml}
     </div>`.trim()
 

@@ -5,6 +5,7 @@ import { queueManagerReportEmail } from '@/lib/manager-report/queue';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import { getTodayIsoDate, formatDateInLondon } from '@/lib/dateUtils';
 import { displayName } from '@/lib/employees/display-name';
+import { STAFF } from '@/lib/brand/palette';
 import {
   selectDueReminders,
   wasTruncated,
@@ -126,13 +127,13 @@ export async function GET(request: NextRequest) {
 function buildReminderHtml(lead: string, who: string, dates: string): string {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk';
   return `
-    <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#111">
+    <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:${STAFF.text}">
       <p>${lead}</p>
-      <p style="margin:16px 0;padding:12px;background:#f6f6f6;border-radius:6px">
+      <p style="margin:16px 0;padding:12px;background:${STAFF.surfaceHover};border-radius:6px">
         <strong>${who}</strong><br>${dates}
       </p>
-      <p><a href="${baseUrl}/rota/leave" style="color:#166534">Review it in the rota</a></p>
-      <p style="color:#666;font-size:13px">
+      <p><a href="${baseUrl}/rota/leave" style="color:${STAFF.primary}">Review it in the rota</a></p>
+      <p style="color:${STAFF.textMuted};font-size:13px">
         You will only get one of these per request, so nothing here will nag you daily.
       </p>
     </div>

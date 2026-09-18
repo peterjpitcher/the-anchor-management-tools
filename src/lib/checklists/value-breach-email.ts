@@ -1,3 +1,5 @@
+import { STAFF } from '@/lib/brand/palette'
+
 const LONDON_TIMEZONE = 'Europe/London'
 
 type Measurement = number | string | null
@@ -110,14 +112,14 @@ export function buildValueBreachEmail(input: ValueBreachEmailInput): {
 
   const rowsHtml = detailRows
     .map(([label, value]) => `<tr>
-      <td style="padding:8px 12px 8px 0;color:#666;vertical-align:top;white-space:nowrap">${escapeHtml(label)}</td>
+      <td style="padding:8px 12px 8px 0;color:${STAFF.textMuted};vertical-align:top;white-space:nowrap">${escapeHtml(label)}</td>
       <td style="padding:8px 0;font-weight:600;vertical-align:top">${escapeHtml(value)}</td>
     </tr>`)
     .join('')
 
   return {
     subject: `Checklist alert: ${title} ${problem.subjectState} (${recorded})`,
-    bodyHtml: `<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;color:#222">
+    bodyHtml: `<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;color:${STAFF.text}">
       <h2 style="margin-bottom:8px">Checklist reading needs attention</h2>
       <p style="margin-top:0">${escapeHtml(problem.summary)}</p>
       <table role="presentation" style="border-collapse:collapse;width:100%;margin:20px 0">${rowsHtml}</table>
