@@ -22,7 +22,7 @@ Review recently created or modified UI code (not the entire codebase unless expl
 
 ### 2. Buttons — Commonly Forgotten
 Check every button for:
-- Consistent variant usage (primary, secondary, destructive, ghost) — no ad-hoc Tailwind-only buttons
+- Consistent variant usage (primary, secondary, ghost, danger, link) — no ad-hoc Tailwind-only buttons
 - Loading states on async actions (spinner/disabled during server action calls)
 - Disabled states when form is invalid or submission in progress
 - Accessible `type` attribute (`type="button"` to prevent accidental form submission, `type="submit"` on submit buttons)
@@ -71,11 +71,18 @@ Check every button for:
 - Props interfaces defined and named (not inline anonymous objects for complex props)
 - Server action return types explicitly typed as `Promise<{ success?: boolean; error?: string }>`
 
-### 10. Tailwind / Styling
-- No hardcoded hex colors — use Tailwind design tokens
-- Responsive breakpoints considered (`sm:`, `md:`, `lg:`)
-- No conflicting or redundant class combinations
-- Dark mode classes if the project supports it
+### 10. Design tokens and styling
+Read `docs/standards/UI_UX.md` first; `/settings/design-system` shows every token, read live from `src/app/globals.css`.
+- Colours only from tokens: `bg-bg`, `bg-surface`, `bg-surface-2`, `hover:bg-surface-hover`, `border-border`, `text-text-strong`, `text-text`, `text-text-muted`, `text-text-soft`, `text-text-subtle` (placeholders and icons only), `bg-primary text-primary-fg`, `text-primary`, `bg-primary-soft text-primary-soft-fg`, the status sets (`bg-danger-soft text-danger-fg border-danger-border`, likewise success, warning and info), `cat-1` to `cat-8`, `chart-1` to `chart-6`, `avatar-1` to `avatar-6`, the `on-dark` tokens and `bg-overlay`.
+- Flag as critical anything the guard `tests/guards/design-tokens.test.ts` counts: raw Tailwind palette classes (`bg-gray-100`, `text-blue-600`), hex outside `globals.css` and `src/lib/brand/palette.ts`, pixel text sizes such as `text-[13px]`, bare `rounded`, `rounded-2xl` or `rounded-3xl`, bare `shadow`, `shadow-md`, `shadow-xl` or `shadow-2xl`, any `dark:` class (light theme only), `hsl(var(--...))`, hand-written 820px breakpoints (use `shell:` or `max-shell:`), and sidebar tokens outside `src/ds/shell`.
+- Text needs 4.5:1 contrast on white; base status colours (`text-success` and so on) are for icons and dots, not small text. Nothing below `text-2xs` (10px).
+- Focus: controls `focus-visible:outline-hidden focus-visible:shadow-ring` (`shadow-ring-inset` inside clipping containers); fields `focus:border-border-focus focus:shadow-ring`. Disabled: `disabled:opacity-50`.
+- FOH, BOH, timeclock and voucher screens run on an iPad: 44px targets (`min-h-touch`).
+- Guest pages use only `anchor-*` and `guest-*` tokens inside `GuestShell`; staff screens never use them.
+- Emails and PDFs take literal colours from `src/lib/brand/palette.ts`: `STAFF` for Orange Jelly and staff documents, `GUEST` for guest-facing Anchor comms.
+- Status colours come from the shared maps (for example `TABLE_BOOKING_STATUS_TONE`, `VOUCHER_STATUS_TONES`, `invoiceStatusTone`, `ROTA_SHIFT_STATUS_CLASSES`), never a new local map.
+- Never build class names at runtime (`bg-${tone}-soft` is never generated); no conflicting classes; consider `sm:`, `md:`, `lg:`.
+- The guard must pass. Never raise its baseline; when counts fall, lower it with `UPDATE_DESIGN_TOKEN_BASELINE=1 npx vitest run tests/guards/design-tokens.test.ts`.
 
 ## Review Methodology
 

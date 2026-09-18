@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import {
   PageHeader,
@@ -14,6 +14,9 @@ import {
   TableRow,
   TableHead,
   TableCell,
+  SectionNav,
+  Tabs,
+  Segmented,
 } from '@/ds/composites'
 
 import {
@@ -37,15 +40,18 @@ import {
   IconButton,
 } from '@/ds/primitives'
 
-import { Icon, iconPaths } from '@/ds'
+import { Icon, iconPaths, getToken } from '@/ds'
+import { cn } from '@/lib/utils'
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
 const ANCHOR_LINKS = [
+  { id: 'rules', label: 'Rules' },
   { id: 'colours', label: 'Colours' },
   { id: 'typography', label: 'Typography' },
+  { id: 'shape', label: 'Radius & Shadows' },
   { id: 'spacing', label: 'Spacing' },
   { id: 'icons', label: 'Icons' },
   { id: 'buttons', label: 'Buttons' },
@@ -60,39 +66,103 @@ const ANCHOR_LINKS = [
   { id: 'data-display', label: 'Data Display' },
 ]
 
-const BRAND_COLORS = [
-  { shade: '50', hex: '#ecfdf5' },
-  { shade: '100', hex: '#d1fae5' },
-  { shade: '200', hex: '#a7f3d0' },
-  { shade: '300', hex: '#6ee7b7' },
-  { shade: '400', hex: '#34d399' },
-  { shade: '500', hex: '#10b981' },
-  { shade: '600', hex: '#006A4E' },
-  { shade: '700', hex: '#064e3b' },
-  { shade: '800', hex: '#043927' },
-  { shade: '900', hex: '#022c1a' },
+/** A colour token (the name after `--color-`) and the utility prefixes it is used with. */
+interface ColourToken {
+  name: string
+  usage: readonly string[]
+  note?: string
+}
+
+const NEUTRAL_COLOURS: readonly ColourToken[] = [
+  { name: 'bg', usage: ['bg'], note: 'Page background' },
+  { name: 'surface', usage: ['bg'], note: 'Cards, panels, fields' },
+  { name: 'surface-2', usage: ['bg'], note: 'Table headers, sunk panels' },
+  { name: 'surface-hover', usage: ['hover:bg'] },
+  { name: 'border', usage: ['border', 'divide'] },
+  { name: 'border-strong', usage: ['border'] },
+  { name: 'border-focus', usage: ['focus:border'] },
+  { name: 'overlay', usage: ['bg'], note: 'Dialog backdrop' },
+  { name: 'text-strong', usage: ['text'], note: 'Headings' },
+  { name: 'text', usage: ['text'], note: 'Body text' },
+  { name: 'text-muted', usage: ['text'], note: 'Secondary text, labels' },
+  { name: 'text-soft', usage: ['text'], note: 'Hints' },
+  { name: 'text-subtle', usage: ['placeholder:text'], note: 'Placeholders and icons, never text' },
 ]
 
-// `usage` lists the Tailwind prefixes this token is realistically applied with.
-// The displayed class is derived as `${prefix}-${tokenSuffix}`, which is why
-// text-colour tokens double up (e.g. text-muted → text-text-muted).
-const SEMANTIC_COLORS = [
-  { name: 'surface', cssVar: '--color-surface', hex: '#ffffff', usage: ['bg'] },
-  { name: 'surface-2', cssVar: '--color-surface-2', hex: '#fafaf9', usage: ['bg'] },
-  { name: 'border', cssVar: '--color-border', hex: '#ececea', usage: ['border'] },
-  { name: 'text', cssVar: '--color-text', hex: '#1c1917', usage: ['text'] },
-  { name: 'text-muted', cssVar: '--color-text-muted', hex: '#57534e', usage: ['text'] },
-  { name: 'text-subtle', cssVar: '--color-text-subtle', hex: '#a8a29e', usage: ['text'] },
-  { name: 'primary', cssVar: '--color-primary', hex: '#006A4E', usage: ['bg', 'text'] },
-  { name: 'primary-fg', cssVar: '--color-primary-fg', hex: '#ffffff', usage: ['text'] },
+const BRAND_COLOURS: readonly ColourToken[] = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900'].map(
+  (shade) => ({ name: `brand-${shade}`, usage: ['bg'] }),
+)
+
+const PRIMARY_COLOURS: readonly ColourToken[] = [
+  { name: 'primary', usage: ['bg', 'text', 'border'], note: 'Buttons, links, active tabs' },
+  { name: 'primary-hover', usage: ['hover:bg'] },
+  { name: 'primary-soft', usage: ['bg'], note: 'Soft highlights' },
+  { name: 'primary-soft-fg', usage: ['text'], note: 'Text on primary-soft' },
+  { name: 'primary-fg', usage: ['text'], note: 'Text on primary' },
 ]
 
-const STATUS_COLORS = [
-  { name: 'Success', cssVar: '--color-success', hex: '#16a34a', softHex: '#f0fdf4' },
-  { name: 'Warning', cssVar: '--color-warning', hex: '#d97706', softHex: '#fffbeb' },
-  { name: 'Danger', cssVar: '--color-danger', hex: '#dc2626', softHex: '#fef2f2' },
-  { name: 'Info', cssVar: '--color-info', hex: '#0284c7', softHex: '#f0f9ff' },
+const STATUSES = ['success', 'warning', 'danger', 'info'] as const
+
+/** Each status comes as a set: the base for icons, dots and fills, then soft, fg and border. */
+const STATUS_SET: readonly { suffix: string; usage: string }[] = [
+  { suffix: '', usage: 'bg' },
+  { suffix: '-soft', usage: 'bg' },
+  { suffix: '-fg', usage: 'text' },
+  { suffix: '-border', usage: 'border' },
 ]
+
+const ON_DARK_COLOURS: readonly ColourToken[] = [
+  { name: 'sidebar', usage: ['bg'], note: 'The app shell only' },
+  { name: 'on-dark', usage: ['text'] },
+  { name: 'on-dark-muted', usage: ['text'] },
+  { name: 'on-dark-subtle', usage: ['text'], note: 'Decoration only' },
+  { name: 'on-dark-hover', usage: ['hover:bg'] },
+  { name: 'on-dark-active', usage: ['bg'] },
+  { name: 'on-dark-border', usage: ['border'] },
+]
+
+const CATEGORY_NAMES = ['Sky', 'Indigo', 'Violet', 'Pink', 'Orange', 'Amber', 'Teal', 'Stone'] as const
+const CHART_COUNT = 6
+const AVATAR_COUNT = 6
+
+const GUEST_COLOURS: readonly ColourToken[] = [
+  'anchor-green', 'anchor-green-deep', 'anchor-green-light', 'anchor-gold', 'anchor-gold-dark',
+  'anchor-gold-deep', 'anchor-gold-bright', 'anchor-cream', 'anchor-cream-text', 'anchor-charcoal',
+  'anchor-grey-500', 'anchor-sand', 'anchor-success', 'anchor-danger', 'guest-bg', 'guest-surface',
+  'guest-sunk', 'guest-border', 'guest-border-strong', 'guest-text', 'guest-text-strong',
+  'guest-text-muted', 'guest-accent-text',
+].map((name) => ({ name, usage: [] }))
+
+const TYPE_SCALE = [
+  { cls: 'text-2xs', token: '--text-2xs', note: 'The smallest size on any staff screen' },
+  { cls: 'text-meta', token: '--text-meta', note: 'Meta lines and counts' },
+  { cls: 'text-xs', token: '--text-xs', note: 'Labels, table headers' },
+  { cls: 'text-ui', token: '--text-ui', note: 'Table cells, dense controls' },
+  { cls: 'text-sm', token: '--text-sm', note: 'Body text' },
+  { cls: 'text-base', token: '--text-base' },
+  { cls: 'text-lg', token: '--text-lg' },
+  { cls: 'text-xl', token: '--text-xl' },
+  { cls: 'text-2xl', token: '--text-2xl' },
+  { cls: 'text-3xl', token: '--text-3xl' },
+] as const
+
+const RADII = [
+  { cls: 'rounded-sm', token: '--radius-sm', note: 'Small chips' },
+  { cls: 'rounded-default', token: '--radius-default', note: 'Buttons, fields' },
+  { cls: 'rounded-md', token: '--radius-md', note: '10px here, not the Tailwind 6px' },
+  { cls: 'rounded-lg', token: '--radius-lg', note: 'Cards, dialogs' },
+  { cls: 'rounded-xl', token: '--radius-xl', note: 'Large panels' },
+  { cls: 'rounded-pill', token: '--radius-pill', note: 'Badges, pills' },
+] as const
+
+const SHADOWS = [
+  { cls: 'shadow-xs', token: '--shadow-xs', note: 'Buttons' },
+  { cls: 'shadow-sm', token: '--shadow-sm', note: 'Cards, tables' },
+  { cls: 'shadow-default', token: '--shadow-default', note: 'Raised panels' },
+  { cls: 'shadow-lg', token: '--shadow-lg', note: 'Dialogs, drawers, menus, toasts' },
+  { cls: 'shadow-ring', token: '--shadow-ring', note: 'Focus ring' },
+  { cls: 'shadow-ring-inset', token: '--shadow-ring-inset', note: 'Focus ring inside clipped containers' },
+] as const
 
 const SPACING_SCALE = [
   { name: '0.5', px: 2 },
@@ -104,6 +174,31 @@ const SPACING_SCALE = [
   { name: '8', px: 32 },
   { name: '12', px: 48 },
   { name: '16', px: 64 },
+]
+
+const SPACING_TOKENS = [
+  { cls: 'py-cell-y', token: '--spacing-cell-y', note: 'Table cell padding' },
+  { cls: 'p-pad-card', token: '--spacing-pad-card', note: 'Card padding' },
+  { cls: 'h-btn-h-sm', token: '--spacing-btn-h-sm', note: 'Small button' },
+  { cls: 'h-btn-h', token: '--spacing-btn-h', note: 'Button' },
+  { cls: 'h-input-h', token: '--spacing-input-h', note: 'Field' },
+  { cls: 'h-btn-h-lg', token: '--spacing-btn-h-lg', note: 'Large button' },
+  { cls: 'min-h-touch', token: '--spacing-touch', note: 'Touch target on the FOH, BOH and kiosk screens' },
+  { cls: 'h-topbar', token: '--spacing-topbar', note: 'Top bar' },
+  { cls: 'w-sidebar-collapsed', token: '--spacing-sidebar-collapsed', note: 'Sidebar, collapsed' },
+  { cls: 'w-sidebar-expanded', token: '--spacing-sidebar-expanded', note: 'Sidebar, open' },
+] as const
+
+/** Every token the page prints a value for; read from the live stylesheet, never copied here. */
+const LIVE_TOKENS: readonly string[] = [
+  ...[...NEUTRAL_COLOURS, ...BRAND_COLOURS, ...PRIMARY_COLOURS, ...ON_DARK_COLOURS, ...GUEST_COLOURS].map(
+    (token) => `--color-${token.name}`,
+  ),
+  ...STATUSES.flatMap((status) => STATUS_SET.map(({ suffix }) => `--color-${status}${suffix}`)),
+  ...CATEGORY_NAMES.flatMap((_, index) => ['', '-soft', '-fg'].map((suffix) => `--color-cat-${index + 1}${suffix}`)),
+  ...Array.from({ length: CHART_COUNT }, (_, index) => `--color-chart-${index + 1}`),
+  ...Array.from({ length: AVATAR_COUNT }, (_, index) => `--color-avatar-${index + 1}`),
+  ...[...TYPE_SCALE, ...RADII, ...SPACING_TOKENS].map((entry) => entry.token),
 ]
 
 /* ------------------------------------------------------------------ */
@@ -156,6 +251,20 @@ function utilityClasses(cssVar: string, prefixes: readonly string[]): string[] {
   return prefixes.map((prefix) => `${prefix}-${suffix}`)
 }
 
+/**
+ * The computed value of every live token, read from :root once the page has mounted. Tailwind's
+ * own sizes are in rem, so those are shown in px like ours.
+ */
+function useTokenValues(): Record<string, string> {
+  const [values, setValues] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+    const inPx = (value: string) => (/^[\d.]+rem$/.test(value) ? `${parseFloat(value) * rootPx}px` : value)
+    setValues(Object.fromEntries(LIVE_TOKENS.map((name) => [name, inPx(getToken(name))])))
+  }, [])
+  return values
+}
+
 // Click-to-copy chip showing a usable utility class.
 function CopyableClass({ className }: { className: string }) {
   const [copied, setCopied] = useState(false)
@@ -176,19 +285,62 @@ function CopyableClass({ className }: { className: string }) {
       onClick={handleCopy}
       title={copied ? 'Copied!' : `Copy "${className}"`}
       aria-label={`Copy class ${className}`}
-      className="font-mono text-[10px] leading-none text-text-muted hover:text-text bg-surface-2 hover:bg-surface-hover border border-border rounded-sm px-1.5 py-1 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className="font-mono text-2xs leading-none text-text-muted hover:text-text bg-surface-2 hover:bg-surface-hover border border-border rounded-sm px-1.5 py-1 transition-colors cursor-pointer focus-visible:outline-hidden focus-visible:shadow-ring"
     >
       {copied ? 'copied!' : className}
     </button>
   )
 }
 
+/** One colour token: a swatch painted from the token itself, its classes and its live value. */
+function Swatch({
+  token,
+  values,
+  onDark = false,
+}: {
+  token: ColourToken
+  values: Record<string, string>
+  onDark?: boolean
+}) {
+  const cssVar = `--color-${token.name}`
+  return (
+    <div className="flex w-28 flex-col items-center gap-1.5">
+      <div
+        className={cn('h-16 w-16 rounded-lg border shadow-xs', onDark ? 'border-on-dark-border' : 'border-border')}
+        style={{ backgroundColor: `var(${cssVar})` }}
+      />
+      <span className={cn('text-center text-xs font-semibold', onDark ? 'text-on-dark' : 'text-text-strong')}>
+        {token.name}
+      </span>
+      {token.usage.length > 0 && (
+        <div className="flex flex-col items-center gap-1">
+          {utilityClasses(cssVar, token.usage).map((cls) => (
+            <CopyableClass key={cls} className={cls} />
+          ))}
+        </div>
+      )}
+      <span className={cn('font-mono text-2xs', onDark ? 'text-on-dark-muted' : 'text-text-muted')}>
+        {values[cssVar] ?? ''}
+      </span>
+      {token.note && (
+        <span className={cn('text-center text-2xs', onDark ? 'text-on-dark-muted' : 'text-text-soft')}>
+          {token.note}
+        </span>
+      )}
+    </div>
+  )
+}
+
 /* ------------------------------------------------------------------ */
-/*  Page component (Client Component — click-to-copy needs state)      */
+/*  Page component (a client component: copying and tabs need state)   */
 /* ------------------------------------------------------------------ */
 
 export default function DesignSystemPage() {
   const iconNames = Object.keys(iconPaths) as (keyof typeof iconPaths)[]
+  const values = useTokenValues()
+  const [section, setSection] = useState('overview')
+  const [tab, setTab] = useState('all')
+  const [view, setView] = useState('list')
 
   return (
     <div>
@@ -198,7 +350,7 @@ export default function DesignSystemPage() {
           { label: 'Design System' },
         ]}
         title="Design System"
-        subtitle="Component library, colours, typography, and spacing reference"
+        subtitle="Tokens and components, read live from the app stylesheet"
       />
 
       {/* ---- Sticky anchor nav ---- */}
@@ -208,7 +360,7 @@ export default function DesignSystemPage() {
             <a
               key={link.id}
               href={`#${link.id}`}
-              className="px-3 py-1.5 text-xs font-medium text-text-muted rounded-default hover:bg-surface-hover hover:text-text transition-colors whitespace-nowrap"
+              className="px-3 py-1.5 text-xs font-medium text-text-muted rounded-default hover:bg-surface-hover hover:text-text transition-colors whitespace-nowrap focus-visible:outline-hidden focus-visible:shadow-ring-inset"
             >
               {link.label}
             </a>
@@ -218,79 +370,169 @@ export default function DesignSystemPage() {
 
       <div className="space-y-12">
         {/* ============================================================ */}
+        {/* 0. RULES                                                      */}
+        {/* ============================================================ */}
+        <Section id="rules" title="Rules">
+          <ul className="max-w-3xl list-disc space-y-2 pl-5 text-sm text-text">
+            <li>
+              Colours, sizes, radii and shadows come from the tokens on this page. No hex values and no
+              raw Tailwind palette colours (gray, blue, emerald and the rest); the guard{' '}
+              <code className="font-mono">tests/guards/design-tokens.test.ts</code> fails on new ones, and{' '}
+              <code className="font-mono">docs/standards/UI_UX.md</code> lists what is not allowed.
+            </li>
+            <li>
+              Text on white needs 4.5:1 contrast: use <code className="font-mono">text-text</code>,{' '}
+              <code className="font-mono">text-text-muted</code>, <code className="font-mono">text-text-soft</code>{' '}
+              or a status <code className="font-mono">-fg</code> colour. Base status colours are for icons,
+              dots and fills.
+            </li>
+            <li>
+              Nothing smaller than <code className="font-mono">text-2xs</code> (10px). Touch screens (FOH,
+              BOH, timeclock, vouchers) keep 44px targets with <code className="font-mono">min-h-touch</code>.
+            </li>
+            <li>
+              Disabled controls use <code className="font-mono">disabled:opacity-50</code>. Light theme only:
+              no dark-mode variants.
+            </li>
+            <li>
+              Guest pages use the <code className="font-mono">anchor-*</code> and{' '}
+              <code className="font-mono">guest-*</code> tokens inside GuestShell; staff screens never do.
+              Emails and PDFs take literal colours from <code className="font-mono">@/lib/brand/palette</code>.
+            </li>
+          </ul>
+          <div className="mt-4 max-w-3xl">
+            <SubSection title="Focus">
+              <CodeBlock
+                code={`// Buttons, links, tabs and other controls
+focus-visible:outline-hidden focus-visible:shadow-ring
+// ...inside a container that clips (accordions, tab strips, table headers)
+focus-visible:outline-hidden focus-visible:shadow-ring-inset
+// Text fields
+focus:border-border-focus focus:shadow-ring`}
+              />
+            </SubSection>
+          </div>
+        </Section>
+
+        {/* ============================================================ */}
         {/* 1. COLOURS                                                    */}
         {/* ============================================================ */}
         <Section id="colours" title="Colours">
-          <SubSection title="Brand Palette">
+          <p className="text-xs text-text-muted mb-4 max-w-2xl">
+            Each swatch is painted from its token and the value under it is read from the live
+            stylesheet. Click a class to copy it. Text-colour tokens repeat the prefix: the class for{' '}
+            <code className="font-mono text-text">text-muted</code> is{' '}
+            <code className="font-mono text-text">text-text-muted</code>.
+          </p>
+
+          <SubSection title="Neutrals">
             <div className="flex flex-wrap gap-3">
-              {BRAND_COLORS.map((c) => (
-                <div key={c.shade} className="flex flex-col items-center gap-1.5 w-24">
-                  <div
-                    className="w-16 h-16 rounded-lg border border-border shadow-xs"
-                    style={{ backgroundColor: c.hex }}
-                  />
-                  <span className="text-xs font-semibold text-text-strong">{c.shade}</span>
-                  <CopyableClass className={`bg-brand-${c.shade}`} />
-                  <span className="text-[10px] font-mono text-text-muted">{c.hex}</span>
+              {NEUTRAL_COLOURS.map((token) => (
+                <Swatch key={token.name} token={token} values={values} />
+              ))}
+            </div>
+          </SubSection>
+
+          <SubSection title="Primary">
+            <div className="flex flex-wrap gap-3">
+              {PRIMARY_COLOURS.map((token) => (
+                <Swatch key={token.name} token={token} values={values} />
+              ))}
+            </div>
+          </SubSection>
+
+          <SubSection title="Brand scale">
+            <div className="flex flex-wrap gap-3">
+              {BRAND_COLOURS.map((token) => (
+                <Swatch key={token.name} token={token} values={values} />
+              ))}
+            </div>
+          </SubSection>
+
+          <SubSection title="Status">
+            <p className="text-xs text-text-muted mb-3 max-w-2xl">
+              The base colour is for icons, dots and fills. Messages use the soft background, the fg
+              text and the border together, as Alert and Badge do.
+            </p>
+            <div className="space-y-4">
+              {STATUSES.map((status) => (
+                <div key={status} className="flex flex-wrap items-start gap-3">
+                  {STATUS_SET.map(({ suffix, usage }) => (
+                    <Swatch key={suffix} token={{ name: `${status}${suffix}`, usage: [usage] }} values={values} />
+                  ))}
                 </div>
               ))}
             </div>
           </SubSection>
 
-          <SubSection title="Semantic Colours">
+          <SubSection title="On dark surfaces">
+            <div className="flex flex-wrap gap-3 rounded-lg p-4" style={{ backgroundColor: 'var(--color-sidebar)' }}>
+              {ON_DARK_COLOURS.map((token) => (
+                <Swatch key={token.name} token={token} values={values} onDark />
+              ))}
+            </div>
+          </SubSection>
+
+          <SubSection title="Categories">
             <p className="text-xs text-text-muted mb-3 max-w-2xl">
-              Tailwind generates utilities from each token below — click a class to copy it.
-              Note that text-colour tokens repeat the prefix: the usable class for{' '}
-              <code className="font-mono text-text">text-muted</code> is{' '}
-              <code className="font-mono text-text">text-text-muted</code>, not{' '}
-              <code className="font-mono text-text">text-muted</code>.
+              For fixed app categories (departments, dish groups, booking types). Colours that staff pick
+              and save, such as shift templates and calendar notes, stay as data.
             </p>
             <div className="flex flex-wrap gap-3">
-              {SEMANTIC_COLORS.map((c) => (
-                <div key={c.name} className="flex flex-col items-center gap-1.5 w-28">
-                  <div
-                    className="w-16 h-16 rounded-lg border border-border shadow-xs"
-                    style={{ backgroundColor: c.hex }}
-                  />
-                  <span className="text-xs font-semibold text-text-strong">{c.name}</span>
-                  <div className="flex flex-col items-center gap-1">
-                    {utilityClasses(c.cssVar, c.usage).map((cls) => (
-                      <CopyableClass key={cls} className={cls} />
-                    ))}
+              {CATEGORY_NAMES.map((label, index) => {
+                const n = index + 1
+                return (
+                  <div key={label} className="flex w-28 flex-col items-center gap-1.5">
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-xs font-medium"
+                      style={{
+                        backgroundColor: `var(--color-cat-${n}-soft)`,
+                        color: `var(--color-cat-${n}-fg)`,
+                        borderColor: `var(--color-cat-${n}-soft)`,
+                      }}
+                    >
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: `var(--color-cat-${n})` }} />
+                      {label}
+                    </span>
+                    <span className="text-xs font-semibold text-text-strong">cat-{n}</span>
+                    <span className="font-mono text-2xs text-text-muted">{values[`--color-cat-${n}`] ?? ''}</span>
                   </div>
-                  <span className="text-[10px] font-mono text-text-muted">{c.hex}</span>
+                )
+              })}
+            </div>
+          </SubSection>
+
+          <SubSection title="Charts and avatars">
+            <div className="flex flex-wrap gap-3">
+              {Array.from({ length: CHART_COUNT }, (_, index) => (
+                <Swatch key={`chart-${index}`} token={{ name: `chart-${index + 1}`, usage: ['fill'] }} values={values} />
+              ))}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              {Array.from({ length: AVATAR_COUNT }, (_, index) => (
+                <div key={`avatar-${index}`} className="flex w-28 flex-col items-center gap-1.5">
+                  <span
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold text-on-dark"
+                    style={{ backgroundColor: `var(--color-avatar-${index + 1})` }}
+                  >
+                    AB
+                  </span>
+                  <span className="text-xs font-semibold text-text-strong">avatar-{index + 1}</span>
+                  <span className="font-mono text-2xs text-text-muted">{values[`--color-avatar-${index + 1}`] ?? ''}</span>
                 </div>
               ))}
             </div>
           </SubSection>
 
-          <SubSection title="Status Colours">
-            {STATUS_COLORS.map((s) => {
-              const suffix = s.cssVar.replace('--color-', '')
-              return (
-                <div key={s.name} className="flex items-center gap-3 mb-3">
-                  <div
-                    className="w-16 h-16 rounded-lg border border-border shadow-xs"
-                    style={{ backgroundColor: s.hex }}
-                  />
-                  <div
-                    className="w-16 h-16 rounded-lg border border-border shadow-xs"
-                    style={{ backgroundColor: s.softHex }}
-                  />
-                  <div>
-                    <span className="text-sm font-semibold text-text-strong">{s.name}</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      <CopyableClass className={`bg-${suffix}`} />
-                      <CopyableClass className={`bg-${suffix}-soft`} />
-                      <CopyableClass className={`text-${suffix}-fg`} />
-                    </div>
-                    <div className="text-[10px] font-mono text-text-muted mt-1">
-                      {s.hex} / {s.softHex}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+          <SubSection title="Guest pages only">
+            <p className="text-xs text-text-muted mb-3 max-w-2xl">
+              The Anchor guest palette, for pages inside GuestShell. Never on a staff screen.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {GUEST_COLOURS.map((token) => (
+                <Swatch key={token.name} token={token} values={values} />
+              ))}
+            </div>
           </SubSection>
         </Section>
 
@@ -298,89 +540,133 @@ export default function DesignSystemPage() {
         {/* 2. TYPOGRAPHY                                                 */}
         {/* ============================================================ */}
         <Section id="typography" title="Typography">
+          <SubSection title="Type scale">
+            <div className="space-y-3">
+              {TYPE_SCALE.map((size) => (
+                <div key={size.cls} className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                  <span className="w-44 shrink-0 font-mono text-xs text-text-muted">
+                    {size.cls} {values[size.token] ? `(${values[size.token]})` : ''}
+                  </span>
+                  <p className={cn(size.cls, 'text-text')}>The quick brown fox jumps over the lazy dog.</p>
+                  {'note' in size && <span className="text-xs text-text-soft">{size.note}</span>}
+                </div>
+              ))}
+            </div>
+          </SubSection>
+
           <SubSection title="Headings">
             <div className="space-y-4">
               <div className="flex items-baseline gap-4">
-                <span className="text-xs font-mono text-text-muted w-40 shrink-0">text-3xl font-bold</span>
+                <span className="text-xs font-mono text-text-muted w-44 shrink-0">text-3xl font-bold</span>
                 <h1 className="text-3xl font-bold text-text-strong">Heading 1</h1>
               </div>
               <div className="flex items-baseline gap-4">
-                <span className="text-xs font-mono text-text-muted w-40 shrink-0">text-2xl font-semibold</span>
+                <span className="text-xs font-mono text-text-muted w-44 shrink-0">text-2xl font-semibold</span>
                 <h2 className="text-2xl font-semibold text-text-strong">Heading 2</h2>
               </div>
               <div className="flex items-baseline gap-4">
-                <span className="text-xs font-mono text-text-muted w-40 shrink-0">text-xl font-semibold</span>
+                <span className="text-xs font-mono text-text-muted w-44 shrink-0">text-xl font-semibold</span>
                 <h3 className="text-xl font-semibold text-text-strong">Heading 3</h3>
               </div>
               <div className="flex items-baseline gap-4">
-                <span className="text-xs font-mono text-text-muted w-40 shrink-0">text-lg font-semibold</span>
+                <span className="text-xs font-mono text-text-muted w-44 shrink-0">text-lg font-semibold</span>
                 <h4 className="text-lg font-semibold text-text-strong">Heading 4</h4>
-              </div>
-              <div className="flex items-baseline gap-4">
-                <span className="text-xs font-mono text-text-muted w-40 shrink-0">text-base font-semibold</span>
-                <h5 className="text-base font-semibold text-text-strong">Heading 5</h5>
-              </div>
-              <div className="flex items-baseline gap-4">
-                <span className="text-xs font-mono text-text-muted w-40 shrink-0">text-sm font-semibold</span>
-                <h6 className="text-sm font-semibold text-text-strong">Heading 6</h6>
               </div>
             </div>
           </SubSection>
 
-          <SubSection title="Body Text">
+          <SubSection title="Weights and monospace">
             <div className="space-y-3">
               <div className="flex items-baseline gap-4">
-                <span className="text-xs font-mono text-text-muted w-40 shrink-0">text-sm (regular)</span>
-                <p className="text-sm text-text">The quick brown fox jumps over the lazy dog.</p>
-              </div>
-              <div className="flex items-baseline gap-4">
-                <span className="text-xs font-mono text-text-muted w-40 shrink-0">text-sm font-medium</span>
+                <span className="text-xs font-mono text-text-muted w-44 shrink-0">text-sm font-medium</span>
                 <p className="text-sm font-medium text-text">The quick brown fox jumps over the lazy dog.</p>
               </div>
               <div className="flex items-baseline gap-4">
-                <span className="text-xs font-mono text-text-muted w-40 shrink-0">text-sm font-semibold</span>
+                <span className="text-xs font-mono text-text-muted w-44 shrink-0">text-sm font-semibold</span>
                 <p className="text-sm font-semibold text-text">The quick brown fox jumps over the lazy dog.</p>
               </div>
               <div className="flex items-baseline gap-4">
-                <span className="text-xs font-mono text-text-muted w-40 shrink-0">text-[13px]</span>
-                <p className="text-[13px] text-text">The quick brown fox jumps over the lazy dog.</p>
+                <span className="text-xs font-mono text-text-muted w-44 shrink-0">text-sm font-mono</span>
+                <p className="text-sm font-mono text-text">const greeting = &apos;Hello, world!&apos;</p>
               </div>
-              <div className="flex items-baseline gap-4">
-                <span className="text-xs font-mono text-text-muted w-40 shrink-0">text-xs</span>
-                <p className="text-xs text-text">The quick brown fox jumps over the lazy dog.</p>
-              </div>
-            </div>
-          </SubSection>
-
-          <SubSection title="Monospace">
-            <div className="flex items-baseline gap-4">
-              <span className="text-xs font-mono text-text-muted w-40 shrink-0">text-sm font-mono</span>
-              <p className="text-sm font-mono text-text">const greeting = &apos;Hello, world!&apos;</p>
             </div>
           </SubSection>
         </Section>
 
         {/* ============================================================ */}
-        {/* 3. SPACING                                                    */}
+        {/* 3. RADIUS AND SHADOWS                                         */}
+        {/* ============================================================ */}
+        <Section id="shape" title="Radius & Shadows">
+          <SubSection title="Radius">
+            <div className="flex flex-wrap gap-4">
+              {RADII.map((radius) => (
+                <div key={radius.cls} className="flex w-32 flex-col items-center gap-1.5">
+                  <div className={cn('h-16 w-16 border border-border-strong bg-primary-soft', radius.cls)} />
+                  <CopyableClass className={radius.cls} />
+                  <span className="font-mono text-2xs text-text-muted">{values[radius.token] ?? ''}</span>
+                  <span className="text-center text-2xs text-text-soft">{radius.note}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-text-muted">
+              These six and <code className="font-mono">rounded-full</code> (circles only) are the whole scale.
+            </p>
+          </SubSection>
+
+          <SubSection title="Shadows">
+            <div className="flex flex-wrap gap-6">
+              {SHADOWS.map((shadow) => (
+                <div key={shadow.cls} className="flex w-32 flex-col items-center gap-1.5">
+                  <div className={cn('h-16 w-24 rounded-lg bg-surface', shadow.cls)} />
+                  <CopyableClass className={shadow.cls} />
+                  <span className="text-center text-2xs text-text-soft">{shadow.note}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-text-muted">
+              These six are the whole scale; the Tailwind defaults in between are not tinted to match.
+            </p>
+          </SubSection>
+        </Section>
+
+        {/* ============================================================ */}
+        {/* 4. SPACING                                                    */}
         {/* ============================================================ */}
         <Section id="spacing" title="Spacing">
-          <div className="space-y-3">
-            {SPACING_SCALE.map((s) => (
-              <div key={s.name} className="flex items-center gap-4">
-                <span className="text-xs font-mono text-text-muted w-16 text-right shrink-0">
-                  {s.name} ({s.px}px)
-                </span>
-                <div
-                  className="h-5 bg-primary rounded-sm"
-                  style={{ width: `${s.px}px` }}
-                />
-              </div>
-            ))}
-          </div>
+          <SubSection title="Named sizes">
+            <div className="space-y-3">
+              {SPACING_TOKENS.map((space) => (
+                <div key={space.cls} className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span className="w-40 shrink-0">
+                    <CopyableClass className={space.cls} />
+                  </span>
+                  <span className="w-12 shrink-0 font-mono text-xs text-text-muted">{values[space.token] ?? ''}</span>
+                  <div className="h-5 rounded-sm bg-primary" style={{ width: `var(${space.token})` }} />
+                  <span className="text-xs text-text-soft">{space.note}</span>
+                </div>
+              ))}
+            </div>
+          </SubSection>
+
+          <SubSection title="Scale">
+            <div className="space-y-3">
+              {SPACING_SCALE.map((s) => (
+                <div key={s.name} className="flex items-center gap-4">
+                  <span className="text-xs font-mono text-text-muted w-16 text-right shrink-0">
+                    {s.name} ({s.px}px)
+                  </span>
+                  <div
+                    className="h-5 bg-primary rounded-sm"
+                    style={{ width: `${s.px}px` }}
+                  />
+                </div>
+              ))}
+            </div>
+          </SubSection>
         </Section>
 
         {/* ============================================================ */}
-        {/* 4. ICONS                                                      */}
+        {/* 5. ICONS                                                      */}
         {/* ============================================================ */}
         <Section id="icons" title="Icons">
           <p className="text-sm text-text-muted mb-4">{iconNames.length} icons available. All render at 24px below.</p>
@@ -391,7 +677,7 @@ export default function DesignSystemPage() {
                 className="flex flex-col items-center gap-1.5 p-2 rounded-default hover:bg-surface-hover transition-colors"
               >
                 <Icon name={name} size={24} className="text-text" />
-                <span className="text-[10px] font-mono text-text-muted text-center leading-tight">
+                <span className="text-2xs font-mono text-text-muted text-center leading-tight">
                   {name}
                 </span>
               </div>
@@ -400,7 +686,7 @@ export default function DesignSystemPage() {
         </Section>
 
         {/* ============================================================ */}
-        {/* 5. BUTTONS                                                    */}
+        {/* 6. BUTTONS                                                    */}
         {/* ============================================================ */}
         <Section id="buttons" title="Buttons">
           <SubSection title="Variants">
@@ -443,7 +729,7 @@ export default function DesignSystemPage() {
         </Section>
 
         {/* ============================================================ */}
-        {/* 6. BADGES                                                     */}
+        {/* 7. BADGES                                                     */}
         {/* ============================================================ */}
         <Section id="badges" title="Badges">
           <SubSection title="Tones">
@@ -470,7 +756,7 @@ export default function DesignSystemPage() {
         </Section>
 
         {/* ============================================================ */}
-        {/* 7. AVATARS                                                    */}
+        {/* 8. AVATARS                                                    */}
         {/* ============================================================ */}
         <Section id="avatars" title="Avatars">
           <SubSection title="Sizes">
@@ -503,7 +789,7 @@ export default function DesignSystemPage() {
         </Section>
 
         {/* ============================================================ */}
-        {/* 8. ALERTS                                                     */}
+        {/* 9. ALERTS                                                     */}
         {/* ============================================================ */}
         <Section id="alerts" title="Alerts">
           <div className="space-y-3">
@@ -523,7 +809,7 @@ export default function DesignSystemPage() {
         </Section>
 
         {/* ============================================================ */}
-        {/* 9. CARDS                                                      */}
+        {/* 10. CARDS                                                     */}
         {/* ============================================================ */}
         <Section id="cards" title="Cards">
           <div className="max-w-lg">
@@ -551,7 +837,7 @@ export default function DesignSystemPage() {
         </Section>
 
         {/* ============================================================ */}
-        {/* 10. TABLES                                                    */}
+        {/* 11. TABLES                                                   */}
         {/* ============================================================ */}
         <Section id="tables" title="Tables">
           <Card>
@@ -595,7 +881,7 @@ export default function DesignSystemPage() {
         </Section>
 
         {/* ============================================================ */}
-        {/* 11. FORM CONTROLS                                             */}
+        {/* 12. FORM CONTROLS                                            */}
         {/* ============================================================ */}
         <Section id="form-controls" title="Form Controls">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -683,7 +969,7 @@ export default function DesignSystemPage() {
         </Section>
 
         {/* ============================================================ */}
-        {/* 12. MODALS & DRAWERS                                          */}
+        {/* 13. MODALS & DRAWERS                                         */}
         {/* ============================================================ */}
         <Section id="modals" title="Modals & Drawers">
           <div className="space-y-6">
@@ -745,7 +1031,7 @@ export default function DesignSystemPage() {
         </Section>
 
         {/* ============================================================ */}
-        {/* 13. NAVIGATION                                                */}
+        {/* 14. NAVIGATION                                               */}
         {/* ============================================================ */}
         <Section id="navigation" title="Navigation">
           <SubSection title="Page Header">
@@ -770,38 +1056,49 @@ export default function DesignSystemPage() {
             </Card>
           </SubSection>
 
-          <SubSection title="SectionNav, Tabs, and Segmented">
+          <SubSection title="SectionNav">
             <p className="text-sm text-text-muted mb-3">
-              These navigation components require client-side state management (&apos;use client&apos;).
-              They are rendered via interactive wrappers in their respective pages.
+              Moves between the sub-pages of a section. Links when items carry an href.
             </p>
-            <CodeBlock
-              code={`// SectionNav — pill-style sub-page navigation
-<SectionNav
-  items={[{ id: 'overview', label: 'Overview' }, { id: 'details', label: 'Details' }]}
-  activeId={activeSection}
-  onSelect={(id) => setActiveSection(id)}
-/>
+            <SectionNav
+              items={[
+                { id: 'overview', label: 'Overview' },
+                { id: 'details', label: 'Details', count: 3 },
+                { id: 'history', label: 'History' },
+              ]}
+              activeId={section}
+              onSelect={setSection}
+            />
+          </SubSection>
 
-// Tabs — underline-style tab navigation
-<Tabs
-  tabs={[{ id: 'all', label: 'All', count: 42 }, { id: 'active', label: 'Active' }]}
-  activeTab={activeTab}
-  onTabChange={(id) => setActiveTab(id)}
-/>
+          <SubSection title="Tabs">
+            <p className="text-sm text-text-muted mb-3">The one in-page tab style: a brand underline.</p>
+            <Tabs
+              tabs={[
+                { id: 'all', label: 'All', count: 42 },
+                { id: 'active', label: 'Active' },
+                { id: 'archived', label: 'Archived' },
+              ]}
+              activeTab={tab}
+              onTabChange={setTab}
+            />
+          </SubSection>
 
-// Segmented — inline button group toggle
-<Segmented
-  options={[{ id: 'list', label: 'List' }, { id: 'board', label: 'Board' }]}
-  value={view}
-  onChange={(id) => setView(id)}
-/>`}
+          <SubSection title="Segmented">
+            <p className="text-sm text-text-muted mb-3">Switches between views of the same data.</p>
+            <Segmented
+              options={[
+                { id: 'list', label: 'List' },
+                { id: 'board', label: 'Board' },
+              ]}
+              value={view}
+              onChange={setView}
             />
           </SubSection>
         </Section>
 
         {/* ============================================================ */}
-        {/* 14. DATA DISPLAY                                              */}
+        {/* 15. DATA DISPLAY                                             */}
         {/* ============================================================ */}
         <Section id="data-display" title="Data Display">
           <SubSection title="Stats">
