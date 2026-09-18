@@ -157,7 +157,7 @@ Before a ship, also run a cold build (no dev server may be running against this 
 
 ```bash
 ps aux | grep next-server | grep -v grep   # must print nothing for this worktree
-rm -rf .next && npm run build
+rm -rf .next && NODE_OPTIONS="--max-old-space-size=12288" npm run build   # the default heap SIGABRTs after "Compiled successfully"
 ```
 
 ### P-COMMIT
