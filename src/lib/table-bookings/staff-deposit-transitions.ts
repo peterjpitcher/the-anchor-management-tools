@@ -247,13 +247,14 @@ export async function applyPartySizeDepositTransition(
 
   // SEASONAL BOOKINGS ARE NOT RE-PRICED HERE, AND THAT IS DELIBERATE.
   //
-  // Everything below reasons with `requiresDeposit`, which knows one rule: ten guests or more. A
-  // seasonal booking obeys the terms snapshotted on it instead, and every season other than
-  // Christmas carries booking_type 'regular', so `isChristmas` is false and the ten-guest rule was
-  // silently applied to a deposit that never came from it. Twelve guests on a per-head GBP 25
-  // period pay GBP 300; amending to eight made the branch below write deposit_amount NULL and
-  // status 'confirmed', turning GBP 300 owed into GBP 0 with nothing logged. The reverse kept a
-  // stale figure that was far too small.
+  // Everything below reasons with `requiresDeposit`, which knows the party-size rule and nothing
+  // about a period's own terms. A seasonal booking obeys the terms snapshotted on it instead, and
+  // every season other than Christmas carries booking_type 'regular', so `isChristmas` is false and
+  // the party-size rule was silently applied to a deposit that never came from it. Under the
+  // ten-guest threshold of the time, twelve guests on a per-head GBP 25 period paid GBP 300;
+  // amending to eight made the branch below write deposit_amount NULL and status 'confirmed',
+  // turning GBP 300 owed into GBP 0 with nothing logged. The reverse kept a stale figure that was
+  // far too small.
   //
   // Re-pricing correctly is not possible from the booking alone: when the large-group rule beat the
   // seasonal one, the snapshot records the GROUP basis and rate, so the period's own rate is not

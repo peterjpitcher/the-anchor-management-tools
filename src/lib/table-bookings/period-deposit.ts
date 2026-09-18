@@ -7,22 +7,23 @@
  * THE RULES, owner-confirmed 2026-07-30
  *
  *   1. A manager waiver wins outright. No deposit, any party size, any period.
- *   2. The party-size rule: 10 guests or more, at GBP 10 per head. This is the existing live rule.
+ *   2. The party-size rule: a deposit per head from the group threshold upwards. The threshold and
+ *      the rate live in deposit.ts only; a copy of them here went stale when the threshold moved.
  *   3. The period rule: per head or per booking at the period's own rate, and ONLY when the guest
  *      actually accepted the seasonal offer. Saying "no, this is not a Christmas dinner" during a
  *      Christmas period is allowed, and that guest gets the normal menu at normal terms.
  *   4. The LARGER of 2 and 3 wins. They NEVER stack. A tie resolves to the period, so the wording
  *      the guest sees names the season rather than "large group".
  *   5. The kill switch, `booking_period_deposits_enabled`, suppresses rule 3 and rule 3 only. Switch
- *      it off at 7pm on a Friday and no seasonal money is asked for anywhere, while a party of 12
- *      still pays the long-standing large-group deposit. The guest's answer is still recorded,
- *      because "they said yes to Christmas dinner and we chose not to take a deposit" is a fact the
- *      kitchen needs and a later dispute turns on.
+ *      it off at 7pm on a Friday and no seasonal money is asked for anywhere, while a party at or
+ *      above the group threshold still pays the long-standing large-group deposit. The guest's
+ *      answer is still recorded, because "they said yes to Christmas dinner and we chose not to take
+ *      a deposit" is a fact the kitchen needs and a later dispute turns on.
  *
  * WHY THE TIE MATTERS. Christmas is configured at GBP 10 per head, which is exactly the party-size
- * rate. A party of 12 inside Christmas therefore produces GBP 120 by both routes. A stacking bug
- * would charge GBP 240 and would be completely invisible in casual testing, because every other
- * number would look right. There is an explicit test for it.
+ * rate. Every Christmas party at or above the group threshold therefore produces the same amount by
+ * both routes. A stacking bug would charge double and would be completely invisible in casual
+ * testing, because every other number would look right. There is an explicit test for it.
  *
  * NOTHING HERE TRUSTS THE CLIENT. `booking_period_id` arrives from a browser. The caller must load
  * the period from the database and pass the loaded row; `resolveTableBookingDeposit` then re-checks
@@ -83,8 +84,8 @@ export type ResolveDepositInput = {
   /**
    * The `booking_period_deposits_enabled` kill switch, as read from the database by the caller.
    * `false` means no SEASONAL deposit is asked for. The party-size rule is deliberately untouched
-   * by it: switching seasonal collection off must not stop a party of 12 paying the deposit they
-   * have always paid.
+   * by it: switching seasonal collection off must not stop a party at or above the group threshold
+   * paying the deposit they have always paid.
    */
   collectPeriodDeposits?: boolean
   /** Overridable only so tests can prove the comparison, not so it can drift in production. */
