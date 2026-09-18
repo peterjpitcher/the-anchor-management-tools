@@ -56,7 +56,7 @@ import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/re
 import { XMarkIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { z } from 'zod'
-import { Button, ConfirmDialog } from '@/ds'
+import { Button, ConfirmDialog, IconButton } from '@/ds'
 import { cn } from '@/lib/utils'
 import {
   LOGO_DEFAULT_WIDTH_FRAC,
@@ -658,7 +658,7 @@ export function ArtworkBrandingModal({
 
   return (
     <Dialog open={open} onClose={onClose} className="relative z-50">
-      <DialogBackdrop className="fixed inset-0 bg-black/50" />
+      <DialogBackdrop className="fixed inset-0 bg-overlay" />
       <div className="fixed inset-0 flex">
         <DialogPanel className="flex h-full w-full flex-col bg-bg">
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
@@ -670,14 +670,14 @@ export function ArtworkBrandingModal({
                 {imageW} x {imageH} px. The logo is stamped on the saved file.
               </p>
             </div>
-            <button
+            <IconButton
               type="button"
+              variant="secondary"
               onClick={onClose}
-              className="inline-flex items-center justify-center rounded-md border border-border-strong bg-surface p-3 text-text hover:bg-surface-hover focus-visible:outline-none focus-visible:shadow-ring"
-            >
-              <XMarkIcon className="h-5 w-5" aria-hidden="true" />
-              <span className="sr-only">Close branding editor</span>
-            </button>
+              icon={<XMarkIcon className="h-5 w-5" aria-hidden="true" />}
+              label="Close branding editor"
+              className="min-h-touch min-w-touch shrink-0"
+            />
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -746,12 +746,12 @@ export function ArtworkBrandingModal({
                           left: percentOf(qrStripBox.x - qrBlockBox.x, qrBlockBox.width),
                           width: percentOf(qrStripBox.width, qrBlockBox.width),
                           height: '100%',
-                          // Deliberately literal black and white rather than
-                          // design tokens: this is a picture of what the
-                          // compositor prints, and printing it in the app's
+                          // Deliberately literal black and white (CSS keywords)
+                          // rather than design tokens: this is a picture of what
+                          // the compositor prints, and printing it in the app's
                           // theme colours would make the preview a lie.
-                          backgroundColor: '#000000',
-                          color: '#ffffff',
+                          backgroundColor: 'black',
+                          color: 'white',
                           // vertical-rl plus a half turn reads bottom to top,
                           // which is the convention for a spine label.
                           writingMode: 'vertical-rl',
@@ -1002,7 +1002,7 @@ export function ArtworkBrandingModal({
               </p>
 
               {apiError && (
-                <p role="alert" className="rounded-md bg-danger-soft p-3 text-sm text-danger-fg">
+                <p role="alert" className="rounded-md border border-danger-border bg-danger-soft p-3 text-sm text-danger-fg">
                   {apiError}
                 </p>
               )}
@@ -1136,7 +1136,7 @@ function PlacementOverlay({
           : undefined,
       }}
       className={cn(
-        'group border-2 border-dashed focus-visible:outline-none focus-visible:shadow-ring',
+        'group border-2 border-dashed focus-visible:outline-hidden focus-visible:shadow-ring',
         draggable ? 'cursor-grab' : 'cursor-default',
         isDragging && 'cursor-grabbing opacity-70',
         invalid ? 'border-danger' : 'border-primary/70'

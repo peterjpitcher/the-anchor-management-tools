@@ -174,10 +174,10 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          <Loader2 className="h-6 w-6 animate-spin text-text-subtle" />
         </div>
       ) : error ? (
-        <div className="rounded-md bg-danger-soft p-4 text-sm text-red-700">
+        <div className="rounded-md border border-danger-border bg-danger-soft p-4 text-sm text-danger-fg">
           {error}
         </div>
       ) : (
@@ -196,10 +196,11 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
               ) : (
                 outstandingItems.map((item) => {
                   const isPending = pendingTaskKeys.has(`${eventId}:${item.key}`)
+                  // Small text, so the dark -fg shades: base warning amber is too pale to read.
                   const dueColor = item.status === 'overdue'
-                    ? 'text-danger'
+                    ? 'text-danger-fg'
                     : item.status === 'due_today'
-                      ? 'text-warning'
+                      ? 'text-warning-fg'
                       : 'text-text-muted'
                   return (
                     <div
@@ -217,8 +218,8 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
                         <div className="flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-medium text-text">{item.label}</span>
-                            {!item.required && <Badge variant="secondary" size="sm">Optional</Badge>}
-                            <Badge variant="secondary" size="sm">{item.channel}</Badge>
+                            {!item.required && <Badge tone="neutral" size="sm">Optional</Badge>}
+                            <Badge tone="neutral" size="sm">{item.channel}</Badge>
                           </div>
                           <p className={`mt-1 text-xs ${dueColor}`}>
                             {getDueDescription(item)}
@@ -245,8 +246,8 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
                   >
                     <div className="flex flex-wrap items-center gap-2 text-text-muted">
                       <span>{item.label}</span>
-                      {!item.required && <Badge variant="secondary" size="sm">Optional</Badge>}
-                      <Badge variant="secondary" size="sm">{item.channel}</Badge>
+                      {!item.required && <Badge tone="neutral" size="sm">Optional</Badge>}
+                      <Badge tone="neutral" size="sm">{item.channel}</Badge>
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-xs text-text-muted">

@@ -6,10 +6,12 @@ import { KeywordStrategyCard } from './KeywordStrategyCard'
 import { FaqEditor } from './FaqEditor'
 import { parseKeywords, keywordsToDisplay } from '@/lib/keywords'
 import { Button } from '@/ds'
+import { Card } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
 import { Checkbox } from '@/ds'
+import { cn } from '@/lib/utils'
 import { SquareImageUpload } from '@/components/features/shared/SquareImageUpload'
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '@/types/event-categories'
 import toast from 'react-hot-toast'
@@ -51,23 +53,23 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
   const [isOpen, setIsOpen] = useState(defaultOpen)
   
   return (
-    <div className="bg-surface shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl overflow-hidden">
+    <Card padding="none">
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-6 sm:p-8 flex items-center justify-between hover:bg-surface-hover transition-colors"
+        className="w-full px-4 py-6 sm:p-8 flex items-center justify-between hover:bg-surface-hover transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset"
       >
         <div className="flex items-center space-x-3">
-          {Icon && <Icon className="h-5 w-5 text-gray-400" />}
+          {Icon && <Icon className="h-5 w-5 text-text-subtle" />}
           <div className="text-left">
             <h3 className="text-lg font-medium leading-6 text-text">{title}</h3>
             {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
           </div>
         </div>
         {isOpen ? (
-          <ChevronUpIcon className="h-5 w-5 text-gray-400" />
+          <ChevronUpIcon className="h-5 w-5 text-text-subtle" />
         ) : (
-          <ChevronDownIcon className="h-5 w-5 text-gray-400" />
+          <ChevronDownIcon className="h-5 w-5 text-text-subtle" />
         )}
       </button>
       {isOpen && (
@@ -75,7 +77,7 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
           {children}
         </div>
       )}
-    </div>
+    </Card>
   )
 }
 
@@ -289,9 +291,13 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                   key={colorOption.value}
                   type="button"
                   onClick={() => setColor(colorOption.value)}
-                  className={`w-8 h-8 rounded-full ring-2 ring-offset-2 ${
-                    color === colorOption.value ? 'ring-gray-900' : 'ring-transparent'
-                  }`}
+                  // The white ring offset paints over the focus ring, so it drops to 0 while
+                  // focused: otherwise keyboard focus shows as a 1px sliver, or not at all on
+                  // the selected swatch.
+                  className={cn(
+                    'w-8 h-8 rounded-full ring-2 ring-offset-2 focus-visible:outline-hidden focus-visible:shadow-ring focus-visible:ring-offset-0',
+                    color === colorOption.value ? 'ring-primary' : 'ring-transparent'
+                  )}
                   style={{ backgroundColor: colorOption.value }}
                   title={colorOption.label}
                 />
@@ -311,11 +317,12 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                     key={iconOption.value}
                     type="button"
                     onClick={() => setIcon(iconOption.value)}
-                    className={`p-2 rounded-md border-2 ${
-                      icon === iconOption.value 
-                        ? 'border-indigo-600 bg-indigo-50' 
-                        : 'border-border-strong hover:border-gray-400'
-                    }`}
+                    className={cn(
+                      'p-2 rounded-md border-2 focus-visible:outline-hidden focus-visible:shadow-ring',
+                      icon === iconOption.value
+                        ? 'border-primary bg-primary-soft'
+                        : 'border-border-strong hover:bg-surface-hover'
+                    )}
                     title={iconOption.label}
                   >
                     <Icon className="h-5 w-5" style={{ color }} />
@@ -567,7 +574,10 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
               role="switch"
               aria-checked={defaultPromoSmsEnabled}
               onClick={() => setDefaultPromoSmsEnabled(!defaultPromoSmsEnabled)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${defaultPromoSmsEnabled ? 'bg-indigo-600' : 'bg-border'}`}
+              className={cn(
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-pill border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-hidden focus-visible:shadow-ring',
+                defaultPromoSmsEnabled ? 'bg-primary' : 'bg-border-strong'
+              )}
             >
               <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow-sm ring-0 transition duration-200 ease-in-out ${defaultPromoSmsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
             </button>
@@ -586,7 +596,10 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
               role="switch"
               aria-checked={defaultBookingsEnabled}
               onClick={() => setDefaultBookingsEnabled(!defaultBookingsEnabled)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${defaultBookingsEnabled ? 'bg-indigo-600' : 'bg-border'}`}
+              className={cn(
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-pill border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-hidden focus-visible:shadow-ring',
+                defaultBookingsEnabled ? 'bg-primary' : 'bg-border-strong'
+              )}
             >
               <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow-sm ring-0 transition duration-200 ease-in-out ${defaultBookingsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
             </button>

@@ -191,13 +191,14 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
 
         {/* UTM section */}
         <div>
-          <button
+          <Button
             type="button"
+            variant="link"
+            size="sm"
             onClick={() => setShowUtm(!showUtm)}
-            className="text-xs text-primary hover:underline"
           >
             {showUtm ? 'Hide UTM parameters' : 'Add UTM parameters'}
-          </button>
+          </Button>
           {showUtm && (
             <div className="mt-3 space-y-3 p-3 bg-surface-2 rounded-lg">
               <Field label="UTM Source">

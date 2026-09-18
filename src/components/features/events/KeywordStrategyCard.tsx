@@ -1,5 +1,6 @@
 'use client'
 
+import { Textarea } from '@/ds'
 import { parseKeywords } from '@/lib/keywords'
 
 interface KeywordStrategyCardProps {
@@ -40,13 +41,12 @@ function KeywordField({
         </label>
         <p className="text-xs text-text-muted mt-0.5">{helpText}</p>
       </div>
-      <textarea
+      <Textarea
         id={id}
         rows={rows}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text placeholder:text-text-subtle focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 resize-y"
       />
       <p className="text-xs text-text-muted">
         {count === 0 ? 'No keywords entered' : `${count} keyword${count === 1 ? '' : 's'} entered`}
@@ -64,9 +64,9 @@ export function KeywordStrategyCard({
   onLocalChange,
 }: KeywordStrategyCardProps) {
   return (
-    <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-4 space-y-4">
+    <div className="rounded-lg border border-cat-3/20 bg-cat-3-soft p-4 space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-purple-700">Keyword Strategy</h2>
+        <h2 className="text-base font-semibold text-cat-3-fg">Keyword Strategy</h2>
         <p className="mt-0.5 text-sm text-text-muted">
           Paste your researched keywords here — these drive all AI-generated content. Accepts
           comma-separated or one per line.

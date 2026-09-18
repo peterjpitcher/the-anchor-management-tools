@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button, Input } from '@/ds'
+import { Button, Input, Select } from '@/ds'
 import { updateEventAttendees } from '@/app/actions/event-attendees'
 import type { StoredEventAttendee } from '@/lib/events/booking-questions'
 
@@ -35,7 +35,7 @@ export function EventAttendeesEditor({ bookingId, seats, attendees, canEdit }: {
     {guests.map((guest, index) => <div key={guest.id} className="rounded-lg border border-border p-4 space-y-3">
       {editing ? <label className="block text-sm">Guest {index + 1} name<Input value={guest.name} maxLength={120} required onChange={event => setGuests(previous => previous.map(item => item.id === guest.id ? { ...item, name: event.target.value } : item))} /></label> : <h4 className="font-medium">{guest.name}</h4>}
       {guest.answers.map(answer => <div key={answer.question_id} className="text-sm">
-        {editing ? <label className="block">{answer.label}{answer.type === 'yes_no' || (answer.type === 'choice' && answer.options) ? <select className="block w-full rounded-md border border-border p-2" value={answer.value} required={answer.required} onChange={event => changeAnswer(guest.id, answer.question_id, event.target.value)}><option value="">Choose an answer</option>{(answer.type === 'yes_no' ? ['yes', 'no'] : answer.options ?? []).map(option => <option key={option} value={option}>{option === 'yes' ? 'Yes' : option === 'no' ? 'No' : option}</option>)}</select> : <Input value={answer.value} maxLength={2000} required={answer.required} onChange={event => changeAnswer(guest.id, answer.question_id, event.target.value)} />}</label> : <><p className="text-text-muted">{answer.label}</p><p className="whitespace-pre-wrap">{answer.value === 'yes' ? 'Yes' : answer.value === 'no' ? 'No' : answer.value || 'Not provided'}</p></>}
+        {editing ? <label className="block">{answer.label}{answer.type === 'yes_no' || (answer.type === 'choice' && answer.options) ? <Select value={answer.value} required={answer.required} onChange={event => changeAnswer(guest.id, answer.question_id, event.target.value)}><option value="">Choose an answer</option>{(answer.type === 'yes_no' ? ['yes', 'no'] : answer.options ?? []).map(option => <option key={option} value={option}>{option === 'yes' ? 'Yes' : option === 'no' ? 'No' : option}</option>)}</Select> : <Input value={answer.value} maxLength={2000} required={answer.required} onChange={event => changeAnswer(guest.id, answer.question_id, event.target.value)} />}</label> : <><p className="text-text-muted">{answer.label}</p><p className="whitespace-pre-wrap">{answer.value === 'yes' ? 'Yes' : answer.value === 'no' ? 'No' : answer.value || 'Not provided'}</p></>}
       </div>)}
     </div>)}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
