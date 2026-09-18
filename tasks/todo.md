@@ -885,3 +885,14 @@ Changed files for this request: src/lib/events/imageVariants.ts; src/lib/events/
 Deliberately unchanged: print-sheet.ts and print-sheet.test.ts retain the existing panel geometry; ArtworkBrandingModal.tsx already reads the shared shadow settings. Other work in the original checkout is untouched.
 
 Checks passed: zero-warning lint, uncached typecheck, 788 test files (7,144 passing tests, 2 skipped) in both Europe/London and UTC, and a cold production build.
+
+## Marketing historical opening-times preview, 18 September 2026
+
+- [x] Confirm the live preview failure and trace the removed block.
+- [x] Restore the historical renderer and regression coverage without changing campaign data.
+- [x] Run lint, types, tests and production build.
+- [ ] Merge, deploy and verify the affected campaign on production.
+
+Scope: one compatibility restoration; no database migration or campaign sends.
+
+Validation: Node 20.19.5; lint and typecheck passed; London and UTC each passed 955 files and 8,985 tests (two existing skips); production build exited 0. Marketing subset: 278 tests passed.
