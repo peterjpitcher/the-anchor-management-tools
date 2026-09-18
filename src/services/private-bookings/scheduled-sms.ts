@@ -295,8 +295,9 @@ export async function getBookingScheduledSms(
     const totalAmount = Number(
       booking.gross_total ?? booking.calculated_total ?? booking.total_amount ?? 0,
     )
-    const balanceOutstanding =
-      totalAmount > 0
+    const balanceOutstanding = booking.invoice_id
+      ? ledger.invoiceBalanceTotal
+      : totalAmount > 0
         ? Math.max(0, totalAmount - balancePaymentsTotal)
         : 0
 

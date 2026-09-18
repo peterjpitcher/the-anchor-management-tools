@@ -29,6 +29,8 @@ function mockSupabase(opts: {
   idempRows?: IdempRow[]
   paymentRows?: Array<{ amount: number }>
   invoicePayments?: Array<Record<string, unknown>>
+  invoices?: Array<{ id: string; status: string; total_amount: number; paid_amount: number; credits?: Array<{ status: string; amount_inc_vat: number }> }>
+  invoiceLinks?: Array<{ booking_id: string; invoice_id: string; kind: string }>
 }): void {
   const bookingSingle = vi.fn().mockResolvedValue({
     data: opts.booking ?? null,
@@ -60,7 +62,8 @@ function mockSupabase(opts: {
       if (table === 'private_bookings' || table === 'private_bookings_with_details') {
         return { select: bookingSelect }
       }
-      if (table === 'invoices') return { select: () => ({ in: async () => ({ data: [{ id: opts.booking?.invoice_id, status: 'paid', deleted_at: null }], error: null }) }) }
+      if (table === 'private_booking_invoices') return { select: () => ({ in: async () => ({ data: opts.invoiceLinks ?? (opts.booking?.invoice_id ? [{ booking_id: opts.booking.id, invoice_id: opts.booking.invoice_id, kind: 'original' }] : []), error: null }) }) }
+      if (table === 'invoices') return { select: () => ({ in: async () => ({ data: opts.invoices ?? [{ id: opts.booking?.invoice_id, status: 'paid', deleted_at: null, total_amount: Number(opts.booking?.gross_total ?? opts.booking?.calculated_total ?? opts.booking?.total_amount ?? 0), paid_amount: (opts.invoicePayments ?? []).reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0), credits: [] }], error: null }) }) }
       if (table === 'invoice_payments') return { select: () => ({ in: async () => ({ data: opts.invoicePayments ?? [], error: null }) }) }
       if (table === 'private_booking_send_idempotency')
         return { select: idempSelect }
@@ -350,4 +353,36 @@ it('suppresses a balance reminder when the linked invoice is settled before its 
   })
   const result = await getBookingScheduledSms(BOOKING_ID, NOW)
   expect(result.some(reminder => reminder.trigger_type.startsWith('balance_reminder_'))).toBe(false)
+})
+
+
+it('does not preview a balance reminder for charges settled through an issued credit', async () => {
+  process.env.PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED = 'true'
+  mockSupabase({
+    booking: confirmedBooking({ invoice_id: 'original', gross_total: 1200 }),
+    invoices: [{ id: 'original', status: 'paid', total_amount: 1200, paid_amount: 1100, credits: [{ status: 'issued', amount_inc_vat: 100 }] }],
+    invoicePayments: [{ id: 'payment', invoice_id: 'original', amount: 1100, source_kind: 'paypal', payment_method: 'paypal', payment_date: '2026-05-01' }],
+  })
+  const previews = await getBookingScheduledSms(BOOKING_ID, NOW)
+  expect(previews.some(preview => preview.trigger_type.startsWith('balance_reminder_'))).toBe(false)
+})
+
+it('shows an unpaid supplement without silently allocating an original invoice overpayment', async () => {
+  process.env.PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED = 'true'
+  mockSupabase({
+    booking: confirmedBooking({ invoice_id: 'original', gross_total: 1300 }),
+    invoiceLinks: [
+      { booking_id: BOOKING_ID, invoice_id: 'original', kind: 'original' },
+      { booking_id: BOOKING_ID, invoice_id: 'extra', kind: 'supplementary' },
+    ],
+    invoices: [
+      { id: 'original', status: 'paid', total_amount: 1200, paid_amount: 1300 },
+      { id: 'extra', status: 'sent', total_amount: 100, paid_amount: 0 },
+    ],
+    invoicePayments: [{ id: 'payment', invoice_id: 'original', amount: 1300, source_kind: 'paypal', payment_method: 'paypal', payment_date: '2026-05-01' }],
+  })
+  const previews = await getBookingScheduledSms(BOOKING_ID, NOW)
+  const reminder = previews.find(preview => preview.trigger_type.startsWith('balance_reminder_'))
+  expect(reminder).toBeDefined()
+  expect(reminder?.preview_body).toContain('£100')
 })

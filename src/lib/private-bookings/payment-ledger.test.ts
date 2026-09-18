@@ -4,7 +4,7 @@ import { readBookingPaymentLedger, readBookingPaymentLedgers } from './payment-l
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 
-function database(options: { treatment?: string; invoiceError?: boolean; bookingError?: boolean; paymentError?: boolean; invoiceMissing?: boolean } = {}) {
+function database(options: { treatment?: string; invoiceError?: boolean; bookingError?: boolean; paymentError?: boolean; invoiceMissing?: boolean; supplementary?: boolean; voidExtra?: boolean; creditedExtra?: boolean } = {}) {
   const from = vi.fn((table: string) => ({
     select: vi.fn(() => ({
       in: vi.fn(async (_column: string, ids: string[]) => {
@@ -16,7 +16,8 @@ function database(options: { treatment?: string; invoiceError?: boolean; booking
           data: ids.map(id => ({ id: `cash-${id}`, booking_id: id, amount: 100, method: 'cash', created_at: '2026-09-01' })),
           error: options.paymentError ? { message: 'unavailable' } : null,
         }
-        if (table === 'invoices') return { data: options.invoiceMissing ? [] : ids.map(id => ({ id, status: 'paid', deleted_at: null })), error: null }
+        if (table === 'private_booking_invoices') return { data: ids.flatMap(id => [{ booking_id: id, invoice_id: `invoice-${id}`, kind: 'original' }, ...(options.supplementary ? [{ booking_id: id, invoice_id: `extra-${id}`, kind: 'supplementary' }] : [])]), error: null }
+        if (table === 'invoices') return { data: options.invoiceMissing ? [] : ids.map(id => ({ id, status: id.startsWith('extra-') && options.voidExtra ? 'void' : 'partially_paid', deleted_at: null, total_amount: id.startsWith('extra-') ? 700 : 1014.8, paid_amount: id.startsWith('extra-') ? 664.8 : 1014.8, credits: id.startsWith('extra-') && options.creditedExtra ? [{ status: 'issued', amount_inc_vat: 20 }, { status: 'draft', amount_inc_vat: 99 }] : [] })), error: null }
         return {
           data: ids.flatMap(id => [
             { id: `copy-${id}`, invoice_id: id, amount: 100, source_kind: 'booking_payment' },
@@ -53,10 +54,10 @@ describe('linked booking payment ledger', () => {
     expect(ledger.eventPaidTotal).toBe(764.8)
   })
 
-  it('loads multiple bookings in four batch queries without mixing their money', async () => {
+  it('loads multiple bookings in five batch queries without mixing their money', async () => {
     const from = database()
     const ledgers = await readBookingPaymentLedgers(['one', 'two', 'one'])
-    expect(from).toHaveBeenCalledTimes(4)
+    expect(from).toHaveBeenCalledTimes(5)
     expect(ledgers.size).toBe(2)
     expect(ledgers.get('one')?.eventPaidTotal).toBe(1014.8)
     expect(ledgers.get('two')?.payments.every(payment => payment.booking_id === 'two')).toBe(true)
@@ -70,5 +71,27 @@ describe('linked booking payment ledger', () => {
   it.each(['bookingError', 'paymentError', 'invoiceError'] as const)('fails closed on %s', async key => {
     database({ [key]: true })
     await expect(readBookingPaymentLedger('booking')).rejects.toThrow('Failed to load')
+  })
+})
+
+
+describe('supplementary invoice ledger', () => {
+  it('aggregates each real allocation and counts deposit and copied booking money once', async () => {
+    database({ supplementary: true, creditedExtra: true })
+    const ledger = await readBookingPaymentLedger('booking')
+    expect(ledger.balancePaymentsTotal).toBe(1429.6)
+    expect(ledger.appliedDepositAmount).toBe(250)
+    expect(ledger.eventPaidTotal).toBe(1679.6)
+    expect(ledger.supplementaryChargesTotal).toBe(700)
+    expect(ledger.creditsTotal).toBe(20)
+    expect(ledger.invoiceBalanceTotal).toBe(15.2)
+    expect(ledger.payments).toHaveLength(5)
+  })
+
+  it('retains cancelled extra invoice association without making its charges collectible', async () => {
+    database({ supplementary: true, voidExtra: true })
+    const ledger = await readBookingPaymentLedger('booking')
+    expect(ledger.supplementaryChargesTotal).toBe(0)
+    expect(ledger.eventPaidTotal).toBe(1014.8)
   })
 })

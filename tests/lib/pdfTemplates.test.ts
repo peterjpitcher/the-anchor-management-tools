@@ -78,6 +78,13 @@ const QUOTE: any = {
 }
 
 describe('invoice PDF template', () => {
+  it('preserves original charges and itemises issued credits in the remaining balance', () => {
+    const html = generateCompactInvoiceHTML({ invoice: { ...INVOICE, paid_amount: 20, credits: [{ status: 'issued', amount_inc_vat: 30 }] } })
+    expect(html).toContain('Credits Applied')
+    expect(html).toContain('£130.62')
+    expect(html).toContain('£80.62')
+  })
+
   it('renders a stable document', () => {
     expect(generateCompactInvoiceHTML({ invoice: INVOICE })).toMatchSnapshot()
   })

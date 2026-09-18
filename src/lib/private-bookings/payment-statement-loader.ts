@@ -46,6 +46,10 @@ export async function loadPrivateBookingPaymentStatement(input: {
       eventTotal: input.eventTotal,
       paidTowardsBill: ledger.eventPaidTotal,
       balanceDue: input.balanceDue,
+      creditsAmount: ledger.creditsTotal ?? 0,
+      unappliedCreditAmount: booking.invoice_id
+        ? Math.max(0, Math.round((ledger.eventPaidTotal + (ledger.creditsTotal ?? 0) + (ledger.invoiceBalanceTotal ?? input.balanceDue) - input.eventTotal) * 100) / 100)
+        : 0,
     }
 
     const problem = paymentStatementProblem(statement)

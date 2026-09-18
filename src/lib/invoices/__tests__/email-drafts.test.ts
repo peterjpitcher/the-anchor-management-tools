@@ -82,3 +82,11 @@ describe('buildDefaultInvoiceEmailBody', () => {
     )
   })
 })
+
+
+it('shows original charges, issued credits and no remaining debt after settlement', () => {
+  const body = buildDefaultInvoiceEmailBody(makeInvoice({ total_amount: 120, paid_amount: 90, credits: [{ status: 'issued', amount_inc_vat: 30 }] }))
+  expect(body).toContain('Invoice total: £120.00')
+  expect(body).toContain('Credits: £30.00')
+  expect(body).toContain('Balance due: £0.00')
+})
