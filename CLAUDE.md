@@ -14,6 +14,7 @@ The live staff and admin app for The Anchor (Stanwell Moor) and Orange Jelly at 
 - **Vitest**, not Jest (`vitest.config.ts`, jsdom, `TZ` pinned to `Europe/London`). Tests live mostly in the root `tests/` tree, which mirrors `src/`, plus some co-located `__tests__/` folders and `*.test.ts` files.
 - Node 20 LTS (`.nvmrc`); `engines` is `>=20 <23`. Run `nvm use` first.
 - UI comes from the design-system barrel `@/ds` (`src/ds/`: primitives, composites, shell, icons, tokens, and `compat/` wrappers for legacy components). Navigation is `NAV_GROUPS` in `src/ds/shell/SidebarNav.tsx`.
+- Styling uses the design tokens in `src/app/globals.css` (`@theme static`). The rules are in `docs/standards/UI_UX.md` and every token shows live at `/settings/design-system`. The guard `tests/guards/design-tokens.test.ts` fails on new raw Tailwind colours, hex, pixel text sizes, off-scale radii or shadows and `dark:` classes (light theme only). Emails and PDFs take their colours from `src/lib/brand/palette.ts` (`STAFF` for Orange Jelly and staff, `GUEST` for guest-facing Anchor comms).
 - Toasts are `react-hot-toast`, not Sonner. Validation is Zod. There is no React Hook Form.
 - No `fromDb<T>()` helper: map `snake_case` to `camelCase` by hand in each query transform.
 - ESLint flat config: `no-console` is an error (`warn` and `error` allowed); `no-unused-vars`, `no-explicit-any` and `exhaustive-deps` are off, which is not licence to use `any`. `npm run lint` runs with `--max-warnings=0`.

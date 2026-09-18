@@ -1,5 +1,7 @@
 # UI-v2 Component Catalog — Outline
 
+> Superseded on 18 September 2026 by `docs/standards/UI_UX.md` and the live reference page `/settings/design-system`. Kept for history; `ui-v2` no longer exists.
+
 _Last updated: 2025-10-18_
 
 This outline captures the sections we plan to document in the upcoming ui-v2 component catalog / Storybook. Each section will land in MDX with live examples and code snippets pulled from production usage.

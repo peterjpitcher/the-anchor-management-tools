@@ -376,3 +376,19 @@ the gap between them. For marketing email that means `ignores_frequency_cap` on 
 the live `marketing_settings.frequency_cap_days`, and simulating only the sends that advance the
 timestamp. The same goes for any cap with exemptions: the SMS promotion limits count only the keys
 in `PROMOTIONAL_SMS_TEMPLATE_KEYS`. When reporting a clash, say which rule was checked.
+
+## 18 September 2026: design tokens drift without a guard
+
+**Mistake:** The app had 103 design tokens, yet only about half its colour classes used them:
+4,600 raw Tailwind colours in two grey families, six different guest email button colours, four
+grey families across the PDFs, and `cn()` quietly dropping custom token classes because
+tailwind-merge did not know their names. A standards document (which still pointed at ui-v2 and
+demanded dark mode) and a review agent did not stop any of it.
+
+**Rule:** A design rule is only real when a test enforces it. `tests/guards/design-tokens.test.ts`
+counts raw values per file and fails on any rise; lower its baseline when a file gets cleaner,
+never raise it to get a change through. Register every new token name in `cn()`
+(`extendTailwindMerge` in `src/lib/utils.ts`). Emails and PDFs take colours only from
+`src/lib/brand/palette.ts`, which a test pins to `globals.css`. When a styling pass swaps a raw
+control for a DS component, compare it with the HEAD version in a render test: behaviour changes
+hide in exactly that swap.

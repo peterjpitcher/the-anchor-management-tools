@@ -2,10 +2,6 @@
   "src/app/(authenticated)/settings/customer-labels/CustomerLabelsClient.tsx": {
     "hex-colour": 8
   },
-  "src/app/(authenticated)/settings/design-system/page.tsx": {
-    "hex-colour": 26,
-    "px-text-size": 7
-  },
   "src/app/actions/event-check-in.ts": {
     "hex-colour": 4
   },
