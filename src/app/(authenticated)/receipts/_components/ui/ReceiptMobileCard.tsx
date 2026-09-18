@@ -234,7 +234,7 @@ export function ReceiptMobileCard({
     >
         <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
             <div className="min-w-0 space-y-0.5">
-                <p className="text-[11px] text-text-muted">
+                <p className="text-meta text-text-muted">
                 {formatDate(transaction.transaction_date)}
                 {transaction.transaction_type ? ` · ${transaction.transaction_type}` : ''}
                 </p>
@@ -243,15 +243,15 @@ export function ReceiptMobileCard({
                     <SourceBadge sourceType={transaction.source_type} />
                 </div>
                 {transaction.source_type === 'amex' && transaction.card_member && (
-                <p className="text-[11px] text-text-muted">{transaction.card_member}</p>
+                <p className="text-meta text-text-muted">{transaction.card_member}</p>
                 )}
                 {transaction.rule_applied_id && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success-fg">
+                <span className="inline-flex items-center gap-1 text-meta font-medium text-success-fg">
                     <ArrowPathIcon className="h-3.5 w-3.5" /> Auto rule
                 </span>
                 )}
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-0.5 text-right text-[11px]">
+            <div className="flex flex-wrap items-center justify-end gap-0.5 text-right text-meta">
                 {transaction.amount_out != null && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-2 py-0.5 font-medium text-danger-fg">
                     Out
@@ -345,7 +345,7 @@ export function ReceiptMobileCard({
              <input type="file" className="hidden" ref={fileInputRef} accept={RECEIPT_UPLOAD_ACCEPT} onChange={handleUpload} />
 
              {transaction.files.map(f => (
-                 <div key={f.id} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 bg-surface text-[11px]">
+                 <div key={f.id} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 bg-surface text-meta">
                      <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-success-fg truncate max-w-[80px]">{f.file_name || 'Receipt'}</button>
                      <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-danger ml-1">×</button>
                  </div>

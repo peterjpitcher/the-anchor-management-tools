@@ -877,7 +877,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
                 {elapsedSeconds >= 10 && ` (${elapsedSeconds}s)`}
               </span>
               {elapsedSeconds >= 30 && (
-                <span className="text-amber-600">Still working...</span>
+                <span className="text-warning">Still working...</span>
               )}
             </div>
           )}
@@ -886,7 +886,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
           {preflightIssues.length > 0 && !aiLoading && (
             <div className="mb-3 space-y-1">
               {preflightIssues.map((issue, i) => (
-                <p key={i} className={`text-xs ${issue.type === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
+                <p key={i} className={`text-xs ${issue.type === 'error' ? 'text-danger' : 'text-warning'}`}>
                   {issue.type === 'error' ? '✗ ' : '⚠ '}{issue.message}
                 </p>
               ))}

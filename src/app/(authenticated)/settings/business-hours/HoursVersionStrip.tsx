@@ -124,22 +124,22 @@ export function HoursVersionStrip({
         role="tab"
         aria-selected={isSelected}
         onClick={() => onSelect(version.id)}
-        className={`min-h-[44px] rounded-md border px-3 py-2 text-sm font-medium ${
+        className={`min-h-touch rounded-md border px-3 py-2 text-sm font-medium ${
           isSelected
             ? 'border-sidebar bg-sidebar text-white'
-            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+            : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
         }`}
       >
         {name}
         {version.status === 'draft' && (
-          <span className={`ml-2 text-xs ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>Draft</span>
+          <span className={`ml-2 text-xs ${isSelected ? 'text-white/80' : 'text-text-muted'}`}>Draft</span>
         )}
       </button>
     )
   }
 
   return (
-    <div className="space-y-3 border-b border-gray-200 p-4">
+    <div className="space-y-3 border-b border-border p-4">
       <div role="tablist" aria-label="Opening-hours schedules" className="flex flex-wrap gap-2">
         {current.map(renderTab)}
         {future.map(renderTab)}
@@ -156,7 +156,7 @@ export function HoursVersionStrip({
           <button
             type="button"
             onClick={() => setShowPast(v => !v)}
-            className="text-sm text-gray-600 underline"
+            className="text-sm text-text-muted underline"
           >
             {showPast ? 'Hide' : 'Show'} {past.length} past schedule{past.length === 1 ? '' : 's'}
           </button>
@@ -210,7 +210,7 @@ export function HoursVersionStrip({
 
       <Modal open={creating} onClose={() => setCreating(false)} title="Schedule a change">
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             This copies the hours that apply the day before your chosen date, so you only change what
             is different. It is saved as a draft and does nothing until you publish it.
           </p>

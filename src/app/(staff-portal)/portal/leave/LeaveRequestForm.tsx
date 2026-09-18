@@ -74,7 +74,7 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
       </div>
 
       {days > 0 && (
-        <div className="rounded-lg border px-3 py-2 text-sm bg-blue-50 border-blue-100 text-blue-800">
+        <div className="rounded-lg border px-3 py-2 text-sm bg-blue-50 border-blue-100 text-info-fg">
           <strong>{days} day{days !== 1 ? 's' : ''}</strong> requested
         </div>
       )}

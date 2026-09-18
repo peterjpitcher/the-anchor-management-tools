@@ -75,7 +75,7 @@ export function Drawer({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <DialogBackdrop className="fixed inset-0 bg-black/30" />
+          <DialogBackdrop className="fixed inset-0 bg-overlay" />
         </TransitionChild>
 
         <div className="fixed inset-0 overflow-hidden">
@@ -106,7 +106,7 @@ export function Drawer({
                   <button
                     type="button"
                     onClick={onClose}
-                    className="p-1 rounded-md text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+                    className="p-1 rounded-md text-text-muted hover:text-text hover:bg-surface-hover transition-colors focus-visible:outline-hidden focus-visible:shadow-ring"
                     aria-label="Close drawer"
                   >
                     <CloseIcon />

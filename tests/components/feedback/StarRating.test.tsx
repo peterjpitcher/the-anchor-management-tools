@@ -63,7 +63,7 @@ describe('StarRating', () => {
     expect(icons[2]?.getAttribute('class')).toContain('text-guest-border-strong')
     // The old palette and the old blue focus ring must be gone.
     expect(container.innerHTML).not.toContain('text-yellow-400')
-    expect(container.innerHTML).not.toContain('text-gray-300')
+    expect(container.innerHTML).not.toContain('text-text-subtle')
     expect(container.innerHTML).not.toContain('ring-blue-500')
   })
 })

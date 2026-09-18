@@ -9,7 +9,7 @@ export interface DropdownProps {
   trigger?: React.ReactNode
   /** @deprecated Use `trigger` instead */
   label?: React.ReactNode
-  /** @deprecated Accepted for backward compatibility — use `trigger` instead */
+  /** @deprecated Accepted for backward compatibility: use `trigger` instead */
   icon?: React.ReactNode
   /** @deprecated Accepted for backward compatibility */
   items?: Array<{ key: string; label: React.ReactNode; description?: string; onClick?: () => void; icon?: React.ReactNode; danger?: boolean }>
@@ -38,7 +38,7 @@ export function Dropdown({ trigger, label, icon: _icon, items, disabled: _disabl
       <MenuItems
         className={cn(
           'absolute z-50 mt-1 w-48 rounded-lg bg-surface border border-border shadow-lg py-1',
-          'focus:outline-none',
+          'focus:outline-hidden',
           'transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0',
           align === 'right' ? 'right-0' : 'left-0'
         )}
@@ -72,6 +72,7 @@ export function DropdownItem({ onClick, icon, danger, disabled, children }: Drop
         className={cn(
           'flex w-full items-center gap-2 px-3 py-2 text-sm',
           'data-[focus]:bg-surface-hover transition-colors',
+          'focus-visible:outline-hidden focus-visible:shadow-ring',
           'disabled:cursor-not-allowed disabled:opacity-50',
           danger ? 'text-danger' : 'text-text'
         )}

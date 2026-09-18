@@ -284,7 +284,7 @@ export function SeasonalPeriods() {
   if (loading) {
     return (
       <Section title="Seasonal periods">
-        <p className="text-sm text-gray-600">Loading…</p>
+        <p className="text-sm text-text-muted">Loading…</p>
       </Section>
     )
   }
@@ -297,27 +297,27 @@ export function SeasonalPeriods() {
       >
         <Card>
           {periods.length === 0 ? (
-            <p className="text-sm text-gray-600">No seasonal periods yet.</p>
+            <p className="text-sm text-text-muted">No seasonal periods yet.</p>
           ) : (
             <div className="space-y-4">
               {periods.map((period) => {
                 const status = statusOf(period)
                 const isOpen = expandedId === period.id
                 return (
-                  <div key={period.id} className="rounded-md border border-gray-200 p-4">
+                  <div key={period.id} className="rounded-md border border-border p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="text-sm font-semibold text-gray-900">{period.name}</h4>
+                          <h4 className="text-sm font-semibold text-text">{period.name}</h4>
                           <Badge tone={status.tone}>{status.label}</Badge>
                           <Badge tone="neutral">{PERIOD_KIND_LABELS[period.periodKind]}</Badge>
                         </div>
-                        <p className="mt-1 text-sm text-gray-700">
+                        <p className="mt-1 text-sm text-text">
                           {period.startsOn} to {period.endsOn} &middot;{' '}
                           {describeDeposit(period.depositBasis, period.depositAmount)}
                           {period.requiresPreorder ? ' · pre-order required' : ''}
                         </p>
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-text-muted">
                           Code {period.code} &middot; {period.bookingCount} booking
                           {period.bookingCount === 1 ? '' : 's'} taken
                           {period.minPartySize !== null || period.maxPartySize !== null
@@ -356,14 +356,14 @@ export function SeasonalPeriods() {
                     </div>
 
                     {period.requiresPreorder && !period.menuReady && (
-                      <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                      <p className="mt-3 rounded-md border border-amber-200 bg-warning-soft p-3 text-sm text-warning-fg">
                         This period needs a pre-order and has no menu yet, so it cannot be booked. Add the
                         courses below, then switch it on.
                       </p>
                     )}
 
                     {period.bookingCount > 0 && (
-                      <p className="mt-3 text-xs text-gray-500">
+                      <p className="mt-3 text-xs text-text-muted">
                         Editing this period does not change the {period.bookingCount} booking
                         {period.bookingCount === 1 ? '' : 's'} already taken. Each one keeps the deposit and
                         the terms it was made under.
@@ -371,15 +371,15 @@ export function SeasonalPeriods() {
                     )}
 
                     {isOpen && (
-                      <div className="mt-4 border-t border-gray-200 pt-4">
-                        <h5 className="text-sm font-medium text-gray-900">Pre-order menu</h5>
+                      <div className="mt-4 border-t border-border pt-4">
+                        <h5 className="text-sm font-medium text-text">Pre-order menu</h5>
                         {/* Verbatim from the shared constant. Four separate wordings for this
                             eventually produce one that implies the guest has already paid. */}
                         {period.menuItems.some((item) => item.course === MENU_COURSE_ADDON) && (
-                          <p className="mt-1 text-xs text-gray-600">{PREORDER_ADDON_STAFF_NOTE}</p>
+                          <p className="mt-1 text-xs text-text-muted">{PREORDER_ADDON_STAFF_NOTE}</p>
                         )}
                         {period.menuItems.length === 0 ? (
-                          <p className="mt-1 text-sm text-gray-600">
+                          <p className="mt-1 text-sm text-text-muted">
                             No dishes yet. Add them when the menu is published.
                           </p>
                         ) : (
@@ -387,23 +387,23 @@ export function SeasonalPeriods() {
                             {period.menuItems.map((item) => (
                               <li
                                 key={item.id}
-                                className="flex flex-wrap items-start justify-between gap-2 rounded border border-gray-200 p-2 text-sm"
+                                className="flex flex-wrap items-start justify-between gap-2 rounded-sm border border-border p-2 text-sm"
                               >
                                 <div className="min-w-0">
-                                  <span className="font-medium text-gray-900">{item.name}</span>{' '}
-                                  <span className="text-xs uppercase text-gray-500">
+                                  <span className="font-medium text-text">{item.name}</span>{' '}
+                                  <span className="text-xs uppercase text-text-muted">
                                     {MENU_COURSE_LABELS[item.course]}
                                   </span>
                                   {item.priceGbp !== null && (
-                                    <span className="text-gray-700"> &middot; {formatGbp(item.priceGbp)}</span>
+                                    <span className="text-text"> &middot; {formatGbp(item.priceGbp)}</span>
                                   )}
                                   {item.description && (
-                                    <p className="text-xs text-gray-600">{item.description}</p>
+                                    <p className="text-xs text-text-muted">{item.description}</p>
                                   )}
                                   {/* Only reachable if the row was written outside this screen, which
                                       refuses to save it. Say so rather than showing a silent blank. */}
                                   {menuCourseRequiresPrice(item.course) && item.priceGbp === null && (
-                                    <p className="text-xs text-amber-700">
+                                    <p className="text-xs text-warning-fg">
                                       This add-on has no price, so guests would tick it and it would land on
                                       no bill. Remove it and add it again with a price.
                                     </p>
@@ -475,8 +475,8 @@ export function SeasonalPeriods() {
                               />
                             </div>
                             {menuCourseRequiresPrice(menuDraft.course) && (
-                              <div className="sm:col-span-2 rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
-                                <p className="font-medium text-gray-900">
+                              <div className="sm:col-span-2 rounded-md border border-border bg-surface-2 p-3 text-xs text-text">
+                                <p className="font-medium text-text">
                                   An add-on sits alongside the courses, not inside them.
                                 </p>
                                 <p className="mt-1">
@@ -588,10 +588,10 @@ export function SeasonalPeriods() {
               className="mt-1 h-4 w-4"
             />
             <div>
-              <label htmlFor="booking_period_deposits_enabled" className="text-sm font-medium text-gray-900">
+              <label htmlFor="booking_period_deposits_enabled" className="text-sm font-medium text-text">
                 Collect seasonal deposits
               </label>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-text-muted">
                 Off means a deposit is still worked out and shown to staff, but no money is asked for. The
                 deposit for a party of {LARGE_GROUP_DEPOSIT_THRESHOLD} or more is unaffected.
               </p>
@@ -693,11 +693,11 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
           <Input label="Name shown to guests" value={draft.name} onChange={(e) => set('name', e.target.value)} />
           {draft.id ? (
             <div>
-              <span className="block text-[13px] font-medium text-gray-900">Kind and code</span>
-              <p className="mt-1 text-sm text-gray-700">
+              <span className="block text-ui font-medium text-text">Kind and code</span>
+              <p className="mt-1 text-sm text-text">
                 {PERIOD_KIND_LABELS[draft.period_kind]} &middot; {draft.code}
               </p>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-text-muted">
                 Fixed after creation. Rules and bookings already refer to them, so renaming the period is
                 safe but changing these would not be.
               </p>
@@ -799,10 +799,10 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
               className="mt-1 h-4 w-4"
             />
             <div>
-              <label htmlFor="requires_preorder" className="text-sm font-medium text-gray-900">
+              <label htmlFor="requires_preorder" className="text-sm font-medium text-text">
                 Guests must choose their food when they book
               </label>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-text-muted">
                 The period cannot go live until at least one dish is on its menu, and guests are told the
                 menu is not ready rather than being shown an empty list.
               </p>
@@ -820,16 +820,16 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
         </div>
 
         {preview && (
-          <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm">
-            <p className="font-medium text-gray-900">What guests would pay</p>
-            <ul className="mt-1 space-y-1 text-gray-700">
+          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm">
+            <p className="font-medium text-text">What guests would pay</p>
+            <ul className="mt-1 space-y-1 text-text">
               {preview.map((line) => (
                 <li key={line.partySize}>
                   A party of {line.partySize} pays {line.text}.
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-xs text-gray-500">
+            <p className="mt-2 text-xs text-text-muted">
               Where the deposit for parties of {LARGE_GROUP_DEPOSIT_THRESHOLD} or more is larger, that one
               applies instead. The two are never added together.
             </p>

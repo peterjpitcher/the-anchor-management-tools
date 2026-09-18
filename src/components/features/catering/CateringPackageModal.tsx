@@ -172,7 +172,7 @@ export function CateringPackageModal({
         >
             <form action={handleSubmit} className="space-y-6">
                 {error && (
-                    <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">
+                    <div className="bg-danger-soft text-danger p-3 rounded-md text-sm">
                         {error}
                     </div>
                 )}
@@ -265,7 +265,7 @@ export function CateringPackageModal({
                 </div>
 
                 <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Compliance</h3>
+                    <h3 className="text-sm font-semibold text-text uppercase tracking-wider">Compliance</h3>
 
                     <Checkbox
                         name="requires_waiver"
@@ -290,7 +290,7 @@ export function CateringPackageModal({
                 </div>
 
                 <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Package Details</h3>
+                    <h3 className="text-sm font-semibold text-text uppercase tracking-wider">Package Details</h3>
 
                     <FormGroup label="Summary" help="One-line overview shown to staff">
                         <Textarea

@@ -19,15 +19,28 @@ interface CardProps {
   id?: string
   /** @deprecated Accepted for backward compatibility */
   onClick?: () => void
-  /** @deprecated Accepted for backward compatibility */
+  /** 'secondary' (or 'subtle') tints the card; 'ghost' drops the frame; anything else is the default card. */
   variant?: string
-  /** @deprecated Accepted for backward compatibility */
+  /** Inner padding when the card does not use CardHeader/CardBody/CardFooter: none, sm, md (default) or lg. */
   padding?: string
   /** @deprecated Accepted for backward compatibility */
   interactive?: boolean
 }
 
-export function Card({ children, className, title, subtitle, header, id: _id, onClick, variant: _variant, padding: _padding, interactive: _interactive }: CardProps) {
+const cardPadding: Record<string, string> = {
+  none: 'p-0',
+  sm: 'p-3',
+  md: 'p-pad-card',
+  lg: 'p-6',
+}
+
+function cardVariant(variant?: string): string | undefined {
+  if (variant === 'secondary' || variant === 'subtle') return 'bg-surface-2'
+  if (variant === 'ghost') return 'border-transparent bg-transparent shadow-none'
+  return undefined
+}
+
+export function Card({ children, className, title, subtitle, header, id: _id, onClick, variant, padding, interactive: _interactive }: CardProps) {
   const hasLegacyHeader = Boolean(header) || Boolean(title)
   const usesSubcomponents = React.Children.toArray(children).some(
     (child) =>
@@ -38,13 +51,13 @@ export function Card({ children, className, title, subtitle, header, id: _id, on
 
   return (
     <div
-      className={cn('bg-surface border border-border rounded-lg shadow-sm overflow-hidden', onClick && 'cursor-pointer', className)}
+      className={cn('bg-surface border border-border rounded-lg shadow-sm overflow-hidden', cardVariant(variant), onClick && 'cursor-pointer', className)}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
     >
       {header && (
-        <div className="px-[var(--spacing-pad-card)] py-3 border-b border-border">
+        <div className="px-pad-card py-3 border-b border-border">
           {header}
         </div>
       )}
@@ -60,7 +73,7 @@ export function Card({ children, className, title, subtitle, header, id: _id, on
         you were typing into was thrown away. `display: contents` keeps layout identical
         to rendering the children directly, including inside flex and grid cards.
       */}
-      <div className={shouldAutoPad ? 'p-[var(--spacing-pad-card)]' : 'contents'}>
+      <div className={shouldAutoPad ? (cardPadding[padding ?? 'md'] ?? cardPadding.md) : 'contents'}>
         {children}
       </div>
     </div>
@@ -81,7 +94,7 @@ export function CardHeader({ title, subtitle, action, children, className }: Car
   return (
     <div
       className={cn(
-        'px-[var(--spacing-pad-card)] py-3 border-b border-border flex items-center justify-between',
+        'px-pad-card py-3 border-b border-border flex items-center justify-between',
         className,
       )}
     >
@@ -104,7 +117,7 @@ interface CardBodyProps {
 
 export function CardBody({ children, className }: CardBodyProps) {
   return (
-    <div className={cn('p-[var(--spacing-pad-card)]', className)}>
+    <div className={cn('p-pad-card', className)}>
       {children}
     </div>
   )
@@ -119,7 +132,7 @@ interface CardFooterProps {
 
 export function CardFooter({ children, className }: CardFooterProps) {
   return (
-    <div className={cn('px-[var(--spacing-pad-card)] py-3 border-t border-border bg-surface-2', className)}>
+    <div className={cn('px-pad-card py-3 border-t border-border bg-surface-2', className)}>
       {children}
     </div>
   )

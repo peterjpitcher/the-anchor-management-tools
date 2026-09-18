@@ -408,7 +408,7 @@ export default function MenuDishesPage(): React.ReactElement {
           return (
             <div>
               <div className="font-medium">{dish.name}</div>
-              {dish.description && <div className="text-xs text-gray-500">{dish.description}</div>}
+              {dish.description && <div className="text-xs text-text-muted">{dish.description}</div>}
             </div>
           );
         },
@@ -448,7 +448,7 @@ export default function MenuDishesPage(): React.ReactElement {
           const dish = row as unknown as DishListItem;
           const belowTarget = dish.gp_pct !== null && dish.gp_pct < (dish.target_gp_pct ?? targetGpPct);
           return (
-            <span className={belowTarget ? 'text-red-600 font-semibold' : ''}>
+            <span className={belowTarget ? 'text-danger font-semibold' : ''}>
               £{dish.portion_cost.toFixed(2)}
             </span>
           );
@@ -477,7 +477,7 @@ export default function MenuDishesPage(): React.ReactElement {
             const requiredPrice = dish.portion_cost / (1 - target);
             if (Number.isFinite(requiredPrice) && requiredPrice > 0) {
               targetNote = (
-                <div className="text-xs font-normal text-red-600">
+                <div className="text-xs font-normal text-danger">
                   {Math.round(target * 100)}% = £{requiredPrice.toFixed(2)}
                 </div>
               );
@@ -486,8 +486,8 @@ export default function MenuDishesPage(): React.ReactElement {
 
           return (
             <div className="flex flex-col items-end">
-              <span className={belowTarget || dish.is_gp_alert ? 'text-red-600 font-semibold' : ''}>
-                {belowTarget && <ExclamationTriangleIcon className="mr-1 inline h-3.5 w-3.5 text-red-500" />}
+              <span className={belowTarget || dish.is_gp_alert ? 'text-danger font-semibold' : ''}>
+                {belowTarget && <ExclamationTriangleIcon className="mr-1 inline h-3.5 w-3.5 text-danger" />}
                 {dish.gp_pct !== null ? `${Math.round(dish.gp_pct * 100)}%` : '\u2014'}
               </span>
               {targetNote}
@@ -502,7 +502,7 @@ export default function MenuDishesPage(): React.ReactElement {
         cell: (row) => {
           const dish = row as unknown as DishListItem;
           return (
-            <div className="max-w-[180px] space-y-1 text-xs text-gray-600">
+            <div className="max-w-[180px] space-y-1 text-xs text-text-muted">
               {dish.assignments.map((a, idx) => (
                 <div key={`${a.menu_code}-${a.category_code}-${idx}`} className="flex items-center gap-1">
                   <Badge
@@ -747,7 +747,7 @@ export default function MenuDishesPage(): React.ReactElement {
                 const dish = row as unknown as DishListItem;
                 const target = dish.target_gp_pct ?? targetGpPct;
                 const belowTarget = dish.gp_pct !== null && dish.gp_pct < target;
-                return belowTarget ? 'bg-red-50 hover:bg-red-100' : undefined;
+                return belowTarget ? 'bg-danger-soft hover:bg-danger-soft' : undefined;
               }}
             />
           )}

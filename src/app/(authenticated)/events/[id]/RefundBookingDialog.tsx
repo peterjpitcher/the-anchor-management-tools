@@ -125,7 +125,7 @@ export function RefundBookingDialog({ booking, onClose, onDone }: RefundBookingD
           ) : (
             <>
               {info && !info.canRefund ? (
-                <p className="text-sm text-amber-700">
+                <p className="text-sm text-warning-fg">
                   Only a manager can issue refunds on this booking.
                 </p>
               ) : (

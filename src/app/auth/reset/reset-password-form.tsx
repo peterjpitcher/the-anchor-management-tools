@@ -56,8 +56,8 @@ export default function ResetPasswordForm({ email }: Props) {
       <Container size="sm">
         <Card className="p-8">
           <div className="text-center mb-6">
-            <h1 className="text-2xl font-semibold text-gray-900">Set a new password</h1>
-            {email && <p className="mt-2 text-sm text-gray-600">Signed in as {email}</p>}
+            <h1 className="text-2xl font-semibold text-text">Set a new password</h1>
+            {email && <p className="mt-2 text-sm text-text-muted">Signed in as {email}</p>}
           </div>
 
           <Form onSubmit={handleSubmit} className="space-y-5">

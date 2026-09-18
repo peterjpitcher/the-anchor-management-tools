@@ -284,7 +284,7 @@ export default function BulkMessagesClient({
         key: 'name',
         header: 'Name',
         cell: (row) => (
-          <span className="font-medium text-gray-900">
+          <span className="font-medium text-text">
             {row.first_name} {row.last_name}
           </span>
         ),
@@ -299,7 +299,7 @@ export default function BulkMessagesClient({
         key: 'mobile_number',
         header: 'Mobile',
         cell: (row) => (
-          <span className="text-gray-600 text-sm">{row.mobile_number}</span>
+          <span className="text-text-muted text-sm">{row.mobile_number}</span>
         ),
         hideOnMobile: true,
       },
@@ -308,7 +308,7 @@ export default function BulkMessagesClient({
         header: 'Last Booking',
         cell: (row) =>
           row.last_booking_date ? (
-            <span className="text-gray-600 text-sm">
+            <span className="text-text-muted text-sm">
               {formatDateInLondon(row.last_booking_date, {
                 day: 'numeric',
                 month: 'short',
@@ -371,15 +371,15 @@ export default function BulkMessagesClient({
         <Card
           header={
             <div className="flex items-center gap-2">
-              <FunnelIcon className="h-5 w-5 text-gray-500" />
-              <h3 className="text-lg font-medium text-gray-900">Filters</h3>
+              <FunnelIcon className="h-5 w-5 text-text-muted" />
+              <h3 className="text-lg font-medium text-text">Filters</h3>
             </div>
           }
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {/* Event filter */}
             <div>
-              <label htmlFor="filter-event" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filter-event" className="block text-sm font-medium text-text mb-1">
                 Event
               </label>
               <Select
@@ -399,7 +399,7 @@ export default function BulkMessagesClient({
 
             {/* Booking status filter */}
             <div>
-              <label htmlFor="filter-booking-status" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filter-booking-status" className="block text-sm font-medium text-text mb-1">
                 Booking Status
               </label>
               <Select
@@ -416,7 +416,7 @@ export default function BulkMessagesClient({
 
             {/* SMS Opt-in filter */}
             <div>
-              <label htmlFor="filter-sms-optin" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filter-sms-optin" className="block text-sm font-medium text-text mb-1">
                 SMS Opt-in
               </label>
               <Select
@@ -431,7 +431,7 @@ export default function BulkMessagesClient({
 
             {/* Category filter */}
             <div>
-              <label htmlFor="filter-category" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filter-category" className="block text-sm font-medium text-text mb-1">
                 Category
               </label>
               <Select
@@ -451,7 +451,7 @@ export default function BulkMessagesClient({
 
             {/* Date range filters */}
             <div>
-              <label htmlFor="filter-created-after" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filter-created-after" className="block text-sm font-medium text-text mb-1">
                 Created After
               </label>
               <Input
@@ -463,7 +463,7 @@ export default function BulkMessagesClient({
             </div>
 
             <div>
-              <label htmlFor="filter-created-before" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filter-created-before" className="block text-sm font-medium text-text mb-1">
                 Created Before
               </label>
               <Input
@@ -477,7 +477,7 @@ export default function BulkMessagesClient({
 
           {/* Search */}
           <div className="mt-4">
-            <label htmlFor="filter-search" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="filter-search" className="block text-sm font-medium text-text mb-1">
               Search
             </label>
             <Input
@@ -496,7 +496,7 @@ export default function BulkMessagesClient({
           header={
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-medium text-gray-900">Recipients</h3>
+                <h3 className="text-lg font-medium text-text">Recipients</h3>
                 <Badge variant="info" size="sm">
                   {loading ? '...' : `${recipients.length} of ${recipientTotal}`}
                 </Badge>
@@ -542,14 +542,14 @@ export default function BulkMessagesClient({
         <Card
           header={
             <div className="flex items-center gap-2">
-              <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-500" />
-              <h3 className="text-lg font-medium text-gray-900">Compose Message</h3>
+              <ChatBubbleLeftRightIcon className="h-5 w-5 text-text-muted" />
+              <h3 className="text-lg font-medium text-text">Compose Message</h3>
             </div>
           }
         >
           {/* Personalisation variables */}
           <div className="mb-3">
-            <span className="text-sm text-gray-500 mr-2">Insert variable:</span>
+            <span className="text-sm text-text-muted mr-2">Insert variable:</span>
             <div className="inline-flex gap-2 flex-wrap">
               <Button
                 variant="secondary"
@@ -581,7 +581,7 @@ export default function BulkMessagesClient({
           />
 
           {/* Character / segment counter */}
-          <div className="mt-2 flex items-center justify-between text-sm text-gray-500">
+          <div className="mt-2 flex items-center justify-between text-sm text-text-muted">
             <div className="flex items-center gap-3">
               <span>
                 {smsInfo.chars} characters
@@ -599,17 +599,17 @@ export default function BulkMessagesClient({
 
           {/* Preview */}
           {trimmedMessage && previewRecipient && (
-            <div className="mt-4 rounded-md bg-gray-50 p-3 border border-gray-200">
-              <p className="text-xs font-medium text-gray-500 mb-1">
+            <div className="mt-4 rounded-md bg-surface-2 p-3 border border-border">
+              <p className="text-xs font-medium text-text-muted mb-1">
                 Preview (for {previewRecipient.first_name} {previewRecipient.last_name}):
               </p>
-              <p className="text-sm text-gray-800 whitespace-pre-wrap">{previewMessage}</p>
+              <p className="text-sm text-text whitespace-pre-wrap">{previewMessage}</p>
             </div>
           )}
 
           {/* Send controls */}
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-text-muted">
               {selectedKeys.size > 0
                 ? `${selectedKeys.size} recipient${selectedKeys.size !== 1 ? 's' : ''} selected`
                 : 'Select recipients above to send'}
@@ -641,7 +641,7 @@ export default function BulkMessagesClient({
             <strong>{selectedKeys.size}</strong> recipient
             {selectedKeys.size !== 1 ? 's' : ''}?
             {quietHoursEval.inQuietHours && (
-              <span className="block mt-2 text-yellow-600">
+              <span className="block mt-2 text-warning">
                 Note: Messages will be queued until quiet hours end.
               </span>
             )}

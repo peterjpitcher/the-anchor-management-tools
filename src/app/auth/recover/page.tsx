@@ -1,7 +1,7 @@
 export default function RecoverPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
-      <div className="bg-white/10 border border-white/10 rounded-xl p-10 max-w-md text-center text-white shadow-xl backdrop-blur">
+      <div className="bg-surface/10 border border-white/10 rounded-xl p-10 max-w-md text-center text-white shadow-lg backdrop-blur">
         <h1 className="text-2xl font-semibold">Check your inbox</h1>
         <p className="mt-3 text-sm text-white/80">
           We&apos;ve sent a secure link to your email. Open it in the same browser you&apos;d like to use,

@@ -91,7 +91,7 @@ export default function AddEmployeeAttachmentForm({
       <input type="hidden" name="employee_id" value={employeeId} />
 
       <div>
-        <label htmlFor="attachment_file" className="block text-sm font-medium leading-6 text-gray-900">
+        <label htmlFor="attachment_file" className="block text-sm font-medium leading-6 text-text">
           File
         </label>
         <div className="mt-2">
@@ -102,7 +102,7 @@ export default function AddEmployeeAttachmentForm({
             ref={fileInputRef}
             accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.doc,.docx,.txt"
             required
-            className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-soft file:text-primary hover:file:bg-primary-soft/80 disabled:cursor-not-allowed"
+            className="block w-full text-sm text-text border border-border-strong rounded-lg cursor-pointer bg-surface-2 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-soft file:text-primary hover:file:bg-primary-soft/80 disabled:cursor-not-allowed"
             disabled={!hasCategories || isUploading}
             onChange={(event) => {
               const file = event.target.files?.[0]
@@ -129,22 +129,22 @@ export default function AddEmployeeAttachmentForm({
             }}
           />
         </div>
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-text-muted">
           Accepted: PDF, Word, JPG, PNG, TIFF, TXT (max 10&nbsp;MB).
         </p>
         {state?.errors?.attachment_file && (
-          <p className="mt-1 text-sm text-red-600">{state.errors.attachment_file}</p>
+          <p className="mt-1 text-sm text-danger">{state.errors.attachment_file}</p>
         )}
       </div>
 
       <div>
-        <label htmlFor="category_id" className="block text-sm font-medium leading-6 text-gray-900">
+        <label htmlFor="category_id" className="block text-sm font-medium leading-6 text-text">
           Category
         </label>
         <select
           id="category_id"
           name="category_id"
-          className="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-primary sm:text-sm sm:leading-6"
+          className="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-10 text-text ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-primary sm:text-sm sm:leading-6"
           defaultValue={hasCategories ? '' : 'no-category'}
           required
           disabled={!hasCategories}
@@ -163,11 +163,11 @@ export default function AddEmployeeAttachmentForm({
             </option>
           ))}
         </select>
-        {state?.errors?.category_id && <p className="mt-1 text-sm text-red-600">{state.errors.category_id}</p>}
+        {state?.errors?.category_id && <p className="mt-1 text-sm text-danger">{state.errors.category_id}</p>}
       </div>
 
       <div>
-        <label htmlFor="description" className="block text-sm font-medium leading-6 text-gray-900">
+        <label htmlFor="description" className="block text-sm font-medium leading-6 text-text">
           Description (Optional)
         </label>
         <div className="mt-2">
@@ -175,18 +175,18 @@ export default function AddEmployeeAttachmentForm({
             id="description"
             name="description"
             rows={2}
-            className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6"
+            className="block w-full rounded-md border-0 py-1.5 text-text shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-text-subtle focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6"
             defaultValue=""
           />
         </div>
-        {state?.errors?.description && <p className="mt-1 text-sm text-red-600">{state.errors.description}</p>}
+        {state?.errors?.description && <p className="mt-1 text-sm text-danger">{state.errors.description}</p>}
       </div>
 
       {state?.type === 'error' && state.errors?.general && (
-        <p className="mt-1 text-sm text-red-600">{state.errors.general}</p>
+        <p className="mt-1 text-sm text-danger">{state.errors.general}</p>
       )}
       {state?.type === 'error' && state.message && !state.errors && (
-        <p className="mt-1 text-sm text-red-600">{state.message}</p>
+        <p className="mt-1 text-sm text-danger">{state.message}</p>
       )}
 
       <div className="flex justify-end">
@@ -194,7 +194,7 @@ export default function AddEmployeeAttachmentForm({
       </div>
 
       {!hasCategories && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-text-muted">
           Create at least one attachment category in Settings before uploading documents.
         </p>
       )}

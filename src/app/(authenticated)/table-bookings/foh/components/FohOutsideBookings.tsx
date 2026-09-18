@@ -20,8 +20,8 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
 
   const panelSurfaceClass = isManagerKioskStyle
-    ? 'rounded-xl border border-green-200 bg-white shadow-sm'
-    : 'rounded-lg border border-gray-200 bg-white'
+    ? 'rounded-xl border border-green-200 bg-surface shadow-sm'
+    : 'rounded-lg border border-border bg-surface'
   const cardWrapperClass = cn(panelSurfaceClass, isManagerKioskStyle ? 'p-2' : 'p-4')
 
   // Order comes from the schedule route, which sorts on an epoch key (start_datetime is
@@ -31,15 +31,15 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
   return (
     <div className={cn(cardWrapperClass, 'relative')}>
       <div className={cn('flex items-center justify-between', isManagerKioskStyle ? 'mb-2' : 'mb-3')}>
-        <h3 className="text-sm font-semibold text-gray-900">Outside bookings</h3>
-        <p className={cn('text-gray-500', isManagerKioskStyle ? 'text-[10px]' : 'text-xs')}>
+        <h3 className="text-sm font-semibold text-text">Outside bookings</h3>
+        <p className={cn('text-text-muted', isManagerKioskStyle ? 'text-2xs' : 'text-xs')}>
           No physical table
         </p>
       </div>
 
       {bookings.length === 0 ? (
         loading ? null : (
-          <p className={cn('text-gray-500', isManagerKioskStyle ? 'text-[11px]' : 'text-sm')}>
+          <p className={cn('text-text-muted', isManagerKioskStyle ? 'text-meta' : 'text-sm')}>
             No outside bookings for this service.
           </p>
         )
@@ -55,24 +55,24 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
                 type="button"
                 onClick={() => onBookingClick(booking)}
                 className={cn(
-                  'flex w-full flex-col gap-1 rounded-lg border border-gray-200 bg-white text-left transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sidebar/40',
+                  'flex w-full flex-col gap-1 rounded-lg border border-border bg-surface text-left transition hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40',
                   isManagerKioskStyle ? 'p-2' : 'p-3'
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className={cn('min-w-0 truncate font-semibold text-gray-900', isManagerKioskStyle ? 'text-[13px]' : 'text-sm')}>
+                  <p className={cn('min-w-0 truncate font-semibold text-text', isManagerKioskStyle ? 'text-ui' : 'text-sm')}>
                     {booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
                   </p>
                   <span
                     className={cn(
-                      'shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium',
+                      'shrink-0 rounded-md border px-2 py-0.5 text-meta font-medium',
                       getTableBookingStatusBadgeClasses(visualState)
                     )}
                   >
                     {visualLabel}
                   </span>
                 </div>
-                <p className={cn('text-gray-600', isManagerKioskStyle ? 'text-[11px]' : 'text-xs')}>
+                <p className={cn('text-text-muted', isManagerKioskStyle ? 'text-meta' : 'text-xs')}>
                   {formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)}
                   {' · '}
                   {booking.party_size || 1}p
@@ -89,8 +89,8 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
       )}
 
       {loading && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-white/70">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-sidebar" />
+        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-surface/70">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-sidebar" />
         </div>
       )}
     </div>

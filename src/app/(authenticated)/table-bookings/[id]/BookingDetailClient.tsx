@@ -223,11 +223,11 @@ function SectionCard({
   className?: string
 }) {
   return (
-    <section className={`rounded-lg border border-gray-200 bg-white ${className}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 px-4 py-3">
+    <section className={`rounded-lg border border-border bg-surface ${className}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-          {description && <p className="mt-0.5 text-xs text-gray-500">{description}</p>}
+          <h2 className="text-sm font-semibold text-text">{title}</h2>
+          {description && <p className="mt-0.5 text-xs text-text-muted">{description}</p>}
         </div>
         {action}
       </div>
@@ -239,8 +239,8 @@ function SectionCard({
 function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</dt>
-      <dd className="mt-1 text-sm text-gray-900">{value || '-'}</dd>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-text-muted">{label}</dt>
+      <dd className="mt-1 text-sm text-text">{value || '-'}</dd>
     </div>
   )
 }
@@ -249,7 +249,7 @@ function StatusBadge({ booking }: { booking: Booking }) {
   const visualState = getTableBookingVisualState(booking)
   return (
     <span
-      className={`text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded border ${getTableBookingStatusBadgeClasses(visualState)}`}
+      className={`text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded-sm border ${getTableBookingStatusBadgeClasses(visualState)}`}
     >
       {getTableBookingStatusLabel(visualState)}
     </span>
@@ -917,13 +917,13 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     // data-touch-targets: reached from BOH on a tablet, and its Danger Zone buttons are the
     // smallest destructive controls in the section. See the note in FohScheduleClient.
     <div className="space-y-6" data-touch-targets>
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
+      <section className="rounded-lg border border-border bg-surface p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge booking={booking} />
               {depositState.kind !== 'none' && (
-                <span className={`text-xs font-medium px-2 py-0.5 rounded border ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-sm border ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
                   {depositState.label}
                   {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
                 </span>
@@ -939,8 +939,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               )}
             </div>
             <div>
-              <p className="text-xl font-semibold text-gray-900">{guestName}</p>
-              <p className="text-sm text-gray-500">
+              <p className="text-xl font-semibold text-text">{guestName}</p>
+              <p className="text-sm text-text-muted">
                 {formatBookingDate(booking.booking_date)}
                 {booking.booking_time ? ` at ${booking.booking_time.slice(0, 5)}` : ''}
                 {booking.party_size != null ? ` · ${booking.party_size} covers` : ''}
@@ -949,21 +949,21 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[520px]">
-            <div className="rounded-md bg-gray-50 px-3 py-2">
-              <p className="text-xs text-gray-500">Covers</p>
-              <p className="text-lg font-semibold text-gray-900">{booking.party_size ?? '-'}</p>
+            <div className="rounded-md bg-surface-2 px-3 py-2">
+              <p className="text-xs text-text-muted">Covers</p>
+              <p className="text-lg font-semibold text-text">{booking.party_size ?? '-'}</p>
             </div>
-            <div className="rounded-md bg-gray-50 px-3 py-2">
-              <p className="text-xs text-gray-500">Tables</p>
-              <p className="text-lg font-semibold text-gray-900">{booking.is_outside_seating ? 'Outside' : assignedTables.length || '-'}</p>
+            <div className="rounded-md bg-surface-2 px-3 py-2">
+              <p className="text-xs text-text-muted">Tables</p>
+              <p className="text-lg font-semibold text-text">{booking.is_outside_seating ? 'Outside' : assignedTables.length || '-'}</p>
             </div>
-            <div className="rounded-md bg-gray-50 px-3 py-2">
-              <p className="text-xs text-gray-500">Capacity</p>
-              <p className="text-lg font-semibold text-gray-900">{booking.is_outside_seating ? 'Outside' : assignedCapacity || '-'}</p>
+            <div className="rounded-md bg-surface-2 px-3 py-2">
+              <p className="text-xs text-text-muted">Capacity</p>
+              <p className="text-lg font-semibold text-text">{booking.is_outside_seating ? 'Outside' : assignedCapacity || '-'}</p>
             </div>
-            <div className="rounded-md bg-gray-50 px-3 py-2">
-              <p className="text-xs text-gray-500">Audit</p>
-              <p className="text-lg font-semibold text-gray-900">{auditTrail.length}</p>
+            <div className="rounded-md bg-surface-2 px-3 py-2">
+              <p className="text-xs text-text-muted">Audit</p>
+              <p className="text-lg font-semibold text-text">{auditTrail.length}</p>
             </div>
           </div>
         </div>
@@ -1005,13 +1005,13 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               <dl className="space-y-4">
                 {notes.map((note) => (
                   <div key={note.label}>
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{note.label}</dt>
-                    <dd className="mt-1 whitespace-pre-wrap text-sm text-gray-900">{note.value}</dd>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-text-muted">{note.label}</dt>
+                    <dd className="mt-1 whitespace-pre-wrap text-sm text-text">{note.value}</dd>
                   </div>
                 ))}
               </dl>
             ) : (
-              <p className="text-sm text-gray-500">No notes, dietary requirements, allergies, or internal notes recorded.</p>
+              <p className="text-sm text-text-muted">No notes, dietary requirements, allergies, or internal notes recorded.</p>
             )}
           </SectionCard>
 
@@ -1030,37 +1030,37 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           >
             {preorderItems.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <table className="min-w-full divide-y divide-border text-sm">
                   <thead>
                     <tr>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
                         Item
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
                         Qty
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
                         Guest
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
                         Requests
                       </th>
-                      <th scope="col" className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <th scope="col" className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-text-muted">
                         Price
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-border">
                     {preorderItems.map((item) => (
                       <tr key={item.id}>
-                        <td className="px-3 py-2 font-medium text-gray-900">
+                        <td className="px-3 py-2 font-medium text-text">
                           {item.menu_dish?.name || item.custom_item_name || 'Unnamed item'}
-                          {item.item_type ? <span className="ml-2 text-xs text-gray-500">{formatLabel(item.item_type)}</span> : null}
+                          {item.item_type ? <span className="ml-2 text-xs text-text-muted">{formatLabel(item.item_type)}</span> : null}
                         </td>
-                        <td className="px-3 py-2 text-gray-700">{item.quantity}</td>
-                        <td className="px-3 py-2 text-gray-700">{item.guest_name || '-'}</td>
-                        <td className="px-3 py-2 text-gray-700">{item.special_requests || '-'}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">
+                        <td className="px-3 py-2 text-text">{item.quantity}</td>
+                        <td className="px-3 py-2 text-text">{item.guest_name || '-'}</td>
+                        <td className="px-3 py-2 text-text">{item.special_requests || '-'}</td>
+                        <td className="px-3 py-2 text-right text-text">
                           {item.price_at_booking != null ? formatGbp(Number(item.price_at_booking) * Number(item.quantity || 1)) : '-'}
                         </td>
                       </tr>
@@ -1069,7 +1069,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-gray-500">No saved pre-order items.</p>
+              <p className="text-sm text-text-muted">No saved pre-order items.</p>
             )}
           </SectionCard>
 
@@ -1077,14 +1077,14 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             {lifecycleEvents.length > 0 ? (
               <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {lifecycleEvents.map((event) => (
-                  <li key={`${event.label}-${event.at}`} className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{event.label}</p>
-                    <p className="mt-1 text-sm text-gray-900">{formatLondonDateTime(event.at)}</p>
+                  <li key={`${event.label}-${event.at}`} className="rounded-md border border-border bg-surface-2 px-3 py-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{event.label}</p>
+                    <p className="mt-1 text-sm text-text">{formatLondonDateTime(event.at)}</p>
                   </li>
                 ))}
               </ol>
             ) : (
-              <p className="text-sm text-gray-500">No lifecycle timestamps recorded yet.</p>
+              <p className="text-sm text-text-muted">No lifecycle timestamps recorded yet.</p>
             )}
           </SectionCard>
         </div>
@@ -1161,12 +1161,12 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 {/* Pin. Shown next to Move table because the two are the same decision from
                     opposite ends: move it deliberately, then stop anything else moving it. */}
                 {!booking.is_outside_seating && (
-                  <div className="space-y-2 border-t border-gray-100 pt-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <div className="space-y-2 border-t border-border pt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                       Pin to this table
                     </p>
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-text-muted">
                         {booking.table_pinned
                           ? 'Pinned. Nothing automatic will move this booking.'
                           : 'Not pinned. This booking may be moved to make room for another.'}
@@ -1183,8 +1183,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   </div>
                 )}
 
-                <div className="space-y-2 border-t border-gray-100 pt-4">
-                  <label htmlFor="move-table-select" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <div className="space-y-2 border-t border-border pt-4">
+                  <label htmlFor="move-table-select" className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                     Move table
                   </label>
                   <div className="flex flex-col gap-2 sm:flex-row xl:flex-col 2xl:flex-row">
@@ -1193,7 +1193,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                       value={moveTableId}
                       onChange={(e) => setMoveTableId(e.target.value)}
                       disabled={loadingMoveTables || availableMoveTables.length === 0}
-                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                      className="w-full rounded-md border border-border-strong px-3 py-2 text-sm text-text focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
                     >
                       <option value="">
                         {loadingMoveTables
@@ -1229,7 +1229,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
                 {depositState.kind !== 'none' ? (
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded border ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-sm border ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
                     {depositState.label}
                     {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
                   </span>
@@ -1247,7 +1247,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               </dl>
 
               {booking.paypal_deposit_capture_id && (
-                <p className="break-all text-xs text-gray-500">Capture ID: {booking.paypal_deposit_capture_id}</p>
+                <p className="break-all text-xs text-text-muted">Capture ID: {booking.paypal_deposit_capture_id}</p>
               )}
 
               {refundTotals.totalRefunded > 0 && (
@@ -1270,7 +1270,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               )}
 
               {booking.payment_status === 'completed' && (
-                <div className="border-t border-gray-100 pt-3">
+                <div className="border-t border-border pt-3">
                   <RefundHistoryTable sourceType="table_booking" sourceId={booking.id} />
                 </div>
               )}
@@ -1315,11 +1315,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   onChange={(e) => setSmsBody(e.target.value)}
                   rows={5}
                   maxLength={emailChosen ? 2000 : 640}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                  className="w-full rounded-md border border-border-strong px-3 py-2 text-sm text-text placeholder:text-text-subtle focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
                   placeholder="Type message..."
                 />
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">{smsBody.length}/{emailChosen ? 2000 : 640}</p>
+                  <p className="text-xs text-text-muted">{smsBody.length}/{emailChosen ? 2000 : 640}</p>
                   <Button
                     size="sm"
                     variant="secondary"
@@ -1332,7 +1332,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-gray-500">You do not have permission to send SMS messages.</p>
+              <p className="text-sm text-text-muted">You do not have permission to send SMS messages.</p>
             )}
           </SectionCard>
 
@@ -1340,13 +1340,13 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             {operationalFlags.length > 0 ? (
               <ul className="space-y-2">
                 {operationalFlags.map((flag) => (
-                  <li key={flag} className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <li key={flag} className="rounded-md bg-warning-soft px-3 py-2 text-sm text-warning-fg">
                     {flag}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-gray-500">No operational flags for this booking.</p>
+              <p className="text-sm text-text-muted">No operational flags for this booking.</p>
             )}
           </SectionCard>
 
@@ -1385,23 +1385,23 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
 
       <SectionCard title="Audit Trail" description="Every recorded booking audit event, newest first.">
         {auditTrail.length === 0 ? (
-          <p className="text-sm text-gray-500">No audit events have been recorded for this booking yet.</p>
+          <p className="text-sm text-text-muted">No audit events have been recorded for this booking yet.</p>
         ) : (
-          <ol className="divide-y divide-gray-100">
+          <ol className="divide-y divide-border">
             {auditTrail.map((entry) => {
               const details = getAuditDetails(entry)
               return (
                 <li key={entry.id} className="grid grid-cols-1 gap-3 py-4 lg:grid-cols-[220px_minmax(0,1fr)_180px]">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{formatLondonDateTime(entry.created_at)}</p>
-                    <p className="mt-0.5 text-xs text-gray-500">{getAuditActor(entry)}</p>
+                    <p className="text-sm font-medium text-text">{formatLondonDateTime(entry.created_at)}</p>
+                    <p className="mt-0.5 text-xs text-text-muted">{getAuditActor(entry)}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-900">{formatAuditEvent(entry.event)}</p>
+                    <p className="text-sm font-semibold text-text">{formatAuditEvent(entry.event)}</p>
                     {details.length > 0 && (
                       <ul className="mt-2 space-y-1">
                         {details.map((detail) => (
-                          <li key={detail} className="whitespace-pre-wrap text-sm text-gray-600">
+                          <li key={detail} className="whitespace-pre-wrap text-sm text-text-muted">
                             {detail}
                           </li>
                         ))}
@@ -1510,7 +1510,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             </div>
 
             <div>
-              <p className="mb-1 text-[13px] font-medium text-text">Customer</p>
+              <p className="mb-1 text-ui font-medium text-text">Customer</p>
               <CustomerSearchInput
                 selectedCustomerId={bookingEdit.customer_id}
                 placeholder="Search customers..."
@@ -1579,8 +1579,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       >
         <div className="space-y-4">
           {preorderItems.map((item) => (
-            <div key={item.id} className="rounded-md border border-gray-200 p-3">
-              <p className="text-sm font-medium text-gray-900">
+            <div key={item.id} className="rounded-md border border-border p-3">
+              <p className="text-sm font-medium text-text">
                 {item.menu_dish?.name || item.custom_item_name || 'Unnamed item'}
               </p>
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[120px_minmax(0,1fr)]">
@@ -1627,7 +1627,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       >
         <div className="space-y-4">
           <div>
-            <label htmlFor="party-size-input" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="party-size-input" className="block text-sm font-medium text-text">
               New party size
             </label>
             <input
@@ -1637,17 +1637,17 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               max={20}
               value={partySizeEditValue}
               onChange={(e) => setPartySizeEditValue(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
+              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm text-text focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
             />
           </div>
           <ChristmasCourseFields bookingId={booking.id} partySize={Number(partySizeEditValue)} onChange={setChristmasCourseCounts} />
           {partySizeNeedsLargerTable && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-              <p className="text-sm text-amber-900">
+            <div className="rounded-md border border-amber-200 bg-warning-soft p-3">
+              <p className="text-sm text-warning-fg">
                 This party is larger than the current {assignedCapacity} seats. Saving will move it
                 to a larger table setup automatically — pick specific tables below if you&rsquo;d prefer.
               </p>
-              <label htmlFor="party-size-move-table" className="mt-3 block text-sm font-medium text-amber-950">
+              <label htmlFor="party-size-move-table" className="mt-3 block text-sm font-medium text-warning-fg">
                 Larger table
               </label>
               <select
@@ -1655,7 +1655,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 value={partySizeMoveTableId}
                 onChange={(event) => setPartySizeMoveTableId(event.target.value)}
                 disabled={loadingMoveTables || partySizeMoveTableOptions.length === 0}
-                className="mt-1 w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                className="mt-1 w-full rounded-md border border-amber-300 bg-surface px-3 py-2 text-sm text-text focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
               >
                 <option value="">
                   {loadingMoveTables
@@ -1674,12 +1674,12 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               </select>
             </div>
           )}
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-text">
             <input
               type="checkbox"
               checked={partySizeEditSendSms}
               onChange={(event) => setPartySizeEditSendSms(event.target.checked)}
-              className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+              className="rounded-sm border-border-strong text-green-600 focus:ring-green-500"
             />
             {/* The request goes by text, or by email first when table_party_size_deposit_email_first is on. */}
             Notify guest

@@ -306,7 +306,7 @@ export default function NewQuotePage() {
               {catalogItems.length > 0 && (
                 <Dropdown
                   trigger={
-                    <span className="inline-flex items-center min-h-[44px] text-sm font-medium md:min-h-0">
+                    <span className="inline-flex items-center min-h-touch text-sm font-medium md:min-h-0">
                       Add from Catalog
                     </span>
                   }
@@ -315,7 +315,7 @@ export default function NewQuotePage() {
                     label: (
                       <div>
                         <div className="font-medium">{item.name}</div>
-                        <div className="text-sm text-gray-600">{item.description}</div>
+                        <div className="text-sm text-text-muted">{item.description}</div>
                         <div className="text-sm mt-1">
                           £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%
                         </div>
@@ -424,7 +424,7 @@ export default function NewQuotePage() {
                       </div>
                     </div>
 
-                    <div className="mt-2 text-right text-sm text-gray-600">
+                    <div className="mt-2 text-right text-sm text-text-muted">
                       Line Total: £{calculateLineTotal(item).toFixed(2)}
                     </div>
                   </div>
@@ -468,7 +468,7 @@ export default function NewQuotePage() {
                 </FormGroup>
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+              <div className="bg-surface-2 rounded-lg p-3 sm:p-4">
                 <h3 className="font-semibold text-sm sm:text-base mb-2 sm:mb-3">Summary</h3>
                 <div className="space-y-1.5 sm:space-y-2">
                   <div className="flex justify-between text-sm sm:text-base">

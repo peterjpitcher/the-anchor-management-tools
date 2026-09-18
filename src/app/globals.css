@@ -198,6 +198,10 @@
   --shadow-default: 0 2px 4px -1px rgba(15, 23, 42, 0.06), 0 4px 10px -4px rgba(15, 23, 42, 0.08);
   --shadow-lg: 0 12px 28px -8px rgba(15, 23, 42, 0.18);
   --shadow-ring: 0 0 0 3px color-mix(in oklch, var(--color-primary) 30%, transparent);
+  /* The same focus ring drawn inside the element, for controls that sit in an
+     overflow-hidden or scrolling container (accordion items, tab strips, table
+     headers), where the outer ring would be clipped away. */
+  --shadow-ring-inset: inset 0 0 0 2px var(--color-border-focus);
 
   /* Easing */
   --ease-default: cubic-bezier(0.2, 0.7, 0.1, 1);

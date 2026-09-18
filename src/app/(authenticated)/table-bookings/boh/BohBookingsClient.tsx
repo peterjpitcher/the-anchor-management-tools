@@ -382,7 +382,7 @@ function getDeltaDisplay(
   if (Math.abs(delta) <= epsilon) {
     return {
       label: `${deltaText} (${percentText})`,
-      toneClass: 'text-gray-600'
+      toneClass: 'text-text-muted'
     }
   }
 
@@ -799,12 +799,12 @@ export function BohBookingsClient({
     // data-touch-targets: BOH is also used on a tablet, and the 44px floor in globals.css
     // only applies below 821px. See the note in FohScheduleClient.
     <div className="space-y-4" data-touch-targets>
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="rounded-lg border border-border bg-surface p-4">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Booking window</p>
-            <h2 className="text-lg font-semibold text-gray-900">{formatRangeLabel(rangeStartDate, rangeEndDate)}</h2>
-            <p className="text-sm text-gray-500">
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Booking window</p>
+            <h2 className="text-lg font-semibold text-text">{formatRangeLabel(rangeStartDate, rangeEndDate)}</h2>
+            <p className="text-sm text-text-muted">
               {filteredBookings.length} booking{filteredBookings.length === 1 ? '' : 's'} in view
               {lastLoadedAt ? ` · updated ${lastLoadedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}
             </p>
@@ -873,16 +873,16 @@ export function BohBookingsClient({
             >
               Download PDF
             </Button>
-            <div className="ml-2 flex rounded-md border border-gray-300 bg-gray-50 p-1">
+            <div className="ml-2 flex rounded-md border border-border-strong bg-surface-2 p-1">
               {(['day', 'week', 'month'] as BohViewMode[]).map((candidate) => (
                 <button
                   key={candidate}
                   type="button"
                   onClick={() => setView(candidate)}
-                  className={`rounded px-3 py-1 text-xs font-medium ${
+                  className={`rounded-sm px-3 py-1 text-xs font-medium ${
                     view === candidate
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
+                      ? 'bg-surface text-text shadow-sm'
+                      : 'text-text-muted hover:text-text'
                   }`}
                 >
                   {candidate.charAt(0).toUpperCase() + candidate.slice(1)}
@@ -901,7 +901,7 @@ export function BohBookingsClient({
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="Search by guest, ref, table, phone, notes"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
+              className="w-full rounded-md border border-border-strong px-3 py-2 text-sm text-text placeholder:text-text-subtle focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
             />
           </div>
           <div>
@@ -910,7 +910,7 @@ export function BohBookingsClient({
               id="boh-status-filter"
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
+              className="w-full rounded-md border border-border-strong px-3 py-2 text-sm text-text focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
             >
             {STATUS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -935,7 +935,7 @@ export function BohBookingsClient({
         )}
 
         {createStatusMessage && (
-          <div role="status" className="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          <div role="status" className="mt-3 rounded-md border border-green-200 bg-success-soft px-3 py-2 text-sm text-green-800">
             {createStatusMessage}
           </div>
         )}
@@ -948,14 +948,14 @@ export function BohBookingsClient({
       {error ? (
         <div
           role="alert"
-          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          className="rounded-lg border border-amber-300 bg-warning-soft px-4 py-3 text-sm text-warning-fg"
         >
           <p className="font-semibold">These figures could not be loaded</p>
           <p className="mt-0.5">{error}</p>
           <button
             type="button"
             onClick={() => void loadBookings()}
-            className="mt-2 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+            className="mt-2 rounded-md border border-amber-400 bg-surface px-3 py-1.5 text-sm font-medium text-warning-fg hover:bg-amber-100"
           >
             Try again
           </button>
@@ -969,15 +969,15 @@ export function BohBookingsClient({
           })
 
           return (
-            <div key={card.key} className="rounded-lg border border-gray-200 bg-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{card.title}</p>
-              <p className="mt-2 text-2xl font-semibold text-gray-900">
+            <div key={card.key} className="rounded-lg border border-border bg-surface p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{card.title}</p>
+              <p className="mt-2 text-2xl font-semibold text-text">
                 {formatMetricValue(card.value, card.decimals)}
               </p>
               <p className={`mt-2 text-xs font-medium ${delta.toneClass}`}>
                 {delta.label}
               </p>
-              <p className="mt-1 text-[11px] text-gray-500">Compared with {previousPeriodLabel}</p>
+              <p className="mt-1 text-meta text-text-muted">Compared with {previousPeriodLabel}</p>
             </div>
           )
         })}
@@ -985,10 +985,10 @@ export function BohBookingsClient({
       )}
 
       {isDayView && dishTotals && dishTotals.coverCount > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white">
-          <div className="border-b border-gray-200 px-4 py-3">
-            <h3 className="text-sm font-semibold text-gray-900">Kitchen pre-orders</h3>
-            <p className="text-xs text-gray-500">
+        <div className="rounded-lg border border-border bg-surface">
+          <div className="border-b border-border px-4 py-3">
+            <h3 className="text-sm font-semibold text-text">Kitchen pre-orders</h3>
+            <p className="text-xs text-text-muted">
               {dishTotals.coverCount} cover{dishTotals.coverCount === 1 ? '' : 's'} across{' '}
               {dishTotals.bookingCount} booking{dishTotals.bookingCount === 1 ? '' : 's'}. Dietary
               notes and allergies are on the booking sheet.
@@ -999,17 +999,17 @@ export function BohBookingsClient({
               const dishes = dishTotals.byCourse[course] ?? []
               return (
                 <div key={course}>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                     {PREORDER_COURSE_LABELS[course]}
                   </p>
                   {dishes.length === 0 ? (
-                    <p className="mt-2 text-sm text-gray-500">None chosen</p>
+                    <p className="mt-2 text-sm text-text-muted">None chosen</p>
                   ) : (
                     <ul className="mt-2 space-y-1">
                       {dishes.map((dish) => (
                         <li
                           key={dish.menuItemId}
-                          className="flex items-baseline justify-between gap-3 text-sm text-gray-900"
+                          className="flex items-baseline justify-between gap-3 text-sm text-text"
                         >
                           <span className="min-w-0 break-words">{dish.itemName}</span>
                           <span className="shrink-0 font-semibold tabular-nums">{dish.count}</span>
@@ -1023,12 +1023,12 @@ export function BohBookingsClient({
           </div>
 
           {(dishTotals.addons ?? []).length > 0 && (
-            <div className="border-t border-gray-200 px-4 py-4">
+            <div className="border-t border-border px-4 py-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                   Add-ons, extra to the courses
                 </p>
-                <p className="text-sm font-semibold tabular-nums text-gray-900">
+                <p className="text-sm font-semibold tabular-nums text-text">
                   {formatAddonLineMoney(
                     dishTotals.addonTotalGbp ?? 0,
                     dishTotals.addonHasUnpricedSelection ?? false
@@ -1039,11 +1039,11 @@ export function BohBookingsClient({
                 {(dishTotals.addons ?? []).map((addon) => (
                   <li
                     key={addon.menuItemId}
-                    className="flex items-baseline justify-between gap-3 text-sm text-gray-900"
+                    className="flex items-baseline justify-between gap-3 text-sm text-text"
                   >
                     <span className="min-w-0 break-words">
                       {addon.itemName}
-                      <span className="ml-2 text-xs text-gray-500">
+                      <span className="ml-2 text-xs text-text-muted">
                         {addon.unitPriceGbp === null
                           ? formatPreorderAddonPrice(null)
                           : `${formatPreorderMoney(addon.unitPriceGbp)} each`}
@@ -1051,7 +1051,7 @@ export function BohBookingsClient({
                     </span>
                     <span className="shrink-0 tabular-nums">
                       <span className="font-semibold">{addon.count}</span>
-                      <span className="ml-3 text-gray-600">
+                      <span className="ml-3 text-text-muted">
                         {formatAddonLineMoney(addon.totalGbp, addon.hasUnpricedSelection)}
                       </span>
                     </span>
@@ -1060,28 +1060,28 @@ export function BohBookingsClient({
               </ul>
               {/* Verbatim from the shared constant: four surfaces wording this four ways is how one
                   of them ends up implying the guest has already paid. */}
-              <p className="mt-3 text-xs text-gray-500">{PREORDER_ADDON_STAFF_NOTE}</p>
+              <p className="mt-3 text-xs text-text-muted">{PREORDER_ADDON_STAFF_NOTE}</p>
             </div>
           )}
         </div>
       )}
 
-      <div className="rounded-lg border border-gray-200 bg-white">
-        <div className="border-b border-gray-200 px-4 py-3">
-          <h3 className="text-sm font-semibold text-gray-900">Bookings Table</h3>
-          <p className="text-xs text-gray-500">Click column headers to sort</p>
+      <div className="rounded-lg border border-border bg-surface">
+        <div className="border-b border-border px-4 py-3">
+          <h3 className="text-sm font-semibold text-text">Bookings Table</h3>
+          <p className="text-xs text-text-muted">Click column headers to sort</p>
         </div>
 
         <div className="max-h-[680px] overflow-auto overflow-x-auto">
           {loading && (
             <div className="flex items-center gap-2 px-4 py-3">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
-              <p className="text-sm text-gray-500">Loading bookings…</p>
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-border-strong border-t-gray-600" />
+              <p className="text-sm text-text-muted">Loading bookings…</p>
             </div>
           )}
           {!loading && error && (
             <div className="flex items-center justify-between px-4 py-3">
-              <p className="text-sm text-red-600">{error}</p>
+              <p className="text-sm text-danger">{error}</p>
               <Button variant="secondary" size="sm" onClick={() => void loadBookings()}>
                 Retry
               </Button>
@@ -1101,7 +1101,7 @@ export function BohBookingsClient({
             <>
             {/* Mobile card list — the 9-column table is unusable at phone width, so below md
                 each booking renders as a stacked card with the key fields as label/value pairs. */}
-            <ul className="divide-y divide-gray-100 md:hidden">
+            <ul className="divide-y divide-border md:hidden">
               {sortedBookings.map((booking) => {
                 const visualState = getTableBookingVisualState(booking)
                 const depositState = getTableBookingDepositState(booking)
@@ -1110,30 +1110,30 @@ export function BohBookingsClient({
                   <li key={booking.id} className="p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-900" title={booking.guest_name || ''}>
+                        <p className="truncate text-sm font-semibold text-text" title={booking.guest_name || ''}>
                           {booking.guest_name || 'Unknown guest'}
                         </p>
-                        <p className="mt-0.5 text-xs text-gray-500">{formatBookingDateTime(booking)}</p>
+                        <p className="mt-0.5 text-xs text-text-muted">{formatBookingDateTime(booking)}</p>
                       </div>
-                      <span className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${getStatusBadgeClasses(visualState)}`}>
+                      <span className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-meta font-medium ${getStatusBadgeClasses(visualState)}`}>
                         {getStatusLabel(visualState)}
                       </span>
                     </div>
 
                     {booking.event_name && (
-                      <p className="mt-1 truncate text-xs text-gray-500" title={booking.event_name}>
+                      <p className="mt-1 truncate text-xs text-text-muted" title={booking.event_name}>
                         {booking.event_name}
                       </p>
                     )}
 
                     <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
                       <div>
-                        <dt className="text-xs text-gray-500">Party</dt>
-                        <dd className="font-semibold text-gray-900">{booking.party_size || 0}</dd>
+                        <dt className="text-xs text-text-muted">Party</dt>
+                        <dd className="font-semibold text-text">{booking.party_size || 0}</dd>
                       </div>
                       <div>
-                        <dt className="text-xs text-gray-500">Tables</dt>
-                        <dd className="font-medium text-gray-900">
+                        <dt className="text-xs text-text-muted">Tables</dt>
+                        <dd className="font-medium text-text">
                           {booking.is_outside_seating
                             ? 'Outside'
                             : booking.table_names.length > 0
@@ -1143,14 +1143,14 @@ export function BohBookingsClient({
                       </div>
                       {booking.customer?.mobile_number && (
                         <div>
-                          <dt className="text-xs text-gray-500">Phone</dt>
-                          <dd className="font-medium text-gray-900">{booking.customer.mobile_number}</dd>
+                          <dt className="text-xs text-text-muted">Phone</dt>
+                          <dd className="font-medium text-text">{booking.customer.mobile_number}</dd>
                         </div>
                       )}
                       {booking.booking_reference && (
                         <div>
-                          <dt className="text-xs text-gray-500">Ref</dt>
-                          <dd className="font-medium text-gray-900">{booking.booking_reference}</dd>
+                          <dt className="text-xs text-text-muted">Ref</dt>
+                          <dd className="font-medium text-text">{booking.booking_reference}</dd>
                         </div>
                       )}
                     </dl>
@@ -1161,7 +1161,7 @@ export function BohBookingsClient({
                           <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
                         )}
                         {depositState.kind !== 'none' && (
-                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-meta font-medium ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
                             {depositState.label}
                             {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
                             {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}
@@ -1186,62 +1186,62 @@ export function BohBookingsClient({
               })}
             </ul>
 
-            <table className="hidden min-w-full divide-y divide-gray-200 text-sm md:table">
-              <thead className="sticky top-0 z-10 bg-gray-50">
+            <table className="hidden min-w-full divide-y divide-border text-sm md:table">
+              <thead className="sticky top-0 z-10 bg-surface-2">
                 <tr>
-                  <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">
-                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('datetime')}>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-text">
+                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('datetime')}>
                       Date/Time <span className="text-gray-400">{sortIndicator('datetime')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">
-                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('guest')}>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-text">
+                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('guest')}>
                       Guest <span className="text-gray-400">{sortIndicator('guest')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">
-                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('reference')}>
+                  <th scope="col" className="hidden px-3 py-2 text-left font-semibold text-text lg:table-cell">
+                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('reference')}>
                       Ref <span className="text-gray-400">{sortIndicator('reference')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="px-3 py-2 text-right font-semibold text-gray-700">
-                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('party_size')}>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-text">
+                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('party_size')}>
                       Party <span className="text-gray-400">{sortIndicator('party_size')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">
-                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('tables')}>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-text">
+                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('tables')}>
                       Tables <span className="text-gray-400">{sortIndicator('tables')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">
-                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('status')}>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-text">
+                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('status')}>
                       Status <span className="text-gray-400">{sortIndicator('status')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">
-                    <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('phone')}>
+                  <th scope="col" className="hidden px-3 py-2 text-left font-semibold text-text lg:table-cell">
+                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('phone')}>
                       Phone <span className="text-gray-400">{sortIndicator('phone')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">Deposit</th>
-                  <th scope="col" className="px-3 py-2 text-right font-semibold text-gray-700">Action</th>
+                  <th scope="col" className="hidden px-3 py-2 text-left font-semibold text-text lg:table-cell">Deposit</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-text">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 bg-white">
+              <tbody className="divide-y divide-border bg-surface">
                 {sortedBookings.map((booking) => {
                   const visualState = getTableBookingVisualState(booking)
                   const depositState = getTableBookingDepositState(booking)
 
                   return (
-                  <tr key={booking.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 font-medium text-gray-900 whitespace-nowrap">{formatBookingDateTime(booking)}</td>
-                    <td className="px-3 py-2 text-gray-900">
+                  <tr key={booking.id} className="hover:bg-surface-hover">
+                    <td className="px-3 py-2 font-medium text-text whitespace-nowrap">{formatBookingDateTime(booking)}</td>
+                    <td className="px-3 py-2 text-text">
                       <div className="max-w-[220px] truncate font-medium" title={booking.guest_name || ''}>
                         {booking.guest_name || 'Unknown guest'}
                       </div>
                       {booking.event_name && (
-                        <div className="max-w-[220px] truncate text-xs text-gray-500" title={booking.event_name}>
+                        <div className="max-w-[220px] truncate text-xs text-text-muted" title={booking.event_name}>
                           {booking.event_name}
                         </div>
                       )}
@@ -1251,11 +1251,11 @@ export function BohBookingsClient({
                         </div>
                       )}
                     </td>
-                    <td className="hidden px-3 py-2 text-gray-700 whitespace-nowrap lg:table-cell">{booking.booking_reference || '—'}</td>
+                    <td className="hidden px-3 py-2 text-text whitespace-nowrap lg:table-cell">{booking.booking_reference || '—'}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
-                      <span className="text-base font-bold text-gray-900">{booking.party_size || 0}</span>
+                      <span className="text-base font-bold text-text">{booking.party_size || 0}</span>
                     </td>
-                    <td className="px-3 py-2 text-gray-700">
+                    <td className="px-3 py-2 text-text">
                       {booking.is_outside_seating ? (
                         <Badge tone="info">Outside</Badge>
                       ) : (
@@ -1265,14 +1265,14 @@ export function BohBookingsClient({
                       )}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getStatusBadgeClasses(visualState)}`}>
+                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-meta font-medium ${getStatusBadgeClasses(visualState)}`}>
                         {getStatusLabel(visualState)}
                       </span>
                     </td>
-                    <td className="hidden px-3 py-2 text-gray-700 whitespace-nowrap lg:table-cell">{booking.customer?.mobile_number || '—'}</td>
+                    <td className="hidden px-3 py-2 text-text whitespace-nowrap lg:table-cell">{booking.customer?.mobile_number || '—'}</td>
                     <td className="hidden px-3 py-2 whitespace-nowrap lg:table-cell">
                       {depositState.kind !== 'none' ? (
-                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-meta font-medium ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
                           {depositState.label}
                           {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
                           {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}

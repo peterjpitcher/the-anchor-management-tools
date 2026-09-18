@@ -89,8 +89,8 @@ export function Pagination({
       text: 'text-sm',
     },
     lg: {
-      button: 'px-4 py-2.5 text-base min-h-[44px]',
-      iconButton: 'p-2.5 min-h-[44px] min-w-[44px]',
+      button: 'px-4 py-2.5 text-base min-h-touch',
+      iconButton: 'p-2.5 min-h-touch min-w-touch',
       icon: 'h-6 w-6',
       text: 'text-base',
     },
@@ -124,18 +124,18 @@ export function Pagination({
 
   const buttonClasses = cn(
     'inline-flex items-center justify-center font-medium rounded-md',
-    'border border-gray-300 bg-white text-gray-700',
-    'hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500',
-    'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white',
+    'border border-border-strong bg-surface text-text',
+    'hover:bg-surface-hover focus-visible:z-10 focus-visible:outline-hidden focus-visible:shadow-ring',
+    'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface',
     'transition-colors',
     sizeClasses[size].button,
   )
 
   const iconButtonClasses = cn(
     'inline-flex items-center justify-center rounded-md',
-    'border border-gray-300 bg-white text-gray-500',
-    'hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500',
-    'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white',
+    'border border-border-strong bg-surface text-text-muted',
+    'hover:bg-surface-hover focus-visible:z-10 focus-visible:outline-hidden focus-visible:shadow-ring',
+    'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface',
     'transition-colors',
     sizeClasses[size].iconButton,
   )
@@ -145,9 +145,9 @@ export function Pagination({
       'inline-flex items-center justify-center font-medium',
       'border transition-colors',
       isActive
-        ? 'bg-green-50 border-green-500 text-green-600 z-10'
-        : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50',
-      'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500',
+        ? 'bg-primary-soft border-primary text-primary z-10'
+        : 'bg-surface border-border-strong text-text-muted hover:bg-surface-hover',
+      'focus-visible:z-10 focus-visible:outline-hidden focus-visible:shadow-ring',
       sizeClasses[size].button,
       'min-w-[40px]',
     )
@@ -164,7 +164,7 @@ export function Pagination({
         <ChevronLeftIcon className={cn(sizeClasses[size].icon, 'mr-1')} />
         {previous}
       </button>
-      <span className={cn(sizeClasses[size].text, 'text-gray-700')}>
+      <span className={cn(sizeClasses[size].text, 'text-text')}>
         {page} {currentPage} {of} {totalPages}
       </span>
       <button
@@ -184,7 +184,7 @@ export function Pagination({
     <div className={cn('hidden sm:flex sm:flex-1 sm:items-center', positionClasses[position])}>
       <div className="flex items-center gap-4">
         {showItemCount && totalItems > 0 && (
-          <p className={cn(sizeClasses[size].text, 'text-gray-700')}>
+          <p className={cn(sizeClasses[size].text, 'text-text')}>
             {showing} <span className="font-medium">{startItem}</span> {to}{' '}
             <span className="font-medium">{endItem}</span> {of}{' '}
             <span className="font-medium">{totalItems}</span> {results}
@@ -193,14 +193,14 @@ export function Pagination({
 
         {showItemsPerPage && onItemsPerPageChange && (
           <div className="flex items-center gap-2">
-            <label htmlFor="items-per-page" className={cn(sizeClasses[size].text, 'text-gray-700')}>
+            <label htmlFor="items-per-page" className={cn(sizeClasses[size].text, 'text-text')}>
               {itemsPerPageLabel}:
             </label>
             <select
               id="items-per-page"
               value={itemsPerPage}
               onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
-              className="rounded-md border-gray-300 text-sm shadow-sm focus:border-green-500 focus:ring-green-500 w-20"
+              className="h-btn-h-sm w-20 rounded-sm border border-border-strong bg-surface px-2 text-ui text-text outline-hidden focus:border-border-focus focus:shadow-ring"
             >
               {itemsPerPageOptions.map((option) => (
                 <option key={option} value={option}>
@@ -215,7 +215,7 @@ export function Pagination({
       <div className="flex items-center gap-2">
         {showPageJumper && (
           <div className="flex items-center gap-2 mr-4">
-            <label htmlFor="page-jumper" className={cn(sizeClasses[size].text, 'text-gray-700')}>
+            <label htmlFor="page-jumper" className={cn(sizeClasses[size].text, 'text-text')}>
               {jumpToPage}:
             </label>
             <input
@@ -228,7 +228,7 @@ export function Pagination({
                 const p = Number(e.target.value)
                 if (p >= 1 && p <= totalPages) onPageChange(p)
               }}
-              className="rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-sm w-20"
+              className="h-btn-h-sm w-20 rounded-sm border border-border-strong bg-surface px-2 text-ui text-text outline-hidden focus:border-border-focus focus:shadow-ring"
             />
           </div>
         )}
@@ -265,7 +265,7 @@ export function Pagination({
                 <span
                   key={`ellipsis-${index}`}
                   className={cn(
-                    'inline-flex items-center border border-gray-300 bg-white',
+                    'inline-flex items-center border border-border-strong bg-surface',
                     sizeClasses[size].button,
                     'cursor-default',
                   )}
@@ -314,7 +314,7 @@ export function Pagination({
   )
 
   return (
-    <div className={cn('bg-white px-4 py-3 border-t border-gray-200 sm:px-6', className)}>
+    <div className={cn('bg-surface px-4 py-3 border-t border-border sm:px-6', className)}>
       {mobileView}
       {desktopView}
     </div>

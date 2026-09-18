@@ -441,13 +441,13 @@ export default function InvoicesClient({
                   {initialInvoices.map((inv) => (
                     <TableRow key={inv.id} onClick={() => router.push(`/invoices/${inv.id}`)} className="cursor-pointer">
                       <TableCell>
-                        <div className="font-medium text-[12px] font-mono">{inv.invoice_number}</div>
+                        <div className="font-medium text-xs font-mono">{inv.invoice_number}</div>
                         {inv.reference && <div className="text-xs text-text-muted">{inv.reference}</div>}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Avatar name={inv.vendor?.name || '?'} size="sm" />
-                          <span className="text-[13px]">{inv.vendor?.name || '-'}</span>
+                          <span className="text-ui">{inv.vendor?.name || '-'}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-text-muted">{new Date(inv.invoice_date).toLocaleDateString('en-GB')}</TableCell>

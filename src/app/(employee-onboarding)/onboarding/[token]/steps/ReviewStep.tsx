@@ -51,24 +51,24 @@ export default function ReviewStep({ token, savedSections }: ReviewStepProps) {
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-text-muted">
         Please review your completed sections below. Once you submit, your profile will be activated and your manager will be notified.
       </p>
 
       <div className="space-y-2">
         {sections.map((section) => (
-          <div key={section.key} className="flex items-center gap-3 rounded-md border border-gray-200 px-4 py-3">
+          <div key={section.key} className="flex items-center gap-3 rounded-md border border-border px-4 py-3">
             <span
               className={`flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold ${
                 savedSections[section.key]
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-yellow-100 text-yellow-700'
+                  ? 'bg-success-soft text-green-700'
+                  : 'bg-yellow-100 text-warning-fg'
               }`}
             >
               {savedSections[section.key] ? '✓' : '!'}
             </span>
-            <span className="text-sm text-gray-800">{section.label}</span>
-            <span className={`ml-auto text-xs font-medium ${savedSections[section.key] ? 'text-green-600' : 'text-yellow-600'}`}>
+            <span className="text-sm text-text">{section.label}</span>
+            <span className={`ml-auto text-xs font-medium ${savedSections[section.key] ? 'text-green-600' : 'text-warning'}`}>
               {savedSections[section.key] ? 'Complete' : 'Incomplete'}
             </span>
           </div>
@@ -76,12 +76,12 @@ export default function ReviewStep({ token, savedSections }: ReviewStepProps) {
       </div>
 
       {!allComplete && (
-        <p className="text-sm text-yellow-700 bg-yellow-50 rounded-md px-4 py-3">
+        <p className="text-sm text-warning-fg bg-warning-soft rounded-md px-4 py-3">
           Please complete all sections before submitting. Personal details (first and last name) must be completed before submitting.
         </p>
       )}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       <button type="button"
         onClick={handleSubmit}

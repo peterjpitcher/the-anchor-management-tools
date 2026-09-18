@@ -4,7 +4,7 @@ import React from 'react'
 import { cn } from '@/lib/utils'
 
 /* ------------------------------------------------------------------ */
-/*  Tabs — underline-style tabs with optional count pills             */
+/*  Tabs: underline-style tabs with optional count pills              */
 /* ------------------------------------------------------------------ */
 
 interface Tab {
@@ -102,7 +102,7 @@ export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange,
               aria-controls={`${tabsId}-panel-${tab.id}`}
               tabIndex={isActive ? 0 : -1}
               className={cn(
-                'px-4 py-2.5 text-[13px] font-medium whitespace-nowrap relative transition-colors',
+                'px-4 py-2.5 text-ui font-medium whitespace-nowrap relative transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset',
                 isActive ? 'text-primary' : 'text-text-muted hover:text-text',
               )}
               onClick={() => handleTabChange(tab.id)}
@@ -114,7 +114,7 @@ export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange,
               {tab.count !== undefined && (
                 <span
                   className={cn(
-                    'ml-2 text-xs rounded-[9999px] px-1.5 inline-flex items-center min-w-5 justify-center',
+                    'ml-2 text-xs rounded-pill px-1.5 inline-flex items-center min-w-5 justify-center',
                     isActive
                       ? 'bg-primary-soft text-primary-soft-fg'
                       : 'bg-surface-2 text-text-muted',
@@ -124,9 +124,9 @@ export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange,
                 </span>
               )}
 
-              {/* Active indicator — 2px bottom border */}
+              {/* Active indicator: 2px bottom border */}
               {isActive && (
-                <span className="absolute inset-x-0 bottom-0 h-0.5 bg-primary rounded-full" />
+                <span className="absolute inset-x-0 bottom-0 h-0.5 bg-primary rounded-pill" />
               )}
             </button>
           )

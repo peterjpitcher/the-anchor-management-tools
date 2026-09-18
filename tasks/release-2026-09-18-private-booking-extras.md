@@ -1,6 +1,6 @@
 # Production release packet: private booking extras
 
-Status: implemented and tested locally; migration not applied and application not deployed.
+Status: production migration applied and verified after explicit owner approval. Application release is being checked against the latest main branch before merge.
 
 ## Exact production target and SQL
 
@@ -142,3 +142,13 @@ The public website, supplier receipt processing, historical Stripe paths, other 
 - `tests/lib/privateBookingAggregateDashboard.test.ts`
 - `tests/services/privateBookingsFinancial.test.ts`
 - `tests/services/privateBookingsScheduledSms.test.ts`
+
+## Production database verification, 18 September 2026
+
+Owner approved the exact SQL and rollback packet in this task. Supabase MCP applied the migration as `20260918160300_private_booking_supplementary_invoices` on `tfcasgxopxegwrabvwat`. The stored SQL SHA-256 is exactly `f71bf783b9158ca9249737ff596fa483ae758339f6dd281c8b07ca246de95077`.
+
+All 27 created/replaced function bodies, execution grants and fixed search paths match. Verified the three tables, seven policies, three triggers, seven indexes, two added columns and two invoker views. The three original invoice associations were backfilled with no missing links. All nine public-surface assertions passed.
+
+A production synthetic transaction exercised original and supplementary invoice issue/retry, immutability, manual allocation, PayPal capture settlement/deduplication, delivery claims, cancellation, receipt versioning and unauthorised authenticated RLS. It rolled back completely: zero persisted synthetic bookings, vendors, invoices, payments, batches or receipts. No customer messages or storage files were created.
+
+Changes arriving on main during approval were design-token changes. The two merge conflicts retain the new credit/aggregate balance logic and the updated design-token classes. Combined application checks run before the updated PR is merged.

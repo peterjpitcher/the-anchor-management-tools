@@ -36,7 +36,7 @@ export function NumberSearch({
 
   return (
     <div>
-      <label htmlFor={inputId} className="block text-sm font-medium text-gray-900">
+      <label htmlFor={inputId} className="block text-sm font-medium text-text">
         {label}
       </label>
       <form
@@ -57,12 +57,12 @@ export function NumberSearch({
           placeholder="AN-2607-0001"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          className="block h-14 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-4 font-mono text-xl tracking-widest text-gray-900 placeholder:text-gray-400 focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+          className="block h-14 w-full min-w-0 rounded-lg border border-border-strong bg-surface px-4 font-mono text-xl tracking-widest text-text placeholder:text-text-subtle focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
         />
         <button
           type="submit"
           disabled={searching}
-          className="h-14 shrink-0 rounded-lg bg-sidebar px-5 text-base font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-14 shrink-0 rounded-lg bg-sidebar px-5 text-base font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {searching ? 'Finding...' : 'Find'}
         </button>
@@ -70,30 +70,30 @@ export function NumberSearch({
 
       <div aria-live="polite">
         {message && (
-          <p role="status" className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p role="status" className="mt-2 rounded-md border border-amber-200 bg-warning-soft px-3 py-2 text-sm text-warning-fg">
             {message}
           </p>
         )}
 
         {results && results.length > 1 && (
-          <ul className="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+          <ul className="mt-2 divide-y divide-border rounded-lg border border-border bg-surface">
             {results.map((item) => (
               <li key={item.number}>
                 <button
                   type="button"
                   onClick={() => onSelect(item)}
                   className={cn(
-                    'flex min-h-[44px] w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sidebar/40',
-                    selectedNumber === item.number && 'bg-green-50'
+                    'flex min-h-touch w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sidebar/40',
+                    selectedNumber === item.number && 'bg-success-soft'
                   )}
                 >
                   <span className="min-w-0">
-                    <span className="block font-mono text-base font-semibold text-gray-900">
+                    <span className="block font-mono text-base font-semibold text-text">
                       {item.number}
                     </span>
-                    <span className="block truncate text-sm text-gray-600">{item.typeTitle}</span>
+                    <span className="block truncate text-sm text-text-muted">{item.typeTitle}</span>
                   </span>
-                  <span className="shrink-0 text-sm font-medium text-gray-700">
+                  <span className="shrink-0 text-sm font-medium text-text">
                     {statusLabel(item.status)}
                   </span>
                 </button>

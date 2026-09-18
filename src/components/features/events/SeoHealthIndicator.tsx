@@ -157,13 +157,13 @@ export function SeoHealthIndicator({
 
   const colourMap: Record<ColourKey, { score: string; bar: string; tick: string; cross: string }> = {
     red: {
-      score: 'text-red-600',
+      score: 'text-danger',
       bar: 'bg-red-500',
       tick: 'text-green-600',
-      cross: 'text-red-500',
+      cross: 'text-danger',
     },
     amber: {
-      score: 'text-amber-600',
+      score: 'text-warning',
       bar: 'bg-amber-500',
       tick: 'text-green-600',
       cross: 'text-amber-500',

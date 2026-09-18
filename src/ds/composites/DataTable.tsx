@@ -164,11 +164,14 @@ export function DataTable<T = unknown>({
     onSelectionChange?.(newSelection)
   }
 
+  // Matches the DS Table (src/ds/composites/Table.tsx): small uppercase muted headers on
+  // surface-2, 13px cells. One table look across the app (plan decision A6).
   const sizeClasses = {
-    sm: { cell: 'px-4 py-2 text-xs', header: 'px-4 py-2 text-xs' },
-    md: { cell: 'px-6 py-2.5 text-sm', header: 'px-6 py-2.5 text-sm' },
-    lg: { cell: 'px-6 py-3 text-base', header: 'px-6 py-3 text-base' },
+    sm: { cell: 'px-4 py-2 text-xs', header: 'px-4 py-2' },
+    md: { cell: 'px-4 py-cell-y text-ui', header: 'px-4 py-2' },
+    lg: { cell: 'px-6 py-3 text-sm', header: 'px-6 py-3' },
   }
+  const headerText = 'text-xs font-medium uppercase tracking-wider text-text-muted'
 
   const toggleExpand = (key: string | number) => {
     setExpandedKeys((prev) => {
@@ -193,9 +196,9 @@ export function DataTable<T = unknown>({
         {isMobile ? (
           loadingIndicator
         ) : (
-          <div className={cn('overflow-hidden rounded-lg', bordered && 'shadow ring-1 ring-black/5')}>
-            <table className="min-w-full divide-y divide-gray-300">
-              <thead className="bg-gray-50">
+          <div className={cn('overflow-hidden rounded-lg bg-surface', bordered && 'border border-border shadow-xs')}>
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-surface-2">
                 <tr>
                   {selectable && (
                     <th scope="col" className={cn('text-left', sizeClasses[size].header)} />
@@ -208,7 +211,8 @@ export function DataTable<T = unknown>({
                       scope="col"
                       key={column.key}
                       className={cn(
-                        'text-left font-semibold text-gray-900',
+                        'text-left',
+                        headerText,
                         sizeClasses[size].header,
                         column.align === 'center' && 'text-center',
                         column.align === 'right' && 'text-right',
@@ -221,7 +225,7 @@ export function DataTable<T = unknown>({
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
+              <tbody className="divide-y divide-border bg-surface">
                 <tr>
                   <td
                     colSpan={
@@ -305,7 +309,7 @@ export function DataTable<T = unknown>({
 
               {primaryColumn && (
                 <div className="border-b border-border pb-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  <div className="text-meta font-semibold uppercase tracking-wide text-text-muted">
                     {primaryColumn.header}
                   </div>
                   <div className="mt-1 min-w-0 text-sm font-semibold text-text-strong">
@@ -335,7 +339,7 @@ export function DataTable<T = unknown>({
                       e.stopPropagation()
                       toggleExpand(key)
                     }}
-                    className="inline-flex items-center gap-2 text-sm font-medium text-green-700 hover:text-green-800 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                     aria-expanded={isExpanded}
                   >
                     <ChevronRightIcon
@@ -363,10 +367,10 @@ export function DataTable<T = unknown>({
   // Desktop view
   return (
     <div className={cn('w-full', className)} {...props}>
-      <div className={cn('overflow-hidden rounded-lg', bordered && 'shadow ring-1 ring-black/5')}>
+      <div className={cn('overflow-hidden rounded-lg bg-surface', bordered && 'border border-border shadow-xs')}>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-300">
-            <thead className={cn('bg-gray-50', stickyHeader && 'sticky top-0 z-10')}>
+          <table className="min-w-full divide-y divide-border">
+            <thead className={cn('bg-surface-2', stickyHeader && 'sticky top-0 z-10')}>
               <tr>
                 {selectable && (
                   <th scope="col" className={cn('relative', sizeClasses[size].header)}>
@@ -399,7 +403,7 @@ export function DataTable<T = unknown>({
                       scope="col"
                       aria-sort={ariaSort}
                       className={cn(
-                        'font-semibold text-gray-900',
+                        headerText,
                         sizeClasses[size].header,
                         column.align === 'center' && 'text-center',
                         column.align === 'right' && 'text-right',
@@ -411,7 +415,7 @@ export function DataTable<T = unknown>({
                         <button
                           type="button"
                           className={cn(
-                            'flex w-full items-center gap-1 select-none rounded-sm hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500',
+                            'flex w-full items-center gap-1 select-none rounded-sm hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset',
                             column.align === 'center' && 'justify-center',
                             column.align === 'right' && 'justify-end',
                           )}
@@ -423,16 +427,16 @@ export function DataTable<T = unknown>({
                               className={cn(
                                 'h-3 w-3 -mb-1',
                                 isSorted && sortDirection === 'asc'
-                                  ? 'text-gray-900'
-                                  : 'text-gray-400',
+                                  ? 'text-text'
+                                  : 'text-text-subtle',
                               )}
                             />
                             <ChevronDownIcon
                               className={cn(
                                 'h-3 w-3 -mt-1',
                                 isSorted && sortDirection === 'desc'
-                                  ? 'text-gray-900'
-                                  : 'text-gray-400',
+                                  ? 'text-text'
+                                  : 'text-text-subtle',
                               )}
                             />
                           </span>
@@ -455,8 +459,8 @@ export function DataTable<T = unknown>({
             </thead>
             <tbody
               className={cn(
-                'divide-y divide-gray-200 bg-white',
-                striped && '[&>tr:nth-child(odd)]:bg-gray-50',
+                'divide-y divide-border bg-surface',
+                striped && '[&>tr:nth-child(odd)]:bg-surface-2',
               )}
             >
               {sortedData.map((row) => {
@@ -469,8 +473,8 @@ export function DataTable<T = unknown>({
                   <Fragment key={key}>
                     <tr
                       className={cn(
-                        clickableRows && 'cursor-pointer hover:bg-gray-50',
-                        isSelected && 'bg-green-50',
+                        clickableRows && 'cursor-pointer hover:bg-surface-hover',
+                        isSelected && 'bg-primary-soft',
                         customRowClass,
                       )}
                       onClick={(event) => {
@@ -498,7 +502,7 @@ export function DataTable<T = unknown>({
                               e.stopPropagation()
                               toggleExpand(key)
                             }}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border-strong text-text-muted hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                             aria-expanded={isExpanded}
                           >
                             <ChevronRightIcon
@@ -514,7 +518,7 @@ export function DataTable<T = unknown>({
                         <td
                           key={column.key}
                           className={cn(
-                            'text-gray-900',
+                            'text-text',
                             sizeClasses[size].cell,
                             column.align === 'center' && 'text-center',
                             column.align === 'right' && 'text-right',
@@ -526,11 +530,11 @@ export function DataTable<T = unknown>({
                       ))}
                     </tr>
                     {expandable && renderExpandedContent && isExpanded && (
-                      <tr className="bg-gray-50">
+                      <tr className="bg-surface-2">
                         {selectable && <td />}
                         <td
                           colSpan={columns.length + (expandable ? 1 : 0)}
-                          className="px-6 py-4 text-sm text-gray-700"
+                          className="px-4 py-4 text-ui text-text"
                         >
                           {renderExpandedContent(row)}
                         </td>

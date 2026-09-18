@@ -43,7 +43,7 @@ export function Stepper({ steps, className }: StepperProps) {
             </span>
             <span
               className={cn(
-                'text-[13px] font-semibold',
+                'text-ui font-semibold',
                 step.status === 'upcoming' ? 'text-text-muted' : 'text-text'
               )}
             >

@@ -285,7 +285,7 @@ export function MaintenanceListClient({
                     hint="Open items of ours with no estimate. Not counted as nil."
                   />
                 </div>
-                <dl className="mt-4 grid grid-cols-1 gap-2 border-t border-border pt-4 text-[13px] sm:grid-cols-2">
+                <dl className="mt-4 grid grid-cols-1 gap-2 border-t border-border pt-4 text-ui sm:grid-cols-2">
                   <div className="flex justify-between gap-2">
                     <dt className="text-text-muted">Greene King open estimate</dt>
                     <dd className="text-text">
@@ -310,7 +310,7 @@ export function MaintenanceListClient({
                 </p>
               </>
             ) : (
-              <p className="text-[13px] text-text-muted">
+              <p className="text-ui text-text-muted">
                 The totals are unavailable at the moment. The list below is unaffected.
               </p>
             )}
@@ -433,7 +433,7 @@ export function MaintenanceListClient({
       {loading ? (
         <Card>
           <CardBody>
-            <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-text-muted">
+            <div className="flex items-center justify-center gap-2 py-10 text-ui text-text-muted">
               <Spinner size="md" />
               <span>Loading the list</span>
             </div>
@@ -459,7 +459,7 @@ export function MaintenanceListClient({
                 action={
                   <Link
                     href="/maintenance/new"
-                    className="text-[13px] font-medium text-primary underline"
+                    className="text-ui font-medium text-primary underline"
                   >
                     Log an issue
                   </Link>

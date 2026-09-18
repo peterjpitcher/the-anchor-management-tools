@@ -551,12 +551,12 @@ export function IngredientDrawer({
                   {reviewResult.suggestions.map((suggestion, idx) => (
                     <div
                       key={idx}
-                      className="flex items-start justify-between gap-4 bg-white p-2 rounded border border-blue-100"
+                      className="flex items-start justify-between gap-4 bg-surface p-2 rounded-sm border border-blue-100"
                     >
                       <div className="text-sm">
-                        <div className="font-medium text-gray-900">
+                        <div className="font-medium text-text">
                           {suggestion.field}:{' '}
-                          <span className="text-gray-500 line-through">
+                          <span className="text-text-muted line-through">
                             {formatValue(
                               (formState as Record<string, unknown>)[suggestion.field]
                             )}
@@ -565,7 +565,7 @@ export function IngredientDrawer({
                             &rarr; {formatValue(suggestion.suggestedValue)}
                           </span>
                         </div>
-                        <div className="text-gray-600 text-xs mt-0.5">{suggestion.reason}</div>
+                        <div className="text-text-muted text-xs mt-0.5">{suggestion.reason}</div>
                       </div>
                       <Button
                         size="xs"
@@ -815,15 +815,15 @@ export function IngredientDrawer({
                   ))}
                 </div>
                 {unknownAllergens.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1">
-                    <p className="text-xs text-amber-700">
+                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-warning-soft px-2 py-1">
+                    <p className="text-xs text-warning-fg">
                       Additional tags already stored: {unknownAllergens.join(', ')}.
                     </p>
                     <Button
                       type="button"
                       size="xs"
                       variant="ghost"
-                      className="text-xs text-amber-700 hover:bg-amber-100"
+                      className="text-xs text-warning-fg hover:bg-amber-100"
                       onClick={clearUnknownAllergens}
                     >
                       Remove extras
@@ -849,15 +849,15 @@ export function IngredientDrawer({
                   ))}
                 </div>
                 {unknownDietaryFlags.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1">
-                    <p className="text-xs text-amber-700">
+                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-warning-soft px-2 py-1">
+                    <p className="text-xs text-warning-fg">
                       Additional tags already stored: {unknownDietaryFlags.join(', ')}.
                     </p>
                     <Button
                       type="button"
                       size="xs"
                       variant="ghost"
-                      className="text-xs text-amber-700 hover:bg-amber-100"
+                      className="text-xs text-warning-fg hover:bg-amber-100"
                       onClick={clearUnknownDietaryFlags}
                     >
                       Remove extras
@@ -882,9 +882,9 @@ export function IngredientDrawer({
             />
           </FormGroup>
 
-          <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4 mt-4">
-            <div className="text-sm font-medium text-gray-900">Ingredient availability</div>
-            <p className="text-sm text-gray-600">
+          <div className="space-y-2 rounded-lg border border-border bg-surface p-4 mt-4">
+            <div className="text-sm font-medium text-text">Ingredient availability</div>
+            <p className="text-sm text-text-muted">
               Only active ingredients can be added to dishes. Deactivate when stock is
               discontinued.
             </p>

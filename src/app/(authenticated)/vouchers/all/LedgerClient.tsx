@@ -337,8 +337,8 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
                 onClick={() => toggleStatus(status)}
                 className={`rounded-full border px-3 py-1 text-sm transition-colors ${
                   filters.status?.includes(status)
-                    ? 'border-green-600 bg-green-50 text-green-800 font-medium'
-                    : 'border-gray-300 text-gray-600 hover:border-gray-400'
+                    ? 'border-green-600 bg-success-soft text-green-800 font-medium'
+                    : 'border-border-strong text-text-muted hover:border-gray-400'
                 }`}
               >
                 {VOUCHER_STATUS_LABELS[status]}
@@ -354,8 +354,8 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
                 onClick={() => toggleType(type.id)}
                 className={`rounded-full border px-3 py-1 text-xs transition-colors ${
                   filters.typeIds?.includes(type.id)
-                    ? 'border-green-600 bg-green-50 text-green-800 font-medium'
-                    : 'border-gray-300 text-gray-600 hover:border-gray-400'
+                    ? 'border-green-600 bg-success-soft text-green-800 font-medium'
+                    : 'border-border-strong text-text-muted hover:border-gray-400'
                 }`}
               >
                 {type.displayTitle}

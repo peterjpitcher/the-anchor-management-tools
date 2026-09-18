@@ -46,11 +46,11 @@ function eventTone(eventType: ReliabilityEventType): 'success' | 'warning' | 'da
 
 function ScorePanel({ title, score }: { title: string; score: ReliabilityScoreBreakdown }) {
   return (
-    <div className="rounded-lg border border-gray-200 p-4">
+    <div className="rounded-lg border border-border p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-gray-500">{title}</p>
-          <p className="mt-1 text-3xl font-semibold text-gray-900">{score.score}</p>
+          <p className="text-sm font-medium text-text-muted">{title}</p>
+          <p className="mt-1 text-3xl font-semibold text-text">{score.score}</p>
         </div>
         {score.isLowSample && <Badge variant="warning">Low sample</Badge>}
       </div>
@@ -67,8 +67,8 @@ function ScorePanel({ title, score }: { title: string; score: ReliabilityScoreBr
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="mt-0.5 font-semibold text-gray-900">{value}</p>
+      <p className="text-xs text-text-muted">{label}</p>
+      <p className="mt-0.5 font-semibold text-text">{value}</p>
     </div>
   );
 }
@@ -122,8 +122,8 @@ export default function EmployeeReliabilityTab({ reliability }: EmployeeReliabil
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900">Business reliability</h3>
-        <p className="mt-1 text-sm text-gray-600">
+        <h3 className="text-lg font-medium text-text">Business reliability</h3>
+        <p className="mt-1 text-sm text-text-muted">
           Scores active acceptance, rota disruption, Couldn&apos;t Work records, and late or conflicting holidays.
         </p>
       </div>
@@ -133,28 +133,28 @@ export default function EmployeeReliabilityTab({ reliability }: EmployeeReliabil
         <ScorePanel title="All time" score={reliability.allTime} />
       </div>
 
-      <div className="rounded-lg border border-gray-200 p-4">
-        <h4 className="text-sm font-semibold text-gray-900">Last 90 days breakdown</h4>
+      <div className="rounded-lg border border-border p-4">
+        <h4 className="text-sm font-semibold text-text">Last 90 days breakdown</h4>
         <div className="mt-4">
           <CountsGrid score={reliability.recent} />
         </div>
       </div>
 
       <div>
-        <h4 className="text-sm font-semibold text-gray-900">Reliability events</h4>
+        <h4 className="text-sm font-semibold text-text">Reliability events</h4>
         {reliability.events.length === 0 ? (
-          <p className="mt-4 text-sm text-gray-500">No reliability events recorded.</p>
+          <p className="mt-4 text-sm text-text-muted">No reliability events recorded.</p>
         ) : (
-          <div className="mt-3 divide-y divide-gray-100">
+          <div className="mt-3 divide-y divide-border">
             {reliability.events.map(event => (
               <div key={event.id} className="flex items-start justify-between gap-4 py-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={eventTone(event.event_type)}>{eventTypeLabel(event.event_type)}</Badge>
-                    <p className="text-sm font-medium text-gray-900">{formatDateTime(event.event_at)}</p>
+                    <p className="text-sm font-medium text-text">{formatDateTime(event.event_at)}</p>
                   </div>
                   {eventDetail(event) && (
-                    <p className="mt-1 text-sm text-gray-600">{eventDetail(event)}</p>
+                    <p className="mt-1 text-sm text-text-muted">{eventDetail(event)}</p>
                   )}
                   <p className="mt-1 text-xs text-gray-400">{event.source}</p>
                 </div>

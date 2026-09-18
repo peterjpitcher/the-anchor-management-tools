@@ -65,7 +65,7 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
     
     return (
       <div key={field.name} className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-        <label htmlFor={field.name} className="block text-sm font-medium text-gray-700 sm:col-span-1">
+        <label htmlFor={field.name} className="block text-sm font-medium text-text sm:col-span-1">
           {field.label}
         </label>
         <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -155,7 +155,7 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
         </div>
 
         <div className="space-y-4 pt-6">
-          <p className="text-base font-medium text-gray-900 sm:col-span-4">Health Questionnaire</p>
+          <p className="text-base font-medium text-text sm:col-span-4">Health Questionnaire</p>
           {questionnaireFields.map(renderField)}
 
           {hasAllergies && (
@@ -177,7 +177,7 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
         </div>
 
         <div className="space-y-4 pt-6">
-            <p className="text-base font-medium text-gray-900 sm:col-span-4">Conditions</p>
+            <p className="text-base font-medium text-text sm:col-span-4">Conditions</p>
             {conditionFields.map(renderField)}
         </div>
 
@@ -191,7 +191,7 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
             })}
 
             {isRegisteredDisabled && (
-                <div className="space-y-4 pl-8 mt-4 border-l-2 border-gray-200">
+                <div className="space-y-4 pl-8 mt-4 border-l-2 border-border">
                     {disabilityFields.map(renderField)}
                 </div>
             )}
@@ -202,7 +202,7 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
         <SubmitButton />
       </div>
        {state?.type === 'error' && !state.errors && (
-          <p className="mt-2 text-sm text-red-600">{state.message}</p>
+          <p className="mt-2 text-sm text-danger">{state.message}</p>
         )}
     </form>
   );

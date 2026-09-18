@@ -98,7 +98,7 @@ export function MgdInsightsClient({ initialData }: MgdInsightsClientProps): Reac
             onBarClick={handleBarClick}
           />
         ) : (
-          <p className="text-gray-500 text-center py-12">No collection data available.</p>
+          <p className="text-text-muted text-center py-12">No collection data available.</p>
         )}
       </Card>
     </div>

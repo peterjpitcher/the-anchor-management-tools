@@ -15,6 +15,7 @@ describe('cn knows the design tokens', () => {
   it('treats custom shadows as shadows, not colours', () => {
     expect(cn('shadow-sm', 'shadow-default')).toBe('shadow-default')
     expect(cn('shadow-default', 'shadow-black/10')).toBe('shadow-default shadow-black/10')
+    expect(cn('focus-visible:shadow-ring', 'focus-visible:shadow-ring-inset')).toBe('focus-visible:shadow-ring-inset')
   })
 
   it('treats custom spacing as spacing', () => {

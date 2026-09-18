@@ -15,7 +15,7 @@ const twMerge = extendTailwindMerge({
     theme: {
       text: ['2xs', 'meta', 'ui'],
       radius: ['default', 'pill', 'guest-field', 'guest-card'],
-      shadow: ['default', 'ring', 'guest-card', 'guest-gold', 'guest-focus'],
+      shadow: ['default', 'ring', 'ring-inset', 'guest-card', 'guest-gold', 'guest-focus'],
       spacing: [
         'cell-y', 'input-h', 'btn-h', 'btn-h-sm', 'btn-h-lg', 'sidebar-expanded', 'sidebar-collapsed',
         'topbar', 'logo-row', 'pad-card', 'page-shell-pad-y', 'touch', 'shell-pad-top', 'shell-pad-x',

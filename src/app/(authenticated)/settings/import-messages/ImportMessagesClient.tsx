@@ -168,7 +168,7 @@ export default function ImportMessagesClient({
                   {result.summary.failed > 0 && (
                     <p>
                       Failed to import:{' '}
-                      <strong className="text-red-600">
+                      <strong className="text-danger">
                         {result.summary.failed}
                       </strong>
                     </p>
@@ -194,7 +194,7 @@ export default function ImportMessagesClient({
 
         <Card className="mt-8">
           <h3 className="text-base font-semibold mb-3">How this works</h3>
-          <ul className="list-disc list-inside space-y-2 text-sm text-gray-600">
+          <ul className="list-disc list-inside space-y-2 text-sm text-text-muted">
             <li>
               Fetches all messages (inbound and outbound) from your Twilio
               account within the date range.

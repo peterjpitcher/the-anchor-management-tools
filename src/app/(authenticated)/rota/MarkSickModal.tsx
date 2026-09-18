@@ -71,7 +71,7 @@ export default function MarkSickModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl bg-surface shadow-xl"
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl bg-surface shadow-lg"
         onClick={event => event.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-border p-5">
@@ -90,7 +90,7 @@ export default function MarkSickModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-text-subtle hover:text-text-muted"
+            className="rounded-sm p-1 text-text-subtle hover:text-text-muted"
             aria-label="Close"
           >
             <XMarkIcon className="h-5 w-5" />

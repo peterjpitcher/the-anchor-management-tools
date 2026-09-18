@@ -74,15 +74,15 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
     }, [groupsWithToday.length, hidePast])
 
     return (
-        <div className="flex flex-col gap-3 bg-gray-50 rounded-md p-2">
+        <div className="flex flex-col gap-3 bg-surface-2 rounded-md p-2">
             {groupsWithToday.map((group) => {
                 const isTodayGroup = isSameDay(group.date, today)
                 return (
                     <section
                         key={group.date.toISOString()}
                         className={cn(
-                            'rounded-md border overflow-hidden bg-white shadow-sm',
-                            isTodayGroup ? 'border-gray-950' : 'border-gray-200'
+                            'rounded-md border overflow-hidden bg-surface shadow-sm',
+                            isTodayGroup ? 'border-gray-950' : 'border-border'
                         )}
                     >
                         <h2
@@ -95,7 +95,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                 'text-sm font-semibold px-3 py-2 border-b',
                                 isTodayGroup
                                     ? 'border-gray-950 bg-gray-950 text-white'
-                                    : 'bg-gray-100 text-gray-700 border-gray-200'
+                                    : 'bg-surface-hover text-text border-border'
                             )}
                         >
                             {isTodayGroup ? 'Today' : format(group.date, 'EEEE d MMMM')}
@@ -106,7 +106,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                             const staff = dailyOps?.staffByDate[iso] ?? []
                             if (covers === 0 && staff.length === 0) return null
                             return (
-                                <p className="text-[11px] leading-snug text-gray-500 px-3 py-1 border-b border-gray-100">
+                                <p className="text-meta leading-snug text-text-muted px-3 py-1 border-b border-border">
                                     {covers > 0 && (
                                         <span>{covers} cover{covers === 1 ? '' : 's'} booked</span>
                                     )}
@@ -116,7 +116,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                             )
                         })()}
                         {group.entries.length === 0 && isTodayGroup && (
-                            <div className="text-xs text-gray-500 px-3 py-4 italic">
+                            <div className="text-xs text-text-muted px-3 py-4 italic">
                                 No entries today.
                             </div>
                         )}
@@ -138,7 +138,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                             >
                                                 {entry.title}
                                                 {entry.endsNextDay && (
-                                                    <span className={cn('ml-2 text-[10px]', secondaryTextClass)}>+1 day</span>
+                                                    <span className={cn('ml-2 text-2xs', secondaryTextClass)}>+1 day</span>
                                                 )}
                                             </div>
                                             {entry.subtitle && (
@@ -151,7 +151,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                                     {entryGaps(entry).map((gap) => (
                                                         <span
                                                             key={gap}
-                                                            className="rounded border border-black/20 bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-950"
+                                                            className="rounded-sm border border-black/20 bg-surface px-1.5 py-0.5 text-2xs font-medium text-text-strong"
                                                         >
                                                             {CONTENT_GAP_LABELS[gap]}
                                                         </span>
@@ -217,8 +217,8 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                             {entry.statusLabel && (
                                                 <span
                                                     className={cn(
-                                                        'rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                                                        lightText ? 'bg-white/20 text-white' : 'bg-black/10 text-gray-950'
+                                                        'rounded-sm px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide',
+                                                        lightText ? 'bg-surface/20 text-white' : 'bg-black/10 text-text-strong'
                                                     )}
                                                 >
                                                     {entry.statusLabel}

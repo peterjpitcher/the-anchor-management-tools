@@ -149,7 +149,7 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
         )}
 
         <div>
-          <label className="block text-sm font-medium mb-1">To <span className="text-red-500">*</span></label>
+          <label className="block text-sm font-medium mb-1">To <span className="text-danger">*</span></label>
           <Input
             type="text"
             value={toEmails}
@@ -157,7 +157,7 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
             placeholder="primary.contact@example.com"
             required
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-text-muted mt-1">
             Primary recipient. Usually the vendor&apos;s primary contact.
           </p>
         </div>
@@ -170,7 +170,7 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
             onChange={(e) => setCcEmails(e.target.value)}
             placeholder="accounts@example.com, ops@example.com"
           />
-          <p className="text-xs text-gray-500 mt-1">Separate multiple emails with commas or semicolons.</p>
+          <p className="text-xs text-text-muted mt-1">Separate multiple emails with commas or semicolons.</p>
         </div>
 
         <div>

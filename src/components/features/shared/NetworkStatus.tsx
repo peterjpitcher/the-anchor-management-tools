@@ -48,8 +48,8 @@ export function NetworkStatus() {
       className={cn(
         'fixed top-0 left-0 right-0 z-50 flex items-center justify-center px-4 py-2 text-sm font-medium transition-all duration-300',
         isOnline
-          ? 'bg-green-600 text-white'
-          : 'bg-red-600 text-white'
+          ? 'bg-success text-white'
+          : 'bg-danger text-white'
       )}
     >
       <div className="flex items-center gap-2">

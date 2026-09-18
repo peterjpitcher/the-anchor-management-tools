@@ -94,7 +94,7 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="min-h-[44px] rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="min-h-touch rounded-md border border-border-strong bg-surface px-4 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-50"
           >
             Cancel
           </button>
@@ -104,7 +104,7 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
             onClick={() => {
               if (selectedOption?.available) onConfirm(selectedOption.time)
             }}
-            className="min-h-[44px] rounded-md bg-sidebar px-4 text-sm font-medium text-white hover:bg-sidebar/90 disabled:opacity-50"
+            className="min-h-touch rounded-md bg-sidebar px-4 text-sm font-medium text-white hover:bg-sidebar/90 disabled:opacity-50"
           >
             {submitting
               ? 'Changing...'
@@ -116,29 +116,29 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
       }
     >
       <div className="space-y-4">
-        <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-          <p className="text-sm font-semibold text-gray-900">{bookingLabel}</p>
-          <p className="mt-0.5 text-sm text-gray-700">
+        <div className="rounded-md border border-border bg-surface-2 p-3">
+          <p className="text-sm font-semibold text-text">{bookingLabel}</p>
+          <p className="mt-0.5 text-sm text-text">
             Currently booked for <strong>{currentTime}</strong>
           </p>
         </div>
 
         {/* Every change texts or emails the guest, so a mistap is not silent. Staff are told
             that before they pick, not after. */}
-        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <p className="rounded-md border border-amber-300 bg-warning-soft px-3 py-2 text-xs text-warning-fg">
           {isSeated
             ? 'This party is already seated. Changing the time will still tell them their booking has moved, and will free their table for the old time.'
             : 'The guest is told about every time change.'}
         </p>
 
         {options.length === 0 ? (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-text-muted">
             No other time is available for this booking today.
           </p>
         ) : (
           <>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                 Quick change
               </p>
               <div className="mt-2 grid grid-cols-4 gap-2">
@@ -159,16 +159,16 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
                       className={cn(
                         'flex min-h-[3.5rem] flex-col items-center justify-center rounded-lg border px-1 text-center',
                         'focus:outline-none focus:ring-2 focus:ring-green-500',
-                        'disabled:cursor-not-allowed disabled:opacity-40',
+                        'disabled:cursor-not-allowed disabled:opacity-50',
                         isSelected
-                          ? 'border-green-600 bg-green-50 text-green-800'
-                          : 'border-gray-300 text-gray-800 hover:bg-gray-50',
+                          ? 'border-green-600 bg-success-soft text-green-800'
+                          : 'border-border-strong text-text hover:bg-surface-hover',
                       )}
                     >
                       <span className="text-sm font-semibold leading-tight">
                         {step > 0 ? `+${step}` : step}
                       </span>
-                      <span className="mt-0.5 text-xs text-gray-500">
+                      <span className="mt-0.5 text-xs text-text-muted">
                         {option ? option.time : '--:--'}
                       </span>
                     </button>
@@ -178,14 +178,14 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
             </div>
 
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                 All times
               </p>
               <div
                 ref={gridRef}
                 role="group"
                 aria-label="Available booking times"
-                className="mt-2 max-h-64 overflow-y-auto rounded-md border border-gray-200 p-2"
+                className="mt-2 max-h-64 overflow-y-auto rounded-md border border-border p-2"
               >
                 <div className="grid grid-cols-4 gap-2">
                   {options.map((option) => {
@@ -210,19 +210,19 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
                           'focus:outline-none focus:ring-2 focus:ring-green-500',
                           'disabled:cursor-not-allowed',
                           option.isCurrent
-                            ? 'border-gray-500 bg-gray-100 text-gray-900 opacity-100'
+                            ? 'border-gray-500 bg-surface-hover text-text opacity-100'
                             : isSelected
-                              ? 'border-green-600 bg-green-50 text-green-800'
+                              ? 'border-green-600 bg-success-soft text-green-800'
                               : option.available
-                                ? 'border-gray-300 text-gray-800 hover:bg-gray-50'
-                                : 'border-gray-200 text-gray-400 opacity-60',
+                                ? 'border-border-strong text-text hover:bg-surface-hover'
+                                : 'border-border text-gray-400 opacity-60',
                         )}
                       >
                         <span className="text-sm font-semibold leading-tight">{option.time}</span>
                         {option.isCurrent ? (
-                          <span className="mt-0.5 text-[10px] font-medium text-gray-600">Current</span>
+                          <span className="mt-0.5 text-2xs font-medium text-text-muted">Current</span>
                         ) : option.blockedBy ? (
-                          <span className="mt-0.5 text-[10px] text-gray-400">
+                          <span className="mt-0.5 text-2xs text-gray-400">
                             {BLOCK_LABEL[option.blockedBy]}
                           </span>
                         ) : null}
@@ -238,7 +238,7 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
         {error && (
           <p
             role="alert"
-            className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
+            className="rounded-md border border-red-300 bg-danger-soft px-3 py-2 text-sm text-danger-fg"
           >
             {error}
           </p>

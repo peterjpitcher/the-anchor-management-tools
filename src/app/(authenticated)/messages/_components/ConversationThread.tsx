@@ -377,7 +377,7 @@ export function ConversationThread({
                   {/* Not sticky: an opaque pill pinned to the top of the scroller
                       sat over the first bubble of the group and clipped its text. */}
                   <div className="mb-3 flex justify-center">
-                    <span className="rounded-pill border border-border bg-surface px-3 py-0.5 text-[11px] font-medium text-text-muted shadow-sm">
+                    <span className="rounded-pill border border-border bg-surface px-3 py-0.5 text-meta font-medium text-text-muted shadow-sm">
                       {date === 'unknown' ? 'Date unknown' : formatThreadDateHeading(date)}
                     </span>
                   </div>
@@ -416,7 +416,7 @@ export function ConversationThread({
                               <div
                                 key={message.id}
                                 className={cn(
-                                  'max-w-[85%] rounded-2xl px-3.5 py-2 sm:max-w-[78%] xl:max-w-[68%]',
+                                  'max-w-[85%] rounded-xl px-3.5 py-2 sm:max-w-[78%] xl:max-w-[68%]',
                                   run.isOutbound
                                     ? 'bg-primary text-primary-fg'
                                     : 'border border-border bg-surface text-text',
@@ -431,16 +431,16 @@ export function ConversationThread({
                                   {getMessageTime(message.created_at)}:{' '}
                                 </span>
                                 {body.subject && (
-                                  <p className="mb-1 text-[12px] font-semibold">{body.subject}</p>
+                                  <p className="mb-1 text-xs font-semibold">{body.subject}</p>
                                 )}
                                 {body.text ? (
-                                  <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed">
+                                  <p className="whitespace-pre-wrap break-words text-ui leading-relaxed">
                                     {body.text}
                                   </p>
                                 ) : (
                                   <p
                                     className={cn(
-                                      'text-[13px] italic',
+                                      'text-ui italic',
                                       run.isOutbound ? 'text-primary-fg/80' : 'text-text-muted',
                                     )}
                                   >
@@ -450,7 +450,7 @@ export function ConversationThread({
                                 {message.has_attachments && (
                                   <ul
                                     className={cn(
-                                      'mt-1.5 space-y-0.5 text-[11px]',
+                                      'mt-1.5 space-y-0.5 text-meta',
                                       run.isOutbound ? 'text-primary-fg/85' : 'text-text-muted',
                                     )}
                                   >
@@ -470,13 +470,13 @@ export function ConversationThread({
                         </div>
 
                         <div className="mt-1 flex items-center gap-1.5">
-                          <span aria-hidden="true" className="text-[11px] text-text-muted">
+                          <span aria-hidden="true" className="text-meta text-text-muted">
                             {getMessageTime(lastMessage.created_at)}
                           </span>
                           {runFailed ? (
                             <Badge tone="danger">Not delivered</Badge>
                           ) : (
-                            statusText && <span className="text-[11px] text-text-muted">{statusText}</span>
+                            statusText && <span className="text-meta text-text-muted">{statusText}</span>
                           )}
                         </div>
                       </div>
@@ -529,7 +529,7 @@ export function ConversationThread({
                    single-row composer. */
                 placeholder="Reply by SMS..."
                 rows={1}
-                className="max-h-[132px] min-h-[var(--spacing-input-h)] resize-none py-2 leading-snug"
+                className="max-h-[132px] min-h-input-h resize-none py-2 leading-snug"
                 disabled={sending}
               />
             </div>
@@ -544,7 +544,7 @@ export function ConversationThread({
               Send
             </Button>
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-muted">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-meta text-text-muted">
             {value.length > 0 ? (
               <>
                 <span>{smsInfo.chars} characters</span>

@@ -50,7 +50,8 @@ export function Radio({
           aria-hidden="true"
           className={cn(
             'absolute inset-0 rounded-full border-2 transition-[background,border-color,box-shadow] duration-[120ms]',
-            'peer-focus-visible:shadow-ring',
+            // The real input is invisible, so the focus pattern is drawn on this circle.
+            'peer-focus-visible:outline-hidden peer-focus-visible:shadow-ring',
             checked ? 'border-primary' : 'border-border-strong bg-surface',
             disabled && 'opacity-50'
           )}
@@ -67,7 +68,7 @@ export function Radio({
         <label
           htmlFor={id}
           className={cn(
-            'text-[13px] text-text cursor-pointer',
+            'text-ui text-text cursor-pointer',
             disabled && 'cursor-not-allowed opacity-50'
           )}
         >

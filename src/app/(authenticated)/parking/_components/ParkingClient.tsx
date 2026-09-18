@@ -579,7 +579,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
             {/* The filters get their own row. CardHeader lays its children out in
                 the same flex line as the title and the action, so passing them as
                 children squeezed them against the Refresh button and clipped them. */}
-            <div className="flex flex-wrap items-center gap-3 border-b border-border px-[var(--spacing-pad-card)] py-3">
+            <div className="flex flex-wrap items-center gap-3 border-b border-border px-pad-card py-3">
               <SearchInput placeholder="Reference or customer" value={search} onChange={setSearch} className="w-full sm:w-64" />
               <Select options={statusOptions} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} />
               <Select options={paymentStatusOptions} value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} />

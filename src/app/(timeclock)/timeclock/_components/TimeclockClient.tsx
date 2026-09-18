@@ -196,17 +196,17 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
       {pinTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <form
-            className="w-full max-w-sm rounded-lg bg-white p-6 text-gray-900 shadow-xl"
+            className="w-full max-w-sm rounded-lg bg-surface p-6 text-text shadow-lg"
             onSubmit={(event) => {
               event.preventDefault()
               submitPin()
             }}
           >
             <h3 className="text-lg font-semibold">{empName(pinTarget)}</h3>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="mt-1 text-sm text-text-muted">
               {clockedInIds.has(pinTarget.employee_id) ? 'Clock out' : 'Clock in'}
             </p>
-            <label htmlFor="timeclock-pin" className="mt-5 block text-sm font-medium text-gray-700">
+            <label htmlFor="timeclock-pin" className="mt-5 block text-sm font-medium text-text">
               PIN
             </label>
             <input
@@ -218,13 +218,13 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
               maxLength={4}
               value={pin}
               onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
-              className="mt-2 w-full rounded-md border border-gray-300 px-4 py-3 text-center text-2xl tracking-[0.4em] text-gray-900 focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-600"
+              className="mt-2 w-full rounded-md border border-border-strong px-4 py-3 text-center text-2xl tracking-[0.4em] text-text focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-600"
               autoFocus
             />
             <div className="mt-6 flex gap-3">
               <button
                 type="button"
-                className="flex-1 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
+                className="flex-1 rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-text"
                 onClick={() => { setPinTarget(null); setPin('') }}
                 disabled={isPending}
               >

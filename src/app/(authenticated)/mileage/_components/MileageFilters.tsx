@@ -78,7 +78,7 @@ export function MileageFilters({ query, presets, places, drivers, onChange }: Mi
           ))}
         </Select>
         {/* SearchInput takes no label, so the label wraps it. */}
-        <label className="flex min-w-0 flex-col text-[13px] font-medium text-text">
+        <label className="flex min-w-0 flex-col text-ui font-medium text-text">
           <span className="mb-1">Search</span>
           <SearchInput value={query.q} onChange={handleSearch} debounceDelay={500} placeholder="Reason or place" />
         </label>

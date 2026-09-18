@@ -69,10 +69,10 @@ function BudgetRow({
   };
 
   return (
-    <div className="py-5 sm:grid sm:grid-cols-4 sm:gap-4 sm:items-start border-b border-gray-100 last:border-0">
+    <div className="py-5 sm:grid sm:grid-cols-4 sm:gap-4 sm:items-start border-b border-border last:border-0">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-medium text-gray-900">{label}</p>
+          <p className="text-sm font-medium text-text">{label}</p>
           <p className="text-xs text-gray-400 capitalize">{department} department</p>
         </div>
         {canManage && (
@@ -80,7 +80,7 @@ function BudgetRow({
             type="button"
             onClick={handleDelete}
             disabled={deletePending}
-            className="p-1 text-gray-300 hover:text-red-500 rounded shrink-0"
+            className="p-1 text-text-subtle hover:text-danger rounded-sm shrink-0"
             title="Delete department"
           >
             <TrashIcon className="h-4 w-4" />
@@ -90,7 +90,7 @@ function BudgetRow({
 
       {editing ? (
         <div className="mt-2 sm:mt-0 sm:col-span-3">
-          {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+          {error && <p className="text-xs text-danger mb-2">{error}</p>}
           <div className="flex items-end gap-3">
             <FormGroup label="Annual hours" htmlFor={`budget-${department}`} className="flex-1 max-w-xs">
               <Input
@@ -118,16 +118,16 @@ function BudgetRow({
           {targets ? (
             <dl className="grid grid-cols-3 gap-4 text-sm">
               <div>
-                <dt className="text-xs text-gray-500">Annual</dt>
-                <dd className="font-semibold text-gray-900">{targets.annual.toFixed(0)}h</dd>
+                <dt className="text-xs text-text-muted">Annual</dt>
+                <dd className="font-semibold text-text">{targets.annual.toFixed(0)}h</dd>
               </div>
               <div>
-                <dt className="text-xs text-gray-500">Monthly target</dt>
-                <dd className="font-medium text-gray-700">{targets.monthly.toFixed(1)}h</dd>
+                <dt className="text-xs text-text-muted">Monthly target</dt>
+                <dd className="font-medium text-text">{targets.monthly.toFixed(1)}h</dd>
               </div>
               <div>
-                <dt className="text-xs text-gray-500">Weekly target</dt>
-                <dd className="font-medium text-gray-700">{targets.weekly.toFixed(1)}h</dd>
+                <dt className="text-xs text-text-muted">Weekly target</dt>
+                <dd className="font-medium text-text">{targets.weekly.toFixed(1)}h</dd>
               </div>
             </dl>
           ) : (
@@ -169,8 +169,8 @@ function AddDepartmentForm({ onAdded }: { onAdded: (dept: Department) => void })
   };
 
   return (
-    <div className="pt-4 border-t border-gray-100">
-      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+    <div className="pt-4 border-t border-border">
+      {error && <p className="text-xs text-danger mb-2">{error}</p>}
       <div className="flex items-end gap-3">
         <FormGroup label="New department name" htmlFor="new-dept" className="flex-1 max-w-xs">
           <Input
@@ -207,17 +207,17 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <p className="text-sm text-gray-600">Budget year:</p>
+        <p className="text-sm text-text-muted">Budget year:</p>
         <div className="flex gap-1">
           {years.map(y => (
             <button
               key={y}
               type="button"
               onClick={() => setYear(y)}
-              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+              className={`px-3 py-1 rounded-sm text-sm font-medium transition-colors ${
                 y === year
                   ? 'bg-green-700 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  : 'bg-surface-hover text-text hover:bg-border'
               }`}
             >
               {y}
@@ -226,7 +226,7 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
         </div>
       </div>
 
-      <div className="divide-y divide-gray-100">
+      <div className="divide-y divide-border">
         {departments.map(({ name, label }) => (
           <BudgetRow
             key={name}
@@ -252,7 +252,7 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
           <button
             type="button"
             onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
+            className="flex items-center gap-1.5 text-sm text-text-muted hover:text-text"
           >
             <PlusIcon className="h-4 w-4" />
             Add department
@@ -260,8 +260,8 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
         )
       )}
 
-      <div className="bg-gray-50 rounded-lg p-4">
-        <p className="text-xs text-gray-500">
+      <div className="bg-surface-2 rounded-lg p-4">
+        <p className="text-xs text-text-muted">
           Monthly target = annual ÷ 12. Weekly target = annual ÷ 52.
           These hour targets are used in the rota budget bar and the labour dashboard.
           Only hourly staff count toward scheduled hours — salaried staff are excluded.

@@ -149,8 +149,8 @@ export default function EmployeePayTab({
       {/* Pay settings header */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium text-gray-900">Pay Settings</h3>
-          <p className="mt-1 text-sm text-gray-600">
+          <h3 className="text-lg font-medium text-text">Pay Settings</h3>
+          <p className="mt-1 text-sm text-text-muted">
             Pay type, max weekly hours guideline, and individual rate overrides.
           </p>
         </div>
@@ -163,7 +163,7 @@ export default function EmployeePayTab({
 
       {/* Current rate banner */}
       {currentRate && (
-        <div className="rounded-lg bg-green-50 border border-green-100 px-4 py-3 flex items-center justify-between">
+        <div className="rounded-lg bg-success-soft border border-green-100 px-4 py-3 flex items-center justify-between">
           <div>
             <p className="text-xs text-green-700 font-medium uppercase tracking-wide">Current hourly rate</p>
             <p className="text-2xl font-bold text-green-800 mt-0.5">{formatRate(currentRate.rate)}</p>
@@ -175,17 +175,17 @@ export default function EmployeePayTab({
       )}
 
       {payType === 'salaried' && !settingsEditing && (
-        <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3">
-          <p className="text-sm text-gray-600">
+        <div className="rounded-lg bg-surface-2 border border-border px-4 py-3">
+          <p className="text-sm text-text-muted">
             This employee is <strong>salaried</strong>. They appear in the rota and timeclock but are excluded from hourly pay calculations and payroll exports.
           </p>
         </div>
       )}
 
       {/* Pay settings form / read view */}
-      <dl className="sm:divide-y sm:divide-gray-200">
+      <dl className="sm:divide-y sm:divide-border">
         <div className="py-3 sm:grid sm:grid-cols-4 sm:gap-4 sm:items-center">
-          <dt className="text-sm font-medium text-gray-500">Pay type</dt>
+          <dt className="text-sm font-medium text-text-muted">Pay type</dt>
           <dd className="mt-1 sm:mt-0 sm:col-span-3">
             {settingsEditing ? (
               <Select
@@ -198,13 +198,13 @@ export default function EmployeePayTab({
                 className="max-w-xs"
               />
             ) : (
-              <span className="text-sm text-gray-900 capitalize">{payType}</span>
+              <span className="text-sm text-text capitalize">{payType}</span>
             )}
           </dd>
         </div>
 
         <div className="py-3 sm:grid sm:grid-cols-4 sm:gap-4 sm:items-center">
-          <dt className="text-sm font-medium text-gray-500">Max weekly hours</dt>
+          <dt className="text-sm font-medium text-text-muted">Max weekly hours</dt>
           <dd className="mt-1 sm:mt-0 sm:col-span-3">
             {settingsEditing ? (
               <Input
@@ -217,7 +217,7 @@ export default function EmployeePayTab({
                 className="max-w-xs"
               />
             ) : (
-              <span className="text-sm text-gray-900">
+              <span className="text-sm text-text">
                 {initialPaySettings?.max_weekly_hours != null
                   ? `${initialPaySettings.max_weekly_hours} hrs/week`
                   : <span className="text-gray-400">Not set</span>}
@@ -253,11 +253,11 @@ export default function EmployeePayTab({
 
       {/* Rate overrides section (hourly only) */}
       {payType === 'hourly' && (
-        <div className="pt-4 border-t border-gray-200">
+        <div className="pt-4 border-t border-border">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h4 className="text-sm font-medium text-gray-900">Individual Rate Overrides</h4>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <h4 className="text-sm font-medium text-text">Individual Rate Overrides</h4>
+              <p className="text-xs text-text-muted mt-0.5">
                 Override the age-band rate for this employee. Append-only — historical rates are preserved.
               </p>
             </div>
@@ -275,9 +275,9 @@ export default function EmployeePayTab({
           </div>
 
           {showOverrideForm && canEdit && (
-            <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
-              <p className="text-xs font-medium text-gray-600">New effective-dated rate override</p>
-              {overrideError && <p className="text-xs text-red-600">{overrideError}</p>}
+            <div className="mb-4 p-3 bg-surface-2 rounded-lg border border-border space-y-3">
+              <p className="text-xs font-medium text-text-muted">New effective-dated rate override</p>
+              {overrideError && <p className="text-xs text-danger">{overrideError}</p>}
               <div className="grid grid-cols-2 gap-3">
                 <FormGroup label="Hourly rate (£)" htmlFor="override-rate">
                   <Input
@@ -316,7 +316,7 @@ export default function EmployeePayTab({
             <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-gray-400 border-b border-gray-100">
+                <tr className="text-xs text-gray-400 border-b border-border">
                   <th scope="col" className="text-left pb-1.5 font-medium">Rate</th>
                   <th scope="col" className="text-left pb-1.5 font-medium">Effective from</th>
                   <th scope="col" className="text-left pb-1.5 font-medium">Status</th>
@@ -330,7 +330,7 @@ export default function EmployeePayTab({
                   const isCurrent = !isUpcoming && overrides.find(o => o.effective_from <= today)?.id === ov.id;
                   return (
                     <tr key={ov.id} className="border-b border-gray-50">
-                      <td className="py-2 font-medium text-gray-900">
+                      <td className="py-2 font-medium text-text">
                         {editingOverrideId === ov.id ? (
                           <Input
                             type="number"
@@ -341,7 +341,7 @@ export default function EmployeePayTab({
                           />
                         ) : formatRate(ov.hourly_rate)}
                       </td>
-                      <td className="py-2 text-gray-600">
+                      <td className="py-2 text-text-muted">
                         {editingOverrideId === ov.id ? (
                           <Input
                             type="date"

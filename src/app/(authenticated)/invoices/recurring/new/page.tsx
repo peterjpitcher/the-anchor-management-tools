@@ -498,7 +498,7 @@ export default function NewRecurringInvoicePage() {
             </div>
             
             {invoiceDiscount > 0 && (
-              <div className="flex justify-between text-red-600">
+              <div className="flex justify-between text-danger">
                 <span>Invoice Discount ({invoiceDiscount}%):</span>
                 <span>-£{invoiceDiscountAmount.toFixed(2)}</span>
               </div>

@@ -102,11 +102,11 @@ Files: new `PrivateBookingBilling.tsx` and `PrivateBookingReceiptPanel.tsx` in `
 - [x] Review each stream for coverage, exact interface compatibility, owned files and substantive defects.
 - [x] Run isolated PostgreSQL harnesses and focused tests, then lint, uncached types, London and UTC suites and cold production build.
 - [x] Obtain fresh adversarial review; repair and rerun affected tests.
-- [ ] Prepare exact migration SQL, checksum, impact, rollback and verification packet. Resolve required production approval before apply.
+- [x] Prepare exact migration SQL, checksum, impact, rollback and verification packet. Resolve required production approval before apply.
 - [ ] Commit only this feature's files, push, review CI, apply authorised migration and merge in the order needed to preserve compatibility.
 - [ ] Verify the resulting production deployment ID, permissions, schema, logs and read-only live UI. Record any sandbox/provider testing limitation explicitly.
 - [ ] Tidy the feature branch once deployed and record final evidence here.
 
 ## Release evidence
 
-See `tasks/release-2026-09-18-private-booking-extras.md` for exact SQL, checksums, risk, validation and rollback. Implementation complete locally; no production mutation yet.
+See `tasks/release-2026-09-18-private-booking-extras.md` for exact SQL, checksums, risk, validation and rollback. Migration applied and verified live as `20260918160300`; application merge and deployment verification pending.
