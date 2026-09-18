@@ -103,8 +103,7 @@
     "hex-colour": 1
   },
   "src/app/(authenticated)/mileage/_components/DestinationsClient.tsx": {
-    "raw-palette": 8,
-    "bare-rounded": 2
+    "raw-palette": 8
   },
   "src/app/(authenticated)/mileage/_components/TripForm.tsx": {
     "raw-palette": 6
@@ -414,12 +413,6 @@
   "src/app/actions/event-check-in.ts": {
     "hex-colour": 4
   },
-  "src/app/actions/mileage.ts": {
-    "bare-rounded": 3
-  },
-  "src/app/actions/oj-projects/entries.ts": {
-    "bare-rounded": 1
-  },
   "src/app/actions/rota-day-info.ts": {
     "hex-colour": 1
   },
@@ -431,9 +424,6 @@
   },
   "src/app/api/cron/leave-approval-reminders/route.ts": {
     "hex-colour": 4
-  },
-  "src/app/api/cron/oj-projects-billing/route.ts": {
-    "bare-rounded": 1
   },
   "src/app/api/cron/rota-manager-alert/route.ts": {
     "hex-colour": 19
@@ -861,8 +851,7 @@
     "hex-colour": 6
   },
   "src/lib/events/artwork/composite.ts": {
-    "hex-colour": 2,
-    "off-scale-shadow": 2
+    "hex-colour": 2
   },
   "src/lib/events/artwork/geometry.ts": {
     "hex-colour": 7
@@ -889,14 +878,10 @@
     "hex-colour": 1
   },
   "src/lib/mileage/report/template.ts": {
-    "hex-colour": 7,
-    "bare-rounded": 2
+    "hex-colour": 7
   },
   "src/lib/oj-projects/billing-alerts.ts": {
     "hex-colour": 9
-  },
-  "src/lib/oj-projects/invoice-revision.ts": {
-    "bare-rounded": 1
   },
   "src/lib/oj-statement.ts": {
     "hex-colour": 20
@@ -906,9 +891,6 @@
   },
   "src/lib/oj-work-record.ts": {
     "hex-colour": 13
-  },
-  "src/lib/openai.ts": {
-    "bare-rounded": 3
   },
   "src/lib/pdf/document-chrome.ts": {
     "hex-colour": 7
@@ -966,8 +948,5 @@
   },
   "src/services/cashing-up.service.ts": {
     "hex-colour": 6
-  },
-  "src/services/receipts/receiptHelpers.ts": {
-    "bare-rounded": 3
   }
 }
