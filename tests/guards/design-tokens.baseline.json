@@ -2,13 +2,6 @@
   "src/app/(authenticated)/checklists/page.tsx": {
     "sidebar-outside-shell": 3
   },
-  "src/app/(authenticated)/customers/[id]/page.tsx": {
-    "raw-palette": 11
-  },
-  "src/app/(authenticated)/customers/insights/page.tsx": {
-    "raw-palette": 10,
-    "hex-colour": 5
-  },
   "src/app/(authenticated)/dashboard/dashboard-data.ts": {
     "hex-colour": 1
   },
@@ -19,57 +12,6 @@
     "raw-palette": 4
   },
   "src/app/(authenticated)/employees/birthdays/page.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(authenticated)/events/[id]/EventDetailClient.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/events/_components/ArtworkBrandingModal.tsx": {
-    "hex-colour": 2
-  },
-  "src/app/(authenticated)/events/_components/EventDrawer.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/events/_components/EventImagePanel.tsx": {
-    "raw-palette": 9
-  },
-  "src/app/(authenticated)/messages/bulk/BulkMessagesClient.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/private-bookings/[id]/InvoiceBookingModal.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/private-bookings/[id]/PaymentHistoryTable.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/(authenticated)/private-bookings/[id]/PrivateBookingDetailClient.tsx": {
-    "raw-palette": 72
-  },
-  "src/app/(authenticated)/private-bookings/[id]/communications/page.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/private-bookings/[id]/edit/page.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/private-bookings/[id]/items/page.tsx": {
-    "raw-palette": 16
-  },
-  "src/app/(authenticated)/private-bookings/[id]/messages/PrivateBookingMessagesClient.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/private-bookings/_components/PrivateBookingsClient.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/private-bookings/new/page.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/private-bookings/settings/spaces/page.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/private-bookings/settings/vendors/page.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/private-bookings/sms-queue/page.tsx": {
     "raw-palette": 3
   },
   "src/app/(authenticated)/roles/components/RoleForm.tsx": {
@@ -123,24 +65,6 @@
   "src/app/api/rota/pdf/route.ts": {
     "hex-colour": 48
   },
-  "src/components/features/catering/CateringManager.tsx": {
-    "raw-palette": 1
-  },
-  "src/components/features/customers/CustomerImport.tsx": {
-    "raw-palette": 7
-  },
-  "src/components/features/customers/CustomerLabelSelector.tsx": {
-    "raw-palette": 1
-  },
-  "src/components/features/customers/CustomerName.tsx": {
-    "raw-palette": 1
-  },
-  "src/components/features/customers/CustomerSearchInput.tsx": {
-    "raw-palette": 9
-  },
-  "src/components/features/customers/WinBackCampaign.tsx": {
-    "raw-palette": 7
-  },
   "src/components/features/employees/AddEmployeeAttachmentForm.tsx": {
     "raw-palette": 2
   },
@@ -182,48 +106,6 @@
   },
   "src/components/features/employees/RightToWorkTab.tsx": {
     "raw-palette": 26
-  },
-  "src/components/features/events/EventCategoryFormGrouped.tsx": {
-    "raw-palette": 12
-  },
-  "src/components/features/events/EventChecklistCard.tsx": {
-    "raw-palette": 2
-  },
-  "src/components/features/events/EventMarketingLinksCard.tsx": {
-    "raw-palette": 7
-  },
-  "src/components/features/events/FaqEditor.tsx": {
-    "raw-palette": 3
-  },
-  "src/components/features/events/KeywordStrategyCard.tsx": {
-    "raw-palette": 5
-  },
-  "src/components/features/events/SeoHealthIndicator.tsx": {
-    "raw-palette": 9
-  },
-  "src/components/features/messages/MessageThread.tsx": {
-    "raw-palette": 7
-  },
-  "src/components/features/private-bookings/VenueSpaceDeleteButton.tsx": {
-    "raw-palette": 1
-  },
-  "src/components/modals/AddEmergencyContactModal.tsx": {
-    "raw-palette": 10
-  },
-  "src/components/modals/EditEmergencyContactModal.tsx": {
-    "raw-palette": 10
-  },
-  "src/components/private-bookings/CalendarView.tsx": {
-    "raw-palette": 18
-  },
-  "src/components/private-bookings/CommunicationsTab.tsx": {
-    "raw-palette": 1
-  },
-  "src/components/private-bookings/DeleteBookingButton.tsx": {
-    "raw-palette": 8
-  },
-  "src/components/private-bookings/WorkflowPanels.tsx": {
-    "raw-palette": 1
   },
   "src/components/schedule-calendar/ScheduleCalendarList.tsx": {
     "raw-palette": 3,

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { MagnifyingGlassIcon, UserIcon, PhoneIcon, CheckIcon } from '@heroicons/react/24/outline'
 import { createClient } from '@/lib/supabase/client'
+import { Input } from '@/ds'
 import { buildCustomerSearchFilter } from './customerSearchFilters'
 
 interface Customer {
@@ -173,21 +174,22 @@ export default function CustomerSearchInput({
 
   return (
     <div className="relative" ref={dropdownRef}>
+      {/* A DS Input, so the picker matches the fields beside it (height, text, radius, focus). */}
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          {isSearching ? (
-            <div className="animate-spin h-5 w-5 border-2 border-border-strong border-t-blue-600 rounded-full" />
-          ) : selectedCustomer ? (
-            <CheckIcon className="h-5 w-5 text-green-500" />
-          ) : (
-            <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
-          )}
-        </div>
-        <input
+        <Input
           type="text"
           value={searchTerm}
           onChange={(e) => handleSearchChange(e.target.value)}
-          className="block w-full pl-10 pr-10 py-3 border border-border-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-border-focus text-base min-h-touch"
+          icon={
+            isSearching ? (
+              <span className="block h-4 w-4 animate-spin rounded-full border-2 border-border-strong border-t-primary" />
+            ) : selectedCustomer ? (
+              <CheckIcon className="text-success" />
+            ) : (
+              <MagnifyingGlassIcon />
+            )
+          }
+          className="pr-16"
           placeholder={placeholder}
           autoComplete="off"
           autoCorrect="off"
@@ -197,16 +199,16 @@ export default function CustomerSearchInput({
           <button
             type="button"
             onClick={clearSelection}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center min-w-touch justify-center"
+            className="absolute inset-y-0 right-0 pr-3 flex items-center min-w-touch justify-center rounded-sm text-ui text-text-soft hover:text-text focus-visible:outline-hidden focus-visible:shadow-ring"
           >
-            <span className="text-gray-400 hover:text-text-muted text-sm">Clear</span>
+            Clear
           </button>
         )}
       </div>
 
       {/* Selected Customer Display */}
       {selectedCustomer && (
-        <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="mt-2 p-3 bg-primary-soft border border-primary/20 rounded-lg">
           <div className="flex items-start justify-between">
             <div className="min-w-0 flex-1">
               <p className="font-medium text-text text-sm sm:text-base">
@@ -234,10 +236,10 @@ export default function CustomerSearchInput({
               key={customer.id}
               type="button"
               onClick={() => handleCustomerSelect(customer)}
-              className="w-full text-left px-4 py-3 sm:py-2 hover:bg-surface-hover focus:bg-surface-2 focus:outline-none border-b border-border last:border-b-0 min-h-[50px] sm:min-h-0"
+              className="w-full text-left px-4 py-3 sm:py-2 hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset border-b border-border last:border-b-0 min-h-[50px] sm:min-h-0"
             >
               <div className="flex items-center">
-                <UserIcon className="h-5 w-5 text-gray-400 mr-3 flex-shrink-0" />
+                <UserIcon className="h-5 w-5 text-text-subtle mr-3 flex-shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm sm:text-base font-medium text-text">
                     {[customer.first_name, customer.last_name ?? ''].filter(Boolean).join(' ')}
@@ -253,7 +255,7 @@ export default function CustomerSearchInput({
                       <span className="truncate max-w-[200px] sm:max-w-none">{customer.email}</span>
                     )}
                     {highlightedIds?.has(customer.id) && (
-                      <span className="flex items-center text-xs sm:text-sm text-blue-600 font-medium">
+                      <span className="flex items-center text-xs sm:text-sm text-primary font-medium">
                         • {highlightLabel}
                       </span>
                     )}

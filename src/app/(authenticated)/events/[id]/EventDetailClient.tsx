@@ -10,6 +10,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TablePagination,
   Badge,
   Button,
+  IconButton,
   Input,
   Select,
   ConfirmDialog,
@@ -52,6 +53,7 @@ import { EventChecklistCard } from '@/components/features/events/EventChecklistC
 import { formatDateInLondon, formatTime12Hour, formatDateTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
 import { resolveEventOnlineDiscountAmount, resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { buildEventBookingStats } from '@/lib/events/stats'
+import { eventBookingStatusTone, eventStatusLabel, eventStatusTone } from '../_shared/status-ui'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -75,17 +77,6 @@ interface EventDetailClientProps {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-function getStatusTone(status: string | null | undefined): BadgeTone {
-  switch (status) {
-    case 'scheduled': return 'success'
-    case 'cancelled': return 'danger'
-    case 'postponed': return 'warning'
-    case 'rescheduled': return 'info'
-    case 'sold_out': return 'primary'
-    default: return 'neutral'
-  }
-}
 
 function formatStatusLabel(status: string | null | undefined): string {
   if (!status) return 'Unknown'
@@ -510,8 +501,8 @@ export default function EventDetailClient({
         actions={
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={getStatusTone(event.event_status)} dot>
-                {formatStatusLabel(event.event_status)}
+              <Badge tone={eventStatusTone(event.event_status)} dot>
+                {eventStatusLabel(event.event_status)}
               </Badge>
               {resolvedEventPrice === 0 && resolvedPaymentMode === 'free' ? (
                 <Badge tone="info">Free</Badge>
@@ -546,7 +537,7 @@ export default function EventDetailClient({
       />
 
       {initialError && (
-        <div className="rounded-md bg-warning/10 border border-warning/30 p-3 text-sm text-warning">
+        <div className="rounded-md border border-warning-border bg-warning-soft p-3 text-sm text-warning-fg">
           {initialError}
         </div>
       )}
@@ -566,7 +557,7 @@ export default function EventDetailClient({
       {/* Main content + checklist sidebar */}
       <div className="flex gap-6 items-start">
         {/* Tab content — takes remaining space */}
-        <div className={`flex-1 min-w-0 ${isPending ? 'opacity-60 pointer-events-none' : ''}`}>
+        <div className={`flex-1 min-w-0 ${isPending ? 'opacity-50 pointer-events-none' : ''}`}>
           {activeTab === 'overview' && (
             <div className="flex flex-col gap-6">
               <OverviewTab event={event} />
@@ -684,7 +675,7 @@ export default function EventDetailClient({
                       type="checkbox"
                       checked={cancelRefundOn}
                       onChange={(e) => setCancelRefundOn(e.target.checked)}
-                      className="h-4 w-4"
+                      className="h-4 w-4 accent-primary"
                     />
                     Issue a refund (paid {formatCurrency(cancelRefundInfo.amountPaid)})
                   </label>
@@ -1322,7 +1313,6 @@ function AttendeesTab({
                               customerId={booking.customer?.id ?? null}
                               name={customerName}
                               fallback="-"
-                              className="text-blue-600 hover:text-blue-700"
                             />
                             {renderAttendeeNames(booking)}
                           </TableCell>
@@ -1349,7 +1339,7 @@ function AttendeesTab({
                           <TableCell>{formatBookingPayment(booking)}</TableCell>
                           <TableCell>
                             <Badge
-                              tone={booking.status === 'cancelled' ? 'danger' : booking.status === 'confirmed' ? 'success' : 'neutral'}
+                              tone={eventBookingStatusTone(booking.status)}
                               dot
                             >
                               {formatStatusLabel(booking.status)}
@@ -1393,11 +1383,10 @@ function AttendeesTab({
                             customerId={booking.customer?.id ?? null}
                             name={customerName}
                             fallback="-"
-                            className="text-blue-600 hover:text-blue-700"
                           />
                         </div>
                         <Badge
-                          tone={booking.status === 'cancelled' ? 'danger' : booking.status === 'confirmed' ? 'success' : 'neutral'}
+                          tone={eventBookingStatusTone(booking.status)}
                           dot
                         >
                           {formatStatusLabel(booking.status)}
@@ -1498,10 +1487,12 @@ function getMessageStatusTone(status: string): BadgeTone {
     case 'sent':
     case 'delivered':
       return 'success'
+    // Still on its way, not a problem: info, as a queued message is on the private booking
+    // communications tab and a scheduled or sending campaign is in marketing.
     case 'queued':
     case 'scheduled':
     case 'accepted':
-      return 'warning'
+      return 'info'
     case 'failed':
     case 'undelivered':
       return 'danger'
@@ -1637,13 +1628,14 @@ function DetailRow({
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   return (
-    <button
+    <IconButton
       type="button"
+      variant="ghost"
+      size="sm"
       onClick={() => copyToClipboard(text, label)}
-      className="inline-flex items-center justify-center rounded-sm p-0.5 text-text-muted hover:text-text transition-colors"
-      aria-label={`Copy ${label}`}
-    >
-      <Icon name="copy" size={14} />
-    </button>
+      icon={<Icon name="copy" size={14} />}
+      label={`Copy ${label}`}
+      className="text-text-muted hover:text-text"
+    />
   )
 }

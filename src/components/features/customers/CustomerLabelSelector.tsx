@@ -12,6 +12,7 @@ import {
 import { TagIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { Button } from '@/ds'
 
 interface CustomerLabelSelectorProps {
   customerId: string
@@ -111,7 +112,7 @@ export function CustomerLabelSelector({
   if (loading) {
     return (
       <div className="flex items-center space-x-2">
-        <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+        <Loader2 className="h-4 w-4 animate-spin text-text-subtle" />
         <span className="text-sm text-text-muted">Loading labels...</span>
       </div>
     )
@@ -128,7 +129,7 @@ export function CustomerLabelSelector({
           return (
             <span
               key={assignment.id}
-              className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium"
+              className="inline-flex items-center rounded-pill px-3 py-1 text-xs font-medium"
               style={{ 
                 backgroundColor: `${label.color}20`,
                 color: label.color
@@ -142,7 +143,8 @@ export function CustomerLabelSelector({
               {canEdit && !assignment.auto_assigned && (
                 <button type="button"
                   onClick={() => handleRemoveLabel(label.id)}
-                  className="ml-1 hover:opacity-70"
+                  aria-label={`Remove ${label.name}`}
+                  className="ml-1 rounded-full hover:opacity-70 focus-visible:outline-hidden focus-visible:shadow-ring"
                 >
                   <XMarkIcon className="h-3 w-3" />
                 </button>
@@ -153,27 +155,29 @@ export function CustomerLabelSelector({
 
         {/* Add Label Button */}
         {canEdit && availableLabels.length > 0 && (
-          <button type="button"
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
             onClick={() => setShowSelector(!showSelector)}
-            className="inline-flex items-center rounded-full border border-border-strong px-3 py-1 text-xs font-medium text-text-muted hover:bg-surface-hover"
+            icon={<TagIcon className="h-3 w-3" />}
           >
-            <TagIcon className="h-3 w-3 mr-1" />
             Add Label
-          </button>
+          </Button>
         )}
       </div>
 
       {/* Label Selector Dropdown */}
       {showSelector && canEdit && (
         <div className="relative">
-          <div className="absolute z-10 mt-1 w-64 rounded-md bg-surface shadow-lg ring-1 ring-black/5">
+          <div className="absolute z-10 mt-1 w-64 overflow-hidden rounded-md border border-border bg-surface shadow-lg">
             <div className="py-1">
               {availableLabels.map((label) => (
                 <button type="button"
                   key={label.id}
                   onClick={() => handleAssignLabel(label.id)}
                   disabled={assigningLabel === label.id}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-surface-hover disabled:opacity-50 flex items-center justify-between"
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset disabled:opacity-50 flex items-center justify-between"
                 >
                   <div className="flex items-center">
                     <div

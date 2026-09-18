@@ -9,9 +9,11 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   ConfirmDialog,
   Empty,
   Icon,
+  IconButton,
   Input,
   LinkButton,
   Modal,
@@ -449,10 +451,8 @@ export function ContactsClient({
                   <TableHeader>
                     <TableRow>
                       <TableHead>
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           aria-label="Select all contacts on this page"
-                          className="h-4 w-4 cursor-pointer align-middle"
                           checked={allOnPageSelected}
                           onChange={toggleAllOnPage}
                         />
@@ -475,10 +475,8 @@ export function ContactsClient({
                       <Fragment key={contact.id}>
                       <TableRow>
                         <TableCell>
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             aria-label={`Select ${contact.email}`}
-                            className="h-4 w-4 cursor-pointer align-middle"
                             checked={selectedIds.has(contact.id)}
                             onChange={() => toggleOne(contact.id)}
                           />
@@ -487,22 +485,25 @@ export function ContactsClient({
                           {/* Its own control rather than a clickable row: the row already
                               carries a checkbox and four buttons, and on an iPad a row-wide
                               tap target swallows all of them. */}
-                          <button
+                          <IconButton
                             type="button"
+                            variant="ghost"
                             aria-expanded={expandedId === contact.id}
-                            aria-label={
+                            label={
                               expandedId === contact.id
                                 ? `Hide details for ${contact.email}`
                                 : `Show details for ${contact.email}`
                             }
-                            className="flex h-11 w-11 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-text"
+                            icon={
+                              <Icon
+                                name={expandedId === contact.id ? 'chevronDown' : 'chevronRight'}
+                                size={18}
+                              />
+                            }
+                            // Inset ring: the table scrolls sideways and would clip an outer one.
+                            className="h-11 w-11 text-text-muted hover:text-text focus-visible:shadow-ring-inset"
                             onClick={() => toggleExpanded(contact.id)}
-                          >
-                            <Icon
-                              name={expandedId === contact.id ? 'chevronDown' : 'chevronRight'}
-                              size={18}
-                            />
-                          </button>
+                          />
                         </TableCell>
                         <TableCell>
                           <span className="font-medium text-text">

@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from 'react'
 import { sendSmsReply } from '@/app/actions/messageActions'
 import toast from 'react-hot-toast'
 import { PaperAirplaneIcon } from '@heroicons/react/24/solid'
-import { Badge } from '@/ds'
+import { Badge, Textarea } from '@/ds'
+import { cn } from '@/lib/utils'
 
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
 
@@ -137,7 +138,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
           <div key={date}>
             {/* Date separator */}
             <div className="flex items-center justify-center mb-4">
-              <span className="px-3 py-1 text-xs sm:text-sm text-text-muted bg-border rounded-full">
+              <span className="rounded-pill border border-border bg-surface px-3 py-0.5 text-meta font-medium text-text-muted shadow-sm">
                 {date === new Date().toLocaleDateString() ? 'Today' : date}
               </span>
             </div>
@@ -167,17 +168,21 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                         <Badge tone="neutral">{getChannelLabel(message.channel)}</Badge>
                         {message.has_attachments && <Badge tone="info">Attachment</Badge>}
                       </div>
+                      {/* Same bubbles as the /messages inbox (ConversationThread), so a conversation
+                          looks the same wherever staff read it. */}
                       <div
-                        className={`px-4 py-2 rounded-xl ${
+                        className={cn(
+                          'rounded-xl px-3.5 py-2',
                           isInbound
-                            ? 'bg-border text-black rounded-tl-sm'
-                            : 'bg-blue-500 text-white rounded-tr-sm'
-                        }`}
+                            ? 'border border-border bg-surface text-text rounded-bl-sm'
+                            : 'bg-primary text-primary-fg rounded-br-sm',
+                          isFailed && 'ring-2 ring-danger/50',
+                        )}
                       >
                         {message.subject && (
-                          <p className="mb-1 text-xs font-semibold sm:text-sm">{message.subject}</p>
+                          <p className="mb-1 text-xs font-semibold">{message.subject}</p>
                         )}
-                        <p className="text-sm sm:text-base whitespace-pre-wrap break-words">{messageText}</p>
+                        <p className="whitespace-pre-wrap break-words text-ui leading-relaxed">{messageText}</p>
                       </div>
                       <div className={`flex items-center mt-1 ${isInbound ? 'justify-start' : 'justify-end'}`}>
                         <span className="text-xs sm:text-sm text-text-muted">
@@ -209,35 +214,40 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
         <div className="border-t border-border bg-surface p-3">
           <div className="flex items-end space-x-2">
             <div className="flex-1 relative">
-              <textarea
+              <Textarea
                 ref={inputRef}
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Message"
+                aria-label="Message"
                 rows={1}
-                className="w-full px-4 py-3 sm:py-2.5 pr-12 text-base sm:text-sm bg-surface-hover border border-border-strong rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                style={{ minHeight: '44px', maxHeight: '120px' }}
+                className="min-h-touch max-h-[120px] resize-none pr-12"
                 onInput={(e) => {
                   e.currentTarget.style.height = 'auto'
                   e.currentTarget.style.height = Math.min(e.currentTarget.scrollHeight, 120) + 'px'
                 }}
                 disabled={sending}
               />
+              {/* Stays a plain button: it floats inside the field and scales in once there is
+                  text, which the DS IconButton's fixed sizes cannot do. Below the shell
+                  breakpoint every button is at least 44px, as tall as the one-line field, so
+                  it sits flush with the field's bottom rather than poking out of its top. */}
               <button type="button"
                 onClick={handleSend}
                 disabled={!newMessage.trim() || sending}
-                className={`absolute right-1 bottom-1.5 sm:bottom-1 p-2 sm:p-1.5 rounded-full transition-all touch-manipulation ${
+                aria-label="Send message"
+                className={`absolute right-1 bottom-1 max-shell:bottom-0 p-2 sm:p-1.5 rounded-full bg-primary text-primary-fg transition-all touch-manipulation focus-visible:outline-hidden focus-visible:shadow-ring ${
                   newMessage.trim() && !sending
-                    ? 'bg-blue-500 text-white hover:bg-blue-600 scale-100'
-                    : 'bg-blue-500 text-white scale-0'
+                    ? 'hover:bg-primary-hover scale-100'
+                    : 'scale-0'
                 }`}
               >
                 <PaperAirplaneIcon className="h-5 w-5 sm:h-4 sm:w-4 -rotate-45" />
               </button>
             </div>
           </div>
-          <p className="mt-1.5 text-xs sm:text-sm text-gray-400 text-center">
+          <p className="mt-1.5 text-xs sm:text-sm text-text-soft text-center">
             Text Message • SMS
           </p>
         </div>

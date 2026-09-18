@@ -404,7 +404,7 @@ export function EventPromotionContentCard({
       </div>
 
       {aiUnavailableMessage && (
-        <div className="rounded-lg border border-warning/30 bg-warning-soft p-4 text-sm text-warning-fg">
+        <div className="rounded-lg border border-warning-border bg-warning-soft p-4 text-sm text-warning-fg">
           {aiUnavailableMessage}
         </div>
       )}

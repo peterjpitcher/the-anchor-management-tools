@@ -198,7 +198,7 @@ export default async function VendorsPage({
       <Card>
         <Section 
           title="Add New Vendor"
-          icon={<PlusIcon className="h-5 w-5 text-blue-600" />}
+          icon={<PlusIcon className="h-5 w-5 text-primary" />}
         >
           <form action={handleCreateVendor} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -319,7 +319,7 @@ export default async function VendorsPage({
                   {vendorsByType[type]?.map((vendor: any) => (
                     <div
                       key={vendor.id}
-                      className="rounded-xl border border-border p-4 md:rounded-none md:border-0 md:p-0 md:py-6 md:first:pt-0 md:last:pb-0"
+                      className="rounded-lg border border-border p-4 md:rounded-none md:border-0 md:p-0 md:py-6 md:first:pt-0 md:last:pb-0"
                     >
                       <form action={handleUpdateVendor} className="space-y-4">
                         <input type="hidden" name="vendorId" value={vendor.id} />

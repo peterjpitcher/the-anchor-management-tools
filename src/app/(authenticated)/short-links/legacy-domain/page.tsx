@@ -66,8 +66,8 @@ function RangeSelector({ days }: { days: number }) {
             href={`/short-links/legacy-domain?days=${option}`}
             className={
               active
-                ? 'rounded-md border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-white'
-                : 'rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-2'
+                ? 'rounded-md border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg focus-visible:outline-hidden focus-visible:shadow-ring'
+                : 'rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring'
             }
           >
             {option} days
@@ -196,7 +196,7 @@ function LinkUsageCard({
 function ReportsCard({ reports }: { reports: LegacyDomainUsage['reports'] }) {
   if (!reports.tableReady) {
     return (
-      <Card className="mb-6 border-warning/25 bg-warning-soft">
+      <Card className="mb-6 border-warning-border bg-warning-soft">
         <CardBody>
           <p className="text-sm text-warning-fg">
             The legacy link reports table has not been migrated yet. Apply the pending migration
@@ -315,7 +315,7 @@ export default async function LegacyDomainPage({ searchParams }: PageProps) {
       ) : (
         <>
           {!usage.trackingColumnReady && (
-            <Card className="mb-6 border-warning/25 bg-warning-soft">
+            <Card className="mb-6 border-warning-border bg-warning-soft">
               <CardBody>
                 <p className="text-sm text-warning-fg">
                   Host tracking has not been migrated yet. These numbers show existing click activity, but legacy-domain clicks cannot be separated until the migration is applied.

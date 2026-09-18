@@ -40,7 +40,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             ref={ref}
             id={id}
             className={cn(
-              'h-input-h px-3 pr-8 text-ui bg-surface border border-border rounded-default w-full',
+              'h-input-h px-3 pr-8 text-ui text-text bg-surface border border-border rounded-default w-full',
               'outline-hidden transition-[border-color,box-shadow] duration-[120ms] appearance-none',
               'focus:border-border-focus focus:shadow-ring',
               error && 'border-danger focus:border-danger focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-danger)_20%,transparent)]',

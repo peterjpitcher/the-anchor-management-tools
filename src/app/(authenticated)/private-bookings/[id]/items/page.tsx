@@ -28,7 +28,7 @@ import type { VenueSpace, CateringPackage, Vendor, ItemType, PrivateBookingItem,
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 // import { Section } from '@/ds'
-import { Button } from '@/ds'
+import { Button, IconButton } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
@@ -366,9 +366,10 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
             <button
               type="button"
               onClick={() => setItemType('space')}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+              aria-pressed={itemType === 'space'}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                 itemType === 'space' 
-                  ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                  ? 'border-primary bg-primary-soft text-primary-soft-fg' 
                   : 'border-border hover:border-border-strong'
               }`}
             >
@@ -378,9 +379,10 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
             <button
               type="button"
               onClick={() => setItemType('catering')}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+              aria-pressed={itemType === 'catering'}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                 itemType === 'catering' 
-                  ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                  ? 'border-primary bg-primary-soft text-primary-soft-fg' 
                   : 'border-border hover:border-border-strong'
               }`}
             >
@@ -390,9 +392,10 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
             <button
               type="button"
               onClick={() => setItemType('vendor')}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+              aria-pressed={itemType === 'vendor'}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                 itemType === 'vendor' 
-                  ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                  ? 'border-primary bg-primary-soft text-primary-soft-fg' 
                   : 'border-border hover:border-border-strong'
               }`}
             >
@@ -402,9 +405,10 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
             <button
               type="button"
               onClick={() => setItemType('other')}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+              aria-pressed={itemType === 'other'}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                 itemType === 'other' 
-                  ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                  ? 'border-primary bg-primary-soft text-primary-soft-fg' 
                   : 'border-border hover:border-border-strong'
               }`}
             >
@@ -866,7 +870,7 @@ export default function ItemsPage() {
               <div key={item.id} className="border border-border rounded-lg p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-3">
-                    <div className="flex-shrink-0 text-gray-400">
+                    <div className="flex-shrink-0 text-text-subtle">
                       {getItemIcon(item.item_type)}
                     </div>
                     <div className="flex-1">
@@ -880,7 +884,7 @@ export default function ItemsPage() {
                             renders the number 0 for the many items stored with a zero
                             discount, printing a stray "0" beside the price. */}
                         {toNumber(item.discount_value) > 0 && (
-                          <span className="text-green-600">
+                          <span className="text-success-fg">
                             -{item.discount_type === 'percent' ? `${item.discount_value}%` : formatMoney(item.discount_value)}
                           </span>
                         )}
@@ -895,18 +899,20 @@ export default function ItemsPage() {
                       {formatMoney(item.line_total)}
                     </span>
                     <div className="flex items-center space-x-2">
-                      <button type="button"
+                      <IconButton
+                        type="button"
                         onClick={() => setEditingItem(item)}
-                        className="text-gray-400 hover:text-text-muted"
-                      >
-                        <PencilIcon className="h-5 w-5" />
-                      </button>
-                      <button type="button"
+                        label="Edit item"
+                        icon={<PencilIcon className="h-5 w-5" />}
+                        className="text-text-muted"
+                      />
+                      <IconButton
+                        type="button"
                         onClick={() => setDeletingItemId(item.id)}
-                        className="text-red-400 hover:text-danger"
-                      >
-                        <TrashIcon className="h-5 w-5" />
-                      </button>
+                        label="Delete item"
+                        icon={<TrashIcon className="h-5 w-5" />}
+                        className="text-danger hover:text-danger-fg"
+                      />
                     </div>
                   </div>
                 </div>
@@ -914,7 +920,7 @@ export default function ItemsPage() {
             ))}
 
             {/* Total */}
-            <div className="border-t pt-4 space-y-2">
+            <div className="border-t border-border pt-4 space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-lg font-medium text-text">Total (ex VAT)</span>
                 <span className="text-2xl font-bold text-text">

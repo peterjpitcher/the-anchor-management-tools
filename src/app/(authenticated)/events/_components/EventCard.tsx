@@ -4,29 +4,12 @@ import { Badge } from '@/ds'
 import { cn } from '@/lib/utils'
 import type { Event } from '@/types/database'
 import { formatDateInLondon } from '@/lib/dateUtils'
-
-type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
+import { eventStatusLabel, eventStatusTone } from '../_shared/status-ui'
 
 interface EventCardProps {
   event: Event
   onClick?: () => void
   compact?: boolean
-}
-
-function getStatusTone(status: string | null | undefined): BadgeTone {
-  switch (status) {
-    case 'scheduled': return 'success'
-    case 'cancelled': return 'danger'
-    case 'postponed': return 'warning'
-    case 'rescheduled': return 'info'
-    case 'sold_out': return 'primary'
-    default: return 'neutral'
-  }
-}
-
-function formatStatusLabel(status: string | null | undefined): string {
-  if (!status) return 'Unknown'
-  return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 export function EventCard({ event, onClick, compact = false }: EventCardProps) {
@@ -39,7 +22,7 @@ export function EventCard({ event, onClick, compact = false }: EventCardProps) {
           e.stopPropagation()
           onClick?.()
         }}
-        className="w-full text-left px-1.5 py-0.5 rounded-sm text-meta bg-primary-soft text-primary-soft-fg truncate hover:opacity-80 transition-opacity"
+        className="w-full text-left px-1.5 py-0.5 rounded-sm text-meta bg-primary-soft text-primary-soft-fg truncate hover:opacity-80 transition-opacity focus-visible:outline-hidden focus-visible:shadow-ring"
       >
         <span className="font-medium">{event.time || ''}</span>
         {event.time && ' '}
@@ -53,7 +36,7 @@ export function EventCard({ event, onClick, compact = false }: EventCardProps) {
     <div
       className={cn(
         'rounded-default border border-border bg-surface p-3 shadow-sm',
-        onClick && 'cursor-pointer hover:shadow-default hover:border-border-strong transition-all'
+        onClick && 'cursor-pointer hover:shadow-default hover:border-border-strong transition-all focus-visible:outline-hidden focus-visible:shadow-ring'
       )}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
@@ -75,8 +58,8 @@ export function EventCard({ event, onClick, compact = false }: EventCardProps) {
         {(event as any).category?.name && (
           <Badge tone="info">{(event as any).category.name}</Badge>
         )}
-        <Badge tone={getStatusTone(event.event_status)} dot>
-          {formatStatusLabel(event.event_status)}
+        <Badge tone={eventStatusTone(event.event_status)} dot>
+          {eventStatusLabel(event.event_status)}
         </Badge>
       </div>
     </div>

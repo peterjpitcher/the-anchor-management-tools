@@ -1,5 +1,7 @@
 'use client'
 
+import { Button, Input, Textarea } from '@/ds'
+
 interface FaqItem {
   question: string
   answer: string
@@ -56,19 +58,19 @@ export function FaqEditor({ faqs, onChange, onModified }: FaqEditorProps) {
         <span className="text-sm font-medium text-text">
           FAQs{faqs.length > 0 ? ` (${faqs.length})` : ''}
         </span>
-        <button
+        <Button
           type="button"
+          variant="link"
           onClick={handleAdd}
           disabled={faqs.length >= MAX_FAQS}
-          className="text-sm font-medium text-indigo-600 hover:text-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           + Add FAQ
-        </button>
+        </Button>
       </div>
 
       {/* Empty state */}
       {faqs.length === 0 && (
-        <p className="text-sm italic text-gray-400">
+        <p className="text-sm italic text-text-soft">
           No FAQs yet. Generate with AI or add manually.
         </p>
       )}
@@ -85,31 +87,30 @@ export function FaqEditor({ faqs, onChange, onModified }: FaqEditorProps) {
                 Q{index + 1}
               </span>
               <div className="flex-1 space-y-2">
-                <input
+                <Input
                   type="text"
                   value={faq.question}
                   onChange={(e) => handleQuestionChange(index, e.target.value)}
                   placeholder="Question"
                   aria-label={`FAQ ${index + 1} question`}
-                  className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
                 />
-                <textarea
+                <Textarea
                   value={faq.answer}
                   onChange={(e) => handleAnswerChange(index, e.target.value)}
                   placeholder="Answer"
                   rows={2}
                   aria-label={`FAQ ${index + 1} answer`}
-                  className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
                 />
               </div>
-              <button
+              <Button
                 type="button"
+                variant="link"
                 onClick={() => handleRemove(index)}
                 aria-label={`Remove FAQ ${index + 1}`}
-                className="shrink-0 text-sm font-medium text-danger hover:text-danger"
+                className="shrink-0 text-danger"
               >
                 Remove
-              </button>
+              </Button>
             </div>
           </div>
         ))}

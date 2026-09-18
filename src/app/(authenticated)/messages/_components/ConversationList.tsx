@@ -136,7 +136,7 @@ export function ConversationList({
             onClick={() => onUnreadOnlyChange(!unreadOnly)}
             className={cn(
               'inline-flex h-input-h flex-shrink-0 items-center gap-1.5 rounded-pill border px-3 text-xs font-medium transition-colors',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+              'focus-visible:outline-hidden focus-visible:shadow-ring',
               unreadOnly
                 ? 'border-primary bg-primary text-primary-fg'
                 : 'border-border bg-surface text-text-muted hover:bg-surface-hover',
@@ -236,7 +236,7 @@ export function ConversationList({
                       }${when}. ${preview}`}
                       className={cn(
                         'relative flex w-full cursor-pointer items-start gap-3 py-3 pl-3 pr-3 text-left transition-colors',
-                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40',
+                        'focus-visible:outline-hidden focus-visible:shadow-ring-inset',
                         isSelected
                           ? 'bg-primary-soft before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-primary'
                           : 'hover:bg-surface-hover',
@@ -269,7 +269,7 @@ export function ConversationList({
                             )}
                           >
                             {channel !== 'sms' && (
-                              <span className="text-text-subtle">{channelLabel(channel)} · </span>
+                              <span className="text-text-soft">{channelLabel(channel)} · </span>
                             )}
                             {preview}
                           </span>
@@ -291,7 +291,7 @@ export function ConversationList({
 
             {/* The list is a capped page, not the whole history. Saying so stops
                 staff concluding a customer does not exist. */}
-            <p className="border-t border-border px-3 py-2 text-meta leading-snug text-text-subtle">
+            <p className="border-t border-border px-3 py-2 text-meta leading-snug text-text-soft">
               {searchScope === 'server'
                 ? 'Showing customers matching your search, including older conversations.'
                 : 'Showing recent conversations. Search by name, phone or email to reach older ones.'}

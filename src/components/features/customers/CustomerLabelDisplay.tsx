@@ -19,7 +19,7 @@ export function CustomerLabelDisplay({ assignments }: CustomerLabelDisplayProps)
         return (
           <span
             key={assignment.id}
-            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+            className="inline-flex items-center rounded-pill px-2 py-0.5 text-xs font-medium"
             style={{ 
               backgroundColor: `${label.color}20`,
               color: label.color

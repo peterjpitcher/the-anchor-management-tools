@@ -29,6 +29,7 @@ import {
   Section,
   Card,
   Button,
+  IconButton,
   Input,
   Select,
   Textarea,
@@ -758,17 +759,17 @@ export function SuppliersPanel({
                     </div>
                   </div>
                   {canEdit && (
-                    <button
+                    <IconButton
                       type="button"
+                      size="sm"
                       onClick={() => {
                         setEditing(supplier)
                         setModalOpen(true)
                       }}
-                      className="shrink-0 text-gray-400 hover:text-text-muted"
-                      aria-label={`Edit supplier ${supplier.name}`}
-                    >
-                      <PencilIcon className="h-4 w-4" />
-                    </button>
+                      className="shrink-0 text-text-muted"
+                      label={`Edit supplier ${supplier.name}`}
+                      icon={<PencilIcon className="h-4 w-4" />}
+                    />
                   )}
                 </div>
                 {canEdit && (
