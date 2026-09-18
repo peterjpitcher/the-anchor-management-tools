@@ -29,13 +29,3 @@ const ALLOWED_FILE_TYPES = [
 const MAX_SMS_LENGTH = 1600 // ~10 segments
 const SMS_SEGMENT_LENGTH = 160
 const SMS_SEGMENT_LENGTH_UNICODE = 70
-
-// Theme colors (matching Tailwind config)
-const THEME_COLORS = {
-  primary: '#2563eb', // blue-600
-  sidebarGreen: '#005131',
-  success: '#10b981', // emerald-500
-  warning: '#f59e0b', // amber-500
-  error: '#ef4444', // red-500
-  info: '#3b82f6', // blue-500
-}

@@ -3,6 +3,7 @@
 // the business and has been amended beyond the original handoff. Per-worker
 // values are merged via the AgreementFields object; the Young Worker Schedule
 // (page 11) is appended only when data.includeYoungWorkerSchedule is true.
+import { STAFF } from '@/lib/brand/palette'
 import type { WorkerAgreementData } from './worker-agreement'
 
 interface AgreementFields {
@@ -43,13 +44,15 @@ function numberSheet(sheet: string, pageNo: number, total: number): string {
     .replace(/(<b class="pagetot">)\d+(<\/b>)/, `$1${total}$2`)
 }
 
+// Colours come from STAFF. The screen-only stage around the sheets is dark and STAFF has no
+// on-dark set, so the stage uses STAFF.text as its backdrop and the light neutrals for its copy.
 const STYLE = `
   :root{
-    --paper:#ffffff;
-    --ink:#161616;
-    --ink-soft:#363636;
-    --ink-mute:#6b6b6b;
-    --rule:#cfcfcf;
+    --paper:${STAFF.surface};
+    --ink:${STAFF.textStrong};
+    --ink-soft:${STAFF.text};
+    --ink-mute:${STAFF.textMuted};
+    --rule:${STAFF.borderStrong};
 
     --font-display:'DM Serif Display', Georgia, serif;
     --font-body:'Outfit', system-ui, -apple-system, sans-serif;
@@ -59,25 +62,25 @@ const STYLE = `
   *{ box-sizing:border-box; }
   html,body{ margin:0; padding:0; }
   body{
-    background:#3a3a3a;
+    background:${STAFF.text};
     font-family:var(--font-body);
     color:var(--ink);
     -webkit-print-color-adjust:exact; print-color-adjust:exact;
   }
-  a{ color:#005131; text-decoration:none; }
-  a:hover{ color:#8b6914; }
+  a{ color:${STAFF.primary}; text-decoration:none; }
+  a:hover{ color:${STAFF.primaryHover}; }
 
   /* ---------- screen scaffolding (hidden on print) ---------- */
-  .screen-note{ color:#e9e4d8; font-size:13.5px; text-align:center; padding:24px 16px 4px; line-height:1.6; }
-  .screen-note strong{ color:#fff; font-weight:600; }
-  .screen-note .sub{ display:block; color:#b3ada1; font-size:12px; margin-top:5px; }
+  .screen-note{ color:${STAFF.border}; font-size:13.5px; text-align:center; padding:24px 16px 4px; line-height:1.6; }
+  .screen-note strong{ color:${STAFF.surface}; font-weight:600; }
+  .screen-note .sub{ display:block; color:${STAFF.textSubtle}; font-size:12px; margin-top:5px; }
   .toolbar{ text-align:center; padding:6px 0 2px; }
   .print-btn{
     font-family:var(--font-body); font-weight:600; font-size:13px;
-    color:#161616; background:#e9e4d8; border:0; border-radius:999px;
+    color:${STAFF.primaryFg}; background:${STAFF.primary}; border:0; border-radius:999px;
     padding:9px 22px; cursor:pointer; letter-spacing:.01em;
   }
-  .print-btn:hover{ background:#fff; }
+  .print-btn:hover{ background:${STAFF.primaryHover}; }
   .stage{ display:flex; flex-direction:column; align-items:center; gap:10mm; padding:22px 0 70px; }
 
   /* ---------- A4 sheet ---------- */
@@ -148,22 +151,22 @@ const STYLE = `
   .mini-list li::before{ content:"—"; position:absolute; left:0; color:var(--ink-mute); }
 
   /* callout note */
-  .note{ margin:3mm 0 0; padding:2.6mm 4mm; border-left:2px solid var(--ink); background:#f1eee7; font-size:11px; line-height:1.5; color:var(--ink-soft); }
+  .note{ margin:3mm 0 0; padding:2.6mm 4mm; border-left:2px solid var(--ink); background:${STAFF.surfaceHover}; font-size:11px; line-height:1.5; color:var(--ink-soft); }
   .note b{ color:var(--ink); font-weight:600; }
 
   /* internal-use note (grey) */
-  .internal{ margin:3.4mm 0 0; padding:3mm 4mm; border:1px solid var(--ink); background:#f1eee7; }
+  .internal{ margin:3.4mm 0 0; padding:3mm 4mm; border:1px solid var(--ink); background:${STAFF.surfaceHover}; }
   .internal-h{ font-weight:700; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink); margin:0 0 1.6mm; }
   .internal-p{ font-size:11px; line-height:1.5; color:var(--ink-soft); margin:0; }
   .internal-p b{ color:var(--ink); font-weight:600; }
 
   /* ---------- placeholder field spans ---------- */
-  .ph{ font-weight:600; color:var(--ink); background:#efeadf; border:1px solid #ddd4c2; border-radius:2px; padding:0 2px; font-style:normal; white-space:nowrap; }
+  .ph{ font-weight:600; color:var(--ink); background:${STAFF.surfaceHover}; border:1px solid ${STAFF.borderStrong}; border-radius:2px; padding:0 2px; font-style:normal; white-space:nowrap; }
 
   /* ---------- particulars table ---------- */
   .ptable{ width:100%; border-collapse:collapse; margin:0 0 3mm; }
   .ptable th, .ptable td{ border:1px solid var(--rule); padding:2.4mm 3mm; text-align:left; vertical-align:top; font-size:11px; line-height:1.4; color:var(--ink-soft); }
-  .ptable th{ width:42%; font-weight:600; color:var(--ink); background:#faf8f3; }
+  .ptable th{ width:42%; font-weight:600; color:var(--ink); background:${STAFF.surface2}; }
   .ptable td b{ color:var(--ink); font-weight:600; }
 
   /* schedule intro */
@@ -196,14 +199,14 @@ const STYLE = `
   /* ---------- print ---------- */
   @media print{
     @page{ size:A4 portrait; margin:0; }
-    body{ background:#fff; }
+    body{ background:${STAFF.surface}; }
     .screen-note,.toolbar{ display:none !important; }
     .stage{ display:block; padding:0; gap:0; }
     .sheet{ box-shadow:none; break-after:page; }
     .sheet:last-child{ break-after:auto; }
-    .note,.internal{ background:#f1eee7 !important; }
-    .ph{ background:#efeadf !important; }
-    .ptable th{ background:#faf8f3 !important; }
+    .note,.internal{ background:${STAFF.surfaceHover} !important; }
+    .ph{ background:${STAFF.surfaceHover} !important; }
+    .ptable th{ background:${STAFF.surface2} !important; }
   }
 
 

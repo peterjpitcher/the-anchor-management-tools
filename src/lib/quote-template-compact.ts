@@ -1,11 +1,14 @@
 import { QuoteWithDetails } from '@/types/invoices'
 import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
+import { STAFF } from '@/lib/brand/palette'
 import {
   renderDocumentFooter,
   renderDocumentHead,
   renderDocumentHeader,
+  statusBadgeStyle,
 } from '@/lib/pdf/document-chrome'
+import { quoteStatusTone } from '@/lib/invoices/status-ui'
 
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
 const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07990587315'
@@ -23,14 +26,14 @@ const BODY_CSS = `    .addresses {
     }
     
     .address-block {
-      background: #f9fafb;
+      background: ${STAFF.surface2};
       padding: 8px;
       border-radius: 4px;
     }
     
     .address-block h3 {
       margin: 0 0 5px 0;
-      color: #111827;
+      color: ${STAFF.textStrong};
       font-size: 9pt;
       text-transform: uppercase;
       letter-spacing: 0.3px;
@@ -38,7 +41,7 @@ const BODY_CSS = `    .addresses {
     
     .address-block p {
       margin: 2px 0;
-      color: #4b5563;
+      color: ${STAFF.textMuted};
       font-size: 8pt;
     }
     
@@ -48,7 +51,7 @@ const BODY_CSS = `    .addresses {
       gap: 10px;
       margin-bottom: 10px;
       padding: 8px;
-      background: #f9fafb;
+      background: ${STAFF.surface2};
       border-radius: 4px;
       font-size: 8pt;
     }
@@ -59,7 +62,7 @@ const BODY_CSS = `    .addresses {
     
     .meta-label {
       font-size: 7pt;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
       text-transform: uppercase;
       letter-spacing: 0.3px;
       display: block;
@@ -68,7 +71,7 @@ const BODY_CSS = `    .addresses {
     
     .meta-value {
       font-size: 9pt;
-      color: #111827;
+      color: ${STAFF.text};
       font-weight: 600;
     }
     
@@ -84,15 +87,15 @@ const BODY_CSS = `    .addresses {
     }
     
     th {
-      background: #f3f4f6;
+      background: ${STAFF.surfaceHover};
       padding: 6px 8px;
       text-align: left;
       font-weight: 600;
-      color: #111827;
+      color: ${STAFF.text};
       font-size: 8pt;
       text-transform: uppercase;
       letter-spacing: 0.3px;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid ${STAFF.border};
     }
     
     th.text-right {
@@ -101,8 +104,8 @@ const BODY_CSS = `    .addresses {
     
     td {
       padding: 6px 8px;
-      border-bottom: 1px solid #e5e7eb;
-      color: #4b5563;
+      border-bottom: 1px solid ${STAFF.border};
+      color: ${STAFF.textMuted};
       vertical-align: top;
     }
     
@@ -112,13 +115,13 @@ const BODY_CSS = `    .addresses {
     
     .item-description {
       font-weight: 500;
-      color: #111827;
+      color: ${STAFF.text};
       margin-bottom: 2px;
     }
     
     .item-line-discount {
       font-size: 7pt;
-      color: #059669;
+      color: ${STAFF.primary};
     }
     
     .summary-section {
@@ -130,57 +133,57 @@ const BODY_CSS = `    .addresses {
       display: flex;
       justify-content: space-between;
       padding: 6px 0;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid ${STAFF.border};
     }
     
     .summary-row.total {
       border-bottom: none;
-      border-top: 2px solid #111827;
+      border-top: 2px solid ${STAFF.text};
       padding-top: 8px;
       margin-top: 5px;
       font-size: 11pt;
       font-weight: 700;
-      color: #111827;
+      color: ${STAFF.text};
     }
     
     .acceptance-section {
-      background: #f0f9ff;
+      background: ${STAFF.infoSoft};
       padding: 12px;
       border-radius: 4px;
       margin-top: 15px;
       page-break-inside: avoid;
-      border: 1px solid #60a5fa;
+      border: 1px solid ${STAFF.info};
     }
     
     .acceptance-section h3 {
       margin: 0 0 8px 0;
-      color: #1e40af;
+      color: ${STAFF.infoFg};
       font-size: 10pt;
     }
     
     .acceptance-section p {
       margin: 4px 0;
-      color: #1e40af;
+      color: ${STAFF.infoFg};
       font-size: 8pt;
     }
     
     .notes-section {
       margin-top: 15px;
       padding: 10px;
-      background: #fefce8;
+      background: ${STAFF.warningSoft};
       border-radius: 4px;
       page-break-inside: avoid;
     }
     
     .notes-section h3 {
       margin: 0 0 5px 0;
-      color: #111827;
+      color: ${STAFF.textStrong};
       font-size: 9pt;
     }
     
     .notes-section p {
       margin: 0;
-      color: #4b5563;
+      color: ${STAFF.textMuted};
       white-space: pre-wrap;
       font-size: 8pt;
     }
@@ -264,17 +267,6 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
     return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')
   }
 
-  // Get status color
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'accepted': return '#22c55e'
-      case 'rejected': return '#ef4444'
-      case 'expired': return '#f59e0b'
-      case 'sent': return '#3b82f6'
-      default: return '#6b7280'
-    }
-  }
-
   return `
 ${renderDocumentHead({
     titleHtml: `Quote ${quote.quote_number} - ${quote.vendor?.name || 'Customer'}`,
@@ -288,7 +280,7 @@ ${renderDocumentHeader({
     metaClass: 'quote-header',
     headingHtml: 'QUOTE',
     metaHtml: `      <div class="quote-number">#${quote.quote_number}</div>
-      <span class="status-badge" style="background-color: ${getStatusColor(quote.status)}">
+      <span class="status-badge" style="${statusBadgeStyle(quoteStatusTone(quote.status))}">
         ${formatStatus(quote.status)}
       </span>`,
   })}

@@ -1,3 +1,4 @@
+import { STAFF } from '@/lib/brand/palette'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import {
   formatPnlMetricValue,
@@ -130,11 +131,11 @@ export function generatePnlReportHTML(
 
           body {
             margin: 0;
-            color: #0f172a;
+            color: ${STAFF.text};
             font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             font-size: 11px;
             line-height: 1.45;
-            background: #ffffff;
+            background: ${STAFF.surface};
           }
 
           .page {
@@ -144,13 +145,13 @@ export function generatePnlReportHTML(
           }
 
           .report-header {
-            border: 1px solid #d1d5db;
+            border: 1px solid ${STAFF.borderStrong};
             border-radius: 8px;
             padding: 10px 12px;
             display: flex;
             justify-content: space-between;
             gap: 16px;
-            background: #ffffff;
+            background: ${STAFF.surface};
           }
 
           .brand {
@@ -180,16 +181,16 @@ export function generatePnlReportHTML(
 
           .subtitle {
             margin: 4px 0 0;
-            color: #334155;
+            color: ${STAFF.text};
             font-size: 12px;
           }
 
           .meta {
             min-width: 220px;
-            border: 1px solid #cbd5e1;
+            border: 1px solid ${STAFF.borderStrong};
             border-radius: 6px;
             padding: 8px 10px;
-            background: #ffffff;
+            background: ${STAFF.surface};
           }
 
           .meta-grid {
@@ -200,7 +201,7 @@ export function generatePnlReportHTML(
           }
 
           .meta-grid dt {
-            color: #475569;
+            color: ${STAFF.textMuted};
             font-weight: 600;
           }
 
@@ -211,10 +212,10 @@ export function generatePnlReportHTML(
           }
 
           .summary {
-            border: 1px solid #d1d5db;
+            border: 1px solid ${STAFF.borderStrong};
             border-radius: 8px;
             padding: 8px 10px;
-            background: #f8fafc;
+            background: ${STAFF.surface2};
           }
 
           .summary h2 {
@@ -231,16 +232,16 @@ export function generatePnlReportHTML(
           }
 
           .summary-card {
-            border: 1px solid #e2e8f0;
+            border: 1px solid ${STAFF.border};
             border-radius: 6px;
             padding: 8px;
-            background: #ffffff;
+            background: ${STAFF.surface};
           }
 
           .summary-card h3 {
             margin: 0 0 6px;
             font-size: 11px;
-            color: #334155;
+            color: ${STAFF.text};
           }
 
           .summary-row {
@@ -251,7 +252,7 @@ export function generatePnlReportHTML(
           }
 
           .summary-row span:first-child {
-            color: #475569;
+            color: ${STAFF.textMuted};
           }
 
           .summary-row span:last-child {
@@ -259,7 +260,7 @@ export function generatePnlReportHTML(
           }
 
           .metric-section {
-            border: 1px solid #e2e8f0;
+            border: 1px solid ${STAFF.border};
             border-radius: 8px;
             overflow: hidden;
           }
@@ -267,8 +268,8 @@ export function generatePnlReportHTML(
           .metric-section h2 {
             margin: 0;
             padding: 7px 10px;
-            background: #f1f5f9;
-            border-bottom: 1px solid #e2e8f0;
+            background: ${STAFF.surfaceHover};
+            border-bottom: 1px solid ${STAFF.border};
             font-size: 12px;
             letter-spacing: 0.02em;
             text-transform: uppercase;
@@ -282,14 +283,14 @@ export function generatePnlReportHTML(
 
           .metric-table th,
           .metric-table td {
-            border-bottom: 1px solid #f1f5f9;
+            border-bottom: 1px solid ${STAFF.border};
             padding: 5px 6px;
             vertical-align: top;
           }
 
           .metric-table thead th {
-            background: #f8fafc;
-            color: #475569;
+            background: ${STAFF.surface2};
+            color: ${STAFF.textMuted};
             font-size: 9px;
             text-transform: uppercase;
             letter-spacing: 0.02em;
@@ -300,8 +301,8 @@ export function generatePnlReportHTML(
           }
 
           .subtotal-row td {
-            background: #eef2ff;
-            border-top: 1px solid #dbeafe;
+            background: ${STAFF.primarySoft};
+            border-top: 1px solid ${STAFF.border};
             border-bottom: none;
             font-weight: 700;
           }
@@ -326,7 +327,7 @@ export function generatePnlReportHTML(
           }
 
           .detail-lines {
-            color: #64748b;
+            color: ${STAFF.textMuted};
             font-size: 8px;
             line-height: 1.35;
             text-align: right;
@@ -341,25 +342,25 @@ export function generatePnlReportHTML(
           }
 
           .variance-positive {
-            background: #dcfce7;
-            color: #166534;
+            background: ${STAFF.successSoft};
+            color: ${STAFF.successFg};
           }
 
           .variance-negative {
-            background: #fee2e2;
-            color: #991b1b;
+            background: ${STAFF.dangerSoft};
+            color: ${STAFF.dangerFg};
           }
 
           .variance-neutral {
-            background: #e2e8f0;
-            color: #334155;
+            background: ${STAFF.surfaceHover};
+            color: ${STAFF.text};
           }
 
           .notes {
-            border: 1px solid #e2e8f0;
+            border: 1px solid ${STAFF.border};
             border-radius: 8px;
             padding: 8px 10px;
-            background: #f8fafc;
+            background: ${STAFF.surface2};
           }
 
           .notes h2 {
@@ -371,7 +372,7 @@ export function generatePnlReportHTML(
 
           .notes p {
             margin: 0;
-            color: #334155;
+            color: ${STAFF.text};
             font-size: 10px;
           }
         </style>

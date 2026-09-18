@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { generateEmployeeStarterHTML } from '@/lib/employee-starter-template'
+import { STAFF } from '@/lib/brand/palette'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
@@ -213,7 +214,7 @@ export async function GET(
       displayHeaderFooter: true,
       headerTemplate: '<span></span>',
       footerTemplate: `
-        <div style="width: 100%; font-size: 8px; color: #6b7280; text-align: center; padding: 0 15mm;">
+        <div style="width: 100%; font-size: 8px; color: ${STAFF.textMuted}; text-align: center; padding: 0 15mm;">
           ${footerText}
         </div>
       `,
