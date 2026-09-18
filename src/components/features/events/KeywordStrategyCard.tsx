@@ -38,7 +38,7 @@ function KeywordField({
         <label htmlFor={id} className="block text-sm font-medium text-text">
           {label}
         </label>
-        <p className="text-xs text-gray-500 mt-0.5">{helpText}</p>
+        <p className="text-xs text-text-muted mt-0.5">{helpText}</p>
       </div>
       <textarea
         id={id}
@@ -48,7 +48,7 @@ function KeywordField({
         onChange={(e) => onChange(e.target.value)}
         className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text placeholder:text-text-subtle focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 resize-y"
       />
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-text-muted">
         {count === 0 ? 'No keywords entered' : `${count} keyword${count === 1 ? '' : 's'} entered`}
       </p>
     </div>

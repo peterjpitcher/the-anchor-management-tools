@@ -266,7 +266,7 @@ export default function EditPrivateBookingPage({
             <div className="space-y-4">
               {/* Customer Search */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text mb-1">
                   Change Customer
                 </label>
                 <CustomerSearchInput
@@ -466,7 +466,7 @@ export default function EditPrivateBookingPage({
             )}
 
             <div className="space-y-4">
-              <label className="inline-flex min-h-touch md:min-h-0 items-center gap-2 text-sm font-medium text-gray-700">
+              <label className="inline-flex min-h-touch md:min-h-0 items-center gap-2 text-sm font-medium text-text">
                 <input
                   type="checkbox"
                   id="date_tbd"

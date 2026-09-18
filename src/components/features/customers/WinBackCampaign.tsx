@@ -110,9 +110,9 @@ export function WinBackCampaign() {
           )}
         </div>
         {open ? (
-          <ChevronUpIcon className="h-4 w-4 text-gray-500" aria-hidden="true" />
+          <ChevronUpIcon className="h-4 w-4 text-text-muted" aria-hidden="true" />
         ) : (
-          <ChevronDownIcon className="h-4 w-4 text-gray-500" aria-hidden="true" />
+          <ChevronDownIcon className="h-4 w-4 text-text-muted" aria-hidden="true" />
         )}
       </button>
 
@@ -125,7 +125,7 @@ export function WinBackCampaign() {
 
           {/* Inactivity threshold */}
           <div className="max-w-xs">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text mb-1">
               Customers inactive for
             </label>
             <Select
@@ -138,11 +138,11 @@ export function WinBackCampaign() {
           {/* Message composer */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-text">
                 SMS message
               </label>
               <span
-                className={`text-xs ${isOverLimit ? 'text-danger font-semibold' : 'text-gray-500'}`}
+                className={`text-xs ${isOverLimit ? 'text-danger font-semibold' : 'text-text-muted'}`}
               >
                 {charCount}/{MAX_CHARS}
               </span>

@@ -267,7 +267,7 @@ export default function EmployeeStatusActions({
 
               <div className="mb-6 space-y-5">
                 <div>
-                  <label htmlFor="separation-end-date" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="separation-end-date" className="block text-sm font-medium text-text">
                     Last working day
                   </label>
                   <input
@@ -333,7 +333,7 @@ export default function EmployeeStatusActions({
                       Remaining scheduled shifts
                     </h4>
                     {preview && (
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-text-muted">
                         {preview.shifts.length} shift{preview.shifts.length === 1 ? '' : 's'}
                       </span>
                     )}
@@ -368,7 +368,7 @@ export default function EmployeeStatusActions({
                                 </p>
                               </div>
                               <div className="flex flex-wrap justify-end gap-1.5">
-                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${shift.weekStatus === 'published' ? 'bg-success-soft text-green-800' : 'bg-surface-hover text-gray-700'}`}>
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${shift.weekStatus === 'published' ? 'bg-success-soft text-green-800' : 'bg-surface-hover text-text'}`}>
                                   {shift.weekStatus === 'published' ? 'Published' : 'Draft'}
                                 </span>
                                 {acceptance && (
@@ -404,7 +404,7 @@ export default function EmployeeStatusActions({
                 )}
 
                 <div>
-                  <label htmlFor="separation-note" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="separation-note" className="block text-sm font-medium text-text">
                     Note
                   </label>
                   <textarea
@@ -424,7 +424,7 @@ export default function EmployeeStatusActions({
                   type="button"
                   onClick={closeSeparation}
                   disabled={loading}
-                  className="rounded-md px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-surface-hover disabled:opacity-50"
+                  className="rounded-md px-4 py-2 text-sm font-semibold text-text ring-1 ring-inset ring-gray-300 hover:bg-surface-hover disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -460,7 +460,7 @@ export default function EmployeeStatusActions({
                 This will set the employee status to &quot;Former&quot;, set their employment end date to today, and remove all their system permissions. This cannot be undone automatically. Continue?
               </p>
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setShowConfirm(null)} className="rounded-md px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-surface-hover">
+                <button type="button" onClick={() => setShowConfirm(null)} className="rounded-md px-4 py-2 text-sm font-semibold text-text ring-1 ring-inset ring-gray-300 hover:bg-surface-hover">
                   Cancel
                 </button>
                 <button type="button" onClick={handleRevokeAccess} className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500">

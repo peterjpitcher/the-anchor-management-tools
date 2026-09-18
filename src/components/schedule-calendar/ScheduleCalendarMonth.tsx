@@ -106,7 +106,7 @@ export function ScheduleCalendarMonth({
                     <div
                         key={name}
                         className={cn(
-                            'px-2 py-2 text-xs font-semibold text-gray-700 text-center',
+                            'px-2 py-2 text-xs font-semibold text-text text-center',
                             i > 0 && 'border-l border-border-strong'
                         )}
                     >
@@ -251,7 +251,7 @@ export function ScheduleCalendarMonth({
                                         )}
                                     </div>
                                     {(covers > 0 || staff.length > 0) && (
-                                        <p className="text-2xs leading-tight text-gray-500">
+                                        <p className="text-2xs leading-tight text-text-muted">
                                             {covers > 0 && <span>{covers} cover{covers === 1 ? '' : 's'}</span>}
                                             {covers > 0 && staff.length > 0 && <span aria-hidden> · </span>}
                                             {staff.length > 0 && <span>{staff.join(', ')}</span>}

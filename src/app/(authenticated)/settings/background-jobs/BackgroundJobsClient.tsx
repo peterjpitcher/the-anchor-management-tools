@@ -509,18 +509,18 @@ export default function BackgroundJobsClient({
             <Card>
               <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
                 <div>
-                  <dt className="text-sm font-medium text-gray-500">Job ID</dt>
+                  <dt className="text-sm font-medium text-text-muted">Job ID</dt>
                   <dd className="mt-1 text-sm text-text font-mono">{selectedJobDetails.id}</dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-medium text-gray-500">Priority</dt>
+                  <dt className="text-sm font-medium text-text-muted">Priority</dt>
                   <dd className="mt-1 text-sm text-text">
                     <Badge variant="secondary">{selectedJobDetails.priority}</Badge>
                   </dd>
                 </div>
                 {selectedJobDetails.started_at && (
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Started At</dt>
+                    <dt className="text-sm font-medium text-text-muted">Started At</dt>
                     <dd className="mt-1 text-sm text-text">
                       {new Date(selectedJobDetails.started_at).toLocaleString()}
                     </dd>
@@ -528,7 +528,7 @@ export default function BackgroundJobsClient({
                 )}
                 {selectedJobDetails.completed_at && (
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Completed At</dt>
+                    <dt className="text-sm font-medium text-text-muted">Completed At</dt>
                     <dd className="mt-1 text-sm text-text">
                       {new Date(selectedJobDetails.completed_at).toLocaleString()}
                     </dd>

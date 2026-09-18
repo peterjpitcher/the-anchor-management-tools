@@ -91,7 +91,7 @@ function DeleteAttachmentButton({
                       Delete Attachment
                     </h3>
                     <div className="mt-2">
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-text-muted">
                         Are you sure you want to delete &quot;{attachmentName}&quot;? This action cannot be undone.
                       </p>
                     </div>
@@ -197,7 +197,7 @@ export default function EmployeeAttachmentsList({
   }
 
   if (!attachments || attachments.length === 0) {
-    return <p className="text-sm text-gray-500">No documents uploaded yet.</p>
+    return <p className="text-sm text-text-muted">No documents uploaded yet.</p>
   }
 
   return (
@@ -211,7 +211,7 @@ export default function EmployeeAttachmentsList({
                 <PaperClipIcon className="h-5 w-5 flex-shrink-0 text-gray-400" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-text">{attachment.file_name}</p>
-                  <p className="truncate text-xs text-gray-500">
+                  <p className="truncate text-xs text-text-muted">
                     {categoryName} • {formatBytes(attachment.file_size_bytes || 0)} •{' '}
                     {formatDateInLondon(attachment.uploaded_at)}
                   </p>
@@ -222,7 +222,7 @@ export default function EmployeeAttachmentsList({
                   <button
                     type="button"
                     onClick={() => handleView(attachment)}
-                    className="p-2 sm:p-1 text-gray-500 hover:text-gray-700"
+                    className="p-2 sm:p-1 text-text-muted hover:text-text"
                     disabled={viewing === attachment.attachment_id}
                   >
                     <EyeIcon className="h-5 w-5" />
@@ -232,7 +232,7 @@ export default function EmployeeAttachmentsList({
                 <button
                   type="button"
                   onClick={() => handleDownload(attachment)}
-                  className="p-2 sm:p-1 text-gray-500 hover:text-gray-700"
+                  className="p-2 sm:p-1 text-text-muted hover:text-text"
                   disabled={downloading === attachment.attachment_id}
                 >
                   <ArrowDownTrayIcon className="h-5 w-5" />
@@ -252,7 +252,7 @@ export default function EmployeeAttachmentsList({
               </div>
             </div>
             {attachment.description && (
-              <p className="mt-2 text-sm text-gray-500">{attachment.description}</p>
+              <p className="mt-2 text-sm text-text-muted">{attachment.description}</p>
             )}
           </li>
         )

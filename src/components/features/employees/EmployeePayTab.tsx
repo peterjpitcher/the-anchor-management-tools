@@ -185,7 +185,7 @@ export default function EmployeePayTab({
       {/* Pay settings form / read view */}
       <dl className="sm:divide-y sm:divide-border">
         <div className="py-3 sm:grid sm:grid-cols-4 sm:gap-4 sm:items-center">
-          <dt className="text-sm font-medium text-gray-500">Pay type</dt>
+          <dt className="text-sm font-medium text-text-muted">Pay type</dt>
           <dd className="mt-1 sm:mt-0 sm:col-span-3">
             {settingsEditing ? (
               <Select
@@ -204,7 +204,7 @@ export default function EmployeePayTab({
         </div>
 
         <div className="py-3 sm:grid sm:grid-cols-4 sm:gap-4 sm:items-center">
-          <dt className="text-sm font-medium text-gray-500">Max weekly hours</dt>
+          <dt className="text-sm font-medium text-text-muted">Max weekly hours</dt>
           <dd className="mt-1 sm:mt-0 sm:col-span-3">
             {settingsEditing ? (
               <Input
@@ -257,7 +257,7 @@ export default function EmployeePayTab({
           <div className="flex items-center justify-between mb-3">
             <div>
               <h4 className="text-sm font-medium text-text">Individual Rate Overrides</h4>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-xs text-text-muted mt-0.5">
                 Override the age-band rate for this employee. Append-only — historical rates are preserved.
               </p>
             </div>

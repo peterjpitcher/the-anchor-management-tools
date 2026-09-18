@@ -37,7 +37,7 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-gray-700 hover:bg-surface-hover"
+            className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text hover:bg-surface-hover"
           >
             Cancel
           </button>
@@ -52,7 +52,7 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
         </ModalActions>
       }
     >
-      <label className="block text-sm font-medium text-gray-700">
+      <label className="block text-sm font-medium text-text">
         New party size
         <input
           ref={inputRef}
@@ -100,7 +100,7 @@ export const FohWalkoutModal = React.memo(function FohWalkoutModal(props: FohWal
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-gray-700 hover:bg-surface-hover"
+            className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text hover:bg-surface-hover"
           >
             Cancel
           </button>
@@ -115,10 +115,10 @@ export const FohWalkoutModal = React.memo(function FohWalkoutModal(props: FohWal
         </ModalActions>
       }
     >
-      <label className="block text-sm font-medium text-gray-700">
+      <label className="block text-sm font-medium text-text">
         Walkout amount
         <div className="relative mt-1">
-          <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-sm text-gray-500">£</span>
+          <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-sm text-text-muted">£</span>
           <input
             type="number"
             min={0.01}

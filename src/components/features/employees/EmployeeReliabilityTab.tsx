@@ -49,7 +49,7 @@ function ScorePanel({ title, score }: { title: string; score: ReliabilityScoreBr
     <div className="rounded-lg border border-border p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-gray-500">{title}</p>
+          <p className="text-sm font-medium text-text-muted">{title}</p>
           <p className="mt-1 text-3xl font-semibold text-text">{score.score}</p>
         </div>
         {score.isLowSample && <Badge variant="warning">Low sample</Badge>}
@@ -67,7 +67,7 @@ function ScorePanel({ title, score }: { title: string; score: ReliabilityScoreBr
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
-      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-xs text-text-muted">{label}</p>
       <p className="mt-0.5 font-semibold text-text">{value}</p>
     </div>
   );
@@ -143,7 +143,7 @@ export default function EmployeeReliabilityTab({ reliability }: EmployeeReliabil
       <div>
         <h4 className="text-sm font-semibold text-text">Reliability events</h4>
         {reliability.events.length === 0 ? (
-          <p className="mt-4 text-sm text-gray-500">No reliability events recorded.</p>
+          <p className="mt-4 text-sm text-text-muted">No reliability events recorded.</p>
         ) : (
           <div className="mt-3 divide-y divide-border">
             {reliability.events.map(event => (

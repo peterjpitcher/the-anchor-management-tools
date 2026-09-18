@@ -99,7 +99,7 @@ export function DishOverviewTab({
             />
           </FormGroup>
           {targetPriceDisplay && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-text-muted">
               Target price for {Math.round(targetGpPct * 100)}% GP: {targetPriceDisplay}
             </p>
           )}

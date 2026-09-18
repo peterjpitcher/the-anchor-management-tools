@@ -371,7 +371,7 @@ export function TripForm({
         </div>
 
         <div>
-          <h4 className="text-sm font-medium text-gray-700 mb-3">Route</h4>
+          <h4 className="text-sm font-medium text-text mb-3">Route</h4>
 
           <div className="flex items-center gap-2 mb-3 text-sm text-text-muted">
             <span className="inline-flex items-center justify-center rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-green-700">
@@ -389,7 +389,7 @@ export function TripForm({
               const toName = getDestinationName(stop.destinationId) ?? `Stop ${index + 1}`
               return (
                 <div key={stop.key}>
-                  <div className="mb-1 ml-6 text-xs font-medium text-gray-500">
+                  <div className="mb-1 ml-6 text-xs font-medium text-text-muted">
                     {fromName} {'\u2192'} {toName}
                   </div>
                   <div className="flex items-center gap-2">
@@ -431,7 +431,7 @@ export function TripForm({
                     )}
                   </div>
                   {stop.destinationId && !stop.miles && !stopErrors.has(index) && (
-                    <p className="mt-1 ml-6 text-xs text-gray-500">
+                    <p className="mt-1 ml-6 text-xs text-text-muted">
                       Enter miles once; this route pair will be saved for future trips.
                     </p>
                   )}
@@ -450,7 +450,7 @@ export function TripForm({
           </div>
 
           <div className="mt-3">
-            <div className="mb-1 ml-6 text-xs font-medium text-gray-500">
+            <div className="mb-1 ml-6 text-xs font-medium text-text-muted">
               {getDestinationName(stops[stops.length - 1]?.destinationId) ?? 'Last stop'} {'\u2192'}{' '}
               {homeBase?.name ?? 'The Anchor'}
             </div>
@@ -475,7 +475,7 @@ export function TripForm({
               />
             </div>
             {stops[stops.length - 1]?.destinationId && !returnMiles && !returnMilesError && (
-              <p className="mt-1 ml-6 text-xs text-gray-500">
+              <p className="mt-1 ml-6 text-xs text-text-muted">
                 Enter miles once; this route pair will be saved for future trips.
               </p>
             )}
@@ -487,7 +487,7 @@ export function TripForm({
 
         <div className="rounded-lg border border-border bg-surface-2 p-4">
           <div className="flex items-center justify-between text-sm">
-            <span className="font-medium text-gray-700">Total Miles</span>
+            <span className="font-medium text-text">Total Miles</span>
             <span className="text-lg font-semibold text-text">
               {totalMiles > 0 ? totalMiles.toFixed(1) : '0.0'}
             </span>

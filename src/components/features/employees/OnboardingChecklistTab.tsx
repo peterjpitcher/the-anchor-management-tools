@@ -82,7 +82,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
     return (
       <div className="bg-surface shadow-sm rounded-lg p-6">
         <h3 className="text-lg font-medium text-text mb-4">Onboarding Checklist</h3>
-        <p className="text-gray-500">{error}</p>
+        <p className="text-text-muted">{error}</p>
       </div>
     )
   }
@@ -91,7 +91,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
     return (
       <div className="bg-surface shadow-sm rounded-lg p-6">
         <h3 className="text-lg font-medium text-text mb-4">Onboarding Checklist</h3>
-        <p className="text-gray-500">No onboarding tasks found. The checklist will appear here once configured.</p>
+        <p className="text-text-muted">No onboarding tasks found. The checklist will appear here once configured.</p>
       </div>
     )
   }
@@ -104,7 +104,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
         
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">Overall Progress</span>
+            <span className="text-sm font-medium text-text">Overall Progress</span>
             <span className="text-sm font-medium text-text">{progress.percentage}%</span>
           </div>
           <div className="w-full bg-border rounded-full h-2">
@@ -123,7 +123,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
       <div className="bg-surface shadow-sm rounded-lg">
         <div className="px-6 py-4 border-b border-border">
           <h3 className="text-lg font-medium text-text">Onboarding Tasks</h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-text-muted">
             Check off each task as it&apos;s completed. Dates will be automatically recorded.
           </p>
         </div>
@@ -160,7 +160,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
                       {item.label}
                     </label>
                     {item.completed && date && (
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-text-muted">
                         Completed on {new Date(date).toLocaleDateString()}
                       </p>
                     )}

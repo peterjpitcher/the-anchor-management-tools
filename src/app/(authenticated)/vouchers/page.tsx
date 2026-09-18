@@ -118,9 +118,9 @@ export default async function VouchersOverviewPage() {
           {tiles.map((tile) => (
             <Link key={tile.label} href={tile.href} className="block">
               <Card className="h-full hover:border-gray-400 transition-colors">
-                <div className="text-sm text-gray-500">{tile.label}</div>
+                <div className="text-sm text-text-muted">{tile.label}</div>
                 <div className="mt-1 text-3xl font-semibold text-text">{tile.value}</div>
-                <div className="mt-1 text-xs text-gray-500">{tile.hint}</div>
+                <div className="mt-1 text-xs text-text-muted">{tile.hint}</div>
               </Card>
             </Link>
           ))}
@@ -255,7 +255,7 @@ export default async function VouchersOverviewPage() {
             {summary.ageBuckets.map((bucket) => (
               <Link key={bucket.bucket} href={ageBucketHref(bucket.bucket)} className="block">
                 <div className="rounded-lg border border-border p-4 hover:border-gray-400 transition-colors">
-                  <div className="text-sm text-gray-500">{AGE_BUCKET_LABELS[bucket.bucket]}</div>
+                  <div className="text-sm text-text-muted">{AGE_BUCKET_LABELS[bucket.bucket]}</div>
                   <div className="mt-1 text-2xl font-semibold text-text">{bucket.count}</div>
                 </div>
               </Link>

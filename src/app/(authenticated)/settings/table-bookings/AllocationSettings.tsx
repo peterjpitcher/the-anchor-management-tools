@@ -150,7 +150,7 @@ export function AllocationSettings() {
         onChange={(e) => set(key, e.target.value)}
         className="mt-1"
       />
-      {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-text-muted">{hint}</p>}
     </div>
   )
 
@@ -165,7 +165,7 @@ export function AllocationSettings() {
       />
       <div>
         <label htmlFor={key} className="text-sm font-medium text-text">{label}</label>
-        {hint && <p className="text-xs text-gray-500">{hint}</p>}
+        {hint && <p className="text-xs text-text-muted">{hint}</p>}
       </div>
     </div>
   )
@@ -224,7 +224,7 @@ export function AllocationSettings() {
               produce is the difference between a setting and a guess. */}
           <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm">
             <p className="font-medium text-text">Bookable online per window</p>
-            <p className="mt-1 text-gray-700">
+            <p className="mt-1 text-text">
               Weekdays: <strong>{Math.max(0, paceRegular - reserveRegular)}</strong> covers.{' '}
               Sundays: <strong>{Math.max(0, paceSunday - reserveSunday)}</strong> covers.
             </p>
@@ -256,10 +256,10 @@ export function AllocationSettings() {
             {numberField('outside_table_count', 'Number of outside tables', 5)}
             {numberField('outside_table_capacity', 'Seats per outside table', 8)}
           </div>
-          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm text-gray-700">
+          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm text-text">
             <strong>{outsideCount * outsideCapacity}</strong> outside seats in total.
           </div>
-          <p className="mt-3 text-xs text-gray-500">
+          <p className="mt-3 text-xs text-text-muted">
             Reducing the seats per table is refused here, because bookings already taken were
             costed at the old size and reducing it would quietly oversell the garden. Ask for the
             re-costing step when you are ready to change it.
@@ -337,7 +337,7 @@ export function AllocationSettings() {
                   className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 />
                 {'hint' in reason && reason.hint && (
-                  <p className="mt-1 text-xs text-gray-500">{reason.hint}</p>
+                  <p className="mt-1 text-xs text-text-muted">{reason.hint}</p>
                 )}
               </div>
             ))}

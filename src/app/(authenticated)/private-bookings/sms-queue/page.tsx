@@ -218,10 +218,10 @@ export default async function SmsQueuePage() {
                     </div>
                     
                     <div className="bg-surface-2 rounded-lg p-4 mb-4">
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{sms.message_body}</p>
+                      <p className="text-sm text-text whitespace-pre-wrap">{sms.message_body}</p>
                     </div>
                     
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-text-muted">
                       Created {formatDateTime12Hour(sms.created_at)}
                     </p>
                   </div>
@@ -276,7 +276,7 @@ export default async function SmsQueuePage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <Badge variant="success">Approved</Badge>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-text-muted">
                         by {sms.approved_by} at {formatDateTime12Hour(sms.approved_at)}
                       </span>
                     </div>
@@ -295,7 +295,7 @@ export default async function SmsQueuePage() {
                     </div>
                     
                     <div className="bg-surface-2 rounded-lg p-4">
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{sms.message_body}</p>
+                      <p className="text-sm text-text whitespace-pre-wrap">{sms.message_body}</p>
                     </div>
                   </div>
                 </div>
@@ -359,10 +359,10 @@ export default async function SmsQueuePage() {
                       )}
                       
                       <div className="bg-surface-2 rounded-lg p-4 line-through">
-                        <p className="text-sm text-gray-500 whitespace-pre-wrap">{sms.message_body}</p>
+                        <p className="text-sm text-text-muted whitespace-pre-wrap">{sms.message_body}</p>
                       </div>
                       
-                      <p className="text-xs text-gray-500 mt-2">
+                      <p className="text-xs text-text-muted mt-2">
                         Cancelled {metadata.cancelled_at ? formatDateTime12Hour(metadata.cancelled_at as string) : 'recently'}
                       </p>
                     </div>

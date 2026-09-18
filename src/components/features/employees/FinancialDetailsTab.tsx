@@ -11,7 +11,7 @@ interface FinancialDetailsTabProps {
 
 const DetailItem = ({ label, value }: { label: string; value: string | undefined | null }) => (
   <div className="py-3 sm:grid sm:grid-cols-4 sm:gap-4">
-    <dt className="text-sm font-medium text-gray-500">{label}</dt>
+    <dt className="text-sm font-medium text-text-muted">{label}</dt>
     <dd className="mt-1 text-sm text-text sm:col-span-3 sm:mt-0">{value || 'N/A'}</dd>
   </div>
 );

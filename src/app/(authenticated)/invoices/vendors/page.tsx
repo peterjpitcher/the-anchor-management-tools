@@ -416,7 +416,7 @@ export default function VendorsPage() {
               { key: 'name', header: 'Name', cell: (v: InvoiceVendor) => (
                 <div>
                   <div className="font-medium">{v.name}</div>
-                  {v.vat_number && (<div className="text-sm text-gray-500">VAT: {v.vat_number}</div>)}
+                  {v.vat_number && (<div className="text-sm text-text-muted">VAT: {v.vat_number}</div>)}
                 </div>
               ) },
               { key: 'primary_contact', header: 'Primary Contact', cell: (v: InvoiceVendor) => (
@@ -463,7 +463,7 @@ export default function VendorsPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-medium">{v.name}</div>
-                    {v.vat_number && (<div className="text-sm text-gray-500">VAT: {v.vat_number}</div>)}
+                    {v.vat_number && (<div className="text-sm text-text-muted">VAT: {v.vat_number}</div>)}
                     <div className="text-sm text-text-muted break-all">{v.email || '-'}</div>
                     {v.phone && (<div className="text-sm text-text-muted">{v.phone}</div>)}
                     <div className="mt-1 text-sm text-text-muted">Terms: {v.payment_terms} days</div>
@@ -664,7 +664,7 @@ export default function VendorsPage() {
                         </span>
                       )}
                     </div>
-                    <div className="text-sm text-gray-700 break-all">{c.email}</div>
+                    <div className="text-sm text-text break-all">{c.email}</div>
                     {(c.phone || c.role) && (
                       <div className="text-xs text-text-muted mt-1">
                         {c.role ? <span className="mr-3">Role: {c.role}</span> : null}

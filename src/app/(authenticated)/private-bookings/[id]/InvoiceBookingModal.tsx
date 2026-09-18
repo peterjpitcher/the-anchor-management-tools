@@ -139,7 +139,7 @@ export function InvoiceBookingModal({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-gray-500">
+                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-muted">
                   <th className="py-2 pr-2">Item</th>
                   <th className="py-2 px-2 text-right">Qty</th>
                   <th className="py-2 px-2 text-right">Unit</th>
@@ -283,7 +283,7 @@ export function InvoiceBookingModal({
               disabled={sending}
               maxLength={100}
             />
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-text-muted">
               Optional, and it prints on the invoice. Leave it as it is for a private customer.
               Businesses often need their own PO number here or their finance team will not pay
               it.

@@ -444,7 +444,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                     )}
                   </>
                 ) : (
-                  <p className="text-gray-500">No vendor details</p>
+                  <p className="text-text-muted">No vendor details</p>
                 )}
               </div>
             </div>
@@ -501,10 +501,10 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                   <div className="border rounded-lg p-3">
                     <p className="font-medium text-sm mb-2">{it.description}</p>
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div><span className="text-gray-500">Qty:</span> {it.quantity}</div>
-                      <div><span className="text-gray-500">Unit Price:</span> £{it.unit_price.toFixed(2)}</div>
-                      <div><span className="text-gray-500">Discount:</span> {it.discount_percentage > 0 ? (<span className="text-green-600"> -{it.discount_percentage}%</span>) : (<span>-</span>)}</div>
-                      <div><span className="text-gray-500">VAT:</span> {it.vat_rate}%</div>
+                      <div><span className="text-text-muted">Qty:</span> {it.quantity}</div>
+                      <div><span className="text-text-muted">Unit Price:</span> £{it.unit_price.toFixed(2)}</div>
+                      <div><span className="text-text-muted">Discount:</span> {it.discount_percentage > 0 ? (<span className="text-green-600"> -{it.discount_percentage}%</span>) : (<span>-</span>)}</div>
+                      <div><span className="text-text-muted">VAT:</span> {it.vat_rate}%</div>
                     </div>
                     <div className="mt-2 pt-2 border-t flex justify-between">
                       <span className="text-sm font-medium">Total:</span>

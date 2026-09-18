@@ -64,7 +64,7 @@ export default function GlobalError({
             </div>
             {process.env.NODE_ENV === 'development' && (
               <details className="mt-6">
-                <summary className="cursor-pointer text-sm text-gray-500">
+                <summary className="cursor-pointer text-sm text-text-muted">
                   Error details
                 </summary>
                 <pre className="mt-2 text-xs bg-surface-hover p-2 rounded-sm overflow-auto">

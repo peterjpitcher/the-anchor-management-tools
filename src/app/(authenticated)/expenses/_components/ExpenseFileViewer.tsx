@@ -100,11 +100,11 @@ export function ExpenseFileViewer({
         {/* Header */}
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3 ">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="truncate text-sm font-medium text-gray-700 ">
+            <span className="truncate text-sm font-medium text-text ">
               {currentFile.file_name}
             </span>
             {files.length > 1 && (
-              <span className="shrink-0 text-xs text-gray-500 ">
+              <span className="shrink-0 text-xs text-text-muted ">
                 {currentIndex + 1} of {files.length}
               </span>
             )}
@@ -133,7 +133,7 @@ export function ExpenseFileViewer({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-sm px-2 py-1 text-sm text-gray-500 hover:bg-surface-hover  "
+              className="rounded-sm px-2 py-1 text-sm text-text-muted hover:bg-surface-hover  "
               aria-label="Close viewer"
             >
               {'\u00d7'}
@@ -165,7 +165,7 @@ export function ExpenseFileViewer({
             />
           )}
           {!currentFile.signed_url && (
-            <p className="text-center text-sm text-gray-500 ">
+            <p className="text-center text-sm text-text-muted ">
               Unable to load file preview. The signed URL may have expired.
             </p>
           )}

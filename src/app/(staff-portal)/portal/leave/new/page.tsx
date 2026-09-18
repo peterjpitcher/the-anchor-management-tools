@@ -22,7 +22,7 @@ export default async function NewLeaveRequestPage() {
     <div className="space-y-5">
       <div>
         <h2 className="text-xl font-semibold text-text">Request Holiday</h2>
-        <p className="text-sm text-gray-500 mt-1">Select the dates you&apos;d like to request off.</p>
+        <p className="text-sm text-text-muted mt-1">Select the dates you&apos;d like to request off.</p>
       </div>
 
       <div className="bg-surface rounded-lg border border-border p-4">

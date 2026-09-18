@@ -234,7 +234,7 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
             value={freeLabel}
             disabled={Boolean(eventId)}
             onChange={(event) => setFreeLabel(event.target.value)}
-            className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text placeholder:text-text-subtle focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40 disabled:bg-surface-hover disabled:text-gray-500"
+            className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text placeholder:text-text-subtle focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40 disabled:bg-surface-hover disabled:text-text-muted"
           />
         </div>
 
@@ -357,7 +357,7 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
               />
 
               {!canEdit && (
-                <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-base text-gray-700">
+                <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-base text-text">
                   You have view-only access. Ask a manager to hand out vouchers.
                 </p>
               )}

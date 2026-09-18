@@ -244,7 +244,7 @@ export default function MenuRecipesPage(): React.ReactElement {
           return (
             <div>
               <div className="font-medium">{recipe.name}</div>
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-text-muted">
                 Yield: {recipe.yield_quantity} {recipe.yield_unit}(s)
               </div>
             </div>

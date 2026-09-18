@@ -158,7 +158,7 @@ export default function EmployeeForm({
           <h3 className="text-lg sm:text-xl font-medium leading-6 text-text">
             {employee ? 'Edit Employee' : 'Add New Employee'}
           </h3>
-          <p className="mt-1 text-sm sm:text-base text-gray-500">
+          <p className="mt-1 text-sm sm:text-base text-text-muted">
             Please fill in the details of the employee.
           </p>
         </div>
@@ -168,7 +168,7 @@ export default function EmployeeForm({
       {isMobile && (
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-500">Step {currentStep + 1} of {totalSteps}</span>
+            <span className="text-xs text-text-muted">Step {currentStep + 1} of {totalSteps}</span>
             <span className="text-sm font-medium text-text">{currentStepData.title}</span>
           </div>
           <div className="w-full bg-border rounded-full h-2">
@@ -199,7 +199,7 @@ export default function EmployeeForm({
             </h4>
             {step.fields.map((field) => (
               <div key={field.name} className="space-y-2 sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2 sm:space-y-0">
-                <label htmlFor={field.name} className="block text-sm sm:text-base font-medium text-gray-700 sm:col-span-1">
+                <label htmlFor={field.name} className="block text-sm sm:text-base font-medium text-text sm:col-span-1">
                   {field.label} {field.required && <span className="text-danger">*</span>}
                 </label>
                 <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -242,7 +242,7 @@ export default function EmployeeForm({
                     />
                   )}
                   {field.hint && !state?.errors?.[field.name] && (
-                    <p className="mt-1 text-xs text-gray-500">{field.hint}</p>
+                    <p className="mt-1 text-xs text-text-muted">{field.hint}</p>
                   )}
                   {state?.errors?.[field.name] && (
                     <p className="mt-2 text-sm text-danger" id={`${field.name}-error`}>

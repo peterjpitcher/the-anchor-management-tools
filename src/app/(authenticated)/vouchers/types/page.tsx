@@ -53,13 +53,13 @@ export default async function VoucherTypesPage() {
                   {type.id}
                 </div>
                 <div
-                  className="mt-3 text-sm text-gray-700 [&_p]:mb-2 [&_strong]:font-semibold"
+                  className="mt-3 text-sm text-text [&_p]:mb-2 [&_strong]:font-semibold"
                   dangerouslySetInnerHTML={{ __html: type.entitlementHtml }}
                 />
               </div>
             ))}
             {types.length === 0 && (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-muted">
                 No voucher types found. The seed migration has not been applied.
               </p>
             )}
@@ -75,7 +75,7 @@ export default async function VoucherTypesPage() {
                   <h3 className="text-base font-semibold text-text">
                     Terms {version.version}
                   </h3>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-text-muted">
                     Effective from{' '}
                     {formatDateInLondon(version.effectiveFrom, {
                       day: 'numeric',
@@ -98,7 +98,7 @@ export default async function VoucherTypesPage() {
               {version.clauses.map((clause, index) => (
                 <li key={`${version.version}-${index}`} className="text-sm">
                   <span className="font-medium text-text">{clause.heading}</span>
-                  <span className="text-gray-700"> {clause.body}</span>
+                  <span className="text-text"> {clause.body}</span>
                 </li>
               ))}
             </ol>

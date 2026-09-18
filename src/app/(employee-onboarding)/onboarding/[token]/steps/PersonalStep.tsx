@@ -92,7 +92,7 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
 
   const field = (id: keyof PersonalData, label: string, type = 'text', required = false) => (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+      <label htmlFor={id} className="block text-sm font-medium text-text mb-1">
         {label}{required && <span className="text-danger ml-1">*</span>}
       </label>
       <input
@@ -113,7 +113,7 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
         {field('last_name', 'Last Name', 'text', true)}
       </div>
       <div>
-        <label htmlFor="preferred_name" className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="preferred_name" className="block text-sm font-medium text-text mb-1">
           Preferred Name
         </label>
         <input
@@ -138,14 +138,14 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
             {preferredNameWarning}
           </p>
         )}
-        <p id="preferred_name-help" className="mt-1 text-xs text-gray-500">
+        <p id="preferred_name-help" className="mt-1 text-xs text-text-muted">
           What you would like the team to call you. Leave blank to use your first name. If someone
           here already goes by the same name, add your first initial, for example &quot;Jacob H&quot;.
         </p>
       </div>
       {field('date_of_birth', 'Date of Birth', 'date')}
       <div>
-        <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+        <label htmlFor="address" className="block text-sm font-medium text-text mb-1">Address</label>
         <textarea
           id="address"
           value={data.address}

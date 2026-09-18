@@ -426,7 +426,7 @@ export function MenuDishesTable({
 
       {/* Filter label */}
       {filter !== 'all' && (
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-text-muted">
           Showing: <span className="font-medium">{filter === 'below-target' ? 'Below GP Target' : 'Missing Costing'}</span>
           {' '}({pipeline.totalItems} {showAllCombinations ? 'row' : 'dish'}{pipeline.totalItems !== 1 ? (showAllCombinations ? 's' : 'es') : ''})
         </div>
@@ -505,15 +505,15 @@ export function MenuDishesTable({
                           <div className="text-xs text-indigo-600">{row.comboLabel}</div>
                         )}
                         {!row.comboLabel && row.assignments.length > 0 && (
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-text-muted">
                             {row.assignments.map((a) => a.menu_code).join(', ')}
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-2 text-gray-700">
+                      <td className="px-4 py-2 text-text">
                         &pound;{row.sellingPrice.toFixed(2)}
                       </td>
-                      <td className="px-4 py-2 text-gray-700">
+                      <td className="px-4 py-2 text-text">
                         &pound;{row.portionCost.toFixed(2)}
                       </td>
                       <td className="px-4 py-2">
@@ -534,7 +534,7 @@ export function MenuDishesTable({
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-gray-700">{formatGp(row.targetGpPct)}</td>
+                      <td className="px-4 py-2 text-text">{formatGp(row.targetGpPct)}</td>
                       <td className="px-4 py-2">
                         <Badge tone={row.originalDish.is_active ? 'success' : 'neutral'}>
                           {row.originalDish.is_active ? 'Active' : 'Inactive'}

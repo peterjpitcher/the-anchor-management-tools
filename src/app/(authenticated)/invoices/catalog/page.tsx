@@ -310,8 +310,8 @@ export default function LineItemCatalogPage() {
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <div><span className="text-gray-500">Price:</span> <span className="font-medium">£{i.default_price.toFixed(2)}</span></div>
-                    <div><span className="text-gray-500">VAT:</span> <span className="font-medium">{i.default_vat_rate}%</span></div>
+                    <div><span className="text-text-muted">Price:</span> <span className="font-medium">£{i.default_price.toFixed(2)}</span></div>
+                    <div><span className="text-text-muted">VAT:</span> <span className="font-medium">{i.default_vat_rate}%</span></div>
                   </div>
                 </div>
               )}

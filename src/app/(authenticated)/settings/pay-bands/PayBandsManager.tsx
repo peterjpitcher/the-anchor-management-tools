@@ -110,7 +110,7 @@ function RateHistory({
   return (
     <div className="mt-3 border-t border-border pt-3">
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Rate History</p>
+        <p className="text-xs font-medium text-text-muted uppercase tracking-wide">Rate History</p>
         {canManage && (
           <Button
             type="button"
@@ -298,7 +298,7 @@ function BandCard({
           }
           <div>
             <p className="font-medium text-text">{band.label}</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-text-muted">
               Age {band.min_age}{band.max_age != null ? `–${band.max_age}` : '+'}
             </p>
           </div>
@@ -447,7 +447,7 @@ export default function PayBandsManager({ canManage, initialBands, initialRates 
 
       {showNewBandForm && canManage && (
         <div className="p-4 bg-surface-2 rounded-lg border border-border space-y-4">
-          <p className="text-sm font-medium text-gray-700">New age band</p>
+          <p className="text-sm font-medium text-text">New age band</p>
           {formError && <Alert variant="error">{formError}</Alert>}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
             <div className="sm:col-span-2">

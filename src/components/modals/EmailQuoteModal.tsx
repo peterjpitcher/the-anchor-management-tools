@@ -137,7 +137,7 @@ export function EmailQuoteModal({ quote, isOpen, onClose, onSuccess }: EmailQuot
             placeholder="primary.contact@example.com"
             required
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-text-muted mt-1">
             Primary recipient. Usually the vendor&apos;s primary contact.
           </p>
         </FormGroup>
@@ -149,7 +149,7 @@ export function EmailQuoteModal({ quote, isOpen, onClose, onSuccess }: EmailQuot
             onChange={(e) => setCcEmails(e.target.value)}
             placeholder="accounts@example.com, ops@example.com"
           />
-          <p className="text-xs text-gray-500 mt-1">Separate multiple emails with commas or semicolons.</p>
+          <p className="text-xs text-text-muted mt-1">Separate multiple emails with commas or semicolons.</p>
         </FormGroup>
 
         <FormGroup label="Subject">

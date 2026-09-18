@@ -408,7 +408,7 @@ export default function MenuDishesPage(): React.ReactElement {
           return (
             <div>
               <div className="font-medium">{dish.name}</div>
-              {dish.description && <div className="text-xs text-gray-500">{dish.description}</div>}
+              {dish.description && <div className="text-xs text-text-muted">{dish.description}</div>}
             </div>
           );
         },

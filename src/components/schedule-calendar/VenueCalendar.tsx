@@ -773,7 +773,7 @@ export function VenueCalendar({
       />
 
       {hiddenCount > 0 && (
-        <p className="mt-2 text-xs text-gray-500">{hiddenCount} without a date (not shown)</p>
+        <p className="mt-2 text-xs text-text-muted">{hiddenCount} without a date (not shown)</p>
       )}
 
       {datasetWarnings.length > 0 && (
@@ -852,7 +852,7 @@ export function VenueCalendar({
                         'flex min-h-11 items-center gap-2 rounded-md border px-2.5 py-2 text-left text-xs font-medium transition-colors',
                         selected
                           ? 'border-gray-950 bg-surface-hover text-text-strong ring-2 ring-gray-950 ring-offset-1'
-                          : 'border-border-strong bg-surface text-gray-700 hover:bg-surface-hover',
+                          : 'border-border-strong bg-surface text-text hover:bg-surface-hover',
                       )}
                     >
                       <span
@@ -868,7 +868,7 @@ export function VenueCalendar({
               {!CALENDAR_COLOUR_OPTIONS.some(
                 (option) => option.value === noteEditor.color.toUpperCase(),
               ) && (
-                <p className="mt-2 text-xs text-gray-500">
+                <p className="mt-2 text-xs text-text-muted">
                   This note uses a colour outside the palette. It is kept unless you pick a new one.
                 </p>
               )}

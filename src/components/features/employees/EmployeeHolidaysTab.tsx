@@ -142,7 +142,7 @@ export default function EmployeeHolidaysTab({
       {/* Book holiday form */}
       {showBookForm && canCreateLeave && (
         <div className="p-4 bg-surface-2 rounded-lg border border-border space-y-4">
-          <p className="text-sm font-medium text-gray-700">Book approved holiday</p>
+          <p className="text-sm font-medium text-text">Book approved holiday</p>
           {bookError && <Alert variant="error">{bookError}</Alert>}
           <div className="grid grid-cols-2 gap-4">
             <FormGroup label="Start date" htmlFor="book-start" required>
@@ -202,7 +202,7 @@ export default function EmployeeHolidaysTab({
       {/* Allowance progress */}
       <div className="rounded-lg border border-border p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-gray-700">Holiday year {yearLabel(selectedYear)}</p>
+          <p className="text-sm font-medium text-text">Holiday year {yearLabel(selectedYear)}</p>
           <span className={`text-sm font-semibold ${overAllowance ? 'text-danger' : 'text-text'}`}>
             {approvedDays} / {allowance} days
           </span>
@@ -213,7 +213,7 @@ export default function EmployeeHolidaysTab({
             style={{ width: `${progressPct}%` }}
           />
         </div>
-        <div className="flex gap-4 text-xs text-gray-500">
+        <div className="flex gap-4 text-xs text-text-muted">
           <span>{allowance - approvedDays > 0 ? `${allowance - approvedDays} days remaining` : `${approvedDays - allowance} days over allowance`}</span>
           {pendingDays > 0 && <span className="text-warning">{pendingDays} pending</span>}
         </div>
@@ -236,7 +236,7 @@ export default function EmployeeHolidaysTab({
                     {formatDate(r.start_date)}
                     {r.start_date !== r.end_date && <> – {formatDate(r.end_date)}</>}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-text-muted">
                     {days} {days === 1 ? 'day' : 'days'}
                     {r.note && ` · ${r.note}`}
                   </p>

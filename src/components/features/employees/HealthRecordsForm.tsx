@@ -65,7 +65,7 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
     
     return (
       <div key={field.name} className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-        <label htmlFor={field.name} className="block text-sm font-medium text-gray-700 sm:col-span-1">
+        <label htmlFor={field.name} className="block text-sm font-medium text-text sm:col-span-1">
           {field.label}
         </label>
         <div className="mt-1 sm:col-span-3 sm:mt-0">

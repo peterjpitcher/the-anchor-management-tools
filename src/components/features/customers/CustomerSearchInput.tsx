@@ -242,7 +242,7 @@ export default function CustomerSearchInput({
                   <p className="text-sm sm:text-base font-medium text-text">
                     {[customer.first_name, customer.last_name ?? ''].filter(Boolean).join(' ')}
                   </p>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs sm:text-sm text-gray-500 mt-0.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs sm:text-sm text-text-muted mt-0.5">
                     {customer.mobile_number && (
                       <span className="flex items-center">
                         <PhoneIcon className="h-3 w-3 mr-1 flex-shrink-0" />
@@ -268,7 +268,7 @@ export default function CustomerSearchInput({
       {/* No Results Message */}
       {showDropdown && searchResults.length === 0 && searchTerm.trim().length >= 2 && !isSearching && (
         <div className="absolute z-50 mt-1 w-full bg-surface shadow-lg rounded-md border border-border p-4">
-          <p className="text-sm text-gray-500 text-center">
+          <p className="text-sm text-text-muted text-center">
             {searchError ? 'Customer search failed. Please try again.' : 'No customers found'}
           </p>
         </div>

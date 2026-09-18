@@ -143,7 +143,7 @@ export function ConfirmDepositPanel({
               />
             </FormGroup>
           )}
-          <div className="space-y-2 text-sm text-gray-700">
+          <div className="space-y-2 text-sm text-text">
             {deadline && <p>{deadline}</p>}
             <p>
               We will email the guest that the deposit can be paid in cash at the bar or by PayPal,

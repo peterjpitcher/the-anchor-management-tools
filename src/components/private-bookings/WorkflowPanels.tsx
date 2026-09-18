@@ -206,7 +206,7 @@ export function WorkflowStatusPanel({
           </div>
         )}
         {rows.length === 0 ? (
-          <p className="text-sm text-gray-500">No workflow steps outstanding.</p>
+          <p className="text-sm text-text-muted">No workflow steps outstanding.</p>
         ) : (
           <dl className="space-y-2">
             {rows.map((row) => (
@@ -408,7 +408,7 @@ export function WaiverRiskPanel({
           {waiverApplies && (
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-medium text-gray-700">Self-catering waiver</h3>
+                <h3 className="text-sm font-medium text-text">Self-catering waiver</h3>
                 <StatusBadge variant={WAIVER_VARIANT[waiver]}>{humanise(waiver)}</StatusBadge>
               </div>
               {canManage && (
@@ -418,7 +418,7 @@ export function WaiverRiskPanel({
                       type="file"
                       accept="application/pdf,image/jpeg,image/png,image/webp,image/heic"
                       onChange={(e) => setWaiverFile(e.target.files?.[0] ?? null)}
-                      className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-surface-hover"
+                      className="block w-full text-sm text-text file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-2 file:text-sm file:font-medium file:text-text hover:file:bg-surface-hover"
                     />
                   </FormGroup>
                   <div className="flex flex-wrap items-center gap-2">
@@ -463,7 +463,7 @@ export function WaiverRiskPanel({
 
           <div className="space-y-3 border-t border-border pt-4">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-medium text-gray-700">Risk review</h3>
+              <h3 className="text-sm font-medium text-text">Risk review</h3>
               <StatusBadge variant={RISK_VARIANT[risk]}>{humanise(risk)}</StatusBadge>
             </div>
             {canManage && (
@@ -721,7 +721,7 @@ export function SuppliersPanel({
     >
       <Card>
         {loading ? (
-          <p className="text-sm text-gray-500">Loading suppliers…</p>
+          <p className="text-sm text-text-muted">Loading suppliers…</p>
         ) : suppliers.length === 0 ? (
           <EmptyState
             icon={<TruckIcon className="h-12 w-12 text-text-subtle" />}
@@ -738,7 +738,7 @@ export function SuppliersPanel({
                       <p className="text-sm font-medium text-text">{supplier.name}</p>
                       <StatusBadge variant={SUPPLIER_ROW_VARIANT[supplier.status]}>{humanise(supplier.status)}</StatusBadge>
                     </div>
-                    <div className="mt-1 space-y-0.5 text-xs text-gray-500">
+                    <div className="mt-1 space-y-0.5 text-xs text-text-muted">
                       {supplier.supplier_type && <p>Type: {supplier.supplier_type}</p>}
                       {supplier.contact_details && <p>Contact: {supplier.contact_details}</p>}
                       {(supplier.arrival_time || supplier.departure_time) && (
@@ -929,12 +929,12 @@ export function DeductionsPanel({
   return (
     <Section id="deductions" title="Deposit Deductions">
       <Card>
-        <p className="mb-4 text-xs text-gray-500">
+        <p className="mb-4 text-xs text-text-muted">
           Records the deduction decision only (SOP §25). Money is moved via the existing refund flow, never here.
         </p>
 
         {loading ? (
-          <p className="text-sm text-gray-500">Loading deductions…</p>
+          <p className="text-sm text-text-muted">Loading deductions…</p>
         ) : deductions.length === 0 ? (
           <EmptyState
             icon={<BanknotesIcon className="h-12 w-12 text-text-subtle" />}
@@ -955,7 +955,7 @@ export function DeductionsPanel({
                       <p className="text-sm font-medium text-text">{formatCurrency(deduction.amount)}</p>
                       <p className="mt-0.5 text-sm text-text-muted whitespace-pre-wrap">{deduction.reason}</p>
                       {deduction.customer_discussion_note && (
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-text-muted">
                           Discussion: {deduction.customer_discussion_note}
                         </p>
                       )}
@@ -1016,7 +1016,7 @@ export function DeductionsPanel({
 
         {canManage && (
           <div className="mt-4 space-y-3 border-t border-border pt-4">
-            <h3 className="text-sm font-medium text-gray-700">Propose a deduction</h3>
+            <h3 className="text-sm font-medium text-text">Propose a deduction</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <FormGroup label="Amount (£)">
                 <Input
@@ -1100,7 +1100,7 @@ function ComplaintRow({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-text whitespace-pre-wrap">{complaint.summary}</p>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-text-muted">
             {complaint.channel ? `${humanise(complaint.channel)} · ` : ''}
             Received {formatDateTime12Hour(complaint.received_at)}
           </p>
@@ -1125,7 +1125,7 @@ function ComplaintRow({
           Save complaint
         </Button>
         {!canManage && (
-          <p className="text-xs text-gray-500">Resolving or closing a complaint is a manager decision.</p>
+          <p className="text-xs text-text-muted">Resolving or closing a complaint is a manager decision.</p>
         )}
       </div>
     </li>
@@ -1183,12 +1183,12 @@ export function ComplaintsPanel({
   return (
     <Section id="complaints" title="Complaints">
       <Card>
-        <p className="mb-4 text-xs text-gray-500">
+        <p className="mb-4 text-xs text-text-muted">
           Acknowledge within 3 working days and respond within 10 working days (SOP §26).
         </p>
 
         {loading ? (
-          <p className="text-sm text-gray-500">Loading complaints…</p>
+          <p className="text-sm text-text-muted">Loading complaints…</p>
         ) : complaints.length === 0 ? (
           <EmptyState
             icon={<ChatBubbleBottomCenterTextIcon className="h-12 w-12 text-text-subtle" />}
@@ -1209,7 +1209,7 @@ export function ComplaintsPanel({
         )}
 
         <div className="mt-4 space-y-3 border-t border-border pt-4">
-          <h3 className="text-sm font-medium text-gray-700">Log a complaint</h3>
+          <h3 className="text-sm font-medium text-text">Log a complaint</h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <FormGroup label="Channel">
               <Select value={channel} onChange={(e) => setChannel(e.target.value)} options={COMPLAINT_CHANNEL_OPTIONS} />

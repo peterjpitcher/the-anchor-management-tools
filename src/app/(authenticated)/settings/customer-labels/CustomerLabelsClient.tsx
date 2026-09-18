@@ -289,7 +289,7 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
                     <div>
                       <p className="text-sm font-medium text-text">{label.name}</p>
                       {label.description && (
-                        <p className="text-xs text-gray-500">{label.description}</p>
+                        <p className="text-xs text-text-muted">{label.description}</p>
                       )}
                     </div>
                   </div>

@@ -95,7 +95,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                 'text-sm font-semibold px-3 py-2 border-b',
                                 isTodayGroup
                                     ? 'border-gray-950 bg-gray-950 text-white'
-                                    : 'bg-surface-hover text-gray-700 border-border'
+                                    : 'bg-surface-hover text-text border-border'
                             )}
                         >
                             {isTodayGroup ? 'Today' : format(group.date, 'EEEE d MMMM')}
@@ -106,7 +106,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                             const staff = dailyOps?.staffByDate[iso] ?? []
                             if (covers === 0 && staff.length === 0) return null
                             return (
-                                <p className="text-meta leading-snug text-gray-500 px-3 py-1 border-b border-border">
+                                <p className="text-meta leading-snug text-text-muted px-3 py-1 border-b border-border">
                                     {covers > 0 && (
                                         <span>{covers} cover{covers === 1 ? '' : 's'} booked</span>
                                     )}
@@ -116,7 +116,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                             )
                         })()}
                         {group.entries.length === 0 && isTodayGroup && (
-                            <div className="text-xs text-gray-500 px-3 py-4 italic">
+                            <div className="text-xs text-text-muted px-3 py-4 italic">
                                 No entries today.
                             </div>
                         )}

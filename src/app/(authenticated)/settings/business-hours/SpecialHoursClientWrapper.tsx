@@ -86,7 +86,7 @@ export function SpecialHoursClientWrapper({
                   <Alert variant="error">{specialHoursError}</Alert>
                 </div>
               ) : initialSpecialHours.length === 0 ? (
-                  <p className="p-4 text-center text-gray-500">No special hours configured.</p>
+                  <p className="p-4 text-center text-text-muted">No special hours configured.</p>
               ) : (
                   <div className="divide-y divide-border">
                       {initialSpecialHours.map((exception) => (
@@ -112,7 +112,7 @@ export function SpecialHoursClientWrapper({
                                       )}
                                   </p>
                                   {exception.note && (
-                                      <p className="mt-1 text-sm text-gray-500 italic">Note: {exception.note}</p>
+                                      <p className="mt-1 text-sm text-text-muted italic">Note: {exception.note}</p>
                                   )}
                               </div>
                               <div className="flex items-center space-x-2">

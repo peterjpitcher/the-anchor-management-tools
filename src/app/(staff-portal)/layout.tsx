@@ -26,7 +26,7 @@ export default async function StaffPortalLayout({ children }: { children: ReactN
         <div className="mx-auto flex max-w-2xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:py-4">
           <div>
             <h1 className="text-lg font-semibold text-text">The Anchor</h1>
-            <p className="text-sm text-gray-500">Staff Portal</p>
+            <p className="text-sm text-text-muted">Staff Portal</p>
           </div>
           <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 text-sm scrollbar-hide sm:mx-0 sm:gap-4 sm:overflow-visible sm:px-0">
             <nav className="flex items-center gap-2 sm:gap-4">

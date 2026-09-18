@@ -89,15 +89,15 @@ export default function EmailCaptureClient() {
     <PageLayout title="Ask for email addresses">
       <Card>
         <div className="space-y-4">
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-text">
             Texts guests we can reach by SMS but have no email address for, with a one-tap
             link to add one. Everyone here has booked before.
           </p>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-text-muted">
             Each person is asked once. Anyone already texted is excluded automatically, so
             running this again will not reach them a second time.
           </p>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-text-muted">
             Sends go out in batches of up to 100 an hour, because the whole app shares an
             hourly SMS limit with booking confirmations and reminders. Run it again each hour
             until it says nobody is left.
@@ -110,12 +110,12 @@ export default function EmailCaptureClient() {
 
       <Card title="Who this would reach">
         {loading ? (
-          <p className="text-sm text-gray-500">Working out who is eligible...</p>
+          <p className="text-sm text-text-muted">Working out who is eligible...</p>
         ) : preview ? (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <Badge>{preview.thisRunCount}</Badge>
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-text">
                 {preview.thisRunCount === 1 ? 'guest' : 'guests'} would be texted in this run
               </span>
             </div>
@@ -128,7 +128,7 @@ export default function EmailCaptureClient() {
             ) : null}
 
             {preview.sampleNames.length > 0 ? (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-muted">
                 Warmest first, starting with: {preview.sampleNames.join(', ')}
               </p>
             ) : null}
@@ -146,7 +146,7 @@ export default function EmailCaptureClient() {
                     {message}
                   </pre>
                 ))}
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-text-muted">
                   Shown exactly as the guest receives it, with the link already shortened.
                   Each guest gets their own single-use link in place of the example one.
                 </p>

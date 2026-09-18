@@ -129,7 +129,7 @@ export default function AddEmployeeAttachmentForm({
             }}
           />
         </div>
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-text-muted">
           Accepted: PDF, Word, JPG, PNG, TIFF, TXT (max 10&nbsp;MB).
         </p>
         {state?.errors?.attachment_file && (
@@ -194,7 +194,7 @@ export default function AddEmployeeAttachmentForm({
       </div>
 
       {!hasCategories && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-text-muted">
           Create at least one attachment category in Settings before uploading documents.
         </p>
       )}

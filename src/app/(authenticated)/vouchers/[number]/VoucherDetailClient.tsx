@@ -178,7 +178,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
               </span>
               <VoucherStatusBadge status={status} />
             </div>
-            <div className="mt-1 text-gray-700">{type?.displayTitle ?? voucher.typeId}</div>
+            <div className="mt-1 text-text">{type?.displayTitle ?? voucher.typeId}</div>
             <div className="mt-2 flex flex-wrap gap-2">
               {type?.alcohol && <Badge tone="warning">18+ alcohol</Badge>}
               {type?.requiresBooking && <Badge tone="info">Booking required</Badge>}
@@ -190,17 +190,17 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
           <dl className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
             {detail.ageLabel && (
               <>
-                <dt className="text-gray-500">Age</dt>
+                <dt className="text-text-muted">Age</dt>
                 <dd className="text-text">{detail.ageLabel}</dd>
               </>
             )}
             {voucher.expiryDate && (
               <>
-                <dt className="text-gray-500">Expiry</dt>
+                <dt className="text-text-muted">Expiry</dt>
                 <dd className="text-text">{formatDateFull(voucher.expiryDate)}</dd>
               </>
             )}
-            <dt className="text-gray-500">Terms</dt>
+            <dt className="text-text-muted">Terms</dt>
             <dd>
               <Link href="/vouchers/types" className="underline underline-offset-2">
                 {voucher.termsVersion}
@@ -309,7 +309,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             )}
           </div>
           {status === 'expired' && (
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-text-muted">
               {sweepPending
                 ? 'This card is past its expiry date. The nightly tidy-up has not caught up yet, so lists may still show it as active. '
                 : ''}
@@ -325,15 +325,15 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         <Card title="Hand-out">
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
             <div>
-              <dt className="text-gray-500">Handed out</dt>
+              <dt className="text-text-muted">Handed out</dt>
               <dd className="text-text">{formatDateTime12Hour(voucher.issuedAt)}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">By</dt>
+              <dt className="text-text-muted">By</dt>
               <dd className="text-text">{voucher.issuedByName ?? 'Unknown'}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Won at</dt>
+              <dt className="text-text-muted">Won at</dt>
               <dd className="text-text">
                 {voucher.wonAtLabel ?? ''}
                 {detail.eventName && detail.eventName !== voucher.wonAtLabel
@@ -342,7 +342,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
               </dd>
             </div>
             <div>
-              <dt className="text-gray-500">Expiry written on the card</dt>
+              <dt className="text-text-muted">Expiry written on the card</dt>
               <dd className="text-text">
                 {voucher.expiryDate ? formatDateFull(voucher.expiryDate) : 'Missing'}
               </dd>
@@ -367,7 +367,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                   {detail.customer.name}
                 </Link>
                 {detail.customer.mobile && (
-                  <span className="ml-2 text-sm text-gray-500">{detail.customer.mobile}</span>
+                  <span className="ml-2 text-sm text-text-muted">{detail.customer.mobile}</span>
                 )}
               </div>
               {canAttachCustomer && (
@@ -383,7 +383,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-500">No customer assigned.</span>
+              <span className="text-sm text-text-muted">No customer assigned.</span>
               {canAttachCustomer && (
                 <Button variant="secondary" size="sm" onClick={() => openDialog('assign')}>
                   Assign customer
@@ -394,7 +394,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
 
           {detail.reminders.length > 0 && (
             <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">Reminders</div>
+              <div className="text-sm font-medium text-text mb-2">Reminders</div>
               <ul className="space-y-1 text-sm">
                 {detail.reminders.map((reminder) => (
                   <li key={reminder.id} className="flex flex-wrap items-center gap-2">
@@ -404,7 +404,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                     <span className="text-text">
                       {REMINDER_KIND_LABELS[reminder.reminderKind]}
                     </span>
-                    <span className="text-gray-500">
+                    <span className="text-text-muted">
                       due{' '}
                       {formatDateInLondon(reminder.scheduledFor, {
                         day: 'numeric',
@@ -433,22 +433,22 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         <Card title="Redemption">
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
             <div>
-              <dt className="text-gray-500">Redeemed</dt>
+              <dt className="text-text-muted">Redeemed</dt>
               <dd className="text-text">{formatDateTime12Hour(voucher.redeemedAt)}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">By</dt>
+              <dt className="text-text-muted">By</dt>
               <dd className="text-text">{voucher.redeemedByName ?? 'Unknown'}</dd>
             </div>
             {voucher.transactionRef && (
               <div>
-                <dt className="text-gray-500">Transaction ref</dt>
+                <dt className="text-text-muted">Transaction ref</dt>
                 <dd className="text-text">{voucher.transactionRef}</dd>
               </div>
             )}
             {voucher.bookingRef && (
               <div>
-                <dt className="text-gray-500">Booking ref</dt>
+                <dt className="text-text-muted">Booking ref</dt>
                 <dd className="text-text">{voucher.bookingRef}</dd>
               </div>
             )}
@@ -460,7 +460,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
       {detail.entitlementHtml && (
         <Card title="What the card entitles" subtitle="From the definition printed on this card">
           <div
-            className="prose prose-sm max-w-none text-gray-700"
+            className="prose prose-sm max-w-none text-text"
             dangerouslySetInnerHTML={{ __html: detail.entitlementHtml }}
           />
         </Card>
@@ -476,14 +476,14 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                 <div className="text-sm font-medium text-text">
                   {VOUCHER_EVENT_ACTION_LABELS[event.action]}
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-text-muted">
                   {formatDateTime12Hour(event.at)} · {event.actorName} · {event.source}
                 </div>
               </div>
             </li>
           ))}
           {detail.events.length === 0 && (
-            <li className="text-sm text-gray-500">No events recorded.</li>
+            <li className="text-sm text-text-muted">No events recorded.</li>
           )}
         </ul>
       </Card>
@@ -877,13 +877,13 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                     className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-surface-hover"
                   >
                     <span className="text-text">{hit.name}</span>
-                    <span className="text-sm text-gray-500">{hit.mobile ?? ''}</span>
+                    <span className="text-sm text-text-muted">{hit.mobile ?? ''}</span>
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-text-muted">
             Reassigning retargets pending reminders. Reminder milestones already sent are never
             repeated for this voucher.
           </p>

@@ -259,7 +259,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                   Unique-customer interest concentration by category
                 </p>
                 {categoryChartData.length === 0 ? (
-                  <p className="mt-6 text-sm text-gray-500">No category-preference data available.</p>
+                  <p className="mt-6 text-sm text-text-muted">No category-preference data available.</p>
                 ) : (
                   <div className="mt-4 h-[280px] rounded-lg border border-border bg-surface-2 p-3">
                     <BarChart data={categoryChartData} height={250} formatType="number" />
@@ -273,29 +273,29 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                 <h3 className="text-base font-semibold text-text">SMS Health Summary</h3>
                 <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <dt className="text-gray-500">Opted-in Customers</dt>
+                    <dt className="text-text-muted">Opted-in Customers</dt>
                     <dd className="font-semibold text-text">{formatNumber(snapshot.sms_health.opted_in_customers)}</dd>
                   </div>
                   <div>
-                    <dt className="text-gray-500">Opt-in Rate</dt>
+                    <dt className="text-text-muted">Opt-in Rate</dt>
                     <dd className="font-semibold text-text">{formatPercent(snapshot.sms_health.sms_opt_in_rate_percent)}</dd>
                   </div>
                   <div>
-                    <dt className="text-gray-500">At-risk Customers</dt>
+                    <dt className="text-text-muted">At-risk Customers</dt>
                     <dd className="font-semibold text-text">{formatNumber(snapshot.sms_health.sms_at_risk_count)}</dd>
                   </div>
                   <div>
-                    <dt className="text-gray-500">At-risk Share</dt>
+                    <dt className="text-text-muted">At-risk Share</dt>
                     <dd className="font-semibold text-text">{formatPercent(snapshot.sms_health.sms_at_risk_rate_percent)}</dd>
                   </div>
                 </dl>
 
                 <div className="mt-4">
-                  <h4 className="text-sm font-medium text-gray-700">Top Failure Reasons</h4>
+                  <h4 className="text-sm font-medium text-text">Top Failure Reasons</h4>
                   {snapshot.sms_health.top_failure_reasons.length === 0 ? (
-                    <p className="mt-2 text-sm text-gray-500">No dominant failure reason detected.</p>
+                    <p className="mt-2 text-sm text-text-muted">No dominant failure reason detected.</p>
                   ) : (
-                    <ul className="mt-2 space-y-1 text-sm text-gray-700">
+                    <ul className="mt-2 space-y-1 text-sm text-text">
                       {snapshot.sms_health.top_failure_reasons.map((item) => (
                         <li key={item.reason} className="flex items-center justify-between rounded-sm border border-border px-3 py-1.5">
                           <span>{item.reason}</span>
@@ -318,8 +318,8 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                           {signal.severity}
                         </Badge>
                       </div>
-                      <p className="mt-1 text-sm text-gray-700">{signal.detail}</p>
-                      <p className="mt-1 text-sm text-gray-500">{signal.recommendation}</p>
+                      <p className="mt-1 text-sm text-text">{signal.detail}</p>
+                      <p className="mt-1 text-sm text-text-muted">{signal.recommendation}</p>
                     </div>
                   ))}
                 </div>
@@ -333,7 +333,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
               </p>
 
               {snapshot.win_back_candidates.length === 0 ? (
-                <p className="mt-4 text-sm text-gray-500">No dormant high-value candidates detected in current scoring data.</p>
+                <p className="mt-4 text-sm text-text-muted">No dormant high-value candidates detected in current scoring data.</p>
               ) : (
                 <div className="mt-4 hidden overflow-x-auto md:block">
                   <table className="min-w-full divide-y divide-border text-sm">
@@ -351,15 +351,15 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                         <tr key={candidate.customer_id}>
                           <td className="px-3 py-2">
                             <p className="font-medium text-text">{candidate.name}</p>
-                            {candidate.mobile ? <p className="text-xs text-gray-500">{candidate.mobile}</p> : null}
+                            {candidate.mobile ? <p className="text-xs text-text-muted">{candidate.mobile}</p> : null}
                           </td>
                           <td className="px-3 py-2 text-right font-medium text-text">{formatNumber(candidate.total_score)}</td>
-                          <td className="px-3 py-2 text-right text-gray-700">{formatNumber(candidate.bookings_last_90)}</td>
-                          <td className="px-3 py-2 text-right text-gray-700">{formatNumber(candidate.bookings_last_365)}</td>
-                          <td className="px-3 py-2 text-gray-700">
+                          <td className="px-3 py-2 text-right text-text">{formatNumber(candidate.bookings_last_90)}</td>
+                          <td className="px-3 py-2 text-right text-text">{formatNumber(candidate.bookings_last_365)}</td>
+                          <td className="px-3 py-2 text-text">
                             {formatDate(candidate.last_booking_date)}
                             {candidate.days_since_last_booking !== null ? (
-                              <span className="ml-1 text-xs text-gray-500">({candidate.days_since_last_booking}d ago)</span>
+                              <span className="ml-1 text-xs text-text-muted">({candidate.days_since_last_booking}d ago)</span>
                             ) : null}
                           </td>
                         </tr>
@@ -376,7 +376,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="font-medium text-text">{candidate.name}</p>
-                          {candidate.mobile ? <p className="text-xs text-gray-500">{candidate.mobile}</p> : null}
+                          {candidate.mobile ? <p className="text-xs text-text-muted">{candidate.mobile}</p> : null}
                         </div>
                         <span className="flex-shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-xs font-semibold text-text">
                           Score {formatNumber(candidate.total_score)}
@@ -384,19 +384,19 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                       </div>
                       <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
                         <div>
-                          <dt className="text-gray-500">90d bookings</dt>
+                          <dt className="text-text-muted">90d bookings</dt>
                           <dd className="font-medium text-text">{formatNumber(candidate.bookings_last_90)}</dd>
                         </div>
                         <div>
-                          <dt className="text-gray-500">365d bookings</dt>
+                          <dt className="text-text-muted">365d bookings</dt>
                           <dd className="font-medium text-text">{formatNumber(candidate.bookings_last_365)}</dd>
                         </div>
                         <div className="col-span-2">
-                          <dt className="text-gray-500">Last booking</dt>
-                          <dd className="text-gray-700">
+                          <dt className="text-text-muted">Last booking</dt>
+                          <dd className="text-text">
                             {formatDate(candidate.last_booking_date)}
                             {candidate.days_since_last_booking !== null ? (
-                              <span className="ml-1 text-xs text-gray-500">({candidate.days_since_last_booking}d ago)</span>
+                              <span className="ml-1 text-xs text-text-muted">({candidate.days_since_last_booking}d ago)</span>
                             ) : null}
                           </dd>
                         </div>

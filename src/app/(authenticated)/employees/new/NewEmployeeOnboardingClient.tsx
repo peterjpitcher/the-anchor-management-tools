@@ -955,7 +955,7 @@ export default function NewEmployeeOnboardingClient() {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div className="rounded-lg border border-border p-4">
                 <p className="text-sm font-medium text-text mb-2">Zero Tolerance</p>
-                <ul className="text-sm text-gray-700 list-disc pl-5 space-y-1">
+                <ul className="text-sm text-text list-disc pl-5 space-y-1">
                   <li>Theft (immediate dismissal)</li>
                   <li>Drugs/alcohol on duty (immediate dismissal)</li>
                   <li>Giving/taking drinks without charging/paying (immediate dismissal)</li>
@@ -965,7 +965,7 @@ export default function NewEmployeeOnboardingClient() {
               </div>
               <div className="rounded-lg border border-border p-4">
                 <p className="text-sm font-medium text-text mb-2">Daily Essentials</p>
-                <ul className="text-sm text-gray-700 list-disc pl-5 space-y-1">
+                <ul className="text-sm text-text list-disc pl-5 space-y-1">
                   <li>Arrive 15 minutes early</li>
                   <li>Clock in/out every shift</li>
                   <li>Complete daily checklist</li>
@@ -975,7 +975,7 @@ export default function NewEmployeeOnboardingClient() {
               </div>
               <div className="rounded-lg border border-border p-4">
                 <p className="text-sm font-medium text-text mb-2">Critical Procedures</p>
-                <ul className="text-sm text-gray-700 list-disc pl-5 space-y-1">
+                <ul className="text-sm text-text list-disc pl-5 space-y-1">
                   <li>No discounts/refunds/tabs without approval</li>
                   <li>Use correct measures (no free-pouring)</li>
                   <li>Complete closing before clocking out</li>

@@ -87,7 +87,7 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     'rounded-md border px-2 py-1 text-meta font-medium',
     isManagerKioskStyle
       ? 'border-green-300 bg-success-soft text-green-900'
-      : 'border-border-strong bg-surface-hover text-gray-700'
+      : 'border-border-strong bg-surface-hover text-text'
   )
   const nextEventCalloutClass = cn(
     'mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2',
@@ -111,7 +111,7 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     isManagerKioskStyle && 'px-2.5 py-1 text-meta'
   )
   const daySwitchButtonClass = cn(
-    'rounded-md border border-border-strong text-sm text-gray-700 hover:bg-surface-hover',
+    'rounded-md border border-border-strong text-sm text-text hover:bg-surface-hover',
     isManagerKioskStyle ? 'px-1.5 py-1 text-xs' : 'px-2.5 py-2'
   )
   const dateInputClass = cn(
@@ -313,7 +313,7 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
                 type="button"
                 onClick={() => openNowCreateModal('booking')}
                 className={cn(
-                  'rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-gray-700 hover:bg-surface-hover',
+                  'rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text hover:bg-surface-hover',
                   isManagerKioskStyle
                     ? 'px-2.5 py-1 text-meta'
                     : ''

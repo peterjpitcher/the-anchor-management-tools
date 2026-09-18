@@ -535,14 +535,14 @@ export default function NewInvoicePage() {
                   {item.description && (
                     <div className="text-sm text-text-muted mt-0.5">{item.description}</div>
                   )}
-                  <div className="text-xs text-gray-500 mt-2">
+                  <div className="text-xs text-text-muted mt-2">
                     £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%
                   </div>
                 </button>
               ))}
             </div>
           ) : (
-            <div className="text-sm text-gray-500 text-center py-4">
+            <div className="text-sm text-text-muted text-center py-4">
               No catalog items available.
             </div>
           )}

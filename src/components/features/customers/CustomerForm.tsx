@@ -62,7 +62,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
         <div>
           <label
             htmlFor="first_name"
-            className="block text-sm font-medium text-gray-700 mb-2"
+            className="block text-sm font-medium text-text mb-2"
           >
             First Name
           </label>
@@ -82,7 +82,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
         <div>
           <label
             htmlFor="last_name"
-            className="block text-sm font-medium text-gray-700 mb-2"
+            className="block text-sm font-medium text-text mb-2"
           >
             Last Name
           </label>
@@ -99,7 +99,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
         <div>
           <label
             htmlFor="mobile_number"
-            className="block text-sm font-medium text-gray-700 mb-2"
+            className="block text-sm font-medium text-text mb-2"
           >
             Mobile Number
           </label>
@@ -114,7 +114,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
             autoComplete="tel"
             inputMode="tel"
           />
-          <p className="mt-2 text-sm text-gray-500">
+          <p className="mt-2 text-sm text-text-muted">
             Enter an international number (e.g. +1...) or a local number (defaults to +44)
           </p>
           {phoneError && (
@@ -125,7 +125,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
         <div>
           <label
             htmlFor="email"
-            className="block text-sm font-medium text-gray-700 mb-2"
+            className="block text-sm font-medium text-text mb-2"
           >
             Email
           </label>

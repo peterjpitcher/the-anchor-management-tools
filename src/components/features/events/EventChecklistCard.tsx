@@ -169,7 +169,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
     <Card padding="lg" className={className}>
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-text">Event Checklist</h2>
-        <p className="mt-1 text-sm text-gray-500">Track prep tasks for {eventName}</p>
+        <p className="mt-1 text-sm text-text-muted">Track prep tasks for {eventName}</p>
       </div>
 
       {loading ? (
@@ -200,7 +200,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
                     ? 'text-danger'
                     : item.status === 'due_today'
                       ? 'text-warning'
-                      : 'text-gray-500'
+                      : 'text-text-muted'
                   return (
                     <div
                       key={item.key}
@@ -236,7 +236,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
             <h3 className="text-sm font-semibold text-text uppercase tracking-wide">Completed Tasks</h3>
             <div className="mt-3 space-y-2">
               {completedItems.length === 0 ? (
-                <p className="text-sm text-gray-500">No tasks completed yet.</p>
+                <p className="text-sm text-text-muted">No tasks completed yet.</p>
               ) : (
                 completedItems.map((item) => (
                   <div
@@ -249,7 +249,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
                       <Badge variant="secondary" size="sm">{item.channel}</Badge>
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-text-muted">
                         {item.completedAt ? `Completed ${formatDate(item.completedAt)}` : 'Completed'}
                       </div>
                       <Button

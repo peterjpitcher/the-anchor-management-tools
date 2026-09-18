@@ -292,7 +292,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
         <>
           <div className="mb-4">
             <h3 className="text-lg font-medium">Preview Import</h3>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-text-muted">
               Review the data before importing. Invalid records will be skipped.
             </p>
           </div>
@@ -321,7 +321,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
                 <div className={`${c.isDuplicate ? 'bg-warning-soft' : !c.isValid ? 'bg-danger-soft' : ''} p-3` }>
                   <div className="font-medium text-sm">{c.first_name} {c.last_name || '-'}</div>
                   <div className="text-sm text-text-muted">{c.mobile_number}</div>
-                  {c.email && <div className="text-sm text-gray-500">{c.email}</div>}
+                  {c.email && <div className="text-sm text-text-muted">{c.email}</div>}
                   <div className="mt-2">
                     {c.isValid ? (
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success-soft text-green-800">Valid</span>
@@ -354,7 +354,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
         </>
       ) : (
         <div className="text-center py-12">
-            <p className="text-gray-500">
+            <p className="text-text-muted">
                 Upload a CSV file to begin importing customers.
             </p>
         </div>

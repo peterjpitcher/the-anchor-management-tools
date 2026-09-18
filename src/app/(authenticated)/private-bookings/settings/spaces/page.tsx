@@ -323,7 +323,7 @@ export default async function VenueSpacesPage({
                   <div className="md:hidden mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
                       <h4 className="truncate text-base font-medium text-text">{space.name}</h4>
-                      <p className="mt-0.5 text-xs text-gray-500">
+                      <p className="mt-0.5 text-xs text-text-muted">
                         Seated {space.capacity_seated} · Standing {space.capacity_standing ?? space.capacity_seated} · £{space.rate_per_hour}/hr
                       </p>
                     </div>
@@ -465,7 +465,7 @@ export default async function VenueSpacesPage({
                           </>
                         )}
                       </Badge>
-                      <span className="text-sm text-gray-500">
+                      <span className="text-sm text-text-muted">
                         Created {formatDateFull(space.created_at)}
                       </span>
                     </div>

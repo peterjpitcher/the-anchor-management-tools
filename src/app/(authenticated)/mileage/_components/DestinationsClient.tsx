@@ -393,7 +393,7 @@ export function DestinationsClient({
       {nonHomeDestinations.length === 0 ? (
         <div className="rounded-lg border border-border bg-surface p-8 text-center">
           <MapPinIcon className="mx-auto h-12 w-12 text-text-subtle" />
-          <p className="mt-2 text-sm text-gray-500">
+          <p className="mt-2 text-sm text-text-muted">
             No destinations saved yet. Add your first destination above.
           </p>
         </div>
@@ -404,20 +404,20 @@ export function DestinationsClient({
           <table className="min-w-full divide-y divide-border">
             <thead className="bg-surface-2">
               <tr>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
                   Name
                 </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
                   Postcode
                 </th>
-                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted">
                   Miles from Anchor
                 </th>
-                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted">
                   Trips
                 </th>
                 {canManage && (
-                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted">
                     Actions
                   </th>
                 )}
@@ -429,10 +429,10 @@ export function DestinationsClient({
                   <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-text">
                     {dest.name}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
+                  <td className="whitespace-nowrap px-4 py-3 text-sm text-text-muted">
                     {dest.postcode ?? '\u2014'}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-500">
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-text-muted">
                     {canManage && homeBase ? (
                       <div className="flex items-center justify-end gap-2">
                         <Input
@@ -478,7 +478,7 @@ export function DestinationsClient({
                       '\u2014'
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-500">
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-text-muted">
                     {dest.tripCount}
                   </td>
                   {canManage && (
@@ -515,7 +515,7 @@ export function DestinationsClient({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-text">{dest.name}</p>
-                  <p className="mt-0.5 text-xs text-gray-500">{dest.postcode ?? '\u2014'}</p>
+                  <p className="mt-0.5 text-xs text-text-muted">{dest.postcode ?? '\u2014'}</p>
                 </div>
                 {canManage && (
                   <div className="flex shrink-0 items-center gap-1">
@@ -539,12 +539,12 @@ export function DestinationsClient({
               </div>
 
               <div className="mt-3 text-sm">
-                <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Trips</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-text-muted">Trips</p>
                 <p className="mt-0.5 text-text">{dest.tripCount}</p>
               </div>
 
               <div className="mt-3">
-                <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Miles from Anchor</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-text-muted">Miles from Anchor</p>
                 {canManage && homeBase ? (
                   <div className="mt-1 flex items-center gap-2">
                     <Input
@@ -599,14 +599,14 @@ export function DestinationsClient({
 
       <div className="space-y-3">
         <div className="flex items-center gap-2">
-          <ArrowsRightLeftIcon className="h-5 w-5 text-gray-500" />
+          <ArrowsRightLeftIcon className="h-5 w-5 text-text-muted" />
           <h2 className="text-sm font-semibold text-text">Location-to-location distances</h2>
         </div>
 
         {canManage && nonHomeDestinations.length >= 2 && (
           <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-surface p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_auto] sm:items-end">
             <div>
-              <label htmlFor="route-distance-from" className="mb-1 block text-xs font-medium text-gray-500">
+              <label htmlFor="route-distance-from" className="mb-1 block text-xs font-medium text-text-muted">
                 From
               </label>
               <Select
@@ -627,7 +627,7 @@ export function DestinationsClient({
             </div>
 
             <div>
-              <label htmlFor="route-distance-to" className="mb-1 block text-xs font-medium text-gray-500">
+              <label htmlFor="route-distance-to" className="mb-1 block text-xs font-medium text-text-muted">
                 To
               </label>
               <Select
@@ -649,7 +649,7 @@ export function DestinationsClient({
             </div>
 
             <div>
-              <label htmlFor="route-distance-miles" className="mb-1 block text-xs font-medium text-gray-500">
+              <label htmlFor="route-distance-miles" className="mb-1 block text-xs font-medium text-text-muted">
                 Miles
               </label>
               <Input
@@ -675,7 +675,7 @@ export function DestinationsClient({
 
         {locationDistances.length === 0 ? (
           <div className="rounded-lg border border-border bg-surface p-6 text-center">
-            <p className="text-sm text-gray-500">No location-to-location distances saved yet.</p>
+            <p className="text-sm text-text-muted">No location-to-location distances saved yet.</p>
           </div>
         ) : (
           <>
@@ -684,17 +684,17 @@ export function DestinationsClient({
             <table className="min-w-full divide-y divide-border">
               <thead className="bg-surface-2">
                 <tr>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
                     From
                   </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
                     To
                   </th>
-                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted">
                     Miles
                   </th>
                   {canManage && (
-                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-text-muted">
                       Actions
                     </th>
                   )}
@@ -709,10 +709,10 @@ export function DestinationsClient({
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-text">
                       {distance.fromDestinationName}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-text-muted">
                       {distance.toDestinationName}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-500">
+                    <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-text-muted">
                       {distance.miles} mi
                     </td>
                     {canManage && (
@@ -750,7 +750,7 @@ export function DestinationsClient({
                     <p className="text-sm font-medium text-text">
                       {distance.fromDestinationName} <span className="text-gray-400">→</span> {distance.toDestinationName}
                     </p>
-                    <p className="mt-0.5 text-xs text-gray-500">{distance.miles} mi</p>
+                    <p className="mt-0.5 text-xs text-text-muted">{distance.miles} mi</p>
                   </div>
                   {canManage && (
                     <Button
@@ -810,7 +810,7 @@ export function DestinationsClient({
             </div>
           )}
           <div>
-            <label htmlFor="dest-name" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="dest-name" className="block text-sm font-medium text-text mb-1">
               Name <span className="text-danger">*</span>
             </label>
             <Input
@@ -829,7 +829,7 @@ export function DestinationsClient({
             )}
           </div>
           <div>
-            <label htmlFor="dest-postcode" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="dest-postcode" className="block text-sm font-medium text-text mb-1">
               Postcode
             </label>
             <Input

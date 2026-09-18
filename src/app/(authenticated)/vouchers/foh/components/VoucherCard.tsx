@@ -96,19 +96,19 @@ export function VoucherCard({ item, mode, onViewReplacement, children }: Voucher
       <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-base sm:grid-cols-2">
         {item.valuePence !== null && (
           <div className="flex justify-between gap-3 sm:block">
-            <dt className="text-gray-500">Value</dt>
+            <dt className="text-text-muted">Value</dt>
             <dd className="font-medium text-text">{formatPounds(item.valuePence)}</dd>
           </div>
         )}
         {item.wonAtLabel && (
           <div className="flex justify-between gap-3 sm:block">
-            <dt className="text-gray-500">Won at</dt>
+            <dt className="text-text-muted">Won at</dt>
             <dd className="font-medium text-text">{item.wonAtLabel}</dd>
           </div>
         )}
         {item.status === 'issued' && item.ageLabel && (
           <div className="flex justify-between gap-3 sm:block">
-            <dt className="text-gray-500">Handed out</dt>
+            <dt className="text-text-muted">Handed out</dt>
             <dd className="font-medium text-text">
               {item.ageLabel} ago{item.issuedByName ? ` by ${item.issuedByName}` : ''}
             </dd>
@@ -116,13 +116,13 @@ export function VoucherCard({ item, mode, onViewReplacement, children }: Voucher
         )}
         {item.expiryDate && (
           <div className="flex justify-between gap-3 sm:block">
-            <dt className="text-gray-500">Expiry</dt>
+            <dt className="text-text-muted">Expiry</dt>
             <dd className="font-medium text-text">{formatIsoDateLong(item.expiryDate)}</dd>
           </div>
         )}
         {item.customer && (
           <div className="flex justify-between gap-3 sm:block">
-            <dt className="text-gray-500">Customer</dt>
+            <dt className="text-text-muted">Customer</dt>
             <dd className="font-medium text-text">{item.customer.name}</dd>
           </div>
         )}

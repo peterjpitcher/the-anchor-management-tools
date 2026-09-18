@@ -360,7 +360,7 @@ export function IngredientCompositionRow({
         {lineCost !== null && (
           <div className="shrink-0 pb-0.5 text-right">
             <p className="text-xs text-gray-400">Cost</p>
-            <p className="text-sm font-semibold text-gray-700">£{lineCost.toFixed(2)}</p>
+            <p className="text-sm font-semibold text-text">£{lineCost.toFixed(2)}</p>
             {unitCost !== null && (
               <p className="text-2xs text-gray-400">@ £{unitCost.toFixed(4)}/unit</p>
             )}
@@ -620,7 +620,7 @@ export function RecipeCompositionRow({
         {recipeLineCost !== null && (
           <div className="shrink-0 pb-0.5 text-right">
             <p className="text-xs text-gray-400">Cost</p>
-            <p className="text-sm font-semibold text-gray-700">£{recipeLineCost.toFixed(2)}</p>
+            <p className="text-sm font-semibold text-text">£{recipeLineCost.toFixed(2)}</p>
             {recipeUnitCost !== null && (
               <p className="text-2xs text-gray-400">@ £{recipeUnitCost.toFixed(4)}/portion</p>
             )}

@@ -140,7 +140,7 @@ export default async function EmployeeBirthdaysPage() {
                   <h2 className="text-base sm:text-lg font-medium text-text flex flex-wrap items-center">
                     <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2 text-gray-400" />
                     <span>{monthName}</span>
-                    <span className="ml-2 text-xs sm:text-sm text-gray-500">({monthBirthdays.length} birthday{monthBirthdays.length !== 1 ? 's' : ''})</span>
+                    <span className="ml-2 text-xs sm:text-sm text-text-muted">({monthBirthdays.length} birthday{monthBirthdays.length !== 1 ? 's' : ''})</span>
                   </h2>
                 </div>
                 <ul className="divide-y divide-border">
@@ -159,7 +159,7 @@ export default async function EmployeeBirthdaysPage() {
                               <span className="ml-1.5 sm:ml-2 text-base sm:text-xl">🎉</span>
                             )}
                           </div>
-                          <p className="text-xs sm:text-sm text-gray-500 truncate">{birthday.job_title || 'No title'}</p>
+                          <p className="text-xs sm:text-sm text-text-muted truncate">{birthday.job_title || 'No title'}</p>
                         </div>
                         <div className="flex sm:block items-center justify-between sm:text-right sm:ml-4">
                           <div className="flex items-center sm:justify-end space-x-1.5 sm:space-x-2">
@@ -173,7 +173,7 @@ export default async function EmployeeBirthdaysPage() {
                               {getCountdownText(birthday.days_until_birthday)}
                             </Badge>
                           </div>
-                          <p className="text-xs text-gray-500 sm:mt-1">
+                          <p className="text-xs text-text-muted sm:mt-1">
                             Turning {birthday.turning_age}
                           </p>
                         </div>
