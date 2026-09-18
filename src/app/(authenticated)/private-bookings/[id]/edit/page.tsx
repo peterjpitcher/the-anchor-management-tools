@@ -473,7 +473,7 @@ export default function EditPrivateBookingPage({
                   name="date_tbd_toggle"
                   checked={dateTbd}
                   onChange={(event) => handleToggleDateTbd(event.target.checked)}
-                  className="h-4 w-4 rounded-sm border-border-strong text-blue-600 focus:ring-blue-500"
+                  className="h-4 w-4 accent-primary"
                 />
                 <span>Event date/time to be confirmed</span>
               </label>
@@ -625,7 +625,7 @@ export default function EditPrivateBookingPage({
             </div>
           </Section>
 
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-6 sm:pt-4 border-t">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-6 sm:pt-4 border-t border-border">
             <LinkButton
               variant="secondary"
               href={`/private-bookings/${id}`}

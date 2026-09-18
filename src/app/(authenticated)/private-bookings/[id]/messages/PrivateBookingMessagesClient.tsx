@@ -358,14 +358,15 @@ export default function PrivateBookingMessagesClient({
                         key={template.id}
                         type="button"
                         onClick={() => handleTemplateSelect(template.id)}
-                        className={`border rounded-lg p-4 text-left transition-colors ${
+                        aria-pressed={selectedTemplate === template.id}
+                        className={`border rounded-lg p-4 text-left transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                           selectedTemplate === template.id
-                            ? 'border-blue-500 bg-blue-50'
+                            ? 'border-primary bg-primary-soft'
                             : 'border-border hover:border-border-strong'
                         }`}
                       >
                         <h3 className="font-medium text-text flex items-center gap-2">
-                          <DevicePhoneMobileIcon className="h-5 w-5 text-blue-500" />
+                          <DevicePhoneMobileIcon className="h-5 w-5 text-primary" />
                           {template.name}
                         </h3>
                         <p className="mt-1 text-sm text-text-muted">{template.message}</p>
@@ -537,14 +538,14 @@ export default function PrivateBookingMessagesClient({
           <Section title="SMS Delivery Status">
             <Card className="space-y-3">
               <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
-                <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                <CheckCircleIcon className="h-5 w-5 text-success" />
                 <div>
                   <p className="text-sm font-medium text-text">Delivered</p>
                   <p className="text-xs text-text-muted">Messages confirmed by Twilio.</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
-                <ExclamationCircleIcon className="h-5 w-5 text-warning" />
+                <ExclamationCircleIcon className="h-5 w-5 text-info" />
                 <div>
                   <p className="text-sm font-medium text-text">Queued</p>
                   <p className="text-xs text-text-muted">Awaiting automatic send.</p>

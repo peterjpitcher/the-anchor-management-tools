@@ -182,7 +182,7 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
                   type="button"
                   aria-pressed={range === option.value}
                   onClick={() => setRange(option.value)}
-                  className={`rounded-md px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
+                  className={`rounded-md px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                     range === option.value
                       ? 'bg-primary text-primary-fg shadow-sm'
                       : 'border border-border bg-surface text-text-muted hover:bg-surface-hover hover:text-text-strong'
@@ -258,7 +258,7 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
                   type="button"
                   aria-pressed={granularity === option}
                   onClick={() => setGranularity(option)}
-                  className={`rounded-sm px-2.5 py-1 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
+                  className={`rounded-sm px-2.5 py-1 text-xs font-semibold focus-visible:outline-hidden focus-visible:shadow-ring ${
                     granularity === option ? 'bg-surface text-text-strong shadow-sm' : 'text-text-muted'
                   }`}
                 >
@@ -279,8 +279,8 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
                 <ComposedChart data={trendSeries} margin={{ top: 8, right: 12, bottom: 8, left: 0 }}>
                   <defs>
                     <linearGradient id="privateBookingGrowthFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--color-anchor-gold)" stopOpacity={0.28} />
-                      <stop offset="100%" stopColor="var(--color-anchor-gold)" stopOpacity={0.04} />
+                      <stop offset="0%" stopColor="var(--color-chart-3)" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="var(--color-chart-3)" stopOpacity={0.04} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid vertical={false} stroke="var(--color-border)" strokeDasharray="3 5" />
@@ -310,7 +310,7 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
                   />
                   <Tooltip content={<TrendTooltip />} cursor={{ fill: 'var(--color-surface-hover)' }} />
                   <Bar yAxisId="period" dataKey="bookings" fill="var(--color-primary)" radius={[4, 4, 1, 1]} maxBarSize={42} isAnimationActive={false} />
-                  <Area yAxisId="total" type="monotone" dataKey="cumulative" stroke="var(--color-anchor-gold-dark)" strokeWidth={2.5} fill="url(#privateBookingGrowthFill)" dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
+                  <Area yAxisId="total" type="monotone" dataKey="cumulative" stroke="var(--color-chart-3)" strokeWidth={2.5} fill="url(#privateBookingGrowthFill)" dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -332,7 +332,7 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
                     <XAxis type="number" allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }} />
                     <YAxis type="category" dataKey="category" width={142} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }} />
                     <Tooltip formatter={(value) => [numberFormatter.format(Number(value)), 'Bookings']} cursor={{ fill: 'var(--color-surface-hover)' }} />
-                    <Bar dataKey="bookings" fill="var(--color-anchor-gold)" radius={[0, 4, 4, 0]} maxBarSize={28} isAnimationActive={false} />
+                    <Bar dataKey="bookings" fill="var(--color-chart-3)" radius={[0, 4, 4, 0]} maxBarSize={28} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -382,7 +382,7 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
                   <td className="px-4 py-3 text-text-muted">{record.eventType}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-text">{record.guestCount === null ? 'Not recorded' : numberFormatter.format(record.guestCount)}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    <span className={`inline-flex rounded-pill px-2 py-0.5 text-xs font-semibold ${
                       record.isHistoricalImport
                         ? 'bg-warning-soft text-warning-fg'
                         : 'bg-primary-soft text-primary-soft-fg'

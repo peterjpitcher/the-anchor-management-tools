@@ -179,7 +179,7 @@ export function CommunicationsTab({
                     {email.to_address ? ` to ${email.to_address}` : ''}
                   </p>
                   {email.error && UNDELIVERED_EMAIL_STATUSES.has(email.status) && (
-                    <p className="mt-1 text-xs text-red-700">{email.error}</p>
+                    <p className="mt-1 text-xs text-danger-fg">{email.error}</p>
                   )}
                 </li>
               ))}

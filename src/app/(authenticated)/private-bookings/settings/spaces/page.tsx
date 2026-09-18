@@ -181,7 +181,7 @@ export default async function VenueSpacesPage({
         <Card>
         <Section 
           title="Add New Space"
-          icon={<PlusIcon className="h-5 w-5 text-blue-600" />}
+          icon={<PlusIcon className="h-5 w-5 text-primary" />}
         >
           <form action={handleCreateSpace} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
@@ -317,7 +317,7 @@ export default async function VenueSpacesPage({
               {spaces?.map((space) => (
                 <div
                   key={space.id}
-                  className="rounded-xl border border-border p-4 md:rounded-none md:border-0 md:p-0 md:py-6 md:first:pt-0 md:last:pb-0"
+                  className="rounded-lg border border-border p-4 md:rounded-none md:border-0 md:p-0 md:py-6 md:first:pt-0 md:last:pb-0"
                 >
                   {/* Mobile-only summary header so each space reads as a distinct card */}
                   <div className="md:hidden mb-3 flex flex-wrap items-center justify-between gap-2">

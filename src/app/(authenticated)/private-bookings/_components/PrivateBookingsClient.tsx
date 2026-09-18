@@ -30,6 +30,7 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import {
   Badge,
   Button,
+  LinkButton,
   Spinner,
   SearchInput,
   Drawer,
@@ -56,23 +57,16 @@ import {
   CustomerLink,
 } from '@/ds/composites'
 
+import {
+  privateBookingPaymentTextClass,
+  privateBookingPaymentTone,
+  privateBookingStatusLabel,
+  privateBookingStatusTone,
+} from '../_shared/status-ui'
+
 /* ---------- Constants ---------- */
 
 const DEFAULT_PAGE_SIZE = 20
-
-const statusTone: Record<BookingStatus, 'neutral' | 'success' | 'info' | 'danger'> = {
-  draft: 'neutral',
-  confirmed: 'success',
-  completed: 'info',
-  cancelled: 'danger',
-}
-
-const statusLabel: Record<BookingStatus, string> = {
-  draft: 'Draft',
-  confirmed: 'Confirmed',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
-}
 
 /* ---------- Icons ---------- */
 
@@ -436,9 +430,12 @@ export default function PrivateBookingsClient({
               Keep booking
             </Button>
             {cancelPreview?.outcome && OUTCOMES_NEEDING_THE_BOOKING_PAGE.has(cancelPreview.outcome) ? (
-              <Link href={cancelConfirmBookingId ? `/private-bookings/${cancelConfirmBookingId}` : '/private-bookings'}>
-                <Button type="button" variant="primary">Open the booking</Button>
-              </Link>
+              <LinkButton
+                href={cancelConfirmBookingId ? `/private-bookings/${cancelConfirmBookingId}` : '/private-bookings'}
+                variant="primary"
+              >
+                Open the booking
+              </LinkButton>
             ) : (
               <Button
                 type="button"
@@ -504,26 +501,20 @@ export default function PrivateBookingsClient({
         actions={
           <div className="flex items-center gap-2">
             {canViewReports && (
-              <Link href="/private-bookings/reports">
-                <Button variant="secondary" size="sm">Growth report</Button>
-              </Link>
+              <LinkButton href="/private-bookings/reports" variant="secondary" size="sm">Growth report</LinkButton>
             )}
             {permissions.hasCreatePermission && (
-              <Link href="/private-bookings/new">
-                <Button variant="primary" size="sm" icon={<PlusIcon />}>New Booking</Button>
-              </Link>
+              <LinkButton href="/private-bookings/new" variant="primary" size="sm" icon={<PlusIcon />}>New Booking</LinkButton>
             )}
             {canManageSettings && (
-              <Link href="/private-bookings/settings">
-                <Button variant="secondary" size="sm">PB Settings</Button>
-              </Link>
+              <LinkButton href="/private-bookings/settings" variant="secondary" size="sm">PB Settings</LinkButton>
             )}
           </div>
         }
       />
 
       {loadError && (
-        <div className="p-3 bg-danger-soft text-danger-fg rounded-lg text-sm flex items-center justify-between">
+        <div className="p-3 bg-danger-soft text-danger-fg border border-danger-border rounded-lg text-sm flex items-center justify-between">
           <span>{loadError}</span>
           <Button
             variant="secondary"
@@ -699,7 +690,7 @@ export default function PrivateBookingsClient({
                           </>
                         )}
                         {!booking.is_date_tbd && booking.days_until_event !== undefined && booking.days_until_event !== null && booking.days_until_event >= 0 && (
-                          <div className="text-meta text-text-subtle mt-0.5">
+                          <div className="text-meta text-text-soft mt-0.5">
                             {booking.days_until_event === 0 ? 'Today' : `${booking.days_until_event} days`}
                           </div>
                         )}
@@ -714,7 +705,6 @@ export default function PrivateBookingsClient({
                             customerId={booking.customer_id ?? null}
                             name={booking.customer_name}
                             fallback="Unknown Customer"
-                            className="text-blue-600 hover:text-blue-700"
                           />
                         </div>
                         {booking.contact_phone && (
@@ -736,7 +726,7 @@ export default function PrivateBookingsClient({
                       </TableCell>
 
                       <TableCell>
-                        <Badge tone={statusTone[booking.status]} dot>{statusLabel[booking.status]}</Badge>
+                        <Badge tone={privateBookingStatusTone(booking.status)} dot>{privateBookingStatusLabel(booking.status)}</Badge>
                         {booking.status === 'draft' && (
                           <div className="mt-1 text-meta text-text-muted">
                             {getHoldExpiryCountdown(booking.hold_expiry) ?? 'Hold expiry not set'}
@@ -744,11 +734,11 @@ export default function PrivateBookingsClient({
                         )}
                         {booking.deposit_awaiting_confirmation ? (
                           <div className="mt-1">
-                            <Badge tone="warning">Deposit to be confirmed</Badge>
+                            <Badge tone={privateBookingPaymentTone('deposit_to_be_confirmed')}>Deposit to be confirmed</Badge>
                           </div>
                         ) : booking.deposit_status && booking.deposit_status !== 'Not Required' && (
                           <div className="mt-1">
-                            <Badge tone={booking.deposit_status === 'Paid' ? 'success' : 'warning'}>
+                            <Badge tone={privateBookingPaymentTone(booking.deposit_status === 'Paid' ? 'deposit_paid' : 'deposit_due')}>
                               Deposit {booking.deposit_status}
                               {booking.deposit_amount != null && ` (${formatCurrency(toNumber(booking.deposit_amount))})`}
                             </Badge>
@@ -761,9 +751,9 @@ export default function PrivateBookingsClient({
                           {formatCurrency(toNumber(booking.gross_total ?? booking.calculated_total ?? booking.total_amount))}
                         </div>
                         {booking.final_payment_date ? (
-                          <div className="text-meta text-success-fg font-medium">Fully paid</div>
+                          <div className={`text-meta font-medium ${privateBookingPaymentTextClass('paid_in_full')}`}>Fully paid</div>
                         ) : booking.balance_remaining != null && booking.balance_remaining > 0 ? (
-                          <div className="text-meta text-warning-fg font-medium">
+                          <div className={`text-meta font-medium ${privateBookingPaymentTextClass('balance_due')}`}>
                             Balance: {formatCurrency(booking.balance_remaining)}
                           </div>
                         ) : null}
@@ -791,7 +781,7 @@ export default function PrivateBookingsClient({
                                   const days = Number(e.target.value) as 7 | 14 | 30
                                   if (days) { handleExtendHoldRequest(booking.id, days); e.target.value = '' }
                                 }}
-                                className="text-xs border border-border rounded-default px-1.5 py-0.5 text-text bg-surface focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 cursor-pointer"
+                                className="rounded-sm border border-border-strong bg-surface px-1.5 py-0.5 text-xs text-text outline-hidden focus:border-border-focus focus:shadow-ring disabled:opacity-50 cursor-pointer"
                                 title="Extend hold"
                               >
                                 <option value="" disabled>Extend hold...</option>
@@ -853,7 +843,6 @@ export default function PrivateBookingsClient({
                           customerId={booking.customer_id ?? null}
                           name={booking.customer_name}
                           fallback="Unknown Customer"
-                          className="text-blue-600 hover:text-blue-700"
                         />
                       </div>
                       {booking.is_date_tbd ? (
@@ -865,7 +854,7 @@ export default function PrivateBookingsClient({
                         </>
                       )}
                       {!booking.is_date_tbd && booking.days_until_event !== undefined && booking.days_until_event !== null && booking.days_until_event >= 0 && (
-                        <div className="text-xs text-text-subtle mt-1">
+                        <div className="text-xs text-text-soft mt-1">
                           {booking.days_until_event === 0 ? 'Today' : `${booking.days_until_event} days`}
                         </div>
                       )}
@@ -875,7 +864,7 @@ export default function PrivateBookingsClient({
                         </div>
                       )}
                     </div>
-                    <Badge tone={statusTone[booking.status]} dot>{statusLabel[booking.status]}</Badge>
+                    <Badge tone={privateBookingStatusTone(booking.status)} dot>{privateBookingStatusLabel(booking.status)}</Badge>
                   </div>
 
                   {booking.contact_phone && (
@@ -900,9 +889,9 @@ export default function PrivateBookingsClient({
                         {formatCurrency(toNumber(booking.gross_total ?? booking.calculated_total ?? booking.total_amount))}
                       </span>
                       {booking.final_payment_date ? (
-                        <div className="text-xs text-success-fg font-medium">Fully paid</div>
+                        <div className={`text-xs font-medium ${privateBookingPaymentTextClass('paid_in_full')}`}>Fully paid</div>
                       ) : booking.balance_remaining != null && booking.balance_remaining > 0 ? (
-                        <div className="text-xs text-warning-fg font-medium">
+                        <div className={`text-xs font-medium ${privateBookingPaymentTextClass('balance_due')}`}>
                           Balance: {formatCurrency(booking.balance_remaining)}
                         </div>
                       ) : null}
@@ -911,11 +900,11 @@ export default function PrivateBookingsClient({
 
                   {booking.deposit_awaiting_confirmation ? (
                     <div className="mb-3">
-                      <Badge tone="warning">Deposit to be confirmed</Badge>
+                      <Badge tone={privateBookingPaymentTone('deposit_to_be_confirmed')}>Deposit to be confirmed</Badge>
                     </div>
                   ) : booking.deposit_status && booking.deposit_status !== 'Not Required' && (
                     <div className="mb-3">
-                      <Badge tone={booking.deposit_status === 'Paid' ? 'success' : 'warning'}>
+                      <Badge tone={privateBookingPaymentTone(booking.deposit_status === 'Paid' ? 'deposit_paid' : 'deposit_due')}>
                         Deposit {booking.deposit_status}
                         {booking.deposit_amount != null && ` (${formatCurrency(toNumber(booking.deposit_amount))})`}
                       </Badge>
@@ -939,7 +928,7 @@ export default function PrivateBookingsClient({
                             const days = Number(e.target.value) as 7 | 14 | 30
                             if (days) { handleExtendHoldRequest(booking.id, days); e.target.value = '' }
                           }}
-                          className="text-xs border border-border rounded-default px-1.5 py-0.5 text-text bg-surface focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 cursor-pointer"
+                          className="rounded-sm border border-border-strong bg-surface px-1.5 py-0.5 text-xs text-text outline-hidden focus:border-border-focus focus:shadow-ring disabled:opacity-50 cursor-pointer"
                         >
                           <option value="" disabled>Extend hold...</option>
                           <option value="7">+7 days</option>

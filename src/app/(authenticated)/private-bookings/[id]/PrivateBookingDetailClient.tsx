@@ -92,7 +92,7 @@ import PaymentHistoryTable from './PaymentHistoryTable'
 import { ConfirmDepositPanel } from './ConfirmDepositPanel'
 // Design system components
 import { FormGroup, Form, PageLayout, Section, Card, CardHeader, CardBody } from '@/ds'
-import { Button, LinkButton, Input, Select, Textarea, Badge, Checkbox, Modal, ConfirmDialog, Empty, EmptyState, Alert, toast } from '@/ds'
+import { Button, IconButton, LinkButton, Input, Select, Textarea, Badge, Checkbox, Modal, ConfirmDialog, Empty, EmptyState, Alert, toast } from '@/ds'
 import { InvoiceBookingModal } from './InvoiceBookingModal'
 import {
   generatePrivateBookingInvoice,
@@ -116,35 +116,37 @@ import { formatCurrency } from '@/lib/format'
 import { computeBookingMoney } from '@/lib/private-bookings/vat'
 import { PrivateBookingBilling } from '@/components/private-bookings/PrivateBookingBilling'
 import { PrivateBookingReceiptPanel } from '@/components/private-bookings/PrivateBookingReceiptPanel'
+import {
+  privateBookingPaymentTextClass,
+  privateBookingPaymentTone,
+  privateBookingStatusTone,
+  type PrivateBookingBadgeTone,
+  type PrivateBookingPaymentState,
+} from '../_shared/status-ui'
 // Using types from private-bookings.ts
 
-// Status configuration
+// Status configuration. Colours come from the shared private booking status map.
 const statusConfig: Record<
   BookingStatus,
   {
     label: string;
-    variant: "success" | "info" | "warning" | "error" | "default";
     icon: React.ComponentType<{ className?: string }>;
   }
 > = {
   draft: {
     label: "Draft",
-    variant: "default",
     icon: PencilIcon,
   },
   confirmed: {
     label: "Confirmed",
-    variant: "success",
     icon: CheckCircleIcon,
   },
   completed: {
     label: "Completed",
-    variant: "info",
     icon: CheckCircleIcon,
   },
   cancelled: {
     label: "Cancelled",
-    variant: "error",
     icon: XMarkIcon,
   },
 };
@@ -385,7 +387,7 @@ function PaymentModal({
                   }
                   className="mr-3 h-5 w-5"
                 />
-                <method.icon className="h-5 w-5 mr-2 text-gray-400" />
+                <method.icon className="h-5 w-5 mr-2 text-text-subtle" />
                 <span className="text-sm text-text">{method.label}</span>
               </label>
             ))}
@@ -441,7 +443,7 @@ function SortableBookingItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-start justify-between border-b pb-4 last:border-0 ${
+      className={`flex items-start justify-between border-b border-border pb-4 last:border-0 ${
         isDragging ? 'bg-surface shadow-default rounded-md' : ''
       }`}
     >
@@ -449,7 +451,7 @@ function SortableBookingItem({
         {canEdit && (
           <button
             type="button"
-            className="mt-1 text-text-subtle hover:text-text-muted cursor-grab active:cursor-grabbing"
+            className="mt-1 rounded-sm text-text-subtle hover:text-text-muted cursor-grab active:cursor-grabbing focus-visible:outline-hidden focus-visible:shadow-ring"
             aria-label="Reorder booking item"
             {...attributes}
             {...listeners}
@@ -457,7 +459,7 @@ function SortableBookingItem({
             <Bars3Icon className="h-5 w-5" />
           </button>
         )}
-        <div className="text-gray-400 pt-1">
+        <div className="text-text-subtle pt-1">
           {getItemIcon(item.item_type)}
         </div>
         <div className="flex-1">
@@ -469,14 +471,14 @@ function SortableBookingItem({
             <span>{formatMoney(item.unit_price)} each</span>
             {!!item.discount_value && item.discount_value > 0 && (
               <>
-                <span className="text-green-600">
+                <span className="text-success-fg">
                   -
                   {item.discount_type === 'percent'
                     ? `${item.discount_value}%`
                     : `${formatMoney(item.discount_value)}`}
                 </span>
                 {item.discount_value === 100 && item.discount_type === 'percent' && (
-                  <span className="text-gray-400 line-through">
+                  <span className="text-text-soft line-through">
                     (was {formatMoney(item.quantity * item.unit_price)})
                   </span>
                 )}
@@ -496,22 +498,24 @@ function SortableBookingItem({
         </span>
         {canEdit && (
           <>
-            <button
+            <IconButton
               onClick={() => onEdit(item)}
-              className="text-gray-400 hover:text-text-muted"
+              size="sm"
+              label="Edit item"
               title="Edit item"
               type="button"
-            >
-              <PencilIcon className="h-4 w-4" />
-            </button>
-            <button
+              icon={<PencilIcon className="h-4 w-4" />}
+              className="text-text-muted"
+            />
+            <IconButton
               onClick={() => onDelete(item.id)}
-              className="text-red-400 hover:text-danger"
+              size="sm"
+              label="Delete item"
               title="Delete item"
               type="button"
-            >
-              <TrashIcon className="h-4 w-4" />
-            </button>
+              icon={<TrashIcon className="h-4 w-4" />}
+              className="text-danger hover:text-danger-fg"
+            />
           </>
         )}
       </div>
@@ -563,15 +567,15 @@ const getCancellationOutcomeLabel = (preview: CancellationPreview): string => {
   return CANCELLATION_OUTCOME_LABEL[preview.outcome];
 };
 
-const CANCELLATION_OUTCOME_VARIANT: Record<
+const CANCELLATION_OUTCOME_TONE: Record<
   NonNullable<CancellationPreview['outcome']>,
-  'default' | 'success' | 'warning' | 'error' | 'info'
+  PrivateBookingBadgeTone
 > = {
-  no_money: 'default',
+  no_money: 'neutral',
   refundable: 'info',
   deposit_partial_refund: 'success',
   gm_review_required: 'warning',
-  manual_review: 'error',
+  manual_review: 'danger',
 };
 
 function StatusModal({
@@ -746,7 +750,7 @@ function StatusModal({
         <div>
           <p className="text-sm text-text-muted">Current status:</p>
           <div className="flex items-center mt-1">
-            <Badge variant={statusConfig[currentStatus].variant}>
+            <Badge tone={privateBookingStatusTone(currentStatus)}>
               {statusConfig[currentStatus].label}
             </Badge>
           </div>
@@ -761,7 +765,7 @@ function StatusModal({
                 return (
                   <label
                     key={status}
-                    className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-surface-hover"
+                    className="flex items-center p-3 border border-border rounded-lg cursor-pointer hover:bg-surface-hover"
                   >
                     <input
                       type="radio"
@@ -772,7 +776,7 @@ function StatusModal({
                       }
                       className="mr-3 h-5 w-5"
                     />
-                    <StatusIcon className="h-5 w-5 mr-2 text-gray-400" />
+                    <StatusIcon className="h-5 w-5 mr-2 text-text-subtle" />
                     <div className="flex-1">
                       <p className="text-sm font-medium text-text">
                         {statusConfig[status].label}
@@ -789,22 +793,22 @@ function StatusModal({
             </div>
 
             {showCancelPreview && (
-              <div className="rounded-lg border border-red-200 bg-danger-soft p-4 space-y-3">
+              <div className="rounded-lg border border-danger-border bg-danger-soft p-4 space-y-3">
                 <p className="text-sm font-medium text-danger-fg">
                   Cancel this booking?
                 </p>
 
                 {previewLoading ? (
-                  <p className="text-sm text-red-700">Computing outcome...</p>
+                  <p className="text-sm text-danger-fg">Computing outcome...</p>
                 ) : cancelPreview?.error ? (
-                  <p className="text-sm text-red-700">{cancelPreview.error}</p>
+                  <p className="text-sm text-danger-fg">{cancelPreview.error}</p>
                 ) : cancelPreview ? (
                   <>
                     {cancelPreview.outcome && (
                       <div className="flex items-center gap-2">
                         <Badge
-                          variant={
-                            CANCELLATION_OUTCOME_VARIANT[cancelPreview.outcome]
+                          tone={
+                            CANCELLATION_OUTCOME_TONE[cancelPreview.outcome]
                           }
                         >
                           {getCancellationOutcomeLabel(cancelPreview)}
@@ -850,7 +854,7 @@ function StatusModal({
                       </p>
                     </div>
                     {cancelPreview.outcome === 'gm_review_required' && (
-                      <div className="space-y-3 rounded-sm border border-amber-200 bg-warning-soft p-3">
+                      <div className="space-y-3 rounded-sm border border-warning-border bg-warning-soft p-3">
                         <FormGroup
                           label="Deposit to retain (£)"
                           help={`Manager decision — up to ${formatCurrency(cancelPreview.max_retainable)} of the paid deposit. Retaining anything requires manager permission.`}
@@ -912,12 +916,12 @@ function StatusModal({
             )}
 
             {showCompletePreview && (
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
+              <div className="rounded-lg border border-info-border bg-info-soft p-4 space-y-3">
                 <p className="text-sm font-medium text-info-fg">
                   Mark this booking as complete?
                 </p>
                 {previewLoading ? (
-                  <p className="text-sm text-blue-700">Loading preview...</p>
+                  <p className="text-sm text-info-fg">Loading preview...</p>
                 ) : completePreview ? (
                   <div>
                     <p className="text-xs font-medium text-text-muted mb-1">
@@ -1148,9 +1152,10 @@ function AddItemModal({
             <button
               type="button"
               onClick={() => setItemType("space")}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+              aria-pressed={itemType === "space"}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                 itemType === "space"
-                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  ? "border-primary bg-primary-soft text-primary-soft-fg"
                   : "border-border hover:border-border-strong"
               }`}
             >
@@ -1160,9 +1165,10 @@ function AddItemModal({
             <button
               type="button"
               onClick={() => setItemType("catering")}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+              aria-pressed={itemType === "catering"}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                 itemType === "catering"
-                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  ? "border-primary bg-primary-soft text-primary-soft-fg"
                   : "border-border hover:border-border-strong"
               }`}
             >
@@ -1172,9 +1178,10 @@ function AddItemModal({
             <button
               type="button"
               onClick={() => setItemType("vendor")}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+              aria-pressed={itemType === "vendor"}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                 itemType === "vendor"
-                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  ? "border-primary bg-primary-soft text-primary-soft-fg"
                   : "border-border hover:border-border-strong"
               }`}
             >
@@ -1184,9 +1191,10 @@ function AddItemModal({
             <button
               type="button"
               onClick={() => setItemType("electricity")}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+              aria-pressed={itemType === "electricity"}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                 itemType === "electricity"
-                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  ? "border-primary bg-primary-soft text-primary-soft-fg"
                   : "border-border hover:border-border-strong"
               }`}
             >
@@ -1196,9 +1204,10 @@ function AddItemModal({
             <button
               type="button"
               onClick={() => setItemType("other")}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
+              aria-pressed={itemType === "other"}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                 itemType === "other"
-                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  ? "border-primary bg-primary-soft text-primary-soft-fg"
                   : "border-border hover:border-border-strong"
               }`}
             >
@@ -1446,9 +1455,10 @@ function DiscountModal({
             <button
               type="button"
               onClick={() => setDiscountType("percent")}
-              className={`p-3 rounded-lg border-2 transition-colors ${
+              aria-pressed={discountType === "percent"}
+              className={`p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                 discountType === "percent"
-                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  ? "border-primary bg-primary-soft text-primary-soft-fg"
                   : "border-border hover:border-border-strong"
               }`}
             >
@@ -1458,9 +1468,10 @@ function DiscountModal({
             <button
               type="button"
               onClick={() => setDiscountType("fixed")}
-              className={`p-3 rounded-lg border-2 transition-colors ${
+              aria-pressed={discountType === "fixed"}
+              className={`p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                 discountType === "fixed"
-                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  ? "border-primary bg-primary-soft text-primary-soft-fg"
                   : "border-border hover:border-border-strong"
               }`}
             >
@@ -1502,7 +1513,7 @@ function DiscountModal({
                 <span className="text-text-muted">Current Total:</span>
                 <span className="font-medium">{formatMoney(currentTotal)}</span>
               </div>
-              <div className="flex justify-between text-danger">
+              <div className="flex justify-between text-danger-fg">
                 <span>Discount:</span>
                 <span className="font-medium">
                   -{formatMoney(calculateDiscount())}
@@ -2374,6 +2385,14 @@ export default function PrivateBookingDetailClient({
     depositConfirmation?.awaiting === true && depositRequired && !booking.deposit_paid_date;
   const appliedDepositAmount = toNumber(booking.applied_deposit_amount, 0);
   const depositAppliedToInvoice = Boolean(booking.invoice_id && booking.invoice_deposit_treatment === "deducted");
+  // Colours the deposit line the way the bookings list colours its deposit badge.
+  const depositPaymentState: PrivateBookingPaymentState = !depositRequired
+    ? 'not_required'
+    : booking.deposit_paid_date
+      ? 'deposit_paid'
+      : depositAwaitingConfirmation
+        ? 'deposit_to_be_confirmed'
+        : 'deposit_due';
 
   // Stored prices are NET (SOP 2026-07) — customer-payable figures are gross.
   // Computed locally from items so the summary stays live during edits.
@@ -2585,14 +2604,14 @@ export default function PrivateBookingDetailClient({
                     Event Date
                   </label>
                   {isDateTbd ? (
-                    <div className="mt-1 flex items-center text-sm font-medium text-warning">
-                      <CalendarDaysIcon className="h-5 w-5 text-amber-500 mr-2" />
+                    <div className="mt-1 flex items-center text-sm font-medium text-warning-fg">
+                      <CalendarDaysIcon className="h-5 w-5 text-warning mr-2" />
                       <span>To be confirmed</span>
                     </div>
                   ) : (
                     <>
                       <div className="mt-1 flex items-center text-sm text-text">
-                        <CalendarDaysIcon className="h-5 w-5 text-gray-400 mr-2" />
+                        <CalendarDaysIcon className="h-5 w-5 text-text-subtle mr-2" />
                         {formatDateFull(booking.event_date)}
                       </div>
                       {booking.setup_date && (
@@ -2609,14 +2628,14 @@ export default function PrivateBookingDetailClient({
                     Time
                   </label>
                   {isDateTbd ? (
-                    <div className="mt-1 flex items-center text-sm font-medium text-warning">
-                      <ClockIcon className="h-5 w-5 text-amber-500 mr-2" />
+                    <div className="mt-1 flex items-center text-sm font-medium text-warning-fg">
+                      <ClockIcon className="h-5 w-5 text-warning mr-2" />
                       <span>To be confirmed</span>
                     </div>
                   ) : (
                     <>
                       <div className="mt-1 flex items-center text-sm text-text">
-                        <ClockIcon className="h-5 w-5 text-gray-400 mr-2" />
+                        <ClockIcon className="h-5 w-5 text-text-subtle mr-2" />
                         {formatTime12Hour(booking.start_time)} -{' '}
                         {formatEndTime(booking)}
                       </div>
@@ -2634,7 +2653,7 @@ export default function PrivateBookingDetailClient({
                     Guest Count
                   </label>
                   <div className="mt-1 flex items-center text-sm text-text">
-                    <UserGroupIcon className="h-5 w-5 text-gray-400 mr-2" />
+                    <UserGroupIcon className="h-5 w-5 text-text-subtle mr-2" />
                     {booking.guest_count ?? "TBC"} guests
                   </div>
                 </div>
@@ -2644,7 +2663,7 @@ export default function PrivateBookingDetailClient({
                     Event Type
                   </label>
                   <div className="mt-1 flex items-center text-sm text-text">
-                    <SparklesIcon className="h-5 w-5 text-gray-400 mr-2" />
+                    <SparklesIcon className="h-5 w-5 text-text-subtle mr-2" />
                     {booking.event_type || "Private Event"}
                   </div>
                 </div>
@@ -2654,11 +2673,11 @@ export default function PrivateBookingDetailClient({
                     Contact Phone
                   </label>
                   <div className="mt-1 flex items-center text-sm">
-                    <PhoneIcon className="h-5 w-5 text-gray-400 mr-2" />
+                    <PhoneIcon className="h-5 w-5 text-text-subtle mr-2" />
                     {booking.contact_phone ? (
                       <a
                         href={`tel:${booking.contact_phone}`}
-                        className="text-blue-600 hover:underline"
+                        className="text-primary hover:underline"
                       >
                         {booking.contact_phone}
                       </a>
@@ -2673,11 +2692,11 @@ export default function PrivateBookingDetailClient({
                     Contact Email
                   </label>
                   <div className="mt-1 flex items-center text-sm">
-                    <EnvelopeIcon className="h-5 w-5 text-gray-400 mr-2" />
+                    <EnvelopeIcon className="h-5 w-5 text-text-subtle mr-2" />
                     {booking.contact_email ? (
                       <a
                         href={`mailto:${booking.contact_email}`}
-                        className="text-blue-600 hover:underline"
+                        className="text-primary hover:underline"
                       >
                         {booking.contact_email}
                       </a>
@@ -2709,7 +2728,7 @@ export default function PrivateBookingDetailClient({
                     Booking Source
                   </label>
                   <div className="mt-1 flex items-center text-sm text-text">
-                    <BuildingOfficeIcon className="h-5 w-5 text-gray-400 mr-2" />
+                    <BuildingOfficeIcon className="h-5 w-5 text-text-subtle mr-2" />
                     {booking.source || "Direct"}
                   </div>
                 </div>
@@ -2912,12 +2931,13 @@ export default function PrivateBookingDetailClient({
             title="Financial Summary"
             actions={
               canEdit ? (
-                <button type="button"
+                <Button
+                  type="button"
+                  variant="link"
                   onClick={() => setShowDiscountModal(true)}
-                  className="text-sm text-blue-600 hover:text-blue-700"
                 >
                   Apply Discount
-                </button>
+                </Button>
               ) : null
             }
           >
@@ -2938,8 +2958,8 @@ export default function PrivateBookingDetailClient({
                 {/* Show item-level discounts if any */}
                 {calculateItemDiscounts() > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-green-600">Item Discounts</span>
-                    <span className="font-medium text-green-600">
+                    <span className="text-success-fg">Item Discounts</span>
+                    <span className="font-medium text-success-fg">
                       -{formatMoney(calculateItemDiscounts())}
                     </span>
                   </div>
@@ -2956,7 +2976,7 @@ export default function PrivateBookingDetailClient({
                 {!!booking.discount_amount && booking.discount_amount > 0 && (
                   <>
                     <div className="flex justify-between text-sm">
-                      <span className="text-green-600">
+                      <span className="text-success-fg">
                         Booking Discount (
                         {booking.discount_type === "percent"
                           ? `${booking.discount_amount}%`
@@ -2968,7 +2988,7 @@ export default function PrivateBookingDetailClient({
                           </span>
                         )}
                       </span>
-                      <span className="font-medium text-green-600">
+                      <span className="font-medium text-success-fg">
                         -{formatMoney(calculateSubtotal() - calculateTotal())}
                       </span>
                     </div>
@@ -2978,19 +2998,19 @@ export default function PrivateBookingDetailClient({
                 {/* Show total savings if any discounts */}
                 {(calculateItemDiscounts() > 0 ||
                   (booking.discount_amount && booking.discount_amount > 0)) && (
-                  <div className="bg-success-soft p-2 rounded-lg">
+                  <div className="bg-success-soft border border-success-border p-2 rounded-lg">
                     <div className="flex justify-between text-sm">
-                      <span className="font-medium text-green-800">
+                      <span className="font-medium text-success-fg">
                         Total Savings
                       </span>
-                      <span className="font-bold text-green-800">
+                      <span className="font-bold text-success-fg">
                         {formatMoney(calculateOriginalTotal() - calculateTotal())}
                       </span>
                     </div>
                   </div>
                 )}
 
-                <div className="pt-3 border-t space-y-2">
+                <div className="pt-3 border-t border-border space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-text-muted">Event price (ex VAT)</span>
                     <span className="font-medium text-text">
@@ -3016,8 +3036,8 @@ export default function PrivateBookingDetailClient({
                 </div>
               </div>
 
-              <div className="space-y-3 pt-3 border-t">
-                <div className="bg-blue-50 p-3 rounded-lg">
+              <div className="space-y-3 pt-3 border-t border-border">
+                <div className="bg-info-soft border border-info-border p-3 rounded-lg">
                   <p className="text-xs font-medium text-info-fg mb-2">
                     {depositAppliedToInvoice ? "Deposit applied to invoice" : "Refundable Deposit"}
                   </p>
@@ -3026,7 +3046,7 @@ export default function PrivateBookingDetailClient({
                       <p className="text-sm font-medium text-text">
                         {depositAppliedToInvoice ? "Applied towards event price" : "Security Deposit"}
                       </p>
-                      <p className="text-xs text-text-muted">
+                      <p className={`text-xs ${privateBookingPaymentTextClass(depositPaymentState)}`}>
                         {!depositRequired
                           ? "No deposit required"
                           : booking.deposit_paid_date
@@ -3114,19 +3134,19 @@ export default function PrivateBookingDetailClient({
                           {depositAppliedToInvoice ? formatMoney(appliedDepositAmount) : depositRequired ? formatMoney(depositAmount) : "No deposit"}
                         </p>
                         {!booking.deposit_paid_date && canManageDeposits && (
-                          <button
+                          <IconButton
                             type="button"
+                            size="sm"
                             onClick={() => {
                               setEditDepositAmount(String(depositAmount));
                               setDepositEditReason('');
                               setDepositWaiveConfirmed(false);
                               setEditingDeposit(true);
                             }}
-                            className="text-gray-400 hover:text-text-muted focus:outline-none focus:ring-1 focus:ring-gray-400 rounded-sm"
-                            aria-label="Edit deposit amount"
-                          >
-                            <PencilIcon className="h-3.5 w-3.5" />
-                          </button>
+                            className="text-text-muted"
+                            label="Edit deposit amount"
+                            icon={<PencilIcon className="h-3.5 w-3.5" />}
+                          />
                         )}
                       </div>
                     )}
@@ -3189,7 +3209,9 @@ export default function PrivateBookingDetailClient({
                   {depositRequired && refundTotals.totalRefunded > 0 && (
                     <div className="mt-2">
                       <Badge
-                        variant={refundTotals.totalRefunded >= depositAmount ? 'info' : 'warning'}
+                        tone={privateBookingPaymentTone(
+                          refundTotals.totalRefunded >= depositAmount ? 'refunded' : 'partially_refunded',
+                        )}
                         size="sm"
                       >
                         {refundTotals.totalRefunded >= depositAmount ? 'Refunded' : 'Partially Refunded'}
@@ -3220,7 +3242,7 @@ export default function PrivateBookingDetailClient({
                 </div>
 
                 {/* Only a separately held deposit is additional to the event price. */}
-                <div className="flex justify-between text-sm pt-3 border-t">
+                <div className="flex justify-between text-sm pt-3 border-t border-border">
                   <span className="font-medium text-text">
                     Total to pay before event
                   </span>
@@ -3287,7 +3309,7 @@ export default function PrivateBookingDetailClient({
 
                       {booking.invoice_id && remaining > 0 && <a href="#booking-billing" className="mt-2 block text-sm text-primary underline">Record payment against an invoice</a>}
 
-                      <div className="mt-3 pt-3 border-t">
+                      <div className="mt-3 pt-3 border-t border-border">
                         <PaymentHistoryTable
                           payments={paymentHistory}
                           bookingId={bookingId}
@@ -3297,9 +3319,9 @@ export default function PrivateBookingDetailClient({
                       </div>
 
                       {booking.final_payment_date && remaining === 0 && (
-                        <div className="pt-3 border-t">
+                        <div className="pt-3 border-t border-border">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-green-600 font-medium">
+                            <span className={`text-sm font-medium ${privateBookingPaymentTextClass('paid_in_full')}`}>
                               ✓ Fully Paid
                             </span>
                             <span className="text-xs text-text-muted">
@@ -3322,13 +3344,13 @@ export default function PrivateBookingDetailClient({
                 {canSendSms && (
                   <Link
                     href={`/private-bookings/${bookingId}/messages`}
-                    className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover"
+                    className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
                   >
                     <div className="flex items-center">
-                      <ChatBubbleLeftRightIcon className="h-5 w-5 mr-3 text-purple-600" />
+                      <ChatBubbleLeftRightIcon className="h-5 w-5 mr-3 text-primary" />
                       Send SMS Message
                     </div>
-                    <ChevronRightIcon className="h-4 w-4 text-gray-400" />
+                    <ChevronRightIcon className="h-4 w-4 text-text-subtle" />
                   </Link>
                 )}
 
@@ -3336,39 +3358,39 @@ export default function PrivateBookingDetailClient({
                   type="button"
                   onClick={handleDownloadContract}
                   disabled={downloadingContract}
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
-                    <DocumentIcon className="h-5 w-5 mr-3 text-blue-600" />
+                    <DocumentIcon className="h-5 w-5 mr-3 text-primary" />
                     {downloadingContract ? 'Preparing contract…' : 'Download Contract'}
                   </div>
-                  <ArrowDownTrayIcon className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                  <ArrowDownTrayIcon className="h-4 w-4 text-text-subtle" aria-hidden="true" />
                 </button>
 
                 <a
                   href={`/api/private-bookings/event-sheet?bookingId=${bookingId}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
                 >
                   <div className="flex items-center">
-                    <ClipboardDocumentListIcon className="h-5 w-5 mr-3 text-blue-600" />
+                    <ClipboardDocumentListIcon className="h-5 w-5 mr-3 text-primary" />
                     Staff event sheet
                   </div>
-                  <ArrowTopRightOnSquareIcon className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                  <ArrowTopRightOnSquareIcon className="h-4 w-4 text-text-subtle" aria-hidden="true" />
                 </a>
 
                 <button
                   type="button"
                   onClick={handleSendContract}
                   disabled={sendingContract || !booking.contact_email}
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
-                    <DocumentIcon className="h-5 w-5 mr-3 text-green-600" />
+                    <DocumentIcon className="h-5 w-5 mr-3 text-primary" />
                     {sendingContract ? 'Sending contract…' : 'Send Contract to Customer'}
                   </div>
-                  <ChevronRightIcon className="h-4 w-4 text-gray-400" />
+                  <ChevronRightIcon className="h-4 w-4 text-text-subtle" />
                 </button>
                 {booking.contract_sent_at ? (
                   <p className="text-xs text-text-muted px-1">
@@ -3376,7 +3398,7 @@ export default function PrivateBookingDetailClient({
                     {booking.contract_sent_to ? ` to ${booking.contract_sent_to}` : ''}
                   </p>
                 ) : (
-                  <p className="text-xs text-warning px-1">
+                  <p className="text-xs text-warning-fg px-1">
                     Contract not yet sent — terms must reach the customer before the deposit is paid.
                   </p>
                 )}
@@ -3417,7 +3439,7 @@ export default function PrivateBookingDetailClient({
                         <div className="mt-2 flex flex-wrap gap-3">
                           <Link
                             href={`/invoices/${booking.invoice_id}`}
-                            className="text-sm font-medium text-green-700 hover:underline"
+                            className="rounded-sm text-sm font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
                           >
                             View invoice
                           </Link>
@@ -3426,7 +3448,7 @@ export default function PrivateBookingDetailClient({
                               type="button"
                               onClick={handleRetryInvoiceEmail}
                               disabled={retryingInvoiceEmail}
-                              className="text-sm font-medium text-green-700 hover:underline disabled:opacity-50"
+                              className="rounded-sm text-sm font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50"
                             >
                               {retryingInvoiceEmail ? 'Sending…' : 'Retry sending'}
                             </button>
@@ -3438,7 +3460,7 @@ export default function PrivateBookingDetailClient({
                           <button
                             type="button"
                             onClick={() => setShowCancelInvoiceModal(true)}
-                            className="text-sm font-medium text-red-700 hover:underline"
+                            className="rounded-sm text-sm font-medium text-danger-fg hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
                           >
                             Cancel invoice
                           </button>
@@ -3453,16 +3475,16 @@ export default function PrivateBookingDetailClient({
                         type="button"
                         onClick={handleOpenInvoiceModal}
                         disabled={Boolean(blockedReason)}
-                        className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <div className="flex items-center">
-                          <DocumentIcon className="h-5 w-5 mr-3 text-green-600" />
+                          <DocumentIcon className="h-5 w-5 mr-3 text-primary" />
                           Generate and send invoice
                         </div>
-                        <ChevronRightIcon className="h-4 w-4 text-gray-400" />
+                        <ChevronRightIcon className="h-4 w-4 text-text-subtle" />
                       </button>
                       {blockedReason && (
-                        <p className="mt-1 px-1 text-xs text-warning">{blockedReason}</p>
+                        <p className="mt-1 px-1 text-xs text-warning-fg">{blockedReason}</p>
                       )}
                     </div>
                   );
@@ -3541,7 +3563,7 @@ export default function PrivateBookingDetailClient({
                 const details = getAuditDetails(entry)
                 return (
                   <li key={entry.id} className="relative pl-5">
-                    <span className="absolute left-0 top-2 h-2 w-2 rounded-full bg-blue-500" />
+                    <span className="absolute left-0 top-2 h-2 w-2 rounded-full bg-primary" />
                     <div className="flex flex-col gap-1">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-medium text-text">
