@@ -66,7 +66,7 @@ export default function TodoClient({ initialTodos }: TodoClientProps) {
   }
 
   return (
-    <div className={`flex flex-col gap-4 ${isPending ? 'opacity-60' : ''}`}>
+    <div className={`flex flex-col gap-4 ${isPending ? 'opacity-50' : ''}`}>
       {groups.map((group) => {
         const completed = group.items.filter((i) => i.completed).length
         const total = group.items.length

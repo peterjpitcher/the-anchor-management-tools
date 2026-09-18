@@ -428,7 +428,7 @@ export default function EventsClient({
         />
       )}
 
-      <div className={isPending ? 'opacity-60 pointer-events-none' : ''}>
+      <div className={isPending ? 'opacity-50 pointer-events-none' : ''}>
         {view === 'list' && (
           <EventListView
             events={events}

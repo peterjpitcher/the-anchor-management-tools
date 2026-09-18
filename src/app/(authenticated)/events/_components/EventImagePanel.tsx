@@ -10,7 +10,8 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
-import { ConfirmDialog } from '@/ds'
+import { Button, ConfirmDialog, IconButton } from '@/ds'
+import { cn } from '@/lib/utils'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import {
   deleteEventImageVariant,
@@ -334,15 +335,16 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
     return (
       <div className="space-y-3">
         <PanelHeading />
-        <div className="rounded-md border border-amber-200 bg-warning-soft p-4 text-sm text-warning-fg">
+        <div className="rounded-md border border-warning-border bg-warning-soft p-4 text-sm text-warning-fg">
           <p>The images for this event could not be loaded.</p>
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={() => eventId && load(eventId)}
-            className="mt-2 min-h-touch font-medium underline"
+            className="mt-2 min-h-touch"
           >
             Try again
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -353,7 +355,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
       <PanelHeading />
 
       {!eventId && (
-        <p className="rounded-md bg-blue-50 p-3 text-sm text-info-fg">
+        <p className="rounded-md border border-info-border bg-info-soft p-3 text-sm text-info-fg">
           Pick your artwork now. It uploads automatically when you save the event.
         </p>
       )}
@@ -417,11 +419,10 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                 const file = e.dataTransfer.files?.[0]
                 if (file) void startUpload(variant, file)
               }}
-              className={`flex h-full flex-col rounded-lg border p-3 transition-colors ${
-                dragOver === variant
-                  ? 'border-green-500 border-dashed bg-success-soft'
-                  : 'border-border'
-              }`}
+              className={cn(
+                'flex h-full flex-col rounded-lg border p-3 transition-colors',
+                dragOver === variant ? 'border-dashed border-success bg-success-soft' : 'border-border'
+              )}
             >
               <p className="text-sm font-medium text-text">{config.label}</p>
               <p className="mt-0.5 text-xs text-text-muted">{config.helpText}</p>
@@ -456,7 +457,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                 )}
                 {isPdf && (
                   <div className="flex h-full w-full flex-col items-center justify-center p-2 text-center">
-                    <DocumentIcon className="h-8 w-8 text-gray-400" />
+                    <DocumentIcon className="h-8 w-8 text-text-subtle" />
                     <span className="mt-1 break-all text-xs text-text-muted">
                       {state?.fileName ?? 'PDF'}
                     </span>
@@ -465,11 +466,11 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                 {!previewUrl && !isPdf && (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center">
                     <PhotoIcon className="h-8 w-8 text-text-subtle" aria-hidden="true" />
-                    <span className="text-xs text-gray-400">Drop a file here</span>
+                    <span className="text-xs text-text-soft">Drop a file here</span>
                   </div>
                 )}
                 {dragOver === variant && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-success-soft/90 text-xs font-medium text-green-800">
+                  <div className="absolute inset-0 flex items-center justify-center bg-success-soft/90 text-xs font-medium text-success-fg">
                     Drop
                   </div>
                 )}
@@ -483,7 +484,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                 {isBranded && (
                   <span
                     data-testid={`branded-badge-${variant}`}
-                    className="absolute left-1 top-1 rounded-sm bg-gray-900/70 px-1.5 py-0.5 text-2xs font-medium leading-none text-white"
+                    className="absolute left-1 top-1 rounded-sm bg-text-strong/70 px-1.5 py-0.5 text-2xs font-medium leading-none text-on-dark"
                   >
                     Branded
                   </span>
@@ -494,7 +495,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
               <div className="mt-2 min-h-[1.25rem] text-xs" aria-live="polite">
                 {tile.error && <span className="text-danger">{tile.error}</span>}
                 {!tile.error && tile.queued && (
-                  <span className="text-blue-700">Uploads when you save</span>
+                  <span className="text-info-fg">Uploads when you save</span>
                 )}
                 {!tile.error && !tile.queued && state && !state.owned && state.url && (
                   <span className="text-text-muted">
@@ -509,13 +510,8 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
               {/* mt-auto keeps the controls on the tile's bottom edge, so they
                   line up across a row whatever shape the preview above is. */}
               <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
-                <label
-                  htmlFor={inputId}
-                  className="inline-flex min-h-touch cursor-pointer items-center rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-text hover:bg-surface-hover"
-                >
-                  {previewUrl ? 'Replace' : 'Add'}
-                  <span className="sr-only"> {config.label}</span>
-                </label>
+                {/* The input sits before its label so the label, which is what
+                    staff see and press, can show the input's keyboard focus. */}
                 <input
                   id={inputId}
                   ref={(element) => {
@@ -523,19 +519,26 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                   }}
                   type="file"
                   accept={acceptAttribute(variant)}
-                  className="sr-only"
+                  className="peer sr-only"
                   disabled={tile.uploading}
                   onChange={(event) => {
                     const file = event.target.files?.[0]
                     if (file) void startUpload(variant, file)
                   }}
                 />
+                <label
+                  htmlFor={inputId}
+                  className="inline-flex min-h-touch cursor-pointer items-center justify-center rounded-default border border-border-strong bg-surface px-3 text-ui font-semibold text-text hover:bg-surface-hover peer-focus-visible:shadow-ring peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
+                >
+                  {previewUrl ? 'Replace' : 'Add'}
+                  <span className="sr-only"> {config.label}</span>
+                </label>
 
                 {state?.url && (
                   <a
                     href={buildEventImageDownloadUrl(state.url, state.fileName)}
                     download={state.fileName ?? undefined}
-                    className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-md border border-border-strong bg-surface px-2 text-text hover:bg-surface-hover"
+                    className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-default border border-border-strong bg-surface px-2 text-text hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
                   >
                     <ArrowDownTrayIcon className="h-4 w-4" aria-hidden="true" />
                     <span className="sr-only">Download {config.label}</span>
@@ -545,19 +548,20 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                 {/* Inherited artwork belongs to the category and is shared with
                     every other event in it, so it cannot be deleted from here. */}
                 {state?.url && state.owned && (
-                  <button
+                  <IconButton
                     type="button"
+                    variant="secondary"
                     onClick={() => setPendingDelete(variant)}
                     disabled={tile.uploading}
-                    className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-md border border-border-strong bg-surface px-2 text-danger hover:bg-danger-soft disabled:opacity-50"
-                  >
-                    <TrashIcon className="h-4 w-4" aria-hidden="true" />
-                    <span className="sr-only">Delete {config.label}</span>
-                  </button>
+                    icon={<TrashIcon className="h-4 w-4" aria-hidden="true" />}
+                    label={`Delete ${config.label}`}
+                    className="min-h-touch min-w-touch text-danger hover:bg-danger-soft"
+                  />
                 )}
 
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={() => setBrandingVariant(variant)}
                   disabled={!canBrand || tile.uploading}
                   title={
@@ -567,15 +571,16 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                         ? 'A PDF cannot be branded here. Upload the poster as an image instead.'
                         : 'Upload a file for this size first.'
                   }
-                  className="inline-flex min-h-touch items-center rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-50"
+                  className="min-h-touch"
                 >
                   Branding
                   <span className="sr-only"> for {config.label}</span>
-                </button>
+                </Button>
 
                 {isTableTalker && eventId && (
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
                     onClick={async () => {
                       setSheetBusy(true)
                       try {
@@ -590,10 +595,10 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                         ? 'Three to an A4 sheet. Print at actual size (100%), then cut as needed.'
                         : 'Brand the table talker first. Only branded artwork is printed.'
                     }
-                    className="inline-flex min-h-touch items-center rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-50"
+                    className="min-h-touch"
                   >
                     {sheetBusy ? 'Preparing...' : 'Print sheet'}
-                  </button>
+                  </Button>
                 )}
               </div>
 
@@ -709,18 +714,21 @@ function VariantPromptBox() {
             Made the square already? Copy this into your image tool with it attached.
           </p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="secondary"
           onClick={copy}
-          className="inline-flex min-h-touch shrink-0 items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-text hover:bg-surface-hover"
+          icon={
+            copied ? (
+              <CheckIcon className="h-4 w-4 text-success" aria-hidden="true" />
+            ) : (
+              <ClipboardDocumentIcon className="h-4 w-4" aria-hidden="true" />
+            )
+          }
+          className="min-h-touch shrink-0"
         >
-          {copied ? (
-            <CheckIcon className="h-4 w-4 text-green-600" aria-hidden="true" />
-          ) : (
-            <ClipboardDocumentIcon className="h-4 w-4" aria-hidden="true" />
-          )}
           {copied ? 'Copied' : 'Copy'}
-        </button>
+        </Button>
       </div>
       <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-surface p-2 text-xs leading-relaxed text-text-muted">
         {prompt}

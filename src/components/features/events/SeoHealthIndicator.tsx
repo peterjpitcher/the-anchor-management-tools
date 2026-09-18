@@ -155,24 +155,26 @@ export function SeoHealthIndicator({
     return { colour: 'green', label: 'Good' }
   }, [score])
 
+  // The score is words, so it takes the dark -fg shade to stay readable on white; the
+  // bar and the tick and cross marks are fills and glyphs, so they take the base colour.
   const colourMap: Record<ColourKey, { score: string; bar: string; tick: string; cross: string }> = {
     red: {
-      score: 'text-danger',
-      bar: 'bg-red-500',
-      tick: 'text-green-600',
+      score: 'text-danger-fg',
+      bar: 'bg-danger',
+      tick: 'text-success',
       cross: 'text-danger',
     },
     amber: {
-      score: 'text-warning',
-      bar: 'bg-amber-500',
-      tick: 'text-green-600',
-      cross: 'text-amber-500',
+      score: 'text-warning-fg',
+      bar: 'bg-warning',
+      tick: 'text-success',
+      cross: 'text-warning',
     },
     green: {
-      score: 'text-green-600',
-      bar: 'bg-green-500',
-      tick: 'text-green-600',
-      cross: 'text-gray-400',
+      score: 'text-success-fg',
+      bar: 'bg-success',
+      tick: 'text-success',
+      cross: 'text-text-subtle',
     },
   }
 

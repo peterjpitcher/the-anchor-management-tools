@@ -21,21 +21,6 @@
   "src/app/(authenticated)/employees/birthdays/page.tsx": {
     "raw-palette": 3
   },
-  "src/app/(authenticated)/events/[id]/EventDetailClient.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/events/_components/ArtworkBrandingModal.tsx": {
-    "hex-colour": 2
-  },
-  "src/app/(authenticated)/events/_components/EventDrawer.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/events/_components/EventImagePanel.tsx": {
-    "raw-palette": 9
-  },
-  "src/app/(authenticated)/messages/bulk/BulkMessagesClient.tsx": {
-    "raw-palette": 1
-  },
   "src/app/(authenticated)/private-bookings/[id]/InvoiceBookingModal.tsx": {
     "raw-palette": 1
   },
@@ -183,35 +168,11 @@
   "src/components/features/employees/RightToWorkTab.tsx": {
     "raw-palette": 26
   },
-  "src/components/features/events/EventCategoryFormGrouped.tsx": {
-    "raw-palette": 12
-  },
-  "src/components/features/events/EventChecklistCard.tsx": {
-    "raw-palette": 2
-  },
-  "src/components/features/events/EventMarketingLinksCard.tsx": {
-    "raw-palette": 7
-  },
-  "src/components/features/events/FaqEditor.tsx": {
-    "raw-palette": 3
-  },
-  "src/components/features/events/KeywordStrategyCard.tsx": {
-    "raw-palette": 5
-  },
-  "src/components/features/events/SeoHealthIndicator.tsx": {
-    "raw-palette": 9
-  },
   "src/components/features/messages/MessageThread.tsx": {
     "raw-palette": 7
   },
   "src/components/features/private-bookings/VenueSpaceDeleteButton.tsx": {
     "raw-palette": 1
-  },
-  "src/components/modals/AddEmergencyContactModal.tsx": {
-    "raw-palette": 10
-  },
-  "src/components/modals/EditEmergencyContactModal.tsx": {
-    "raw-palette": 10
   },
   "src/components/private-bookings/CalendarView.tsx": {
     "raw-palette": 18

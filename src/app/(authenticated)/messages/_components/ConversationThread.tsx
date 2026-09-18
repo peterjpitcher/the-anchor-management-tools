@@ -288,7 +288,7 @@ export function ConversationThread({
           />
         )}
         <Avatar name={name} size="md" className="flex-shrink-0" />
-        <div ref={headingRef} tabIndex={-1} className="min-w-0 flex-1 focus:outline-none">
+        <div ref={headingRef} tabIndex={-1} className="min-w-0 flex-1 focus:outline-hidden">
           <CustomerLink
             customerId={customerId}
             name={name}
@@ -559,7 +559,7 @@ export function ConversationThread({
               // transport is SMS.
               <span>Replies send by SMS to {eligibility.destination}</span>
             )}
-            <span className="ml-auto text-text-subtle">Ctrl+Enter to send</span>
+            <span className="ml-auto text-text-soft">Ctrl+Enter to send</span>
           </div>
         </div>
       ) : (

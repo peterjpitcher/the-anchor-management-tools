@@ -88,6 +88,21 @@ vi.mock('@/ds', async () => {
       size?: string
     }) =>
       React.createElement('button', { type: 'button', onClick, disabled }, children),
+    // Icon-only controls (the editor's close button, a tile's delete button) are named
+    // by their label, as the real IconButton names them.
+    IconButton: ({
+      label,
+      onClick,
+      disabled,
+    }: {
+      label?: string
+      onClick?: () => void
+      disabled?: boolean
+      icon?: React.ReactNode
+      variant?: string
+      size?: string
+    }) =>
+      React.createElement('button', { type: 'button', onClick, disabled, 'aria-label': label }),
     ConfirmDialog: ({
       open,
       title,

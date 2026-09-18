@@ -198,7 +198,7 @@ export function EventMarketingLinksCard({
                 <p className="text-xs text-text-muted">{channel.description}</p>
               )}
             </div>
-            <Badge variant="secondary" size="sm">{placementLabel(channel.type)}</Badge>
+            <Badge tone="neutral" size="sm">{placementLabel(channel.type)}</Badge>
           </div>
 
           <div className="mt-3 flex items-center gap-3">
@@ -209,12 +209,12 @@ export function EventMarketingLinksCard({
                 className="h-28 w-28 rounded-md border border-border bg-surface object-contain p-2"
               />
             ) : (
-              <div className="flex h-28 w-28 items-center justify-center rounded-md border border-dashed border-border-strong text-xs text-gray-400">
+              <div className="flex h-28 w-28 items-center justify-center rounded-md border border-dashed border-border-strong text-xs text-text-soft">
                 QR unavailable
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <p className="break-all font-mono text-sm text-blue-600">{link.shortUrl}</p>
+              <p className="break-all font-mono text-sm text-primary">{link.shortUrl}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Button
                   size="xs"
@@ -251,12 +251,12 @@ export function EventMarketingLinksCard({
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
-          <Badge variant="secondary" size="sm">source: {link?.utm.utm_source ?? channel.utmSource}</Badge>
-          <Badge variant="secondary" size="sm">medium: {link?.utm.utm_medium ?? channel.utmMedium}</Badge>
+          <Badge tone="neutral" size="sm">source: {link?.utm.utm_source ?? channel.utmSource}</Badge>
+          <Badge tone="neutral" size="sm">medium: {link?.utm.utm_medium ?? channel.utmMedium}</Badge>
           {link?.utm.utm_campaign && (
-            <Badge variant="secondary" size="sm">campaign: {link.utm.utm_campaign}</Badge>
+            <Badge tone="neutral" size="sm">campaign: {link.utm.utm_campaign}</Badge>
           )}
-          <Badge variant="secondary" size="sm">content: {link?.utm.utm_content ?? channel.utmContent}</Badge>
+          <Badge tone="neutral" size="sm">content: {link?.utm.utm_content ?? channel.utmContent}</Badge>
         </div>
       </div>
     )
@@ -302,10 +302,10 @@ export function EventMarketingLinksCard({
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Spinner className="text-gray-400" />
+          <Spinner />
         </div>
       ) : error ? (
-        <div className="rounded-md border border-red-200 bg-danger-soft p-4 text-sm text-red-700">
+        <div className="rounded-md border border-danger-border bg-danger-soft p-4 text-sm text-danger-fg">
           {error}
         </div>
       ) : (
@@ -357,7 +357,7 @@ export function EventMarketingLinksCard({
           <section>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted">QR code placements</h3>
-              <Badge variant="secondary" size="sm">
+              <Badge tone="neutral" size="sm">
                 {readyQrPlacementChannels.length}/{qrPlacementChannels.length} ready
               </Badge>
             </div>
@@ -385,11 +385,11 @@ export function EventMarketingLinksCard({
                         <p className="text-xs text-text-muted">{link.description}</p>
                       )}
                     </div>
-                    <Badge variant="info" size="sm">Digital</Badge>
+                    <Badge tone="info" size="sm">Digital</Badge>
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-sm text-blue-600">{link.shortUrl}</span>
+                    <span className="font-mono text-sm text-primary">{link.shortUrl}</span>
                     <Button
                       size="xs"
                       variant="secondary"
@@ -413,11 +413,11 @@ export function EventMarketingLinksCard({
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
-                    <Badge variant="secondary" size="sm">source: {link.utm.utm_source}</Badge>
-                    <Badge variant="secondary" size="sm">medium: {link.utm.utm_medium}</Badge>
-                    <Badge variant="secondary" size="sm">campaign: {link.utm.utm_campaign}</Badge>
+                    <Badge tone="neutral" size="sm">source: {link.utm.utm_source}</Badge>
+                    <Badge tone="neutral" size="sm">medium: {link.utm.utm_medium}</Badge>
+                    <Badge tone="neutral" size="sm">campaign: {link.utm.utm_campaign}</Badge>
                     {link.utm.utm_content && (
-                      <Badge variant="secondary" size="sm">content: {link.utm.utm_content}</Badge>
+                      <Badge tone="neutral" size="sm">content: {link.utm.utm_content}</Badge>
                     )}
                   </div>
                 </div>
@@ -442,11 +442,11 @@ export function EventMarketingLinksCard({
                         <p className="text-xs text-text-muted">{link.description}</p>
                       )}
                     </div>
-                    <Badge variant="info" size="sm">Digital</Badge>
+                    <Badge tone="info" size="sm">Digital</Badge>
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-sm text-blue-600">{link.shortUrl}</span>
+                    <span className="font-mono text-sm text-primary">{link.shortUrl}</span>
                     <Button
                       size="xs"
                       variant="secondary"
@@ -470,11 +470,11 @@ export function EventMarketingLinksCard({
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
-                    <Badge variant="secondary" size="sm">source: {link.utm.utm_source}</Badge>
-                    <Badge variant="secondary" size="sm">medium: {link.utm.utm_medium}</Badge>
-                    <Badge variant="secondary" size="sm">campaign: {link.utm.utm_campaign}</Badge>
+                    <Badge tone="neutral" size="sm">source: {link.utm.utm_source}</Badge>
+                    <Badge tone="neutral" size="sm">medium: {link.utm.utm_medium}</Badge>
+                    <Badge tone="neutral" size="sm">campaign: {link.utm.utm_campaign}</Badge>
                     {link.utm.utm_content && (
-                      <Badge variant="secondary" size="sm">content: {link.utm.utm_content}</Badge>
+                      <Badge tone="neutral" size="sm">content: {link.utm.utm_content}</Badge>
                     )}
                   </div>
                 </div>
