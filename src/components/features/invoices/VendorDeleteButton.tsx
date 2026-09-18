@@ -15,7 +15,7 @@ export function VendorDeleteButton({ vendorName, vendorId, deleteAction }: Vendo
       <button
         type="submit"
         aria-label={`Delete ${vendorName}`}
-        className="text-red-600 hover:text-red-700 transition-colors"
+        className="text-danger hover:text-red-700 transition-colors"
         onClick={(e) => {
           if (!confirm(`Are you sure you want to delete "${vendorName}"? This action cannot be undone.`)) {
             e.preventDefault()

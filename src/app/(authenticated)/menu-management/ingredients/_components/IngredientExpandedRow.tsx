@@ -62,25 +62,25 @@ interface IngredientExpandedRowProps {
 
 export function IngredientExpandedRow({ ingredient }: IngredientExpandedRowProps): React.ReactElement {
   if (!ingredient.dishes.length) {
-    return <p className="text-sm text-gray-500">This ingredient is not used in any dishes yet.</p>;
+    return <p className="text-sm text-text-muted">This ingredient is not used in any dishes yet.</p>;
   }
 
   return (
     <div className="space-y-3">
       {ingredient.dishes.map((dish) => (
-        <div key={dish.dish_id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+        <div key={dish.dish_id} className="rounded-lg border border-border bg-surface p-3 shadow-sm">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <div className="font-medium text-gray-900">{dish.dish_name}</div>
-              <div className="mt-1 text-xs text-gray-500">
+              <div className="font-medium text-text">{dish.dish_name}</div>
+              <div className="mt-1 text-xs text-text-muted">
                 Quantity: {dish.quantity}
                 {dish.unit ? ` ${dish.unit}` : ''}
               </div>
             </div>
-            <div className="flex flex-col items-start sm:items-end text-xs text-gray-500">
+            <div className="flex flex-col items-start sm:items-end text-xs text-text-muted">
               <span>Price: £{dish.dish_selling_price.toFixed(2)}</span>
               <span>Portion cost: £{dish.dish_portion_cost.toFixed(2)}</span>
-              <span className={dish.dish_is_gp_alert ? 'text-red-600 font-semibold' : ''}>
+              <span className={dish.dish_is_gp_alert ? 'text-danger font-semibold' : ''}>
                 GP: {dish.dish_gp_pct !== null ? `${Math.round(dish.dish_gp_pct * 100)}%` : '\u2014'}
               </span>
             </div>
@@ -98,7 +98,7 @@ export function IngredientExpandedRow({ ingredient }: IngredientExpandedRowProps
             </div>
           )}
           {dish.notes && (
-            <div className="mt-2 text-xs text-gray-600">Notes: {dish.notes}</div>
+            <div className="mt-2 text-xs text-text-muted">Notes: {dish.notes}</div>
           )}
         </div>
       ))}

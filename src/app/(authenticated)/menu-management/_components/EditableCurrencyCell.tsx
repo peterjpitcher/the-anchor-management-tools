@@ -57,7 +57,7 @@ export function EditableCurrencyCell({
                 cancelEditing();
               }
             }}
-            className="w-20 rounded border border-border bg-surface px-2 py-1 text-sm"
+            className="w-20 rounded-sm border border-border bg-surface px-2 py-1 text-sm"
             aria-label={`Edit ${fieldLabel} for ${entityName}`}
           />
         </div>
@@ -81,7 +81,7 @@ export function EditableCurrencyCell({
       <button
         type="button"
         onClick={startEditing}
-        className="rounded px-1 py-0.5 text-left text-sm hover:bg-surface-hover transition-colors"
+        className="rounded-sm px-1 py-0.5 text-left text-sm hover:bg-surface-hover transition-colors"
         aria-label={`Edit ${fieldLabel} for ${entityName}`}
       >
         £{value.toFixed(2)}

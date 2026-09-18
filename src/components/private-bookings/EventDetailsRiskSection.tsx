@@ -80,7 +80,7 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
         </div>
 
         <div className="rounded-md border border-border bg-surface-2 p-3 space-y-3">
-          <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-text">
             <input
               type="checkbox"
               id="bar_tab_required"
@@ -88,7 +88,7 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
               value="true"
               checked={barTabRequired}
               onChange={(e) => setBarTabRequired(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              className="h-4 w-4 rounded-sm border-border-strong text-primary focus:ring-primary"
             />
             <span>Bar tab required</span>
           </label>
@@ -130,42 +130,42 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm text-gray-700">
+          <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm text-text">
             <input
               type="checkbox"
               id="outside_food"
               name="outside_food"
               value="true"
               defaultChecked={!!defaults?.outsideFood}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              className="mt-0.5 h-4 w-4 rounded-sm border-border-strong text-primary focus:ring-primary"
             />
             <span>
               <span className="font-medium">Outside food</span>
-              <span className="block text-xs text-gray-500">Requires the self-catering waiver.</span>
+              <span className="block text-xs text-text-muted">Requires the self-catering waiver.</span>
             </span>
           </label>
-          <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm text-gray-700">
+          <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm text-text">
             <input
               type="checkbox"
               id="high_power_equipment"
               name="high_power_equipment"
               value="true"
               defaultChecked={!!defaults?.highPowerEquipment}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              className="mt-0.5 h-4 w-4 rounded-sm border-border-strong text-primary focus:ring-primary"
             />
             <span>
               <span className="font-medium">High-power / amplified equipment</span>
-              <span className="block text-xs text-gray-500">£25 electricity charge applies; needs approval.</span>
+              <span className="block text-xs text-text-muted">£25 electricity charge applies; needs approval.</span>
             </span>
           </label>
-          <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm text-gray-700">
+          <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm text-text">
             <input
               type="checkbox"
               id="dogs_expected"
               name="dogs_expected"
               value="true"
               defaultChecked={!!defaults?.dogsExpected}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              className="mt-0.5 h-4 w-4 rounded-sm border-border-strong text-primary focus:ring-primary"
             />
             <span>
               <span className="font-medium">Dogs expected</span>

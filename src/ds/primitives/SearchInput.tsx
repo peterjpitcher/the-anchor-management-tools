@@ -88,7 +88,7 @@ export function SearchInput({
         <button
           type="button"
           onClick={() => handleChange('')}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-text-subtle hover:text-text transition-colors"
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-sm text-text-subtle hover:text-text transition-colors focus-visible:outline-hidden focus-visible:shadow-ring"
           aria-label="Clear search"
         >
           <ClearIcon />

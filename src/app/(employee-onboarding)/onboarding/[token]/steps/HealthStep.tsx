@@ -98,13 +98,13 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
 
   const textField = (id: keyof HealthData, label: string, type = 'text') => (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label htmlFor={id} className="block text-sm font-medium text-text mb-1">{label}</label>
       <input
         id={id}
         type={type}
         value={data[id] as string}
         onChange={(e) => setData({ ...data, [id]: e.target.value })}
-        className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+        className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
       />
     </div>
   );
@@ -119,21 +119,21 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
         // health, allergy and disability flag was stored as a React
         // SyntheticEvent instead of true or false.
         onChange={(event) => setData({ ...data, [id]: event.target.checked })}
-        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+        className="mt-0.5 h-4 w-4 rounded-sm border-border-strong text-green-600 focus:ring-green-500"
       />
-      <span className="text-sm text-gray-700">{label}</span>
+      <span className="text-sm text-text">{label}</span>
     </label>
   );
 
   const textareaField = (id: keyof HealthData, label: string) => (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label htmlFor={id} className="block text-sm font-medium text-text mb-1">{label}</label>
       <textarea
         id={id}
         value={data[id] as string}
         onChange={(e) => setData({ ...data, [id]: e.target.value })}
         rows={3}
-        className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+        className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
       />
     </div>
   );
@@ -141,23 +141,23 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-gray-800">GP Details</h3>
+        <h3 className="text-sm font-semibold text-text">GP Details</h3>
         {textField('doctor_name', "Doctor's Name")}
         {textareaField('doctor_address', "Doctor's Address")}
       </div>
 
-      <hr className="border-gray-200" />
+      <hr className="border-border" />
 
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-gray-800">Allergies</h3>
+        <h3 className="text-sm font-semibold text-text">Allergies</h3>
         {checkField('has_allergies', 'I have allergies')}
         {data.has_allergies && textareaField('allergies', 'Please describe your allergies')}
       </div>
 
-      <hr className="border-gray-200" />
+      <hr className="border-border" />
 
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-gray-800">Medical History</h3>
+        <h3 className="text-sm font-semibold text-text">Medical History</h3>
         {checkField('had_absence_over_2_weeks_last_3_years', 'I have had absence over 2 weeks in the last 3 years')}
         {checkField('had_outpatient_treatment_over_3_months_last_3_years', 'I have had outpatient treatment for over 3 months in the last 3 years')}
         {(data.had_absence_over_2_weeks_last_3_years || data.had_outpatient_treatment_over_3_months_last_3_years) && (
@@ -167,10 +167,10 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
         {textareaField('recent_treatment', 'Recent treatment (optional)')}
       </div>
 
-      <hr className="border-gray-200" />
+      <hr className="border-border" />
 
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-gray-800">Conditions</h3>
+        <h3 className="text-sm font-semibold text-text">Conditions</h3>
         {checkField('has_diabetes', 'Diabetes')}
         {checkField('has_epilepsy', 'Epilepsy')}
         {checkField('has_skin_condition', 'Skin condition')}
@@ -179,10 +179,10 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
         {checkField('has_ear_problems', 'Ear problems')}
       </div>
 
-      <hr className="border-gray-200" />
+      <hr className="border-border" />
 
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-gray-800">Disability</h3>
+        <h3 className="text-sm font-semibold text-text">Disability</h3>
         {checkField('is_registered_disabled', 'I am registered disabled')}
         {data.is_registered_disabled && (
           <>
@@ -193,7 +193,7 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
         )}
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       <button
         type="submit"

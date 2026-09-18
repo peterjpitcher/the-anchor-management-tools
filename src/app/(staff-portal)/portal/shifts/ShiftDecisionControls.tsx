@@ -42,7 +42,7 @@ export default function ShiftDecisionControls({
 
   if (acceptanceStatus === 'accepted' || acceptanceStatus === 'auto_accepted') {
     return (
-      <div className="mt-2 rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-xs text-green-800">
+      <div className="mt-2 rounded-lg border border-green-100 bg-success-soft px-3 py-2 text-xs text-green-800">
         <p className="font-semibold">
           {acceptedLabel}{acceptedTime ? ` ${acceptedTime}` : ''}
         </p>
@@ -93,12 +93,12 @@ export default function ShiftDecisionControls({
   return (
     <div className="mt-3 space-y-2">
       {!rejecting ? (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-100 bg-warning-soft px-3 py-2">
           <div className="min-w-0">
-            <p className="text-xs font-medium text-amber-900">
+            <p className="text-xs font-medium text-warning-fg">
               Please accept or reject this shift.
             </p>
-            <p className="mt-0.5 text-xs text-amber-800">
+            <p className="mt-0.5 text-xs text-warning-fg">
               Auto-accepts on {autoAcceptDeadline}.
             </p>
           </div>
@@ -117,7 +117,7 @@ export default function ShiftDecisionControls({
               type="button"
               onClick={() => setRejecting(true)}
               disabled={isPending}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-200 bg-white text-red-700 shadow-xs hover:bg-red-50 disabled:opacity-50"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-200 bg-surface text-red-700 shadow-xs hover:bg-danger-soft disabled:opacity-50"
               aria-label="Reject shift"
               title="Reject shift"
             >
@@ -126,8 +126,8 @@ export default function ShiftDecisionControls({
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border border-red-100 bg-red-50 p-3">
-          <label htmlFor={`reject-note-${shiftId}`} className="text-xs font-medium text-red-900">
+        <div className="rounded-lg border border-red-100 bg-danger-soft p-3">
+          <label htmlFor={`reject-note-${shiftId}`} className="text-xs font-medium text-danger-fg">
             Reason for manager
           </label>
           <textarea
@@ -137,7 +137,7 @@ export default function ShiftDecisionControls({
             maxLength={500}
             required
             rows={3}
-            className="mt-1 w-full rounded-md border border-red-100 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-red-300"
+            className="mt-1 w-full rounded-md border border-red-100 bg-surface px-2 py-1.5 text-xs text-text outline-none focus:border-red-300"
           />
           <div className="mt-2 flex flex-wrap gap-2">
             <button
@@ -152,7 +152,7 @@ export default function ShiftDecisionControls({
               type="button"
               onClick={() => { setRejecting(false); setNote(''); }}
               disabled={isPending}
-              className="rounded-md border border-red-100 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              className="rounded-md border border-red-100 bg-surface px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-danger-soft disabled:opacity-50"
             >
               Cancel
             </button>

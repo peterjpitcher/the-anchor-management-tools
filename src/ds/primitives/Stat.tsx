@@ -65,7 +65,7 @@ export function Stat({ label, value, delta, deltaDirection, icon, hint, descript
         {label}
       </span>
 
-      <span className="text-2xl font-bold text-text" style={{ fontVariantNumeric: 'tabular-nums' }}>
+      <span className="text-2xl font-bold text-text tabular-nums">
         {value}
       </span>
 
@@ -84,7 +84,7 @@ export function Stat({ label, value, delta, deltaDirection, icon, hint, descript
       )}
 
       {resolvedHint && (
-        <span className="text-xs text-text-subtle mt-0.5">{resolvedHint}</span>
+        <span className="text-xs text-text-soft mt-0.5">{resolvedHint}</span>
       )}
     </div>
   )

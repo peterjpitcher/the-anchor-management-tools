@@ -121,8 +121,8 @@ export default function EmployeeHolidaysTab({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium text-gray-900">Holidays</h3>
-          <p className="mt-1 text-sm text-gray-600">
+          <h3 className="text-lg font-medium text-text">Holidays</h3>
+          <p className="mt-1 text-sm text-text-muted">
             Holiday allowance and leave requests.
           </p>
         </div>
@@ -141,8 +141,8 @@ export default function EmployeeHolidaysTab({
 
       {/* Book holiday form */}
       {showBookForm && canCreateLeave && (
-        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
-          <p className="text-sm font-medium text-gray-700">Book approved holiday</p>
+        <div className="p-4 bg-surface-2 rounded-lg border border-border space-y-4">
+          <p className="text-sm font-medium text-text">Book approved holiday</p>
           {bookError && <Alert variant="error">{bookError}</Alert>}
           <div className="grid grid-cols-2 gap-4">
             <FormGroup label="Start date" htmlFor="book-start" required>
@@ -191,7 +191,7 @@ export default function EmployeeHolidaysTab({
             className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
               y === selectedYear
                 ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                : 'bg-surface-hover text-text-muted hover:bg-border'
             }`}
           >
             {yearLabel(y)}
@@ -200,29 +200,29 @@ export default function EmployeeHolidaysTab({
       </div>
 
       {/* Allowance progress */}
-      <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+      <div className="rounded-lg border border-border p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-gray-700">Holiday year {yearLabel(selectedYear)}</p>
-          <span className={`text-sm font-semibold ${overAllowance ? 'text-red-600' : 'text-gray-900'}`}>
+          <p className="text-sm font-medium text-text">Holiday year {yearLabel(selectedYear)}</p>
+          <span className={`text-sm font-semibold ${overAllowance ? 'text-danger' : 'text-text'}`}>
             {approvedDays} / {allowance} days
           </span>
         </div>
-        <div className="w-full bg-gray-100 rounded-full h-2">
+        <div className="w-full bg-surface-hover rounded-full h-2">
           <div
             className={`h-2 rounded-full transition-all ${overAllowance ? 'bg-red-500' : 'bg-green-500'}`}
             style={{ width: `${progressPct}%` }}
           />
         </div>
-        <div className="flex gap-4 text-xs text-gray-500">
+        <div className="flex gap-4 text-xs text-text-muted">
           <span>{allowance - approvedDays > 0 ? `${allowance - approvedDays} days remaining` : `${approvedDays - allowance} days over allowance`}</span>
-          {pendingDays > 0 && <span className="text-amber-600">{pendingDays} pending</span>}
+          {pendingDays > 0 && <span className="text-warning">{pendingDays} pending</span>}
         </div>
       </div>
 
       {/* Leave request list */}
       {yearRequests.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-center text-sm text-gray-400">
-          <CalendarDaysIcon className="h-8 w-8 mb-2 text-gray-300" />
+          <CalendarDaysIcon className="h-8 w-8 mb-2 text-text-subtle" />
           No leave requests for {yearLabel(selectedYear)}.
         </div>
       ) : (
@@ -230,13 +230,13 @@ export default function EmployeeHolidaysTab({
           {yearRequests.map(r => {
             const days = countRequestDays(r.start_date, r.end_date);
             return (
-              <div key={r.id} className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">
+              <div key={r.id} className="flex items-center justify-between py-2.5 border-b border-border last:border-0">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-text">
                     {formatDate(r.start_date)}
                     {r.start_date !== r.end_date && <> – {formatDate(r.end_date)}</>}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-text-muted">
                     {days} {days === 1 ? 'day' : 'days'}
                     {r.note && ` · ${r.note}`}
                   </p>

@@ -61,7 +61,7 @@ export default function RotaPublishStatus({
           type="button"
           onClick={handlePublish}
           disabled={publishPending}
-          className="ml-1 rounded border border-current/30 bg-surface/60 px-2 py-0.5 text-[11px] font-semibold hover:bg-surface disabled:opacity-50"
+          className="ml-1 rounded-sm border border-current/30 bg-surface/60 px-2 py-0.5 text-meta font-semibold hover:bg-surface disabled:opacity-50"
         >
           {publishPending ? 'Publishing...' : 'Publish'}
         </button>

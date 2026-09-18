@@ -55,7 +55,7 @@ function Chip({
                 // Do NOT reintroduce `sm:min-h-0` here. sm: starts at 640px and an
                 // iPad is 768px, so it cancelled the target on the one device the
                 // comment names.
-                'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                'inline-flex min-h-touch items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
                 active
                     ? 'border-primary bg-primary text-primary-fg'
                     : 'border-border bg-surface text-text hover:bg-surface-hover'

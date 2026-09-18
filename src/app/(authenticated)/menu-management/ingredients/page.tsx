@@ -384,7 +384,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
             <div>
               <div className="font-medium">{ingredient.name}</div>
               {ingredient.brand && (
-                <div className="text-xs text-gray-500">{ingredient.brand}</div>
+                <div className="text-xs text-text-muted">{ingredient.brand}</div>
               )}
             </div>
           );
@@ -405,11 +405,11 @@ export default function MenuIngredientsPage(): React.ReactElement {
             <div className="text-sm">
               <div>{ingredient.supplier_name}</div>
               {ingredient.supplier_sku && (
-                <div className="text-xs text-gray-500">SKU: {ingredient.supplier_sku}</div>
+                <div className="text-xs text-text-muted">SKU: {ingredient.supplier_sku}</div>
               )}
             </div>
           ) : (
-            <span className="text-sm text-gray-500">&mdash;</span>
+            <span className="text-sm text-text-muted">&mdash;</span>
           );
         },
       },
@@ -447,7 +447,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
           return (
             <div className="text-sm space-y-1">
               <div>{size}</div>
-              <div className="text-xs text-gray-500">{portions}</div>
+              <div className="text-xs text-text-muted">{portions}</div>
             </div>
           );
         },

@@ -62,32 +62,32 @@ export function VouchersFohClient({ canEdit, staff, todayIso }: VouchersFohClien
 
   const tabButtonClass = (active: boolean) =>
     cn(
-      'min-h-[56px] flex-1 rounded-lg border px-4 py-3 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2',
+      'min-h-14 flex-1 rounded-lg border px-4 py-3 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2',
       active
         ? 'border-sidebar bg-sidebar text-white'
-        : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+        : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
     )
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4">
       <dl className="grid grid-cols-3 gap-2 sm:gap-3">
-        <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
-          <dd className="text-3xl font-extrabold text-gray-900">{counts ? counts.inStock : '-'}</dd>
-          <dt className="mt-1 text-sm font-medium text-gray-600">In stock</dt>
+        <div className="min-w-0 rounded-xl border border-border bg-surface p-3 text-center">
+          <dd className="text-3xl font-extrabold text-text">{counts ? counts.inStock : '-'}</dd>
+          <dt className="mt-1 text-sm font-medium text-text-muted">In stock</dt>
         </div>
-        <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
-          <dd className="text-3xl font-extrabold text-gray-900">{counts ? counts.out : '-'}</dd>
-          <dt className="mt-1 text-sm font-medium text-gray-600">Out with guests</dt>
+        <div className="min-w-0 rounded-xl border border-border bg-surface p-3 text-center">
+          <dd className="text-3xl font-extrabold text-text">{counts ? counts.out : '-'}</dd>
+          <dt className="mt-1 text-sm font-medium text-text-muted">Out with guests</dt>
         </div>
-        <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
-          <dd className="text-3xl font-extrabold text-gray-900">
+        <div className="min-w-0 rounded-xl border border-border bg-surface p-3 text-center">
+          <dd className="text-3xl font-extrabold text-text">
             {counts ? counts.redeemedToday : '-'}
           </dd>
-          <dt className="mt-1 text-sm font-medium text-gray-600">Redeemed today</dt>
+          <dt className="mt-1 text-sm font-medium text-text-muted">Redeemed today</dt>
         </div>
       </dl>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="rounded-xl border border-border bg-surface p-4">
         <StaffPicker staff={staff} value={staffId} onChange={handleStaffChange} />
       </div>
 

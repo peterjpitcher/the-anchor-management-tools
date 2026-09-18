@@ -137,7 +137,7 @@ export default function LoginClient() {
               alt="The Anchor Logo"
               width={44}
               height={44}
-              className="w-full h-auto rounded-[10px]"
+              className="w-full h-auto rounded-md"
               priority
             />
           </div>

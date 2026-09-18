@@ -601,7 +601,7 @@ export default function MenuManagementClient(): React.ReactElement {
                       if ((event.target as HTMLElement).closest('[role="switch"]')) return
                       if (event.key === 'Enter') handleDishClick(dish)
                     }}
-                  ><Card className="hover:shadow-md transition-shadow">
+                  ><Card className="hover:shadow-default transition-shadow">
                     <CardBody className="space-y-2">
                       <div className="flex items-start justify-between">
                         <h4 className="text-sm font-semibold text-text-strong">{dish.name}</h4>

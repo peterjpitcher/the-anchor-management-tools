@@ -44,6 +44,7 @@ export function FileUpload({
     <div
       className={cn(
         'border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors',
+        'focus-visible:outline-hidden focus-visible:shadow-ring',
         dragging
           ? 'border-primary bg-primary-soft'
           : 'border-border hover:border-border-strong',
@@ -80,7 +81,7 @@ export function FileUpload({
       <div className="flex flex-col items-center gap-2 text-text-muted">
         <UploadIcon />
         <p className="text-sm font-medium">Drag files here or click to browse</p>
-        {hint && <p className="text-xs text-text-subtle">{hint}</p>}
+        {hint && <p className="text-xs text-text-soft">{hint}</p>}
       </div>
     </div>
   )

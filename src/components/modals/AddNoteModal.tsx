@@ -111,11 +111,11 @@ export default function AddNoteModal({ isOpen, onClose, defaultEmployeeId }: Add
 
       <form id="add-note-form" onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="employee-select" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="employee-select" className="block text-sm font-medium text-text mb-1">
             Select Employee
           </label>
           {isLoadingEmployees ? (
-            <p className="text-sm text-gray-500">Loading employees...</p>
+            <p className="text-sm text-text-muted">Loading employees...</p>
           ) : (
             <Select
               id="employee-select"
@@ -128,11 +128,11 @@ export default function AddNoteModal({ isOpen, onClose, defaultEmployeeId }: Add
               error={!!formState?.errors?.general}
             />
           )}
-          {formState?.errors?.general && <p className="mt-1 text-xs text-red-600">{formState.errors.general}</p>}
+          {formState?.errors?.general && <p className="mt-1 text-xs text-danger">{formState.errors.general}</p>}
         </div>
 
         <div>
-          <label htmlFor="note-text" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="note-text" className="block text-sm font-medium text-text mb-1">
             Note
           </label>
           <Textarea
@@ -145,7 +145,7 @@ export default function AddNoteModal({ isOpen, onClose, defaultEmployeeId }: Add
             disabled={isSubmitting}
             error={!!formState?.errors?.note_text}
           />
-          {formState?.errors?.note_text && <p className="mt-1 text-xs text-red-600">{formState.errors.note_text}</p>}
+          {formState?.errors?.note_text && <p className="mt-1 text-xs text-danger">{formState.errors.note_text}</p>}
         </div>
       </form>
     </Modal>

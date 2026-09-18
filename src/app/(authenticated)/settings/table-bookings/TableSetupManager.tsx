@@ -728,17 +728,17 @@ export function TableSetupManager() {
       </datalist>
 
       {/* Booking pacing */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-gray-900">Booking pacing</h3>
-        <p className="mt-1 text-xs text-gray-500">
+      <div className="rounded-lg border border-border bg-surface p-4">
+        <h3 className="text-sm font-semibold text-text">Booking pacing</h3>
+        <p className="mt-1 text-xs text-text-muted">
           Tune the soft customer-facing busy labels. These settings do not block bookings.
         </p>
 
         {loadingPacing ? (
-          <p className="mt-3 text-sm text-gray-500">Loading pacing settings...</p>
+          <p className="mt-3 text-sm text-text-muted">Loading pacing settings...</p>
         ) : (
           <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <label className="text-xs font-medium text-gray-700">
+            <label className="text-xs font-medium text-text">
               Filling up threshold
               <input
                 type="number"
@@ -751,11 +751,11 @@ export function TableSetupManager() {
                     filling_threshold_covers: event.target.value
                   }))
                 }
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
               />
             </label>
 
-            <label className="text-xs font-medium text-gray-700">
+            <label className="text-xs font-medium text-text">
               Busy threshold
               <input
                 type="number"
@@ -768,11 +768,11 @@ export function TableSetupManager() {
                     busy_threshold_covers: event.target.value
                   }))
                 }
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
               />
             </label>
 
-            <label className="text-xs font-medium text-gray-700">
+            <label className="text-xs font-medium text-text">
               Window minutes
               <input
                 type="number"
@@ -786,7 +786,7 @@ export function TableSetupManager() {
                     window_minutes: event.target.value
                   }))
                 }
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
               />
             </label>
 
@@ -805,18 +805,18 @@ export function TableSetupManager() {
       </div>
 
       {/* Kitchen pacing (cap) */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-gray-900">Kitchen pacing (cap)</h3>
-        <p className="mt-1 text-xs text-gray-500">
+      <div className="rounded-lg border border-border bg-surface p-4">
+        <h3 className="text-sm font-semibold text-text">Kitchen pacing (cap)</h3>
+        <p className="mt-1 text-xs text-text-muted">
           When on, online bookings that would push food covers over the cap in the window are declined
           and asked to pick another time. Staff can override. Walk-ins bypass but use the reserve.
         </p>
 
         {loadingKitchenPacing ? (
-          <p className="mt-3 text-sm text-gray-500">Loading kitchen pacing settings...</p>
+          <p className="mt-3 text-sm text-text-muted">Loading kitchen pacing settings...</p>
         ) : (
           <div className="mt-4 space-y-4">
-            <label className="flex items-center gap-2 text-xs font-medium text-gray-700">
+            <label className="flex items-center gap-2 text-xs font-medium text-text">
               <input
                 type="checkbox"
                 checked={kitchenPacingDraft.enabled}
@@ -831,7 +831,7 @@ export function TableSetupManager() {
             </label>
 
             <div className="grid gap-3 md:grid-cols-3">
-              <label className="text-xs font-medium text-gray-700">
+              <label className="text-xs font-medium text-text">
                 Window minutes
                 <input
                   type="number"
@@ -845,11 +845,11 @@ export function TableSetupManager() {
                       window_minutes: event.target.value
                     }))
                   }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 />
               </label>
 
-              <label className="text-xs font-medium text-gray-700">
+              <label className="text-xs font-medium text-text">
                 Regular pace (covers)
                 <input
                   type="number"
@@ -862,11 +862,11 @@ export function TableSetupManager() {
                       pace_covers_regular: event.target.value
                     }))
                   }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 />
               </label>
 
-              <label className="text-xs font-medium text-gray-700">
+              <label className="text-xs font-medium text-text">
                 Sunday pace (covers)
                 <input
                   type="number"
@@ -879,11 +879,11 @@ export function TableSetupManager() {
                       pace_covers_sunday: event.target.value
                     }))
                   }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 />
               </label>
 
-              <label className="text-xs font-medium text-gray-700">
+              <label className="text-xs font-medium text-text">
                 Regular walk-in reserve (covers)
                 <input
                   type="number"
@@ -896,11 +896,11 @@ export function TableSetupManager() {
                       walk_in_reserve_regular: event.target.value
                     }))
                   }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 />
               </label>
 
-              <label className="text-xs font-medium text-gray-700">
+              <label className="text-xs font-medium text-text">
                 Sunday walk-in reserve (covers)
                 <input
                   type="number"
@@ -913,15 +913,15 @@ export function TableSetupManager() {
                       walk_in_reserve_sunday: event.target.value
                     }))
                   }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 />
               </label>
             </div>
 
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-text-muted">
               Online ceiling per window (pace &minus; reserve):{' '}
-              <span className="font-medium text-gray-900">{kitchenCeilingRegular}</span> regular ·{' '}
-              <span className="font-medium text-gray-900">{kitchenCeilingSunday}</span> Sunday
+              <span className="font-medium text-text">{kitchenCeilingRegular}</span> regular ·{' '}
+              <span className="font-medium text-text">{kitchenCeilingSunday}</span> Sunday
             </p>
 
             <div>
@@ -939,21 +939,21 @@ export function TableSetupManager() {
       </div>
 
       {/* Existing tables */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-gray-900">Existing tables</h3>
-        <p className="mt-1 text-xs text-gray-500">
+      <div className="rounded-lg border border-border bg-surface p-4">
+        <h3 className="text-sm font-semibold text-text">Existing tables</h3>
+        <p className="mt-1 text-xs text-text-muted">
           Configure table name, number, capacity, bookable state and area for each table.
         </p>
         {changedTableIds.length > 0 && (
-          <p className="mt-1 text-xs font-medium text-amber-700">
+          <p className="mt-1 text-xs font-medium text-warning-fg">
             Unsaved table changes: {changedTableIds.length}
           </p>
         )}
 
         {loading ? (
-          <p className="mt-3 text-sm text-gray-500">Loading table setup…</p>
+          <p className="mt-3 text-sm text-text-muted">Loading table setup…</p>
         ) : sortedTables.length === 0 ? (
-          <p className="mt-3 rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+          <p className="mt-3 rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
             No tables found. Add your first table below.
           </p>
         ) : (
@@ -963,9 +963,9 @@ export function TableSetupManager() {
               if (!draft) return null
 
               return (
-                <div key={table.id} className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                <div key={table.id} className="rounded-md border border-border bg-surface-2 p-3">
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                    <label className="text-xs font-medium text-gray-700">
+                    <label className="text-xs font-medium text-text">
                       Name
                       <input
                         type="text"
@@ -976,11 +976,11 @@ export function TableSetupManager() {
                             [table.id]: { ...current[table.id], name: event.target.value }
                           }))
                         }
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                       />
                     </label>
 
-                    <label className="text-xs font-medium text-gray-700">
+                    <label className="text-xs font-medium text-text">
                       Table number
                       <input
                         type="text"
@@ -991,11 +991,11 @@ export function TableSetupManager() {
                             [table.id]: { ...current[table.id], table_number: event.target.value }
                           }))
                         }
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                       />
                     </label>
 
-                    <label className="text-xs font-medium text-gray-700">
+                    <label className="text-xs font-medium text-text">
                       Capacity
                       <input
                         type="number"
@@ -1008,11 +1008,11 @@ export function TableSetupManager() {
                             [table.id]: { ...current[table.id], capacity: event.target.value }
                           }))
                         }
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                       />
                     </label>
 
-                    <label className="text-xs font-medium text-gray-700">
+                    <label className="text-xs font-medium text-text">
                       Area
                       <input
                         type="text"
@@ -1025,11 +1025,11 @@ export function TableSetupManager() {
                           }))
                         }
                         placeholder="Main Bar"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                       />
                     </label>
 
-                    <label className="flex items-end gap-2 text-xs font-medium text-gray-700">
+                    <label className="flex items-end gap-2 text-xs font-medium text-text">
                       <input
                         type="checkbox"
                         checked={draft.is_bookable}
@@ -1061,32 +1061,32 @@ export function TableSetupManager() {
       </div>
 
       {/* Add table */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-gray-900">Add table</h3>
+      <div className="rounded-lg border border-border bg-surface p-4">
+        <h3 className="text-sm font-semibold text-text">Add table</h3>
         <form onSubmit={createTable} className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <label className="text-xs font-medium text-gray-700">
+          <label className="text-xs font-medium text-text">
             Name
             <input
               type="text"
               required
               value={newTable.name}
               onChange={(event) => setNewTable((c) => ({ ...c, name: event.target.value }))}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             />
           </label>
 
-          <label className="text-xs font-medium text-gray-700">
+          <label className="text-xs font-medium text-text">
             Table number
             <input
               type="text"
               required
               value={newTable.table_number}
               onChange={(event) => setNewTable((c) => ({ ...c, table_number: event.target.value }))}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             />
           </label>
 
-          <label className="text-xs font-medium text-gray-700">
+          <label className="text-xs font-medium text-text">
             Capacity
             <input
               type="number"
@@ -1095,11 +1095,11 @@ export function TableSetupManager() {
               required
               value={newTable.capacity}
               onChange={(event) => setNewTable((c) => ({ ...c, capacity: event.target.value }))}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             />
           </label>
 
-          <label className="text-xs font-medium text-gray-700">
+          <label className="text-xs font-medium text-text">
             Area
             <input
               type="text"
@@ -1107,11 +1107,11 @@ export function TableSetupManager() {
               value={newTable.area}
               onChange={(event) => setNewTable((c) => ({ ...c, area: event.target.value }))}
               placeholder="Main Bar"
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             />
           </label>
 
-          <label className="flex items-end gap-2 text-xs font-medium text-gray-700">
+          <label className="flex items-end gap-2 text-xs font-medium text-text">
             <input
               type="checkbox"
               checked={newTable.is_bookable}
@@ -1134,11 +1134,11 @@ export function TableSetupManager() {
       </div>
 
       {/* Join groups */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="rounded-lg border border-border bg-surface p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Table join groups</h3>
-            <p className="mt-1 text-xs text-gray-500">
+            <h3 className="text-sm font-semibold text-text">Table join groups</h3>
+            <p className="mt-1 text-xs text-text-muted">
               Tables in the same group can be booked together in any combination. The system
               automatically generates all valid multi-table options from each group.
             </p>
@@ -1159,11 +1159,11 @@ export function TableSetupManager() {
         {/* Edit / create form */}
         {editingGroup && (
           <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4">
-            <h4 className="mb-3 text-sm font-semibold text-blue-900">
+            <h4 className="mb-3 text-sm font-semibold text-info-fg">
               {editingGroup.id ? 'Edit group' : 'New group'}
             </h4>
 
-            <label className="block text-xs font-medium text-gray-700">
+            <label className="block text-xs font-medium text-text">
               Group name
               <input
                 type="text"
@@ -1174,13 +1174,13 @@ export function TableSetupManager() {
                   )
                 }
                 placeholder="e.g. Dining Room"
-                className="mt-1 w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full max-w-xs rounded-md border border-border-strong px-3 py-2 text-sm"
               />
             </label>
 
-            <p className="mt-3 text-xs font-medium text-gray-700">Tables in this group</p>
+            <p className="mt-3 text-xs font-medium text-text">Tables in this group</p>
             {loading ? (
-              <p className="mt-2 text-xs text-gray-500">Loading tables…</p>
+              <p className="mt-2 text-xs text-text-muted">Loading tables…</p>
             ) : (
               <div className="mt-2 grid gap-2 sm:grid-cols-2 md:grid-cols-3">
                 {sortedTables.map((table) => {
@@ -1188,7 +1188,7 @@ export function TableSetupManager() {
                   return (
                     <label
                       key={table.id}
-                      className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                      className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text"
                     >
                       <input
                         type="checkbox"
@@ -1243,9 +1243,9 @@ export function TableSetupManager() {
 
         {/* Group list */}
         {loadingGroups ? (
-          <p className="mt-4 text-sm text-gray-500">Loading join groups…</p>
+          <p className="mt-4 text-sm text-text-muted">Loading join groups…</p>
         ) : joinGroups.length === 0 && !editingGroup ? (
-          <p className="mt-4 rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+          <p className="mt-4 rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
             No join groups yet. Create one to allow tables to be booked together.
           </p>
         ) : (
@@ -1258,12 +1258,12 @@ export function TableSetupManager() {
               return (
                 <div
                   key={group.id}
-                  className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3"
+                  className="rounded-md border border-border bg-surface-2 px-4 py-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900">{group.name}</p>
-                      <p className="mt-0.5 text-xs text-gray-600">
+                      <p className="text-sm font-semibold text-text">{group.name}</p>
+                      <p className="mt-0.5 text-xs text-text-muted">
                         {groupTables.length > 0
                           ? groupTables.map((t) => t.name || t.table_number).join(' · ')
                           : 'No tables assigned'}
@@ -1304,7 +1304,7 @@ export function TableSetupManager() {
                       </div>
                     ) : (
                       <div className="flex shrink-0 items-center gap-2">
-                        <span className="text-xs text-gray-600">Delete this group?</span>
+                        <span className="text-xs text-text-muted">Delete this group?</span>
                         <Button
                           variant="danger"
                           size="xs"
@@ -1332,30 +1332,30 @@ export function TableSetupManager() {
       </div>
 
       {/* Private booking area mapping */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-gray-900">Private booking area mapping</h3>
-        <p className="mt-1 text-xs text-gray-500">
+      <div className="rounded-lg border border-border bg-surface p-4">
+        <h3 className="text-sm font-semibold text-text">Private booking area mapping</h3>
+        <p className="mt-1 text-xs text-text-muted">
           Map private-booking spaces to table areas. During a mapped private booking, those table areas are blocked from table allocation.
         </p>
 
         {loading ? (
-          <p className="mt-3 text-sm text-gray-500">Loading private-booking mappings…</p>
+          <p className="mt-3 text-sm text-text-muted">Loading private-booking mappings…</p>
         ) : sortedAreas.length === 0 ? (
-          <p className="mt-3 rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+          <p className="mt-3 rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
             Add at least one table area before mapping private-booking spaces.
           </p>
         ) : sortedVenueSpaces.length === 0 ? (
-          <p className="mt-3 rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+          <p className="mt-3 rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
             No private-booking spaces found.
           </p>
         ) : (
           <div className="mt-3 space-y-3">
             {sortedVenueSpaces.map((space) => (
-              <div key={space.id} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
+              <div key={space.id} className="rounded-md border border-border bg-surface-2 px-3 py-3">
                 <div className="mb-2 flex items-center gap-2">
-                  <p className="text-sm font-medium text-gray-900">{space.name}</p>
+                  <p className="text-sm font-medium text-text">{space.name}</p>
                   {!space.active && (
-                    <span className="rounded-md bg-gray-200 px-2 py-0.5 text-[11px] text-gray-700">
+                    <span className="rounded-md bg-border px-2 py-0.5 text-meta text-text">
                       Inactive
                     </span>
                   )}
@@ -1366,7 +1366,7 @@ export function TableSetupManager() {
                     return (
                       <label
                         key={key}
-                        className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700"
+                        className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
                       >
                         <input
                           type="checkbox"

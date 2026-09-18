@@ -80,7 +80,7 @@ function KeyForm({
       className="space-y-4"
     >
       <div>
-        <label htmlFor="key-name" className="block text-sm font-medium text-gray-700">Name *</label>
+        <label htmlFor="key-name" className="block text-sm font-medium text-text">Name *</label>
         <Input
           type="text"
           id="key-name"
@@ -93,7 +93,7 @@ function KeyForm({
       </div>
 
       <div>
-        <label htmlFor="key-description" className="block text-sm font-medium text-gray-700">Description</label>
+        <label htmlFor="key-description" className="block text-sm font-medium text-text">Description</label>
         <Input
           type="text"
           id="key-description"
@@ -105,7 +105,7 @@ function KeyForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Permissions</label>
+        <label className="block text-sm font-medium text-text mb-2">Permissions</label>
         <div className="space-y-2">
           {PERMISSION_OPTIONS.map(option => (
             <Checkbox
@@ -119,7 +119,7 @@ function KeyForm({
       </div>
 
       <div>
-        <label htmlFor="key-rate-limit" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="key-rate-limit" className="block text-sm font-medium text-text">
           Rate Limit (requests per hour)
         </label>
         <Input
@@ -271,7 +271,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
       {canManage && editingKey && (
         <Card variant="default" padding="md">
           <h3 className="text-lg font-semibold mb-1">Edit API Key</h3>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-sm text-text-muted mb-4">
             The key value itself cannot be changed. Only the name, description, permissions and rate limit can be updated.
           </p>
           <KeyForm
@@ -291,13 +291,13 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
 
       {/* Show newly created key */}
       {showKey && canManage && (
-        <Card variant="default" padding="sm" className="bg-yellow-50 border-yellow-200">
+        <Card variant="default" padding="sm" className="bg-warning-soft border-yellow-200">
           <h3 className="font-semibold text-yellow-900 mb-2">New API Key Created</h3>
-          <p className="text-sm text-yellow-800 mb-3">
+          <p className="text-sm text-warning-fg mb-3">
             Save this key now. You won&apos;t be able to see it again.
           </p>
           <div className="flex items-center space-x-2">
-            <code className="flex-1 bg-white p-2 rounded border border-yellow-300 font-mono text-sm">
+            <code className="flex-1 bg-surface p-2 rounded-sm border border-yellow-300 font-mono text-sm">
               {showKey}
             </code>
             <IconButton
@@ -305,7 +305,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
               onClick={() => handleCopyKey(showKey)}
               className="hover:bg-yellow-100"
             >
-              <DocumentDuplicateIcon className="h-5 w-5 text-yellow-700" />
+              <DocumentDuplicateIcon className="h-5 w-5 text-warning-fg" />
             </IconButton>
           </div>
         </Card>
@@ -320,15 +320,15 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
           columns={[
             { key: 'name', header: 'Name', cell: (k: ApiKey) => (
               <div>
-                <div className="text-sm font-medium text-gray-900">{k.name}</div>
-                {k.description && <div className="text-sm text-gray-500">{k.description}</div>}
+                <div className="text-sm font-medium text-text">{k.name}</div>
+                {k.description && <div className="text-sm text-text-muted">{k.description}</div>}
               </div>
             ) },
             { key: 'permissions', header: 'Permissions', cell: (k: ApiKey) => (
-              <div className="text-sm text-gray-900">{k.permissions.includes('*') ? 'All permissions' : k.permissions.join(', ')}</div>
+              <div className="text-sm text-text">{k.permissions.includes('*') ? 'All permissions' : k.permissions.join(', ')}</div>
             ) },
-            { key: 'rate', header: 'Rate Limit', align: 'right', cell: (k: ApiKey) => <span className="text-sm text-gray-900">{k.rate_limit}/hour</span> },
-            { key: 'last', header: 'Last Used', cell: (k: ApiKey) => <span className="text-sm text-gray-500">{k.last_used_at ? format(new Date(k.last_used_at), 'MMM d, yyyy HH:mm') : 'Never'}</span> },
+            { key: 'rate', header: 'Rate Limit', align: 'right', cell: (k: ApiKey) => <span className="text-sm text-text">{k.rate_limit}/hour</span> },
+            { key: 'last', header: 'Last Used', cell: (k: ApiKey) => <span className="text-sm text-text-muted">{k.last_used_at ? format(new Date(k.last_used_at), 'MMM d, yyyy HH:mm') : 'Never'}</span> },
             { key: 'status', header: 'Status', cell: (k: ApiKey) => <Badge variant={k.is_active ? 'success' : 'error'}>{k.is_active ? 'Active' : 'Inactive'}</Badge> },
             ...(canManage ? [{
               key: 'actions',
@@ -398,22 +398,22 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
       />
 
       {/* Usage Instructions */}
-      <Card variant="default" padding="md" className="bg-gray-50">
+      <Card variant="default" padding="md" className="bg-surface-2">
         <h3 className="text-lg font-semibold mb-4">API Usage</h3>
         <div className="space-y-3">
           <div>
             <h4 className="font-medium mb-1">Authentication</h4>
-            <p className="text-sm text-gray-600 mb-2">
+            <p className="text-sm text-text-muted mb-2">
               Include your API key in the Authorization header:
             </p>
-            <code className="block bg-gray-900 text-gray-100 p-3 rounded text-sm">
+            <code className="block bg-gray-900 text-gray-100 p-3 rounded-sm text-sm">
               Authorization: Bearer YOUR_API_KEY
             </code>
           </div>
 
           <div>
             <h4 className="font-medium mb-1">Example Request</h4>
-            <code className="block bg-gray-900 text-gray-100 p-3 rounded text-sm whitespace-pre">
+            <code className="block bg-gray-900 text-gray-100 p-3 rounded-sm text-sm whitespace-pre">
 {`curl -H "Authorization: Bearer YOUR_API_KEY" \\
   ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/api/events`}
             </code>
@@ -421,7 +421,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
 
           <div>
             <h4 className="font-medium mb-1">Available Endpoints</h4>
-            <ul className="text-sm text-gray-600 space-y-1">
+            <ul className="text-sm text-text-muted space-y-1">
               <li>• GET /api/events - List all events</li>
               <li>• GET /api/events/today - Today&apos;s events</li>
               <li>• GET /api/events/[id] - Event details</li>

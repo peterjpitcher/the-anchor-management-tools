@@ -62,7 +62,7 @@ export function MenuTargetForm({ initialTarget }: Props) {
               setMessage(null);
             }
           }}
-          rightElement={<span className="pr-3 text-sm text-gray-500">%</span>}
+          rightElement={<span className="pr-3 text-sm text-text-muted">%</span>}
         />
       </FormGroup>
 

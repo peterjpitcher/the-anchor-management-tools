@@ -318,7 +318,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
           {EVENT_IMAGE_VARIANT_ORDER.map((variant) => (
             <div
               key={variant}
-              className="h-40 animate-pulse rounded-lg bg-gray-100"
+              className="h-40 animate-pulse rounded-lg bg-surface-hover"
               aria-hidden="true"
             />
           ))}
@@ -334,12 +334,12 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
     return (
       <div className="space-y-3">
         <PanelHeading />
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        <div className="rounded-md border border-amber-200 bg-warning-soft p-4 text-sm text-warning-fg">
           <p>The images for this event could not be loaded.</p>
           <button
             type="button"
             onClick={() => eventId && load(eventId)}
-            className="mt-2 min-h-[44px] font-medium underline"
+            className="mt-2 min-h-touch font-medium underline"
           >
             Try again
           </button>
@@ -353,7 +353,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
       <PanelHeading />
 
       {!eventId && (
-        <p className="rounded-md bg-blue-50 p-3 text-sm text-blue-800">
+        <p className="rounded-md bg-blue-50 p-3 text-sm text-info-fg">
           Pick your artwork now. It uploads automatically when you save the event.
         </p>
       )}
@@ -419,12 +419,12 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
               }}
               className={`flex h-full flex-col rounded-lg border p-3 transition-colors ${
                 dragOver === variant
-                  ? 'border-green-500 border-dashed bg-green-50'
-                  : 'border-gray-200'
+                  ? 'border-green-500 border-dashed bg-success-soft'
+                  : 'border-border'
               }`}
             >
-              <p className="text-sm font-medium text-gray-900">{config.label}</p>
-              <p className="mt-0.5 text-xs text-gray-500">{config.helpText}</p>
+              <p className="text-sm font-medium text-text">{config.label}</p>
+              <p className="mt-0.5 text-xs text-text-muted">{config.helpText}</p>
 
               {/* Fixed-height well so every tile lines up, with the preview inside
                   it at the variant's true shape. Seeing that a story is tall and a
@@ -434,7 +434,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                   social render as the same shape and the cue is lost. */}
               <div className="mt-2 flex h-20 w-full items-center justify-center">
               <div
-                className="relative h-full max-w-full overflow-hidden rounded-md bg-gray-50"
+                className="relative h-full max-w-full overflow-hidden rounded-md bg-surface-2"
                 style={{ aspectRatio: `${config.targetWidth} / ${config.targetHeight}` }}
               >
                 {previewUrl && !isPdf && (
@@ -457,24 +457,24 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                 {isPdf && (
                   <div className="flex h-full w-full flex-col items-center justify-center p-2 text-center">
                     <DocumentIcon className="h-8 w-8 text-gray-400" />
-                    <span className="mt-1 break-all text-xs text-gray-600">
+                    <span className="mt-1 break-all text-xs text-text-muted">
                       {state?.fileName ?? 'PDF'}
                     </span>
                   </div>
                 )}
                 {!previewUrl && !isPdf && (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center">
-                    <PhotoIcon className="h-8 w-8 text-gray-300" aria-hidden="true" />
+                    <PhotoIcon className="h-8 w-8 text-text-subtle" aria-hidden="true" />
                     <span className="text-xs text-gray-400">Drop a file here</span>
                   </div>
                 )}
                 {dragOver === variant && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-green-50/90 text-xs font-medium text-green-800">
+                  <div className="absolute inset-0 flex items-center justify-center bg-success-soft/90 text-xs font-medium text-green-800">
                     Drop
                   </div>
                 )}
                 {tile.uploading && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 text-xs font-medium text-gray-700">
+                  <div className="absolute inset-0 flex items-center justify-center bg-surface/80 text-xs font-medium text-text">
                     Uploading...
                   </div>
                 )}
@@ -483,7 +483,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                 {isBranded && (
                   <span
                     data-testid={`branded-badge-${variant}`}
-                    className="absolute left-1 top-1 rounded bg-gray-900/70 px-1.5 py-0.5 text-[10px] font-medium leading-none text-white"
+                    className="absolute left-1 top-1 rounded-sm bg-gray-900/70 px-1.5 py-0.5 text-2xs font-medium leading-none text-white"
                   >
                     Branded
                   </span>
@@ -492,17 +492,17 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
               </div>
 
               <div className="mt-2 min-h-[1.25rem] text-xs" aria-live="polite">
-                {tile.error && <span className="text-red-600">{tile.error}</span>}
+                {tile.error && <span className="text-danger">{tile.error}</span>}
                 {!tile.error && tile.queued && (
                   <span className="text-blue-700">Uploads when you save</span>
                 )}
                 {!tile.error && !tile.queued && state && !state.owned && state.url && (
-                  <span className="text-gray-500">
+                  <span className="text-text-muted">
                     From category{state.categoryName ? `: ${state.categoryName}` : ''}
                   </span>
                 )}
                 {!tile.error && !tile.queued && state?.owned && state.sizeBytes && (
-                  <span className="text-gray-500">{formatBytes(state.sizeBytes)}</span>
+                  <span className="text-text-muted">{formatBytes(state.sizeBytes)}</span>
                 )}
               </div>
 
@@ -511,7 +511,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
               <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
                 <label
                   htmlFor={inputId}
-                  className="inline-flex min-h-[44px] cursor-pointer items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="inline-flex min-h-touch cursor-pointer items-center rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-text hover:bg-surface-hover"
                 >
                   {previewUrl ? 'Replace' : 'Add'}
                   <span className="sr-only"> {config.label}</span>
@@ -535,7 +535,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                   <a
                     href={buildEventImageDownloadUrl(state.url, state.fileName)}
                     download={state.fileName ?? undefined}
-                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-gray-300 bg-white px-2 text-gray-700 hover:bg-gray-50"
+                    className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-md border border-border-strong bg-surface px-2 text-text hover:bg-surface-hover"
                   >
                     <ArrowDownTrayIcon className="h-4 w-4" aria-hidden="true" />
                     <span className="sr-only">Download {config.label}</span>
@@ -549,7 +549,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                     type="button"
                     onClick={() => setPendingDelete(variant)}
                     disabled={tile.uploading}
-                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-gray-300 bg-white px-2 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-md border border-border-strong bg-surface px-2 text-danger hover:bg-danger-soft disabled:opacity-50"
                   >
                     <TrashIcon className="h-4 w-4" aria-hidden="true" />
                     <span className="sr-only">Delete {config.label}</span>
@@ -567,7 +567,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                         ? 'A PDF cannot be branded here. Upload the poster as an image instead.'
                         : 'Upload a file for this size first.'
                   }
-                  className="inline-flex min-h-[44px] items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className="inline-flex min-h-touch items-center rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-50"
                 >
                   Branding
                   <span className="sr-only"> for {config.label}</span>
@@ -590,7 +590,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                         ? 'Three to an A4 sheet. Print at actual size (100%), then cut as needed.'
                         : 'Brand the table talker first. Only branded artwork is printed.'
                     }
-                    className="inline-flex min-h-[44px] items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    className="inline-flex min-h-touch items-center rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-50"
                   >
                     {sheetBusy ? 'Preparing...' : 'Print sheet'}
                   </button>
@@ -602,12 +602,12 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
               {isTableTalker && previewUrl && !isPdf && (
                 <p className="mt-2 text-xs" data-testid="table-talker-print-note">
                   {talkerDpi !== null && talkerDpi < MIN_PRINT_DPI ? (
-                    <span className="text-red-600">
+                    <span className="text-danger">
                       Prints at {Math.floor(talkerDpi)} dpi, too soft to print. Upload one at least{' '}
                       {MIN_PRINT_WIDTH_PX} px wide.
                     </span>
                   ) : (
-                    <span className="text-gray-500">
+                    <span className="text-text-muted">
                       {talkerDpi !== null ? `Prints at about ${Math.round(talkerDpi)} dpi. ` : ''}
                       {canPrintSheet
                         ? 'Print the sheet at 100%, then cut as needed.'
@@ -625,7 +625,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
           until save, which the notice at the top of the panel says, and running
           both lines at once contradicted itself on screen. */}
       {eventId && (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-text-muted">
           Images upload as soon as you choose them, and are not undone by Cancel.
         </p>
       )}
@@ -701,18 +701,18 @@ function VariantPromptBox() {
   }
 
   return (
-    <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+    <div className="rounded-md border border-border bg-surface-2 p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-gray-800">Prompt for the other sizes</p>
-          <p className="text-xs text-gray-500">
+          <p className="text-sm font-medium text-text">Prompt for the other sizes</p>
+          <p className="text-xs text-text-muted">
             Made the square already? Copy this into your image tool with it attached.
           </p>
         </div>
         <button
           type="button"
           onClick={copy}
-          className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          className="inline-flex min-h-touch shrink-0 items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-text hover:bg-surface-hover"
         >
           {copied ? (
             <CheckIcon className="h-4 w-4 text-green-600" aria-hidden="true" />
@@ -722,7 +722,7 @@ function VariantPromptBox() {
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-white p-2 text-xs leading-relaxed text-gray-600">
+      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-surface p-2 text-xs leading-relaxed text-text-muted">
         {prompt}
       </pre>
       <span aria-live="polite" className="sr-only">
@@ -735,8 +735,8 @@ function VariantPromptBox() {
 function PanelHeading() {
   return (
     <div>
-      <p className="text-sm font-medium text-gray-700 sm:text-base">Event artwork</p>
-      <p className="text-sm text-gray-500">
+      <p className="text-sm font-medium text-text sm:text-base">Event artwork</p>
+      <p className="text-sm text-text-muted">
         Drag a file onto a tile, or click it to browse. The square, landscape and
         social images appear on the website. The story, A4 poster and table talker
         are kept here for you to download.

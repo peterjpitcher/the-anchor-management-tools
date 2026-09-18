@@ -59,7 +59,7 @@ export default async function VouchersFohPage() {
   const backToFloor = (
     <Link
       href="/table-bookings/foh"
-      className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-sidebar px-4 py-2 text-sm font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+      className="inline-flex min-h-touch items-center justify-center rounded-md bg-sidebar px-4 py-2 text-sm font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40"
     >
       Back to the floor
     </Link>

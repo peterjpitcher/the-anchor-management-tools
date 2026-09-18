@@ -272,7 +272,7 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
       <PageLayout title="Quote Not Found" error={error || 'Quote not found'}>
         <Card>
           <div className="text-center py-8">
-            <p className="text-red-600 mb-4">{error || 'Quote not found'}</p>
+            <p className="text-danger mb-4">{error || 'Quote not found'}</p>
             <Button
               variant="secondary"
               onClick={() => router.push('/quotes')}
@@ -490,19 +490,19 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
           <Card>
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span className="text-gray-600">Subtotal:</span>
+                <span className="text-text-muted">Subtotal:</span>
                 <span className="font-medium">£{subtotal.toFixed(2)}</span>
               </div>
               
               {quoteDiscountAmount > 0 && (
-                <div className="flex justify-between text-red-600">
+                <div className="flex justify-between text-danger">
                   <span>Quote Discount ({quoteDiscount}%):</span>
                   <span>-£{quoteDiscountAmount.toFixed(2)}</span>
                 </div>
               )}
               
               <div className="flex justify-between">
-                <span className="text-gray-600">VAT:</span>
+                <span className="text-text-muted">VAT:</span>
                 <span className="font-medium">£{totalVat.toFixed(2)}</span>
               </div>
               

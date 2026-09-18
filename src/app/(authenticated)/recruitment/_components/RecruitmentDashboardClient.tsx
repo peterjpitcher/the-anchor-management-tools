@@ -583,7 +583,7 @@ function SlotDateTimeInput({
 
   return (
     <div className="space-y-1">
-      <span className="text-[13px] font-medium text-text">{label}</span>
+      <span className="text-ui font-medium text-text">{label}</span>
       <input type="hidden" name={name} value={partsToDateTimeLocal(currentValue)} />
       <div className="grid grid-cols-[minmax(0,1fr)_86px_86px] gap-2">
         <Input
@@ -1833,7 +1833,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       })()}
 
                       {selectedCvExtractionMessage && (
-                        <div className="rounded border border-warning/30 bg-warning-soft p-3 text-sm text-warning-fg">
+                        <div className="rounded-sm border border-warning/30 bg-warning-soft p-3 text-sm text-warning-fg">
                           <p className="font-medium">CV extraction needs review</p>
                           <p className="mt-1">{selectedCvExtractionMessage}</p>
                           {selectedApplication.candidate?.cv_file_path && (
@@ -1870,7 +1870,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         )}
                       </div>
                       {extractedProfile(selectedApplication.candidate) && (
-                        <div className="rounded border border-border bg-surface-2 p-3">
+                        <div className="rounded-sm border border-border bg-surface-2 p-3">
                           <p className="text-xs font-semibold uppercase text-text-muted">CV profile</p>
                           <p className="mt-1 text-sm text-text">
                             Skills: {textList(profileArray(selectedApplication.candidate, 'relevant_skills'))}
@@ -1915,7 +1915,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         const converted = Boolean(candidate?.converted_employee_id)
                         if (otherApplications.length === 0 && !isTalentPool && !converted) return null
                         return (
-                          <div className="space-y-1 rounded border border-border bg-surface-2 p-3">
+                          <div className="space-y-1 rounded-sm border border-border bg-surface-2 p-3">
                             <p className="text-xs font-semibold uppercase text-text-muted">Elsewhere in recruitment</p>
                             {converted && <p className="text-sm text-text">Converted to employee</p>}
                             {isTalentPool && <p className="text-sm text-text">In talent pool</p>}
@@ -1934,7 +1934,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       })()}
 
                       {permissions.canEdit && (
-                        <details className="rounded border border-border bg-surface-2 p-3">
+                        <details className="rounded-sm border border-border bg-surface-2 p-3">
                           <summary className="cursor-pointer text-sm font-medium text-primary">Edit candidate details</summary>
                           <form action={candidateUpdateAction} className="mt-3 space-y-3 border-t border-border pt-3">
                             <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
@@ -2030,7 +2030,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             && !apt.outcome_recorded_at
                             && toTime(apt.scheduled_start) < Date.now()
                           return (
-                            <div key={apt.id} className="space-y-1 rounded border border-border bg-surface-2 p-3">
+                            <div key={apt.id} className="space-y-1 rounded-sm border border-border bg-surface-2 p-3">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-sm font-medium text-text-strong">{apt.type === 'trial_shift' ? 'Trial shift' : 'Interview'}</span>
                                 <Badge tone="neutral">{String(apt.status).replaceAll('_', ' ')}</Badge>
@@ -2154,7 +2154,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         </p>
                       </div>
                       {canScheduleInterviewForCandidate && (
-                        <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
+                        <div className="space-y-2 rounded-sm border border-border bg-surface-2 p-3">
                           <p className="text-xs font-semibold uppercase text-text-muted">Schedule interview for candidate</p>
                           {selectedApplicationOpenInterviewSlots.length === 0 && (
                             <p className="text-xs text-text-muted">No open interview slots available.</p>
@@ -2190,7 +2190,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         </div>
                       )}
                       {canScheduleTrialForCandidate && (
-                        <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
+                        <div className="space-y-2 rounded-sm border border-border bg-surface-2 p-3">
                           <p className="text-xs font-semibold uppercase text-text-muted">Schedule trial shift for candidate</p>
                           {selectedApplicationOpenTrialSlots.length === 0 && (
                             <p className="text-xs text-text-muted">No open trial shift slots available.</p>
@@ -2230,7 +2230,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           the action bar, which surfaces it as the primary action once an
                           offer is out. */}
                       {permissions.canManage && (
-                        <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
+                        <div className="space-y-2 rounded-sm border border-border bg-surface-2 p-3">
                           <p className="text-xs font-semibold uppercase text-text-muted">Hire</p>
                           {candidateHasEmail ? (
                             <>
@@ -2259,7 +2259,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           <p className="text-sm text-text-muted">No stage changes recorded yet.</p>
                         )}
                         {selectedApplicationEvents.map((event: any) => (
-                          <div key={event.id} className="rounded border border-border bg-surface-2 p-2">
+                          <div key={event.id} className="rounded-sm border border-border bg-surface-2 p-2">
                             <p className="text-sm font-medium text-text-strong">{statusLabel(event.to_status)}</p>
                             {event.note && <p className="whitespace-pre-wrap text-xs text-text">{event.note}</p>}
                             <p className="text-xs text-text-muted">{formatSlotDateTime(event.created_at)}</p>
@@ -2308,7 +2308,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             <Textarea name="body" defaultValue={emailDraft.body} rows={6} />
                             <Input name="offer_terms" placeholder="Offer terms if sending an offer" />
                             {duplicateEmailWarning && (
-                              <p className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                              <p className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
                                 {duplicateEmailWarning}
                               </p>
                             )}
@@ -2326,7 +2326,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           <p className="text-sm text-text-muted">Nothing has been sent to this candidate yet.</p>
                         )}
                         {selectedApplicationAllCommunications.map((communication: any, index: number) => (
-                          <details key={communication.id} open={index === 0} className="rounded border border-border bg-surface-2 p-2">
+                          <details key={communication.id} open={index === 0} className="rounded-sm border border-border bg-surface-2 p-2">
                             <summary className="cursor-pointer">
                               <span className="text-sm font-medium text-text-strong">{communication.subject || communication.type?.replaceAll('_', ' ') || communication.channel}</span>
                               <span className="ml-2 text-xs text-text-muted">
@@ -2372,20 +2372,20 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         <p className="text-xs font-semibold uppercase text-text-muted">Notes</p>
                         {candidateTrailEvents.notes.length === 0 && <p className="text-sm text-text-muted">No notes yet.</p>}
                         {candidateTrailEvents.notes.map(ev => (
-                          <div key={ev.key} className="rounded border border-border bg-surface-2 p-2">
+                          <div key={ev.key} className="rounded-sm border border-border bg-surface-2 p-2">
                             <p className="whitespace-pre-wrap text-sm text-text">{ev.detail}</p>
                             <p className="mt-1 text-xs text-text-muted">{formatSlotDateTime(ev.at)}{ev.actor ? ` · ${ev.actor}` : ''}</p>
                           </div>
                         ))}
                       </div>
-                      <details className="rounded border border-border bg-surface-2 p-3">
+                      <details className="rounded-sm border border-border bg-surface-2 p-3">
                         <summary className="cursor-pointer text-sm font-medium text-primary">
                           Show system activity ({candidateTrailEvents.system.length})
                         </summary>
                         <div className="mt-2 space-y-2 border-t border-border pt-3">
                           {candidateTrailEvents.system.length === 0 && <p className="text-sm text-text-muted">No activity yet.</p>}
                           {candidateTrailEvents.system.map(ev => (
-                            <div key={ev.key} className="rounded border border-border bg-surface p-2">
+                            <div key={ev.key} className="rounded-sm border border-border bg-surface p-2">
                               <p className="text-sm font-medium text-text-strong">{ev.title}</p>
                               {ev.detail && <p className="whitespace-pre-wrap text-xs text-text">{ev.detail}</p>}
                               <p className="text-xs text-text-muted">{formatSlotDateTime(ev.at)}{ev.actor ? ` · ${ev.actor}` : ''}</p>
@@ -2474,7 +2474,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             <Textarea name="reason" rows={2} placeholder="Why? (internal only — saved as a note)" />
                           </div>
                           {DECISION_CONFIG[decisionDialog.decision].template && (
-                            <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
+                            <div className="space-y-2 rounded-sm border border-border bg-surface-2 p-3">
                               <div className="flex items-center justify-between">
                                 <p className="text-xs font-semibold uppercase text-text-muted">Email to candidate</p>
                                 <label className="flex items-center gap-1 text-xs text-text">
@@ -2523,7 +2523,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       ))}
                     </Select>
                     <Input name="start_availability" placeholder="Start availability" />
-                    <input name="cv" type="file" accept=".pdf,.doc,.docx,.txt,.rtf,.odt" className="rounded-default border border-border bg-surface px-3 py-2 text-[13px] md:col-span-2" />
+                    <input name="cv" type="file" accept=".pdf,.doc,.docx,.txt,.rtf,.odt" className="rounded-default border border-border bg-surface px-3 py-2 text-ui md:col-span-2" />
                     <div className="md:col-span-4">
                       <Textarea name="cover_note" placeholder="Cover note" rows={3} />
                     </div>
@@ -3159,7 +3159,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase text-text-muted">Scorecards</p>
                 {scorecards.filter((scorecard: any) => scorecard.appointment_id === selectedAppointment.id).map((scorecard: any) => (
-                  <div key={scorecard.id} className="rounded border border-border bg-surface-2 p-3 text-sm">
+                  <div key={scorecard.id} className="rounded-sm border border-border bg-surface-2 p-3 text-sm">
                     <p className="font-medium">{scorecard.recommendation?.replaceAll('_', ' ')} · {scorecard.overall_rating ?? '-'}/5</p>
                     <p className="mt-1 whitespace-pre-wrap text-text-muted">{scorecard.comments || 'No comments'}</p>
                   </div>
@@ -3637,7 +3637,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase text-text-muted">Body</p>
-                <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded border border-border bg-surface-2 p-3 text-sm text-text">
+                <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-sm border border-border bg-surface-2 p-3 text-sm text-text">
                   {selectedCommunication.final_body}
                 </pre>
               </div>

@@ -209,9 +209,9 @@ export function RolesContent() {
               }`}
             >
               <div className="min-w-0">
-                <p className="text-[13px] font-medium text-text-strong truncate">{role.name}</p>
+                <p className="text-ui font-medium text-text-strong truncate">{role.name}</p>
                 {role.description && (
-                  <p className="text-[11px] text-text-muted truncate mt-0.5">{role.description}</p>
+                  <p className="text-meta text-text-muted truncate mt-0.5">{role.description}</p>
                 )}
               </div>
               {role.is_system && (
@@ -239,17 +239,17 @@ export function RolesContent() {
           }
         />
         <CardBody className="overflow-x-auto">
-          <table className="w-full text-[13px]">
+          <table className="w-full text-ui">
             <thead>
               <tr className="border-b border-border">
-                <th scope="col" className="text-left py-2 pr-4 font-medium text-text-muted uppercase text-[11px] tracking-wider">
+                <th scope="col" className="text-left py-2 pr-4 font-medium text-text-muted uppercase text-meta tracking-wider">
                   Module
                 </th>
                 {ACTION_COLUMNS.map((action) => (
                   <th
                     key={action}
                     scope="col"
-                    className="text-center py-2 px-2 font-medium text-text-muted uppercase text-[11px] tracking-wider w-20"
+                    className="text-center py-2 px-2 font-medium text-text-muted uppercase text-meta tracking-wider w-20"
                   >
                     {action}
                   </th>

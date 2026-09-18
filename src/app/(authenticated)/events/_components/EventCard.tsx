@@ -39,7 +39,7 @@ export function EventCard({ event, onClick, compact = false }: EventCardProps) {
           e.stopPropagation()
           onClick?.()
         }}
-        className="w-full text-left px-1.5 py-0.5 rounded text-[11px] bg-primary-soft text-primary-soft-fg truncate hover:opacity-80 transition-opacity"
+        className="w-full text-left px-1.5 py-0.5 rounded-sm text-meta bg-primary-soft text-primary-soft-fg truncate hover:opacity-80 transition-opacity"
       >
         <span className="font-medium">{event.time || ''}</span>
         {event.time && ' '}
@@ -53,7 +53,7 @@ export function EventCard({ event, onClick, compact = false }: EventCardProps) {
     <div
       className={cn(
         'rounded-default border border-border bg-surface p-3 shadow-sm',
-        onClick && 'cursor-pointer hover:shadow-md hover:border-border-strong transition-all'
+        onClick && 'cursor-pointer hover:shadow-default hover:border-border-strong transition-all'
       )}
       onClick={onClick}
       role={onClick ? 'button' : undefined}

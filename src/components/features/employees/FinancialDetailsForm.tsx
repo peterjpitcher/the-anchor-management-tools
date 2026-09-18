@@ -71,7 +71,7 @@ export default function FinancialDetailsForm({ employeeId, financialDetails, onS
       <div className="space-y-4">
         {details.map(field => (
           <div key={field.name} className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-            <label htmlFor={field.name} className="block text-sm font-medium text-gray-700 sm:col-span-1">
+            <label htmlFor={field.name} className="block text-sm font-medium text-text sm:col-span-1">
               {field.label}
             </label>
             <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -95,7 +95,7 @@ export default function FinancialDetailsForm({ employeeId, financialDetails, onS
                 />
               )}
               {state?.errors?.[field.name] && (
-                <p className="mt-2 text-sm text-red-600">{state.errors[field.name]}</p>
+                <p className="mt-2 text-sm text-danger">{state.errors[field.name]}</p>
               )}
             </div>
           </div>
@@ -106,7 +106,7 @@ export default function FinancialDetailsForm({ employeeId, financialDetails, onS
         <SubmitButton />
       </div>
       {state?.type === 'error' && !state.errors && (
-        <p className="mt-2 text-sm text-red-600">{state.message}</p>
+        <p className="mt-2 text-sm text-danger">{state.message}</p>
       )}
     </form>
   );

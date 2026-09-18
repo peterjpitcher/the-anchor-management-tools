@@ -264,13 +264,13 @@ export default function AddShiftsModal({
                   disabled={isDisabled}
                   onChange={() => toggleScheduled(globalIdx)}
                   onClick={e => e.stopPropagation()}
-                  className="h-4 w-4 rounded border-border-strong text-info-fg accent-blue-600 shrink-0"
+                  className="h-4 w-4 rounded-sm border-border-strong text-info-fg accent-blue-600 shrink-0"
                   aria-label={`${item.template.name} on ${DAY_NAMES[dayIndex]}`}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-sm font-medium text-text-strong">{item.template.name}</span>
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${deptBadgeClass(item.template.department)}`}>
+                    <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded-full ${deptBadgeClass(item.template.department)}`}>
                       {item.template.department}
                     </span>
                   </div>
@@ -288,12 +288,12 @@ export default function AddShiftsModal({
                   </div>
                 </div>
                 {item.state === 'recommended' && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-info-soft text-info-fg uppercase tracking-wide shrink-0">
+                  <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-info-soft text-info-fg uppercase tracking-wide shrink-0">
                     Recommended
                   </span>
                 )}
                 {item.state === 'exists' && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-surface-hover text-text-subtle uppercase tracking-wide shrink-0">
+                  <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-surface-hover text-text-subtle uppercase tracking-wide shrink-0">
                     Already added
                   </span>
                 )}
@@ -315,7 +315,7 @@ export default function AddShiftsModal({
       onClick={onClose}
     >
       <div
-        className="bg-surface w-full sm:rounded-xl shadow-xl sm:max-w-xl flex flex-col max-h-[90vh]"
+        className="bg-surface w-full sm:rounded-xl shadow-lg sm:max-w-xl flex flex-col max-h-[90vh]"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -334,7 +334,7 @@ export default function AddShiftsModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-text-subtle hover:text-text-muted rounded"
+            className="p-1 text-text-subtle hover:text-text-muted rounded-sm"
             aria-label="Close"
           >
             <XMarkIcon className="h-5 w-5" />
@@ -360,13 +360,13 @@ export default function AddShiftsModal({
                       type="checkbox"
                       checked={item.checked}
                       onChange={() => toggleFloating(idx)}
-                      className="h-4 w-4 rounded border-border-strong accent-amber-600 shrink-0"
+                      className="h-4 w-4 rounded-sm border-border-strong accent-amber-600 shrink-0"
                       aria-label={item.template.name}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-sm font-medium text-text-strong">{item.template.name}</span>
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${deptBadgeClass(item.template.department)}`}>
+                        <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded-full ${deptBadgeClass(item.template.department)}`}>
                           {item.template.department}
                         </span>
                         <span className="text-xs text-text-muted">
@@ -389,7 +389,7 @@ export default function AddShiftsModal({
                         item.checked && !item.day
                           ? 'border-danger bg-danger-soft'
                           : 'border-border-strong bg-surface'
-                      } disabled:opacity-40`}
+                      } disabled:opacity-50`}
                       aria-label={`Pick a day for ${item.template.name}`}
                     >
                       <option value="">Pick a day…</option>

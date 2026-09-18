@@ -245,7 +245,7 @@ function ShiftAcceptanceIcon({ shift }: { shift: RotaShift }) {
     >
       <Icon className="h-3 w-3" />
       {display.auto && (
-        <span className="absolute -bottom-1 -right-1 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-success text-[7px] font-bold leading-none text-white">
+        <span className="absolute -bottom-1 -right-1 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-success text-2xs font-bold leading-none text-white">
           A
         </span>
       )}
@@ -289,9 +289,9 @@ function SummaryPill({
 
   return (
     <div className={`h-full min-w-0 rounded-default border px-2.5 py-1.5 ${toneStyles}`}>
-      <p className="text-[10px] font-medium uppercase leading-none opacity-75">{label}</p>
+      <p className="text-2xs font-medium uppercase leading-none opacity-75">{label}</p>
       <p className="mt-1 text-sm font-semibold leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
-      {detail && <p className="mt-1 text-[11px] leading-tight opacity-75">{detail}</p>}
+      {detail && <p className="mt-1 text-meta leading-tight opacity-75">{detail}</p>}
     </div>
   );
 }
@@ -345,7 +345,7 @@ function DraggableShiftBlock({
     >
       <ShiftAcceptanceIcon shift={shift} />
       {isDraft && (
-        <p className={`mb-1 text-[9px] font-bold uppercase leading-none ${lightText ? 'text-white/90' : 'text-warning-fg'}`}>
+        <p className={`mb-1 text-2xs font-bold uppercase leading-none ${lightText ? 'text-white/90' : 'text-warning-fg'}`}>
           Unpublished
         </p>
       )}
@@ -379,7 +379,7 @@ function ShiftBlockOverlay({ shift, colour, isDraft }: { shift: RotaShift; colou
     <div style={colourStyle} className={`relative w-32 rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${colour ? '' : deptColour} px-2 py-1.5 pr-6 text-xs shadow-lg opacity-95`}>
       <ShiftAcceptanceIcon shift={shift} />
       {isDraft && (
-        <p className={`mb-1 text-[9px] font-bold uppercase leading-none ${lightText ? 'text-white/90' : 'text-warning-fg'}`}>Unpublished</p>
+        <p className={`mb-1 text-2xs font-bold uppercase leading-none ${lightText ? 'text-white/90' : 'text-warning-fg'}`}>Unpublished</p>
       )}
       {shift.name && <p className={`font-semibold truncate ${lightText ? 'text-white' : 'text-text-strong'}`}>{shift.name}</p>}
       <p className={`font-medium truncate ${lightText ? 'text-white' : 'text-text'}`}>
@@ -423,13 +423,13 @@ function CouldntWorkBlock({
       <button
         type="button"
         onClick={event => { event.stopPropagation(); onClick(); }}
-        className={`w-full rounded-default px-1.5 py-0.5 text-center text-[10px] font-semibold leading-tight transition-opacity hover:opacity-75 ${COULDNT_WORK_STYLE.pill}`}
+        className={`w-full rounded-default px-1.5 py-0.5 text-center text-2xs font-semibold leading-tight transition-opacity hover:opacity-75 ${COULDNT_WORK_STYLE.pill}`}
         title="View Couldn't Work details"
       >
         {COULDNT_WORK_STYLE.label}
       </button>
       {shift.sick_reason && (
-        <p className="mt-0.5 whitespace-normal break-words text-[10px] leading-tight text-danger-fg/80">
+        <p className="mt-0.5 whitespace-normal break-words text-2xs leading-tight text-danger-fg/80">
           {shift.sick_reason}
         </p>
       )}
@@ -460,18 +460,18 @@ function RejectedShiftBlock({
         <button
           type="button"
           onClick={event => { event.stopPropagation(); onClick(); }}
-          className={`w-full rounded-default px-1.5 py-0.5 text-center text-[10px] font-semibold leading-tight transition-opacity hover:opacity-75 ${REJECTED_SHIFT_STYLE.pill}`}
+          className={`w-full rounded-default px-1.5 py-0.5 text-center text-2xs font-semibold leading-tight transition-opacity hover:opacity-75 ${REJECTED_SHIFT_STYLE.pill}`}
           title="View rejected shift details"
         >
           {content}
         </button>
       ) : (
-        <span className={`block w-full rounded-default px-1.5 py-0.5 text-center text-[10px] font-semibold leading-tight ${REJECTED_SHIFT_STYLE.pill}`}>
+        <span className={`block w-full rounded-default px-1.5 py-0.5 text-center text-2xs font-semibold leading-tight ${REJECTED_SHIFT_STYLE.pill}`}>
           {content}
         </span>
       )}
       {rejection.rejection_note && (
-        <p className="mt-0.5 whitespace-normal break-words text-[10px] leading-tight text-rose-700/80">
+        <p className="mt-0.5 whitespace-normal break-words text-2xs leading-tight text-rose-700/80">
           {rejection.rejection_note}
         </p>
       )}
@@ -524,13 +524,13 @@ function DroppableCell({
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onLeaveClick(); }}
-              className={`w-full rounded-default px-1.5 py-0.5 text-center text-[10px] font-semibold leading-tight transition-opacity hover:opacity-75 ${leaveStyle.pill}`}
+              className={`w-full rounded-default px-1.5 py-0.5 text-center text-2xs font-semibold leading-tight transition-opacity hover:opacity-75 ${leaveStyle.pill}`}
               title="View holiday details"
             >
               {leaveStyle.label}
             </button>
           ) : (
-            <span className={`inline-block w-full rounded-default px-1.5 py-0.5 text-center text-[10px] font-semibold leading-tight ${leaveStyle.pill}`}>
+            <span className={`inline-block w-full rounded-default px-1.5 py-0.5 text-center text-2xs font-semibold leading-tight ${leaveStyle.pill}`}>
               {leaveStyle.label}
             </span>
           )}
@@ -892,7 +892,7 @@ export default function RotaGrid({
     return (
       <div
         key={date}
-        className={`mt-1 rounded-default border px-1 py-0.5 text-left text-[10px] leading-tight ${
+        className={`mt-1 rounded-default border px-1 py-0.5 text-left text-2xs leading-tight ${
           overTarget ? 'border-danger/25 bg-danger-soft' : 'border-border bg-surface'
         }`}
       >
@@ -904,7 +904,7 @@ export default function RotaGrid({
               step="1"
               value={editingTarget.amount}
               onChange={e => setEditingTarget(current => current ? { ...current, amount: e.target.value } : current)}
-              className="w-full rounded-default border border-border bg-surface px-1 py-0.5 text-[10px] text-text"
+              className="w-full rounded-default border border-border bg-surface px-1 py-0.5 text-2xs text-text"
               aria-label={`Sales target for ${date}`}
             />
             <input
@@ -912,7 +912,7 @@ export default function RotaGrid({
               value={editingTarget.reason}
               onChange={e => setEditingTarget(current => current ? { ...current, reason: e.target.value } : current)}
               placeholder="Reason"
-              className="w-full rounded-default border border-border bg-surface px-1 py-0.5 text-[10px] text-text placeholder:text-text-subtle"
+              className="w-full rounded-default border border-border bg-surface px-1 py-0.5 text-2xs text-text placeholder:text-text-subtle"
               aria-label={`Sales target reason for ${date}`}
             />
             <div className="flex gap-1">
@@ -920,7 +920,7 @@ export default function RotaGrid({
                 type="button"
                 onClick={saveTargetEdit}
                 disabled={targetSavePending}
-                className="rounded-default bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-fg disabled:opacity-50"
+                className="rounded-default bg-primary px-1.5 py-0.5 text-2xs font-medium text-primary-fg disabled:opacity-50"
               >
                 Save
               </button>
@@ -965,7 +965,7 @@ export default function RotaGrid({
               {canViewSpend && canViewSalesTargets ? formatPercent(total?.wagePercent ?? null) : 'Hidden'}
             </p>
             {canViewSpend && (total?.uncostedShiftCount ?? 0) > 0 && (
-              <p className="text-[9px] text-warning-fg">{total.uncostedShiftCount} uncosted</p>
+              <p className="text-2xs text-warning-fg">{total.uncostedShiftCount} uncosted</p>
             )}
           </div>
         )}
@@ -1043,7 +1043,7 @@ export default function RotaGrid({
                     type="date"
                     value={weekStart}
                     onChange={e => { if (e.target.value) navigateToWeek(e.target.value); }}
-                    className="h-[var(--spacing-btn-h-sm)] cursor-pointer rounded-[7px] border border-border bg-surface px-2 text-xs text-text focus:outline-none focus:shadow-ring"
+                    className="h-btn-h-sm cursor-pointer rounded-[7px] border border-border bg-surface px-2 text-xs text-text focus:outline-none focus:shadow-ring"
                   />
 
                   <p className="ml-1 whitespace-nowrap text-base font-semibold text-text-strong">
@@ -1079,7 +1079,7 @@ export default function RotaGrid({
                     href={`/api/rota/pdf?week=${weekStart}`}
                     download
                     title="Download rota as PDF"
-                    className="inline-flex h-[var(--spacing-btn-h-sm)] items-center gap-1.5 rounded-[7px] border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text transition-colors hover:bg-surface-hover"
+                    className="inline-flex h-btn-h-sm items-center gap-1.5 rounded-[7px] border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text transition-colors hover:bg-surface-hover"
                   >
                     <PrinterIcon className="h-3.5 w-3.5" />
                     Download PDF
@@ -1214,7 +1214,7 @@ export default function RotaGrid({
               {weekOpeningExceptions.length > 0 && (
                 <div className="flex border-b border-border bg-surface">
                   <div className="sticky left-0 z-20 flex w-[260px] shrink-0 items-center border-r border-border bg-surface px-4 py-1">
-                    <span className="text-[10px] font-semibold uppercase text-text-subtle">Opening hours</span>
+                    <span className="text-2xs font-semibold uppercase text-text-subtle">Opening hours</span>
                   </div>
                   <div className="flex-1 grid grid-cols-7">
                     {days.map(d => {
@@ -1229,13 +1229,13 @@ export default function RotaGrid({
                               {exception.chips.map((chip, i) => (
                                 <span
                                   key={i}
-                                  className={`block truncate rounded-default px-1 py-px text-[10px] font-semibold leading-tight ${OPENING_EXCEPTION_STYLES[chip.tone].chip}`}
+                                  className={`block truncate rounded-default px-1 py-px text-2xs font-semibold leading-tight ${OPENING_EXCEPTION_STYLES[chip.tone].chip}`}
                                 >
                                   {chip.label}
                                 </span>
                               ))}
                               {exception.note && (
-                                <p className="line-clamp-2 text-[10px] leading-tight text-text-muted" title={exception.note}>
+                                <p className="line-clamp-2 text-2xs leading-tight text-text-muted" title={exception.note}>
                                   {exception.note}
                                 </p>
                               )}
@@ -1251,7 +1251,7 @@ export default function RotaGrid({
               {/* Day info strip */}
               <div className="flex border-b border-border bg-surface">
                 <div className="sticky left-0 z-20 flex w-[260px] shrink-0 items-center border-r border-border bg-surface px-4 py-1">
-                  <span className="text-[10px] font-semibold uppercase text-text-subtle">Day notes</span>
+                  <span className="text-2xs font-semibold uppercase text-text-subtle">Day notes</span>
                 </div>
                 <div className="flex-1 grid grid-cols-7">
                   {days.map(d => {
@@ -1267,31 +1267,31 @@ export default function RotaGrid({
                             {info.calendarNotes.map((n, i) => (
                               <div key={i} className="flex items-center gap-0.5 min-w-0">
                                 <span className="shrink-0 w-1.5 h-1.5 rounded-sm mt-px" style={{ backgroundColor: n.color }} />
-                                <span className="text-[10px] leading-tight truncate font-medium" style={{ color: n.color }}>{n.title}</span>
+                                <span className="text-2xs leading-tight truncate font-medium" style={{ color: n.color }}>{n.title}</span>
                               </div>
                             ))}
                             {info.events.map((e, i) => (
                               <div key={i} className="flex items-center gap-0.5 min-w-0">
                                 <span className="shrink-0 w-1 h-1 rounded-full bg-info mt-px" />
-                                <span className="text-[10px] text-info-fg leading-tight truncate">{e.name}</span>
+                                <span className="text-2xs text-info-fg leading-tight truncate">{e.name}</span>
                               </div>
                             ))}
                             {info.privateBookings.map((pb, i) => (
                               <div key={i} className="flex items-center gap-0.5 min-w-0">
                                 <span className="shrink-0 w-1 h-1 rounded-full bg-danger mt-px" />
-                                <span className="text-[10px] text-danger-fg leading-tight truncate">{pb.customer_name}{pb.guest_count > 0 ? ` ·${pb.guest_count}` : ''}</span>
+                                <span className="text-2xs text-danger-fg leading-tight truncate">{pb.customer_name}{pb.guest_count > 0 ? ` ·${pb.guest_count}` : ''}</span>
                               </div>
                             ))}
                             {info.tableCovers > 0 && (
                               <div className="flex items-center gap-0.5">
                                 <span className="shrink-0 w-1 h-1 rounded-full bg-success mt-px" />
-                                <span className="text-[10px] text-success-fg leading-tight">{info.tableCovers} covers{info.outsideCovers > 0 ? ` (${info.outsideCovers} outside)` : ''}</span>
+                                <span className="text-2xs text-success-fg leading-tight">{info.tableCovers} covers{info.outsideCovers > 0 ? ` (${info.outsideCovers} outside)` : ''}</span>
                               </div>
                             )}
                             {info.highChairs > 0 && (
                               <div className="flex items-center gap-0.5">
                                 <span className="shrink-0 w-1 h-1 rounded-full bg-info mt-px" />
-                                <span className="text-[10px] text-info-fg leading-tight">{info.highChairs} high chair{info.highChairs !== 1 ? 's' : ''}</span>
+                                <span className="text-2xs text-info-fg leading-tight">{info.highChairs} high chair{info.highChairs !== 1 ? 's' : ''}</span>
                               </div>
                             )}
                           </div>
@@ -1306,7 +1306,7 @@ export default function RotaGrid({
               <div className="flex border-b border-warning/25 bg-warning-soft/70 transition-colors hover:bg-warning-soft">
                 <div className="sticky left-0 z-20 flex w-[260px] shrink-0 flex-col justify-center border-r border-warning/25 bg-warning-soft px-4 py-2">
                   <p className="text-xs font-semibold text-warning-fg leading-tight">Open shifts</p>
-                  <p className="text-[10px] text-warning-fg/75">Available to staff</p>
+                  <p className="text-2xs text-warning-fg/75">Available to staff</p>
                 </div>
                 <div className="flex-1 grid grid-cols-7">
                   {days.map(d => {
@@ -1349,11 +1349,11 @@ export default function RotaGrid({
                         <div className={`flex border-b ${style.header}`}>
                           <div className={`sticky left-0 z-20 w-[260px] shrink-0 border-r px-4 py-1 ${style.header}`}>
                             <p className="truncate text-xs font-semibold leading-tight">
-                              {group.role} <span className="text-[10px] font-normal opacity-75">({group.employees.length})</span>
+                              {group.role} <span className="text-2xs font-normal opacity-75">({group.employees.length})</span>
                             </p>
                           </div>
                           <div className="flex-1 grid grid-cols-7">
-                            <div className="col-span-7 px-2 py-1 text-[10px] opacity-70">Grouped by role</div>
+                            <div className="col-span-7 px-2 py-1 text-2xs opacity-70">Grouped by role</div>
                           </div>
                         </div>
 
@@ -1388,11 +1388,11 @@ export default function RotaGrid({
                                   <p className={`text-xs font-medium leading-tight truncate ${emp.is_active ? 'text-text-strong' : 'text-text-subtle'}`}>
                                     {empDisplayName(emp)}
                                   </p>
-                                  <span className={`shrink-0 rounded-default px-1.5 py-px text-[9px] font-medium ${empStyle.chip}`}>
+                                  <span className={`shrink-0 rounded-default px-1.5 py-px text-2xs font-medium ${empStyle.chip}`}>
                                     {empRole}
                                   </span>
                                 </div>
-                                <p className={`text-[10px] truncate ${overWeekHours || overPeriodHours ? 'text-danger font-semibold' : 'text-text-muted'}`}>
+                                <p className={`text-2xs truncate ${overWeekHours || overPeriodHours ? 'text-danger font-semibold' : 'text-text-muted'}`}>
                                   {emp.is_active ? (
                                     <>
                                       W {formatHours(weekHrs)}
@@ -1419,7 +1419,7 @@ export default function RotaGrid({
                                       </div>
                                     )}
                                     {canViewSpend && (
-                                      <p className={`text-[10px] truncate ${periodCapacityColour}`}>
+                                      <p className={`text-2xs truncate ${periodCapacityColour}`}>
                                         {formatMoney(periodTotal.estimatedCost)}
                                         {periodTotal.costStatus === 'partial' ? ' · partial rate' : ''}
                                         {periodTotal.costStatus === 'missing_rate' ? ' · missing rate' : ''}
@@ -1534,7 +1534,7 @@ export default function RotaGrid({
           <span className="flex items-center gap-1.5">
             <span className="relative inline-flex h-4 w-4 items-center justify-center rounded-full border border-success/30 bg-success-soft text-success-fg">
               <CheckIcon className="h-3 w-3" />
-              <span className="absolute -bottom-1 -right-1 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-success text-[7px] font-bold leading-none text-white">A</span>
+              <span className="absolute -bottom-1 -right-1 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-success text-2xs font-bold leading-none text-white">A</span>
             </span>
             Auto accepted
           </span>

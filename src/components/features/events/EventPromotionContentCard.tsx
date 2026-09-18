@@ -394,7 +394,7 @@ export function EventPromotionContentCard({
           type="button"
           variant="primary"
           size="md"
-          className="h-auto min-h-[var(--spacing-btn-h)] w-full whitespace-normal py-2 sm:w-auto"
+          className="h-auto min-h-btn-h w-full whitespace-normal py-2 sm:w-auto"
           onClick={handleGenerate}
           disabled={isGenerating || Boolean(aiUnavailableMessage)}
           leftIcon={isGenerating ? <Spinner size="sm" color="gray" /> : <ArrowPathIcon className="h-4 w-4" />}

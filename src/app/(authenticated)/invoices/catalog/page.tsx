@@ -246,7 +246,7 @@ export default function LineItemCatalogPage() {
               getRowKey={(i) => i.id}
               columns={[
                 { key: 'name', header: 'Name', cell: (i: LineItemCatalogItem) => <span className="font-medium">{i.name}</span> },
-                { key: 'description', header: 'Description', cell: (i: LineItemCatalogItem) => <span className="text-gray-600">{i.description || '-'}</span> },
+                { key: 'description', header: 'Description', cell: (i: LineItemCatalogItem) => <span className="text-text-muted">{i.description || '-'}</span> },
                 { key: 'price', header: 'Default Price', align: 'right', cell: (i: LineItemCatalogItem) => <>£{i.default_price.toFixed(2)}</> },
                 { key: 'vat', header: 'VAT Rate', align: 'right', cell: (i: LineItemCatalogItem) => <>{i.default_vat_rate}%</> },
                 { key: 'actions', header: 'Actions', align: 'right', cell: (i: LineItemCatalogItem) => (
@@ -281,8 +281,8 @@ export default function LineItemCatalogPage() {
                 <div className="p-2">
                   <div className="mb-2 flex items-start justify-between">
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium text-gray-900">{i.name}</div>
-                      {i.description && <div className="mt-1 truncate text-sm text-gray-600">{i.description}</div>}
+                      <div className="truncate font-medium text-text">{i.name}</div>
+                      {i.description && <div className="mt-1 truncate text-sm text-text-muted">{i.description}</div>}
                     </div>
                     <div className="ml-4 flex gap-2">
                       <Button
@@ -310,8 +310,8 @@ export default function LineItemCatalogPage() {
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <div><span className="text-gray-500">Price:</span> <span className="font-medium">£{i.default_price.toFixed(2)}</span></div>
-                    <div><span className="text-gray-500">VAT:</span> <span className="font-medium">{i.default_vat_rate}%</span></div>
+                    <div><span className="text-text-muted">Price:</span> <span className="font-medium">£{i.default_price.toFixed(2)}</span></div>
+                    <div><span className="text-text-muted">VAT:</span> <span className="font-medium">{i.default_vat_rate}%</span></div>
                   </div>
                 </div>
               )}
@@ -350,7 +350,7 @@ export default function LineItemCatalogPage() {
         <form id="catalog-form" onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium">
-              Name <span className="text-red-500">*</span>
+              Name <span className="text-danger">*</span>
             </label>
             <Input
               type="text"
@@ -376,7 +376,7 @@ export default function LineItemCatalogPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium">
-                Default Price (£) <span className="text-red-500">*</span>
+                Default Price (£) <span className="text-danger">*</span>
               </label>
               <Input
                 type="number"
@@ -391,7 +391,7 @@ export default function LineItemCatalogPage() {
 
             <div>
               <label className="mb-1 block text-sm font-medium">
-                VAT Rate (%) <span className="text-red-500">*</span>
+                VAT Rate (%) <span className="text-danger">*</span>
               </label>
               <Input
                 type="number"

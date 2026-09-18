@@ -30,11 +30,11 @@
 | PR-01 | Token system and `cn()` repair | [x] | dc84d8cc, f45155db | dpl_4i8mu8Q23pukm9haq4nYUQJkk2WY, live 18 Sep 12:03 |
 | PR-02 | Design-token guard test (ratchet) | [x] | 2a3e7976 | dpl_CkErfQyuuNaakVR5NKycj2yX41gc, live 18 Sep 12:12 |
 | PR-03 | Global CSS clean-up and legacy variables | [x] | 119bbd4d | dpl_DithYX9NAWfeJwHmfjfZUXpZivfC, live 18 Sep 12:25 |
-| PR-04 | Toasts, JS token accessors, charts, avatars | [ ] | | |
-| PR-05 | DS primitives and compat wrappers | [ ] | | |
-| PR-06 | DS composites and app shell | [ ] | | |
-| PR-07 | Codemod step A (value-equal swaps) | [ ] | | |
-| PR-08 | Codemod step B (secondary greys darken) | [ ] | | |
+| PR-04 | Toasts, JS token accessors, charts, avatars | [x] | 87845543 | dpl_DKe52tLKAs7YikBe4RiZo5iQFN4d, live 18 Sep 13:13 |
+| PR-05 | DS primitives and compat wrappers | [x] | see git log | dpl_CejQqkQ4AzSSTVYByBuXwiHPjDHL (with PR-06), live 18 Sep 15:18 |
+| PR-06 | DS composites and app shell | [x] | ff51e13c (tip) | dpl_CejQqkQ4AzSSTVYByBuXwiHPjDHL, live 18 Sep 15:18 |
+| PR-07 | Codemod step A (value-equal swaps) | [x] | see git log | pending ship |
+| PR-08 | Codemod step B (secondary greys darken) | [x] | see git log | pending ship (with PR-07) |
 | PR-09 | Area: guest pages, sign-in, recruitment booking, invoice portal | [ ] | | |
 | PR-10 | Area: FOH, BOH, table bookings, vouchers, timeclock, kiosk, parking | [ ] | | |
 | PR-11 | Area: employee onboarding and staff portal | [ ] | | |
@@ -69,7 +69,7 @@
 - **A5 One in-page tab style:** DS `Tabs` (brand underline). `src/ds/compat/TabNav.tsx` renders the same look.
 - **A6 One table style:** DS `Table` (small uppercase `text-text-muted` header on `bg-surface-2`). `DataTable` is restyled to match it; its internals are not rebuilt.
 - **A7 One page chrome:** `PageLayout` adopts `PageHeader`'s look (warm `bg-bg` page, same title size and weight). It keeps a `headerVariant="dark"` style for the FOH kiosk header (`src/app/(authenticated)/table-bookings/foh/page.tsx:67` relies on the grey band today).
-- **A8 One focus pattern:** controls use `focus-visible:outline-hidden focus-visible:shadow-ring`; text fields use `focus:border-border-focus focus:shadow-ring` (error state: `focus:border-danger focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-danger)_20%,transparent)]`). `outline-hidden` (not `outline-none`) keeps a visible focus in Windows forced-colours mode.
+- **A8 One focus pattern:** controls use `focus-visible:outline-hidden focus-visible:shadow-ring`, or `focus-visible:shadow-ring-inset` when the control sits in an overflow-hidden or scrolling container that would clip the outer ring (accordion items, tab strips, table headers; added 18 Sep during PR-05); text fields use `focus:border-border-focus focus:shadow-ring` (error state: `focus:border-danger focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-danger)_20%,transparent)]`). `outline-hidden` (not `outline-none`) keeps a visible focus in Windows forced-colours mode.
 - **A9 Disabled state:** `disabled:opacity-50` everywhere (60, 40, 30 and 70 normalise to 50). No token.
 - **A10 Radius and shadow names stay as they are** (renaming would move 1,000+ uses again). Bare `rounded`, `rounded-2xl`, `rounded-3xl`, bare `shadow`, `shadow-md`, `shadow-xl` and `shadow-2xl` are banned by the guard and codemodded away.
 - **A11 Category colours stay data where users pick them** (shift templates, calendar notes, customer labels, event categories). Static app categories (departments, dish groups, booking types in charts) use the new `cat-*` tokens. The shift and calendar option lists become one list.
@@ -108,6 +108,7 @@ Existing tokens keep their names except where stated. After PR-01 the `@theme st
 | | `--color-danger-border` | `#fecaca` | `border-danger-border` |
 | | `--color-info-border` | `#bae6fd` | `border-info-border` |
 | Overlay | `--color-overlay` | `rgb(12 10 9 / 0.5)` | `bg-overlay` |
+| Focus ring, inset | `--shadow-ring-inset` | `inset 0 0 0 2px var(--color-border-focus)` | `focus-visible:shadow-ring-inset` (added during PR-05) |
 | On dark surfaces | `--color-on-dark` | `#ffffff` | `text-on-dark` |
 | | `--color-on-dark-muted` | `rgb(255 255 255 / 0.72)` | `text-on-dark-muted` |
 | | `--color-on-dark-subtle` | `rgb(255 255 255 / 0.4)` | |
@@ -541,29 +542,29 @@ Findings source: `audit-results.json` keys `token-system-inventory.legacy_blocks
 
 Acceptance: the guard baseline for every file in `src/ds/primitives/` and `src/ds/compat/` is zero for every rule, except `Avatar.tsx` (none left after PR-04) and hex in `ColorSwatch`-style data props if any exist (list them in the commit).
 
-- [ ] **Button** (`Button.tsx`): `text-[13px]` to `text-ui`; `rounded-[7px]`/`rounded-[9px]` to `rounded-sm`/`rounded-default`; inline `rgba(0,0,0,.08)` shadows (line 27) to `shadow-xs`; move `sizeStyles` before `variantStyles` in the `cn()` call (lines 90 and 91) so `variant="link"` stays flush at every size (fixes `/settings/background-jobs` and the role permissions modal); focus pattern A8; `max-shell:min-h-touch` for the touch rule; `disabled:opacity-50`.
-- [ ] **LinkButton, IconButton, Switch, Checkbox, Radio, Segmented-like controls:** same focus pattern, radius on the scale, `max-shell:`, touch size via `min-h-touch`.
-- [ ] **Input, Select, Textarea:** text sizes to `text-ui`; built-in label adopts Field's classes (A2); hint text `text-text-soft` (A3); error focus shadow per A8; confirm with `tests/lib/cn.test.ts` style assertion that `cn()` of the base plus error classes keeps only the danger shadow. Implement Input's ignored `rightElement` prop (declared at `Input.tsx:24`, used by `MenuTargetForm.tsx:65` for the % sign): render it absolutely at the right inside the field wrapper with `pr-9` on the input.
-- [ ] **Field:** hint `text-text-soft`; `(optional)` marker stays `text-text-subtle` only if it is decorative, otherwise `text-text-soft`.
-- [ ] **Badge:** implement the ignored `icon`, `size` and `title` props (`Badge.tsx:58`): `icon` renders before children at 12px, `size` `sm` uses `text-meta px-1.5` and `md` the current size, `title` sets the `title` attribute. Background jobs status icons on `/settings/background-jobs` then show.
-- [ ] **Alert:** implement `closable`, `onClose` and `size` (`Alert.tsx:40`): a close `IconButton` with `aria-label="Dismiss"` when `closable`, local dismissed state when no `onClose`; `size="sm"` uses `text-ui` and tighter padding. Messages on `/settings/table-bookings` become dismissible.
-- [ ] **Modal, Drawer, ConfirmDialog:** scrims `bg-black/50` (`Modal.tsx:62`), `bg-black/30` (`Drawer.tsx:78`) become `bg-overlay`.
-- [ ] **Pagination** (27 raw classes): to tokens; the page-size select (line 203) gets a width and colour (`border border-border-strong`) or becomes DS `Select size="sm"`.
-- [ ] **Accordion** (17 raw classes), **Stat** (`fontVariantNumeric` inline style at line 68 becomes `tabular-nums`; hint `text-text-soft`), **Empty**, **Spinner**, **ProgressBar**, **Tooltip**, **Popover**, **Dropdown**, **FileUpload**, **DateTimePicker**, **Stepper**, **SearchInput**: every remaining raw class to tokens per the Canonical mapping; `text-[10px]`/`text-[11px]`/`text-[13px]` to `text-2xs`/`text-meta`/`text-ui`.
-- [ ] **compat/TabNav** (16 raw classes, green-600 underline): render exactly the DS `Tabs` look (A5). **compat/RadioGroup, SortableHeader, StatGroup, FilterPanel, EmptyState, BackButton, CardParts, PopoverParts, ModalActions, DrawerActions, Form, FormGroup, Container:** tokens only.
-- [ ] P-VISUAL harness rendering every primitive in every variant, desktop and 375px; baseline update; P-GATES; P-COMMIT `fix(ds): primitives use tokens only and honour their documented props`; P-SHIP.
+- [x] **Button** (`Button.tsx`): `text-[13px]` to `text-ui`; `rounded-[7px]`/`rounded-[9px]` to `rounded-sm`/`rounded-default`; inline `rgba(0,0,0,.08)` shadows (line 27) to `shadow-xs`; move `sizeStyles` before `variantStyles` in the `cn()` call (lines 90 and 91) so `variant="link"` stays flush at every size (fixes `/settings/background-jobs` and the role permissions modal); focus pattern A8; `max-shell:min-h-touch` for the touch rule; `disabled:opacity-50`.
+- [x] **LinkButton, IconButton, Switch, Checkbox, Radio, Segmented-like controls:** same focus pattern, radius on the scale, `max-shell:`, touch size via `min-h-touch`.
+- [x] **Input, Select, Textarea:** text sizes to `text-ui`; built-in label adopts Field's classes (A2); hint text `text-text-soft` (A3); error focus shadow per A8; confirm with `tests/lib/cn.test.ts` style assertion that `cn()` of the base plus error classes keeps only the danger shadow. Implement Input's ignored `rightElement` prop (declared at `Input.tsx:24`, used by `MenuTargetForm.tsx:65` for the % sign): render it absolutely at the right inside the field wrapper with `pr-9` on the input.
+- [x] **Field:** hint `text-text-soft`; `(optional)` marker stays `text-text-subtle` only if it is decorative, otherwise `text-text-soft`.
+- [x] **Badge:** implement the ignored `icon`, `size` and `title` props (`Badge.tsx:58`): `icon` renders before children at 12px, `size` `sm` uses `text-meta px-1.5` and `md` the current size, `title` sets the `title` attribute. Background jobs status icons on `/settings/background-jobs` then show.
+- [x] **Alert:** implement `closable`, `onClose` and `size` (`Alert.tsx:40`): a close `IconButton` with `aria-label="Dismiss"` when `closable`, local dismissed state when no `onClose`; `size="sm"` uses `text-ui` and tighter padding. Messages on `/settings/table-bookings` become dismissible.
+- [x] **Modal, Drawer, ConfirmDialog:** scrims `bg-black/50` (`Modal.tsx:62`), `bg-black/30` (`Drawer.tsx:78`) become `bg-overlay`.
+- [x] **Pagination** (27 raw classes): to tokens; the page-size select (line 203) gets a width and colour (`border border-border-strong`) or becomes DS `Select size="sm"`.
+- [x] **Accordion** (17 raw classes), **Stat** (`fontVariantNumeric` inline style at line 68 becomes `tabular-nums`; hint `text-text-soft`), **Empty**, **Spinner**, **ProgressBar**, **Tooltip**, **Popover**, **Dropdown**, **FileUpload**, **DateTimePicker**, **Stepper**, **SearchInput**: every remaining raw class to tokens per the Canonical mapping; `text-[10px]`/`text-[11px]`/`text-[13px]` to `text-2xs`/`text-meta`/`text-ui`.
+- [x] **compat/TabNav** (16 raw classes, green-600 underline): render exactly the DS `Tabs` look (A5). **compat/RadioGroup, SortableHeader, StatGroup, FilterPanel, EmptyState, BackButton, CardParts, PopoverParts, ModalActions, DrawerActions, Form, FormGroup, Container:** tokens only.
+- [x] P-VISUAL harness rendering every primitive in every variant, desktop and 375px; baseline update; P-GATES; P-COMMIT `fix(ds): primitives use tokens only and honour their documented props`; P-SHIP.
 
 ## PR-06: DS composites and app shell
 
 **Files:** `src/ds/composites/*`, `src/ds/shell/*`, `src/app/(authenticated)/loading.tsx`, `src/app/(authenticated)/error.tsx`, `src/app/(authenticated)/AuthenticatedLayout.tsx`, `src/components/features/shared/*`, `src/app/(authenticated)/table-bookings/foh/page.tsx:67`.
 
-- [ ] **PageLayout** (`PageLayout.tsx:231-259, 297, 329, 341`): page background `bg-bg` (was cool `bg-gray-100` band), header matches `PageHeader` (`PageHeader.tsx:58`: same title size, weight, `text-text-strong`, spacing); add `headerVariant?: 'default' | 'dark'` where `dark` reproduces the current FOH kiosk header using `bg-sidebar text-on-dark` tokens; switch `table-bookings/foh/page.tsx:67` to `headerVariant="dark"` and drop its grey class-name dependency.
-- [ ] **DataTable** (`DataTable.tsx:197-224, 311, 366, 369, 414, 473`): header `bg-surface-2 text-meta font-medium uppercase tracking-wider text-text-muted` like `Table.tsx:40,141`; container `shadow-sm` (not black), selection `bg-primary-soft`, focus A8. No change to its props or behaviour.
-- [ ] **Table:** header surface stays `bg-surface-2`; cells `py-cell-y` (done in PR-01).
-- [ ] **Section** (`section-header`/`section-body` hook classes stay), **Card** (implement ignored `padding` and `variant` props at `Card.tsx:30`: `padding` `none|sm|md|lg` maps to `p-0|p-3|p-pad-card|p-6`; `variant` `default|subtle` maps to `bg-surface|bg-surface-2`), **SectionNav** (A4, replacing `#005131`, `#a57626`, `#004229` at lines 75 and 76; count badge on active uses `bg-on-dark-active text-on-dark`), **Tabs** (focus A8 on tab buttons, line 105), **Segmented**, **Chart**, **CustomerLink**, **RowActions**, **DescriptionList**, **PageHeader**, **PageLoading**: tokens only.
-- [ ] **Shell:** `SidebarNav.tsx:215` focus A8 with `focus-visible:shadow-ring`; `MobileChrome.tsx:161` scrim `bg-overlay` and its 28 arbitrary values to tokens where a token exists; `AppShell.tsx:110-111` `shell:p-[22px_28px_40px]` to `shell:pt-shell-pad-top shell:px-shell-pad-x shell:pb-shell-pad-bottom`; `Topbar.tsx:51` `rounded-[var(--radius-default)]` to `rounded-default`; `z-45` stays.
-- [ ] **Loading and error:** `(authenticated)/loading.tsx` to tokens; `(authenticated)/error.tsx:36` blue "reload" button to DS `Button variant="primary"` (line 58 already brand).
-- [ ] P-VISUAL harness: a PageLayout page and a PageHeader page side by side (same background and title), DataTable next to Table, SectionNav above Tabs, the mobile drawer open at 375px. Baseline update, P-GATES, cold build, P-COMMIT `fix(ds): one page chrome, one table look and one tab look`, P-SHIP. Tell the owner this is the release that changes the most screens and list the routes to glance at: `/invoices`, `/invoices/[id]`, `/private-bookings`, `/settings`, `/rota`, `/vouchers`, `/menu-management`, `/table-bookings/foh`.
+- [x] **PageLayout** (`PageLayout.tsx:231-259, 297, 329, 341`): page background `bg-bg` (was cool `bg-gray-100` band), header matches `PageHeader` (`PageHeader.tsx:58`: same title size, weight, `text-text-strong`, spacing); add `headerVariant?: 'default' | 'dark'` where `dark` reproduces the current FOH kiosk header using `bg-sidebar text-on-dark` tokens; switch `table-bookings/foh/page.tsx:67` to `headerVariant="dark"` and drop its grey class-name dependency.
+- [x] **DataTable** (`DataTable.tsx:197-224, 311, 366, 369, 414, 473`): header `bg-surface-2 text-meta font-medium uppercase tracking-wider text-text-muted` like `Table.tsx:40,141`; container `shadow-sm` (not black), selection `bg-primary-soft`, focus A8. No change to its props or behaviour.
+- [x] **Table:** header surface stays `bg-surface-2`; cells `py-cell-y` (done in PR-01).
+- [x] **Section** (`section-header`/`section-body` hook classes stay), **Card** (implement ignored `padding` and `variant` props at `Card.tsx:30`: `padding` `none|sm|md|lg` maps to `p-0|p-3|p-pad-card|p-6`; `variant` `default|subtle` maps to `bg-surface|bg-surface-2`), **SectionNav** (A4, replacing `#005131`, `#a57626`, `#004229` at lines 75 and 76; count badge on active uses `bg-on-dark-active text-on-dark`), **Tabs** (focus A8 on tab buttons, line 105), **Segmented**, **Chart**, **CustomerLink**, **RowActions**, **DescriptionList**, **PageHeader**, **PageLoading**: tokens only.
+- [x] **Shell:** `SidebarNav.tsx:215` focus A8 with `focus-visible:shadow-ring`; `MobileChrome.tsx:161` scrim `bg-overlay` and its 28 arbitrary values to tokens where a token exists; `AppShell.tsx:110-111` `shell:p-[22px_28px_40px]` to `shell:pt-shell-pad-top shell:px-shell-pad-x shell:pb-shell-pad-bottom`; `Topbar.tsx:51` `rounded-[var(--radius-default)]` to `rounded-default`; `z-45` stays.
+- [x] **Loading and error:** `(authenticated)/loading.tsx` to tokens; `(authenticated)/error.tsx:36` blue "reload" button to DS `Button variant="primary"` (line 58 already brand).
+- [x] P-VISUAL harness: a PageLayout page and a PageHeader page side by side (same background and title), DataTable next to Table, SectionNav above Tabs, the mobile drawer open at 375px. Baseline update, P-GATES, cold build, P-COMMIT `fix(ds): one page chrome, one table look and one tab look`, P-SHIP. Tell the owner this is the release that changes the most screens and list the routes to glance at: `/invoices`, `/invoices/[id]`, `/private-bookings`, `/settings`, `/rota`, `/vouchers`, `/menu-management`, `/table-bookings/foh`.
 
 ## PR-07: Codemod step A (value-equal swaps)
 
@@ -571,7 +572,7 @@ Acceptance: the guard baseline for every file in `src/ds/primitives/` and `src/d
 
 **Never touch:** `src/components/features/guest/**`, `src/app/g/**`, any other page rendered inside GuestShell (`src/app/booking-portal/**`, `src/app/parking/**`, `src/app/invoice-portal/**`, `src/app/privacy/**`, `src/app/(feedback)/**`, `src/app/legacy-link/**`), `src/app/(authenticated)/settings/design-system/**` (class names there are documentation), `src/app/api/**`, and every `src/lib/**` file except `src/lib/table-bookings/ui.ts` (`src/lib/cashing-up-pdf-template.ts` renders with the Tailwind CDN, which has no tokens).
 
-- [ ] **Step 1: Write the codemod** as a plain Node ESM script: dry run by default, `--write` to apply, `--step=a|b`. It matches a class only as a whole token, with any variant prefix (`hover:`, `md:`, `group-hover:`, `focus:` ...) preserved, and only inside string literals or template literal text (not identifiers). It prints per-file and per-mapping counts. Step A table (from `verify:canonical-mapping`, rows marked codemod-safe with visual change none or subtle, plus the approved noticeable ones):
+- [x] **Step 1: Write the codemod** as a plain Node ESM script: dry run by default, `--write` to apply, `--step=a|b`. It matches a class only as a whole token, with any variant prefix (`hover:`, `md:`, `group-hover:`, `focus:` ...) preserved, and only inside string literals or template literal text (not identifiers). It prints per-file and per-mapping counts. Step A table (from `verify:canonical-mapping`, rows marked codemod-safe with visual change none or subtle, plus the approved noticeable ones):
 
 | From | To |
 |---|---|
@@ -613,14 +614,14 @@ Acceptance: the guard baseline for every file in `src/ds/primitives/` and `src/d
 | `disabled:opacity-60`, `-40`, `-30`, `-70` | `disabled:opacity-50` (A9) |
 | any `dark:` class | deleted (D7) |
 
-- [ ] **Step 2:** Dry run; read the per-mapping totals against the audit's approximate uses; spot-read 20 random changed lines. Any class that appears in a non-class string (a label, a test fixture, docs) is excluded by path, not by special-casing.
-- [ ] **Step 3:** `--write --step=a`; P-GATES; `git diff --stat`; P-VISUAL on 4 or 5 high-traffic components (a raw-class-heavy FOH modal, the private booking detail header, an invoice detail block, TableSetupManager).
-- [ ] **Step 4:** Baseline update (expect roughly 2,600 fewer); commit script and changes separately: `chore(design-tokens): add token codemod` then `refactor(styles): swap value-equal raw classes for tokens`. P-SHIP.
+- [x] **Step 2:** Dry run; read the per-mapping totals against the audit's approximate uses; spot-read 20 random changed lines. Any class that appears in a non-class string (a label, a test fixture, docs) is excluded by path, not by special-casing.
+- [x] **Step 3:** `--write --step=a`; P-GATES; `git diff --stat`; P-VISUAL on 4 or 5 high-traffic components (a raw-class-heavy FOH modal, the private booking detail header, an invoice detail block, TableSetupManager).
+- [x] **Step 4:** Baseline update (expect roughly 2,600 fewer); commit script and changes separately: `chore(design-tokens): add token codemod` then `refactor(styles): swap value-equal raw classes for tokens`. P-SHIP.
 
 ## PR-08: Codemod step B (secondary greys darken, D3)
 
-- [ ] `--write --step=b` with exactly two mappings: `text-gray-500` to `text-text-muted` (658 uses), `text-gray-700` to `text-text` (352 uses). Same exclusions as PR-07.
-- [ ] P-VISUAL on three dense screens (a table, a form, a detail page); baseline update; P-GATES; P-COMMIT `refactor(styles): move secondary text to the token greys` (body: owner decision D3, text becomes slightly darker and more readable); P-SHIP.
+- [x] `--write --step=b` with exactly two mappings: `text-gray-500` to `text-text-muted` (658 uses), `text-gray-700` to `text-text` (352 uses). Same exclusions as PR-07.
+- [x] P-VISUAL on three dense screens (a table, a form, a detail page); baseline update; P-GATES; P-COMMIT `refactor(styles): move secondary text to the token greys` (body: owner decision D3, text becomes slightly darker and more readable); P-SHIP.
 
 ## Area passes: shared method for PR-09 to PR-15
 
@@ -794,3 +795,7 @@ export const GUEST = {
 - 2026-09-18: PR-02 first baseline: 456 files; raw-palette 4599, hex-colour 1327, px-text-size 405, bare-rounded 207, sidebar-outside-shell 104, dark-variant 62, off-scale-shadow 45, legacy-hsl-var 8, raw-820-breakpoint 5, off-scale-radius 2. Guard ignores comments, which is why shadows count lower than the audit.
 - 2026-09-18: PR-03 notes: only 1 responsive grid has a base of 3+ columns (style guide icons), so removing the grid collapse is safe; no fixed bottom-0 elements exist; print sheets are generated HTML, so the pale default border cannot affect them. Harness at 375px: stat grid 2 columns, divider #ececea, checkbox brand green; at 800px 4 columns.
 - 2026-09-18: PR-04 notes: resolveToken takes no fallback (a fallback would be hex in a component); canvas ignores an empty colour, and @theme static guarantees the tokens exist in the browser. Harness: direct react-hot-toast error toast now matches the DS error toast exactly; DS info toast is sky like Alert; avatars use avatar-1..6; the canvas bar paints rgb(0,106,78).
+- 2026-09-18: PR-05 done by a 4-agent workflow plus a reviewer (5 fixes). Added --shadow-ring-inset because accordion items, tab strips and table headers clip the outer ring. Native radios keep the browser outline (Safari may not draw a box-shadow on them). Parked: SortableHeader renders a button directly in a tr with no th (ExpensesClient, expenses and mileage insights), pre-existing invalid markup.
+- 2026-09-18: PR-06 harness: PageLayout and PageHeader titles both at 28px left, 24px, on the warm background (phones 16px both; PageLayout was 32px). DataTable matches Table (12px uppercase muted headers on surface-2, 13px cells). Card now honours padding (none/sm/md/lg) and variant (secondary/ghost). FOH manager kiosk uses headerVariant=dark (bg-brand-700) instead of !important overrides on gray class names. deposit-waiver.test.ts timed out once at 5s under load average 142 from other sessions; passes alone and in clean reruns.
+- 2026-09-18: PR-07 codemod step A: 3,221 swaps in 276 files. Guard totals after: raw-palette 2041 (was 4599), px-text-size 103 (405), bare-rounded 20 (207), off-scale-shadow 2 (45), dark-variant 0 (62), legacy-hsl 0, 820 variant 0. All 91 distinct introduced classes compile; no swap outside class strings. Codemod skips guest pages and their tests (tests/components/guest-routes, tests/components/guest).
+- 2026-09-18: PR-08 step B: text-gray-500 x626 to text-text-muted, text-gray-700 x336 to text-text, 158 files. raw-palette now 1079.

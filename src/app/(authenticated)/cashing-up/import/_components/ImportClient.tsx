@@ -225,7 +225,7 @@ export function ImportClient() {
                     type="checkbox"
                     checked={confirmed}
                     onChange={(event) => setConfirmed(event.target.checked)}
-                    className="h-4 w-4 rounded border-border"
+                    className="h-4 w-4 rounded-sm border-border"
                   />
                   Confirm import
                 </label>

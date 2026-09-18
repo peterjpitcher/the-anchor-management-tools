@@ -37,9 +37,9 @@ export default async function VoucherTypesPage() {
         <Card title="Voucher types">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {types.map((type) => (
-              <div key={type.id} className="rounded-lg border border-gray-200 p-4">
+              <div key={type.id} className="rounded-lg border border-border p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-semibold text-gray-900">{type.displayTitle}</div>
+                  <div className="font-semibold text-text">{type.displayTitle}</div>
                   <div className="flex flex-wrap gap-1.5">
                     {type.valuePence !== null && (
                       <Badge tone="neutral">{formatPence(type.valuePence)}</Badge>
@@ -53,13 +53,13 @@ export default async function VoucherTypesPage() {
                   {type.id}
                 </div>
                 <div
-                  className="mt-3 text-sm text-gray-700 [&_p]:mb-2 [&_strong]:font-semibold"
+                  className="mt-3 text-sm text-text [&_p]:mb-2 [&_strong]:font-semibold"
                   dangerouslySetInnerHTML={{ __html: type.entitlementHtml }}
                 />
               </div>
             ))}
             {types.length === 0 && (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-muted">
                 No voucher types found. The seed migration has not been applied.
               </p>
             )}
@@ -72,10 +72,10 @@ export default async function VoucherTypesPage() {
             header={
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-base font-semibold text-gray-900">
+                  <h3 className="text-base font-semibold text-text">
                     Terms {version.version}
                   </h3>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-text-muted">
                     Effective from{' '}
                     {formatDateInLondon(version.effectiveFrom, {
                       day: 'numeric',
@@ -97,8 +97,8 @@ export default async function VoucherTypesPage() {
             <ol className="list-decimal space-y-2 pl-6">
               {version.clauses.map((clause, index) => (
                 <li key={`${version.version}-${index}`} className="text-sm">
-                  <span className="font-medium text-gray-900">{clause.heading}</span>
-                  <span className="text-gray-700"> {clause.body}</span>
+                  <span className="font-medium text-text">{clause.heading}</span>
+                  <span className="text-text"> {clause.body}</span>
                 </li>
               ))}
             </ol>

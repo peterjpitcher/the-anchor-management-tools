@@ -167,14 +167,14 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
       key: 'details',
       label: 'Details',
       content: (
-        <dl className="divide-y divide-gray-200">
+        <dl className="divide-y divide-border">
           {displayFields.map((field, index) => (
             <div
               key={index}
               className={`py-3 flex flex-col sm:grid sm:grid-cols-4 sm:gap-4 ${field.isFullWidth ? 'sm:grid-cols-1' : ''}`}
             >
-              <dt className="text-sm font-medium text-gray-500 mb-1 sm:mb-0">{field.label}</dt>
-              <dd className={`text-sm text-gray-900 ${field.isFullWidth ? '' : 'sm:col-span-3'}`}>
+              <dt className="text-sm font-medium text-text-muted mb-1 sm:mb-0">{field.label}</dt>
+              <dd className={`text-sm text-text ${field.isFullWidth ? '' : 'sm:col-span-3'}`}>
                 {field.isBadge ? (
                   <Badge variant={statusBadgeVariant(employee.status)}>
                     {employee.status}
@@ -359,12 +359,12 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
             <Card>
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <div>
-                  <p className="text-sm text-gray-500">Employment</p>
-                  <p className="text-xl font-semibold text-gray-900">
+                  <p className="text-sm text-text-muted">Employment</p>
+                  <p className="text-xl font-semibold text-text">
                     {employee.status}{employee.employment_start_date ? ` • Started ${formatDate(employee.employment_start_date)}` : ''}
                   </p>
                   {employee.employment_start_date && (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-text-muted">
                       {calculateLengthOfService(employee.employment_start_date)}
                     </p>
                   )}
@@ -402,11 +402,11 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
             id="notes"
             title="Notes"
             description="Track key updates and conversations related to this employee."
-            className="bg-white shadow-md ring-1 ring-black/5"
+            className="bg-surface shadow-default ring-1 ring-black/5"
           >
             <div className="space-y-6">
               {permissions.canEdit && (
-                <div className="border-b border-gray-200 pb-6">
+                <div className="border-b border-border pb-6">
                   <AddEmployeeNoteForm employeeId={employee.employee_id} />
                 </div>
               )}
@@ -423,7 +423,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                 ? 'Manage employee documents and files.'
                 : 'You do not have permission to view employee documents.'
             }
-            className="bg-white shadow-md ring-1 ring-black/5"
+            className="bg-surface shadow-default ring-1 ring-black/5"
           >
             <div className="space-y-6">
               {permissions.canViewDocuments ? (
@@ -434,13 +434,13 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                   canDelete={permissions.canDeleteDocuments}
                 />
               ) : (
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-text-muted">
                   Document visibility requires `employees:view_documents`.
                 </div>
               )}
 
               {permissions.canUploadDocuments && (
-                <div className="border-t border-gray-200 pt-6">
+                <div className="border-t border-border pt-6">
                   <AddEmployeeAttachmentForm
                     employeeId={employee.employee_id}
                     categories={attachmentCategories}

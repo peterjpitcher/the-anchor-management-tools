@@ -773,13 +773,13 @@ export function VenueCalendar({
       />
 
       {hiddenCount > 0 && (
-        <p className="mt-2 text-xs text-gray-500">{hiddenCount} without a date (not shown)</p>
+        <p className="mt-2 text-xs text-text-muted">{hiddenCount} without a date (not shown)</p>
       )}
 
       {datasetWarnings.length > 0 && (
         <div className="mt-2 space-y-1">
           {datasetWarnings.map((warning) => (
-            <p key={warning} className="text-xs text-amber-700">
+            <p key={warning} className="text-xs text-warning-fg">
               {warning}
             </p>
           ))}
@@ -851,8 +851,8 @@ export function VenueCalendar({
                       className={cn(
                         'flex min-h-11 items-center gap-2 rounded-md border px-2.5 py-2 text-left text-xs font-medium transition-colors',
                         selected
-                          ? 'border-gray-950 bg-gray-100 text-gray-950 ring-2 ring-gray-950 ring-offset-1'
-                          : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+                          ? 'border-gray-950 bg-surface-hover text-text-strong ring-2 ring-gray-950 ring-offset-1'
+                          : 'border-border-strong bg-surface text-text hover:bg-surface-hover',
                       )}
                     >
                       <span
@@ -868,7 +868,7 @@ export function VenueCalendar({
               {!CALENDAR_COLOUR_OPTIONS.some(
                 (option) => option.value === noteEditor.color.toUpperCase(),
               ) && (
-                <p className="mt-2 text-xs text-gray-500">
+                <p className="mt-2 text-xs text-text-muted">
                   This note uses a colour outside the palette. It is kept unless you pick a new one.
                 </p>
               )}
@@ -884,7 +884,7 @@ export function VenueCalendar({
             </FormGroup>
 
             {confirmingDelete && (
-              <div className="rounded-md border border-red-300 bg-red-50 p-3 text-xs text-red-900">
+              <div className="rounded-md border border-red-300 bg-danger-soft p-3 text-xs text-danger-fg">
                 <p className="font-medium">Delete this note permanently?</p>
                 <p className="mt-1">
                   This cannot be undone, and it also removes the entry from the shared Pub Ops

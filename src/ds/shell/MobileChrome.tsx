@@ -36,22 +36,22 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
       <button
         type="button"
         onClick={onMenuOpen}
-        className="grid h-10 w-10 place-items-center rounded-[10px] text-sidebar-fg transition-colors active:bg-white/10"
+        className="grid h-10 w-10 place-items-center rounded-md text-sidebar-fg transition-colors active:bg-on-dark-hover focus-visible:outline-hidden focus-visible:shadow-ring"
         aria-label="Open menu"
       >
         <Icon name="menu" size={20} />
       </button>
 
       <Link href="/dashboard" className="mr-auto flex min-w-0 items-center gap-2" aria-label="The Anchor dashboard">
-        <span className="grid h-[30px] w-[30px] place-items-center rounded-lg border border-white/20 bg-white/15">
+        <span className="grid h-[30px] w-[30px] place-items-center rounded-lg border border-on-dark-border bg-on-dark-active">
           <Anchor className="h-[17px] w-[17px]" aria-hidden="true" />
         </span>
-        <span className="truncate text-[15px] font-bold tracking-normal">The Anchor</span>
+        <span className="truncate text-base font-bold tracking-normal">The Anchor</span>
       </Link>
 
       <button
         type="button"
-        className="grid h-10 w-10 place-items-center rounded-[10px] text-sidebar-fg transition-colors active:bg-white/10"
+        className="grid h-10 w-10 place-items-center rounded-md text-sidebar-fg transition-colors active:bg-on-dark-hover focus-visible:outline-hidden focus-visible:shadow-ring"
         aria-label="Search"
         onClick={() => window.dispatchEvent(new CustomEvent('open-global-search'))}
       >
@@ -64,12 +64,12 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
           unread count and opens the inbox. */}
       <Link
         href="/messages"
-        className="relative grid h-10 w-10 place-items-center rounded-[10px] text-sidebar-fg transition-colors active:bg-white/10"
+        className="relative grid h-10 w-10 place-items-center rounded-md text-sidebar-fg transition-colors active:bg-on-dark-hover focus-visible:outline-hidden focus-visible:shadow-ring"
         aria-label={unreadCount > 0 ? `Messages, ${unreadCount} unread` : 'Messages'}
       >
         <Icon name="bell" size={20} />
         {unreadCount > 0 ? (
-          <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[9.5px] font-bold leading-none text-white shadow-[0_0_0_2px_var(--color-sidebar)]">
+          <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-2xs font-bold leading-none text-white shadow-[0_0_0_2px_var(--color-sidebar)]">
             {badgeText(unreadCount)}
           </span>
         ) : null}
@@ -100,7 +100,7 @@ export function MobileBottomNav({ navGroups, onMore }: { navGroups: NavGroup[]; 
             key={tab.id}
             href={tab.href}
             className={cn(
-              'relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 text-[10.5px] font-semibold tracking-normal transition-colors',
+              'relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 text-meta font-semibold tracking-normal transition-colors',
               active ? 'text-primary' : 'text-text-subtle',
             )}
             aria-current={active ? 'page' : undefined}
@@ -110,7 +110,7 @@ export function MobileBottomNav({ navGroups, onMore }: { navGroups: NavGroup[]; 
             </span>
             <span>{tab.label}</span>
             {count ? (
-              <span className="absolute left-[calc(50%+6px)] top-1 grid h-4 min-w-4 place-items-center rounded-full border border-surface bg-danger px-1 text-[9.5px] font-bold leading-none text-white">
+              <span className="absolute left-[calc(50%+6px)] top-1 grid h-4 min-w-4 place-items-center rounded-full border border-surface bg-danger px-1 text-2xs font-bold leading-none text-white">
                 {badgeText(count)}
               </span>
             ) : null}
@@ -122,7 +122,7 @@ export function MobileBottomNav({ navGroups, onMore }: { navGroups: NavGroup[]; 
         type="button"
         onClick={onMore}
         className={cn(
-          'flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 text-[10.5px] font-semibold tracking-normal transition-colors',
+          'flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 text-meta font-semibold tracking-normal transition-colors',
           primaryActive ? 'text-text-subtle' : 'text-primary',
         )}
         aria-label="Open full menu"
@@ -158,22 +158,22 @@ export function MobileDrawer({
 
   return (
     <Dialog open={open} onClose={onClose} className="relative z-50 shell:hidden">
-      <DialogBackdrop className="fixed inset-0 bg-stone-950/50" />
+      <DialogBackdrop className="fixed inset-0 bg-overlay" />
       <DialogPanel className="fixed inset-y-0 left-0 flex w-[min(84vw,320px)] flex-col bg-sidebar text-sidebar-fg shadow-lg">
         <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-4">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="grid h-9 w-9 place-items-center rounded-[9px] border border-white/20 bg-white/15">
+            <span className="grid h-9 w-9 place-items-center rounded-default border border-on-dark-border bg-on-dark-active">
               <Anchor className="h-5 w-5" aria-hidden="true" />
             </span>
             <div className="min-w-0">
               <DialogTitle className="truncate text-sm font-bold leading-tight">The Anchor</DialogTitle>
-              <div className="truncate text-[11px] text-sidebar-fg-muted">Stanwell Moor Village</div>
+              <div className="truncate text-meta text-sidebar-fg-muted">Stanwell Moor Village</div>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-[9px] bg-white/10 text-sidebar-fg transition-colors active:bg-white/15"
+            className="grid h-9 w-9 place-items-center rounded-default bg-on-dark-hover text-sidebar-fg transition-colors active:bg-on-dark-active focus-visible:outline-hidden focus-visible:shadow-ring"
             aria-label="Close menu"
           >
             <Icon name="x" size={18} />
@@ -184,7 +184,7 @@ export function MobileDrawer({
           {navGroups.map((group, groupIndex) => (
             <div key={groupIndex}>
               {group.label ? (
-                <div className="px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.09em] text-sidebar-fg-muted">
+                <div className="px-3 py-2.5 text-2xs font-bold uppercase tracking-[0.09em] text-sidebar-fg-muted">
                   {group.label}
                 </div>
               ) : null}
@@ -198,7 +198,7 @@ export function MobileDrawer({
                     href={item.href}
                     onClick={onClose}
                     className={cn(
-                      'flex min-h-11 items-center gap-3 rounded-[9px] px-3 py-2.5 text-sm font-medium transition-colors',
+                      'flex min-h-11 items-center gap-3 rounded-default px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:shadow-ring',
                       active
                         ? 'bg-sidebar-active-bg text-sidebar-fg'
                         : 'text-sidebar-fg-muted active:bg-sidebar-hover-bg',
@@ -208,7 +208,7 @@ export function MobileDrawer({
                     <Icon name={item.icon as IconName} size={18} />
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {count ? (
-                      <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white">
+                      <span className="rounded-full bg-on-dark-active px-2 py-0.5 text-2xs font-bold text-on-dark">
                         {badgeText(count)}
                       </span>
                     ) : null}
@@ -222,8 +222,8 @@ export function MobileDrawer({
         <div className="flex items-center gap-2.5 border-t border-sidebar-border px-4 py-3">
           <Avatar name={userName} size="sm" />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-semibold">{userName}</div>
-            <div className="truncate text-[11px] text-sidebar-fg-muted">{userRole}</div>
+            <div className="truncate text-ui font-semibold">{userName}</div>
+            <div className="truncate text-meta text-sidebar-fg-muted">{userRole}</div>
           </div>
           <button
             type="button"
@@ -232,7 +232,7 @@ export function MobileDrawer({
               onSignOut()
             }}
             disabled={isSigningOut}
-            className="grid h-9 w-9 place-items-center rounded-[9px] text-sidebar-fg-muted transition-colors hover:bg-sidebar-hover-bg hover:text-sidebar-fg disabled:opacity-50"
+            className="grid h-9 w-9 place-items-center rounded-default text-sidebar-fg-muted transition-colors hover:bg-sidebar-hover-bg focus-visible:outline-hidden focus-visible:shadow-ring hover:text-sidebar-fg disabled:opacity-50"
             aria-label="Sign out"
           >
             {/* Deliberately not an `x`: the drawer header already has an `x` that

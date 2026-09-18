@@ -125,7 +125,7 @@ export function ReceiptList({
       <CardBody className="p-0">
         {/* Card list runs to lg, so the sort control must too. It used to stop
             at sm, leaving tablets with cards and no way to sort them. */}
-        <div className="w-full p-[var(--spacing-pad-card)] lg:hidden">
+        <div className="w-full p-pad-card lg:hidden">
           <label htmlFor="mobile-receipts-sort" className="text-xs font-medium text-text-muted">Sort</label>
           <Select
             id="mobile-receipts-sort"
@@ -137,7 +137,7 @@ export function ReceiptList({
         </div>
 
         {/* Mobile View */}
-        <div className="flex flex-col gap-2 px-[var(--spacing-pad-card)] pb-[var(--spacing-pad-card)] lg:hidden">
+        <div className="flex flex-col gap-2 px-pad-card pb-pad-card lg:hidden">
           {transactions.length > 0 && shouldGroupByVendor && <ValueHeatLegend />}
           {transactions.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border bg-surface-2 p-6 text-center text-sm text-text-muted">
@@ -305,7 +305,7 @@ function SortHeaderButton({
 
 function ValueHeatLegend() {
   return (
-    <div className="flex items-center gap-2 text-[11px] font-bold text-text-muted">
+    <div className="flex items-center gap-2 text-meta font-bold text-text-muted">
       <span>Lower value</span>
       <span
         aria-hidden="true"

@@ -257,13 +257,13 @@ export default function QuotesClient({
                   {filteredQuotes.map((q) => (
                     <TableRow key={q.id} onClick={() => router.push(`/quotes/${q.id}`)} className="cursor-pointer">
                       <TableCell>
-                        <div className="font-medium text-[12px] font-mono">{q.quote_number}</div>
+                        <div className="font-medium text-xs font-mono">{q.quote_number}</div>
                         {q.reference && <div className="text-xs text-text-muted">{q.reference}</div>}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Avatar name={q.vendor?.name || '?'} size="sm" />
-                          <span className="text-[13px]">{q.vendor?.name || '-'}</span>
+                          <span className="text-ui">{q.vendor?.name || '-'}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-text-muted">{new Date(q.quote_date).toLocaleDateString('en-GB')}</TableCell>

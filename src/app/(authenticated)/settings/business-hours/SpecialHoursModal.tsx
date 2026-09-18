@@ -388,7 +388,7 @@ export function SpecialHoursModal({
     >
       <div className="space-y-6">
         {/* Main Status Toggles */}
-        <div className="flex flex-wrap gap-6 bg-gray-50 p-4 rounded-lg border border-gray-100">
+        <div className="flex flex-wrap gap-6 bg-surface-2 p-4 rounded-lg border border-border">
           <Checkbox
             label="Venue Closed"
             checked={isClosed}
@@ -421,10 +421,10 @@ export function SpecialHoursModal({
         {!isClosed && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
              <div>
-                <h4 className="text-sm font-medium text-gray-900 mb-2">Venue Hours</h4>
+                <h4 className="text-sm font-medium text-text mb-2">Venue Hours</h4>
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className="text-xs text-gray-500">Opens</label>
+                    <label className="text-xs text-text-muted">Opens</label>
                     <Input 
                       type="time" 
                       value={opens} 
@@ -433,7 +433,7 @@ export function SpecialHoursModal({
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="text-xs text-gray-500">Closes</label>
+                    <label className="text-xs text-text-muted">Closes</label>
                     <Input 
                       type="time" 
                       value={closes} 
@@ -445,10 +445,10 @@ export function SpecialHoursModal({
              </div>
 
              <div>
-                <h4 className="text-sm font-medium text-gray-900 mb-2">Kitchen Hours</h4>
+                <h4 className="text-sm font-medium text-text mb-2">Kitchen Hours</h4>
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className="text-xs text-gray-500">Opens</label>
+                    <label className="text-xs text-text-muted">Opens</label>
                     <Input 
                       type="time" 
                       value={kitchenOpens} 
@@ -457,7 +457,7 @@ export function SpecialHoursModal({
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="text-xs text-gray-500">Closes</label>
+                    <label className="text-xs text-text-muted">Closes</label>
                     <Input 
                       type="time" 
                       value={kitchenCloses} 
@@ -502,7 +502,7 @@ export function SpecialHoursModal({
 
         {/* Note */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Reason / Note</label>
+          <label className="block text-sm font-medium text-text mb-1">Reason / Note</label>
           <Input
             placeholder="e.g. Bank Holiday, Private Event"
             value={note}

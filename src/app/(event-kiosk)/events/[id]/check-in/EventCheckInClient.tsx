@@ -174,7 +174,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
 
     return (
       <div className="space-y-5">
-        <div className="rounded-[8px] border border-brand-200 bg-brand-50 p-4 text-center">
+        <div className="rounded-default border border-brand-200 bg-brand-50 p-4 text-center">
           <p className="text-lg font-semibold text-brand-900">Hello {name}</p>
           <p className="mt-2 text-sm text-brand-800">
             {knownGuest.booking
@@ -244,13 +244,13 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
 
     if (attendanceSummary.snowball?.eligible) {
       return (
-        <div className="rounded-[8px] border border-amber-300 bg-amber-50 p-5 text-center">
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">Snowball eligible</p>
-          <h3 className="mt-2 text-2xl font-bold text-amber-950">Congratulations</h3>
-          <p className="mt-3 text-sm leading-6 text-amber-900">
+        <div className="rounded-default border border-amber-300 bg-warning-soft p-5 text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-warning-fg">Snowball eligible</p>
+          <h3 className="mt-2 text-2xl font-bold text-warning-fg">Congratulations</h3>
+          <p className="mt-3 text-sm leading-6 text-warning-fg">
             You have been to the last 3 Cash Bingo events, so you are eligible for tonight&apos;s snowball.
           </p>
-          <p className="mt-4 rounded-[8px] bg-white px-4 py-3 text-base font-semibold text-amber-950">
+          <p className="mt-4 rounded-default bg-surface px-4 py-3 text-base font-semibold text-warning-fg">
             Please hand this phone back to the team. We&apos;ve marked you as snowball eligible.
           </p>
         </div>
@@ -259,7 +259,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
 
     if (attendanceSummary.isCashBingo && attendanceSummary.snowball) {
       return (
-        <div className="rounded-[8px] border border-brand-200 bg-brand-50 p-5 text-center">
+        <div className="rounded-default border border-brand-200 bg-brand-50 p-5 text-center">
           <p className="text-lg font-semibold text-brand-900">
             You&apos;ve attended {previousCount} previous Cash Bingo {previousLabel}.
           </p>
@@ -275,7 +275,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
     }
 
     return (
-      <div className="rounded-[8px] border border-brand-200 bg-brand-50 p-4 text-center">
+      <div className="rounded-default border border-brand-200 bg-brand-50 p-4 text-center">
         <p className="text-sm font-semibold text-brand-900">
           You&apos;ve attended {previousCount} previous {categoryName} {previousLabel}.
         </p>
@@ -286,7 +286,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
   const renderCompletion = () => (
     <div className="space-y-4">
       {message && (
-        <div className="rounded-[8px] border border-brand-200 bg-brand-50 p-4 text-center">
+        <div className="rounded-default border border-brand-200 bg-brand-50 p-4 text-center">
           <p className="text-lg font-semibold text-brand-900">{message}</p>
         </div>
       )}
@@ -317,7 +317,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
           <h1 className="mt-3 text-3xl font-bold leading-tight text-white sm:text-4xl">{event.name}</h1>
         </header>
 
-        <section className="rounded-[8px] bg-white p-5 text-text-strong shadow-lg sm:p-6">
+        <section className="rounded-default bg-surface p-5 text-text-strong shadow-lg sm:p-6">
           <div className="mb-5 text-center">
             <h2 className="text-xl font-semibold">
               {step === 'lookup'
