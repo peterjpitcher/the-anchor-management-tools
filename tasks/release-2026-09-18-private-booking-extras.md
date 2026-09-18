@@ -8,9 +8,9 @@ Status: implemented and tested locally; migration not applied and application no
 - Identity verified from this repository's environment URL and connected Supabase project.
 - Migration name: `private_booking_supplementary_invoices`.
 - Exact SQL: [20260918124021_private_booking_supplementary_invoices.sql](../supabase/migrations/20260918124021_private_booking_supplementary_invoices.sql).
-- Migration SHA-256: `e3b1473fc530e633b72be9cdd16661e9da7ae45d0dbe7e18fc17eabd2fdb93c2`.
+- Migration SHA-256: `f71bf783b9158ca9249737ff596fa483ae758339f6dd281c8b07ca246de95077`.
 - Exact rollback SQL: [matching rollback](../supabase/rollbacks/20260918124021_private_booking_supplementary_invoices.sql).
-- Rollback SHA-256: `5d83a34d53505636980755360bd9a26ab2f3311d88cfe37aee1fe63ce6f1ce21`.
+- Rollback SHA-256: `92c0d0a85567ea4eb3f5b07cdaf30da409366b7f9a2347457fc9161f89955f27`.
 - Both SQL files are complete, unabridged inputs. No production SQL is to be generated or modified during application.
 
 ## Live state and impact
