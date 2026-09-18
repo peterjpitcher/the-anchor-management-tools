@@ -18,11 +18,14 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ label, error, hint, fullWidth: _fw, maxRows: _mr, autoResize: _ar, minRows: _minR, rows = 3, id: idProp, className, disabled, ...rest }, ref) => {
+  ({ label, error, hint, fullWidth: _fw, maxRows: _mr, autoResize: _ar, minRows: _minR, rows = 3, id: idProp, className, disabled, 'aria-describedby': ariaDescribedBy, ...rest }, ref) => {
     const autoId = useId()
     const id = idProp ?? autoId
     const errorId = `${id}-error`
     const hintId = `${id}-hint`
+    // A description passed in (a Field's hint or error, or the page's own) joins this
+    // field's own error or hint rather than replacing it.
+    const describedBy = [error ? errorId : hint ? hintId : null, ariaDescribedBy].filter(Boolean).join(' ') || undefined
 
     return (
       <div className="flex flex-col">
@@ -47,7 +50,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           )}
           disabled={disabled}
           aria-invalid={error ? 'true' : undefined}
-          aria-describedby={error ? errorId : hint ? hintId : undefined}
+          aria-describedby={describedBy}
           {...rest}
         />
 

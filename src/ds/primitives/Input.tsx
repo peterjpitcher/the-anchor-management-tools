@@ -21,12 +21,15 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, icon, leftIcon, leftElement, rightElement, fullWidth: _fw, inputSize: _is, id: idProp, className, disabled, onWheel, ...rest }, ref) => {
+  ({ label, error, hint, icon, leftIcon, leftElement, rightElement, fullWidth: _fw, inputSize: _is, id: idProp, className, disabled, onWheel, 'aria-describedby': ariaDescribedBy, ...rest }, ref) => {
     const resolvedIcon = icon ?? leftIcon
     const autoId = useId()
     const id = idProp ?? autoId
     const errorId = `${id}-error`
     const hintId = `${id}-hint`
+    // A description passed in (a Field's hint or error, or the page's own) joins this
+    // field's own error or hint rather than replacing it.
+    const describedBy = [error ? errorId : hint ? hintId : null, ariaDescribedBy].filter(Boolean).join(' ') || undefined
 
     // Number inputs change value on scroll-wheel, causing accidental edits when the cursor
     // happens to rest over the field. Blur on wheel so scrolling moves the page instead.
@@ -66,7 +69,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             )}
             disabled={disabled}
             aria-invalid={error ? 'true' : undefined}
-            aria-describedby={error ? errorId : hint ? hintId : undefined}
+            aria-describedby={describedBy}
             onWheel={rest.type === 'number' || onWheel ? handleWheel : undefined}
             {...rest}
           />

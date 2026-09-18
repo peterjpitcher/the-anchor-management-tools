@@ -55,11 +55,15 @@ export function Field({
     resolvedHint ? hintId : null,
     error ? errorId : null,
   ].filter(Boolean).join(' ') || undefined
+  // Only add what this Field has. An undefined aria-invalid or aria-describedby here would
+  // override the ones a DS control sets from its own error and hint.
   const child = isValidElement<Record<string, unknown>>(children)
     ? cloneElement(children, {
         id: children.props.id ?? resolvedFieldId,
-        'aria-describedby': [children.props['aria-describedby'], describedBy].filter(Boolean).join(' ') || undefined,
-        'aria-invalid': error ? true : children.props['aria-invalid'],
+        ...(describedBy
+          ? { 'aria-describedby': [children.props['aria-describedby'], describedBy].filter(Boolean).join(' ') }
+          : {}),
+        ...(error ? { 'aria-invalid': true } : {}),
       })
     : children
 

@@ -38,6 +38,12 @@ function formatCurrency(amount: number | null | undefined): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
 }
 
+/** Screen reader name for a row's checkbox. The date tells repeats apart, such as a weekly quiz. */
+function selectEventLabel(event: Event): string {
+  if (!event.date) return `Select ${event.name}`
+  return `Select ${event.name} on ${formatDateInLondon(event.date, { day: 'numeric', month: 'long', year: 'numeric' })}`
+}
+
 export function EventListView({
   events,
   pagination,
@@ -99,7 +105,7 @@ export function EventListView({
           <TableRow>
             <TableHead className="w-10">
               <Checkbox
-                label=""
+                aria-label="Select all events on this page"
                 checked={allSelected}
                 onChange={toggleAll}
               />
@@ -131,7 +137,7 @@ export function EventListView({
                 <TableRow key={event.id} onClick={() => onEventClick(event)}>
                   <TableCell>
                     <Checkbox
-                      label=""
+                      aria-label={selectEventLabel(event)}
                       checked={selectedIds.has(event.id)}
                       onChange={() => toggleOne(event.id)}
                     />
@@ -213,7 +219,7 @@ export function EventListView({
                 <div className="flex items-start gap-2">
                   <label className="-my-1.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center">
                     <Checkbox
-                      label=""
+                      aria-label={selectEventLabel(event)}
                       checked={selectedIds.has(event.id)}
                       onChange={() => toggleOne(event.id)}
                     />

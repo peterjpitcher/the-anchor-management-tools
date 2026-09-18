@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { EventCategory } from '@/types/event-categories'
 import { KeywordStrategyCard } from './KeywordStrategyCard'
 import { FaqEditor } from './FaqEditor'
@@ -87,6 +87,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
   const [description, setDescription] = useState(() => clamp(category?.description ?? '', MAX_DESCRIPTION_LENGTH))
   const [color, setColor] = useState(category?.color ?? CATEGORY_COLORS[0].value)
   const [icon, setIcon] = useState(category?.icon ?? CATEGORY_ICONS[0].value)
+  const pickerId = useId()
   const [isActive, setIsActive] = useState(category?.is_active ?? true)
   const [sortOrder, setSortOrder] = useState(category?.sort_order?.toString() ?? '0')
   const [imageUrl, setImageUrl] = useState(category?.default_image_url ?? '')
@@ -280,16 +281,18 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
             </div>
           </div>
 
-          {/* Appearance */}
+          {/* Appearance. Each picker is a named group and each option says whether it is the
+              one chosen, which the ring and border alone only showed to sighted users. */}
           <div className="sm:col-span-3">
-            <label className="block text-sm font-medium leading-6 text-text">
+            <label id={`${pickerId}-color`} className="block text-sm font-medium leading-6 text-text">
               Color
             </label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div role="group" aria-labelledby={`${pickerId}-color`} className="mt-2 flex flex-wrap gap-2">
               {CATEGORY_COLORS.map((colorOption) => (
                 <button
                   key={colorOption.value}
                   type="button"
+                  aria-pressed={color === colorOption.value}
                   onClick={() => setColor(colorOption.value)}
                   // The white ring offset paints over the focus ring, so it drops to 0 while
                   // focused: otherwise keyboard focus shows as a 1px sliver, or not at all on
@@ -306,16 +309,17 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-3">
-            <label className="block text-sm font-medium leading-6 text-text">
+            <label id={`${pickerId}-icon`} className="block text-sm font-medium leading-6 text-text">
               Icon
             </label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div role="group" aria-labelledby={`${pickerId}-icon`} className="mt-2 flex flex-wrap gap-2">
               {CATEGORY_ICONS.map((iconOption) => {
                 const Icon = iconOption.icon
                 return (
                   <button
                     key={iconOption.value}
                     type="button"
+                    aria-pressed={icon === iconOption.value}
                     onClick={() => setIcon(iconOption.value)}
                     className={cn(
                       'p-2 rounded-md border-2 focus-visible:outline-hidden focus-visible:shadow-ring',

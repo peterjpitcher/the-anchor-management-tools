@@ -2,6 +2,7 @@ import React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import BackgroundJobsClient from '@/app/(authenticated)/settings/background-jobs/BackgroundJobsClient'
+import type { BackgroundJob } from '@/app/actions/backgroundJobs'
 import CategoriesClient from '@/app/(authenticated)/settings/categories/CategoriesClient'
 import MessageTemplatesClient from '@/app/(authenticated)/settings/message-templates/MessageTemplatesClient'
 
@@ -44,12 +45,47 @@ afterEach(() => {
   cleanup()
 })
 
+const failedJob: BackgroundJob = {
+  id: 'job-1',
+  type: 'send_sms',
+  payload: {},
+  status: 'failed',
+  priority: 1,
+  attempts: 3,
+  max_attempts: 3,
+  scheduled_for: '2026-09-18T09:00:00Z',
+  created_at: '2026-09-18T08:59:00Z',
+  started_at: '2026-09-18T09:00:01Z',
+  completed_at: null,
+  error_message: 'Provider timeout',
+  result: null,
+  updated_at: '2026-09-18T09:00:05Z',
+}
+
+describe('background jobs row actions', () => {
+  it('names the icon-only retry and delete buttons for screen readers', () => {
+    render(
+      <BackgroundJobsClient
+        initialJobs={[failedJob]}
+        initialSummary={{ total: 1, pending: 0, completed: 0, failed: 1 }}
+        canManage
+        initialError={null}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Retry job' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete job' })).toBeInTheDocument()
+    // The generic fallback name must never reach a real button.
+    expect(screen.queryByRole('button', { name: 'icon button' })).not.toBeInTheDocument()
+  })
+})
+
 describe('settings manage affordances for read-only roles', () => {
   it('disables process jobs button and hides retry/delete actions when canManage is false', () => {
     render(
       <BackgroundJobsClient
-        initialJobs={[]}
-        initialSummary={{ total: 0, pending: 0, completed: 0, failed: 0 }}
+        initialJobs={[failedJob]}
+        initialSummary={{ total: 1, pending: 0, completed: 0, failed: 1 }}
         canManage={false}
         initialError={null}
       />,
