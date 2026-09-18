@@ -1,3 +1,5 @@
+import { STAFF } from '@/lib/brand/palette'
+
 export interface EventBookingSheetData {
   bookingRef: string
   eventName: string
@@ -37,14 +39,16 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;')
 }
 
+// Black-ink print design on the STAFF greys: ink is the text colour, the soft and muted inks are
+// both STAFF.textMuted (small print never goes lighter), and the hairlines are the strong border.
 function bookingSheetStyles(): string {
   return `
   :root{
-    --paper:#ffffff;
-    --ink:#161616;
-    --ink-soft:#363636;
-    --ink-mute:#6b6b6b;
-    --rule:#cfcfcf;
+    --paper:${STAFF.surface};
+    --ink:${STAFF.text};
+    --ink-soft:${STAFF.textMuted};
+    --ink-mute:${STAFF.textMuted};
+    --rule:${STAFF.borderStrong};
     --pad:13mm;
     --font-display:'DM Serif Display', Georgia, serif;
     --font-body:'Outfit', system-ui, -apple-system, sans-serif;
@@ -53,7 +57,7 @@ function bookingSheetStyles(): string {
   *{ box-sizing:border-box; }
   html,body{ margin:0; padding:0; }
   body{
-    background:#fff;
+    background:${STAFF.surface};
     font-family:var(--font-body);
     color:var(--ink);
     -webkit-print-color-adjust:exact;
