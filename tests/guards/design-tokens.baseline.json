@@ -120,17 +120,11 @@
   "src/app/api/employees/[employee_id]/starter-pack/route.ts": {
     "hex-colour": 1
   },
-  "src/app/api/private-bookings/outcome/[outcome]/[token]/route.ts": {
-    "hex-colour": 5
-  },
   "src/app/api/rota/hours/pdf/route.ts": {
     "hex-colour": 35
   },
   "src/app/api/rota/pdf/route.ts": {
     "hex-colour": 48
-  },
-  "src/app/api/unsubscribe/route.ts": {
-    "hex-colour": 3
   },
   "src/app/auth/confirm/route.ts": {
     "hex-colour": 5
@@ -262,131 +256,47 @@
   "src/lib/contract-template.ts": {
     "hex-colour": 22
   },
-  "src/lib/email/event-ticket-emails.ts": {
-    "hex-colour": 6
-  },
-  "src/lib/email/guest-footer.ts": {
-    "hex-colour": 3
-  },
-  "src/lib/email/invoice-payment-emails.ts": {
-    "hex-colour": 16
-  },
-  "src/lib/email/marketing/blocks/amenity_grid.ts": {
-    "hex-colour": 5
-  },
   "src/lib/email/marketing/blocks/closing_panel_dark.ts": {
-    "hex-colour": 11
-  },
-  "src/lib/email/marketing/blocks/cta_outline.ts": {
-    "hex-colour": 4
-  },
-  "src/lib/email/marketing/blocks/deadline_bar.ts": {
-    "hex-colour": 4
-  },
-  "src/lib/email/marketing/blocks/divider_rule.ts": {
-    "hex-colour": 3
-  },
-  "src/lib/email/marketing/blocks/event_row.ts": {
-    "hex-colour": 13
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/fact_strip.ts": {
-    "hex-colour": 7
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/faq_rows.ts": {
-    "hex-colour": 9
-  },
-  "src/lib/email/marketing/blocks/feature_card.ts": {
-    "hex-colour": 13
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/footer.ts": {
-    "hex-colour": 11
+    "hex-colour": 3
   },
   "src/lib/email/marketing/blocks/footer_dark.ts": {
-    "hex-colour": 12
-  },
-  "src/lib/email/marketing/blocks/grid_cards_linked.ts": {
-    "hex-colour": 8
-  },
-  "src/lib/email/marketing/blocks/hero_framed.ts": {
-    "hex-colour": 9
-  },
-  "src/lib/email/marketing/blocks/hero_image.ts": {
-    "hex-colour": 17
-  },
-  "src/lib/email/marketing/blocks/hours_table.ts": {
-    "hex-colour": 7
-  },
-  "src/lib/email/marketing/blocks/image_full.ts": {
-    "hex-colour": 4
-  },
-  "src/lib/email/marketing/blocks/masthead_cream.ts": {
-    "hex-colour": 8
-  },
-  "src/lib/email/marketing/blocks/masthead_green.ts": {
-    "hex-colour": 5
-  },
-  "src/lib/email/marketing/blocks/masthead_seasonal.ts": {
-    "hex-colour": 2
-  },
-  "src/lib/email/marketing/blocks/media_row.ts": {
-    "hex-colour": 7
-  },
-  "src/lib/email/marketing/blocks/menu_list.ts": {
-    "hex-colour": 11
-  },
-  "src/lib/email/marketing/blocks/note_bar.ts": {
-    "hex-colour": 7
-  },
-  "src/lib/email/marketing/blocks/offer_panel.ts": {
-    "hex-colour": 9
-  },
-  "src/lib/email/marketing/blocks/opening_hours_dates.ts": {
-    "hex-colour": 19
-  },
-  "src/lib/email/marketing/blocks/opening_hours_week.ts": {
-    "hex-colour": 17
-  },
-  "src/lib/email/marketing/blocks/opening_times.ts": {
-    "hex-colour": 13
-  },
-  "src/lib/email/marketing/blocks/price_tiles.ts": {
-    "hex-colour": 16
-  },
-  "src/lib/email/marketing/blocks/pull_quote.ts": {
-    "hex-colour": 5
-  },
-  "src/lib/email/marketing/blocks/reassurance_row.ts": {
-    "hex-colour": 5
-  },
-  "src/lib/email/marketing/blocks/review.ts": {
-    "hex-colour": 8
-  },
-  "src/lib/email/marketing/blocks/section_intro.ts": {
-    "hex-colour": 9
-  },
-  "src/lib/email/marketing/blocks/shell.ts": {
     "hex-colour": 6
   },
-  "src/lib/email/marketing/blocks/signoff_ps.ts": {
-    "hex-colour": 11
+  "src/lib/email/marketing/blocks/hours_table.ts": {
+    "hex-colour": 1
   },
-  "src/lib/email/marketing/blocks/steps.ts": {
-    "hex-colour": 11
+  "src/lib/email/marketing/blocks/masthead_green.ts": {
+    "hex-colour": 2
   },
-  "src/lib/email/marketing/blocks/text_block.ts": {
-    "hex-colour": 22
+  "src/lib/email/marketing/blocks/menu_list.ts": {
+    "hex-colour": 1
   },
-  "src/lib/email/marketing/blocks/two_up_cards.ts": {
-    "hex-colour": 7
+  "src/lib/email/marketing/blocks/opening_hours_dates.ts": {
+    "hex-colour": 1
+  },
+  "src/lib/email/marketing/blocks/opening_hours_week.ts": {
+    "hex-colour": 1
+  },
+  "src/lib/email/marketing/blocks/opening_times.ts": {
+    "hex-colour": 1
+  },
+  "src/lib/email/marketing/blocks/shell.ts": {
+    "hex-colour": 4
   },
   "src/lib/email/marketing/blocks/whats_on_list.ts": {
-    "hex-colour": 20
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/whats_on_media.ts": {
-    "hex-colour": 19
-  },
-  "src/lib/email/private-booking-emails.ts": {
-    "hex-colour": 70
+    "hex-colour": 1
   },
   "src/lib/employee-starter-template.ts": {
     "hex-colour": 26
@@ -458,9 +368,6 @@
     "hex-colour": 41
   },
   "src/lib/table-booking-sheet-template.ts": {
-    "hex-colour": 6
-  },
-  "src/lib/table-bookings/guest-emails.ts": {
     "hex-colour": 6
   },
   "src/lib/voucher-card-template.ts": {

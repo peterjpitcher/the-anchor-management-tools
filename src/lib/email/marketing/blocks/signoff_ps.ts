@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText, escapeEmailUrl } from '../escape'
 import { defineBlock } from './types'
 
@@ -34,9 +36,9 @@ export const signoffPs = defineBlock<SignoffPsData>({
   },
   render: (data) =>
     `
-<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:30px 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:27px;color:#1a1a1a">${escapeEmailText(data.signoff)}</td></tr>
-<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:2px 32px 0;font-family:'Clicker Script','Segoe Script','Brush Script MT',cursive;font-size:34px;line-height:42px;color:#005131">${escapeEmailText(data.signature)}</td></tr>
-<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:18px 32px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:25px;color:#1a1a1a"><strong style="color:#005131">P.S.</strong> ${escapeEmailText(data.ps_body)} <a href="${escapeEmailUrl(data.ps_link_url)}" style="color:#8b6914;font-weight:600;text-decoration:none">${escapeEmailText(data.ps_link_label)}</a></td></tr>
+<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:30px 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:27px;color:${GUEST.text}">${escapeEmailText(data.signoff)}</td></tr>
+<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:2px 32px 0;font-family:'Clicker Script','Segoe Script','Brush Script MT',cursive;font-size:34px;line-height:42px;color:${GUEST.green}">${escapeEmailText(data.signature)}</td></tr>
+<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:18px 32px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:25px;color:${GUEST.text}"><strong style="color:${GUEST.green}">P.S.</strong> ${escapeEmailText(data.ps_body)} <a href="${escapeEmailUrl(data.ps_link_url)}" style="color:${GUEST.accentText};font-weight:600;text-decoration:none">${escapeEmailText(data.ps_link_label)}</a></td></tr>
 `,
   text: (data) =>
     `\n${data.signoff}\n${data.signature}\n\nP.S. ${data.ps_body} ${data.ps_link_label}: ${data.ps_link_url}\n`,

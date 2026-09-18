@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
@@ -30,7 +32,7 @@ import { defineBlock } from './types'
 const SANS = "'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif"
 const SERIF = "'DM Serif Display',Georgia,'Times New Roman',serif"
 
-const DARK = '#0c1d11'
+const DARK = GUEST.greenDeep
 const HAIRLINE = 'border-bottom:1px solid #efe9dd;'
 
 const openingHoursDatesRowSchema = z
@@ -96,13 +98,13 @@ function closedRowMarkup(row: OpeningHoursDatesRowData): string {
   const inner = hoursAndNote(
     'Closed',
     row.note ?? '',
-    `font-family:${SANS};font-size:15px;font-weight:600;line-height:22px;color:#f0e6c6;white-space:nowrap`,
-    '#f0e6c6',
+    `font-family:${SANS};font-size:15px;font-weight:600;line-height:22px;color:${GUEST.creamText};white-space:nowrap`,
+    GUEST.creamText,
   )
 
   return (
     `<tr>` +
-    `<td width="112" valign="top" bgcolor="${DARK}" style="width:112px;background-color:${DARK};padding:13px 0 13px 12px;font-family:${SANS};font-size:15px;font-weight:600;line-height:22px;color:#c9a020;white-space:nowrap">${escapeEmailText(row.date)}</td>` +
+    `<td width="112" valign="top" bgcolor="${DARK}" style="width:112px;background-color:${DARK};padding:13px 0 13px 12px;font-family:${SANS};font-size:15px;font-weight:600;line-height:22px;color:${GUEST.goldBright};white-space:nowrap">${escapeEmailText(row.date)}</td>` +
     `<td valign="top" bgcolor="${DARK}" style="background-color:${DARK};padding:13px 10px 13px 4px">${inner}</td>` +
     `</tr>`
   )
@@ -114,13 +116,13 @@ function openRowMarkup(row: OpeningHoursDatesRowData, isLast: boolean): string {
   const inner = hoursAndNote(
     row.hours ?? '',
     row.note ?? '',
-    `font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a;white-space:nowrap`,
-    '#6f6a61',
+    `font-family:${SANS};font-size:15px;line-height:22px;color:${GUEST.text};white-space:nowrap`,
+    GUEST.textMuted,
   )
 
   return (
     `<tr>` +
-    `<td width="112" valign="top" style="width:112px;padding:13px 0 13px 12px;${hairline}font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a;font-weight:600;white-space:nowrap">${escapeEmailText(row.date)}</td>` +
+    `<td width="112" valign="top" style="width:112px;padding:13px 0 13px 12px;${hairline}font-family:${SANS};font-size:15px;line-height:22px;color:${GUEST.text};font-weight:600;white-space:nowrap">${escapeEmailText(row.date)}</td>` +
     `<td valign="top" style="padding:13px 10px 13px 4px;${hairline}">${inner}</td>` +
     `</tr>`
   )
@@ -150,14 +152,14 @@ export const openingHoursDates = defineBlock<OpeningHoursDatesData>({
   },
   render: (data) =>
     [
-      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px 32px 14px;font-family:${SERIF};font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:0 32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#ffffff;border:1px solid #e2dccf"><tbody>`,
+      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${GUEST.cream}"><tbody>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:32px 32px 14px;font-family:${SERIF};font-size:26px;line-height:32px;letter-spacing:-0.02em;color:${GUEST.green}">${escapeEmailText(data.heading)}</td></tr>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:0 32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:${GUEST.surface};border:1px solid ${GUEST.border}"><tbody>`,
       ...data.rows.map((row, index) =>
         row.closed ? closedRowMarkup(row) : openRowMarkup(row, index === data.rows.length - 1),
       ),
       `</tbody></table></td></tr>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:14px 32px 30px;font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61">${escapeEmailText(data.footnote)}</td></tr>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:14px 32px 30px;font-family:${SANS};font-size:13px;line-height:20px;color:${GUEST.textMuted}">${escapeEmailText(data.footnote)}</td></tr>`,
       `</tbody></table>`,
     ].join('\n'),
   text: (data) => {

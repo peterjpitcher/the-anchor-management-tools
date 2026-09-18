@@ -27,6 +27,7 @@
 
 import { createHash } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
+import { GUEST } from '@/lib/brand/palette'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { applyDistributedRateLimit } from '@/lib/distributed-rate-limit'
@@ -62,13 +63,13 @@ function page(title: string, body: string, status = 200): NextResponse {
 <meta name="robots" content="noindex">
 <title>${title}</title>
 <style>
- body{font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;padding:3rem 1.5rem;color:#1a1a1a}
+ body{font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;padding:3rem 1.5rem;color:${GUEST.text}}
  main{max-width:32rem;margin:0 auto}
- h1{font-size:1.5rem;margin:0 0 1rem}
+ h1{font-size:1.5rem;margin:0 0 1rem;color:${GUEST.green}}
  p{margin:0 0 1rem}
- .muted{color:#666;font-size:.9rem}
- button{font:inherit;font-weight:600;background:#16a34a;color:#fff;border:0;border-radius:.5rem;padding:.75rem 1.25rem;cursor:pointer}
- button:hover{background:#15803d}
+ .muted{color:${GUEST.textMuted};font-size:.9rem}
+ button{font:inherit;font-weight:600;background:${GUEST.buttonBg};color:${GUEST.buttonText};border:0;border-radius:.5rem;padding:.75rem 1.25rem;cursor:pointer}
+ button:hover{background:${GUEST.goldDeep}}
  form{margin:0 0 1.5rem}
 </style></head>
 <body><main>

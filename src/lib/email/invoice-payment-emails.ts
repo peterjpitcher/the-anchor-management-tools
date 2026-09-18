@@ -2,6 +2,7 @@ import { sendEmail } from './emailService';
 import { logger } from '@/lib/logger';
 import { formatDateInLondon } from '@/lib/dateUtils';
 import { COMPANY_DETAILS } from '@/lib/company-details';
+import { STAFF } from '@/lib/brand/palette';
 import { invoiceReplyToAddress, invoiceSenderIdentity } from '@/lib/email/invoice-sender';
 
 const PRIVACY_NOTICE_URL = 'https://www.the-anchor.pub/privacy-policy';
@@ -21,8 +22,8 @@ const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
  */
 const COMPANY_POSTAL_LINE = `${COMPANY_DETAILS.legalName}, ${COMPANY_DETAILS.fullAddress}. Company number ${COMPANY_DETAILS.registrationNumber}. VAT ${COMPANY_DETAILS.vatNumber}.`;
 
-const EMAIL_FOOTER_HTML = `<p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${COMPANY_POSTAL_LINE}</p>
-  <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 4px 0 0 0;">How we use your data: <a href="${PRIVACY_NOTICE_URL}" style="color: #999999;">${PRIVACY_NOTICE_URL}</a><br>Questions about this invoice: reply to this email or write to us at the address above.</p>`;
+const EMAIL_FOOTER_HTML = `<p style="font-family: ${FONT_FAMILY}; color: ${STAFF.textMuted}; font-size: 12px; margin: 0;">${COMPANY_POSTAL_LINE}</p>
+  <p style="font-family: ${FONT_FAMILY}; color: ${STAFF.textMuted}; font-size: 12px; margin: 4px 0 0 0;">How we use your data: <a href="${PRIVACY_NOTICE_URL}" style="color: ${STAFF.textMuted};">${PRIVACY_NOTICE_URL}</a><br>Questions about this invoice: reply to this email or write to us at the address above.</p>`;
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount);
@@ -67,26 +68,26 @@ export async function sendInvoicePaymentLinkEmail(params: {
   const subject = `Invoice ${params.invoiceNumber}: ${amount} due`;
 
   const html = `
-<div style="font-family: ${FONT_FAMILY}; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">Invoice ${invoiceNumber}</h2>
+<div style="font-family: ${FONT_FAMILY}; max-width: 600px; margin: 0 auto; padding: 20px; color: ${STAFF.text};">
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${STAFF.text};">Invoice ${invoiceNumber}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(greetingName)},</p>
   <p style="font-family: ${FONT_FAMILY};">There's <strong>${amount}</strong> outstanding on invoice ${invoiceNumber}, due ${due}. You can pay it online using the button below.</p>
   <p style="font-family: ${FONT_FAMILY};">
-    <a href="${params.paypalApproveUrl}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 12px 24px; background-color: #0070ba; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 16px;">
+    <a href="${params.paypalApproveUrl}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 12px 24px; background-color: ${STAFF.primary}; color: ${STAFF.primaryFg}; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 16px;">
       Pay ${amount} via PayPal
     </a>
   </p>
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Or copy this link into your browser:<br><a href="${params.paypalApproveUrl}" style="font-family: ${FONT_FAMILY}; color: #0070ba; word-break: break-all;">${params.paypalApproveUrl}</a></p>
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">PayPal links usually stop working a few hours after this email is sent. If the button above no longer works, open your payment page below and it will make you a fresh one.</p>
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${STAFF.textMuted};">Or copy this link into your browser:<br><a href="${params.paypalApproveUrl}" style="font-family: ${FONT_FAMILY}; color: ${STAFF.primary}; word-break: break-all;">${params.paypalApproveUrl}</a></p>
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${STAFF.textMuted};">PayPal links usually stop working a few hours after this email is sent. If the button above no longer works, open your payment page below and it will make you a fresh one.</p>
   <p style="font-family: ${FONT_FAMILY};">
-    <a href="${params.portalUrl}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 10px 18px; background-color: #f3f4f6; color: #1f2937; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 14px;">
+    <a href="${params.portalUrl}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 10px 18px; background-color: ${STAFF.surfaceHover}; color: ${STAFF.text}; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 14px;">
       Open your payment page
     </a>
   </p>
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Payment page:<br><a href="${params.portalUrl}" style="font-family: ${FONT_FAMILY}; color: #0070ba; word-break: break-all;">${params.portalUrl}</a></p>
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${STAFF.textMuted};">Payment page:<br><a href="${params.portalUrl}" style="font-family: ${FONT_FAMILY}; color: ${STAFF.primary}; word-break: break-all;">${params.portalUrl}</a></p>
   <p style="font-family: ${FONT_FAMILY};">If you'd rather pay by bank transfer, or anything on the invoice doesn't look right, just reply to this email and we'll sort it out.</p>
-  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>${COMPANY_DETAILS.legalName}</strong><br><span style="color: #666666;">Trading as ${COMPANY_DETAILS.tradingName}</span></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>${COMPANY_DETAILS.legalName}</strong><br><span style="color: ${STAFF.textMuted};">Trading as ${COMPANY_DETAILS.tradingName}</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid ${STAFF.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
 

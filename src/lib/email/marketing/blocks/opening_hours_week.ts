@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
@@ -43,10 +45,10 @@ const SANS = "'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif"
 const SERIF = "'DM Serif Display',Georgia,'Times New Roman',serif"
 
 /** The 68px inline label in front of every value: BAR, LUNCH, DINNER, KITCHEN. */
-const LABEL = `font-family:${SANS};font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.14em;text-transform:uppercase;color:#8b6914`
-const VALUE_LINE = `font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a;white-space:nowrap`
-const MUTED_LINE = `font-family:${SANS};font-size:15px;line-height:22px;color:#6f6a61;white-space:nowrap`
-const NOTE = `font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61;padding-top:2px`
+const LABEL = `font-family:${SANS};font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.14em;text-transform:uppercase;color:${GUEST.accentText}`
+const VALUE_LINE = `font-family:${SANS};font-size:15px;line-height:22px;color:${GUEST.text};white-space:nowrap`
+const MUTED_LINE = `font-family:${SANS};font-size:15px;line-height:22px;color:${GUEST.textMuted};white-space:nowrap`
+const NOTE = `font-family:${SANS};font-size:13px;line-height:20px;color:${GUEST.textMuted};padding-top:2px`
 
 const openingHoursWeekRowSchema = z
   .object({
@@ -126,7 +128,7 @@ function rowMarkup(row: OpeningHoursWeekRowData, isLast: boolean): string {
 
   return (
     `<tr>` +
-    `<td width="112" valign="top" style="width:112px;padding:13px 0 13px 12px;${hairline}font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a;font-weight:600">${escapeEmailText(row.day)}</td>` +
+    `<td width="112" valign="top" style="width:112px;padding:13px 0 13px 12px;${hairline}font-family:${SANS};font-size:15px;line-height:22px;color:${GUEST.text};font-weight:600">${escapeEmailText(row.day)}</td>` +
     `<td valign="top" style="padding:13px 10px 13px 4px;${hairline}">` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse"><tbody><tr>` +
     `<td width="176" valign="top" class="stack" style="width:176px;padding:0 8px 0 0">${labelledLine('Bar', row.bar)}</td>` +
@@ -156,12 +158,12 @@ export const openingHoursWeek = defineBlock<OpeningHoursWeekData>({
   },
   render: (data) =>
     [
-      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px 32px 14px;font-family:${SERIF};font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:0 32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#ffffff;border:1px solid #e2dccf"><tbody>`,
+      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${GUEST.cream}"><tbody>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:32px 32px 14px;font-family:${SERIF};font-size:26px;line-height:32px;letter-spacing:-0.02em;color:${GUEST.green}">${escapeEmailText(data.heading)}</td></tr>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:0 32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:${GUEST.surface};border:1px solid ${GUEST.border}"><tbody>`,
       ...data.rows.map((row, index) => rowMarkup(row, index === data.rows.length - 1)),
       `</tbody></table></td></tr>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:14px 32px 30px;font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61">${escapeEmailText(data.footnote)}</td></tr>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:14px 32px 30px;font-family:${SANS};font-size:13px;line-height:20px;color:${GUEST.textMuted}">${escapeEmailText(data.footnote)}</td></tr>`,
       `</tbody></table>`,
     ].join('\n'),
   text: (data) => {

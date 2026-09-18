@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
@@ -37,12 +39,12 @@ export const factStrip = defineBlock<FactStripData>({
     ],
   },
   render: (data) => `
-<tr><td bgcolor="#ffffff" class="gutter" style="background-color:#ffffff;border-top:1px solid #e2dccf;border-bottom:1px solid #e2dccf;padding:8px 32px 12px">
+<tr><td bgcolor="${GUEST.surface}" class="gutter" style="background-color:${GUEST.surface};border-top:1px solid ${GUEST.border};border-bottom:1px solid ${GUEST.border};padding:8px 32px 12px">
 <table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>
 ${data.rows
   .map((row, index) => {
     const rule = index === data.rows.length - 1 ? '' : 'border-bottom:1px solid #efe9dd;'
-    return `<tr><td width="150" style="width:150px;padding:14px 0;${rule}font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:#8b6914" valign="top">${escapeEmailText(row.label)}</td><td style="padding:14px 0;${rule}font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:22px;color:#1a1a1a" valign="top">${escapeEmailText(row.value)}</td></tr>`
+    return `<tr><td width="150" style="width:150px;padding:14px 0;${rule}font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:${GUEST.accentText}" valign="top">${escapeEmailText(row.label)}</td><td style="padding:14px 0;${rule}font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:22px;color:${GUEST.text}" valign="top">${escapeEmailText(row.value)}</td></tr>`
   })
   .join('\n')}
 </tbody></table>

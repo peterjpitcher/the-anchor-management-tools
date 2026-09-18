@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText, escapeEmailUrl } from '../escape'
 import { defineBlock } from './types'
 
@@ -50,7 +52,7 @@ function imageRow(data: ImageFullData): string {
   return `<!-- IMAGE SLOT: replace this whole row with the row below once the photo is hosted
 <tr><td style="padding:0;font-size:0;line-height:0"><img src="https://YOUR-HOST/lunch-daytime.jpg" width="${data.image.width}" height="${data.image.height}" alt="${escapeEmailText(data.image.alt)}" style="display:block;width:100%;max-width:600px;height:auto;border:0"></td></tr>
 -->
-<tr><td align="center" valign="middle" height="${data.image.height}" style="height:${data.image.height}px;background-color:#f5e6d3;border-top:1px solid #e2dccf;border-bottom:1px solid #e2dccf;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;font-weight:600;line-height:20px;letter-spacing:0.14em;text-transform:uppercase;color:#8b6914">${escapeEmailText(data.placeholder_label)}<br>${escapeEmailText(data.placeholder_caption)}</td></tr>`
+<tr><td align="center" valign="middle" height="${data.image.height}" style="height:${data.image.height}px;background-color:${GUEST.sand};border-top:1px solid ${GUEST.border};border-bottom:1px solid ${GUEST.border};font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;font-weight:600;line-height:20px;letter-spacing:0.14em;text-transform:uppercase;color:${GUEST.accentText}">${escapeEmailText(data.placeholder_label)}<br>${escapeEmailText(data.placeholder_caption)}</td></tr>`
 }
 
 export const imageFull = defineBlock<ImageFullData>({
