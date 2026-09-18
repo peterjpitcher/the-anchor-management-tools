@@ -26,8 +26,8 @@
 
 | PR | Title | Status | Commit(s) | Deployment |
 |---|---|---|---|---|
-| PR-00 | Plan, audit report and findings committed | [ ] | | |
-| PR-01 | Token system and `cn()` repair | [ ] | | |
+| PR-00 | Plan, audit report and findings committed | [x] | 5cfdbea1 | shipped with PR-01 |
+| PR-01 | Token system and `cn()` repair | [x] | dc84d8cc, f45155db | dpl_4i8mu8Q23pukm9haq4nYUQJkk2WY, live 18 Sep 12:03 |
 | PR-02 | Design-token guard test (ratchet) | [ ] | | |
 | PR-03 | Global CSS clean-up and legacy variables | [ ] | | |
 | PR-04 | Toasts, JS token accessors, charts, avatars | [ ] | | |
@@ -204,9 +204,9 @@ For each defect class the PR fixes, grep the whole of `src/` (and `tests/`) for 
 
 ## PR-00: Plan, audit report and findings
 
-- [ ] Commit `tasks/plan-2026-09-18-design-tokens.md`, `tasks/design-tokens/audit-results.json` and `docs/reviews/2026-09-18-design-tokens-audit.md` on `refactor/design-tokens` (P-COMMIT, message `docs: add design token audit and implementation plan`).
-- [ ] Delete the untracked copy `/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/reviews/2026-09-18-design-tokens-audit.md` from the primary directory (created by this session, so it is ours to remove) so a later checkout of main there does not collide.
-- [ ] Ships together with PR-01 (no deploy for docs alone).
+- [x] Commit `tasks/plan-2026-09-18-design-tokens.md`, `tasks/design-tokens/audit-results.json` and `docs/reviews/2026-09-18-design-tokens-audit.md` on `refactor/design-tokens` (P-COMMIT, message `docs: add design token audit and implementation plan`).
+- [x] Delete the untracked copy `/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/docs/reviews/2026-09-18-design-tokens-audit.md` from the primary directory (created by this session, so it is ours to remove) so a later checkout of main there does not collide.
+- [x] Ships together with PR-01 (no deploy for docs alone).
 
 ## PR-01: Token system and `cn()` repair
 
@@ -219,7 +219,7 @@ For each defect class the PR fixes, grep the whole of `src/` (and `tests/`) for 
 
 **Interfaces:** Produces every token in the Canonical token set and a token-aware `cn(...inputs: ClassValue[]): string`. Every later PR depends on both.
 
-- [ ] **Step 1: Write the failing test** `tests/lib/cn.test.ts`:
+- [x] **Step 1: Write the failing test** `tests/lib/cn.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -257,12 +257,12 @@ describe('cn knows the design tokens', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and see it fail**
+- [x] **Step 2: Run it and see it fail**
 
 Run: `npx vitest run tests/lib/cn.test.ts`
 Expected: FAIL on the shadow-ring, radius, spacing and text-size cases.
 
-- [ ] **Step 3: Make `cn` token-aware** in `src/lib/utils.ts` (keep the phone imports and every other export unchanged):
+- [x] **Step 3: Make `cn` token-aware** in `src/lib/utils.ts` (keep the phone imports and every other export unchanged):
 
 ```ts
 import { clsx, type ClassValue } from 'clsx';
@@ -295,12 +295,12 @@ export function cn(...inputs: ClassValue[]) {
 }
 ```
 
-- [ ] **Step 4: Run the test and see it pass**
+- [x] **Step 4: Run the test and see it pass**
 
 Run: `npx vitest run tests/lib/cn.test.ts`
 Expected: PASS. If the text-size cases fail, confirm the tailwind-merge 3.5 theme key for font size in `node_modules/tailwind-merge/dist/types.d.ts` (`text`) before changing anything else.
 
-- [ ] **Step 5: Rewrite the `@theme` block** in `src/app/globals.css`:
+- [x] **Step 5: Rewrite the `@theme` block** in `src/app/globals.css`:
   - change `@theme {` to `@theme static {` (A13);
   - make `--color-primary`, `-primary-hover`, `-primary-soft`, `-primary-soft-fg` reference the brand scale (values in the Canonical table; do not change the brand scale values);
   - set `--color-border-focus: var(--color-brand-600);`;
@@ -323,11 +323,11 @@ Expected: PASS. If the text-size cases fail, confirm the tailwind-merge 3.5 them
   - point the fonts at next/font's variables (Canonical table);
   - update the comment "Semantic, light theme (v1 only)" to "Semantic, light theme only (dark mode dropped 18 Sep 2026)";
   - update the guest comment: guest tokens are consumed by `src/components/features/guest/*` and every page rendered inside GuestShell, never by staff screens.
-- [ ] **Step 6: Update the renamed and removed tokens' callers:** `py-[var(--spacing-row-h)]` becomes `py-cell-y` in `Table.tsx:167`; delete the redundant `--spacing-row-h` override in `EmployeesClient.tsx:235`; `bg-sidebar-bg` (5 uses) becomes `bg-sidebar`. Then `grep -rn "row-h\|sidebar-bg" src tests` must return nothing.
-- [ ] **Step 7: Prove the compiled CSS** with a scratch script in the session scratchpad using `node_modules/@tailwindcss/node` `compile()`: `text-ui`, `text-meta`, `text-2xs`, `bg-overlay`, `border-danger-border`, `bg-cat-3-soft`, `bg-avatar-2`, `min-h-touch`, `py-cell-y`, `max-shell:hidden` all emit CSS, and `:root` contains `--color-brand-600` and `--color-primary` even when no candidate uses them.
-- [ ] **Step 8:** P-GATES, then P-COMMIT: `fix(design-tokens): add missing tokens and teach cn() the custom scale`. Say in the body: the red error halo on DS fields is fixed by the cn change; focus borders become brand green (was 1.9:1 mint).
-- [ ] **Step 9: P-VISUAL** with DS `Input`, `Select`, `Textarea` in normal, focused and error states: the error focus halo is red.
-- [ ] **Step 10:** P-SHIP (includes PR-00). Tick PR-00 and PR-01 in the Tracker.
+- [x] **Step 6: Update the renamed and removed tokens' callers:** `py-[var(--spacing-row-h)]` becomes `py-cell-y` in `Table.tsx:167`; delete the redundant `--spacing-row-h` override in `EmployeesClient.tsx:235`; `bg-sidebar-bg` (5 uses) becomes `bg-sidebar`. Then `grep -rn "row-h\|sidebar-bg" src tests` must return nothing.
+- [x] **Step 7: Prove the compiled CSS** with a scratch script in the session scratchpad using `node_modules/@tailwindcss/node` `compile()`: `text-ui`, `text-meta`, `text-2xs`, `bg-overlay`, `border-danger-border`, `bg-cat-3-soft`, `bg-avatar-2`, `min-h-touch`, `py-cell-y`, `max-shell:hidden` all emit CSS, and `:root` contains `--color-brand-600` and `--color-primary` even when no candidate uses them.
+- [x] **Step 8:** P-GATES, then P-COMMIT: `fix(design-tokens): add missing tokens and teach cn() the custom scale`. Say in the body: the red error halo on DS fields is fixed by the cn change; focus borders become brand green (was 1.9:1 mint).
+- [x] **Step 9: P-VISUAL** with DS `Input`, `Select`, `Textarea` in normal, focused and error states: the error focus halo is red.
+- [x] **Step 10:** P-SHIP (includes PR-00). Tick PR-00 and PR-01 in the Tracker.
 
 ## PR-02: Design-token guard test (ratchet)
 
@@ -337,7 +337,7 @@ Expected: PASS. If the text-size cases fail, confirm the tailwind-merge 3.5 them
 
 **Interfaces:** Produces the rule ids used in every later PR's acceptance check: `raw-palette`, `hex-colour`, `bare-rounded`, `off-scale-radius`, `off-scale-shadow`, `dark-variant`, `px-text-size`, `legacy-hsl-var`, `raw-820-breakpoint`, `sidebar-outside-shell`.
 
-- [ ] **Step 1: Write the guard** `tests/guards/design-tokens.test.ts`, modelled on `tests/guards/row-cap.test.ts` (same `sourceFiles` walker over `src/`, skipping `__tests__`, `__mocks__`, `*.test.*`, `*.spec.*`):
+- [x] **Step 1: Write the guard** `tests/guards/design-tokens.test.ts`, modelled on `tests/guards/row-cap.test.ts` (same `sourceFiles` walker over `src/`, skipping `__tests__`, `__mocks__`, `*.test.*`, `*.spec.*`):
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -485,10 +485,10 @@ describe('design tokens are used instead of raw values', () => {
 })
 ```
 
-- [ ] **Step 2:** Fill `ACCEPTED_HEX` with only permanently legitimate files, each with a reason: `src/lib/brand/palette.ts` (added in PR-16, list it now as the one place for email and PDF hex), the user-selectable option lists (`src/lib/rota/shift-template-colours.ts`, `src/types/event-categories.ts`, the calendar notes and customer label option lists; confirm paths with `grep -rln "#[0-9A-Fa-f]\{6\}" src`), and the PayPal SDK style prop file. Everything else is ratcheted by the baseline, not exempted.
-- [ ] **Step 3: Generate the first baseline:** `UPDATE_DESIGN_TOKEN_BASELINE=1 npx vitest run tests/guards/design-tokens.test.ts` (an empty baseline accepts everything once). Check the JSON totals roughly match the audit (raw-palette about 4,600).
-- [ ] **Step 4: Prove it bites:** temporarily add `text-gray-500` to any component, run `npx vitest run tests/guards/design-tokens.test.ts`, see "adds no new raw values" FAIL, remove it, see PASS. Remove one existing violation, see "baseline no looser" FAIL, restore it.
-- [ ] **Step 5:** P-GATES (both zones), P-COMMIT `test(design-tokens): add a ratcheting guard against raw colours and sizes`, P-SHIP.
+- [x] **Step 2:** Fill `ACCEPTED_HEX` with only permanently legitimate files, each with a reason: `src/lib/brand/palette.ts` (added in PR-16, list it now as the one place for email and PDF hex), the user-selectable option lists (`src/lib/rota/shift-template-colours.ts`, `src/types/event-categories.ts`, the calendar notes and customer label option lists; confirm paths with `grep -rln "#[0-9A-Fa-f]\{6\}" src`), and the PayPal SDK style prop file. Everything else is ratcheted by the baseline, not exempted.
+- [x] **Step 3: Generate the first baseline:** `UPDATE_DESIGN_TOKEN_BASELINE=1 npx vitest run tests/guards/design-tokens.test.ts` (an empty baseline accepts everything once). Check the JSON totals roughly match the audit (raw-palette about 4,600).
+- [x] **Step 4: Prove it bites:** temporarily add `text-gray-500` to any component, run `npx vitest run tests/guards/design-tokens.test.ts`, see "adds no new raw values" FAIL, remove it, see PASS. Remove one existing violation, see "baseline no looser" FAIL, restore it.
+- [x] **Step 5:** P-GATES (both zones), P-COMMIT `test(design-tokens): add a ratcheting guard against raw colours and sizes`, P-SHIP.
 - [ ] **From now on, every PR ends with** `UPDATE_DESIGN_TOKEN_BASELINE=1 npx vitest run tests/guards/design-tokens.test.ts` and commits the lowered baseline with the work. The area PRs' acceptance check is "every file in scope has zero counts except the accepted exceptions listed in the PR".
 
 ## PR-03: Global CSS clean-up and legacy variables
@@ -790,3 +790,5 @@ export const GUEST = {
 (Add dated one-line entries: what shipped, deployment id, anything surprising.)
 
 - 2026-09-18: plan written; worktree created at 9ebaaff5.
+- 2026-09-18 12:03: PR-00 + PR-01 live (f45155db, dpl_4i8mu8Q23pukm9haq4nYUQJkk2WY). Harness proved the DS error focus halo is now red. Cold build needs the 12 GB heap.
+- 2026-09-18: PR-02 first baseline: 456 files; raw-palette 4599, hex-colour 1327, px-text-size 405, bare-rounded 207, sidebar-outside-shell 104, dark-variant 62, off-scale-shadow 45, legacy-hsl-var 8, raw-820-breakpoint 5, off-scale-radius 2. Guard ignores comments, which is why shadows count lower than the audit.
