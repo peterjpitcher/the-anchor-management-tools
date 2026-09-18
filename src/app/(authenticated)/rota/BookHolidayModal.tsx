@@ -2,11 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
-import { XMarkIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/ds';
-import { Input } from '@/ds';
-import { FormGroup } from '@/ds';
-import { Alert } from '@/ds';
+import { Alert, Button, FormGroup, Input, Modal } from '@/ds';
 import { bookApprovedHoliday } from '@/app/actions/leave';
 
 interface BookHolidayModalProps {
@@ -63,64 +59,56 @@ export default function BookHolidayModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div
-        className="bg-surface rounded-xl shadow-lg w-full max-w-sm max-h-[90vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between p-5 border-b border-border">
-          <div>
-            <p className="text-sm text-text-muted">Book holiday</p>
-            <p className="text-lg font-semibold text-text-strong mt-0.5">{employeeName}</p>
-          </div>
-          <button type="button" onClick={onClose} className="p-1 text-text-subtle hover:text-text-muted rounded-sm">
-            <XMarkIcon className="h-5 w-5" />
-          </button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title={employeeName}
+      width="sm"
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending || days === 0}>
+            {isPending ? 'Booking…' : 'Book holiday'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <p className="text-sm text-text-muted">Book holiday</p>
+        {error && <Alert variant="error">{error}</Alert>}
 
-        <div className="p-5 space-y-3">
-          {error && <Alert variant="error">{error}</Alert>}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormGroup label="From" htmlFor="bh-start" required>
-              <Input id="bh-start" type="date" value={startDate} onChange={e => {
-                setStartDate(e.target.value);
-                if (e.target.value > endDate) setEndDate(e.target.value);
-              }} />
-            </FormGroup>
-            <FormGroup label="To" htmlFor="bh-end" required>
-              <Input id="bh-end" type="date" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} />
-            </FormGroup>
-          </div>
-
-          {days > 0 && (
-            <p className="text-sm text-text-muted">
-              <strong>{days}</strong> day{days !== 1 ? 's' : ''}
-              {startDate !== endDate && (
-                <span className="text-text-subtle"> ({formatDate(startDate)} – {formatDate(endDate)})</span>
-              )}
-            </p>
-          )}
-
-          <FormGroup label="Note (optional)" htmlFor="bh-note">
-            <Input
-              id="bh-note"
-              placeholder="Optional reason or note"
-              value={note}
-              onChange={e => setNote(e.target.value)}
-            />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormGroup label="From" htmlFor="bh-start" required>
+            <Input id="bh-start" type="date" value={startDate} onChange={e => {
+              setStartDate(e.target.value);
+              if (e.target.value > endDate) setEndDate(e.target.value);
+            }} />
           </FormGroup>
-
-          <div className="flex gap-2 pt-1">
-            <Button type="button" onClick={handleSubmit} disabled={isPending || days === 0}>
-              {isPending ? 'Booking…' : 'Book holiday'}
-            </Button>
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-          </div>
+          <FormGroup label="To" htmlFor="bh-end" required>
+            <Input id="bh-end" type="date" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} />
+          </FormGroup>
         </div>
+
+        {days > 0 && (
+          <p className="text-sm text-text-muted">
+            <strong>{days}</strong> day{days !== 1 ? 's' : ''}
+            {startDate !== endDate && (
+              <span className="text-text-soft"> ({formatDate(startDate)} – {formatDate(endDate)})</span>
+            )}
+          </p>
+        )}
+
+        <FormGroup label="Note (optional)" htmlFor="bh-note">
+          <Input
+            id="bh-note"
+            placeholder="Optional reason or note"
+            value={note}
+            onChange={e => setNote(e.target.value)}
+          />
+        </FormGroup>
       </div>
-    </div>
+    </Modal>
   );
 }

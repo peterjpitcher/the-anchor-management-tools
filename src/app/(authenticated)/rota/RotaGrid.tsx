@@ -42,7 +42,14 @@ import { calculatePaidHours } from '@/lib/rota/pay-math';
 import { isInsideAcceptanceCutoff } from '@/lib/rota/acceptance-cutoff';
 import { countsTowardHours } from '@/lib/rota/shift-counting';
 import { displayName } from '@/lib/employees/display-name';
-import { getAutomaticShiftColour, shiftColourNeedsLightText } from '@/lib/rota/shift-template-colours';
+import { SHIFT_TEMPLATE_COLOURS, getShiftColourLabel, resolveShiftColour, shiftColourNeedsLightText } from '@/lib/rota/shift-template-colours';
+import {
+  ROTA_CALENDAR_NOTE_CLASSES,
+  ROTA_DAY_INFO_CLASSES,
+  ROTA_HOLIDAY_CLASSES,
+  ROTA_SHIFT_STATUS_CLASSES,
+  rotaDepartmentClasses,
+} from '@/lib/rota/status-ui';
 import ShiftDetailModal from './ShiftDetailModal';
 import CreateShiftModal from './CreateShiftModal';
 import BookHolidayModal from './BookHolidayModal';
@@ -92,9 +99,9 @@ type CouldntWorkTarget = {
 
 // Static class strings per tone, because Tailwind cannot see dynamically built names.
 const OPENING_EXCEPTION_STYLES: Record<OpeningExceptionTone, { chip: string; banner: string }> = {
-  danger: { chip: 'bg-danger-soft text-danger-fg', banner: 'border-danger/25 bg-danger-soft text-danger-fg' },
-  warning: { chip: 'bg-warning-soft text-warning-fg', banner: 'border-warning/25 bg-warning-soft text-warning-fg' },
-  info: { chip: 'bg-info-soft text-info-fg', banner: 'border-info/25 bg-info-soft text-info-fg' },
+  danger: { chip: 'bg-danger-soft text-danger-fg', banner: 'border-danger-border bg-danger-soft text-danger-fg' },
+  warning: { chip: 'bg-warning-soft text-warning-fg', banner: 'border-warning-border bg-warning-soft text-warning-fg' },
+  info: { chip: 'bg-info-soft text-info-fg', banner: 'border-info-border bg-info-soft text-info-fg' },
 };
 
 // ---------------------------------------------------------------------------
@@ -162,12 +169,14 @@ function employeeRole(emp: RotaEmployee): string {
   return emp.job_title?.trim() || 'No role';
 }
 
+// A job title is a category, not a state, so role groups take the brand and category
+// colours. They used the status tones before, which put whole teams in "danger" red.
 const ROLE_STYLES = [
   { header: 'bg-primary-soft border-primary/20 text-primary-soft-fg', chip: 'bg-primary-soft text-primary-soft-fg', stripe: 'border-l-primary' },
-  { header: 'bg-info-soft border-info/20 text-info-fg', chip: 'bg-info-soft text-info-fg', stripe: 'border-l-info' },
-  { header: 'bg-warning-soft border-warning/25 text-warning-fg', chip: 'bg-warning-soft text-warning-fg', stripe: 'border-l-warning' },
-  { header: 'bg-danger-soft border-danger/20 text-danger-fg', chip: 'bg-danger-soft text-danger-fg', stripe: 'border-l-danger' },
-  { header: 'bg-success-soft border-success/20 text-success-fg', chip: 'bg-success-soft text-success-fg', stripe: 'border-l-success' },
+  { header: 'bg-cat-1-soft border-cat-1/20 text-cat-1-fg', chip: 'bg-cat-1-soft text-cat-1-fg', stripe: 'border-l-cat-1' },
+  { header: 'bg-cat-2-soft border-cat-2/20 text-cat-2-fg', chip: 'bg-cat-2-soft text-cat-2-fg', stripe: 'border-l-cat-2' },
+  { header: 'bg-cat-4-soft border-cat-4/20 text-cat-4-fg', chip: 'bg-cat-4-soft text-cat-4-fg', stripe: 'border-l-cat-4' },
+  { header: 'bg-cat-7-soft border-cat-7/20 text-cat-7-fg', chip: 'bg-cat-7-soft text-cat-7-fg', stripe: 'border-l-cat-7' },
   { header: 'bg-surface-2 border-border text-text-muted', chip: 'bg-surface-2 text-text-muted', stripe: 'border-l-border-strong' },
 ] as const;
 
@@ -199,7 +208,7 @@ function shiftAcceptanceDisplay(shift: RotaShift): {
     return {
       title: 'Accepted by staff',
       icon: 'check',
-      className: 'border-success/30 bg-success-soft text-success-fg',
+      className: ROTA_SHIFT_STATUS_CLASSES.accepted,
     };
   }
 
@@ -207,7 +216,7 @@ function shiftAcceptanceDisplay(shift: RotaShift): {
     return {
       title: 'Auto-accepted by the two-week rule',
       icon: 'check',
-      className: 'border-success/30 bg-success-soft text-success-fg',
+      className: ROTA_SHIFT_STATUS_CLASSES.auto_accepted,
       auto: true,
     };
   }
@@ -216,14 +225,14 @@ function shiftAcceptanceDisplay(shift: RotaShift): {
     return {
       title: shift.is_open_shift ? 'Rejected by staff and now open' : 'Rejected by staff',
       icon: 'x',
-      className: 'border-danger/30 bg-danger-soft text-danger-fg',
+      className: ROTA_SHIFT_STATUS_CLASSES.rejected,
     };
   }
 
   return {
     title: 'Waiting for staff response',
     icon: 'clock',
-    className: 'border-warning/35 bg-warning-soft text-warning-fg',
+    className: ROTA_SHIFT_STATUS_CLASSES.pending,
   };
 }
 
@@ -245,7 +254,7 @@ function ShiftAcceptanceIcon({ shift }: { shift: RotaShift }) {
     >
       <Icon className="h-3 w-3" />
       {display.auto && (
-        <span className="absolute -bottom-1 -right-1 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-success text-2xs font-bold leading-none text-white">
+        <span className="absolute -bottom-1 -right-1 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-success text-2xs font-bold leading-none text-on-dark">
           A
         </span>
       )}
@@ -281,16 +290,16 @@ function SummaryPill({
   const toneStyles = {
     neutral: 'border-border bg-surface-2 text-text-strong',
     primary: 'border-primary/20 bg-primary-soft text-primary-soft-fg',
-    success: 'border-success/20 bg-success-soft text-success-fg',
-    warning: 'border-warning/25 bg-warning-soft text-warning-fg',
-    danger: 'border-danger/20 bg-danger-soft text-danger-fg',
-    info: 'border-info/20 bg-info-soft text-info-fg',
+    success: 'border-success-border bg-success-soft text-success-fg',
+    warning: 'border-warning-border bg-warning-soft text-warning-fg',
+    danger: 'border-danger-border bg-danger-soft text-danger-fg',
+    info: 'border-info-border bg-info-soft text-info-fg',
   }[tone];
 
   return (
     <div className={`h-full min-w-0 rounded-default border px-2.5 py-1.5 ${toneStyles}`}>
       <p className="text-2xs font-medium uppercase leading-none opacity-75">{label}</p>
-      <p className="mt-1 text-sm font-semibold leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</p>
+      <p className="mt-1 text-sm font-semibold leading-none tabular-nums">{value}</p>
       {detail && <p className="mt-1 text-meta leading-tight opacity-75">{detail}</p>}
     </div>
   );
@@ -320,16 +329,16 @@ function DraggableShiftBlock({
   });
 
   const ph = calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
-  const deptColour = shift.department === 'bar' ? 'bg-info-soft border-info/25' : 'bg-warning-soft border-warning/25';
-  const sickColour = shift.status === 'sick' ? 'bg-danger-soft border-danger/25' : '';
-  const cancelColour = shift.status === 'cancelled' ? 'bg-surface-2 border-border opacity-60' : '';
+  const deptColour = rotaDepartmentClasses(shift.department);
+  const sickColour = shift.status === 'sick' ? ROTA_SHIFT_STATUS_CLASSES.sick : '';
+  const cancelColour = shift.status === 'cancelled' ? `${ROTA_SHIFT_STATUS_CLASSES.cancelled} opacity-60` : '';
   const useShiftColour = !cancelColour && !sickColour && colour;
   const colourClass = cancelColour || sickColour || (useShiftColour ? '' : deptColour);
   const lightText = useShiftColour ? shiftColourNeedsLightText(colour) : false;
   const colourStyle = useShiftColour
     ? {
         backgroundColor: colour,
-        borderColor: colour === '#FFFFFF' ? 'var(--color-border-strong)' : colour,
+        borderColor: getShiftColourLabel(colour) === 'White' ? 'var(--color-border-strong)' : colour,
       }
     : undefined;
   const isCouldntWork = shift.status === 'sick';
@@ -345,19 +354,19 @@ function DraggableShiftBlock({
     >
       <ShiftAcceptanceIcon shift={shift} />
       {isDraft && (
-        <p className={`mb-1 text-2xs font-bold uppercase leading-none ${lightText ? 'text-white/90' : 'text-warning-fg'}`}>
+        <p className={`mb-1 text-2xs font-bold uppercase leading-none ${lightText ? 'text-on-dark' : 'text-warning-fg'}`}>
           Unpublished
         </p>
       )}
       {shift.name && (
-        <p className={`truncate font-semibold leading-tight ${lightText ? 'text-white' : 'text-text-strong'}`}>{shift.name}</p>
+        <p className={`truncate font-semibold leading-tight ${lightText ? 'text-on-dark' : 'text-text-strong'}`}>{shift.name}</p>
       )}
       {isCouldntWork ? (
         <p className="truncate font-medium leading-tight text-danger-fg">Couldn&apos;t Work</p>
       ) : (
-        <p className={`truncate font-medium leading-tight ${lightText ? 'text-white' : 'text-text'}`}>
+        <p className={`truncate font-medium leading-tight ${lightText ? 'text-on-dark' : 'text-text'}`}>
           {formatTime12Hour(shift.start_time)}–{formatTime12Hour(shift.end_time)}{shift.is_overnight ? '+' : ''}{' '}
-          <span className={`font-normal ${lightText ? 'text-white/80' : 'text-text-muted'}`}>{ph.toFixed(1)}h{shift.status !== 'scheduled' ? ` · ${shift.status}` : ''}</span>
+          <span className={`font-normal ${lightText ? 'text-on-dark-muted' : 'text-text-muted'}`}>{ph.toFixed(1)}h{shift.status !== 'scheduled' ? ` · ${shift.status}` : ''}</span>
         </p>
       )}
     </div>
@@ -367,24 +376,24 @@ function DraggableShiftBlock({
 // Shift block displayed in DragOverlay (no interaction)
 function ShiftBlockOverlay({ shift, colour, isDraft }: { shift: RotaShift; colour: string | null; isDraft: boolean }) {
   const ph = calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
-  const deptColour = shift.department === 'bar' ? 'bg-info-soft border-info/25' : 'bg-warning-soft border-warning/25';
+  const deptColour = rotaDepartmentClasses(shift.department);
   const lightText = shiftColourNeedsLightText(colour);
   const colourStyle = colour
     ? {
         backgroundColor: colour,
-        borderColor: colour === '#FFFFFF' ? 'var(--color-border-strong)' : colour,
+        borderColor: getShiftColourLabel(colour) === 'White' ? 'var(--color-border-strong)' : colour,
       }
     : undefined;
   return (
     <div style={colourStyle} className={`relative w-32 rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${colour ? '' : deptColour} px-2 py-1.5 pr-6 text-xs shadow-lg opacity-95`}>
       <ShiftAcceptanceIcon shift={shift} />
       {isDraft && (
-        <p className={`mb-1 text-2xs font-bold uppercase leading-none ${lightText ? 'text-white/90' : 'text-warning-fg'}`}>Unpublished</p>
+        <p className={`mb-1 text-2xs font-bold uppercase leading-none ${lightText ? 'text-on-dark' : 'text-warning-fg'}`}>Unpublished</p>
       )}
-      {shift.name && <p className={`font-semibold truncate ${lightText ? 'text-white' : 'text-text-strong'}`}>{shift.name}</p>}
-      <p className={`font-medium truncate ${lightText ? 'text-white' : 'text-text'}`}>
+      {shift.name && <p className={`font-semibold truncate ${lightText ? 'text-on-dark' : 'text-text-strong'}`}>{shift.name}</p>}
+      <p className={`font-medium truncate ${lightText ? 'text-on-dark' : 'text-text'}`}>
         {formatTime12Hour(shift.start_time)}–{formatTime12Hour(shift.end_time)}{' '}
-        <span className={`font-normal ${lightText ? 'text-white/80' : 'text-text-muted'}`}>{ph.toFixed(1)}h</span>
+        <span className={`font-normal ${lightText ? 'text-on-dark-muted' : 'text-text-muted'}`}>{ph.toFixed(1)}h</span>
       </p>
     </div>
   );
@@ -394,20 +403,24 @@ function ShiftBlockOverlay({ shift, colour, isDraft }: { shift: RotaShift; colou
 // Droppable grid cell
 // ---------------------------------------------------------------------------
 
+// Colours come from the shared rota map (src/lib/rota/status-ui.ts), so this grid, the hours
+// report, payroll and the staff portal agree. The cell takes the soft tint and the label a
+// bordered chip. A rejected shift is a dashed danger outline on an untinted cell, so it never
+// reads as the same thing as a Couldn't Work shift.
 const LEAVE_STYLES = {
-  approved: { bg: 'bg-success-soft', pill: 'bg-success/15 text-success-fg', label: 'HOLIDAY' },
-  pending:  { bg: 'bg-warning-soft', pill: 'bg-warning/15 text-warning-fg',  label: 'HOLIDAY – PENDING' },
+  approved: { bg: 'bg-success-soft', pill: `border ${ROTA_HOLIDAY_CLASSES.approved}`, label: 'HOLIDAY' },
+  pending:  { bg: 'bg-warning-soft', pill: `border ${ROTA_HOLIDAY_CLASSES.pending}`,  label: 'HOLIDAY – PENDING' },
 };
 
 const COULDNT_WORK_STYLE = {
   bg: 'bg-danger-soft',
-  pill: 'bg-danger/10 text-danger-fg',
+  pill: `border ${ROTA_SHIFT_STATUS_CLASSES.sick}`,
   label: "COULDN'T WORK",
 };
 
 const REJECTED_SHIFT_STYLE = {
-  bg: 'bg-rose-50',
-  pill: 'bg-rose-100 text-rose-700',
+  bg: 'bg-surface',
+  pill: ROTA_SHIFT_STATUS_CLASSES.rejected,
   label: 'REJECTED',
 };
 
@@ -423,7 +436,7 @@ function CouldntWorkBlock({
       <button
         type="button"
         onClick={event => { event.stopPropagation(); onClick(); }}
-        className={`w-full rounded-default px-1.5 py-0.5 text-center text-2xs font-semibold leading-tight transition-opacity hover:opacity-75 ${COULDNT_WORK_STYLE.pill}`}
+        className={`w-full rounded-default px-1.5 py-0.5 text-center text-2xs font-semibold leading-tight transition-opacity hover:opacity-75 focus-visible:outline-hidden focus-visible:shadow-ring ${COULDNT_WORK_STYLE.pill}`}
         title="View Couldn't Work details"
       >
         {COULDNT_WORK_STYLE.label}
@@ -460,7 +473,7 @@ function RejectedShiftBlock({
         <button
           type="button"
           onClick={event => { event.stopPropagation(); onClick(); }}
-          className={`w-full rounded-default px-1.5 py-0.5 text-center text-2xs font-semibold leading-tight transition-opacity hover:opacity-75 ${REJECTED_SHIFT_STYLE.pill}`}
+          className={`w-full rounded-default px-1.5 py-0.5 text-center text-2xs font-semibold leading-tight transition-opacity hover:opacity-75 focus-visible:outline-hidden focus-visible:shadow-ring ${REJECTED_SHIFT_STYLE.pill}`}
           title="View rejected shift details"
         >
           {content}
@@ -471,7 +484,7 @@ function RejectedShiftBlock({
         </span>
       )}
       {rejection.rejection_note && (
-        <p className="mt-0.5 whitespace-normal break-words text-2xs leading-tight text-rose-700/80">
+        <p className="mt-0.5 whitespace-normal break-words text-2xs leading-tight text-danger-fg/80">
           {rejection.rejection_note}
         </p>
       )}
@@ -524,7 +537,7 @@ function DroppableCell({
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onLeaveClick(); }}
-              className={`w-full rounded-default px-1.5 py-0.5 text-center text-2xs font-semibold leading-tight transition-opacity hover:opacity-75 ${leaveStyle.pill}`}
+              className={`w-full rounded-default px-1.5 py-0.5 text-center text-2xs font-semibold leading-tight transition-opacity hover:opacity-75 focus-visible:outline-hidden focus-visible:shadow-ring ${leaveStyle.pill}`}
               title="View holiday details"
             >
               {leaveStyle.label}
@@ -543,7 +556,7 @@ function DroppableCell({
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onMarkSick(); }}
-              className="rounded-default border border-border bg-surface p-0.5 text-text-subtle shadow-xs hover:bg-danger-soft hover:text-danger-fg"
+              className="rounded-default border border-border bg-surface p-0.5 text-text-subtle shadow-xs hover:bg-danger-soft hover:text-danger-fg focus-visible:outline-hidden focus-visible:shadow-ring"
               title="Mark as Couldn't Work"
               aria-label="Mark as Couldn't Work"
             >
@@ -554,8 +567,9 @@ function DroppableCell({
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onBookHoliday(); }}
-              className="rounded-default border border-border bg-surface p-0.5 text-text-subtle shadow-xs hover:bg-success-soft hover:text-success-fg"
+              className="rounded-default border border-border bg-surface p-0.5 text-text-subtle shadow-xs hover:bg-success-soft hover:text-success-fg focus-visible:outline-hidden focus-visible:shadow-ring"
               title="Book holiday"
+              aria-label="Book holiday"
             >
               <CalendarDaysIcon className="h-3 w-3" />
             </button>
@@ -564,8 +578,9 @@ function DroppableCell({
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onAdd(); }}
-              className="rounded-default border border-border bg-surface p-0.5 text-text-subtle shadow-xs hover:bg-surface-hover hover:text-text"
+              className="rounded-default border border-border bg-surface p-0.5 text-text-subtle shadow-xs hover:bg-surface-hover hover:text-text focus-visible:outline-hidden focus-visible:shadow-ring"
               title="Add shift"
+              aria-label="Add shift"
             >
               <PlusIcon className="h-3 w-3" />
             </button>
@@ -778,19 +793,12 @@ export default function RotaGrid({
     () => new Map(templates.map(template => [template.id, template])),
     [templates],
   );
-  const shiftColour = useCallback((shift: RotaShift): string | null => {
-    const automaticColour = getAutomaticShiftColour(shift.department, shift.start_time);
-    if (!shift.template_id) return automaticColour;
-
-    const template = templateById.get(shift.template_id);
-    if (!template?.colour) return automaticColour;
-
-    const templateAutomaticColour = getAutomaticShiftColour(template.department, template.start_time);
-    const hasManualOverride = !templateAutomaticColour
-      || template.colour.toLowerCase() !== templateAutomaticColour.toLowerCase();
-
-    return hasManualOverride ? template.colour : (automaticColour ?? template.colour);
-  }, [templateById]);
+  // The one colour rule, shared with the printed rota so screen and paper agree.
+  const shiftColour = useCallback(
+    (shift: RotaShift): string | null =>
+      resolveShiftColour(shift, shift.template_id ? templateById.get(shift.template_id) : null),
+    [templateById],
+  );
 
   // Pre-compute hours per employee so empWeekHours isn't called N times per render
   const empHoursMap = useMemo(() => {
@@ -893,7 +901,7 @@ export default function RotaGrid({
       <div
         key={date}
         className={`mt-1 rounded-default border px-1 py-0.5 text-left text-2xs leading-tight ${
-          overTarget ? 'border-danger/25 bg-danger-soft' : 'border-border bg-surface'
+          overTarget ? 'border-danger-border bg-danger-soft' : 'border-border bg-surface'
         }`}
       >
         {isEditing ? (
@@ -904,7 +912,7 @@ export default function RotaGrid({
               step="1"
               value={editingTarget.amount}
               onChange={e => setEditingTarget(current => current ? { ...current, amount: e.target.value } : current)}
-              className="w-full rounded-default border border-border bg-surface px-1 py-0.5 text-2xs text-text"
+              className="w-full rounded-default border border-border bg-surface px-1 py-0.5 text-2xs text-text outline-hidden focus:border-border-focus focus:shadow-ring"
               aria-label={`Sales target for ${date}`}
             />
             <input
@@ -912,34 +920,35 @@ export default function RotaGrid({
               value={editingTarget.reason}
               onChange={e => setEditingTarget(current => current ? { ...current, reason: e.target.value } : current)}
               placeholder="Reason"
-              className="w-full rounded-default border border-border bg-surface px-1 py-0.5 text-2xs text-text placeholder:text-text-subtle"
+              className="w-full rounded-default border border-border bg-surface px-1 py-0.5 text-2xs text-text placeholder:text-text-subtle outline-hidden focus:border-border-focus focus:shadow-ring"
               aria-label={`Sales target reason for ${date}`}
             />
             <div className="flex gap-1">
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                size="xs"
                 onClick={saveTargetEdit}
                 disabled={targetSavePending}
-                className="rounded-default bg-primary px-1.5 py-0.5 text-2xs font-medium text-primary-fg disabled:opacity-50"
               >
                 Save
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="secondary"
+                size="xs"
                 onClick={() => setEditingTarget(null)}
                 disabled={targetSavePending}
-                className="rounded-default border border-border px-1 py-0.5 text-text-muted hover:bg-surface-hover"
                 aria-label="Cancel target edit"
-              >
-                <XMarkIcon className="h-3 w-3" />
-              </button>
+                icon={<XMarkIcon className="h-3 w-3" />}
+              />
             </div>
           </div>
         ) : (
           <div className="space-y-0.5">
             <div className="flex items-center justify-between gap-1">
               <span className="truncate">
-                <span className="text-text-subtle">{total?.salesTargetSource === 'actual' ? 'Actual' : 'Target'}</span>{' '}
+                <span className="text-text-soft">{total?.salesTargetSource === 'actual' ? 'Actual' : 'Target'}</span>{' '}
                 <strong className="text-text-strong">{canViewSalesTargets ? formatMoney(total?.salesTarget ?? null) : 'Hidden'}</strong>
                 {canViewSalesTargets && total?.salesTargetSource === 'override' && (
                   <span className="ml-1 font-medium text-primary">O</span>
@@ -949,19 +958,20 @@ export default function RotaGrid({
                 <button
                   type="button"
                   onClick={() => startTargetEdit(date)}
-                  className="shrink-0 rounded-default p-0.5 text-text-subtle hover:bg-surface-hover hover:text-text"
+                  className="shrink-0 rounded-default p-0.5 text-text-subtle hover:bg-surface-hover hover:text-text focus-visible:outline-hidden focus-visible:shadow-ring"
                   title="Edit sales target"
+                  aria-label="Edit sales target"
                 >
                   <PencilSquareIcon className="h-3 w-3" />
                 </button>
               )}
             </div>
             <p className="truncate">
-              <span className="text-text-subtle">Payroll</span>{' '}
+              <span className="text-text-soft">Payroll</span>{' '}
               <strong className="text-text-strong">{canViewSpend ? formatMoney(total?.estimatedCost ?? null) : 'Hidden'}</strong>
             </p>
-            <p className={`truncate font-semibold ${overTarget ? 'text-danger' : 'text-success-fg'}`}>
-              <span className="font-normal text-text-subtle">%</span>{' '}
+            <p className={`truncate font-semibold ${overTarget ? 'text-danger-fg' : 'text-success-fg'}`}>
+              <span className="font-normal text-text-soft">%</span>{' '}
               {canViewSpend && canViewSalesTargets ? formatPercent(total?.wagePercent ?? null) : 'Hidden'}
             </p>
             {canViewSpend && (total?.uncostedShiftCount ?? 0) > 0 && (
@@ -1043,7 +1053,7 @@ export default function RotaGrid({
                     type="date"
                     value={weekStart}
                     onChange={e => { if (e.target.value) navigateToWeek(e.target.value); }}
-                    className="h-btn-h-sm cursor-pointer rounded-[7px] border border-border bg-surface px-2 text-xs text-text focus:outline-none focus:shadow-ring"
+                    className="h-btn-h-sm cursor-pointer rounded-sm border border-border bg-surface px-2 text-xs text-text outline-hidden focus:border-border-focus focus:shadow-ring"
                   />
 
                   <p className="ml-1 whitespace-nowrap text-base font-semibold text-text-strong">
@@ -1079,7 +1089,7 @@ export default function RotaGrid({
                     href={`/api/rota/pdf?week=${weekStart}`}
                     download
                     title="Download rota as PDF"
-                    className="inline-flex h-btn-h-sm items-center gap-1.5 rounded-[7px] border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text transition-colors hover:bg-surface-hover"
+                    className="inline-flex h-btn-h-sm items-center justify-center gap-1.5 rounded-sm border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text no-underline transition-colors hover:bg-surface-hover max-shell:min-h-touch focus-visible:outline-hidden focus-visible:shadow-ring"
                   >
                     <PrinterIcon className="h-3.5 w-3.5" />
                     Download PDF
@@ -1158,13 +1168,13 @@ export default function RotaGrid({
               )}
 
               {canViewSpend && uncostedShiftCount > 0 && (
-                <p className="rounded-default border border-warning/25 bg-warning-soft px-3 py-1.5 text-xs text-warning-fg">
+                <p className="rounded-default border border-warning-border bg-warning-soft px-3 py-1.5 text-xs text-warning-fg">
                   {uncostedShiftCount} visible shift{uncostedShiftCount === 1 ? '' : 's'} could not be costed because the shift is open or missing a rate.
                 </p>
               )}
 
               {removedShifts.length > 0 && (
-                <div className="rounded-default border border-warning/25 bg-warning-soft px-3 py-2 text-xs text-warning-fg">
+                <div className="rounded-default border border-warning-border bg-warning-soft px-3 py-2 text-xs text-warning-fg">
                   <p className="font-semibold">
                     {removedShifts.length} shift{removedShifts.length === 1 ? '' : 's'} removed since the rota was last published — publish to update staff.
                   </p>
@@ -1214,7 +1224,7 @@ export default function RotaGrid({
               {weekOpeningExceptions.length > 0 && (
                 <div className="flex border-b border-border bg-surface">
                   <div className="sticky left-0 z-20 flex w-[260px] shrink-0 items-center border-r border-border bg-surface px-4 py-1">
-                    <span className="text-2xs font-semibold uppercase text-text-subtle">Opening hours</span>
+                    <span className="text-2xs font-semibold uppercase text-text-soft">Opening hours</span>
                   </div>
                   <div className="flex-1 grid grid-cols-7">
                     {days.map(d => {
@@ -1251,7 +1261,7 @@ export default function RotaGrid({
               {/* Day info strip */}
               <div className="flex border-b border-border bg-surface">
                 <div className="sticky left-0 z-20 flex w-[260px] shrink-0 items-center border-r border-border bg-surface px-4 py-1">
-                  <span className="text-2xs font-semibold uppercase text-text-subtle">Day notes</span>
+                  <span className="text-2xs font-semibold uppercase text-text-soft">Day notes</span>
                 </div>
                 <div className="flex-1 grid grid-cols-7">
                   {days.map(d => {
@@ -1266,32 +1276,32 @@ export default function RotaGrid({
                           <div className="space-y-px">
                             {info.calendarNotes.map((n, i) => (
                               <div key={i} className="flex items-center gap-0.5 min-w-0">
-                                <span className="shrink-0 w-1.5 h-1.5 rounded-sm mt-px" style={{ backgroundColor: n.color }} />
-                                <span className="text-2xs leading-tight truncate font-medium" style={{ color: n.color }}>{n.title}</span>
+                                <span className={`mt-px ${ROTA_CALENDAR_NOTE_CLASSES.swatch}`} style={{ backgroundColor: n.color }} />
+                                <span className={`text-2xs leading-tight truncate font-medium ${ROTA_CALENDAR_NOTE_CLASSES.text}`}>{n.title}</span>
                               </div>
                             ))}
                             {info.events.map((e, i) => (
                               <div key={i} className="flex items-center gap-0.5 min-w-0">
-                                <span className="shrink-0 w-1 h-1 rounded-full bg-info mt-px" />
-                                <span className="text-2xs text-info-fg leading-tight truncate">{e.name}</span>
+                                <span className={`shrink-0 w-1 h-1 rounded-full mt-px ${ROTA_DAY_INFO_CLASSES.event.dot}`} />
+                                <span className={`text-2xs leading-tight truncate ${ROTA_DAY_INFO_CLASSES.event.text}`}>{e.name}</span>
                               </div>
                             ))}
                             {info.privateBookings.map((pb, i) => (
                               <div key={i} className="flex items-center gap-0.5 min-w-0">
-                                <span className="shrink-0 w-1 h-1 rounded-full bg-danger mt-px" />
-                                <span className="text-2xs text-danger-fg leading-tight truncate">{pb.customer_name}{pb.guest_count > 0 ? ` ·${pb.guest_count}` : ''}</span>
+                                <span className={`shrink-0 w-1 h-1 rounded-full mt-px ${ROTA_DAY_INFO_CLASSES.private_booking.dot}`} />
+                                <span className={`text-2xs leading-tight truncate ${ROTA_DAY_INFO_CLASSES.private_booking.text}`}>{pb.customer_name}{pb.guest_count > 0 ? ` ·${pb.guest_count}` : ''}</span>
                               </div>
                             ))}
                             {info.tableCovers > 0 && (
                               <div className="flex items-center gap-0.5">
-                                <span className="shrink-0 w-1 h-1 rounded-full bg-success mt-px" />
-                                <span className="text-2xs text-success-fg leading-tight">{info.tableCovers} covers{info.outsideCovers > 0 ? ` (${info.outsideCovers} outside)` : ''}</span>
+                                <span className={`shrink-0 w-1 h-1 rounded-full mt-px ${ROTA_DAY_INFO_CLASSES.covers.dot}`} />
+                                <span className={`text-2xs leading-tight ${ROTA_DAY_INFO_CLASSES.covers.text}`}>{info.tableCovers} covers{info.outsideCovers > 0 ? ` (${info.outsideCovers} outside)` : ''}</span>
                               </div>
                             )}
                             {info.highChairs > 0 && (
                               <div className="flex items-center gap-0.5">
-                                <span className="shrink-0 w-1 h-1 rounded-full bg-info mt-px" />
-                                <span className="text-2xs text-info-fg leading-tight">{info.highChairs} high chair{info.highChairs !== 1 ? 's' : ''}</span>
+                                <span className={`shrink-0 w-1 h-1 rounded-full mt-px ${ROTA_DAY_INFO_CLASSES.high_chairs.dot}`} />
+                                <span className={`text-2xs leading-tight ${ROTA_DAY_INFO_CLASSES.high_chairs.text}`}>{info.highChairs} high chair{info.highChairs !== 1 ? 's' : ''}</span>
                               </div>
                             )}
                           </div>
@@ -1303,8 +1313,8 @@ export default function RotaGrid({
               </div>
 
               {/* Open shifts row */}
-              <div className="flex border-b border-warning/25 bg-warning-soft/70 transition-colors hover:bg-warning-soft">
-                <div className="sticky left-0 z-20 flex w-[260px] shrink-0 flex-col justify-center border-r border-warning/25 bg-warning-soft px-4 py-2">
+              <div className="flex border-b border-warning-border bg-warning-soft/70 transition-colors hover:bg-warning-soft">
+                <div className="sticky left-0 z-20 flex w-[260px] shrink-0 flex-col justify-center border-r border-warning-border bg-warning-soft px-4 py-2">
                   <p className="text-xs font-semibold text-warning-fg leading-tight">Open shifts</p>
                   <p className="text-2xs text-warning-fg/75">Available to staff</p>
                 </div>
@@ -1385,7 +1395,7 @@ export default function RotaGrid({
                               {/* Employee name column */}
                               <div className={`sticky left-0 z-20 flex w-[260px] shrink-0 flex-col justify-center border-r border-l-4 ${empStyle.stripe} border-r-border bg-surface px-4 py-2`}>
                                 <div className="flex items-center gap-1.5 min-w-0">
-                                  <p className={`text-xs font-medium leading-tight truncate ${emp.is_active ? 'text-text-strong' : 'text-text-subtle'}`}>
+                                  <p className={`text-xs font-medium leading-tight truncate ${emp.is_active ? 'text-text-strong' : 'text-text-soft'}`}>
                                     {empDisplayName(emp)}
                                   </p>
                                   <span className={`shrink-0 rounded-default px-1.5 py-px text-2xs font-medium ${empStyle.chip}`}>
@@ -1520,45 +1530,45 @@ export default function RotaGrid({
       <Card>
         <CardBody className="flex flex-wrap items-center gap-3 py-3 text-xs text-text-muted">
           <span className="flex items-center gap-1.5">
-            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-warning/35 bg-warning-soft text-warning-fg">
+            <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${ROTA_SHIFT_STATUS_CLASSES.pending}`}>
               <ClockIcon className="h-3 w-3" />
             </span>
             Waiting
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-success/30 bg-success-soft text-success-fg">
+            <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${ROTA_SHIFT_STATUS_CLASSES.accepted}`}>
               <CheckIcon className="h-3 w-3" />
             </span>
             Accepted
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="relative inline-flex h-4 w-4 items-center justify-center rounded-full border border-success/30 bg-success-soft text-success-fg">
+            <span className={`relative inline-flex h-4 w-4 items-center justify-center rounded-full border ${ROTA_SHIFT_STATUS_CLASSES.auto_accepted}`}>
               <CheckIcon className="h-3 w-3" />
-              <span className="absolute -bottom-1 -right-1 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-success text-2xs font-bold leading-none text-white">A</span>
+              <span className="absolute -bottom-1 -right-1 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-success text-2xs font-bold leading-none text-on-dark">A</span>
             </span>
             Auto accepted
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-danger/30 bg-danger-soft text-danger-fg">
+            <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${ROTA_SHIFT_STATUS_CLASSES.rejected}`}>
               <XMarkIcon className="h-3 w-3" />
             </span>
             Rejected
           </span>
           <span className="flex items-center gap-1.5">
             <span className="flex -space-x-0.5">
-              {['#7DD3FC', '#1E3A8A', '#FACC15', '#F97316', '#9333EA', '#16A34A', '#111827', '#FFFFFF'].map(colour => (
-                <span key={colour} className="inline-block h-3 w-2 border border-black/15" style={{ backgroundColor: colour }} />
+              {SHIFT_TEMPLATE_COLOURS.map(option => (
+                <span key={option.value} className="inline-block h-3 w-2 border border-border-strong" style={{ backgroundColor: option.value }} />
               ))}
             </span>
             Shift colour follows role and start time
           </span>
-          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-danger/25 bg-danger-soft" /> Couldn&apos;t Work</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-rose-200 bg-rose-50" /> Rejected shift</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-success/25 bg-success-soft" /> Holiday approved</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-warning/25 bg-warning-soft" /> Holiday pending</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border-2 border-dashed border-info/25 bg-info-soft" /> Unpublished shift</span>
+          <span className="flex items-center gap-1.5"><span className={`inline-block h-3 w-3 rounded-sm border ${ROTA_SHIFT_STATUS_CLASSES.sick}`} /> Couldn&apos;t Work</span>
+          <span className="flex items-center gap-1.5"><span className={`inline-block h-3 w-3 rounded-sm ${ROTA_SHIFT_STATUS_CLASSES.rejected}`} /> Rejected shift</span>
+          <span className="flex items-center gap-1.5"><span className={`inline-block h-3 w-3 rounded-sm border ${ROTA_HOLIDAY_CLASSES.approved}`} /> Holiday approved</span>
+          <span className="flex items-center gap-1.5"><span className={`inline-block h-3 w-3 rounded-sm border ${ROTA_HOLIDAY_CLASSES.pending}`} /> Holiday pending</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border-2 border-dashed border-info-border bg-info-soft" /> Unpublished shift</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border-l-4 border-primary bg-primary-soft" /> Role grouping</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-danger/25 bg-danger-soft" /> Wage % over target</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-danger-border bg-danger-soft" /> Wage % over target</span>
         </CardBody>
       </Card>
 

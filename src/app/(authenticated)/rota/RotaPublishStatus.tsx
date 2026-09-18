@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { Button } from '@/ds';
 import { publishRotaWeek } from '@/app/actions/rota';
 import type { RotaShift, RotaWeek } from '@/app/actions/rota';
 import { shiftIsUnpublished, getRemovedPublishedShifts, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
@@ -37,8 +38,8 @@ export default function RotaPublishStatus({
       : 'Unpublished changes';
   const Icon = isPublished ? CheckCircleIcon : ExclamationTriangleIcon;
   const statusClasses = isPublished
-    ? 'border-success/30 bg-success-soft text-success-fg'
-    : 'border-warning/25 bg-warning-soft text-warning-fg';
+    ? 'border-success-border bg-success-soft text-success-fg'
+    : 'border-warning-border bg-warning-soft text-warning-fg';
 
   const handlePublish = () => {
     startPublishTransition(async () => {
@@ -57,14 +58,16 @@ export default function RotaPublishStatus({
       <Icon className="h-4 w-4 shrink-0" />
       <span>{label}</span>
       {!isPublished && canPublish && (
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="xs"
           onClick={handlePublish}
           disabled={publishPending}
-          className="ml-1 rounded-sm border border-current/30 bg-surface/60 px-2 py-0.5 text-meta font-semibold hover:bg-surface disabled:opacity-50"
+          className="ml-1"
         >
           {publishPending ? 'Publishing...' : 'Publish'}
-        </button>
+        </Button>
       )}
     </div>
   );

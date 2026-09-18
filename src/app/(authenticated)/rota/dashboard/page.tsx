@@ -254,7 +254,7 @@ function BudgetCard({
               <span className="text-text-muted">Est. cost this week</span>
               <span className="font-medium text-text tabular-nums">{cost.value}</span>
             </div>
-            {cost.note && <p className="text-xs text-text-subtle mt-1">{cost.note}</p>}
+            {cost.note && <p className="text-xs text-text-soft mt-1">{cost.note}</p>}
           </div>
         )}
       </div>
@@ -510,7 +510,7 @@ export default async function RotaDashboardPage() {
           <Card key={stat.label}>
             <p className="text-2xl font-bold text-text tabular-nums">{stat.value}</p>
             <p className="text-xs text-text-muted mt-1">{stat.label}</p>
-            {stat.note && <p className="text-xs text-text-subtle mt-1">{stat.note}</p>}
+            {stat.note && <p className="text-xs text-text-soft mt-1">{stat.note}</p>}
           </Card>
         ))}
       </div>
@@ -524,7 +524,7 @@ export default async function RotaDashboardPage() {
               <p className="text-lg font-bold text-text mt-0.5 tabular-nums">
                 {!canViewTakings ? 'Not available' : hasTakings ? gbpFormatter.format(weekTakings) : 'No revenue data'}
               </p>
-              <p className="text-xs text-text-subtle">
+              <p className="text-xs text-text-soft">
                 {!canViewTakings
                   ? 'Takings need cashing up access'
                   : hasTakings
@@ -535,7 +535,7 @@ export default async function RotaDashboardPage() {
             <div>
               <p className="text-xs text-text-muted">Est. labour cost</p>
               <p className="text-lg font-bold text-text mt-0.5 tabular-nums">{weekCost.value}</p>
-              <p className="text-xs text-text-subtle">{weekCost.note ?? 'Scheduled shifts only'}</p>
+              <p className="text-xs text-text-soft">{weekCost.note ?? 'Scheduled shifts only'}</p>
             </div>
             <div>
               <p className="text-xs text-text-muted">Labour as a share of takings</p>
@@ -550,7 +550,7 @@ export default async function RotaDashboardPage() {
               >
                 {wagePercent === null ? 'No revenue data' : `${wagePercent.toFixed(0)}%`}
               </p>
-              <p className="text-xs text-text-subtle">
+              <p className="text-xs text-text-soft">
                 {wagePercent === null
                   ? 'Needs takings or a sales target before a ratio means anything'
                   : `Target is ${targetPercent}% or below${weekCost.complete ? '' : ', on a partial cost'}`}

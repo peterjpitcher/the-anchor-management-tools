@@ -21,6 +21,7 @@ import {
   updateCalendarNote,
   type CalendarNote,
 } from '@/app/actions/calendar-notes'
+import { DEFAULT_CALENDAR_NOTE_COLOUR } from '@/lib/rota/shift-template-colours'
 
 type CalendarNoteFormState = {
   note_date: string
@@ -50,8 +51,9 @@ function addDaysIsoDate(baseDateIso: string, days: number): string {
 }
 
 // A colour staff pick and store on each note: data, not a styling token. One constant, so the
-// form default and the fallback for a malformed stored value cannot drift apart.
-const DEFAULT_NOTE_COLOUR = '#0EA5E9'
+// form default and the fallback for a malformed stored value cannot drift apart, and it is the
+// shared default every calendar screen uses (the first colour in the palette).
+const DEFAULT_NOTE_COLOUR = DEFAULT_CALENDAR_NOTE_COLOUR
 
 function createEmptyNoteForm(defaultDateIso?: string): CalendarNoteFormState {
   const baseDate = defaultDateIso ?? getLocalIsoDate()

@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { checkUserPermission } from '@/app/actions/rbac';
+import { DEFAULT_CALENDAR_NOTE_COLOUR } from '@/lib/rota/shift-template-colours';
 
 export type RotaDayInfo = {
   date: string;
@@ -113,7 +114,7 @@ export async function getRotaWeekDayInfo(
       if (iso >= noteStart && iso <= noteEnd) {
         result[iso].calendarNotes.push({
           title: note.title as string,
-          color: (note.color as string) || '#6366f1',
+          color: (note.color as string) || DEFAULT_CALENDAR_NOTE_COLOUR,
         });
       }
     }

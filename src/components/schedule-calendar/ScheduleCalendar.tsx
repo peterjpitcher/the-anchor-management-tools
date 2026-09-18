@@ -97,7 +97,7 @@ export function ScheduleCalendar({
                                 type="button"
                                 onClick={() => onViewChange(v)}
                                 className={cn(
-                                    'px-3 py-1 text-xs rounded-sm capitalize',
+                                    'px-3 py-1 text-xs rounded-sm capitalize focus-visible:outline-hidden focus-visible:shadow-ring',
                                     view === v
                                         ? 'bg-surface shadow-sm'
                                         : 'text-text-muted hover:text-text'

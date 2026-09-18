@@ -1,33 +1,4 @@
 {
-  "src/app/(authenticated)/dashboard/dashboard-data.ts": {
-    "hex-colour": 1
-  },
-  "src/app/(authenticated)/rota/AddShiftsModal.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/rota/RotaGrid.tsx": {
-    "raw-palette": 6,
-    "hex-colour": 10
-  },
-  "src/app/(authenticated)/rota/ShiftDetailModal.tsx": {
-    "raw-palette": 7
-  },
-  "src/app/(authenticated)/rota/hours/HoursByEmployeeClient.tsx": {
-    "hex-colour": 2
-  },
-  "src/app/(authenticated)/rota/hours/page.tsx": {
-    "hex-colour": 7
-  },
-  "src/app/(authenticated)/rota/payroll/PayrollClient.tsx": {
-    "raw-palette": 13
-  },
-  "src/app/(authenticated)/rota/templates/ShiftTemplatesManager.tsx": {
-    "raw-palette": 4,
-    "hex-colour": 1
-  },
-  "src/app/(authenticated)/settings/calendar-notes/CalendarNotesManager.tsx": {
-    "hex-colour": 1
-  },
   "src/app/(authenticated)/settings/customer-labels/CustomerLabelsClient.tsx": {
     "hex-colour": 8
   },
@@ -35,31 +6,8 @@
     "hex-colour": 26,
     "px-text-size": 7
   },
-  "src/app/actions/calendar-notes.ts": {
-    "hex-colour": 1
-  },
   "src/app/actions/event-check-in.ts": {
     "hex-colour": 4
-  },
-  "src/app/actions/rota-day-info.ts": {
-    "hex-colour": 1
-  },
-  "src/app/api/rota/hours/pdf/route.ts": {
-    "hex-colour": 35
-  },
-  "src/app/api/rota/pdf/route.ts": {
-    "hex-colour": 48
-  },
-  "src/components/schedule-calendar/ScheduleCalendarList.tsx": {
-    "raw-palette": 3,
-    "hex-colour": 4
-  },
-  "src/components/schedule-calendar/ScheduleCalendarMonth.tsx": {
-    "raw-palette": 5,
-    "hex-colour": 8
-  },
-  "src/components/schedule-calendar/VenueCalendar.tsx": {
-    "raw-palette": 4
   },
   "src/lib/analytics/engagement-scoring.ts": {
     "hex-colour": 2

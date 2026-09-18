@@ -3,12 +3,7 @@
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { CheckIcon, PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/ds';
-import { Input } from '@/ds';
-import { Select } from '@/ds';
-import { FormGroup } from '@/ds';
-import { Alert } from '@/ds';
-import { Badge } from '@/ds';
+import { Alert, Badge, Button, FormGroup, IconButton, Input, Select } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import {
   createShiftTemplate,
@@ -25,6 +20,7 @@ import {
   getAutomaticShiftColour,
   getShiftColourLabel,
 } from '@/lib/rota/shift-template-colours';
+import { rotaDepartmentClasses } from '@/lib/rota/status-ui';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -34,24 +30,6 @@ interface ShiftTemplatesManagerProps {
   employees: RotaEmployee[];
   departments: Department[];
 }
-
-// Department and payroll-flag colours stay on the raw palette deliberately. They
-// encode a CATEGORY, not a state, and the design system only has state tones
-// (success, warning, danger, info). Mapping kitchen onto the warning tone would
-// make a normal kitchen shift read as a problem. A category ramp is a design
-// decision, not a mechanical swap: see F15 in tasks/rota-review-2026-08-18.md.
-const DEPARTMENT_COLOURS: Record<string, string> = {
-  bar: 'bg-info-soft border-info/25',
-  kitchen: 'bg-orange-50 border-orange-200',
-  runner: 'bg-success-soft border-success/30',
-};
-const DEPARTMENT_COLOUR_DEFAULT = 'bg-surface-2 border-border';
-
-const DEPARTMENT_BADGE: Record<string, 'info' | 'warning' | 'success' | 'default'> = {
-  bar: 'info',
-  kitchen: 'warning',
-  runner: 'success',
-};
 
 /** Paid hours for a template row, formatted for display. The arithmetic itself
  *  lives in @/lib/rota/pay-math so every rota surface agrees. Templates carry no
@@ -202,7 +180,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
         <legend className="text-xs font-medium uppercase tracking-wider text-text-muted">
           Shift colour
         </legend>
-        <p className="text-xs text-text-subtle">
+        <p className="text-xs text-text-soft">
           Automatic uses the department and start time. Pick a colour below to override it.
         </p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
@@ -211,7 +189,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
             type="button"
             aria-pressed={colourMode === 'automatic'}
             onClick={() => setColourMode('automatic')}
-            className={`relative flex min-h-11 items-center gap-2 rounded-default border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:shadow-ring ${
+            className={`relative flex min-h-11 items-center gap-2 rounded-default border px-2.5 py-2 text-left transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
               colourMode === 'automatic'
                 ? 'border-primary bg-primary-soft'
                 : 'border-border bg-surface hover:bg-surface-hover'
@@ -219,11 +197,11 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
           >
             <span
               className="h-5 w-5 shrink-0 rounded-full border border-black/20 shadow-xs"
-              style={{ backgroundColor: automaticColour ?? '#E5E7EB' }}
+              style={{ backgroundColor: automaticColour ?? 'var(--color-border)' }}
             />
             <span className="min-w-0">
               <span className="block text-xs font-medium text-text-strong">Automatic</span>
-              <span className="block truncate text-2xs text-text-subtle">
+              <span className="block truncate text-2xs text-text-soft">
                 {getShiftColourLabel(automaticColour) ?? 'No rule'}
               </span>
             </span>
@@ -238,7 +216,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
                 type="button"
                 aria-pressed={selected}
                 onClick={() => { setManualColour(option.value); setColourMode('manual'); }}
-                className={`relative flex min-h-11 items-center gap-2 rounded-default border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:shadow-ring ${
+                className={`relative flex min-h-11 items-center gap-2 rounded-default border px-2.5 py-2 text-left transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                   selected
                     ? 'border-primary bg-primary-soft'
                     : 'border-border bg-surface hover:bg-surface-hover'
@@ -264,7 +242,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
             onChange={e => { setManualColour(e.target.value); setColourMode('manual'); }}
             className="h-9 w-11 cursor-pointer p-0.5"
           />
-          <span className="text-xs text-text-subtle">Custom colour</span>
+          <span className="text-xs text-text-soft">Custom colour</span>
         </div>
       </fieldset>
 
@@ -281,7 +259,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
               ]}
             />
           </FormGroup>
-          <p className="text-xs text-text-subtle mt-1">Auto-populates on this day when you click &ldquo;Apply templates&rdquo;.</p>
+          <p className="text-xs text-text-soft mt-1">Auto-populates on this day when you click &ldquo;Apply templates&rdquo;.</p>
         </div>
 
         <div>
@@ -296,12 +274,12 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
               ]}
             />
           </FormGroup>
-          <p className="text-xs text-text-subtle mt-1">Creates an assigned shift instead of an open one.</p>
+          <p className="text-xs text-text-soft mt-1">Creates an assigned shift instead of an open one.</p>
         </div>
       </div>
 
       <div className="flex gap-2">
-        <Button type="button" onClick={handleSubmit} disabled={isPending}>
+        <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
           {isPending ? 'Saving…' : initial ? 'Save changes' : 'Create template'}
         </Button>
         <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
@@ -344,7 +322,7 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
 
   return (
     <div
-      className={`flex items-center justify-between p-3 rounded-lg border ${DEPARTMENT_COLOURS[current.department] ?? DEPARTMENT_COLOUR_DEFAULT} transition-colors`}
+      className={`flex items-center justify-between p-3 rounded-lg border ${rotaDepartmentClasses(current.department)} transition-colors`}
       style={colourStyle}
     >
       <div className="flex items-center gap-3 min-w-0">
@@ -365,44 +343,46 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
           </p>
           <div className="flex flex-wrap gap-1.5 mt-1">
             {current.day_of_week !== null && current.day_of_week !== undefined && (
-              <span className="text-2xs bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-sm font-medium">
+              <Badge tone="primary" size="sm">
                 {DAYS[current.day_of_week]}
-              </span>
+              </Badge>
             )}
             {assignedEmp && (
-              <span className="text-2xs bg-surface-hover text-text-muted px-1.5 py-0.5 rounded-sm font-medium">
+              <Badge tone="neutral" size="sm">
                 {empName(assignedEmp)}
-              </span>
+              </Badge>
             )}
             {!assignedEmp && current.day_of_week !== null && (
-              <span className="text-2xs bg-warning-soft text-warning-fg px-1.5 py-0.5 rounded-sm font-medium">
+              <Badge tone="warning" size="sm">
                 Open shift
-              </span>
+              </Badge>
             )}
           </div>
         </div>
       </div>
       <div className="flex items-center gap-2 ml-3 shrink-0">
-        <Badge variant={DEPARTMENT_BADGE[current.department] ?? 'default'} size="sm">{current.department}</Badge>
+        <Badge size="sm" className={rotaDepartmentClasses(current.department)}>{current.department}</Badge>
         {canEdit && (
           <>
-            <button
+            <IconButton
               type="button"
+              size="sm"
               onClick={() => setEditing(true)}
-              className="p-1 text-text-subtle hover:text-text rounded-sm"
+              className="text-text-subtle hover:text-text"
               title="Edit template"
-            >
-              <PencilIcon className="h-4 w-4" />
-            </button>
-            <button
+              label="Edit template"
+              icon={<PencilIcon className="h-4 w-4" />}
+            />
+            <IconButton
               type="button"
+              size="sm"
               onClick={handleDeactivate}
               disabled={deactivating}
-              className="p-1 text-text-subtle hover:text-danger-fg rounded-sm disabled:opacity-50"
+              className="text-text-subtle hover:bg-danger-soft hover:text-danger-fg"
               title="Deactivate template"
-            >
-              <TrashIcon className="h-4 w-4" />
-            </button>
+              label="Deactivate template"
+              icon={<TrashIcon className="h-4 w-4" />}
+            />
           </>
         )}
       </div>
@@ -432,6 +412,7 @@ export default function ShiftTemplatesManager({ canEdit, initialTemplates, emplo
           <Button
             type="button"
             size="sm"
+            variant="primary"
             leftIcon={<PlusIcon className="h-4 w-4" />}
             onClick={() => setShowNewForm(v => !v)}
           >
@@ -450,7 +431,7 @@ export default function ShiftTemplatesManager({ canEdit, initialTemplates, emplo
       )}
 
       {activeTemplates.length === 0 && !showNewForm ? (
-        <p className="text-sm text-text-subtle italic py-6 text-center">
+        <p className="text-sm text-text-soft italic py-6 text-center">
           No templates yet. Create your first template above.
         </p>
       ) : (

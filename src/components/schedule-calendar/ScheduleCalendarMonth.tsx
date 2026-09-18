@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import type { CalendarEntry, ScheduleDailyOps } from './types'
 import { compareEntries } from './sort'
 import { CONTENT_GAP_LABELS, entryGaps } from './filters'
-import { calendarColourNeedsLightText } from './appearance'
+import { CALENDAR_BLACK, CALENDAR_WHITE, calendarColourNeedsLightText } from './appearance'
 import { CalendarKindBadge } from './CalendarKindBadge'
 import { CalendarEntryTooltip } from './CalendarEntryTooltip'
 import { entryTooltipText } from './tooltip-text'
@@ -132,16 +132,16 @@ export function ScheduleCalendarMonth({
                                     const isCancelled = entry.status === 'cancelled'
                                     const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
                                     const bandStyle = {
-                                        borderColor: isCancelled ? '#111827' : entry.color,
-                                        backgroundColor: isCancelled ? '#FFFFFF' : entry.color,
-                                        color: lightText ? '#FFFFFF' : '#111827',
+                                        borderColor: isCancelled ? CALENDAR_BLACK : entry.color,
+                                        backgroundColor: isCancelled ? CALENDAR_WHITE : entry.color,
+                                        color: lightText ? CALENDAR_WHITE : CALENDAR_BLACK,
                                         marginLeft: `${(startCol / 7) * 100}%`,
                                         width: `${(span / 7) * 100}%`,
                                     }
                                     const bandClass = cn(
                                         'flex items-center gap-1 rounded-sm border px-2 py-1 text-xs font-medium whitespace-normal break-words',
                                         isCancelled && 'line-through',
-                                        onEntryClick && 'text-left hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-950 focus-visible:ring-offset-1'
+                                        onEntryClick && 'text-left hover:brightness-95 focus-visible:outline-hidden focus-visible:shadow-ring'
                                     )
                                     const bandBody = (
                                         <>
@@ -195,7 +195,7 @@ export function ScheduleCalendarMonth({
                                     className={cn(
                                         'group bg-surface p-1 flex flex-col gap-1 min-h-[80px]',
                                         di > 0 && 'border-l border-border',
-                                        !inMonth && 'bg-surface-2 text-gray-400',
+                                        !inMonth && 'bg-surface-2 text-text-soft',
                                         // Being shut is a property of the DAY, not one more
                                         // chip queued behind the events on it.
                                         closure === 'closed' && 'bg-border',
@@ -221,7 +221,7 @@ export function ScheduleCalendarMonth({
                                                     : format(day, 'EEE d MMM')
                                             }
                                             className={cn(
-                                                'text-xs font-medium rounded-full h-5 min-w-5 px-1.5 text-left',
+                                                'text-xs font-medium rounded-full h-5 min-w-5 px-1.5 text-left focus-visible:outline-hidden focus-visible:shadow-ring',
                                                 isToday(day) &&
                                                     'bg-primary text-primary-fg text-center font-semibold'
                                             )}
@@ -240,12 +240,12 @@ export function ScheduleCalendarMonth({
                                             treatment says nothing to a screen reader
                                             or in high contrast. */}
                                         {closure === 'closed' && (
-                                            <span className="rounded-sm bg-gray-900 px-1 text-2xs font-semibold uppercase tracking-wide text-white">
+                                            <span className="rounded-sm bg-text-strong px-1 text-2xs font-semibold uppercase tracking-wide text-on-dark">
                                                 Closed
                                             </span>
                                         )}
                                         {closure === 'kitchen' && (
-                                            <span className="rounded-sm bg-amber-200 px-1 text-2xs font-semibold uppercase tracking-wide text-warning-fg">
+                                            <span className="rounded-sm bg-warning-border px-1 text-2xs font-semibold uppercase tracking-wide text-warning-fg">
                                                 No kitchen
                                             </span>
                                         )}
@@ -278,7 +278,7 @@ export function ScheduleCalendarMonth({
                                             // every day cell carried an invisible but tappable button.
                                             // Now it is dimmed rather than hidden, and full strength on
                                             // hover or focus.
-                                            className="mt-auto flex min-h-[24px] items-center gap-1 self-start rounded-sm px-1 py-0.5 text-meta text-text-muted opacity-40 transition-opacity hover:bg-surface-hover hover:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
+                                            className="mt-auto flex min-h-[24px] items-center gap-1 self-start rounded-sm px-1 py-0.5 text-meta text-text-muted opacity-40 transition-opacity hover:bg-surface-hover hover:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-hidden focus-visible:shadow-ring"
                                         >
                                             <span aria-hidden="true">+</span> Note
                                         </button>
@@ -318,7 +318,7 @@ interface EntryBlockProps {
 function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
     const isCancelled = entry.status === 'cancelled'
     const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
-    const secondaryTextClass = lightText ? 'text-white/80' : 'text-black/70'
+    const secondaryTextClass = lightText ? 'text-on-dark-muted' : 'text-black/70'
 
     const content = (
         <>
@@ -351,7 +351,7 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
                         <span
                             className={cn(
                                 'rounded-sm px-1 py-px text-2xs font-semibold uppercase leading-tight tracking-wide',
-                                lightText ? 'bg-surface/20 text-white' : 'bg-black/10 text-text-strong',
+                                lightText ? 'bg-on-dark-active text-on-dark' : 'bg-black/10 text-text-strong',
                             )}
                         >
                             {entry.statusLabel}
@@ -374,13 +374,13 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
     )
 
     const sharedClass = cn(
-        'block w-full rounded-sm border px-2 py-1 text-left text-xs transition-[filter,box-shadow] hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-950 focus-visible:ring-offset-1',
+        'block w-full rounded-sm border px-2 py-1 text-left text-xs transition-[filter,box-shadow] hover:brightness-95 focus-visible:outline-hidden focus-visible:shadow-ring',
         isCancelled && 'line-through'
     )
     const sharedStyle = {
-        borderColor: isCancelled ? '#111827' : entry.color,
-        backgroundColor: isCancelled ? '#FFFFFF' : entry.color,
-        color: lightText ? '#FFFFFF' : '#111827',
+        borderColor: isCancelled ? CALENDAR_BLACK : entry.color,
+        backgroundColor: isCancelled ? CALENDAR_WHITE : entry.color,
+        color: lightText ? CALENDAR_WHITE : CALENDAR_BLACK,
     } as const
 
     const tooltipText = entryTooltipText(entry)

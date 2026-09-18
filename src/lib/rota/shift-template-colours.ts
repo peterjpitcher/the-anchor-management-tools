@@ -9,6 +9,14 @@ export const SHIFT_TEMPLATE_COLOURS = [
   { label: 'White', value: '#FFFFFF' },
 ] as const;
 
+/**
+ * The colour for a calendar note with none stored, and for a new note: the first option, light
+ * blue (design decision A11, 18 Sep 2026). Calendar notes pick from this same list
+ * (src/components/schedule-calendar/appearance.ts). It lives here, not in the calendar
+ * components, so server actions and data loaders can read it too.
+ */
+export const DEFAULT_CALENDAR_NOTE_COLOUR: string = SHIFT_TEMPLATE_COLOURS[0].value;
+
 export function getAutomaticShiftColour(department: string, startTime: string): string | null {
   const normalisedDepartment = department.trim().toLowerCase();
   const normalisedStartTime = startTime.slice(0, 5);
@@ -32,6 +40,31 @@ export function getAutomaticShiftColour(department: string, startTime: string): 
   }
 
   return null;
+}
+
+type ShiftColourSource = { department: string; start_time: string };
+
+/**
+ * The colour /rota draws a shift in. A template's colour wins only when a manager picked it by
+ * hand (it differs from the automatic colour for the template's own role and start time);
+ * otherwise the shift's own role and start time decide. Null means neither gives a colour, and
+ * the shift falls back to its department look.
+ *
+ * The one copy of the rule: /rota (RotaGrid.tsx) and the printed rota
+ * (src/app/api/rota/pdf/route.ts) both call it, so paper matches the screen.
+ */
+export function resolveShiftColour(
+  shift: ShiftColourSource & { template_id: string | null },
+  template: (ShiftColourSource & { colour: string | null }) | null | undefined,
+): string | null {
+  const automaticColour = getAutomaticShiftColour(shift.department, shift.start_time);
+  if (!shift.template_id || !template?.colour) return automaticColour;
+
+  const templateAutomaticColour = getAutomaticShiftColour(template.department, template.start_time);
+  const hasManualOverride = !templateAutomaticColour
+    || template.colour.toLowerCase() !== templateAutomaticColour.toLowerCase();
+
+  return hasManualOverride ? template.colour : (automaticColour ?? template.colour);
 }
 
 export function shiftColourNeedsLightText(colour: string | null): boolean {

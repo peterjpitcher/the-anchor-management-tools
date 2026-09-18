@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CALENDAR_COLOUR_OPTIONS,
   CALENDAR_KIND_APPEARANCE,
+  DEFAULT_CALENDAR_NOTE_COLOUR,
   calendarColourNeedsLightText,
   kindColor,
   kindLabel,
@@ -23,6 +25,11 @@ describe('calendar appearance', () => {
   it('provides labels and colours for the legend and filters', () => {
     expect(kindColor('calendar_note')).toBe('#7DD3FC')
     expect(kindLabel('private_booking')).toBe('Private bookings')
+  })
+
+  it('gives a note with no colour the first option, the same default the server uses', () => {
+    expect(DEFAULT_CALENDAR_NOTE_COLOUR).toBe(CALENDAR_COLOUR_OPTIONS[0].value)
+    expect(DEFAULT_CALENDAR_NOTE_COLOUR).toBe(kindColor('calendar_note'))
   })
 
   it('uses light text only on the darkest colours', () => {

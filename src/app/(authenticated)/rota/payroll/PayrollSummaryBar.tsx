@@ -12,9 +12,9 @@ interface PayrollSummaryBarProps {
 
 function varianceTileClasses(variance: number): string {
   // green if >= 0, amber if > -10 and < 0, red if <= -10
-  if (variance >= 0) return 'bg-success-soft border-success/30 text-success-fg';
-  if (variance > -10) return 'bg-warning-soft border-warning/25 text-warning-fg';
-  return 'bg-danger-soft border-danger/25 text-danger-fg';
+  if (variance >= 0) return 'bg-success-soft border-success-border text-success-fg';
+  if (variance > -10) return 'bg-warning-soft border-warning-border text-warning-fg';
+  return 'bg-danger-soft border-danger-border text-danger-fg';
 }
 
 function varianceSubLabel(variance: number): string {
@@ -42,7 +42,7 @@ export function PayrollSummaryBar({ rows }: PayrollSummaryBarProps) {
         </p>
         <p className="text-xs text-text-muted mt-0.5">Planned to date</p>
         {stats.hasCutoffRows && stats.totalPlannedFullCycle > stats.plannedToDate && (
-          <p className="text-xs text-text-subtle mt-0.5">
+          <p className="text-xs text-text-soft mt-0.5">
             of {stats.totalPlannedFullCycle.toFixed(1)}h total
           </p>
         )}
@@ -75,7 +75,7 @@ export function PayrollSummaryBar({ rows }: PayrollSummaryBarProps) {
       </div>
 
       {/* Earned to date */}
-      <div className="text-center bg-success-soft border border-success/30 rounded-lg p-3">
+      <div className="text-center bg-success-soft border border-success-border rounded-lg p-3">
         <p className="text-xl font-bold text-success-fg">
           {stats.hasCutoffRows ? `£${stats.earnedToDate.toFixed(2)}` : dash}
         </p>

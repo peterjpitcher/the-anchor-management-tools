@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { displayName } from '@/lib/employees/display-name'
+import { DEFAULT_CALENDAR_NOTE_COLOUR } from '@/lib/rota/shift-template-colours'
 import type { ScheduleDailyOps } from '@/components/schedule-calendar'
 import {
   readBirthdays,
@@ -980,7 +981,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             source: typeof note.source === 'string' ? note.source : 'manual',
             start_time: typeof note.start_time === 'string' ? note.start_time : null,
             end_time: typeof note.end_time === 'string' ? note.end_time : null,
-            color: typeof note.color === 'string' ? note.color : '#0EA5E9',
+            color: typeof note.color === 'string' ? note.color : DEFAULT_CALENDAR_NOTE_COLOUR,
           }))
 
           events.specialHours = specialHoursResult.data

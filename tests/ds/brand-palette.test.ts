@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { CHART_SERIES, DOCUMENT_PALETTE, GUEST, STAFF } from '@/lib/brand/palette'
+import { CATEGORY, CHART_SERIES, DOCUMENT_PALETTE, GUEST, STAFF } from '@/lib/brand/palette'
 
 /** Every token in the @theme static block, with var() references resolved. */
 function themeTokens(): Map<string, string> {
@@ -94,6 +94,16 @@ describe('email and document colours match the design tokens', () => {
   it('pins the chart series', () => {
     CHART_SERIES.forEach((hex, index) => {
       expect(hex.toLowerCase()).toBe(tokens.get(`--color-chart-${index + 1}`))
+    })
+  })
+
+  it('pins the eight category colours', () => {
+    expect(CATEGORY).toHaveLength(8)
+    CATEGORY.forEach((category, index) => {
+      const token = `--color-cat-${index + 1}`
+      expect(category.base.toLowerCase()).toBe(tokens.get(token))
+      expect(category.soft.toLowerCase()).toBe(tokens.get(`${token}-soft`))
+      expect(category.fg.toLowerCase()).toBe(tokens.get(`${token}-fg`))
     })
   })
 
