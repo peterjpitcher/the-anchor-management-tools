@@ -16,6 +16,7 @@ export function buildSummary(sections: InsightSection[], actions: RankedAction[]
   let winScore = -1
   let biggestConcern: InsightsSummary['biggestConcern'] = null
   let concernScore = -1
+  let concernImpact: string | undefined
 
   for (const section of sections) {
     if (section.status === 'not_checked') continue
@@ -28,9 +29,12 @@ export function buildSummary(sections: InsightSection[], actions: RankedAction[]
         biggestWin = { text, sectionKey: section.key }
         winScore = score
       }
-      if (signal.kind === 'issue' && signal.rag !== 'green' && score > concernScore) {
+      // On a tie, a safety concern beats everything else, matching the action order.
+      const beatsTie = score === concernScore && signal.action?.impact === 'safety' && concernImpact !== 'safety'
+      if (signal.kind === 'issue' && signal.rag !== 'green' && (score > concernScore || beatsTie)) {
         biggestConcern = { text, rag: signal.rag, sectionKey: section.key }
         concernScore = score
+        concernImpact = signal.action?.impact
       }
     }
   }

@@ -86,6 +86,18 @@ describe('InsightsReportView', () => {
     expect(html).toContain('hidden print:list-item')
   })
 
+  it('keeps a collapsed reference list closed on screen and off paper', () => {
+    const withCollapsed = buildFixtureReport()
+    withCollapsed.sections[7].lists.push({ title: 'All open jobs', collapsed: true, items: Array.from({ length: 12 }, (_, i) => ({ text: `Open job ${i + 1}` })) })
+    const markup = renderToStaticMarkup(<InsightsReportView report={withCollapsed} />)
+    const details = markup.slice(markup.indexOf('<details class="text-sm print:hidden">'))
+    expect(details).toContain('All open jobs')
+    expect(details).toContain('(show all 12)')
+    // Every item appears once, inside the closed, non-printing details; no print-only copies.
+    expect((markup.match(/Open job 12</g) ?? []).length).toBe(1)
+    expect(details).toContain('Open job 12<')
+  })
+
   it('numbers the manager actions', () => {
     expect(html).toMatch(/<ol[^>]*list-decimal/)
   })

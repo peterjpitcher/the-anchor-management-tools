@@ -58,7 +58,7 @@ function Members({ action }: { action: InsightAction | undefined }): React.JSX.E
   if (!action?.members?.length) return null
   return (
     <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-text-muted print:text-text-strong">
-      {action.members.map((member) => <li key={member}>{member}</li>)}
+      {action.members.map((member, index) => <li key={`${index}-${member}`}>{member}</li>)}
     </ul>
   )
 }
@@ -69,8 +69,8 @@ function SignalList({ title, signals }: { title: string; signals: InsightSignal[
     <div>
       <h3 className="mb-1 text-sm font-semibold text-text-strong">{title}</h3>
       <ul className="list-disc space-y-1.5 pl-5 text-sm">
-        {signals.map((signal) => (
-          <li key={signal.key}>
+        {signals.map((signal, index) => (
+          <li key={`${index}-${signal.key}`}>
             <StatusLabel status={signalStatus(signal)} className="mr-1" />
             <span>{signal.text}</span>
             {signal.action && (
@@ -103,6 +103,19 @@ function ListItems({ items, className }: { items: InsightList['items']; classNam
 
 function SectionList({ list }: { list: InsightList }): React.JSX.Element | null {
   if (list.items.length === 0 && !list.emptyText) return null
+  if (list.collapsed && list.items.length > 0) {
+    // A reference list that repeats the exception lists above: closed on screen, left off paper.
+    return (
+      <details className="text-sm print:hidden">
+        <summary className="cursor-pointer font-semibold text-text-strong">
+          {list.title} <span className="font-medium text-primary">(show all {list.items.length})</span>
+        </summary>
+        <ul className="mt-1 list-disc space-y-1 pl-5">
+          <ListItems items={list.items} />
+        </ul>
+      </details>
+    )
+  }
   const visible = list.items.slice(0, LIST_VISIBLE)
   const rest = list.items.slice(LIST_VISIBLE)
   return (
@@ -149,17 +162,20 @@ function SectionCard({ section }: { section: InsightSection }): React.JSX.Elemen
       <p className="mt-1 text-sm text-text">{section.headline}</p>
 
       {section.metrics.length > 0 && (
-        <table className="mt-3 w-full max-w-2xl border-collapse text-sm">
+        // On a phone the figures scroll inside the card rather than widening the page.
+        <div className="mt-3 max-w-2xl overflow-x-auto print:overflow-visible">
+        <table className="w-full border-collapse text-sm">
           <tbody>
-            {section.metrics.map((metric) => (
-              <tr key={metric.label} className="border-b border-border last:border-b-0">
-                <th scope="row" className="py-1 pr-3 text-left font-normal text-text-muted print:text-text-strong">{metric.label}</th>
-                <td className="py-1 pr-3 font-semibold text-text-strong">{metric.value}</td>
-                <td className="py-1 text-text-muted print:text-text-strong">{metric.comparison ?? ''}</td>
+            {section.metrics.map((metric, index) => (
+              <tr key={`${index}-${metric.label}`} className="border-b border-border last:border-b-0">
+                <th scope="row" className="py-1 pr-3 text-left align-top font-normal text-text-muted print:text-text-strong">{metric.label}</th>
+                <td className="py-1 pr-3 align-top font-semibold text-text-strong">{metric.value}</td>
+                <td className="min-w-[12rem] py-1 align-top text-text-muted print:text-text-strong">{metric.comparison ?? ''}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       <div className="mt-3 space-y-3">
@@ -167,13 +183,13 @@ function SectionCard({ section }: { section: InsightSection }): React.JSX.Elemen
         <SignalList title="Going well" signals={wins} />
         {info.length > 0 && (
           <ul className="list-disc space-y-1 pl-5 text-sm text-text-muted print:text-text-strong">
-            {info.map((signal) => <li key={signal.key}>{signal.text}</li>)}
+            {info.map((signal, index) => <li key={`${index}-${signal.key}`}>{signal.text}</li>)}
           </ul>
         )}
-        {section.lists.map((list) => <SectionList key={list.title} list={list} />)}
+        {section.lists.map((list, index) => <SectionList key={`${index}-${list.title}`} list={list} />)}
         {section.notes.length > 0 && (
           <ul className="space-y-0.5 text-xs text-text-muted print:text-text-strong">
-            {section.notes.map((note) => <li key={note}>{note}</li>)}
+            {section.notes.map((note, index) => <li key={`${index}-${note}`}>{note}</li>)}
           </ul>
         )}
       </div>
@@ -268,8 +284,8 @@ export function InsightsReportView({ report }: { report: InsightsReport }): Reac
           <p className="mt-1 text-sm">No actions this week.</p>
         ) : (
           <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm">
-            {report.actions.map((action) => (
-              <li key={`${action.sectionKey}-${action.signalKey}`}>
+            {report.actions.map((action, index) => (
+              <li key={`${index}-${action.sectionKey}-${action.signalKey}`}>
                 <StatusLabel status={action.kind === 'win' ? 'green' : action.rag} />
                 <span>: {action.text}</span>
                 <OpenLink href={action.href} />

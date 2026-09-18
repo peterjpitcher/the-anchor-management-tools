@@ -30,7 +30,7 @@ import {
   type PreorderCourse,
 } from '@/types/preorders'
 
-type BohViewMode = 'day' | 'week' | 'month'
+export type BohViewMode = 'day' | 'week' | 'month'
 
 /** Dish counts for the focused day, as /api/boh/table-bookings/preorder-totals returns them. */
 type PreorderDishTotalsResponse = {
@@ -398,17 +398,22 @@ export function BohBookingsClient({
   canEdit,
   canManage,
   canWaiveDeposit = false,
-  canSendMessages = false
+  canSendMessages = false,
+  initialDate,
+  initialView
 }: {
   canEdit: boolean
   canManage: boolean
   canWaiveDeposit?: boolean
   canSendMessages?: boolean
+  /** Opens on this London date (YYYY-MM-DD), for links such as the weekly Insights report's day links. */
+  initialDate?: string
+  initialView?: BohViewMode
 }) {
   const router = useRouter()
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false)
-  const [view, setView] = useState<BohViewMode>('week')
-  const [focusDate, setFocusDate] = useState<string>(getTodayIsoDate())
+  const [view, setView] = useState<BohViewMode>(initialView ?? 'week')
+  const [focusDate, setFocusDate] = useState<string>(initialDate ?? getTodayIsoDate())
   const [rangeStartDate, setRangeStartDate] = useState<string>(focusDate)
   const [rangeEndDate, setRangeEndDate] = useState<string>(focusDate)
   const [previousRangeStartDate, setPreviousRangeStartDate] = useState<string>('')

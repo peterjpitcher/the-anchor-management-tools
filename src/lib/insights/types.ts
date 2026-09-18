@@ -115,6 +115,11 @@ export interface InsightList {
   items: InsightListItem[]
   /** Shown instead of an empty list. Omit to hide the list when empty. */
   emptyText?: string
+  /**
+   * A long reference list that repeats the exception lists above it (for example every
+   * open maintenance job). It sits closed behind "Show all" on the page and does not print.
+   */
+  collapsed?: boolean
 }
 
 /** A dated item feeding the summary's "Coming up" line. Text must be email safe. */

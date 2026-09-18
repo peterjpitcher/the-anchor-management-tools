@@ -9,6 +9,8 @@ import {
   fetchConversionsByUtmCampaign,
   fetchEnquiryConversionsByUtmCampaign,
   summariseClicksByRecipient,
+  type MarketingCampaignLinkRow,
+  type MarketingClickRow,
 } from '@/lib/email/marketing/attribution'
 import { provisionCampaignLinks } from '@/lib/email/marketing/links'
 import { collectDestinationUrls, renderCampaignText } from '@/lib/email/marketing/render'
@@ -877,8 +879,125 @@ export function campaignUtmValue(campaign: Pick<MarketingCampaign, 'id' | 'utmCa
 }
 
 /**
- * Clicks and conversions for a campaign, measured through our own redirector and our own
- * analytics.
+ * Engagement rows for every message the given recipients point at, read per campaign.
+ *
+ * One indexed read by `marketing_campaign_id` rather than one request per 200 message ids. It
+ * also returns failed send attempts that no recipient points at; those are dropped, because
+ * counting goes through `marketing_campaign_recipients.email_message_id` only. A message a
+ * recipient points at that does not carry the campaign id is still read, by id, so the counted
+ * set is exactly the one `fetchEngagement` would return.
+ */
+async function fetchEngagementForCampaigns(
+  supabase: AdminClient,
+  campaignIds: string[],
+  messageIds: string[],
+): Promise<Map<string, EngagementRow>> {
+  const wanted = new Set(messageIds)
+  const byId = new Map<string, EngagementRow>()
+  if (wanted.size === 0) return byId
+
+  for (const part of chunk(campaignIds, IN_CHUNK_SIZE)) {
+    const rows = await fetchAllPages<EngagementRow>((from, to) =>
+      supabase
+        .from('email_messages')
+        .select('id, delivered_at, opened_at, clicked_at, bounced_at, complained_at, failed_at')
+        .in('marketing_campaign_id', part)
+        .order('id', { ascending: true })
+        .range(from, to),
+    )
+    for (const row of rows) if (wanted.has(row.id)) byId.set(row.id, row)
+  }
+
+  const missing = [...wanted].filter((id) => !byId.has(id))
+  if (missing.length > 0) {
+    for (const [id, row] of await fetchEngagement(supabase, missing)) byId.set(id, row)
+  }
+
+  return byId
+}
+
+/**
+ * Opt-outs per campaign, counted from whichever list each campaign went to. Reading only
+ * business_contacts, as this once did, pinned every guest campaign's unsubscribe rate to 0.0%
+ * however many people actually opted out, which reads as evidence that nobody minded.
+ */
+async function fetchUnsubscribeCounts(
+  supabase: AdminClient,
+  campaigns: CampaignStatsSubject[],
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>()
+  const add = (campaignId: string | null): void => {
+    if (campaignId) counts.set(campaignId, (counts.get(campaignId) ?? 0) + 1)
+  }
+
+  const customerIds = [...new Set(campaigns.filter((c) => c.audienceType === 'customer').map((c) => c.id))]
+  for (const part of chunk(customerIds, IN_CHUNK_SIZE)) {
+    const rows = await fetchAllPages<{ id: string; marketing_unsubscribe_campaign_id: string | null }>((from, to) =>
+      supabase
+        .from('customers')
+        .select('id, marketing_unsubscribe_campaign_id')
+        .in('marketing_unsubscribe_campaign_id', part)
+        .order('id', { ascending: true })
+        .range(from, to),
+    )
+    for (const row of rows) add(row.marketing_unsubscribe_campaign_id)
+  }
+
+  const businessIds = [...new Set(campaigns.filter((c) => c.audienceType !== 'customer').map((c) => c.id))]
+  for (const part of chunk(businessIds, IN_CHUNK_SIZE)) {
+    const rows = await fetchAllPages<{ id: string; unsubscribe_campaign_id: string | null }>((from, to) =>
+      supabase
+        .from('business_contacts')
+        .select('id, unsubscribe_campaign_id')
+        .in('unsubscribe_campaign_id', part)
+        .order('id', { ascending: true })
+        .range(from, to),
+    )
+    for (const row of rows) add(row.unsubscribe_campaign_id)
+  }
+
+  return counts
+}
+
+/**
+ * The short links each campaign points at.
+ *
+ * Owned by metadata, exactly as `fetchCampaignLinks` matches them (channel and campaign id), but
+ * read for every campaign in one request rather than one request per campaign.
+ */
+async function fetchLinksForCampaigns(
+  supabase: AdminClient,
+  campaignIds: string[],
+): Promise<Map<string, MarketingCampaignLinkRow[]>> {
+  const wanted = new Set(campaignIds)
+  const byCampaign = new Map<string, MarketingCampaignLinkRow[]>()
+
+  for (const part of chunk([...wanted], IN_CHUNK_SIZE)) {
+    const rows = await fetchAllPages<MarketingCampaignLinkRow>((from, to) =>
+      supabase
+        .from('short_links')
+        .select('id, short_code, destination_url, metadata')
+        .in('metadata->>campaign_id', part)
+        .order('id', { ascending: true })
+        .range(from, to),
+    )
+
+    for (const row of rows) {
+      const campaignId = row.metadata?.campaign_id
+      if (row.metadata?.channel !== 'marketing_email' || typeof campaignId !== 'string' || !wanted.has(campaignId)) continue
+      const current = byCampaign.get(campaignId) ?? []
+      current.push(row)
+      byCampaign.set(campaignId, current)
+    }
+  }
+
+  return byCampaign
+}
+
+type ClickEngagement = Pick<MarketingCampaignEngagement, 'clicks' | 'uniqueClickers' | 'filteredClicks'>
+
+/**
+ * Human clicks per campaign, measured through our own redirector.
  *
  * Denominators, stated once:
  *   - `clicks` counts CLICK ROWS, not people. Known bots, pre-send tests and scan bursts are
@@ -886,6 +1005,56 @@ export function campaignUtmValue(campaign: Pick<MarketingCampaign, 'id' | 'utmCa
  *   - `uniqueClickers` counts DISTINCT RECIPIENTS OF THIS CAMPAIGN. A click is only counted if
  *     its `utm_content` matches a recipient row on this campaign, so a stray click on a shared
  *     link cannot inflate it. Compare it against `sent`, not against `recipients`.
+ */
+async function fetchClickEngagement(
+  supabase: AdminClient,
+  campaigns: CampaignStatsSubject[],
+  recipientIdsByCampaign: Map<string, Set<string>>,
+): Promise<Map<string, ClickEngagement>> {
+  const linksByCampaign = await fetchLinksForCampaigns(
+    supabase,
+    campaigns.map((campaign) => campaign.id),
+  )
+  const campaignByLink = new Map<string, string>()
+  for (const [campaignId, links] of linksByCampaign) {
+    for (const link of links) campaignByLink.set(link.id, campaignId)
+  }
+
+  const clickRows = await fetchClicksForLinks(supabase, [...campaignByLink.keys()])
+  const rowsByCampaign = new Map<string, MarketingClickRow[]>()
+  for (const row of clickRows) {
+    const campaignId = row.short_link_id ? campaignByLink.get(row.short_link_id) : undefined
+    if (!campaignId) continue
+    const current = rowsByCampaign.get(campaignId) ?? []
+    current.push(row)
+    rowsByCampaign.set(campaignId, current)
+  }
+
+  const out = new Map<string, ClickEngagement>()
+  for (const campaign of campaigns) {
+    const recipientIds = recipientIdsByCampaign.get(campaign.id) ?? new Set<string>()
+    const classified = classifyMarketingClicks(
+      rowsByCampaign.get(campaign.id) ?? [],
+      (linksByCampaign.get(campaign.id) ?? []).map((link) => link.id),
+      { notBefore: campaign.scheduledFor },
+    )
+
+    let clicks = 0
+    const clickers = new Set<string>()
+    for (const row of classified.humanRows) {
+      clicks += 1
+      if (row.utm_content && recipientIds.has(row.utm_content)) clickers.add(row.utm_content)
+    }
+
+    out.set(campaign.id, { clicks, uniqueClickers: clickers.size, filteredClicks: classified.filteredRows.length })
+  }
+
+  return out
+}
+
+/**
+ * Conversions for a campaign, from our own analytics.
+ *
  *   - `conversions.bookings` counts ANALYTICS EVENTS, which is bookings rather than people,
  *     matched on the campaign's UTM value. Attribution is last-touch and as generous as the
  *     website's own: any booking still carrying our campaign tag counts, whenever it happened.
@@ -894,30 +1063,10 @@ export function campaignUtmValue(campaign: Pick<MarketingCampaign, 'id' | 'utmCa
  *     because a campaign that produced twenty questions did not fill twenty tables, and the
  *     first B2B campaign's main call to action is an enquiry form rather than a booking one.
  */
-async function fetchCampaignEngagement(
+async function fetchCampaignConversions(
   supabase: AdminClient,
   campaign: MarketingCampaign,
-  recipientIds: Set<string>,
-): Promise<MarketingCampaignEngagement> {
-  const links = await fetchCampaignLinks(supabase, campaign.id)
-  const clickRows = await fetchClicksForLinks(
-    supabase,
-    links.map((link) => link.id),
-  )
-  const classified = classifyMarketingClicks(
-    clickRows,
-    links.map((link) => link.id),
-    { notBefore: campaign.scheduledFor },
-  )
-
-  let clicks = 0
-  const clickers = new Set<string>()
-
-  for (const row of classified.humanRows) {
-    clicks += 1
-    if (row.utm_content && recipientIds.has(row.utm_content)) clickers.add(row.utm_content)
-  }
-
+): Promise<Pick<MarketingCampaignEngagement, 'conversions' | 'conversionValue'>> {
   const utmCampaign = campaignUtmValue(campaign)
   const [bookings, enquiries] = await Promise.all([
     fetchConversionsByUtmCampaign(supabase, utmCampaign),
@@ -925,9 +1074,6 @@ async function fetchCampaignEngagement(
   ])
 
   return {
-    clicks,
-    uniqueClickers: clickers.size,
-    filteredClicks: classified.filteredRows.length,
     conversions: {
       bookings: bookings.count,
       enquiries: enquiries.count,
@@ -938,130 +1084,176 @@ async function fetchCampaignEngagement(
   }
 }
 
+/** The campaign fields a statistics read needs. A full `MarketingCampaign` satisfies it. */
+export type CampaignStatsSubject = Pick<MarketingCampaign, 'id' | 'audienceType' | 'scheduledFor'>
+
 /**
- * Campaign results.
+ * Everything `getCampaignStats` returns except conversions, which cost two further reads per
+ * campaign and are not needed by the weekly insights report.
+ */
+export type CampaignDeliveryStats = Omit<MarketingCampaignStats, 'engagement'> & {
+  engagement: ClickEngagement
+}
+
+interface RecipientStatsRow {
+  id: string
+  campaign_id: string
+  status: MarketingRecipientStatus
+  skip_reason: string | null
+  email_message_id: string | null
+}
+
+/**
+ * Campaign results for one or more campaigns, read through the caller's client.
+ *
+ * `getCampaignStats` is a thin wrapper over this, so the campaign page and the weekly insights
+ * report count the same way. The report passes its own per-section client, whose requests carry
+ * the report's deadline; this function never creates a client and never writes.
  *
  * Delivery and open metrics are counted from TIMESTAMP columns, never from `email_messages
  * .status`. The webhook promotes that status forwards, so counting statuses would report a
- * campaign where everyone opened as having zero deliveries.
+ * campaign where everyone opened as having zero deliveries. Messages are counted through
+ * `marketing_campaign_recipients.email_message_id`, so test sends and failed attempts that no
+ * recipient points at are never counted.
  *
  * Rates use `sent` as the denominator throughout: a skipped or failed row never reached an
  * inbox, so including it would depress every figure and make a clean send look like a poor
- * one.
- *
- * `engagement` is the separate, first-party half of the picture and does not feed the rates.
- * Its own denominators are documented on `fetchCampaignEngagement`.
+ * one. Every requested campaign gets an entry, with zeros when nothing was sent.
+ */
+export async function readCampaignDeliveryStats(
+  supabase: AdminClient,
+  campaigns: CampaignStatsSubject[],
+): Promise<Map<string, CampaignDeliveryStats>> {
+  const out = new Map<string, CampaignDeliveryStats>()
+  const unique = [...new Map(campaigns.map((campaign) => [campaign.id, campaign])).values()]
+  if (unique.length === 0) return out
+  const campaignIds = unique.map((campaign) => campaign.id)
+
+  const recipients: RecipientStatsRow[] = []
+  for (const part of chunk(campaignIds, IN_CHUNK_SIZE)) {
+    const rows = await fetchAllPages<RecipientStatsRow>((from, to) =>
+      supabase
+        .from('marketing_campaign_recipients')
+        .select('id, campaign_id, status, skip_reason, email_message_id')
+        .in('campaign_id', part)
+        .order('id', { ascending: true })
+        .range(from, to),
+    )
+    recipients.push(...rows)
+  }
+
+  const recipientsByCampaign = new Map<string, RecipientStatsRow[]>()
+  for (const row of recipients) {
+    const current = recipientsByCampaign.get(row.campaign_id) ?? []
+    current.push(row)
+    recipientsByCampaign.set(row.campaign_id, current)
+  }
+
+  const messageEngagement = await fetchEngagementForCampaigns(
+    supabase,
+    campaignIds,
+    recipients.map((row) => row.email_message_id).filter((id): id is string => Boolean(id)),
+  )
+  const unsubscribes = await fetchUnsubscribeCounts(supabase, unique)
+  const clickEngagement = await fetchClickEngagement(
+    supabase,
+    unique,
+    new Map(campaignIds.map((id) => [id, new Set((recipientsByCampaign.get(id) ?? []).map((row) => row.id))])),
+  )
+
+  for (const campaign of unique) {
+    const rows = recipientsByCampaign.get(campaign.id) ?? []
+    let sent = 0
+    let failed = 0
+    let needsReview = 0
+    let pending = 0
+    let sendingNow = 0
+    let skipped = 0
+    const skippedByReason: Record<string, number> = {}
+    const messageIds = new Set<string>()
+
+    for (const row of rows) {
+      if (row.status === 'sent') sent += 1
+      else if (row.status === 'failed') failed += 1
+      else if (row.status === 'needs_review') needsReview += 1
+      else if (row.status === 'pending') pending += 1
+      else if (row.status === 'sending') sendingNow += 1
+      else if (row.status === 'skipped') {
+        skipped += 1
+        const reason = row.skip_reason ?? 'unknown'
+        skippedByReason[reason] = (skippedByReason[reason] ?? 0) + 1
+      }
+
+      if (row.email_message_id) messageIds.add(row.email_message_id)
+    }
+
+    let delivered = 0
+    let opened = 0
+    let bounced = 0
+    let complained = 0
+
+    for (const messageId of messageIds) {
+      const message = messageEngagement.get(messageId)
+      if (!message) continue
+      if (message.delivered_at) delivered += 1
+      if (message.opened_at) opened += 1
+      if (message.bounced_at) bounced += 1
+      if (message.complained_at) complained += 1
+    }
+
+    const unsubscribed = unsubscribes.get(campaign.id) ?? 0
+    const engagement = clickEngagement.get(campaign.id) ?? { clicks: 0, uniqueClickers: 0, filteredClicks: 0 }
+    // Provider clicks include enterprise mail scanners. The headline click number is therefore
+    // the distinct recipients left after our own redirector removes scan bursts.
+    const clicked = engagement.uniqueClickers
+
+    out.set(campaign.id, {
+      campaignId: campaign.id,
+      recipients: rows.length,
+      sent,
+      failed,
+      needsReview,
+      pending,
+      sendingNow,
+      skipped,
+      skippedByReason,
+
+      delivered,
+      opened,
+      clicked,
+      bounced,
+      complained,
+      unsubscribed,
+
+      rates: {
+        deliveredRate: rate(delivered, sent),
+        openRate: rate(opened, sent),
+        clickRate: rate(clicked, sent),
+        bounceRate: rate(bounced, sent),
+        complaintRate: rate(complained, sent),
+        unsubscribeRate: rate(unsubscribed, sent),
+      },
+
+      engagement,
+    })
+  }
+
+  return out
+}
+
+/**
+ * Campaign results, including conversions. See `readCampaignDeliveryStats` for how each
+ * figure is counted; conversions are documented on `fetchCampaignConversions`.
  */
 export async function getCampaignStats(id: string): Promise<MarketingCampaignStats> {
   const supabase = createAdminClient()
   const campaign = await requireCampaign(id)
 
-  const recipients = await fetchAllPages<{
-    id: string
-    status: MarketingRecipientStatus
-    skip_reason: string | null
-    email_message_id: string | null
-  }>((from, to) =>
-    supabase
-      .from('marketing_campaign_recipients')
-      .select('id, status, skip_reason, email_message_id')
-      .eq('campaign_id', id)
-      .order('id', { ascending: true })
-      .range(from, to),
-  )
+  const stats = (await readCampaignDeliveryStats(supabase, [campaign])).get(id)
+  if (!stats) throw new Error('Campaign statistics could not be read')
+  const conversions = await fetchCampaignConversions(supabase, campaign)
 
-  let sent = 0
-  let failed = 0
-  let needsReview = 0
-  let pending = 0
-  let sendingNow = 0
-  let skipped = 0
-  const skippedByReason: Record<string, number> = {}
-  const messageIds: string[] = []
-
-  for (const row of recipients) {
-    if (row.status === 'sent') sent += 1
-    else if (row.status === 'failed') failed += 1
-    else if (row.status === 'needs_review') needsReview += 1
-    else if (row.status === 'pending') pending += 1
-    else if (row.status === 'sending') sendingNow += 1
-    else if (row.status === 'skipped') {
-      skipped += 1
-      const reason = row.skip_reason ?? 'unknown'
-      skippedByReason[reason] = (skippedByReason[reason] ?? 0) + 1
-    }
-
-    if (row.email_message_id) messageIds.push(row.email_message_id)
-  }
-
-  const messageEngagement = await fetchEngagement(supabase, messageIds)
-
-  let delivered = 0
-  let opened = 0
-  let bounced = 0
-  let complained = 0
-
-  for (const row of messageEngagement.values()) {
-    if (row.delivered_at) delivered += 1
-    if (row.opened_at) opened += 1
-    if (row.bounced_at) bounced += 1
-    if (row.complained_at) complained += 1
-  }
-
-  // Counted from whichever list this campaign went to. Reading only business_contacts, as
-  // this did, pinned every guest campaign's unsubscribe rate to 0.0% however many people
-  // actually opted out, which reads as evidence that nobody minded.
-  const unsubscribeSource =
-    campaign.audienceType === 'customer'
-      ? { table: 'customers' as const, column: 'marketing_unsubscribe_campaign_id' }
-      : { table: 'business_contacts' as const, column: 'unsubscribe_campaign_id' }
-
-  const { count: unsubscribeCount, error: unsubscribeError } = await supabase
-    .from(unsubscribeSource.table)
-    .select('id', { count: 'exact', head: true })
-    .eq(unsubscribeSource.column, id)
-
-  if (unsubscribeError) throw new Error(unsubscribeError.message)
-  const unsubscribed = unsubscribeCount ?? 0
-
-  const engagement = await fetchCampaignEngagement(
-    supabase,
-    campaign,
-    new Set(recipients.map((row) => row.id)),
-  )
-  // Provider clicks include enterprise mail scanners. The headline click number is therefore
-  // the distinct recipients left after our own redirector removes scan bursts.
-  const clicked = engagement.uniqueClickers
-
-  return {
-    campaignId: id,
-    recipients: recipients.length,
-    sent,
-    failed,
-    needsReview,
-    pending,
-    sendingNow,
-    skipped,
-    skippedByReason,
-
-    delivered,
-    opened,
-    clicked,
-    bounced,
-    complained,
-    unsubscribed,
-
-    rates: {
-      deliveredRate: rate(delivered, sent),
-      openRate: rate(opened, sent),
-      clickRate: rate(clicked, sent),
-      bounceRate: rate(bounced, sent),
-      complaintRate: rate(complained, sent),
-      unsubscribeRate: rate(unsubscribed, sent),
-    },
-
-    engagement,
-  }
+  return { ...stats, engagement: { ...stats.engagement, ...conversions } }
 }
 
 /**

@@ -43,7 +43,8 @@ function escapeHtml(value: string): string {
 /** Removes control characters and long dashes from report text before output. */
 function clean(value: string): string {
   return value
-    .replace(new RegExp(String.fromCharCode(0x2014), 'g'), ', ')
+    // A long dash between words (as in some campaign names) becomes a comma, spaces and all.
+    .replace(new RegExp(`\\s*${String.fromCharCode(0x2014)}\\s*`, 'g'), ', ')
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
     .replace(/\s+/g, ' ')
     .trim()

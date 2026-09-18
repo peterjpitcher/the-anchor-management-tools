@@ -186,7 +186,7 @@ interface InsightSection {
   status: SectionStatus     // worst signal rag; green when none; not_checked on failure
   headline: string          // one line, always shown in the email
   metrics: { label: string; value: string; comparison?: string }[]
-  lists: { title: string; items: { text: string; href?: string; rag?: Rag; emailSafe: boolean }[] }[]
+  lists: { title: string; items: { text: string; href?: string; rag?: Rag }[] }[] // page only
   signals: InsightSignal[]
   notes: string[]           // caveats: incomplete data, not enough history, not tracked
   href: string              // the section's page in the app
@@ -295,8 +295,9 @@ Raw counts for "7, 14, 30 and 90 days" are shown as 7, 14, 28 and 91 days ending
 - Every action comes from a signal elsewhere in the report.
 - Score = severity (red 300, amber 200, green win 100) + urgency by due date (0 to 2 days 60, 3 to 6
   days 40, 7 to 13 days 20, none 0) + impact (money, customer or safety 30, staffing 20,
-  housekeeping 0). Ties break by due date, then section order, then signal key, so the order is
-  stable between runs.
+  housekeeping 0). Ties break by impact (safety, money, customer, staffing, housekeeping), then
+  due date, then section order, then signal key, so the order is stable between runs and a safety
+  item never sits under an equal-scoring tidy-up. Biggest concern uses the same safety-first tie-break.
 - Like signals of one rule merge into one list action ("Chase 3 overdue invoices, £5,644 in total"),
   with `target: 'list'`, the narrowest existing list page, and the members shown beneath.
 - At most 10. Every red goes in first; with more than 10 reds the list shows 10 and says "plus N more
@@ -348,7 +349,11 @@ same `category_id`, else not shown).
 | No listable events in the next 14 days | Amber | "No hosted events in the next fortnight" |
 
 **Cases.** An event today counts. A rescheduled event appears once, on its current date. Waitlisted
-guests are not seats. Reminder-only rows are excluded here and in the history.
+guests are not seats. Reminder-only rows are excluded here and in the history. "Net seats in the
+last 7 days" and the stalled rule cover the 7 days ending at the moment the report is built (same
+London clock time 7 days earlier), matching how "booked" is measured, so seats sold earlier today
+count on the page. The headline's "needs attention" count covers listed events only; postponed
+events are named separately.
 
 ### 5.2 Customers
 
@@ -361,6 +366,11 @@ including imports, walk-ins and texts to new numbers."
 **Signals.** Win: this week at least 20% above the 4-week average (floor 5). Amber: at least 20% below.
 Amber spike: a single day at 3 times the 13-week daily average and at least 20 records ("Unusual spike
 on 30 Jun: 25 new records. Check for an import"). No red.
+
+Unusual days (as defined for the spike) are looked for across all 98 days read. In every comparison,
+average, trend and win or decline rule, an unusual day counts as a normal day at the 13-week daily
+average, so an import neither fakes growth this week nor fakes a decline for the four weeks after
+it. Raw totals still count every record, and the page names each unusual day.
 
 ### 5.3 Marketing emails
 
@@ -426,7 +436,8 @@ feedback". No trend figures. Feedback collection began on 5 July 2026.
    and kitchen capacity used (food covers against the pacing limit for that day's kitchen service
    from business hours and special hours for that date; "kitchen closed" where it is). A totals row
    compares the whole next 7 days with what was on the books at the same point 1, 4 and 13 weeks ago.
-4. A link per day to the existing bookings view for that date, for authorised drill-down.
+4. A link per day to the bookings board opened on that date (`/table-bookings/boh?date=<date>&view=day`;
+   the board now accepts a valid date and view in the URL and otherwise opens on today, as before).
 
 The report never renders a table-booking row, guest name, reference or per-booking link.
 
@@ -440,7 +451,9 @@ note: a day at 50% or more above usual. No red.
 **Scope.** Three separate scopes that never mix in counts:
 1. **Upcoming:** `private_bookings` with `event_date` in the next 14 days, not cancelled.
 2. **Further ahead:** red financial or hold issues (expired holds, overdue balances) on bookings after
-   the 14 days, from `weekly-digest-classifier.ts`.
+   the 14 days, from `weekly-digest-classifier.ts`, plus amber "deposit not yet requested" and amber
+   texts waiting for approval (those texts are created 14 to 21 days before the event, so a 14-day
+   window would find them too late).
 3. **Past:** bookings returned by the client-injected `getStalePendingOutcomes` that still need an
    outcome.
 
@@ -453,13 +466,14 @@ bookings in the next 90 days.
 | Check | Rule | Status |
 |---|---|---|
 | Not confirmed | `status='draft'` | Red |
-| Hold expired / expiring within 48 hours | classifier | Red / Amber |
+| Hold expired / expiring within 48 hours | classifier; skipped while the deposit awaits staff confirmation (flag `private_booking_deposit_confirmation` on and `isDepositAwaitingConfirmation`), because the hold is not running | Red / Amber |
+| Deposit not yet requested | flag on and `isDepositAwaitingConfirmation`: the guest has not been asked for the deposit yet; replaces "Deposit outstanding" for that booking | Red upcoming, Amber further ahead |
 | Deposit outstanding | `deposit_amount > 0`, `deposit_paid_date` null, `deposit_waived` false (read directly; the view ignores waivers) | Red |
 | Balance outstanding | classifier `hasOutstandingBalance` (due 14 days before the event, so late inside this window) | Red. For an invoiced booking (`invoice_id` set) the invoice decides: overdue Red, not yet due noted in green |
 | Headcount missing | `guest_count` null | Amber |
 | Timings incomplete | `start_time` or `end_time` null, or `date_tbd` | Amber |
 | Contract not generated | `contract_version = 0` | Amber |
-| Text waiting for approval | classifier | Amber |
+| Text waiting for approval | any booking: per booking in the upcoming and further-ahead scopes; texts for past or cancelled bookings form one queue line | Amber |
 | Outcome not recorded (past scope) | `getStalePendingOutcomes` | Amber |
 
 **Not tracked** (printed on the section): menu confirmed, dietary requirements, room set-up.
@@ -488,7 +502,8 @@ line: "🟢 OK. Parking: no bookings in 13 weeks and none coming up."
 - Ageing: oldest open item in days, median age, most overdue in days.
 - Bulleted lists, one line per item with a link to `/maintenance/<id>`: critical and high, overdue,
   new this week, closed this week. Each line: title, area, status, priority, age or days overdue,
-  whose job. The page adds the full open list, collapsed.
+  whose job. The page adds the full open list, closed behind "Show all" and left off printed copies,
+  because the exception lists above it already print.
 - One primary category per area, so category counts add up to the open total:
   customer-facing (Toilets (Ladies), Toilets (Gents), Toilets (Accessible), Dining Room, Beer Garden
   and Terrace, Main Bar, Function Room, Car Park); operations (Kitchen, Cellar, Plant and Utilities,
@@ -500,11 +515,15 @@ list stays accurate"). Green: "No new or overdue issues".
 
 ### 5.9 Employees and compliance
 
-**Scope.** Employees with status `Active` or `Started Separation`.
+**Scope.** Employees with status `Active` or `Started Separation`, except a leaver whose
+`employment_end_date` is before today (a note says how many are left out until their leaving is
+finalised). The two onboarding checks apply only to new starters with status `Onboarding`: on
+Active staff the app cannot resend an invite or finish onboarding, so those flags could never
+clear, and their real gaps are caught by the record checks.
 
 **Checks.** Red: no right-to-work record; right to work expired or expiring within 30 days. Amber:
-expiring within 60 days; follow-up date reached; onboarding incomplete more than 14 days after the
-start date; onboarding invite expired unused; no emergency contact; no payroll details.
+expiring within 60 days; follow-up date reached; no emergency contact; no payroll details; for new
+starters, onboarding incomplete more than 14 days after the start date, or the invite expired unused.
 
 **Shows.** Page: one line per person listing what is missing, linked to `/employees/<id>`. Email: counts
 by check ("6 staff have no right-to-work record"), linked to `/employees`. Otherwise "🟢 OK. No
@@ -519,16 +538,19 @@ expiry date are not flagged.
 1. **Publishing:** "Rota published to Sun 28 Sep; weeks from 5 Oct are drafts." Reuses
    `src/lib/rota/week-readiness.ts`.
 2. **Cover, next 14 days:** every open or unfilled published shift (`getUnfilledShifts`) with date,
-   time and department, and on the page why it is open ("rejected by <name>" or "never filled"),
+   time and department, and on the page why it is open ("rejected by <name>", "reopened because the
+   person rostered couldn't work", "released when a staff member left", or "never filled"),
    linked to `/rota?week=<monday>&shift=<id>`. Open shifts 15 to 56 days out are a count.
 3. **Acceptance, last 4 weeks** (by decision date): accepted by staff, auto-accepted, rejected
    (`rota_shift_rejections.rejected_at`), each as a share, against the 13-week rate. Backfilled
-   reliability rows are ignored. Shifts awaiting acceptance in the next 14 days: a count (by person on
-   the page).
+   reliability rows are ignored. Shifts awaiting acceptance over the 16 days staff are warned about
+   (the two-week cutoff plus the 2-day warning lead, from `src/lib/rota/acceptance-cutoff.ts`): a
+   count (by person on the page). This replaces the manager copies of those warnings.
 4. **Rejections this week:** shift date, department, whether since covered (and the person on the
    page). Couldn't-work shifts this week by department.
 5. **Hard to staff:** rejections, open shifts and couldn't-work shifts over 13 weeks by department; a
-   department is named when it has at least 3 and half or more of the total.
+   department is named when it has at least 3 and half or more of the total. Each shift counts once,
+   in one category and its own department (a couldn't-work shift is not also counted as unfilled).
 6. **Leave:** every pending request with requester, type, dates, days waiting and days until it
    starts, each linked to `/rota/leave#leave-<id>` (the leave page gets matching row anchors).
    Approved leave in the next 14 days as a "who's off" list on the page only.
@@ -558,8 +580,10 @@ covered."
 - A one-line answer to "are the checks being done properly, consistently and by the right people?"
 
 **Signals.** Red: completion below 90%; a repeat misser. Amber: completion 90% to 95%; late share above
-15%; any value breach; spot checks drawn but not recorded; 10 or more unassigned misses. Green: 95% or
-more with none of the above. If a trading day this week has no locked instances at all while the venue
+15%; any value breach; spot checks drawn but not recorded; 10 or more unassigned misses; a day this
+week still not locked after the overnight sweep should have locked it (the sweep failed or ran late).
+Green: 95% or more with none of the above, and only when every day of the week could be counted;
+uncounted figures read "Not judged yet" or "No records", never 0. If a trading day this week has no locked instances at all while the venue
 was open, the section notes "No checklist records for <day>" and does not claim a completion rate for
 that day.
 
@@ -576,6 +600,10 @@ labelled OJ Projects or private hire where linked.
 system will never chase INV-... because it was not emailed"). Actions "Chase INV-..., £<amount>, <n>
 days overdue", merged into one list action when more than 3.
 
+An overdue invoice for a private booking whose event is today or later (and not cancelled) is chased
+from Private hire, where it is red because the event is close; the Invoices section still lists it and
+says the chase sits under Private hire, so the same invoice never produces two actions.
+
 ### 5.13 Cashing up
 
 **Scope.** `cashup_sessions` with `voided_at` null and status `submitted`, `approved` or `locked`
@@ -583,24 +611,35 @@ days overdue", merged into one list action when more than 3.
 business-hours and special-hours logic moved out of `src/app/actions/missing-cashups.ts` into
 `src/lib/cashing-up/`, with the missing void filter added.
 
+Production shows cash-ups are routinely entered 1 to 11 days late (median about 66 hours); at the
+Friday 06:00 report the previous day was entered on 1 of 28 Fridays. The rules below allow for that,
+so the section does not read red most weeks.
+
 **Shows.**
-- **Completeness first:** "5 of 7 trading days entered; missing Mon 14, Tue 15." Missing is never
-  treated as zero, and a genuinely zero day is shown as £0.00.
-- Takings total and average per entered day, always with the denominator ("£3,410 over 5 entered
-  days").
-- Weekly comparison against the same weekdays in the previous 4 and 13 weeks and 52 weeks earlier
-  (364 days), **only when every trading day this week is entered** and each weekday's baseline has
-  at least 3 entered days in the 4 weeks (10 in the 13, 1 for the year-ago day). Otherwise:
-  "Performance comparison not made: 2 trading days are missing."
+- **Completeness first:** trading days entered, plus days "not entered yet" inside the usual 3-day
+  entry window (a note, never a signal). Missing is never treated as zero, and a genuinely zero day
+  is shown as £0.00.
+- Takings total and average per entered day, always with the denominator.
+- **Weekly comparison** against the same weekdays in the previous 4 and 13 weeks and 52 weeks earlier
+  (364 days), for the most recent complete week: this week if every trading day is entered, otherwise
+  last week if every trading day of it is entered (every baseline then shifts back 7 days, and the
+  comparison is labelled "Last complete week, Fri 11 to Thu 17 Sep"). Each weekday's baseline needs at
+  least 3 entered days in the 4 weeks (10 in the 13, 1 for the year-ago day). If neither week is
+  complete: "Performance comparison not made: N trading days are missing or not entered yet." (Live
+  check over 13 Fridays: this week complete on 0, last week complete on 11.)
 - Day anomalies: an entered day at least 20% and £150 above or below its weekday's 13-week average
   (needs at least 8 entered days of that weekday). These may show even when the week is incomplete.
-- Cash share of takings. Cash variances of £10 or more either way this week against the 13-week
-  weekly rate, each with date and amount (card variances are always zero).
+- Cash share of takings. Cash variances of £10 or more either way on cash-ups **entered** this week (a
+  cash-up counts as entered on the later of its own date and the London date it was created, so each
+  is reported once and a late one names both dates), against the rate for cash-ups entered in the
+  previous 13 weeks. Card variances are always zero.
 
-**Signals.** Red: a variance of £50 or more; 3 or more trading days before yesterday with no cash-up.
-Amber: 1 or 2 missing; variances above the normal rate; a complete week at least 20% below the
-weekday average. Win: a complete week at least 20% above. Yesterday not yet entered is never
-"missing". Links `/cashing-up/daily?date=<date>`.
+**Signals.** Red: a variance of £50 or more entered this week; 3 or more missing trading days. A
+trading day is missing only when it is more than 3 days old (on or before today minus 4) with no
+cash-up; missing days are looked for over the 14 days before that boundary and named. Amber: 1 or 2
+missing; variances above the normal rate; a complete week at least 20% below the weekday average.
+Win: a complete week at least 20% above. Links `/cashing-up/daily?date=<date>`. (Live check over 13
+Fridays: red 2, amber 5, clean 6; every amber was one Monday entered late.)
 
 ### 5.14 Short links
 
@@ -701,7 +740,7 @@ As 4.7. Last in the report, after Recruitment.
 | 2 | Stop queuing manager copies of staff shift reminders and their manager retry path (`rota-shift-acceptance`). Staff warnings and auto-accept unchanged | 5.10 |
 | 3 | Remove the `leave-approval-reminders` cron and route (manager-only reminders) | 5.10 |
 | 4 | Remove the `rota-manager-alert`, `private-bookings-weekly-summary`, `checklists-weekly-summary` and `maintenance-weekly-snapshot` crons and routes. The classifier and other reused rules stay | 5.6, 5.8, 5.10, 5.11 |
-| 5 | Stop deferring manager checklist alerts and summaries to the report (`checklists/jobs/outbox.ts`). The owner's technical alerts stay immediate | 5.11 |
+| 5 | Stop deferring manager checklist alerts and summaries to the report (`checklists/jobs/outbox.ts`). The owner's technical alerts stay immediate. With no alert written at completion, the instance row is the only record of an out-of-range reading, so staff can no longer undo one (`undoChecklistInstance` refuses a row with `value_breach` set) | 5.11 |
 | 6 | Stop creating recruitment manager alerts, including their retry path (`recruitment/communications.ts`). Applicant emails unchanged | 5.15 |
 | 7 | `queueManagerReportEmail` and the old renderer are deleted. `delivery.ts` keeps the lease, freeze, send and the legacy finaliser for old-format frozen reports | |
 | 8 | Remove the five schedules from `vercel.json`; rewrite `docs/manager-weekly-report.md`; update the cron list in `docs/agent-reference.md` | |

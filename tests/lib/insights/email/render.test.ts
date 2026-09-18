@@ -70,6 +70,16 @@ describe('renderInsightsEmail', () => {
     expect(hrefs.every((href) => href.startsWith(`${FIXTURE_APP_URL}/`))).toBe(true)
   })
 
+  it('turns a long dash between words into a comma, without stray spaces', () => {
+    const report = buildFixtureReport()
+    const dash = String.fromCharCode(0x2014)
+    report.sections[2].metrics = [{ label: `Click rate, Big Sing ${dash} guests ${dash} 18 Sep 2026`, value: '1.2%' }]
+    const { html, text } = renderInsightsEmail(report, { appUrl: FIXTURE_APP_URL })
+    expect(html).toContain('Click rate, Big Sing, guests, 18 Sep 2026')
+    expect(text).toContain('Click rate, Big Sing, guests, 18 Sep 2026')
+    expect(html).not.toContain(dash)
+  })
+
   it('escapes report text', () => {
     const report = buildFixtureReport()
     report.sections[1].headline = '<script>alert(1)</script> & more'
