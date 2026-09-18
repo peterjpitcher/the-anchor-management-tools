@@ -85,7 +85,7 @@ export function Field({
             {label}
             {required && <span className="ml-0.5 text-danger">*</span>}
             {!required && showOptional && (
-              <span className="ml-1 font-normal normal-case text-text-subtle">(optional)</span>
+              <span className="ml-1 font-normal normal-case text-text-soft">(optional)</span>
             )}
           </span>
           {labelSuffix}
@@ -95,7 +95,7 @@ export function Field({
       <div className={cn('flex flex-col gap-1.5', layout === 'horizontal' && 'sm:col-span-2')}>
         {child}
         {resolvedHint && (
-          <p id={hintId} className="text-xs text-text-subtle">
+          <p id={hintId} className="text-xs text-text-soft">
             {resolvedHint}
           </p>
         )}

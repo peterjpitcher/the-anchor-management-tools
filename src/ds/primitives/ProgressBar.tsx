@@ -28,7 +28,7 @@ export function ProgressBar({
   return (
     <div
       className={cn(
-        'rounded-full bg-surface-hover',
+        'rounded-pill bg-surface-hover',
         size === 'sm' ? 'h-1.5' : 'h-2',
         className
       )}
@@ -39,7 +39,7 @@ export function ProgressBar({
     >
       <div
         className={cn(
-          'h-full rounded-full transition-[width] duration-300',
+          'h-full rounded-pill transition-[width] duration-300',
           toneStyles[tone]
         )}
         style={{ width: `${clamped}%` }}

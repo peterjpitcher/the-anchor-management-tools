@@ -24,7 +24,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    'bg-primary text-primary-fg border-primary hover:bg-primary-hover hover:border-primary-hover shadow-[0_1px_0_rgba(255,255,255,0.18)_inset,0_1px_2px_rgba(0,0,0,0.08)]',
+    'bg-primary text-primary-fg border-primary hover:bg-primary-hover hover:border-primary-hover shadow-xs',
   secondary:
     'bg-surface text-text border-border-strong hover:bg-surface-hover',
   ghost:
@@ -36,10 +36,10 @@ const variantStyles: Record<ButtonVariant, string> = {
 }
 
 const sizeStyles: Record<ButtonSize, string> = {
-  xs: 'h-6 px-1.5 text-[11px] rounded-[6px]',
-  sm: 'h-[var(--spacing-btn-h-sm)] px-2.5 text-xs rounded-[7px]',
-  md: 'h-[var(--spacing-btn-h)] px-3 text-[13px] rounded-[8px]',
-  lg: 'h-[var(--spacing-btn-h-lg)] px-4 text-sm rounded-[9px]',
+  xs: 'h-6 px-1.5 text-meta rounded-sm',
+  sm: 'h-btn-h-sm px-2.5 text-xs rounded-sm',
+  md: 'h-btn-h px-3 text-ui rounded-default',
+  lg: 'h-btn-h-lg px-4 text-sm rounded-default',
 }
 
 const Spinner = () => (
@@ -85,14 +85,15 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         'inline-flex items-center justify-center gap-1.5 border font-semibold whitespace-nowrap',
         'max-shell:min-h-touch',
         'transition-[background,border-color,color,transform,box-shadow] duration-[120ms] select-none tracking-[-0.005em]',
-        'focus-visible:outline-none focus-visible:shadow-ring',
+        'focus-visible:outline-hidden focus-visible:shadow-ring',
         'active:translate-y-[0.5px]',
-        variantStyles[variant],
+        // Size first, then variant, so the link variant's p-0 h-auto wins at every size.
         sizeStyles[size],
+        variantStyles[variant],
         !children && size === 'xs' && 'w-6 px-0',
-        !children && size === 'sm' && 'w-[var(--spacing-btn-h-sm)] px-0',
-        !children && size === 'md' && 'w-[var(--spacing-btn-h)] px-0',
-        !children && size === 'lg' && 'w-[var(--spacing-btn-h-lg)] px-0',
+        !children && size === 'sm' && 'w-btn-h-sm px-0',
+        !children && size === 'md' && 'w-btn-h px-0',
+        !children && size === 'lg' && 'w-btn-h-lg px-0',
         fullWidth && 'w-full',
         (disabled || loading) && 'opacity-50 cursor-not-allowed',
         className

@@ -27,7 +27,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
     return (
       <div className="flex flex-col">
         {label && (
-          <label htmlFor={id} className="text-[13px] font-medium text-text mb-1">
+          <label htmlFor={id} className="block text-xs font-medium uppercase tracking-wider text-text-muted mb-1">
             {label}
           </label>
         )}
@@ -37,11 +37,11 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           id={id}
           rows={rows}
           className={cn(
-            'px-3 py-2 text-[13px] bg-surface border border-border rounded-default w-full resize-y',
-            'outline-none transition-[border-color,box-shadow] duration-[120ms]',
+            'px-3 py-2 text-ui bg-surface border border-border rounded-default w-full resize-y',
+            'outline-hidden transition-[border-color,box-shadow] duration-[120ms]',
             'focus:border-border-focus focus:shadow-ring',
             'placeholder:text-text-subtle',
-            error && 'border-danger focus:border-danger focus:shadow-[0_0_0_3px_rgba(220,38,38,0.15)]',
+            error && 'border-danger focus:border-danger focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-danger)_20%,transparent)]',
             disabled && 'opacity-50 cursor-not-allowed bg-surface-2',
             className
           )}
@@ -57,7 +57,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           </p>
         )}
         {!error && hint && (
-          <p id={hintId} className="text-text-subtle text-xs mt-1">
+          <p id={hintId} className="text-text-soft text-xs mt-1">
             {hint}
           </p>
         )}

@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * BackButton / MobileBackButton — backward-compatible wrapper
+ * BackButton / MobileBackButton: backward-compatible wrapper
  * @deprecated Use ds/LinkButton or a custom back button instead
  */
 
@@ -27,9 +27,9 @@ const sizeClasses = {
 }
 
 const variantStyles = {
-  ghost: 'text-gray-600 hover:text-gray-900 hover:bg-gray-100',
-  outline: 'text-gray-600 border border-gray-300 hover:bg-gray-50',
-  solid: 'text-white bg-gray-600 hover:bg-gray-700',
+  ghost: 'text-text-muted hover:text-text hover:bg-surface-hover',
+  outline: 'text-text-muted border border-border-strong hover:bg-surface-hover',
+  solid: 'text-white bg-primary hover:bg-primary-hover',
 }
 
 export const BackButton = forwardRef<HTMLButtonElement, BackButtonProps>(
@@ -68,6 +68,7 @@ export const BackButton = forwardRef<HTMLButtonElement, BackButtonProps>(
         onClick={handleClick}
         className={cn(
           'inline-flex items-center rounded-md transition-colors font-medium',
+          'focus-visible:outline-hidden focus-visible:shadow-ring',
           sizeClasses[size],
           variantStyles[variant],
           className,

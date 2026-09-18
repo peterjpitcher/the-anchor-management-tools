@@ -1142,24 +1142,6 @@
   "src/components/schedule-calendar/VenueCalendar.tsx": {
     "raw-palette": 14
   },
-  "src/ds/compat/BackButton.tsx": {
-    "raw-palette": 8
-  },
-  "src/ds/compat/FilterPanel.tsx": {
-    "raw-palette": 1
-  },
-  "src/ds/compat/Form.tsx": {
-    "raw-palette": 2
-  },
-  "src/ds/compat/RadioGroup.tsx": {
-    "raw-palette": 13
-  },
-  "src/ds/compat/SortableHeader.tsx": {
-    "raw-palette": 3
-  },
-  "src/ds/compat/TabNav.tsx": {
-    "raw-palette": 16
-  },
   "src/ds/composites/Chart.tsx": {
     "raw-palette": 2
   },
@@ -1186,42 +1168,6 @@
   },
   "src/ds/composites/Tabs.tsx": {
     "px-text-size": 1
-  },
-  "src/ds/primitives/Accordion.tsx": {
-    "raw-palette": 17
-  },
-  "src/ds/primitives/Button.tsx": {
-    "px-text-size": 2
-  },
-  "src/ds/primitives/Checkbox.tsx": {
-    "px-text-size": 1
-  },
-  "src/ds/primitives/Input.tsx": {
-    "px-text-size": 2
-  },
-  "src/ds/primitives/LinkButton.tsx": {
-    "px-text-size": 1
-  },
-  "src/ds/primitives/Pagination.tsx": {
-    "raw-palette": 27
-  },
-  "src/ds/primitives/Radio.tsx": {
-    "px-text-size": 1
-  },
-  "src/ds/primitives/SearchInput.tsx": {
-    "bare-rounded": 1
-  },
-  "src/ds/primitives/Select.tsx": {
-    "px-text-size": 2
-  },
-  "src/ds/primitives/Stepper.tsx": {
-    "px-text-size": 1
-  },
-  "src/ds/primitives/Switch.tsx": {
-    "px-text-size": 1
-  },
-  "src/ds/primitives/Textarea.tsx": {
-    "px-text-size": 2
   },
   "src/ds/shell/MobileChrome.tsx": {
     "raw-palette": 1,
