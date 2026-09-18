@@ -3,7 +3,8 @@
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/ds';
+import { Button, IconButton } from '@/ds';
+import { cn } from '@/lib/utils';
 import { Input } from '@/ds';
 import { FormGroup } from '@/ds';
 import { upsertDepartmentBudget, addDepartment, deleteDepartment, type DepartmentBudget, type Department } from '@/app/actions/budgets';
@@ -73,18 +74,19 @@ function BudgetRow({
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-sm font-medium text-text">{label}</p>
-          <p className="text-xs text-gray-400 capitalize">{department} department</p>
+          <p className="text-xs text-text-soft capitalize">{department} department</p>
         </div>
         {canManage && (
-          <button
+          <IconButton
             type="button"
+            size="sm"
             onClick={handleDelete}
             disabled={deletePending}
-            className="p-1 text-text-subtle hover:text-danger rounded-sm shrink-0"
+            label="Delete department"
             title="Delete department"
-          >
-            <TrashIcon className="h-4 w-4" />
-          </button>
+            icon={<TrashIcon className="h-4 w-4" />}
+            className="shrink-0 text-text-subtle hover:text-danger"
+          />
         )}
       </div>
 
@@ -131,7 +133,7 @@ function BudgetRow({
               </div>
             </dl>
           ) : (
-            <p className="text-sm text-gray-400 italic">No budget set for {year}</p>
+            <p className="text-sm text-text-soft italic">No budget set for {year}</p>
           )}
           {canManage && (
             <Button type="button" size="sm" variant="secondary" onClick={() => setEditing(true)}>
@@ -187,7 +189,7 @@ function AddDepartmentForm({ onAdded }: { onAdded: (dept: Department) => void })
           </Button>
         </div>
       </div>
-      <p className="text-xs text-gray-400 mt-1">The name will be used as-is in department dropdowns across the rota.</p>
+      <p className="text-xs text-text-soft mt-1">The name will be used as-is in department dropdowns across the rota.</p>
     </div>
   );
 }
@@ -214,11 +216,12 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
               key={y}
               type="button"
               onClick={() => setYear(y)}
-              className={`px-3 py-1 rounded-sm text-sm font-medium transition-colors ${
+              className={cn(
+                'px-3 py-1 rounded-sm text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:shadow-ring',
                 y === year
-                  ? 'bg-green-700 text-white'
-                  : 'bg-surface-hover text-text hover:bg-border'
-              }`}
+                  ? 'bg-primary text-primary-fg'
+                  : 'bg-surface-hover text-text hover:bg-border',
+              )}
             >
               {y}
             </button>
@@ -249,14 +252,16 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
             }}
           />
         ) : (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-1.5 text-sm text-text-muted hover:text-text"
+            icon={<PlusIcon className="h-4 w-4" />}
+            className="text-text-muted hover:text-text"
           >
-            <PlusIcon className="h-4 w-4" />
             Add department
-          </button>
+          </Button>
         )
       )}
 

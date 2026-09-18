@@ -30,12 +30,12 @@ export function DetailRow({
         className
       )}
     >
-      <span className="font-anchor-body text-[13px] leading-[1.5] text-guest-text-muted">
+      <span className="font-anchor-body text-ui leading-[1.5] text-guest-text-muted">
         {label}
       </span>
       <span
         className={cn(
-          'text-right font-anchor-body text-[14px] font-semibold leading-[1.4]',
+          'text-right font-anchor-body text-sm font-semibold leading-[1.4]',
           emphasis === 'deadline' ? 'text-guest-accent-text' : 'text-guest-text'
         )}
       >

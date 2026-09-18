@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { Button, Input } from '@/ds'
 import { cn } from '@/lib/utils'
 import type { FohVoucherLookupItem } from '../lib'
 import { statusLabel } from './voucher-status'
@@ -46,31 +47,36 @@ export function NumberSearch({
           onSearch()
         }}
       >
-        <input
-          id={inputId}
-          type="text"
-          inputMode="text"
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="characters"
-          spellCheck={false}
-          placeholder="AN-2607-0001"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          className="block h-14 w-full min-w-0 rounded-lg border border-border-strong bg-surface px-4 font-mono text-xl tracking-widest text-text placeholder:text-text-subtle focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
-        />
-        <button
+        {/* Kiosk-sized field: the wrapper lets it fill the row beside the Find button. */}
+        <div className="min-w-0 flex-1">
+          <Input
+            id={inputId}
+            type="text"
+            inputMode="text"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            placeholder="AN-2607-0001"
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            className="h-14 px-4 font-mono text-xl tracking-widest"
+          />
+        </div>
+        <Button
           type="submit"
+          variant="primary"
+          size="lg"
           disabled={searching}
-          className="h-14 shrink-0 rounded-lg bg-sidebar px-5 text-base font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-14 shrink-0 px-5 text-base"
         >
           {searching ? 'Finding...' : 'Find'}
-        </button>
+        </Button>
       </form>
 
       <div aria-live="polite">
         {message && (
-          <p role="status" className="mt-2 rounded-md border border-amber-200 bg-warning-soft px-3 py-2 text-sm text-warning-fg">
+          <p role="status" className="mt-2 rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning-fg">
             {message}
           </p>
         )}
@@ -83,8 +89,8 @@ export function NumberSearch({
                   type="button"
                   onClick={() => onSelect(item)}
                   className={cn(
-                    'flex min-h-touch w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sidebar/40',
-                    selectedNumber === item.number && 'bg-success-soft'
+                    'flex min-h-touch w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset',
+                    selectedNumber === item.number && 'bg-primary-soft'
                   )}
                 >
                   <span className="min-w-0">

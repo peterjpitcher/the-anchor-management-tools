@@ -1,4 +1,5 @@
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils'
+import { STAFF } from '@/lib/brand/palette'
 
 /**
  * Staff event sheet (SOP pack §29) — an internal, print-friendly A4 run
@@ -67,6 +68,10 @@ export type EventSheetData = {
   riskStatus: string
   specialRiskNotes: string | null
 }
+
+// Staff document, so the STAFF palette. Table rules and the write-in boxes keep a mid grey
+// (STAFF.textSubtle): the border tokens are too pale for a form filled in by hand.
+const FORM_RULE = STAFF.textSubtle
 
 function escapeHtml(value: string): string {
   return value
@@ -246,31 +251,31 @@ export function generateEventSheetHTML(data: EventSheetData): string {
 <style>
   @page { size: A4; margin: 12mm; }
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 16px; }
+  body { font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; color: ${STAFF.text}; margin: 0; padding: 16px; }
   h1 { font-size: 18px; margin: 0 0 2px; }
-  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1.5px solid #111; padding-bottom: 3px; margin: 14px 0 6px; }
-  .subtitle { color: #444; margin: 0 0 10px; }
-  .banner { border: 2.5px solid #b91c1c; color: #b91c1c; padding: 8px 10px; margin: 10px 0; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1.5px solid ${STAFF.text}; padding-bottom: 3px; margin: 14px 0 6px; }
+  .subtitle { color: ${STAFF.textMuted}; margin: 0 0 10px; }
+  .banner { border: 2.5px solid ${STAFF.danger}; color: ${STAFF.dangerFg}; padding: 8px 10px; margin: 10px 0; }
   .banner strong { display: block; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
   .banner ul { margin: 0; padding-left: 18px; }
   table { width: 100%; border-collapse: collapse; margin: 4px 0; }
-  th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; vertical-align: top; }
-  th { background: #eee; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; }
-  .kv td:first-child { width: 32%; font-weight: 600; background: #f6f6f6; }
+  th, td { border: 1px solid ${FORM_RULE}; padding: 4px 6px; text-align: left; vertical-align: top; }
+  th { background: ${STAFF.border}; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .kv td:first-child { width: 32%; font-weight: 600; background: ${STAFF.surfaceHover}; }
   .grid { display: flex; gap: 12px; }
   .grid > div { flex: 1; }
-  .sensitive { border: 1.5px dashed #92400e; background: #fffbeb; padding: 6px 8px; }
-  .sensitive .tag { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #92400e; letter-spacing: 0.05em; }
-  .muted { color: #666; font-weight: 400; }
+  .sensitive { border: 1.5px dashed ${STAFF.warningFg}; background: ${STAFF.warningSoft}; padding: 6px 8px; }
+  .sensitive .tag { font-size: 9px; font-weight: 700; text-transform: uppercase; color: ${STAFF.warningFg}; letter-spacing: 0.05em; }
+  .muted { color: ${STAFF.textMuted}; font-weight: 400; }
   .checklist { list-style: none; margin: 2px 0; padding: 0; }
   .checklist li { margin: 3px 0; }
-  .box { display: inline-block; width: 10px; height: 10px; border: 1.5px solid #111; margin-right: 6px; vertical-align: -1px; }
-  .notes-box { border: 1px solid #999; height: 70px; }
+  .box { display: inline-block; width: 10px; height: 10px; border: 1.5px solid ${STAFF.text}; margin-right: 6px; vertical-align: -1px; }
+  .notes-box { border: 1px solid ${FORM_RULE}; height: 70px; }
   .fill-line { height: 18px; }
   .status { font-weight: 700; }
-  .status-approved { color: #166534; }
-  .status-rejected, .status-incomplete { color: #b91c1c; }
-  .footer { margin-top: 14px; font-size: 9px; color: #555; border-top: 1px solid #999; padding-top: 6px; }
+  .status-approved { color: ${STAFF.successFg}; }
+  .status-rejected, .status-incomplete { color: ${STAFF.dangerFg}; }
+  .footer { margin-top: 14px; font-size: 9px; color: ${STAFF.textMuted}; border-top: 1px solid ${FORM_RULE}; padding-top: 6px; }
   @media print { body { padding: 0; } }
 </style>
 </head>

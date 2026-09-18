@@ -1,7 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOpenSessions } from '@/app/actions/timeclock'
 import TimeclockClient, { type KioskSession } from './_components/TimeclockClient'
-import { Toaster } from 'react-hot-toast'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,15 +39,7 @@ export default async function TimeclockPage() {
     }),
   )
 
-  return (
-    <>
-      <Toaster
-        position="top-center"
-        toastOptions={{
-          style: { background: '#1f2937', color: '#f9fafb', border: '1px solid #374151' },
-        }}
-      />
-      <TimeclockClient employees={activeEmployees} openSessions={openSessions} />
-    </>
-  )
+  // No page-level <Toaster>: the root layout already renders one, and a second on the default
+  // toaster id showed every kiosk toast twice.
+  return <TimeclockClient employees={activeEmployees} openSessions={openSessions} />
 }

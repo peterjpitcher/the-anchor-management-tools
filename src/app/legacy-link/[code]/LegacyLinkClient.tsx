@@ -86,7 +86,7 @@ export default function LegacyLinkClient({
 
       <GuestCard variant="accent">
         <div className="flex flex-col gap-4">
-          <p className="font-anchor-body text-[15px] leading-[1.6] text-guest-text">
+          <p className="font-anchor-body text-guest-lead leading-[1.6] text-guest-text">
             Carry on to what you were after:
           </p>
           <GuestButton as="a" href={destinationUrl} size="lg" fullWidth>
@@ -113,7 +113,7 @@ export default function LegacyLinkClient({
               <h2 className="font-anchor-display text-[21px] font-normal leading-[1.25] text-guest-text-strong">
                 Where did you find this link?
               </h2>
-              <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+              <p className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
                 One tap. It helps us find the old sign or QR code so we can put the new one up.
               </p>
             </div>
@@ -164,11 +164,11 @@ export default function LegacyLinkClient({
                         : 'border-guest-border-strong bg-guest-surface hover:border-anchor-gold-dark'
                     )}
                   >
-                    <span className="text-[15px] font-semibold leading-[1.3] text-guest-text">
+                    <span className="text-guest-lead font-semibold leading-[1.3] text-guest-text">
                       {option.label}
                     </span>
                     {option.hint && (
-                      <span className="text-[13px] leading-[1.35] text-guest-text-muted">
+                      <span className="text-ui leading-[1.35] text-guest-text-muted">
                         {option.hint}
                       </span>
                     )}
@@ -181,7 +181,7 @@ export default function LegacyLinkClient({
               <div className="flex flex-col gap-3">
                 <label
                   htmlFor="legacy-link-detail"
-                  className="font-anchor-body text-[14px] font-semibold leading-[1.4] text-guest-text"
+                  className="font-anchor-body text-sm font-semibold leading-[1.4] text-guest-text"
                 >
                   Where was it?
                 </label>
@@ -210,7 +210,7 @@ export default function LegacyLinkClient({
         </GuestCard>
       )}
 
-      <p className="text-center font-anchor-body text-[13px] leading-[1.6] text-guest-text-muted">
+      <p className="text-center font-anchor-body text-ui leading-[1.6] text-guest-text-muted">
         Nothing is broken. Old links keep working while we swap them over.
       </p>
     </GuestShell>

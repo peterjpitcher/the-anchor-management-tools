@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, ChangeEvent } from 'react'
 import { toast } from 'react-hot-toast'
-import { Button, ConfirmDialog, Input, Select, Spinner } from '@/ds'
+import { Badge, Button, ConfirmDialog, IconButton, Input, Select, Spinner } from '@/ds'
 import {
   markReceiptTransaction,
   deleteReceiptFile,
@@ -26,7 +26,7 @@ import {
   QuestionMarkCircleIcon,
 } from '@heroicons/react/24/outline'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { formatCurrency, formatDate, statusLabels, statusToneClasses } from '@/app/(authenticated)/receipts/utils'
+import { formatCurrency, formatDate, statusLabels, statusTone } from '@/app/(authenticated)/receipts/utils'
 import { RECEIPT_UPLOAD_ACCEPT, receiptUploadErrorMessage, uploadReceiptFile } from './receiptUploadClient'
 
 // Re-defined here or imported? Imported `ReceiptWorkspaceData` in parent, but here we just need the type.
@@ -40,13 +40,10 @@ const expenseCategoryOptions = receiptExpenseCategorySchema.options
 
 export function SourceBadge({ sourceType }: { sourceType: ReceiptTransaction['source_type'] }) {
   const isAmex = sourceType === 'amex'
-  const className = isAmex
-    ? 'bg-info-soft text-info-fg border-border'
-    : 'bg-surface-2 text-text-muted border-border'
   return (
-    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-2xs font-medium ${className}`}>
+    <Badge tone={isAmex ? 'info' : 'neutral'} size="sm">
       {isAmex ? 'Amex' : 'Bank'}
-    </span>
+    </Badge>
   )
 }
 
@@ -56,14 +53,16 @@ function ClassificationBadge({ source }: { source?: ReceiptClassificationSource 
     ai: 'AI',
     rule: 'Rule',
   }
-  const colors: Record<string, string> = {
-    ai: 'bg-info-soft text-info-fg border-border',
-    rule: 'bg-purple-50 text-purple-700 border-purple-100',
+  // AI suggestions share the info tone with the sparkle icon beside them; a rule is an
+  // automation the team set up, so it takes the primary tone.
+  const tones: Record<string, 'info' | 'primary'> = {
+    ai: 'info',
+    rule: 'primary',
   }
   return (
-    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-2xs font-medium ${colors[source] ?? 'bg-surface-2 text-text-muted'}`}>
+    <Badge tone={tones[source] ?? 'neutral'} size="sm">
       {labels[source] ?? source}
-    </span>
+    </Badge>
   )
 }
 
@@ -289,7 +288,7 @@ export function ReceiptTableRow({
     <tr
       className={`align-top transition-[filter] hover:brightness-95 ${
         heatColour
-          ? '[&_.text-text-muted]:!text-text-strong [&_.text-text-subtle]:!text-text'
+          ? '[&_.text-text-muted]:!text-text-strong [&_.text-text-soft]:!text-text [&_.text-text-subtle]:!text-text'
           : ''
       }`}
       style={heatColour ? { backgroundColor: heatColour } : undefined}
@@ -305,9 +304,9 @@ export function ReceiptTableRow({
           <p className="text-xs text-text-muted">{transaction.card_member}</p>
         )}
         {transaction.rule_applied_id && (
-          <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-xs text-primary-soft-fg">
-            <ArrowPathIcon className="h-4 w-4" /> Auto rule
-          </p>
+          <Badge tone="primary" icon={<ArrowPathIcon />} className="mt-1">
+            Auto rule
+          </Badge>
         )}
       </td>
 
@@ -339,7 +338,7 @@ export function ReceiptTableRow({
           <div className="flex flex-col gap-1">
             {/* `||` not `??`: a blank vendor string still needs the prompt, and
                 those are exactly the rows the "Missing vendor" filter surfaces. */}
-            <button type="button" className="text-left text-sm font-medium text-text-strong hover:text-primary" onClick={() => startEditing('vendor')} disabled={!canManageReceipts}>
+            <button type="button" className="rounded-sm text-left text-sm font-medium text-text-strong hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring" onClick={() => startEditing('vendor')} disabled={!canManageReceipts}>
               {transaction.vendor_name || <span className="text-text-subtle font-normal">Add vendor</span>}
             </button>
             <div className="flex items-center gap-2">
@@ -365,7 +364,7 @@ export function ReceiptTableRow({
           </div>
         ) : (
           <div className="flex flex-col gap-1">
-            <button type="button" className="text-left text-sm font-medium text-text-strong hover:text-primary" onClick={() => startEditing('expense')} disabled={!canManageReceipts}>
+            <button type="button" className="rounded-sm text-left text-sm font-medium text-text-strong hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring" onClick={() => startEditing('expense')} disabled={!canManageReceipts}>
               {transaction.expense_category || <span className="text-text-subtle font-normal">Add category</span>}
             </button>
             <div className="flex items-center gap-2">
@@ -380,22 +379,26 @@ export function ReceiptTableRow({
       <td className="px-4 py-2 text-right">{formatCurrency(transaction.amount_out)}</td>
 
       <td className="px-4 py-2">
-        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap ${statusToneClasses[transaction.status]}`}>
-          {transaction.status === 'completed' && <CheckCircleIcon className="h-4 w-4" />}
-          {transaction.status === 'pending' && <XCircleIcon className="h-4 w-4" />}
+        <Badge
+          tone={statusTone[transaction.status]}
+          icon={
+            transaction.status === 'completed' ? <CheckCircleIcon /> : transaction.status === 'pending' ? <XCircleIcon /> : undefined
+          }
+          className="whitespace-nowrap"
+        >
           {statusLabels[transaction.status]}
-        </span>
+        </Badge>
       </td>
 
       <td className="px-4 py-2">
         {transaction.files.map(f => (
           <div key={f.id} className="flex items-center gap-2 mb-1">
-            <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-primary hover:underline text-xs truncate max-w-[100px]">{f.file_name || 'View'}</button>
-            <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-danger text-xs px-1 hover:bg-danger-soft rounded-sm" disabled={isPending}>×</button>
+            <button type="button" onClick={() => handleReceiptDownload(f.id)} className="rounded-sm text-primary hover:underline text-xs truncate max-w-[100px] focus-visible:outline-hidden focus-visible:shadow-ring">{f.file_name || 'View'}</button>
+            <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-danger text-xs px-1 hover:bg-danger-soft rounded-sm focus-visible:outline-hidden focus-visible:shadow-ring" disabled={isPending}>×</button>
           </div>
         ))}
         {transaction.files.length > 0 && (
-          <p className="mt-1 text-2xs text-text-subtle">Links expire after 5 min. Refresh if a link stops working.</p>
+          <p className="mt-1 text-2xs text-text-soft">Links expire after 5 min. Refresh if a link stops working.</p>
         )}
         <ConfirmDialog
           open={Boolean(deleteFileId)}
@@ -411,12 +414,12 @@ export function ReceiptTableRow({
       <td className="px-4 py-2 min-w-[200px]">
         {isEditingNote ? (
           <div className="space-y-2">
-            <input
+            <Input
               ref={noteInputRef}
               value={noteDraft}
               onChange={e => setNoteDraft(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && saveNote()}
-              className="w-full rounded-md border border-border-strong px-2 py-1 text-sm"
+              aria-label="Note"
               disabled={isPending}
             />
             <div className="flex gap-1">
@@ -436,7 +439,7 @@ export function ReceiptTableRow({
             )}
             {/* Always visible: this table is used on an iPad, where there is no
                 hover and a hover-only control is simply unreachable. */}
-            <button type="button" onClick={startNoteEdit} className="text-xs text-text-muted flex items-center gap-1 hover:text-primary" disabled={!canManageReceipts}>
+            <button type="button" onClick={startNoteEdit} className="rounded-sm text-xs text-text-muted flex items-center gap-1 hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring" disabled={!canManageReceipts}>
               <PencilSquareIcon className="h-3 w-3" /> Edit
             </button>
           </div>
@@ -444,65 +447,62 @@ export function ReceiptTableRow({
       </td>
 
       <td className="px-4 py-2">
+        {/* Default IconButton size (31px square), not sm (25px): this table is used on an iPad,
+            and the buttons these replaced were 36px wide, so sm would shrink every target. */}
         <div className="flex flex-row items-center gap-1">
-          <Button
+          <IconButton
             variant="secondary"
-            size="sm"
             onClick={() => fileInputRef.current?.click()}
             disabled={isPending || !canManageReceipts}
             title="Upload receipt"
-          >
-            <ArrowUpTrayIcon className="h-4 w-4" />
-          </Button>
+            label="Upload receipt"
+            icon={<ArrowUpTrayIcon className="h-4 w-4" />}
+          />
           <input type="file" className="hidden" ref={fileInputRef} accept={RECEIPT_UPLOAD_ACCEPT} onChange={handleUpload} />
 
           {transaction.status !== 'completed' && (
-            <Button
+            <IconButton
               variant="primary"
-              size="sm"
               onClick={() => handleStatusUpdate('completed')}
               disabled={isPending || !canManageReceipts}
               title="Mark as done"
-            >
-              <CheckIcon className="h-4 w-4" />
-            </Button>
+              label="Mark as done"
+              icon={<CheckIcon className="h-4 w-4" />}
+            />
           )}
 
           {transaction.status !== 'no_receipt_required' && (
-            <Button
+            <IconButton
               variant="secondary"
-              size="sm"
               onClick={() => handleStatusUpdate('no_receipt_required')}
               disabled={isPending || !canManageReceipts}
               title="Skip (no receipt needed)"
-            >
-              <ForwardIcon className="h-4 w-4" />
-            </Button>
+              label="Skip (no receipt needed)"
+              icon={<ForwardIcon className="h-4 w-4" />}
+            />
           )}
 
           {transaction.status !== 'cant_find' && (
-            <Button
+            <IconButton
               variant="secondary"
-              size="sm"
               onClick={() => handleStatusUpdate('cant_find')}
-              className="border border-border text-danger-fg hover:bg-danger-soft"
+              className="border-danger-border text-danger-fg hover:bg-danger-soft"
               disabled={isPending || !canManageReceipts}
               title="Mark as missing"
-            >
-              <QuestionMarkCircleIcon className="h-4 w-4" />
-            </Button>
+              label="Mark as missing"
+              icon={<QuestionMarkCircleIcon className="h-4 w-4" />}
+            />
           )}
 
           {transaction.status !== 'pending' && (
-            <Button
+            <IconButton
               variant="ghost"
-              size="sm"
               onClick={() => handleStatusUpdate('pending')}
               disabled={isPending || !canManageReceipts}
               title="Reopen"
-            >
-              <ArrowUturnLeftIcon className="h-4 w-4" />
-            </Button>
+              label="Reopen"
+              icon={<ArrowUturnLeftIcon className="h-4 w-4" />}
+            />
           )}
         </div>
       </td>

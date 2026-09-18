@@ -459,8 +459,10 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
       {/* ------------------------------------------------ entitlement */}
       {detail.entitlementHtml && (
         <Card title="What the card entitles" subtitle="From the definition printed on this card">
+          {/* No typography plugin is installed, so `prose` styled nothing here. These
+              descendant utilities give the stored entitlement HTML its spacing and lists. */}
           <div
-            className="prose prose-sm max-w-none text-text"
+            className="text-sm text-text [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1 [&_h3]:font-semibold [&_strong]:font-semibold"
             dangerouslySetInnerHTML={{ __html: detail.entitlementHtml }}
           />
         </Card>
@@ -471,7 +473,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         <ul className="space-y-3">
           {detail.events.map((event) => (
             <li key={event.id} className="flex gap-3">
-              <div className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-gray-400" />
+              <div className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-text-subtle" />
               <div>
                 <div className="text-sm font-medium text-text">
                   {VOUCHER_EVENT_ACTION_LABELS[event.action]}
@@ -874,7 +876,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                         `Voucher assigned to ${hit.name}`
                       )
                     }
-                    className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-surface-hover"
+                    className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset disabled:opacity-50"
                   >
                     <span className="text-text">{hit.name}</span>
                     <span className="text-sm text-text-muted">{hit.mobile ?? ''}</span>

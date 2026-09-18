@@ -55,7 +55,7 @@ export function GuestBadge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-2 whitespace-nowrap rounded-full px-[0.85em] py-[0.4em] font-anchor-body text-[12px] font-semibold leading-none tracking-[0.01em]',
+        'inline-flex items-center gap-2 whitespace-nowrap rounded-full px-[0.85em] py-[0.4em] font-anchor-body text-xs font-semibold leading-none tracking-[0.01em]',
         TONE_CLASS[tone],
         className
       )}

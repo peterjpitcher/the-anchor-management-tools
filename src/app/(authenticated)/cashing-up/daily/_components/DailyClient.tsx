@@ -499,7 +499,7 @@ export function DailyClient({
                   type="date"
                   value={sessionDate}
                   onChange={onDateChange}
-                  className="min-h-touch rounded-default border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text focus:outline-none focus:ring-2 focus:ring-primary/50 sm:min-h-0"
+                  className="min-h-touch rounded-sm border border-border-strong bg-surface px-3 py-1 text-ui font-medium text-text outline-hidden focus:border-border-focus focus:shadow-ring sm:min-h-0"
                 />
                 <Badge tone="neutral">
                   {format(parseISO(sessionDate), 'EEEE')}
@@ -626,9 +626,9 @@ export function DailyClient({
                   key={d}
                   type="button"
                   onClick={() => router.push(`/cashing-up/daily?date=${d}&siteId=${siteId}`)}
-                  className={`inline-flex items-center gap-1 rounded-default border px-2 py-0.5 text-xs font-medium transition-colors ${
+                  className={`inline-flex items-center gap-1 rounded-default border px-2 py-0.5 text-xs font-medium transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                     d === sessionDate
-                      ? 'border-primary bg-primary/10 text-primary'
+                      ? 'border-primary bg-primary-soft text-primary-soft-fg'
                       : 'border-border bg-surface hover:bg-surface-2 text-text-muted hover:text-text'
                   }`}
                 >
@@ -681,7 +681,7 @@ export function DailyClient({
                         onChange={(e) => handleCashValueChange(denom.value, e.target.value)}
                         onKeyDown={(e) => handleKeyDown(e, nextId)}
                         onWheel={(e) => e.currentTarget.blur()}
-                        className={`${numberInputNoSpinnerClass} h-6 min-h-touch sm:min-h-0 w-16 sm:w-14 px-1 sm:p-0 text-right text-xs bg-transparent border-none focus:outline-none focus:ring-0 font-mono`}
+                        className={`${numberInputNoSpinnerClass} h-6 min-h-touch sm:min-h-0 w-16 sm:w-14 px-1 sm:p-0 text-right text-xs bg-transparent border-none font-mono`}
                         disabled={fieldsDisabled}
                       />
                     </div>
@@ -837,7 +837,7 @@ export function DailyClient({
             </Field>
 
             {autoNotes && (
-              <div className="bg-warning/10 p-3 rounded-default border border-warning/30 text-xs text-text whitespace-pre-wrap">
+              <div className="bg-warning-soft p-3 rounded-default border border-warning-border text-xs text-warning-fg whitespace-pre-wrap">
                 <strong>Auto-detected events:</strong>
                 <br />
                 {autoNotes}

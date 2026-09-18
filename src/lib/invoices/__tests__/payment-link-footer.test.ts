@@ -45,6 +45,10 @@ describe('invoiceHasBalanceToCollect', () => {
 })
 
 describe('buildInvoicePaymentLinkFooter', () => {
+  it('withdraws the payment link when issued credits settle the remaining amount', () => {
+    expect(buildInvoicePaymentLinkFooter(invoice({ total_amount: 120, paid_amount: 90, credits: [{ status: 'issued', amount_inc_vat: 30 }] }))).toBe('')
+  })
+
   it('embeds a portal link that verifies back to this invoice', () => {
     const footer = buildInvoicePaymentLinkFooter(invoice())
     const url = footer.match(/https:\/\/\S+/)?.[0]

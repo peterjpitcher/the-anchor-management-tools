@@ -4,6 +4,7 @@
  * clear error before the route's 60 second limit; a render that finishes late still closes its browser.
  */
 
+import { STAFF } from '@/lib/brand/palette'
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
 import type { ReportPeriod } from '@/lib/mileage/periods'
@@ -24,7 +25,7 @@ function escapeHtml(value: string): string {
 
 /** Chromium fills the pageNumber and totalPages spans on every page. */
 export function mileageReportFooterTemplate(periodLabel: string): string {
-  return `<div style="width: 100%; padding: 0 10mm; font-family: Arial, sans-serif; font-size: 8pt; color: #6b7280; text-align: center;">Mileage claim report, ${escapeHtml(periodLabel)}, page <span class="pageNumber"></span> of <span class="totalPages"></span></div>`
+  return `<div style="width: 100%; padding: 0 10mm; font-family: Arial, sans-serif; font-size: 8pt; color: ${STAFF.textMuted}; text-align: center;">Mileage claim report, ${escapeHtml(periodLabel)}, page <span class="pageNumber"></span> of <span class="totalPages"></span></div>`
 }
 
 export function mileageReportFileName(period: ReportPeriod, driverName: string | null): string {

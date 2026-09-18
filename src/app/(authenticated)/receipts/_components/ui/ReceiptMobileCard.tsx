@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, ChangeEvent } from 'react'
 import { toast } from 'react-hot-toast'
-import { Button, ConfirmDialog, Input, Select, Spinner } from '@/ds'
+import { Badge, Button, ConfirmDialog, Input, Select, Spinner } from '@/ds'
 import {
   markReceiptTransaction,
   deleteReceiptFile,
@@ -19,7 +19,7 @@ import {
   PencilSquareIcon,
 } from '@heroicons/react/24/outline'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { formatCurrency, formatDate, statusLabels, statusToneClasses } from '@/app/(authenticated)/receipts/utils'
+import { formatCurrency, formatDate, statusLabels, statusTone } from '@/app/(authenticated)/receipts/utils'
 import { RECEIPT_UPLOAD_ACCEPT, receiptUploadErrorMessage, uploadReceiptFile } from './receiptUploadClient'
 import { SourceBadge } from './ReceiptTableRow'
 
@@ -246,31 +246,31 @@ export function ReceiptMobileCard({
                 <p className="text-meta text-text-muted">{transaction.card_member}</p>
                 )}
                 {transaction.rule_applied_id && (
-                <span className="inline-flex items-center gap-1 text-meta font-medium text-success-fg">
-                    <ArrowPathIcon className="h-3.5 w-3.5" /> Auto rule
-                </span>
+                <Badge tone="primary" size="sm" icon={<ArrowPathIcon />}>
+                    Auto rule
+                </Badge>
                 )}
             </div>
             <div className="flex flex-wrap items-center justify-end gap-0.5 text-right text-meta">
                 {transaction.amount_out != null && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-2 py-0.5 font-medium text-danger-fg">
+                <span className="inline-flex items-center gap-1 rounded-full border border-danger-border bg-danger-soft px-2 py-0.5 font-medium text-danger-fg">
                     Out
                     <span className="font-semibold text-text-strong">{formatCurrency(transaction.amount_out)}</span>
                 </span>
                 )}
                 {transaction.amount_in != null && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 font-medium text-success-fg">
+                <span className="inline-flex items-center gap-1 rounded-full border border-success-border bg-success-soft px-2 py-0.5 font-medium text-success-fg">
                     In
                     <span className="font-semibold text-text-strong">{formatCurrency(transaction.amount_in)}</span>
                 </span>
                 )}
-                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${statusToneClasses[transaction.status]}`}>
+                <Badge tone={statusTone[transaction.status]} size="sm">
                 {statusLabels[transaction.status]}
-                </span>
+                </Badge>
             </div>
         </div>
         
-        <div className="mt-1.5 grid w-full grid-cols-[auto,1fr] items-center gap-x-2 gap-y-2 text-xs text-text-muted">
+        <div className="mt-1.5 grid w-full grid-cols-[auto_1fr] items-center gap-x-2 gap-y-2 text-xs text-text-muted">
             <span className="font-semibold uppercase tracking-wide leading-none self-start mt-1">Vendor</span>
             <div className="text-sm leading-tight text-text-strong">
                 {editingField === 'vendor' ? (
@@ -293,7 +293,7 @@ export function ReceiptMobileCard({
                         </div>
                     </div>
                 ) : (
-                    <button type="button" onClick={() => startEditing('vendor')} className="text-left hover:text-success-fg" disabled={!canManageReceipts}>
+                    <button type="button" onClick={() => startEditing('vendor')} className="rounded-sm text-left hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring" disabled={!canManageReceipts}>
                         {transaction.vendor_name || <span className="text-text-subtle">Add vendor</span>}
                         {transaction.vendor_source === 'ai' && <SparklesIcon className="inline h-3 w-3 ml-1 text-info" />}
                     </button>
@@ -314,7 +314,7 @@ export function ReceiptMobileCard({
                         </div>
                     </div>
                 ) : (
-                    <button type="button" onClick={() => startEditing('expense')} className="text-left hover:text-success-fg" disabled={!canManageReceipts}>
+                    <button type="button" onClick={() => startEditing('expense')} className="rounded-sm text-left hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring" disabled={!canManageReceipts}>
                         {transaction.expense_category || <span className="text-text-subtle">Add category</span>}
                          {transaction.expense_category_source === 'ai' && <SparklesIcon className="inline h-3 w-3 ml-1 text-info" />}
                     </button>
@@ -332,7 +332,7 @@ export function ReceiptMobileCard({
                         </div>
                     </div>
                 ) : (
-                    <button type="button" onClick={startNoteEdit} className="text-left hover:text-success-fg w-full" disabled={!canManageReceipts}>
+                    <button type="button" onClick={startNoteEdit} className="rounded-sm text-left hover:text-primary w-full focus-visible:outline-hidden focus-visible:shadow-ring" disabled={!canManageReceipts}>
                         {transaction.notes ? transaction.notes.split(' — ').slice(1).join(' — ') || transaction.notes : <span className="text-text-subtle italic">Add note</span>}
                         <PencilSquareIcon className="inline h-3 w-3 ml-1 text-text-subtle" />
                     </button>
@@ -346,8 +346,8 @@ export function ReceiptMobileCard({
 
              {transaction.files.map(f => (
                  <div key={f.id} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 bg-surface text-meta">
-                     <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-success-fg truncate max-w-[80px]">{f.file_name || 'Receipt'}</button>
-                     <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-danger ml-1">×</button>
+                     <button type="button" onClick={() => handleReceiptDownload(f.id)} className="rounded-sm text-primary truncate max-w-[80px] focus-visible:outline-hidden focus-visible:shadow-ring">{f.file_name || 'Receipt'}</button>
+                     <button type="button" onClick={() => setDeleteFileId(f.id)} className="rounded-sm text-danger ml-1 focus-visible:outline-hidden focus-visible:shadow-ring">×</button>
                  </div>
              ))}
 

@@ -7,6 +7,7 @@ import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Textarea } from '@/ds'
 import { Radio } from '@/ds'
+import { Checkbox } from '@/ds'
 import { Alert } from '@/ds'
 import { toast } from '@/ds'
 import { formatCurrency } from '@/lib/format'
@@ -185,7 +186,7 @@ export function RefundDialog({
     >
       <div className="space-y-5">
         {/* Amount summary */}
-        <div className="rounded-lg bg-surface-2 p-4 space-y-2">
+        <div className="rounded-lg border border-border bg-surface-2 p-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-text-muted">Original amount</span>
             <span className="font-medium text-text">{formatCurrency(originalAmount)}</span>
@@ -193,7 +194,7 @@ export function RefundDialog({
           {totalRefunded > 0 && (
             <div className="flex justify-between text-sm">
               <span className="text-text-muted">Already refunded</span>
-              <span className="font-medium text-green-700">-{formatCurrency(totalRefunded)}</span>
+              <span className="font-medium text-success-fg">-{formatCurrency(totalRefunded)}</span>
             </div>
           )}
           {totalPending > 0 && (
@@ -227,7 +228,7 @@ export function RefundDialog({
                     key={option.value}
                     className={`p-3 rounded-lg border transition-colors ${
                       method === option.value
-                        ? 'border-green-500 bg-success-soft'
+                        ? 'border-primary bg-primary-soft'
                         : 'border-border hover:bg-surface-hover'
                     } ${option.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                   >
@@ -252,13 +253,14 @@ export function RefundDialog({
                   Refund amount
                 </label>
                 {parsedAmount !== remaining && (
-                  <button
+                  <Button
                     type="button"
+                    variant="link"
+                    size="sm"
                     onClick={handleRefundInFull}
-                    className="text-xs text-primary hover:text-primary-hover font-medium"
                   >
                     Refund in full
-                  </button>
+                  </Button>
                 )}
               </div>
               <Input
@@ -280,7 +282,7 @@ export function RefundDialog({
             {/* Reason */}
             <div>
               <label htmlFor="refund-reason" className="block text-sm font-medium text-text mb-1">
-                Reason <span className="text-gray-400 font-normal">(internal only)</span>
+                Reason <span className="text-text-soft font-normal">(internal only)</span>
               </label>
               <Textarea
                 id="refund-reason"
@@ -296,18 +298,12 @@ export function RefundDialog({
               <Alert tone="warning">
                 <div className="space-y-3">
                   <p>{policyRefusal}</p>
-                  <label className="flex items-start gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={overridePolicy}
-                      onChange={(e) => setOverridePolicy(e.target.checked)}
-                      disabled={loading}
-                      className="mt-1 h-4 w-4"
-                    />
-                    <span className="font-medium">
-                      Refund it anyway. This is recorded against your name.
-                    </span>
-                  </label>
+                  <Checkbox
+                    label="Refund it anyway. This is recorded against your name."
+                    checked={overridePolicy}
+                    onChange={(checked) => setOverridePolicy(checked)}
+                    disabled={loading}
+                  />
                   {overridePolicy && (
                     <div>
                       <label

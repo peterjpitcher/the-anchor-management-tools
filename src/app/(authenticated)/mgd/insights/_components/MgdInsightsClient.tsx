@@ -93,7 +93,7 @@ export function MgdInsightsClient({ initialData }: MgdInsightsClientProps): Reac
           <BarChart
             data={chartData}
             height={300}
-            color="#10B981"
+            color="var(--color-chart-1)"
             formatType="shorthandCurrency"
             onBarClick={handleBarClick}
           />

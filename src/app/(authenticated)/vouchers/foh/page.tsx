@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { PageLayout } from '@/ds'
+import { LinkButton, PageLayout } from '@/ds'
 import { getUserPermissions } from '@/app/actions/rbac'
 import { requireFohVoucherPermission, getLondonDateIso } from '@/lib/foh/api-auth'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
@@ -57,12 +56,9 @@ export default async function VouchersFohPage() {
   // address bar, so this link is their only way off this screen. It stays for
   // everyone else too, and is the only exit offered: see the note below.
   const backToFloor = (
-    <Link
-      href="/table-bookings/foh"
-      className="inline-flex min-h-touch items-center justify-center rounded-md bg-sidebar px-4 py-2 text-sm font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40"
-    >
+    <LinkButton href="/table-bookings/foh" variant="primary" size="lg" className="min-h-touch">
       Back to the floor
-    </Link>
+    </LinkButton>
   )
 
   // No "Back to Dashboard". This is a floor screen reached from the FOH header,

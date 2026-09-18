@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { Select } from '@/ds'
 import type { FohStaffMember } from '../lib'
 
 type StaffPickerProps = {
@@ -19,14 +20,14 @@ export function StaffPicker({ staff, value, onChange, id = 'foh-voucher-staff' }
 
   return (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-text">
+      <label htmlFor={id} className="mb-1 block text-sm font-medium text-text">
         Your name
       </label>
-      <select
+      <Select
         id={id}
         value={value ?? ''}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+        className="h-12 text-base"
       >
         <option value="" disabled>
           Choose who is doing this
@@ -49,7 +50,7 @@ export function StaffPicker({ staff, value, onChange, id = 'foh-voucher-staff' }
             ))}
           </optgroup>
         )}
-      </select>
+      </Select>
     </div>
   )
 }

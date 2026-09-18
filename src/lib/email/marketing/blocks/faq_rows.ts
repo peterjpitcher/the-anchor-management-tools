@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
@@ -31,8 +33,8 @@ export type FaqRowsData = z.infer<typeof faqRowsSchema>
 function faqItemMarkup(item: FaqItemData, isLast: boolean): string {
   const answerStyle = isLast ? 'padding:4px 0 0;' : 'padding:4px 0 14px;border-bottom:1px solid #efe9dd;'
 
-  return `<tr><td style="padding:16px 0 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:24px;color:#005131">${escapeEmailText(item.question)}</td></tr>
-<tr><td style="${answerStyle}font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:23px;color:#1a1a1a">${escapeEmailText(item.answer)}</td></tr>`
+  return `<tr><td style="padding:16px 0 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:24px;color:${GUEST.green}">${escapeEmailText(item.question)}</td></tr>
+<tr><td style="${answerStyle}font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:23px;color:${GUEST.text}">${escapeEmailText(item.answer)}</td></tr>`
 }
 
 export const faqRows = defineBlock<FaqRowsData>({
@@ -55,9 +57,9 @@ export const faqRows = defineBlock<FaqRowsData>({
     ],
   },
   render: (data) =>
-    `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>
-<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px 32px 6px;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>
-<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:0 32px 30px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>
+    `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${GUEST.cream}"><tbody>
+<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:32px 32px 6px;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;letter-spacing:-0.02em;color:${GUEST.green}">${escapeEmailText(data.heading)}</td></tr>
+<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:0 32px 30px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>
 ${data.items
   .map((item, index) => faqItemMarkup(item, index === data.items.length - 1))
   .join('\n')}

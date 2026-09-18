@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Button, Field, Input, Textarea } from '@/ds';
 import { checkPreferredNameAvailability, saveOnboardingSection } from '@/app/actions/employeeInvite';
 
 interface PersonalData {
@@ -13,6 +14,10 @@ interface PersonalData {
   phone_number: string;
   mobile_number: string;
 }
+
+// A clash is a warning, not an error: the field keeps the DS focus pattern in the warning tone.
+const PREFERRED_NAME_WARNING_CLASSES =
+  'border-warning focus:border-warning focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-warning)_20%,transparent)]';
 
 interface PersonalStepProps {
   token: string;
@@ -91,19 +96,15 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
   };
 
   const field = (id: keyof PersonalData, label: string, type = 'text', required = false) => (
-    <div>
-      <label htmlFor={id} className="block text-sm font-medium text-text mb-1">
-        {label}{required && <span className="text-danger ml-1">*</span>}
-      </label>
-      <input
+    <Field label={label} required={required}>
+      <Input
         id={id}
         type={type}
         value={data[id]}
         onChange={(e) => setData({ ...data, [id]: e.target.value })}
         required={required}
-        className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
       />
-    </div>
+    </Field>
   );
 
   return (
@@ -113,26 +114,21 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
         {field('last_name', 'Last Name', 'text', true)}
       </div>
       <div>
-        <label htmlFor="preferred_name" className="block text-sm font-medium text-text mb-1">
-          Preferred Name
-        </label>
-        <input
-          id="preferred_name"
-          type="text"
-          value={data.preferred_name}
-          onChange={(e) => {
-            setData({ ...data, preferred_name: e.target.value });
-            if (preferredNameWarning) setPreferredNameWarning('');
-          }}
-          onBlur={handlePreferredNameBlur}
-          aria-invalid={preferredNameWarning ? true : undefined}
-          aria-describedby="preferred_name-help"
-          className={`block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
-            preferredNameWarning
-              ? 'border-amber-500 focus:border-amber-500 focus:ring-amber-500'
-              : 'border-border-strong focus:border-border-focus focus:ring-green-500'
-          }`}
-        />
+        <Field label="Preferred Name">
+          <Input
+            id="preferred_name"
+            type="text"
+            value={data.preferred_name}
+            onChange={(e) => {
+              setData({ ...data, preferred_name: e.target.value });
+              if (preferredNameWarning) setPreferredNameWarning('');
+            }}
+            onBlur={handlePreferredNameBlur}
+            aria-invalid={preferredNameWarning ? true : undefined}
+            aria-describedby="preferred_name-help"
+            className={preferredNameWarning ? PREFERRED_NAME_WARNING_CLASSES : undefined}
+          />
+        </Field>
         {preferredNameWarning && (
           <p className="mt-1 text-sm text-warning-fg" role="status">
             {preferredNameWarning}
@@ -144,29 +140,23 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
         </p>
       </div>
       {field('date_of_birth', 'Date of Birth', 'date')}
-      <div>
-        <label htmlFor="address" className="block text-sm font-medium text-text mb-1">Address</label>
-        <textarea
+      <Field label="Address">
+        <Textarea
           id="address"
           value={data.address}
           onChange={(e) => setData({ ...data, address: e.target.value })}
           rows={3}
-          className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
         />
-      </div>
+      </Field>
       {field('post_code', 'Post Code')}
       {field('phone_number', 'Phone Number', 'tel')}
       {field('mobile_number', 'Mobile Number', 'tel')}
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"
-      >
+      <Button type="submit" variant="primary" className="w-full" disabled={loading}>
         {loading ? 'Saving...' : 'Save & Continue'}
-      </button>
+      </Button>
     </form>
   );
 }

@@ -46,10 +46,10 @@ export default async function VoucherTypesPage() {
                     )}
                     {type.alcohol && <Badge tone="warning">18+ alcohol</Badge>}
                     {type.requiresBooking && <Badge tone="info">Booking required</Badge>}
-                    {!type.active && <Badge tone="danger">Inactive</Badge>}
+                    {!type.active && <Badge tone="neutral">Inactive</Badge>}
                   </div>
                 </div>
-                <div className="mt-1 text-xs uppercase tracking-wide text-gray-400">
+                <div className="mt-1 text-xs uppercase tracking-wide text-text-soft">
                   {type.id}
                 </div>
                 <div

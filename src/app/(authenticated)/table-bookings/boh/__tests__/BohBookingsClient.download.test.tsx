@@ -186,7 +186,8 @@ async function renderClient() {
 }
 
 async function switchTo(user: ReturnType<typeof userEvent.setup>, label: 'Day' | 'Week' | 'Month') {
-  await user.click(screen.getByRole('button', { name: label }))
+  // The view switch is a DS Segmented control: a radio group, one radio per view.
+  await user.click(screen.getByRole('radio', { name: label }))
 }
 
 beforeEach(() => {

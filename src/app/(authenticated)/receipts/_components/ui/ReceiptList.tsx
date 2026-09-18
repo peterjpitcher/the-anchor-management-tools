@@ -296,7 +296,7 @@ function SortHeaderButton({
       type="button"
       onClick={() => onSort(column)}
       aria-label={`Sort by ${label}`}
-      className={`flex w-full items-center gap-1 uppercase tracking-wider ${align === 'right' ? 'justify-end' : ''} ${isActive ? 'text-primary' : 'hover:text-text'}`}
+      className={`flex w-full items-center gap-1 rounded-sm uppercase tracking-wider focus-visible:outline-hidden focus-visible:shadow-ring-inset ${align === 'right' ? 'justify-end' : ''} ${isActive ? 'text-primary' : 'hover:text-text'}`}
     >
       {label} {isActive && (currentSortDirection === 'asc' ? '↑' : '↓')}
     </button>
@@ -309,7 +309,7 @@ function ValueHeatLegend() {
       <span>Lower value</span>
       <span
         aria-hidden="true"
-        className="h-3 w-28 rounded-full border border-black/10 shadow-inner"
+        className="h-3 w-28 rounded-full border border-border"
         style={{ background: 'linear-gradient(90deg, rgb(25 95 235), rgb(220 38 38))' }}
       />
       <span>Higher value</span>

@@ -346,7 +346,7 @@ export default function NewQuotePage() {
             ) : (
               <div className="space-y-4">
                 {lineItems.map((item) => (
-                  <div key={item.id} className="border rounded-lg p-4">
+                  <div key={item.id} className="border border-border rounded-lg p-4">
                     <div className="grid grid-cols-12 gap-4">
                       <div className="col-span-12 md:col-span-5">
                         <FormGroup label="Description">
@@ -476,7 +476,7 @@ export default function NewQuotePage() {
                     <span className="font-medium">£{totals.subtotal.toFixed(2)}</span>
                   </div>
                   {totals.discount > 0 && (
-                    <div className="flex justify-between text-green-600 text-sm sm:text-base">
+                    <div className="flex justify-between text-success-fg text-sm sm:text-base">
                       <span>Quote Discount: </span>
                       <span>-£{totals.discount.toFixed(2)}</span>
                     </div>
@@ -485,7 +485,7 @@ export default function NewQuotePage() {
                     <span>VAT:</span>
                     <span className="font-medium">£{totals.vat.toFixed(2)}</span>
                   </div>
-                  <div className="border-t pt-2">
+                  <div className="border-t border-border pt-2">
                     <div className="flex justify-between text-base sm:text-lg font-semibold">
                       <span>Total:</span>
                       <span>£{totals.total.toFixed(2)}</span>

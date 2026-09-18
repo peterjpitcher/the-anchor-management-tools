@@ -6,6 +6,7 @@ import { getRecurringInvoices, deleteRecurringInvoice, generateInvoiceFromRecurr
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Button } from '@/ds'
+import { Badge } from '@/ds'
 import { EmptyState } from '@/ds'
 import { DataTable } from '@/ds'
 import { toast } from '@/ds'
@@ -274,13 +275,9 @@ export default function RecurringInvoicesPage() {
                 key: 'status',
                 header: 'Status',
                 cell: (r) => r.is_active ? (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success-soft text-green-800">
-                    <Play className="h-3 w-3 mr-1" /> Active
-                  </span>
+                  <Badge tone="success" icon={<Play />}>Active</Badge>
                 ) : (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-hover text-text">
-                    <Pause className="h-3 w-3 mr-1" /> Inactive
-                  </span>
+                  <Badge tone="neutral" icon={<Pause />}>Inactive</Badge>
                 )
               },
               {
@@ -366,13 +363,9 @@ export default function RecurringInvoicesPage() {
                       )}
                     </div>
                     {r.is_active ? (
-                      <span className="inline-flex shrink-0 items-center rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-green-800">
-                        <Play className="mr-1 h-3 w-3" /> Active
-                      </span>
+                      <Badge tone="success" icon={<Play />} className="shrink-0">Active</Badge>
                     ) : (
-                      <span className="inline-flex shrink-0 items-center rounded-full bg-surface-hover px-2.5 py-0.5 text-xs font-medium text-text">
-                        <Pause className="mr-1 h-3 w-3" /> Inactive
-                      </span>
+                      <Badge tone="neutral" icon={<Pause />} className="shrink-0">Inactive</Badge>
                     )}
                   </div>
                   <dl className="grid gap-2 text-sm">

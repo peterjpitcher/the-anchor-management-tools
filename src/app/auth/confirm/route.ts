@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import type { EmailOtpType } from '@supabase/supabase-js'
+import { STAFF } from '@/lib/brand/palette'
 import { createClient } from '@/lib/supabase/server'
 
 const STATE_COOKIE = 'oj-reset-state'
 const STATE_COOKIE_PATH = '/auth/confirm'
 const FIVE_MINUTES = 60 * 5
+
+/** The card's shadow: the text colour at 8% opacity (hex alpha 14), so the page stays on the stone neutrals. */
+const CARD_SHADOW = `0 10px 30px ${STAFF.text}14`
 
 function encodeState(state: { token_hash: string; type: EmailOtpType; next: string }) {
   return Buffer.from(JSON.stringify(state), 'utf8').toString('base64url')
@@ -51,12 +55,12 @@ export async function GET(request: NextRequest) {
     `<!doctype html>
 <meta name="robots" content="noindex">
 <title>Confirm Password Reset</title>
-<body style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #f1f5f9; color: #0f172a;">
-  <form method="post" style="background: white; padding: 32px; border-radius: 12px; box-shadow: 0 10px 30px rgba(15,23,42,0.08); text-align: center; max-width: 360px; width: 100%;">
+<body style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: ${STAFF.bg}; color: ${STAFF.text};">
+  <form method="post" style="background: ${STAFF.surface}; padding: 32px; border-radius: 12px; box-shadow: ${CARD_SHADOW}; text-align: center; max-width: 360px; width: 100%;">
     <h1 style="font-size: 1.5rem; margin-bottom: 0.75rem;">Finish password reset</h1>
-    <p style="margin-bottom: 1.5rem; color: #475569;">Click continue to securely confirm your identity and choose a new password.</p>
-    <button type="submit" style="background: #0f766e; color: white; border: none; border-radius: 8px; padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer;">Continue</button>
-    <p style="margin-top: 1rem; font-size: 0.75rem; color: #64748b;">If you didn’t request this, you can safely close this page.</p>
+    <p style="margin-bottom: 1.5rem; color: ${STAFF.textMuted};">Click continue to securely confirm your identity and choose a new password.</p>
+    <button type="submit" style="background: ${STAFF.primary}; color: ${STAFF.primaryFg}; border: none; border-radius: 8px; padding: 0.75rem 1.5rem; font-weight: 600; cursor: pointer;">Continue</button>
+    <p style="margin-top: 1rem; font-size: 0.75rem; color: ${STAFF.textMuted};">If you didn’t request this, you can safely close this page.</p>
   </form>
 </body>`,
     {

@@ -39,7 +39,7 @@ export function MonthlyCharts({ data }: { data: MonthlyChartPoint[] }) {
 
   if (ordered.length === 0) {
     return (
-      <Card variant="bordered">
+      <Card>
         <EmptyState
           title="No data available"
           description="We couldn’t find any income or spending in the last 12 months."
@@ -50,12 +50,11 @@ export function MonthlyCharts({ data }: { data: MonthlyChartPoint[] }) {
 
   return (
     <Card
-      variant="bordered"
       header={<h3 className="text-base font-semibold text-text-strong">Income vs spending (last 12 months)</h3>}
     >
       <div className="mb-4 flex items-center gap-4 text-sm text-text-muted">
-        <LegendSwatch className="bg-emerald-500" label="Income" />
-        <LegendSwatch className="bg-rose-500" label="Spending" />
+        <LegendSwatch className="bg-success" label="Income" />
+        <LegendSwatch className="bg-danger" label="Spending" />
       </div>
       <div className="overflow-x-auto">
         <div className="flex min-w-[720px] gap-4 pb-2">
@@ -69,13 +68,13 @@ export function MonthlyCharts({ data }: { data: MonthlyChartPoint[] }) {
                 <div className="flex h-64 w-16 items-end justify-center gap-1 rounded-md bg-success-soft/20 p-2">
                   <Bar
                     heightPercent={incomeHeight}
-                    colorClass="bg-emerald-500"
+                    colorClass="bg-success"
                     value={point.income}
                     ariaLabel={`${monthLabel} income ${currencyFormatter.format(point.income)}`}
                   />
                   <Bar
                     heightPercent={outgoingHeight}
-                    colorClass="bg-rose-500"
+                    colorClass="bg-danger"
                     value={point.outgoing}
                     ariaLabel={`${monthLabel} spending ${currencyFormatter.format(point.outgoing)}`}
                   />
@@ -169,7 +168,6 @@ export function StackedBreakdownChart({
 
   return (
     <Card
-      variant="bordered"
       header={<h3 className="text-base font-semibold text-text-strong">{title}</h3>}
       className="h-full"
     >
@@ -195,7 +193,7 @@ export function StackedBreakdownChart({
                     <span className="font-medium text-text">{currencyFormatter.format(total)}</span>
                   </div>
                   {total === 0 ? (
-                    <div className="flex h-10 items-center justify-center rounded-lg border border-dashed border-border text-xs text-text-subtle">
+                    <div className="flex h-10 items-center justify-center rounded-lg border border-dashed border-border text-xs text-text-soft">
                       No activity recorded
                     </div>
                   ) : (

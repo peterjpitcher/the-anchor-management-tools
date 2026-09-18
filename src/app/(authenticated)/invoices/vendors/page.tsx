@@ -12,6 +12,7 @@ import { FormGroup } from '@/ds'
 import { Card } from '@/ds'
 import { Checkbox } from '@/ds'
 import { Alert } from '@/ds'
+import { Badge } from '@/ds'
 import { EmptyState } from '@/ds'
 import { DataTable } from '@/ds'
 import { Plus, Edit2, Trash2, Users } from 'lucide-react'
@@ -644,7 +645,7 @@ export default function VendorsPage() {
           <div className="py-10 text-center text-text-muted">Loading contacts…</div>
         ) : (
           <div className="space-y-6">
-            <div className="border rounded-md divide-y">
+            <div className="border border-border rounded-md divide-y divide-border">
               {contacts.length === 0 && (
                 <div className="p-4 text-sm text-text-muted">No contacts yet.</div>
               )}
@@ -654,14 +655,14 @@ export default function VendorsPage() {
                     <div className="font-medium truncate">
                       {c.name || '(No name)'}
                       {c.is_primary && (
-                        <span className="ml-2 text-xs text-green-700 bg-success-soft px-2 py-0.5 rounded-sm">
+                        <Badge tone="success" className="ml-2">
                           Primary
-                        </span>
+                        </Badge>
                       )}
                       {c.receive_invoice_copy && (
-                        <span className="ml-2 text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded-sm">
+                        <Badge tone="info" className="ml-2">
                           Invoice CC
-                        </span>
+                        </Badge>
                       )}
                     </div>
                     <div className="text-sm text-text break-all">{c.email}</div>

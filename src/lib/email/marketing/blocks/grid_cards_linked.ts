@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText, escapeEmailUrl } from '../escape'
 import { defineBlock, type EmailImage } from './types'
 
@@ -106,11 +108,11 @@ function cardCell(card: LinkedCardData, geometry: Geometry): string {
   const src = card.image.src.trim() ? escapeEmailUrl(card.image.src) : PLACEHOLDER_SRC
 
   return [
-    `<td width="${geometry.cell}" valign="top" class="stack" style="width:${geometry.cell}px"><table role="presentation" width="${geometry.cell}" cellpadding="0" cellspacing="0" border="0" class="stack" style="width:100%;max-width:${geometry.cell}px;border-collapse:collapse;background-color:#ffffff;border:1px solid #e2dccf"><tbody>`,
+    `<td width="${geometry.cell}" valign="top" class="stack" style="width:${geometry.cell}px"><table role="presentation" width="${geometry.cell}" cellpadding="0" cellspacing="0" border="0" class="stack" style="width:100%;max-width:${geometry.cell}px;border-collapse:collapse;background-color:${GUEST.surface};border:1px solid ${GUEST.border}"><tbody>`,
     `<tr><td style="padding:0;font-size:0;line-height:0"><a href="${href}" style="text-decoration:none"><img src="${src}" width="${card.image.width}" height="${card.image.height}" alt="${escapeEmailText(card.image.alt)}" style="display:block;width:100%;max-width:100%;height:auto;border:0"></a></td></tr>`,
-    `<tr><td style="padding:${geometry.pad}px ${geometry.pad}px 0;font-family:${SERIF};font-size:${geometry.headingSize}px;line-height:${geometry.headingLine}px;color:#005131">${escapeEmailText(card.heading)}</td></tr>`,
-    `<tr><td style="padding:6px ${geometry.pad}px 0;font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61">${escapeEmailText(card.body)}</td></tr>`,
-    `<tr><td style="padding:12px ${geometry.pad}px ${geometry.ctaBottom}px;font-family:${SANS};font-size:14px;font-weight:600;line-height:20px"><a href="${href}" style="color:#8b6914;text-decoration:none">${escapeEmailText(card.cta_label)}</a></td></tr>`,
+    `<tr><td style="padding:${geometry.pad}px ${geometry.pad}px 0;font-family:${SERIF};font-size:${geometry.headingSize}px;line-height:${geometry.headingLine}px;color:${GUEST.green}">${escapeEmailText(card.heading)}</td></tr>`,
+    `<tr><td style="padding:6px ${geometry.pad}px 0;font-family:${SANS};font-size:13px;line-height:20px;color:${GUEST.textMuted}">${escapeEmailText(card.body)}</td></tr>`,
+    `<tr><td style="padding:12px ${geometry.pad}px ${geometry.ctaBottom}px;font-family:${SANS};font-size:14px;font-weight:600;line-height:20px"><a href="${href}" style="color:${GUEST.accentText};text-decoration:none">${escapeEmailText(card.cta_label)}</a></td></tr>`,
     `</tbody></table></td>`,
   ].join('\n')
 }
@@ -182,8 +184,8 @@ export const gridCardsLinked = defineBlock<GridCardsLinkedData>({
     })
 
     return [
-      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
+      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${GUEST.cream}"><tbody>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
       `<tr>`,
       ...cells,
       `</tr>`,

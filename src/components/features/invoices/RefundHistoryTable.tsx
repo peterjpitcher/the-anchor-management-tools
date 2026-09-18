@@ -99,12 +99,12 @@ export function RefundHistoryTable({ sourceType, sourceId }: RefundHistoryTableP
         <table className="min-w-full divide-y divide-border">
           <thead className="bg-surface-2">
             <tr>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-text-muted">Date</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-text-muted">Amount</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-text-muted">Method</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-text-muted">Status</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-text-muted">Reason</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-text-muted">Reference</th>
+              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Date</th>
+              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Amount</th>
+              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Method</th>
+              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Status</th>
+              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Reason</th>
+              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Reference</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border bg-surface">
@@ -138,7 +138,7 @@ export function RefundHistoryTable({ sourceType, sourceId }: RefundHistoryTableP
                 <td className="px-3 py-2 text-sm text-text-muted max-w-[200px] truncate" title={refund.reason ?? undefined}>
                   {refund.reason || '—'}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-400">
+                <td className="whitespace-nowrap px-3 py-2 text-xs text-text-soft">
                   {refund.initiated_by_type === 'system' ? 'System' : ''}
                   {refund.paypal_refund_id ? ` ${refund.paypal_refund_id}` : refund.id.slice(0, 8)}
                 </td>
@@ -151,7 +151,7 @@ export function RefundHistoryTable({ sourceType, sourceId }: RefundHistoryTableP
       {/* Totals */}
       <div className="flex gap-4 text-sm">
         {completedTotal > 0 && (
-          <span className="text-green-700">
+          <span className="text-success-fg">
             Refunded: {formatCurrency(completedTotal)}
           </span>
         )}

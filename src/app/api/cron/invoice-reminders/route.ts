@@ -1,3 +1,4 @@
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendInvoiceEmail } from '@/lib/microsoft-graph'
@@ -69,7 +70,8 @@ export async function GET(request: Request) {
           )
         ),
         line_items:invoice_line_items(*),
-        payments:invoice_payments(*)
+        payments:invoice_payments(*),
+        credits:credit_notes(status, amount_inc_vat)
       `)
       .order('display_order', { ascending: true, foreignTable: 'invoice_line_items' })
       .in('status', ['sent', 'partially_paid', 'overdue'])
@@ -215,7 +217,7 @@ export async function GET(request: Request) {
         }
 
         // Calculate outstanding amount
-        const outstandingAmount = Math.max(0, Number(invoice.total_amount || 0) - Number(invoice.paid_amount || 0))
+        const outstandingAmount = invoiceBalanceDue(invoice)
 
         // Send internal notification
         if (emailConfigured) {

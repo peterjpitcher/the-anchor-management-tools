@@ -47,7 +47,7 @@ const statusLabels: Record<BookingStatus, string> = {
  * with the page `h1` and have no equivalent.
  */
 const CARD_LABEL_CLASS =
-  'font-anchor-body text-[12px] font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted'
+  'font-anchor-body text-xs font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted'
 
 interface BookingRow {
   id: string
@@ -127,11 +127,11 @@ function PaymentRow({ name, sub, amount, badge }: PaymentRowProps): React.JSX.El
   return (
     <div className="flex items-start justify-between gap-4 py-3">
       <div className="flex min-w-0 flex-col gap-[3px]">
-        <p className="font-anchor-body text-[14px] font-semibold leading-[1.4] text-guest-text">
+        <p className="font-anchor-body text-sm font-semibold leading-[1.4] text-guest-text">
           {name}
         </p>
         {sub ? (
-          <p className="font-anchor-body text-[12px] leading-[1.5] text-guest-text-muted">{sub}</p>
+          <p className="font-anchor-body text-xs leading-[1.5] text-guest-text-muted">{sub}</p>
         ) : null}
       </div>
 
@@ -237,7 +237,7 @@ export default async function BookingPortalPage({
         </h1>
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
           <GuestBadge tone={statusTone}>{statusLabel}</GuestBadge>
-          <span className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+          <span className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
             Your booking summary
           </span>
         </div>
@@ -286,7 +286,7 @@ export default async function BookingPortalPage({
             <div className="flex flex-col gap-2.5 py-3">
               <FreshPayPalLinkClient portalToken={token} />
               <TrustLine />
-              <p className="font-anchor-body text-[12px] leading-[1.6] text-guest-text-muted">
+              <p className="font-anchor-body text-xs leading-[1.6] text-guest-text-muted">
                 Paying the deposit confirms that you accept the booking terms and conditions in the
                 contract we&apos;ve sent to your email address. If you haven&apos;t received it,
                 please contact us on {GUEST_CONTACT.phoneDisplay} or{' '}
@@ -357,10 +357,10 @@ export default async function BookingPortalPage({
 
       {/* Contact block */}
       <div className={cn(GUEST_SUNK_BOX_CLASS, 'p-[18px] text-center')}>
-        <p className="text-[14px] font-bold leading-[1.4] text-guest-text-strong">
+        <p className="text-sm font-bold leading-[1.4] text-guest-text-strong">
           Questions about your booking?
         </p>
-        <p className="mt-1.5 text-[14px] leading-[1.6] text-guest-text">
+        <p className="mt-1.5 text-sm leading-[1.6] text-guest-text">
           Call us on{' '}
           <a
             href={GUEST_CONTACT.telHref}

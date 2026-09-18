@@ -10,12 +10,14 @@ import {
 import { addDays, endOfMonth, subDays, format, subMonths } from 'date-fns';
 import { normalizeCashCountInputs } from '@/lib/cashing-up/cash-counts';
 import { fetchAllRows } from '@/lib/supabase/paged-read';
+import { CHART_SERIES } from '@/lib/brand/palette';
 
 const SALES_CATEGORIES: CashupSalesCategory[] = ['drinks_sales', 'food_sales', 'other_sales'];
+// The chart series the insights page draws: sky for drinks, the brand green for food, amber for other.
 const SALES_CATEGORY_META: Record<CashupSalesCategory, { label: string; color: string }> = {
-  drinks_sales: { label: 'Drinks', color: '#2563EB' },
-  food_sales: { label: 'Food', color: '#16A34A' },
-  other_sales: { label: 'Other', color: '#F59E0B' },
+  drinks_sales: { label: 'Drinks', color: CHART_SERIES[1] },
+  food_sales: { label: 'Food', color: CHART_SERIES[0] },
+  other_sales: { label: 'Other', color: CHART_SERIES[2] },
 };
 const INSIGHTS_PERIOD_DAYS: Record<Exclude<CashupInsightsPeriod, '12m'>, number> = {
   '30d': 30,
@@ -273,7 +275,7 @@ export class CashingUpService {
       label,
       value,
       percentage: totalMix ? (value / totalMix) * 100 : 0,
-      color: label.toLowerCase().includes('cash') ? '#10B981' : (label.toLowerCase().includes('card') ? '#3B82F6' : '#F59E0B')
+      color: label.toLowerCase().includes('cash') ? CHART_SERIES[0] : (label.toLowerCase().includes('card') ? CHART_SERIES[1] : CHART_SERIES[2])
     })).sort((a, b) => b.value - a.value);
 
     // --- 3. Sales Mix ---

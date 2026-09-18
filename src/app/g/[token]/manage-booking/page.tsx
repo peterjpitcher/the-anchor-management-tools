@@ -47,7 +47,7 @@ const WHATS_ON_URL = 'https://www.the-anchor.pub/whats-on'
  * primitive, which seven other routes depend on.
  */
 const UPPERCASE_FIELD_LABEL_CLASS =
-  '[&>label]:text-[11px] [&>label]:font-semibold [&>label]:uppercase [&>label]:tracking-[0.16em] [&>label]:text-guest-text-muted'
+  '[&>label]:text-meta [&>label]:font-semibold [&>label]:uppercase [&>label]:tracking-[0.16em] [&>label]:text-guest-text-muted'
 
 function getSingleValue(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) {
@@ -226,7 +226,7 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
         <GuestCard variant="accent">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-[5px]">
-              <span className="font-anchor-body text-[11px] font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted">
+              <span className="font-anchor-body text-meta font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted">
                 Event
               </span>
               <span className="font-anchor-display text-[26px] font-normal leading-[1.15] tracking-[-0.02em] text-guest-text-strong">
@@ -296,7 +296,7 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
           </GuestCard>
         )}
 
-        <p className="text-center font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+        <p className="text-center font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
           Need to cancel or need help? Call{' '}
           <a
             href={GUEST_CONTACT.telHref}

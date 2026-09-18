@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { CalendarDaysIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline'
+import { Button, LinkButton } from '@/ds'
 
 export default function CalendarSubscribeButton({ feedUrl }: { feedUrl: string }) {
   const [copied, setCopied] = useState(false)
@@ -22,7 +23,7 @@ export default function CalendarSubscribeButton({ feedUrl }: { feedUrl: string }
   return (
     <div className="rounded-lg border border-border bg-surface p-3">
       <div className="mb-2 flex items-start gap-2">
-        <CalendarDaysIcon className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
+        <CalendarDaysIcon className="h-4 w-4 text-text-subtle shrink-0 mt-0.5" aria-hidden="true" />
         <div>
           <p className="text-xs font-semibold text-text">Sync shifts to your calendar</p>
           <p className="text-xs text-text-muted">
@@ -31,32 +32,24 @@ export default function CalendarSubscribeButton({ feedUrl }: { feedUrl: string }
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <a
-          href={webcalUrl}
-          className="touch-target inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors"
-        >
-          <CalendarDaysIcon className="h-3.5 w-3.5" />
+        {/* A webcal:// address is not a local route, so next/link leaves it to the browser. */}
+        <LinkButton href={webcalUrl} variant="primary" size="sm" icon={<CalendarDaysIcon />}>
           Apple / Outlook
-        </a>
-        <a
-          href={googleUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="touch-target inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text hover:bg-surface-hover transition-colors"
-        >
+        </LinkButton>
+        <LinkButton href={googleUrl} target="_blank" rel="noopener noreferrer" variant="secondary" size="sm">
           Google Calendar
-        </a>
-        <button
+        </LinkButton>
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={handleCopy}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text hover:bg-surface-hover transition-colors"
+          icon={copied
+            ? <CheckIcon className="h-3.5 w-3.5 text-success" />
+            : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
         >
-          {copied ? (
-            <><CheckIcon className="h-3.5 w-3.5 text-green-600" /><span className="text-green-600">Copied!</span></>
-          ) : (
-            <><ClipboardDocumentIcon className="h-3.5 w-3.5" />Copy link</>
-          )}
-        </button>
+          {copied ? <span className="text-success-fg">Copied!</span> : 'Copy link'}
+        </Button>
       </div>
     </div>
   )

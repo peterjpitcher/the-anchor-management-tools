@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText, escapeEmailUrl } from '../escape'
 import { defineBlock } from './types'
 
@@ -19,7 +21,7 @@ import { defineBlock } from './types'
  * stays at #c9a020: that is gold ON dark, not text on gold, and it reads at 7.07:1 already.
  */
 
-const LINK_STYLE = 'color:#c9a020;text-decoration:none;font-weight:600'
+const LINK_STYLE = `color:${GUEST.goldBright};text-decoration:none;font-weight:600`
 
 export const closingPanelDarkSchema = z.object({
   script_line: z.string().min(1).max(60),
@@ -54,17 +56,17 @@ export const closingPanelDark = defineBlock<ClosingPanelDarkData>({
     const reassurance = data.reassurance_items
       .map(
         (item) =>
-          `<span style="color:#c9a020">&#10003;</span>&nbsp; ${escapeEmailText(item)}`,
+          `<span style="color:${GUEST.goldBright}">&#10003;</span>&nbsp; ${escapeEmailText(item)}`,
       )
       .join(' &nbsp;&nbsp;')
 
     return `
-<tr><td bgcolor="#0c1d11" style="background-color:#0c1d11;padding:38px 32px 34px" align="center">
-<div style="font-family:'Clicker Script','Segoe Script','Brush Script MT',cursive;font-size:32px;line-height:38px;color:#c9a020;padding-bottom:6px">${escapeEmailText(data.script_line)}</div>
-<div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:26px;color:#f0e6c6;padding-bottom:22px">${escapeEmailText(data.body)}</div>
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;margin:0 auto"><tbody><tr><td align="center" bgcolor="#8b6914" style="background-color:#8b6914;border-radius:999px"><a href="${escapeEmailUrl(data.cta_url)}" style="display:block;padding:15px 34px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:#ffffff;text-decoration:none">${escapeEmailText(data.cta_label)}</a></td></tr></tbody></table>
+<tr><td bgcolor="${GUEST.greenDeep}" style="background-color:${GUEST.greenDeep};padding:38px 32px 34px" align="center">
+<div style="font-family:'Clicker Script','Segoe Script','Brush Script MT',cursive;font-size:32px;line-height:38px;color:${GUEST.goldBright};padding-bottom:6px">${escapeEmailText(data.script_line)}</div>
+<div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:26px;color:${GUEST.creamText};padding-bottom:22px">${escapeEmailText(data.body)}</div>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;margin:0 auto"><tbody><tr><td align="center" bgcolor="${GUEST.buttonBg}" style="background-color:${GUEST.buttonBg};border-radius:999px"><a href="${escapeEmailUrl(data.cta_url)}" style="display:block;padding:15px 34px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:${GUEST.buttonText};text-decoration:none">${escapeEmailText(data.cta_label)}</a></td></tr></tbody></table>
 <div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:21px;color:#7a8b7f;padding-top:14px">${reassurance}</div>
-<div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:24px;color:#f0e6c6;padding-top:22px">Or call <a href="${escapeEmailUrl(data.phone_url)}" style="${LINK_STYLE}">${escapeEmailText(data.phone_label)}</a>, or send us a <a href="${escapeEmailUrl(data.whatsapp_url)}" style="${LINK_STYLE}">${escapeEmailText(data.whatsapp_label)}</a> on the same number</div>
+<div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:24px;color:${GUEST.creamText};padding-top:22px">Or call <a href="${escapeEmailUrl(data.phone_url)}" style="${LINK_STYLE}">${escapeEmailText(data.phone_label)}</a>, or send us a <a href="${escapeEmailUrl(data.whatsapp_url)}" style="${LINK_STYLE}">${escapeEmailText(data.whatsapp_label)}</a> on the same number</div>
 </td></tr>
 `
   },

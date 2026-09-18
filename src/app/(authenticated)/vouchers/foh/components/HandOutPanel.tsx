@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import { Button, Input } from '@/ds'
 import { cn } from '@/lib/utils'
 import { EXPIRY_PRESET_DAYS } from '@/lib/vouchers/constants'
 import {
@@ -185,7 +186,7 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
     if (result.networkError) {
       await refreshSelected(
         selected.number,
-        'Connection problem. Showing the voucher as the server sees it - if it now shows as active, the hand-out went through.'
+        'Connection problem. Showing the voucher as the server sees it - if it now shows as Issued, the hand-out went through.'
       )
       return
     }
@@ -197,9 +198,18 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
     canEdit && staffId && selected && isActionable(selected, 'handout') && expiryValid && contextValid
   )
 
+  // One selected-chip look across the voucher screens (Won at, expiry and the ledger filters).
+  const chipClass = (selectedChip: boolean) =>
+    cn(
+      'min-h-touch rounded-pill border px-4 py-2 text-base font-medium focus-visible:outline-hidden focus-visible:shadow-ring',
+      selectedChip
+        ? 'border-primary bg-primary-soft text-primary-soft-fg'
+        : 'border-border bg-surface text-text-muted hover:bg-surface-hover'
+    )
+
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="rounded-lg border border-border bg-surface p-4">
         <h3 className="text-base font-semibold text-text">Where was it won?</h3>
         <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Event won at">
           {events.map((event) => (
@@ -208,12 +218,7 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
               type="button"
               onClick={() => setEventId(eventId === event.id ? null : event.id)}
               aria-pressed={eventId === event.id}
-              className={cn(
-                'min-h-touch rounded-full border px-4 py-2 text-base font-medium focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1',
-                eventId === event.id
-                  ? 'border-sidebar bg-sidebar text-white'
-                  : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
-              )}
+              className={chipClass(eventId === event.id)}
             >
               {event.name}
             </button>
@@ -223,10 +228,10 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
           )}
         </div>
         <div className="mt-2">
-          <label htmlFor="foh-handout-label" className="block text-sm font-medium text-text">
+          <label htmlFor="foh-handout-label" className="mb-1 block text-sm font-medium text-text">
             Or type it (used when no event is picked)
           </label>
-          <input
+          <Input
             id="foh-handout-label"
             type="text"
             autoComplete="off"
@@ -234,7 +239,7 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
             value={freeLabel}
             disabled={Boolean(eventId)}
             onChange={(event) => setFreeLabel(event.target.value)}
-            className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text placeholder:text-text-subtle focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40 disabled:bg-surface-hover disabled:text-text-muted"
+            className="h-12 text-base"
           />
         </div>
 
@@ -246,12 +251,7 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
               type="button"
               onClick={() => setExpiryMode(String(days) as ExpiryMode)}
               aria-pressed={expiryMode === String(days)}
-              className={cn(
-                'min-h-touch rounded-full border px-4 py-2 text-base font-medium focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1',
-                expiryMode === String(days)
-                  ? 'border-sidebar bg-sidebar text-white'
-                  : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
-              )}
+              className={chipClass(expiryMode === String(days))}
             >
               +{days} days
             </button>
@@ -260,12 +260,7 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
             type="button"
             onClick={() => setExpiryMode('custom')}
             aria-pressed={expiryMode === 'custom'}
-            className={cn(
-              'min-h-touch rounded-full border px-4 py-2 text-base font-medium focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1',
-              expiryMode === 'custom'
-                ? 'border-sidebar bg-sidebar text-white'
-                : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
-            )}
+            className={chipClass(expiryMode === 'custom')}
           >
             Custom
           </button>
@@ -274,19 +269,19 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
               <label htmlFor="foh-handout-custom-expiry" className="sr-only">
                 Custom expiry date
               </label>
-              <input
+              <Input
                 id="foh-handout-custom-expiry"
                 type="date"
                 min={todayIso}
                 value={customExpiry}
                 onChange={(event) => setCustomExpiry(event.target.value)}
-                className="h-12 rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+                className="h-12 w-auto text-base"
               />
             </div>
           )}
         </div>
         {expiryDate && expiryValid && (
-          <p className="mt-2 rounded-md border border-green-200 bg-success-soft px-3 py-2 text-base font-semibold text-green-900">
+          <p className="mt-2 rounded-md border border-success-border bg-success-soft px-3 py-2 text-base font-semibold text-success-fg">
             Write this date on the card: {formatIsoDateLong(expiryDate)}
           </p>
         )}
@@ -307,34 +302,36 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
 
       <div aria-live="polite">
         {outcome && (
-          <p role="status" className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-base text-info-fg">
+          <p role="status" className="rounded-md border border-info-border bg-info-soft px-3 py-2 text-base text-info-fg">
             {outcome}
           </p>
         )}
       </div>
 
       {success && (
-        <div className="rounded-xl border border-green-300 bg-success-soft p-4">
-          <p className="text-xl font-bold text-green-900">Handed out</p>
-          <p className="mt-1 text-base text-green-900">
+        <div className="rounded-lg border border-success-border bg-success-soft p-4">
+          <p className="text-xl font-bold text-success-fg">Handed out</p>
+          <p className="mt-1 text-base text-success-fg">
             <span className="font-mono font-semibold">{success.number}</span> - {success.typeTitle}
             {success.contextLabel ? ` (${success.contextLabel})` : ''}, expires{' '}
             {formatIsoDateLong(success.expiryDate)}.
           </p>
-          <p className="mt-2 rounded-md border border-green-400 bg-surface px-3 py-2 text-base font-semibold text-green-900">
+          <p className="mt-2 rounded-md border border-success bg-surface px-3 py-2 text-base font-semibold text-success-fg">
             Write the expiry date, the event and your name on the card before you hand it over.
           </p>
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="lg"
             onClick={() => {
               setSuccess(null)
               setOutcome(null)
               lookup.reset()
             }}
-            className="mt-3 min-h-14 w-full rounded-lg bg-sidebar px-4 py-3 text-lg font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2"
+            className="mt-3 h-14 w-full text-lg"
           >
             Hand out another
-          </button>
+          </Button>
         </div>
       )}
 
@@ -362,30 +359,32 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
                 </p>
               )}
               {canEdit && !staffId && (
-                <p className="rounded-md border border-amber-300 bg-warning-soft px-3 py-2 text-base text-warning-fg">
+                <p className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-base text-warning-fg">
                   Choose your name at the top before handing out.
                 </p>
               )}
               {canEdit && staffId && !contextValid && (
-                <p className="rounded-md border border-amber-300 bg-warning-soft px-3 py-2 text-base text-warning-fg">
+                <p className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-base text-warning-fg">
                   Pick an event or type where the voucher was won.
                 </p>
               )}
               {canEdit && staffId && contextValid && !expiryValid && (
-                <p className="rounded-md border border-amber-300 bg-warning-soft px-3 py-2 text-base text-warning-fg">
+                <p className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-base text-warning-fg">
                   Pick an expiry date (today or later) before handing out.
                 </p>
               )}
 
               {canEdit && (
-                <button
+                <Button
                   type="button"
+                  variant="primary"
+                  size="lg"
                   onClick={() => setConfirmOpen(true)}
                   disabled={!canHandOut}
-                  className="min-h-14 w-full rounded-lg bg-sidebar px-4 py-3 text-xl font-bold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-14 w-full text-xl font-bold"
                 >
                   Hand out this voucher
-                </button>
+                </Button>
               )}
             </div>
           )}

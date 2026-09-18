@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Button, Input, Modal, ConfirmDialog, Select } from '@/ds'
+import { Alert, Badge, Button, Input, Modal, ConfirmDialog, Select } from '@/ds'
 import {
   createDestination,
   updateDestination,
@@ -368,22 +368,20 @@ export function DestinationsClient({
 
       {/* Error banner */}
       {(formError || distanceError) && !showForm && !deleteTarget && !distanceDeleteTarget && (
-        <div className="rounded-md bg-danger-soft p-3 text-sm text-red-700">
-          {formError ?? distanceError}
-        </div>
+        <Alert tone="danger">{formError ?? distanceError}</Alert>
       )}
 
       {/* Home base card */}
       {homeBase && (
-        <div className="rounded-lg border border-green-200 bg-success-soft p-4">
+        <div className="rounded-lg border border-success-border bg-success-soft p-4">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <MapPinIcon className="h-5 w-5 text-green-600" />
-            <span className="font-medium text-green-800">{homeBase.name}</span>
-            <span className="ml-2 rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-green-700">
+            <MapPinIcon className="h-5 w-5 text-success" />
+            <span className="font-medium text-success-fg">{homeBase.name}</span>
+            <Badge tone="success" className="ml-2">
               Home Base
-            </span>
+            </Badge>
             {homeBase.postcode && (
-              <span className="text-sm text-green-600">{homeBase.postcode}</span>
+              <span className="text-sm text-success-fg">{homeBase.postcode}</span>
             )}
           </div>
         </div>
@@ -748,7 +746,7 @@ export function DestinationsClient({
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-text">
-                      {distance.fromDestinationName} <span className="text-gray-400">→</span> {distance.toDestinationName}
+                      {distance.fromDestinationName} <span className="text-text-subtle">→</span> {distance.toDestinationName}
                     </p>
                     <p className="mt-0.5 text-xs text-text-muted">{distance.miles} mi</p>
                   </div>
@@ -804,11 +802,7 @@ export function DestinationsClient({
         }
       >
         <div className="space-y-4">
-          {formError && (
-            <div className="rounded-md bg-danger-soft p-3 text-sm text-red-700">
-              {formError}
-            </div>
-          )}
+          {formError && <Alert tone="danger">{formError}</Alert>}
           <div>
             <label htmlFor="dest-name" className="block text-sm font-medium text-text mb-1">
               Name <span className="text-danger">*</span>

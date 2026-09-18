@@ -36,10 +36,20 @@ const PERIOD_LABELS: Record<CashupInsightsPeriod, string> = {
   '12m': 'Last 12 months',
 }
 
+// Chart series tokens: sky for drinks, the brand green for food, amber for other, the same
+// hues the chart used before tokens existed.
 const SALES_MIX_COLORS = {
-  drinks: '#2563EB',
-  food: '#16A34A',
-  other: '#F59E0B',
+  drinks: 'var(--color-chart-2)',
+  food: 'var(--color-chart-1)',
+  other: 'var(--color-chart-3)',
+}
+
+// The sales mix cards under the chart must match its bars. The service still sends its own
+// colour with each row, so that is only the fallback for a category this map does not know.
+const SALES_MIX_COLORS_BY_LABEL: Record<string, string> = {
+  Drinks: SALES_MIX_COLORS.drinks,
+  Food: SALES_MIX_COLORS.food,
+  Other: SALES_MIX_COLORS.other,
 }
 
 type SalesMixChartPoint = CashupInsightsData['salesMixMonthly'][number]
@@ -257,7 +267,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
                     <div className="flex items-center gap-2 min-w-0">
                       <span
                         className="w-3 h-3 rounded-full shrink-0"
-                        style={{ backgroundColor: mix.color }}
+                        style={{ backgroundColor: SALES_MIX_COLORS_BY_LABEL[mix.label] ?? mix.color }}
                       />
                       <span className="text-sm font-medium text-text truncate">{mix.label}</span>
                     </div>

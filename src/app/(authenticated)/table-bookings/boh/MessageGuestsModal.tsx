@@ -142,17 +142,19 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
       title="Message guests"
       width="md"
       footer={
-        <>
+        // The modal renders outside BOH's data-touch-targets wrapper, so it opts in again: on a
+        // touch screen (the bar iPad) its controls get the 44px floor (owner decision D6).
+        <div className="contents" data-touch-targets>
           <Button variant="ghost" onClick={onClose} disabled={isSending}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSend} loading={isSending} disabled={!canSend}>
             {eligible > 0 ? `Send to ${eligible} guest${eligible === 1 ? '' : 's'}` : 'Send'}
           </Button>
-        </>
+        </div>
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-4" data-touch-targets>
         <p className="text-sm text-text-muted">
           {emailOption ? 'Send a message' : 'Send a text'} to guests booked on{' '}
           <span className="font-medium text-text">
@@ -219,7 +221,7 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
 
         <div className="rounded-default bg-surface-2 border border-border p-3 text-sm">
           {loadingPreview ? (
-            <span className="text-text-subtle">Checking who can be reached…</span>
+            <span className="text-text-soft">Checking who can be reached…</span>
           ) : previewError ? (
             <span className="text-danger">Couldn&apos;t load guests: {previewError}</span>
           ) : preview && preview.total > 0 && emailFirst && emailOption ? (
@@ -229,12 +231,12 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
                 <span className="font-medium text-text">{emailOption.textOnly}</span> texted, of {plural(preview.total, 'guest')}.
               </li>
               {preview.total - emailOption.reachable > 0 && (
-                <li className="text-text-subtle">
+                <li className="text-text-soft">
                   {preview.total - emailOption.reachable} can&apos;t be reached (no usable email address and no mobile with SMS opt-in).
                 </li>
               )}
               {emailOption.noName > 0 && (
-                <li className="text-text-subtle">
+                <li className="text-text-soft">
                   {emailOption.noName} have no name on file and will be greeted as &apos;there&apos;.
                 </li>
               )}
@@ -246,18 +248,18 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
                 {preview.total === 1 ? '' : 's'} will be texted.
               </li>
               {preview.unreachable > 0 && (
-                <li className="text-text-subtle">
+                <li className="text-text-soft">
                   {preview.unreachable} can&apos;t be reached (no mobile, opted out, or deactivated).
                 </li>
               )}
               {preview.noName > 0 && (
-                <li className="text-text-subtle">
+                <li className="text-text-soft">
                   {preview.noName} have no name on file and will be greeted as &apos;there&apos;.
                 </li>
               )}
             </ul>
           ) : (
-            <span className="text-text-subtle">No guests found for this selection.</span>
+            <span className="text-text-soft">No guests found for this selection.</span>
           )}
         </div>
       </div>

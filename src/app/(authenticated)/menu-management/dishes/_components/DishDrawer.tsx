@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Drawer, DrawerActions } from '@/ds';
 import { Tabs } from '@/ds';
-import { Button } from '@/ds';
+import { Badge, Button } from '@/ds';
 import { Checkbox } from '@/ds';
 import { Alert } from '@/ds';
 import { ConfirmDialog } from '@/ds';
@@ -625,20 +625,26 @@ export function DishDrawer({
 
             {isEditing && (
               allergenVerified ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-green-800" title={allergenVerifiedAt ? `Verified ${new Date(allergenVerifiedAt).toLocaleDateString('en-GB')}` : undefined}>
-                  <CheckCircleIcon className="h-3.5 w-3.5" />
+                <Badge
+                  tone="success"
+                  icon={<CheckCircleIcon />}
+                  title={allergenVerifiedAt ? `Verified ${new Date(allergenVerifiedAt).toLocaleDateString('en-GB')}` : undefined}
+                >
                   Allergens Verified
-                </span>
+                </Badge>
               ) : (
-                <button
+                // A secondary button with a warning icon: it is an action, and the icon keeps the
+                // "not yet verified" signal the amber pill used to give.
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="xs"
                   onClick={() => void handleVerifyAllergens()}
                   disabled={verifying}
-                  className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-warning-fg hover:bg-amber-200 disabled:opacity-50"
+                  icon={<ExclamationTriangleIcon className="h-3.5 w-3.5 text-warning" />}
                 >
-                  <ExclamationTriangleIcon className="h-3.5 w-3.5" />
                   {verifying ? 'Verifying...' : 'Verify Allergens'}
-                </button>
+                </Button>
               )
             )}
           </div>

@@ -1,3 +1,9 @@
+import { STAFF } from '@/lib/brand/palette'
+
+// The kit prints in greys only (the --anchor-* names are from its colour draft). Each grey maps to
+// the nearest STAFF value, text never lighter than STAFF.textMuted; the mid-grey accents and
+// outlines use STAFF.textSoft and STAFF.textSubtle because the border tokens are too pale on paper.
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, character => ({
     '&': '&amp;',
@@ -134,32 +140,32 @@ export function generateRecruitmentInterviewKitHtml(input: {
 <link href="https://fonts.googleapis.com/css2?family=Clicker+Script&family=DM+Serif+Display:ital@0;1&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --anchor-green: #111111;
-    --anchor-green-light: #222222;
-    --anchor-green-deep: #111111;
-    --anchor-gold: #666666;
-    --anchor-gold-dark: #333333;
-    --anchor-gold-bright: #777777;
-    --anchor-charcoal: #111111;
-    --anchor-cream: #ffffff;
-    --anchor-white: #ffffff;
-    --anchor-sand: #eeeeee;
-    --border: #d9d9d9;
-    --border-strong: #777777;
-    --border-gold: #999999;
-    --text-muted: #555555;
-    --anchor-danger: #111111;
+    --anchor-green: ${STAFF.text};
+    --anchor-green-light: ${STAFF.text};
+    --anchor-green-deep: ${STAFF.text};
+    --anchor-gold: ${STAFF.textSoft};
+    --anchor-gold-dark: ${STAFF.text};
+    --anchor-gold-bright: ${STAFF.textMuted};
+    --anchor-charcoal: ${STAFF.text};
+    --anchor-cream: ${STAFF.surface};
+    --anchor-white: ${STAFF.surface};
+    --anchor-sand: ${STAFF.border};
+    --border: ${STAFF.borderStrong};
+    --border-strong: ${STAFF.textSoft};
+    --border-gold: ${STAFF.textSubtle};
+    --text-muted: ${STAFF.textMuted};
+    --anchor-danger: ${STAFF.text};
     --font-display: "DM Serif Display", Georgia, serif;
     --font-body: "Outfit", Arial, sans-serif;
     --font-script: "Clicker Script", cursive;
     --tracking-kicker: 0.18em;
-    --rule: #555555;
+    --rule: ${STAFF.textMuted};
     --row: 2.25rem;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    background: #f2f2f2;
+    background: ${STAFF.surfaceHover};
     color: var(--anchor-charcoal);
     font-family: var(--font-body);
     font-size: 15px;
@@ -179,7 +185,7 @@ export function generateRecruitmentInterviewKitHtml(input: {
     display: flex; align-items: center; justify-content: space-between;
     gap: 16px; max-width: 210mm; margin: 24px auto -8px;
     padding: 12px 18px; background: var(--anchor-green-deep);
-    color: #ffffff; border-radius: 12px;
+    color: ${STAFF.primaryFg}; border-radius: 12px;
   }
   .tb-label {
     font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase;
@@ -353,8 +359,8 @@ export function generateRecruitmentInterviewKitHtml(input: {
   @page { size: A4; margin: 14mm 16mm 18mm; }
   @media print {
     html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    html, body { margin: 0; padding: 0; background: #fff; }
-    .doc { max-width: none !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; background: #fff; }
+    html, body { margin: 0; padding: 0; background: ${STAFF.surface}; }
+    .doc { max-width: none !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; background: ${STAFF.surface}; }
     .screen-only { display: none !important; }
     h2.sec, .field-label, h3, .sec-lead, .sec-rule, .q { break-after: avoid; page-break-after: avoid; }
     .sc-card, .cert, .callout, .decision, .cert-row, li, .lines { break-inside: avoid; page-break-inside: avoid; }

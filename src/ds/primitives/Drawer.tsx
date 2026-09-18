@@ -89,6 +89,7 @@ export function Drawer({
             leaveTo={isBottom ? 'translate-y-full' : isRight ? 'translate-x-full' : '-translate-x-full'}
           >
             <DialogPanel
+              data-touch-targets=""
               className={cn(
                 'fixed bg-surface shadow-lg flex flex-col',
                 isBottom

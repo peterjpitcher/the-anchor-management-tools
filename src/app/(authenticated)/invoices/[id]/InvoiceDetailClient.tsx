@@ -1,5 +1,7 @@
 'use client'
 
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
+
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createCreditNote, getInvoice, updateInvoiceStatus, deleteInvoice, updateInvoiceDueDate } from '@/app/actions/invoices'
@@ -23,7 +25,7 @@ import { ConfirmDialog } from '@/ds'
 import { Modal } from '@/ds'
 import { Input } from '@/ds'
 import { Textarea } from '@/ds'
-import { Download, Mail, Edit, Trash2, Copy, CheckCircle, XCircle, Clock, RefreshCw, FileMinus, CreditCard, Link as LinkIcon, CalendarDays } from 'lucide-react'
+import { Download, Mail, Edit, Trash2, Copy, CheckCircle, Clock, RefreshCw, FileMinus, CreditCard, Link as LinkIcon, CalendarDays } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
 const EmailInvoiceModal = dynamic(
@@ -38,6 +40,7 @@ import type { InvoiceWithDetails, InvoiceStatus, InvoiceLineItem, InvoiceLineIte
 import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
 import { downloadInvoicePdf } from '@/lib/invoices/download-pdf'
+import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 
 interface InvoiceDetailClientProps {
   initialInvoice: InvoiceWithDetails
@@ -125,14 +128,14 @@ function EntryPreviewTable({
       <table className="min-w-full divide-y divide-border text-sm">
         <thead className="bg-surface-2 text-xs uppercase text-text-muted">
           <tr>
-            <th scope="col" className="px-3 py-2 text-left font-semibold">Date</th>
-            <th scope="col" className="px-3 py-2 text-left font-semibold">Project</th>
-            <th scope="col" className="px-3 py-2 text-left font-semibold">Description</th>
-            <th scope="col" className="px-3 py-2 text-left font-semibold">Type</th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">Qty</th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">Amount</th>
-            <th scope="col" className="px-3 py-2 text-left font-semibold">Status</th>
-            {showReason && <th scope="col" className="px-3 py-2 text-left font-semibold">Reason</th>}
+            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Date</th>
+            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Project</th>
+            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Description</th>
+            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Type</th>
+            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">Qty</th>
+            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">Amount</th>
+            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Status</th>
+            {showReason && <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Reason</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-border bg-surface">
@@ -176,12 +179,12 @@ function RecurringPreviewTable({
       <table className="min-w-full divide-y divide-border text-sm">
         <thead className="bg-surface-2 text-xs uppercase text-text-muted">
           <tr>
-            <th scope="col" className="px-3 py-2 text-left font-semibold">Description</th>
-            <th scope="col" className="px-3 py-2 text-left font-semibold">Period</th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">Amount</th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">VAT</th>
-            <th scope="col" className="px-3 py-2 text-left font-semibold">Status</th>
-            {showReason && <th scope="col" className="px-3 py-2 text-left font-semibold">Reason</th>}
+            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Description</th>
+            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Period</th>
+            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">Amount</th>
+            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">VAT</th>
+            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Status</th>
+            {showReason && <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Reason</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-border bg-surface">
@@ -213,10 +216,10 @@ function LineItemsPreviewTable({ lineItems }: { lineItems: InvoiceLineItemInput[
       <table className="min-w-full divide-y divide-border text-sm">
         <thead className="bg-surface-2 text-xs uppercase text-text-muted">
           <tr>
-            <th scope="col" className="px-3 py-2 text-left font-semibold">Description</th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">Qty</th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">Unit price</th>
-            <th scope="col" className="px-3 py-2 text-right font-semibold">VAT</th>
+            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Description</th>
+            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">Qty</th>
+            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">Unit price</th>
+            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">VAT</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border bg-surface">
@@ -472,28 +475,6 @@ export default function InvoiceDetailClient({
     }
   }
 
-  function getStatusBadgeVariant(status: InvoiceStatus): 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' | 'secondary' {
-    switch (status) {
-      case 'draft': return 'default'
-      case 'sent': return 'info'
-      case 'partially_paid': return 'warning'
-      case 'paid': return 'success'
-      case 'overdue': return 'error'
-      case 'void': return 'secondary'
-      case 'written_off': return 'secondary'
-      default: return 'default'
-    }
-  }
-
-  function getStatusIcon(status: InvoiceStatus) {
-    switch (status) {
-      case 'paid': return <CheckCircle className="h-4 w-4" />
-      case 'overdue': return <XCircle className="h-4 w-4" />
-      case 'partially_paid': return <Clock className="h-4 w-4" />
-      default: return null
-    }
-  }
-
   const { totals: calculatedInvoiceTotals, lineTotals } = invoiceMath
   const invoiceTotals = useMemo(() => ({
     ...calculatedInvoiceTotals,
@@ -537,7 +518,7 @@ export default function InvoiceDetailClient({
     canEdit &&
     invoice.vendor?.paypal_payments_enabled === true &&
     ['sent', 'overdue', 'partially_paid'].includes(invoice.status) &&
-    Number(invoice.total_amount || 0) - Number(invoice.paid_amount || 0) > 0
+    invoiceBalanceDue(invoice) > 0
 
   // A due date is a payment term, not a figure, so it stays changeable after
   // the invoice is issued. Withdrawn and settled invoices are excluded: there
@@ -771,8 +752,8 @@ export default function InvoiceDetailClient({
     >
       <div className="mb-6">
         <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-          <Badge variant={getStatusBadgeVariant(invoice.status)} icon={getStatusIcon(invoice.status)}>
-            {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
+          <Badge tone={invoiceStatusTone(invoice.status)} dot>
+            {invoiceStatusLabel(invoice.status)}
           </Badge>
           {invoice.reference && (
             <span className="text-sm sm:text-base text-text-muted">
@@ -795,7 +776,7 @@ export default function InvoiceDetailClient({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         <div className="lg:col-span-2 space-y-4 lg:space-y-6">
-          <Card className="p-6">
+          <Card>
             <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
@@ -832,7 +813,7 @@ export default function InvoiceDetailClient({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 pt-6 border-t">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 pt-6 border-t border-border">
               <div>
                 <p className="text-sm text-text-muted">Invoice Date</p>
                 <p className="font-medium">
@@ -848,7 +829,7 @@ export default function InvoiceDetailClient({
             </div>
           </Card>
 
-          <Card className="p-6">
+          <Card>
             <h2 className="text-lg font-semibold mb-4">Line Items</h2>
             <DataTable<InvoiceLineItem>
               data={invoice.line_items || []}
@@ -857,7 +838,7 @@ export default function InvoiceDetailClient({
                 { key: 'description', header: 'Description', cell: (it) => <span className="text-sm">{it.description}</span> },
                 { key: 'quantity', header: 'Qty', align: 'right', cell: (it) => <span className="text-sm">{it.quantity}</span> },
                 { key: 'unit_price', header: 'Unit Price', align: 'right', cell: (it) => <span className="text-sm">£{it.unit_price.toFixed(2)}</span> },
-                { key: 'discount', header: 'Discount', align: 'right', cell: (it) => <span className="text-sm text-green-600">{it.discount_percentage > 0 ? `-${it.discount_percentage}%` : ''}</span> },
+                { key: 'discount', header: 'Discount', align: 'right', cell: (it) => <span className="text-sm text-success-fg">{it.discount_percentage > 0 ? `-${it.discount_percentage}%` : ''}</span> },
                 { key: 'vat', header: 'VAT', align: 'right', cell: (it) => <span className="text-sm">{it.vat_rate}%</span> },
                 { key: 'total', header: 'Total', align: 'right', cell: (it) => {
                   const breakdown = lineTotals.get(it.id)
@@ -870,17 +851,17 @@ export default function InvoiceDetailClient({
                 const breakdown = lineTotals.get(it.id)
                 const lineTotal = breakdown ? breakdown.total : 0
                 return (
-                  <div className="border rounded-lg p-4 bg-surface-2">
+                  <div className="border border-border rounded-lg p-4 bg-surface-2">
                     <div className="font-medium text-sm mb-3">{it.description}</div>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between"><span className="text-text-muted">Quantity:</span><span>{it.quantity}</span></div>
                       <div className="flex justify-between"><span className="text-text-muted">Unit Price:</span><span>£{it.unit_price.toFixed(2)}</span></div>
                       {it.discount_percentage > 0 && (
-                        <div className="flex justify-between"><span className="text-text-muted">Discount:</span><span className="text-green-600">-{it.discount_percentage}%</span></div>
+                        <div className="flex justify-between"><span className="text-text-muted">Discount:</span><span className="text-success-fg">-{it.discount_percentage}%</span></div>
                       )}
                       <div className="flex justify-between"><span className="text-text-muted">VAT:</span><span>{it.vat_rate}%</span></div>
                     </div>
-                    <div className="mt-3 pt-3 border-t flex justify-between font-medium">
+                    <div className="mt-3 pt-3 border-t border-border flex justify-between font-medium">
                       <span>Total:</span>
                       <span>£{lineTotal.toFixed(2)}</span>
                     </div>
@@ -889,13 +870,13 @@ export default function InvoiceDetailClient({
               }}
             />
 
-            <div className="mt-6 pt-6 border-t space-y-2">
+            <div className="mt-6 pt-6 border-t border-border space-y-2">
               <div className="flex justify-between text-sm">
                 <span>Subtotal:</span>
                 <span>£{invoiceTotals.subtotalBeforeInvoiceDiscount.toFixed(2)}</span>
               </div>
               {invoiceTotals.invoiceDiscountAmount > 0 && (
-                <div className="flex justify-between text-sm text-green-600">
+                <div className="flex justify-between text-sm text-success-fg">
                   <span>Invoice Discount ({invoice.invoice_discount_percentage}%):</span>
                   <span>-£{invoiceTotals.invoiceDiscountAmount.toFixed(2)}</span>
                 </div>
@@ -904,7 +885,7 @@ export default function InvoiceDetailClient({
                 <span>VAT:</span>
                 <span>£{invoiceTotals.vatAmount.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-lg font-semibold pt-2 border-t">
+              <div className="flex justify-between text-lg font-semibold pt-2 border-t border-border">
                 <span>Total:</span>
                 <span>£{invoiceTotals.totalAmount.toFixed(2)}</span>
               </div>
@@ -912,7 +893,7 @@ export default function InvoiceDetailClient({
           </Card>
 
           {(invoice.notes || invoice.internal_notes) && (
-            <Card className="p-6">
+            <Card>
               <h2 className="text-lg font-semibold mb-4">Notes</h2>
               
               {invoice.notes && (
@@ -925,7 +906,7 @@ export default function InvoiceDetailClient({
               {invoice.internal_notes && (
                 <div>
                   <h3 className="font-medium text-sm text-text-muted mb-1">Internal Notes</h3>
-                  <p className="text-sm whitespace-pre-wrap bg-warning-soft p-3 rounded-md">
+                  <p className="text-sm whitespace-pre-wrap rounded-md border border-warning-border bg-warning-soft p-3 text-warning-fg">
                     {invoice.internal_notes}
                   </p>
                 </div>
@@ -935,7 +916,7 @@ export default function InvoiceDetailClient({
         </div>
 
         <div className="space-y-4 lg:space-y-6">
-          <Card className="p-4 sm:p-6">
+          <Card>
             <h2 className="text-base sm:text-lg font-semibold mb-4">Payment Status</h2>
             
             <div className="space-y-3 sm:space-y-4">
@@ -946,13 +927,14 @@ export default function InvoiceDetailClient({
               
               <div>
                 <p className="text-sm text-text-muted">Paid Amount</p>
-                <p className="text-lg sm:text-xl font-semibold text-green-600">£{invoice.paid_amount.toFixed(2)}</p>
+                <p className="text-lg sm:text-xl font-semibold text-success-fg">£{invoice.paid_amount.toFixed(2)}</p>
               </div>
               
               <div>
                 <p className="text-sm text-text-muted">Outstanding</p>
-                <p className="text-lg sm:text-xl font-semibold text-danger">
-                  £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
+                {/* Red only once the invoice is overdue, the same rule as the invoice list. */}
+                <p className={`text-lg sm:text-xl font-semibold ${invoice.status === 'overdue' ? 'text-danger' : ''}`}>
+                  £{(invoiceBalanceDue(invoice)).toFixed(2)}
                 </p>
               </div>
 
@@ -974,12 +956,12 @@ export default function InvoiceDetailClient({
           </Card>
 
           {invoice.payments && invoice.payments.length > 0 && (
-            <Card className="p-4 sm:p-6">
+            <Card>
               <h2 className="text-base sm:text-lg font-semibold mb-4">Payment History</h2>
               
               <div className="space-y-3">
                 {invoice.payments.map((payment) => (
-                  <div key={payment.id} className="border-b pb-3 last:border-b-0">
+                  <div key={payment.id} className="border-b border-border pb-3 last:border-b-0">
                     <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
                       <div className="flex-1">
                         <p className="font-medium">£{payment.amount.toFixed(2)}</p>
@@ -998,7 +980,7 @@ export default function InvoiceDetailClient({
             </Card>
           )}
 
-          <Card className="p-4 sm:p-6">
+          <Card>
             <h2 className="text-base sm:text-lg font-semibold mb-4">Actions</h2>
             
             <div className="space-y-2">
@@ -1147,7 +1129,7 @@ export default function InvoiceDetailClient({
             disabled={savingDueDate}
           />
           {invoice.status === 'overdue' && newDueDate >= new Date().toISOString().slice(0, 10) && (
-            <p className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-info-fg">
+            <p className="rounded-lg border border-info-border bg-info-soft px-4 py-3 text-sm text-info-fg">
               This invoice is marked overdue. Giving more time will also stop the
               overdue chasers.
             </p>

@@ -152,7 +152,7 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
                       <div className="flex items-center gap-2 font-medium text-text">
                         {recipe.recipe_name}
                         {!recipe.recipe_is_active && (
-                          <Badge variant="warning" size="sm">Inactive</Badge>
+                          <Badge tone="neutral" size="sm">Inactive</Badge>
                         )}
                       </div>
                       <div className="text-xs text-text-muted">

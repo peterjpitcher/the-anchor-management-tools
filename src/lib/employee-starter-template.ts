@@ -1,3 +1,4 @@
+import { STAFF } from '@/lib/brand/palette'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
 
@@ -102,7 +103,7 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
     body {
       font-family: Arial, sans-serif;
       line-height: 1.45;
-      color: #111827;
+      color: ${STAFF.text};
       margin: 0;
       padding: 0;
       font-size: 9.8pt;
@@ -111,7 +112,7 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
     .header {
       text-align: center;
       padding-bottom: 12px;
-      border-bottom: 2px solid #005131;
+      border-bottom: 2px solid ${STAFF.primary};
       margin-bottom: 20px;
     }
 
@@ -126,32 +127,32 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
     .masthead-name {
       font-size: 14pt;
       font-weight: bold;
-      color: #005131;
+      color: ${STAFF.primary};
       margin: 0 0 2px 0;
     }
 
     .masthead-details {
       font-size: 8.5pt;
-      color: #374151;
+      color: ${STAFF.text};
       margin: 0;
     }
 
     .doc-title {
       font-size: 16pt;
       font-weight: bold;
-      color: #111827;
+      color: ${STAFF.textStrong};
       margin: 14px 0 2px 0;
     }
 
     .doc-subtitle {
       font-size: 10pt;
-      color: #374151;
+      color: ${STAFF.text};
       margin: 0;
     }
 
     .meta {
       font-size: 8pt;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
       margin-top: 4px;
     }
 
@@ -163,8 +164,8 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
     }
 
     table.details tr.section-header td {
-      background: #005131;
-      color: #ffffff;
+      background: ${STAFF.primary};
+      color: ${STAFF.primaryFg};
       font-weight: bold;
       font-size: 9pt;
       padding: 5px 8px;
@@ -173,25 +174,25 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
 
     table.details td.label {
       width: 38%;
-      color: #374151;
+      color: ${STAFF.text};
       font-weight: bold;
       padding: 5px 8px;
       vertical-align: top;
-      border-bottom: 1px solid #e5e7eb;
-      background: #f9fafb;
+      border-bottom: 1px solid ${STAFF.border};
+      background: ${STAFF.surface2};
     }
 
     table.details td.value {
-      color: #111827;
+      color: ${STAFF.text};
       padding: 5px 8px;
       vertical-align: top;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid ${STAFF.border};
     }
 
     .rtw-status {
       display: inline-block;
-      background: #d1fae5;
-      color: #065f46;
+      background: ${STAFF.successSoft};
+      color: ${STAFF.successFg};
       font-weight: bold;
       border-radius: 4px;
       padding: 2px 8px;
@@ -201,8 +202,8 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
 
     .rtw-none {
       display: inline-block;
-      background: #fee2e2;
-      color: #991b1b;
+      background: ${STAFF.dangerSoft};
+      color: ${STAFF.dangerFg};
       font-weight: bold;
       border-radius: 4px;
       padding: 2px 8px;
@@ -211,12 +212,12 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
     }
 
     .confidential-banner {
-      background: #fef3c7;
-      border: 1px solid #d97706;
+      background: ${STAFF.warningSoft};
+      border: 1px solid ${STAFF.warning};
       border-radius: 4px;
       padding: 6px 10px;
       font-size: 8pt;
-      color: #92400e;
+      color: ${STAFF.warningFg};
       margin-bottom: 14px;
       text-align: center;
       font-weight: bold;
@@ -228,8 +229,8 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
     }
 
     .rtw-document-heading {
-      background: #005131;
-      color: #ffffff;
+      background: ${STAFF.primary};
+      color: ${STAFF.primaryFg};
       font-weight: bold;
       font-size: 9pt;
       padding: 5px 8px;
@@ -241,15 +242,15 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
       max-width: 100%;
       height: auto;
       display: block;
-      border: 1px solid #d1d5db;
+      border: 1px solid ${STAFF.borderStrong};
     }
 
     .footer {
       margin-top: 20px;
       font-size: 7.5pt;
-      color: #9ca3af;
+      color: ${STAFF.textMuted};
       text-align: center;
-      border-top: 1px solid #e5e7eb;
+      border-top: 1px solid ${STAFF.border};
       padding-top: 8px;
     }
   </style>

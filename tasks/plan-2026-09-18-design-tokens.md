@@ -33,15 +33,15 @@
 | PR-04 | Toasts, JS token accessors, charts, avatars | [x] | 87845543 | dpl_DKe52tLKAs7YikBe4RiZo5iQFN4d, live 18 Sep 13:13 |
 | PR-05 | DS primitives and compat wrappers | [x] | see git log | dpl_CejQqkQ4AzSSTVYByBuXwiHPjDHL (with PR-06), live 18 Sep 15:18 |
 | PR-06 | DS composites and app shell | [x] | ff51e13c (tip) | dpl_CejQqkQ4AzSSTVYByBuXwiHPjDHL, live 18 Sep 15:18 |
-| PR-07 | Codemod step A (value-equal swaps) | [x] | see git log | pending ship |
-| PR-08 | Codemod step B (secondary greys darken) | [x] | see git log | pending ship (with PR-07) |
-| PR-09 | Area: guest pages, sign-in, recruitment booking, invoice portal | [ ] | | |
-| PR-10 | Area: FOH, BOH, table bookings, vouchers, timeclock, kiosk, parking | [ ] | | |
-| PR-11 | Area: employee onboarding and staff portal | [ ] | | |
+| PR-07 | Codemod step A (value-equal swaps) | [x] | 4e802084, cc4f4826 | dpl_51zULm7r6A8KUJALYQxQdjjsmEdb (with PR-08), live 18 Sep 15:40 |
+| PR-08 | Codemod step B (secondary greys darken) | [x] | adfd7e65 | dpl_51zULm7r6A8KUJALYQxQdjjsmEdb, live 18 Sep 15:40 |
+| PR-09 | Area: guest pages, sign-in, recruitment booking, invoice portal | [x] | see git log | shipped together 18 Sep (wave 1 + PR-09) |
+| PR-10 | Area: FOH, BOH, table bookings, vouchers, timeclock, kiosk, parking | [x] | see git log | shipped together 18 Sep (wave 1 + PR-09) |
+| PR-11 | Area: employee onboarding and staff portal | [x] | see git log | shipped together 18 Sep (wave 1 + PR-09) |
 | PR-12 | Area: private bookings, customers, events, messages, marketing, short links | [ ] | | |
 | PR-13 | Area: employees, roles, users, profile, rota, checklists, maintenance, recruitment | [ ] | | |
-| PR-14 | Area: invoices, quotes, OJ projects, expenses, mileage, cashing up, receipts, MGD, dashboard | [ ] | | |
-| PR-15 | Area: settings and menu management | [ ] | | |
+| PR-14 | Area: invoices, quotes, OJ projects, expenses, mileage, cashing up, receipts, MGD, dashboard | [x] | see git log | shipped together 18 Sep (wave 1 + PR-09) |
+| PR-15 | Area: settings and menu management | [x] | see git log | shipped together 18 Sep (wave 1 + PR-09) |
 | PR-16 | Brand colour module and staff emails | [ ] | | |
 | PR-17 | Guest emails | [ ] | | |
 | PR-18 | PDFs, printable HTML, `/auth/confirm`, shared category palette | [ ] | | |
@@ -638,36 +638,36 @@ For every file in scope:
 
 Scope: `audit:public-guest`. Files include `src/app/g/**`, `src/components/features/guest/**`, `src/app/auth/**`, `src/app/login/**`, `src/app/recruitment/**`, `src/app/invoice-portal/**`, `src/app/global-error.tsx`, `src/app/error/**`, `src/app/unauthorized/**`, other public pages.
 
-- [ ] Guest type tokens: add to `@theme static` only the guest sizes and leadings that `src/components/features/guest/styles.ts` and the guest pages repeat (source values: `docs/design/guest-pages-2026-08/design_system/tokens/typography.css`), named `--text-guest-*` and `--leading-guest-*`, plus `--container-guest: 560px`, `--color-guest-success-soft`, `--color-guest-success-border`, `--color-guest-notice-soft`, `--color-guest-notice-border`, `--color-guest-problem-soft`, `--color-guest-problem-border` taken from the current opacity arbitraries in `GuestAlert` and `GuestBadge`. Add the new radius/shadow/text names to `cn()`'s lists. Replace the arbitraries.
-- [ ] `src/app/g/[token]/confirm-booking/page.tsx:31-45,130`: render inside GuestShell with guest tokens and `GuestButton` (it is live on the SMS "Are you still coming?" link). Same for the retired `card-capture` and `sunday-preorder` pages if their routes still exist (check; if they only redirect, leave them).
-- [ ] `src/app/g/[token]/email-capture/page.tsx:223`: `border-guest-line` to `border-guest-border`; bare `rounded` to `rounded-guest-field`.
-- [ ] Password reset journey: `/auth/reset-password`, `/auth/reset`, `/auth/recover`, `/auth/confirm` page parts use the same `.auth` card and logo as `/auth/login`; fix the dark text on dark green at `auth/reset-password/page.tsx:57,70-82`; `bg-sidebar` buttons to DS Button primary.
-- [ ] D9: `/recruitment/book/[token]` moves into GuestShell with guest tokens and components (keep all booking logic and server calls identical).
-- [ ] D10 and A1: `/invoice-portal/[token]` leaves GuestShell for a neutral staff-token shell with `public/logo-oj.jpg`, "Orange Jelly Limited" and the legal line from `src/lib/company-details.ts` (registration and VAT numbers, address). Payment flow, PayPal button and amounts untouched. Check the CSP still allows everything the page loads.
-- [ ] `global-error.tsx`: verify whether it renders styled (it does not import globals.css); if unstyled, give it self-contained minimal inline styles using the token hex values, since it cannot rely on the app CSS.
-- [ ] P-VISUAL: these pages are public, so render them directly in the in-app browser at 375px and desktop (use a test token only where the page renders a safe error state without one; never submit forms). Baseline update, P-GATES, cold build, P-COMMIT, P-SHIP.
+- [x] Guest type tokens: add to `@theme static` only the guest sizes and leadings that `src/components/features/guest/styles.ts` and the guest pages repeat (source values: `docs/design/guest-pages-2026-08/design_system/tokens/typography.css`), named `--text-guest-*` and `--leading-guest-*`, plus `--container-guest: 560px`, `--color-guest-success-soft`, `--color-guest-success-border`, `--color-guest-notice-soft`, `--color-guest-notice-border`, `--color-guest-problem-soft`, `--color-guest-problem-border` taken from the current opacity arbitraries in `GuestAlert` and `GuestBadge`. Add the new radius/shadow/text names to `cn()`'s lists. Replace the arbitraries.
+- [x] `src/app/g/[token]/confirm-booking/page.tsx:31-45,130`: render inside GuestShell with guest tokens and `GuestButton` (it is live on the SMS "Are you still coming?" link). Same for the retired `card-capture` and `sunday-preorder` pages if their routes still exist (check; if they only redirect, leave them).
+- [x] `src/app/g/[token]/email-capture/page.tsx:223`: `border-guest-line` to `border-guest-border`; bare `rounded` to `rounded-guest-field`.
+- [x] Password reset journey: `/auth/reset-password`, `/auth/reset`, `/auth/recover`, `/auth/confirm` page parts use the same `.auth` card and logo as `/auth/login`; fix the dark text on dark green at `auth/reset-password/page.tsx:57,70-82`; `bg-sidebar` buttons to DS Button primary.
+- [x] D9: `/recruitment/book/[token]` moves into GuestShell with guest tokens and components (keep all booking logic and server calls identical).
+- [x] D10 and A1: `/invoice-portal/[token]` leaves GuestShell for a neutral staff-token shell with `public/logo-oj.jpg`, "Orange Jelly Limited" and the legal line from `src/lib/company-details.ts` (registration and VAT numbers, address). Payment flow, PayPal button and amounts untouched. Check the CSP still allows everything the page loads.
+- [x] `global-error.tsx`: verify whether it renders styled (it does not import globals.css); if unstyled, give it self-contained minimal inline styles using the token hex values, since it cannot rely on the app CSS.
+- [x] P-VISUAL: these pages are public, so render them directly in the in-app browser at 375px and desktop (use a test token only where the page renders a safe error state without one; never submit forms). Baseline update, P-GATES, cold build, P-COMMIT, P-SHIP.
 
 ## PR-10: FOH, BOH, table bookings, vouchers, timeclock, kiosk, parking
 
 Scope: `audit:foh-table-bookings`. Hotspots: `FohCreateBookingModal.tsx` (108), `BohBookingsClient.tsx` (102), `FohBookingDetailModal.tsx` (92), `table-bookings/[id]/BookingDetailClient.tsx` (92), `src/lib/table-bookings/ui.ts` (72), `table-bookings/reports/page.tsx` (69), `FohHeader.tsx` (50), `vouchers/foh/components/HandOutPanel.tsx` (46).
 
-- [ ] **Booking status map (D4)** in `src/lib/table-bookings/ui.ts`: one map from status to DS Badge tone (`primary`, `success`, `warning`, `danger`, `neutral`) used by badges AND the timeline block map (today they disagree at lines 152 to 159 against 179 to 189). Booked `primary`, Seated `success`, Pending payment `warning`, No-show `danger`, Cancelled, Left, Completed `neutral`. Any other status keeps its current tone unless it collides with one of these; record each extra status and its tone in the commit message. Timeline blocks use the tone's `-soft` background, `-border` border and `-fg` text.
-- [ ] Customer page uses the same map (`src/app/(authenticated)/customers/[id]/page.tsx:1108-1114` shows cancelled as red today): import the map instead of local classes (this file is in PR-12's scope; make only the import change here and note it).
-- [ ] **Voucher map (D5):** `src/app/(authenticated)/vouchers/_shared/voucher-ui.tsx` is the single source; `vouchers/foh/components/voucher-status.ts` re-exports or maps to it and uses its words ("Issued", "Redeemed"). Issued `info`, Redeemed `success`, others as the ledger has them.
-- [ ] **Buttons:** every `bg-sidebar`, `bg-green-600/700` action (for example `FohCreateBookingModal.tsx:725`, `FohChangeTimeModal.tsx:107`, `FohClockWidget.tsx:119`, `TimeclockClient.tsx:235`) becomes DS `Button variant="primary"`.
-- [ ] **D6:** every FOH, BOH, timeclock and vouchers FOH text below 10px raised to `text-2xs`; every tappable control at least `min-h-touch` (the inline confirm steps, the create-booking footer, the clock widget). The kiosk rota label at 7px goes to 10px.
-- [ ] `vouchers/[number]/VoucherDetailClient.tsx:463`: `prose prose-sm` produces nothing (plugin not installed). Style the entitlement HTML with explicit descendant utilities (`[&_ul]:list-disc [&_ul]:pl-5 [&_p]:mb-2 [&_h3]:font-semibold ...`) rather than adding a dependency.
-- [ ] `table-bookings/reports/page.tsx`: blue selected state to `bg-primary-soft text-primary-soft-fg`; chart colours to `chart-*`.
-- [ ] Timeclock: verify the kiosk margins on iPad landscape (1180 by 820 and 1366 by 1024) in the harness; fix overflow if present.
-- [ ] Remaining raw classes in scope to zero. P-VISUAL harness with the FOH modals, header and timeline blocks at iPad sizes (768, 820, 1180 wide). Baseline, P-GATES, cold build, P-COMMIT, P-SHIP.
+- [x] **Booking status map (D4)** in `src/lib/table-bookings/ui.ts`: one map from status to DS Badge tone (`primary`, `success`, `warning`, `danger`, `neutral`) used by badges AND the timeline block map (today they disagree at lines 152 to 159 against 179 to 189). Booked `primary`, Seated `success`, Pending payment `warning`, No-show `danger`, Cancelled, Left, Completed `neutral`. Any other status keeps its current tone unless it collides with one of these; record each extra status and its tone in the commit message. Timeline blocks use the tone's `-soft` background, `-border` border and `-fg` text.
+- [x] Customer page uses the same map (`src/app/(authenticated)/customers/[id]/page.tsx:1108-1114` shows cancelled as red today): import the map instead of local classes (this file is in PR-12's scope; make only the import change here and note it).
+- [x] **Voucher map (D5):** `src/app/(authenticated)/vouchers/_shared/voucher-ui.tsx` is the single source; `vouchers/foh/components/voucher-status.ts` re-exports or maps to it and uses its words ("Issued", "Redeemed"). Issued `info`, Redeemed `success`, others as the ledger has them.
+- [x] **Buttons:** every `bg-sidebar`, `bg-green-600/700` action (for example `FohCreateBookingModal.tsx:725`, `FohChangeTimeModal.tsx:107`, `FohClockWidget.tsx:119`, `TimeclockClient.tsx:235`) becomes DS `Button variant="primary"`.
+- [x] **D6:** every FOH, BOH, timeclock and vouchers FOH text below 10px raised to `text-2xs`; every tappable control at least `min-h-touch` (the inline confirm steps, the create-booking footer, the clock widget). The kiosk rota label at 7px goes to 10px.
+- [x] `vouchers/[number]/VoucherDetailClient.tsx:463`: `prose prose-sm` produces nothing (plugin not installed). Style the entitlement HTML with explicit descendant utilities (`[&_ul]:list-disc [&_ul]:pl-5 [&_p]:mb-2 [&_h3]:font-semibold ...`) rather than adding a dependency.
+- [x] `table-bookings/reports/page.tsx`: blue selected state to `bg-primary-soft text-primary-soft-fg`; chart colours to `chart-*`.
+- [x] Timeclock: verify the kiosk margins on iPad landscape (1180 by 820 and 1366 by 1024) in the harness; fix overflow if present.
+- [x] Remaining raw classes in scope to zero. P-VISUAL harness with the FOH modals, header and timeline blocks at iPad sizes (768, 820, 1180 wide). Baseline, P-GATES, cold build, P-COMMIT, P-SHIP.
 
 ## PR-11: Employee onboarding and staff portal
 
 Scope: `audit:people-ops` entries for `src/app/(employee-onboarding)/**` and `src/app/(staff-portal)/**`.
 
-- [ ] Onboarding: six steps use `bg-green-600` buttons (for example `PersonalStep.tsx:166`) while `TimeOffStep.tsx:208` uses brand: all to DS `Button variant="primary"`. `RightToWorkNoticeStep.tsx:60` `bg-surface-muted` (does not exist) to `bg-surface-2`.
-- [ ] Staff portal (0 token classes today): layout `bg-gray-50` (`(staff-portal)/layout.tsx:24`) to `bg-bg`; black "Request holiday" and "Subscribe" buttons (`portal/leave/page.tsx:75` and siblings) to DS `Button variant="primary"` (D2); `portal/shifts/page.tsx` (78 raw) and the rest to tokens; rota status colours from the shared rota map created in PR-13 (if PR-13 has not shipped, create the map here in `src/lib/rota/status-ui.ts` and PR-13 reuses it).
-- [ ] P-VISUAL at 375px (staff use phones), baseline, P-GATES, P-COMMIT, P-SHIP.
+- [x] Onboarding: six steps use `bg-green-600` buttons (for example `PersonalStep.tsx:166`) while `TimeOffStep.tsx:208` uses brand: all to DS `Button variant="primary"`. `RightToWorkNoticeStep.tsx:60` `bg-surface-muted` (does not exist) to `bg-surface-2`.
+- [x] Staff portal (0 token classes today): layout `bg-gray-50` (`(staff-portal)/layout.tsx:24`) to `bg-bg`; black "Request holiday" and "Subscribe" buttons (`portal/leave/page.tsx:75` and siblings) to DS `Button variant="primary"` (D2); `portal/shifts/page.tsx` (78 raw) and the rest to tokens; rota status colours from the shared rota map created in PR-13 (if PR-13 has not shipped, create the map here in `src/lib/rota/status-ui.ts` and PR-13 reuses it).
+- [x] P-VISUAL at 375px (staff use phones), baseline, P-GATES, P-COMMIT, P-SHIP.
 
 ## PR-12: Private bookings, customers, events, messages, marketing, short links
 
@@ -695,22 +695,22 @@ Scope: `audit:people-ops` minus PR-11's files. Hotspots: `RightToWorkTab.tsx` (7
 
 Scope: `audit:money`. Hotspots: `InvoiceDetailClient.tsx` (106), `ExpenseForm.tsx` (101), `mileage/_components/DestinationsClient.tsx` (68), `ExpenseFileViewer.tsx` (35), `quotes/[id]/page.tsx` (28), `invoices/recurring/[id]/page.tsx` (27).
 
-- [ ] **One invoice status helper** replacing the four local copies: `src/lib/invoices/status-ui.ts` mapping draft, sent, part-paid, paid, overdue, void, credit to Badge tones; used by invoices, quotes (quote statuses in the same file), OJ projects and receipts where they show invoice state.
-- [ ] **Expenses form:** blue actions to DS primary; all `dark:` classes gone (codemod did it; confirm); fields to DS inputs.
-- [ ] **ChasePaymentModal** "Send Reminder" (`src/components/modals/ChasePaymentModal.tsx:159`, orange background with dark text and grey border): DS `Button variant="primary"` (or `danger` if it is destructive; it is not).
-- [ ] **Receipts comma grids:** `receipts/monthly/page.tsx:249` `xl:grid-cols-[2fr,2fr,1fr]` to `xl:grid-cols-[2fr_2fr_1fr]`; `ReceiptMobileCard.tsx:273` the same fix. Sweep: `grep -rn "grid-cols-\[[^]]*,[^]]*\]" src`.
-- [ ] Charts: `#10B981` bars in expenses, mileage and MGD insights to `var(--color-chart-1)`; canvas via PR-04's `resolveToken`.
-- [ ] Remaining raw classes to zero. P-VISUAL on invoice detail, invoice new, expenses form, receipts monthly. Baseline, P-GATES, cold build, P-COMMIT, P-SHIP.
+- [x] **One invoice status helper** replacing the four local copies: `src/lib/invoices/status-ui.ts` mapping draft, sent, part-paid, paid, overdue, void, credit to Badge tones; used by invoices, quotes (quote statuses in the same file), OJ projects and receipts where they show invoice state.
+- [x] **Expenses form:** blue actions to DS primary; all `dark:` classes gone (codemod did it; confirm); fields to DS inputs.
+- [x] **ChasePaymentModal** "Send Reminder" (`src/components/modals/ChasePaymentModal.tsx:159`, orange background with dark text and grey border): DS `Button variant="primary"` (or `danger` if it is destructive; it is not).
+- [x] **Receipts comma grids:** `receipts/monthly/page.tsx:249` `xl:grid-cols-[2fr,2fr,1fr]` to `xl:grid-cols-[2fr_2fr_1fr]`; `ReceiptMobileCard.tsx:273` the same fix. Sweep: `grep -rn "grid-cols-\[[^]]*,[^]]*\]" src`.
+- [x] Charts: `#10B981` bars in expenses, mileage and MGD insights to `var(--color-chart-1)`; canvas via PR-04's `resolveToken`.
+- [x] Remaining raw classes to zero. P-VISUAL on invoice detail, invoice new, expenses form, receipts monthly. Baseline, P-GATES, cold build, P-COMMIT, P-SHIP.
 
 ## PR-15: Settings and menu management
 
 Scope: `audit:settings-menu`. Hotspots: `TableSetupManager.tsx` (98), `DishGpAnalysisTab.tsx` (68), `CompositionRow.tsx` (66), `SeasonalPeriods.tsx` (36), `MenuDishesTable.tsx` (32), `PayBandsManager.tsx` (29), `SpecialHoursCalendar.tsx` (28), `BudgetsManager.tsx` (26).
 
-- [ ] `TableSetupManager.tsx`: one form style (DS fields throughout; today three styles on one page, compare `AllocationSettings.tsx:145`).
-- [ ] `CompositionRow.tsx`: dish group colours from `cat-*` tokens; the amber group (`:55`, `:69`) must not share classes with the "upgrade" state, so upgrade uses `warning` and the group uses a `cat-*` colour.
-- [ ] `SpecialHoursCalendar.tsx:219-238`: state borders lose to the grey border; remove the grey border class when a state border applies (use `cn()` with the state last).
-- [ ] Stop passing props DS components ignore (fixed in PR-05 for Badge, Input, Alert, Card; re-check callers here still pass valid values).
-- [ ] Remaining raw classes to zero. P-VISUAL, baseline, P-GATES, cold build, P-COMMIT, P-SHIP.
+- [x] `TableSetupManager.tsx`: one form style (DS fields throughout; today three styles on one page, compare `AllocationSettings.tsx:145`).
+- [x] `CompositionRow.tsx`: dish group colours from `cat-*` tokens; the amber group (`:55`, `:69`) must not share classes with the "upgrade" state, so upgrade uses `warning` and the group uses a `cat-*` colour.
+- [x] `SpecialHoursCalendar.tsx:219-238`: state borders lose to the grey border; remove the grey border class when a state border applies (use `cn()` with the state last).
+- [x] Stop passing props DS components ignore (fixed in PR-05 for Badge, Input, Alert, Card; re-check callers here still pass valid values).
+- [x] Remaining raw classes to zero. P-VISUAL, baseline, P-GATES, cold build, P-COMMIT, P-SHIP.
 
 ## PR-16: Brand colour module and staff emails
 
@@ -785,6 +785,7 @@ export const GUEST = {
 - z-index scale, property-specific colour names, staff leading and tracking tokens: no observed defect.
 - Orange Jelly house style (colours, type, logo in vector): waiting on the designer brief `docs/design/brief-orange-jelly.md` (A1).
 - Migrating the 70 direct `react-hot-toast` callers to the DS toast: PR-04 makes them look the same, which removes the visible problem.
+- Guest status tints (GuestAlert, GuestBadge) stay as guest-token opacity modifiers (`bg-anchor-success/[0.07]` and similar): consistent, token-based and guard-clean; seven more named tokens would add nothing visible.
 
 ## Session log
 
@@ -799,3 +800,5 @@ export const GUEST = {
 - 2026-09-18: PR-06 harness: PageLayout and PageHeader titles both at 28px left, 24px, on the warm background (phones 16px both; PageLayout was 32px). DataTable matches Table (12px uppercase muted headers on surface-2, 13px cells). Card now honours padding (none/sm/md/lg) and variant (secondary/ghost). FOH manager kiosk uses headerVariant=dark (bg-brand-700) instead of !important overrides on gray class names. deposit-waiver.test.ts timed out once at 5s under load average 142 from other sessions; passes alone and in clean reruns.
 - 2026-09-18: PR-07 codemod step A: 3,221 swaps in 276 files. Guard totals after: raw-palette 2041 (was 4599), px-text-size 103 (405), bare-rounded 20 (207), off-scale-shadow 2 (45), dark-variant 0 (62), legacy-hsl 0, 820 variant 0. All 91 distinct introduced classes compile; no swap outside class strings. Codemod skips guest pages and their tests (tests/components/guest-routes, tests/components/guest).
 - 2026-09-18: PR-08 step B: text-gray-500 x626 to text-text-muted, text-gray-700 x336 to text-text, 158 files. raw-palette now 1079.
+- 2026-09-18: PR-09 done by hand (ultracode switched off, so no new workflows): guest pixel sizes mapped to the shared scale plus one token text-guest-lead (15px/1.6) and --container-guest (560px, max-w-guest); confirm-booking, card-capture and sunday-preorder on GuestShell (GuestButton gained name/value); GuestPageShell deleted; email-capture on GuestButton; sign-in journey on a shared AuthCard (the /auth/login look); recruitment booking in GuestShell (D9); invoice portal on OrangeJellyShell with staff tokens and the OJ logo and legal line (D10, A1; questions email from invoiceReplyToAddress, else the company record); global-error styled inline (it may render without the app stylesheet; exempt from the hex rule). FOUND AND FIXED: .auth/.kiosk/.onboard carried shell-cancelling negative margins although none render inside the shell, so the live login page sat 28px left and 22px up and scrolled sideways on desktop; the timeclock kiosk and error pages had the same fault.
+- 2026-09-18: Wave 1 (PR-10, 11, 14, 15) by a 5-editor workflow plus 2 reviewers (13 fixes, 2 new test files). Every file in those scopes at zero guard counts. Follow-ups done by hand: DS Modal and Drawer panels opt into data-touch-targets (44px on touch screens; FOH confirm dialogs were 31px), LinkButton font-semibold like Button, dead voucher exports removed, the timeclock page's second Toaster removed (every kiosk toast showed twice; pre-existing). Found, not fixed (outside token work, told the owner): SeasonalPeriods says 10-plus group rule (threshold is 15); staff portal calendar feed falls back to localhost:3000; SpecialHoursCalendar default [] prop can loop; BackgroundJobs icon buttons lack labels; Field passes undefined aria over a child Input's error.

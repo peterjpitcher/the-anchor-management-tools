@@ -216,7 +216,7 @@ export default function InvoiceExportPage() {
             </FormGroup>
           </div>
 
-          <div className="mt-6 rounded-lg bg-blue-50 p-4">
+          <div className="mt-6 rounded-lg border border-info-border bg-info-soft p-4">
             <h3 className="mb-2 font-medium text-info-fg">What&apos;s included:</h3>
             <ul className="space-y-1 text-sm text-info-fg">
               <li>• Individual PDF for each invoice</li>

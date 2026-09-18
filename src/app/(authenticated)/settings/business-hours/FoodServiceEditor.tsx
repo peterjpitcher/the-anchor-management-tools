@@ -61,7 +61,7 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
         const generalProblem = problems.find(p => p.index === null)
 
         return (
-          <Card key={day.day_of_week} variant="bordered" padding="sm">
+          <Card key={day.day_of_week} padding="sm">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span className="text-sm font-medium text-text">{DAY_NAMES[day.day_of_week]}</span>

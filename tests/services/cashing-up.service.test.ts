@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CashingUpService } from '@/services/cashing-up.service';
 import { normalizeCashCountInput, normalizeCashCountInputs } from '@/lib/cashing-up/cash-counts';
+import { CHART_SERIES } from '@/lib/brand/palette';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 // Mock Supabase Client
@@ -478,9 +479,9 @@ describe('CashingUpService.getInsightsData', () => {
     expect(queries.cashup_payment_breakdowns.is).toHaveBeenCalledWith('cashup_sessions.voided_at', null);
     expect(queries.cashup_sales_breakdowns.is).toHaveBeenCalledWith('cashup_sessions.voided_at', null);
     expect(data.salesMix.map(({ label, value, color }) => ({ label, value, color }))).toEqual([
-      { label: 'Drinks', value: 150, color: '#2563EB' },
-      { label: 'Food', value: 100, color: '#16A34A' },
-      { label: 'Other', value: 50, color: '#F59E0B' },
+      { label: 'Drinks', value: 150, color: CHART_SERIES[1] },
+      { label: 'Food', value: 100, color: CHART_SERIES[0] },
+      { label: 'Other', value: 50, color: CHART_SERIES[2] },
     ]);
     expect(data.salesMix[0].percentage).toBeCloseTo(50);
     expect(data.salesMix[1].percentage).toBeCloseTo(33.333);

@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { Badge } from '@/ds';
+import { Alert, Badge, LinkButton } from '@/ds';
 import { getLeaveRequests, getHolidayUsage } from '@/app/actions/leave';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import type { LeaveRequest } from '@/app/actions/leave';
@@ -21,10 +21,10 @@ function daysBetween(start: string, end: string): number {
   return Math.round(ms / 86400000) + 1;
 }
 
-const STATUS_BADGE: Record<string, 'warning' | 'success' | 'error'> = {
+const STATUS_TONE: Record<string, 'warning' | 'success' | 'danger'> = {
   pending: 'warning',
   approved: 'success',
-  declined: 'error',
+  declined: 'danger',
 };
 
 export default async function MyLeavePage() {
@@ -43,7 +43,7 @@ export default async function MyLeavePage() {
   if (!employee) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-text">My Holiday</h2>
+        <h2 className="text-xl font-semibold text-text-strong">My Holiday</h2>
         <p className="text-sm text-text-muted">
           Your account is not linked to an employee profile. Please contact your manager.
         </p>
@@ -68,20 +68,15 @@ export default async function MyLeavePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-text">My Holiday</h2>
-        <a
-          href="/portal/leave/new"
-          className="touch-target inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-700"
-        >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold text-text-strong">My Holiday</h2>
+        <LinkButton href="/portal/leave/new" variant="primary">
           Request holiday
-        </a>
+        </LinkButton>
       </div>
 
       {loadErrors.length > 0 && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-danger-soft px-4 py-3 text-sm text-red-700">
-          {loadErrors.join(' ')}
-        </div>
+        <Alert tone="danger">{loadErrors.join(' ')}</Alert>
       )}
 
       {/* Days used */}
@@ -98,7 +93,7 @@ export default async function MyLeavePage() {
 
       {/* Request list */}
       {requests.length === 0 ? (
-        <p className="text-sm text-gray-400 italic py-4 text-center">
+        <p className="text-sm text-text-soft italic py-4 text-center">
           No holiday requests yet. Use the button above to request time off.
         </p>
       ) : (
@@ -121,7 +116,7 @@ export default async function MyLeavePage() {
                       <p className="text-xs text-text-muted italic mt-0.5">&ldquo;{req.note}&rdquo;</p>
                     )}
                   </div>
-                  <Badge variant={STATUS_BADGE[req.status] ?? 'default'} size="sm">
+                  <Badge tone={STATUS_TONE[req.status] ?? 'neutral'} size="sm">
                     {req.status}
                   </Badge>
                 </div>

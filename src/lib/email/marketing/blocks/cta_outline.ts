@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText, escapeEmailUrl } from '../escape'
 import { defineBlock } from './types'
 
@@ -29,8 +31,8 @@ export const ctaOutline = defineBlock<CtaOutlineData>({
   },
   render: (data) =>
     `
-<tr><td bgcolor="#faf8f3" align="center" style="background-color:#faf8f3;padding:24px 32px 36px">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tbody><tr><td align="center" style="border:2px solid #005131;border-radius:999px"><a href="${escapeEmailUrl(data.url)}" style="display:block;padding:13px 30px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:#005131;text-decoration:none">${escapeEmailText(data.label)}</a></td></tr></tbody></table>
+<tr><td bgcolor="${GUEST.cream}" align="center" style="background-color:${GUEST.cream};padding:24px 32px 36px">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tbody><tr><td align="center" style="border:2px solid ${GUEST.green};border-radius:999px"><a href="${escapeEmailUrl(data.url)}" style="display:block;padding:13px 30px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:${GUEST.green};text-decoration:none">${escapeEmailText(data.label)}</a></td></tr></tbody></table>
 </td></tr>
 `,
   text: (data) => `${data.label}: ${data.url}\n`,

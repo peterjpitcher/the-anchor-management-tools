@@ -55,4 +55,13 @@ describe('generateWeeklyCashupHTML', () => {
     expect(html).toContain('£2,200.00')
     expect(html).toContain('88%')
   })
+
+  it('renders without fetching anything, so the PDF never waits on the network', () => {
+    // The sheet used to load the Tailwind CDN while Chromium rendered it.
+    const html = generateWeeklyCashupHTML({ weekData: [], siteName: 'The Anchor', weekStartDate: '2026-05-18' })
+
+    expect(html).not.toContain('<script')
+    expect(html).not.toMatch(/https?:\/\//)
+    expect(html).toContain('.text-fine { font-size: 9px; }')
+  })
 })

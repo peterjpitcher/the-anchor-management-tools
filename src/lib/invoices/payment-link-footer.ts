@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { invoiceBalanceDue, type InvoiceBalanceInput } from './balance'
 import { generateInvoiceToken } from './invoice-token'
 
 /**
@@ -21,7 +22,7 @@ import { generateInvoiceToken } from './invoice-token'
 /** Statuses where there is genuinely nothing to collect. */
 const UNCOLLECTABLE = new Set(['void', 'written_off', 'paid'])
 
-export type PaymentLinkInvoice = {
+export type PaymentLinkInvoice = InvoiceBalanceInput & {
   id: string
   status?: string | null
   total_amount?: number | string | null
@@ -31,9 +32,7 @@ export type PaymentLinkInvoice = {
 
 export function invoiceHasBalanceToCollect(invoice: PaymentLinkInvoice): boolean {
   if (UNCOLLECTABLE.has(String(invoice.status ?? ''))) return false
-  const total = Number(invoice.total_amount ?? 0) || 0
-  const paid = Math.max(0, Number(invoice.paid_amount ?? 0) || 0)
-  return Math.round((total - paid) * 100) / 100 > 0
+  return invoiceBalanceDue(invoice) > 0
 }
 
 export function invoiceCanOfferPayPal(invoice: PaymentLinkInvoice): boolean {

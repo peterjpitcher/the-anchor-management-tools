@@ -117,7 +117,7 @@ export default async function VouchersOverviewPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {tiles.map((tile) => (
             <Link key={tile.label} href={tile.href} className="block">
-              <Card className="h-full hover:border-gray-400 transition-colors">
+              <Card className="h-full hover:border-border-strong transition-colors">
                 <div className="text-sm text-text-muted">{tile.label}</div>
                 <div className="mt-1 text-3xl font-semibold text-text">{tile.value}</div>
                 <div className="mt-1 text-xs text-text-muted">{tile.hint}</div>
@@ -254,7 +254,7 @@ export default async function VouchersOverviewPage() {
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             {summary.ageBuckets.map((bucket) => (
               <Link key={bucket.bucket} href={ageBucketHref(bucket.bucket)} className="block">
-                <div className="rounded-lg border border-border p-4 hover:border-gray-400 transition-colors">
+                <div className="rounded-lg border border-border p-4 hover:border-border-strong transition-colors">
                   <div className="text-sm text-text-muted">{AGE_BUCKET_LABELS[bucket.bucket]}</div>
                   <div className="mt-1 text-2xl font-semibold text-text">{bucket.count}</div>
                 </div>
@@ -264,7 +264,7 @@ export default async function VouchersOverviewPage() {
               href={ledgerHref({ status: 'issued', expiringWithinDays: 14 })}
               className="block"
             >
-              <div className="rounded-lg border border-amber-300 bg-warning-soft p-4 hover:border-amber-500 transition-colors">
+              <div className="rounded-lg border border-warning-border bg-warning-soft p-4 hover:border-warning transition-colors">
                 <div className="text-sm text-warning-fg">Expiring within 14 days</div>
                 <div className="mt-1 text-2xl font-semibold text-warning-fg">
                   {summary.expiringSoon}

@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
@@ -44,10 +46,10 @@ export const footerDark = defineBlock<FooterDarkData>({
     reason_for_contact: HANDOVER_REASON,
   },
   render: (data) =>
-    `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#0c1d11"><tbody>
-<tr><td bgcolor="#0c1d11" align="center" style="background-color:#0c1d11;border-top:1px solid rgba(201,160,32,0.35);padding:30px 32px 34px">
-<div style="font-family:'Clicker Script','Segoe Script','Brush Script MT',cursive;font-size:26px;line-height:32px;color:#c9a020;padding-bottom:10px">Where everyone&rsquo;s welcome</div>
-<div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:21px;color:#f0e6c6">The Anchor, Horton Road, Stanwell Moor, Surrey TW19 6AQ<br>01753 682707 &middot; <a href="https://www.the-anchor.pub" style="color:#f0e6c6;text-decoration:underline">the-anchor.pub</a></div>
+    `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${GUEST.greenDeep}"><tbody>
+<tr><td bgcolor="${GUEST.greenDeep}" align="center" style="background-color:${GUEST.greenDeep};border-top:1px solid rgba(201,160,32,0.35);padding:30px 32px 34px">
+<div style="font-family:'Clicker Script','Segoe Script','Brush Script MT',cursive;font-size:26px;line-height:32px;color:${GUEST.goldBright};padding-bottom:10px">Where everyone&rsquo;s welcome</div>
+<div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:21px;color:${GUEST.creamText}">The Anchor, Horton Road, Stanwell Moor, Surrey TW19 6AQ<br>01753 682707 &middot; <a href="https://www.the-anchor.pub" style="color:${GUEST.creamText};text-decoration:underline">the-anchor.pub</a></div>
 <div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:21px;color:#7a8b7f;padding-top:12px"><a href="https://www.facebook.com/theanchorpubsm/" style="color:#7a8b7f;text-decoration:underline">Facebook</a> &nbsp;&middot;&nbsp; <a href="https://www.instagram.com/theanchor.pub/" style="color:#7a8b7f;text-decoration:underline">Instagram</a></div>
 <div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;line-height:19px;color:#7a8b7f;padding-top:16px">${escapeEmailText(data.reason_for_contact)}<br><a href="${escapeEmailText(data.unsubscribe_url)}" style="color:#7a8b7f;text-decoration:underline">Unsubscribe</a>${data.privacy_notice_url ? ` &nbsp;&middot;&nbsp; <a href="${escapeEmailText(data.privacy_notice_url)}" style="color:#7a8b7f;text-decoration:underline">Privacy notice</a>` : ''} &nbsp;&middot;&nbsp; &copy; ${escapeEmailText(data.year ?? '2026')} The Anchor, Stanwell Moor Village</div>
 </td></tr>

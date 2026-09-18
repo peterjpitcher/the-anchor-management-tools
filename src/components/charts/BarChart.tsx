@@ -79,6 +79,9 @@ export function BarChart({
       value: resolveToken('--color-text'),
       target: resolveToken('--color-text-subtle'),
     };
+    // Labels use the page's typeface (Inter), which the canvas element inherits, at the
+    // 12px text-xs size. A bare "sans-serif" drew them in the system font instead.
+    const labelFont = `12px ${getComputedStyle(canvas).fontFamily || 'sans-serif'}`;
 
     // Set canvas size
     const rect = canvas.getBoundingClientRect();
@@ -147,7 +150,7 @@ export function BarChart({
           ctx.stroke();
           // Also draw Y-axis value labels
           ctx.fillStyle = palette.axis;
-          ctx.font = '12px sans-serif';
+          ctx.font = labelFont;
           ctx.textAlign = 'right';
           ctx.textBaseline = 'middle';
           ctx.fillText(formatValue(valueAtLine), padding.left - 10, y);
@@ -166,7 +169,7 @@ export function BarChart({
 
     // Draw axis labels
     ctx.fillStyle = palette.axis;
-    ctx.font = '12px sans-serif';
+    ctx.font = labelFont;
 
     if (horizontal) {
       // X-axis labels (values)
@@ -242,7 +245,7 @@ export function BarChart({
         // Draw value
         if (shouldShowValues) {
           ctx.fillStyle = palette.value;
-          ctx.font = '12px sans-serif';
+          ctx.font = labelFont;
           ctx.textAlign = item.value < 0 ? 'right' : 'left'; // Align to bar end
           ctx.textBaseline = 'middle';
           ctx.fillText(
@@ -289,7 +292,7 @@ export function BarChart({
         // Draw value
         if (shouldShowValues) {
           ctx.fillStyle = palette.value;
-          ctx.font = '12px sans-serif';
+          ctx.font = labelFont;
           ctx.textAlign = 'center';
           ctx.textBaseline = item.value < 0 ? 'top' : 'bottom'; // Align to bar end
           ctx.fillText(

@@ -84,7 +84,7 @@ function blockedReasonMessage(reason: string | undefined): string {
 /** The closing "Need help?" line every payment page ends on. */
 function HelpLine(): React.JSX.Element {
   return (
-    <p className="text-center font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+    <p className="text-center font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
       Need help? Call{' '}
       <a
         href={GUEST_CONTACT.telHref}
@@ -150,10 +150,10 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
                 <GuestBadge tone="success">Paid</GuestBadge>
               </div>
 
-              <p className="font-anchor-body text-[15px] leading-[1.65] text-guest-text">
+              <p className="font-anchor-body text-guest-lead leading-[1.65] text-guest-text">
                 Thanks. We are confirming your booking now. You will receive a text confirmation shortly.
               </p>
-              <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+              <p className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
                 If you do not receive confirmation, call {GUEST_CONTACT.phoneDisplay}.
               </p>
             </div>
@@ -219,7 +219,7 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
               value={formatMoney(preview.totalAmount, preview.currency)}
             />
 
-            <p className="font-anchor-body text-[14px] leading-[1.55] text-guest-text-muted">
+            <p className="font-anchor-body text-sm leading-[1.55] text-guest-text-muted">
               You are booking{' '}
               <span className="font-semibold text-guest-text">
                 {preview.seats} {seatWord}

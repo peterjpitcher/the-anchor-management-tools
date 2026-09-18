@@ -51,7 +51,7 @@ function SortHeader({ column, label, sort, dir, onSort, align }: SortHeaderProps
     <TableHead sortable sortDirection={sort === column ? dir : null} onSort={() => onSort(column)} align={align}>
       <button
         type="button"
-        className="rounded-sm uppercase tracking-wider focus-visible:outline-none focus-visible:shadow-ring"
+        className="rounded-sm uppercase tracking-wider focus-visible:outline-hidden focus-visible:shadow-ring-inset"
       >
         {label}
       </button>

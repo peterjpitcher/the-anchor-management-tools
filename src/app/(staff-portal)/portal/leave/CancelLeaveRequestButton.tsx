@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/ds';
 import { cancelOwnLeaveRequest } from '@/app/actions/leave';
 
 interface CancelLeaveRequestButtonProps {
@@ -28,18 +29,20 @@ export function CancelLeaveRequestButton({ requestId }: CancelLeaveRequestButton
   return (
     <div className="mt-3 space-y-2">
       {error && (
-        <p role="alert" className="rounded-lg border border-red-200 bg-danger-soft px-3 py-2 text-xs text-red-700">
+        <p role="alert" className="rounded-lg border border-danger-border bg-danger-soft px-3 py-2 text-xs text-danger-fg">
           {error}
         </p>
       )}
-      <button
+      <Button
         type="button"
+        variant="secondary"
+        size="sm"
         onClick={handleCancel}
         disabled={isPending}
-        className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-danger-soft disabled:opacity-50"
+        className="border-danger-border text-danger-fg hover:bg-danger-soft"
       >
         {isPending ? 'Cancelling...' : 'Cancel request'}
-      </button>
+      </Button>
     </div>
   );
 }

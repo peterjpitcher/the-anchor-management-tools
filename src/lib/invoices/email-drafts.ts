@@ -1,3 +1,4 @@
+import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
 /**
  * Default subject and body for the invoice and quote email dialogs.
  *
@@ -30,12 +31,13 @@ export function buildDefaultInvoiceEmailBody(invoice: InvoiceWithDetails): strin
   // figure is ever presented as what is owed.
   const total = Number(invoice.total_amount) || 0
   const paid = Math.max(0, Number(invoice.paid_amount) || 0)
-  const outstanding = Math.max(0, total - paid)
+  const outstanding = invoiceBalanceDue(invoice)
 
-  const amountLines = paid > 0
+  const creditTotal = invoiceIssuedCreditTotal(invoice)
+  const amountLines = paid > 0 || creditTotal > 0
     ? `Invoice total: £${total.toFixed(2)}
 Payments received: £${paid.toFixed(2)}
-Balance due: £${outstanding.toFixed(2)}`
+${creditTotal > 0 ? `Credits: £${creditTotal.toFixed(2)}\n` : ''}Balance due: £${outstanding.toFixed(2)}`
     : `Amount Due: £${total.toFixed(2)}`
 
   return `Hi ${greetingName(invoice.vendor)},

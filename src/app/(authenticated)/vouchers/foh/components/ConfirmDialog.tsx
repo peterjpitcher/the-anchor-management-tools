@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useEffect, useRef } from 'react'
+import React from 'react'
+import { Button, Modal } from '@/ds'
 
 type ConfirmDialogProps = {
   open: boolean
@@ -12,8 +13,10 @@ type ConfirmDialogProps = {
   children?: React.ReactNode
 }
 
-// Accessible confirm dialog for FOH actions (F46): labelled, focus moved to the
-// confirm button, Escape cancels, big touch targets.
+// Accessible confirm dialog for FOH actions (F46), built on DS Modal: labelled, focus trapped,
+// Escape and a tap on the backdrop cancel. data-autofocus moves focus to the confirm button
+// when it opens, as the kiosk expects. While busy, Escape and the backdrop do nothing and both
+// buttons are disabled. The buttons keep the kiosk's big touch targets.
 export function ConfirmDialog({
   open,
   title,
@@ -23,64 +26,42 @@ export function ConfirmDialog({
   onCancel,
   children
 }: ConfirmDialogProps) {
-  const confirmRef = useRef<HTMLButtonElement | null>(null)
-
-  useEffect(() => {
-    if (open) {
-      confirmRef.current?.focus()
-    }
-  }, [open])
-
-  useEffect(() => {
-    if (!open) {
-      return
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape' && !busy) {
-        onCancel()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [open, busy, onCancel])
-
-  if (!open) {
-    return null
-  }
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" aria-hidden onClick={busy ? undefined : onCancel} />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="foh-voucher-confirm-title"
-        className="relative w-full max-w-md rounded-xl bg-surface p-5 shadow-lg"
-      >
-        <h2 id="foh-voucher-confirm-title" className="text-xl font-bold text-text">
-          {title}
-        </h2>
-        <div className="mt-3 text-base text-text">{children}</div>
-        <div className="mt-5 flex flex-col gap-2">
-          <button
-            ref={confirmRef}
+    <Modal
+      open={open}
+      onClose={() => {
+        if (!busy) {
+          onCancel()
+        }
+      }}
+      title={title}
+      footer={
+        <div className="flex w-full flex-col gap-2">
+          <Button
             type="button"
+            variant="primary"
+            size="lg"
+            data-autofocus
             onClick={onConfirm}
             disabled={busy}
-            className="min-h-14 w-full rounded-lg bg-sidebar px-4 py-3 text-lg font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-14 w-full text-lg"
           >
             {busy ? 'Working...' : confirmLabel}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="secondary"
+            size="lg"
             onClick={onCancel}
             disabled={busy}
-            className="min-h-touch w-full rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-touch w-full text-base"
           >
             Cancel
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      }
+    >
+      <div className="text-base text-text">{children}</div>
+    </Modal>
   )
 }

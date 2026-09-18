@@ -29,6 +29,8 @@ import { Pagination } from '@/ds'
 import { Stat } from '@/ds'
 import { Spinner } from '@/ds'
 import { Alert } from '@/ds'
+import { DescriptionList } from '@/ds'
+import type { DescriptionListItem } from '@/ds/composites/DescriptionList'
 
 const jobTypeLabels: Record<string, string> = {
   send_sms: 'Send SMS',
@@ -507,42 +509,42 @@ export default function BackgroundJobsClient({
         {selectedJobDetails && (
           <Section id="job-details" title="Job Details">
             <Card>
-              <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
-                <div>
-                  <dt className="text-sm font-medium text-text-muted">Job ID</dt>
-                  <dd className="mt-1 text-sm text-text font-mono">{selectedJobDetails.id}</dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-text-muted">Priority</dt>
-                  <dd className="mt-1 text-sm text-text">
-                    <Badge variant="secondary">{selectedJobDetails.priority}</Badge>
-                  </dd>
-                </div>
-                {selectedJobDetails.started_at && (
-                  <div>
-                    <dt className="text-sm font-medium text-text-muted">Started At</dt>
-                    <dd className="mt-1 text-sm text-text">
-                      {new Date(selectedJobDetails.started_at).toLocaleString()}
-                    </dd>
-                  </div>
-                )}
-                {selectedJobDetails.completed_at && (
-                  <div>
-                    <dt className="text-sm font-medium text-text-muted">Completed At</dt>
-                    <dd className="mt-1 text-sm text-text">
-                      {new Date(selectedJobDetails.completed_at).toLocaleString()}
-                    </dd>
-                  </div>
-                )}
-                {selectedJobDetails.error_message && (
-                  <div className="sm:col-span-2">
-                    <dt className="text-sm font-medium text-danger">Error</dt>
-                    <dd className="mt-1 text-sm text-danger whitespace-pre-wrap">
-                      {selectedJobDetails.error_message}
-                    </dd>
-                  </div>
-                )}
-              </dl>
+              <DescriptionList
+                items={[
+                  {
+                    key: 'id',
+                    label: 'Job ID',
+                    value: <span className="font-mono">{selectedJobDetails.id}</span>,
+                  },
+                  {
+                    key: 'priority',
+                    label: 'Priority',
+                    value: <Badge variant="secondary">{selectedJobDetails.priority}</Badge>,
+                  },
+                  ...(selectedJobDetails.started_at
+                    ? [{
+                        key: 'started_at',
+                        label: 'Started At',
+                        value: new Date(selectedJobDetails.started_at).toLocaleString(),
+                      }]
+                    : []),
+                  ...(selectedJobDetails.completed_at
+                    ? [{
+                        key: 'completed_at',
+                        label: 'Completed At',
+                        value: new Date(selectedJobDetails.completed_at).toLocaleString(),
+                      }]
+                    : []),
+                  ...(selectedJobDetails.error_message
+                    ? [{
+                        key: 'error',
+                        label: 'Error',
+                        value: <span className="whitespace-pre-wrap text-danger">{selectedJobDetails.error_message}</span>,
+                        span: 2,
+                      } satisfies DescriptionListItem]
+                    : []),
+                ]}
+              />
             </Card>
           </Section>
         )}

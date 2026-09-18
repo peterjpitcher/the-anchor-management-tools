@@ -1,9 +1,8 @@
 'use client'
 
-import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
-import { Icon, Button } from '@/ds'
+import { Icon, Button, LinkButton } from '@/ds'
 
 function UnauthorizedContent() {
   const searchParams = useSearchParams()
@@ -32,11 +31,9 @@ function UnauthorizedContent() {
         </p>
 
         <div className="flex flex-col gap-2">
-          <Link href="/dashboard" className="w-full">
-            <Button variant="primary" size="lg" className="w-full" type="button">
-              Go to Dashboard
-            </Button>
-          </Link>
+          <LinkButton href="/dashboard" variant="primary" size="lg" className="w-full">
+            Go to Dashboard
+          </LinkButton>
           <Button
             variant="secondary"
             size="lg"

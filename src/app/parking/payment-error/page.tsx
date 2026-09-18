@@ -54,15 +54,15 @@ export default async function ParkingPaymentErrorPage({ searchParams }: ParkingP
           <CircleAlert className="h-5 w-5" />
         </span>
 
-        <p className="font-anchor-body text-[15px] leading-[1.65] text-guest-text">{copy.body}</p>
+        <p className="font-anchor-body text-guest-lead leading-[1.65] text-guest-text">{copy.body}</p>
 
         {bookingId && (
-          <p className="font-anchor-body text-[13px] leading-[1.6] text-guest-text-muted">
+          <p className="font-anchor-body text-ui leading-[1.6] text-guest-text-muted">
             Booking ID: <span className="font-mono font-semibold text-guest-text">{bookingId}</span>
           </p>
         )}
 
-        <p className="border-t border-guest-border pt-4 font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+        <p className="border-t border-guest-border pt-4 font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
           Please try the payment link again, or call{' '}
           <span className="font-bold text-guest-text">{GUEST_CONTACT.phoneDisplay}</span>.
         </p>

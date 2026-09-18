@@ -1,11 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-// Imported file by file rather than through '@/components/features/guest': the
-// barrel re-exports GuestShell, which loads the guest webfonts, and a font
-// loader must not be pulled into a client module graph.
-import { GuestAlert } from '@/components/features/guest/GuestAlert'
-import { GuestButton } from '@/components/features/guest/GuestButton'
+// Orange Jelly invoices use the neutral staff components, not the Anchor guest ones.
+import { Button } from '@/ds'
+import { StatusNote } from './StatusNote'
 import { createInvoicePaymentOrderByToken } from '@/app/actions/invoicePayPalActions'
 
 /**
@@ -47,24 +45,23 @@ export function InvoicePayClient({ token, amountDue }: { token: string; amountDu
   return (
     <div className="flex flex-col gap-3">
       {error && (
-        <GuestAlert tone="problem" role="alert">
+        <StatusNote tone="problem" role="alert">
           {error}
-        </GuestAlert>
+        </StatusNote>
       )}
 
-      <GuestButton
-        as="button"
+      <Button
         type="button"
         variant="primary"
         size="lg"
-        fullWidth
+        className="w-full"
         onClick={handlePay}
         disabled={loading}
       >
         {loading ? 'Taking you to PayPal…' : `Pay ${amount}`}
-      </GuestButton>
+      </Button>
 
-      <p className="text-center font-anchor-body text-[13px] leading-[1.6] text-guest-text-muted">
+      <p className="text-center text-ui leading-relaxed text-text-muted">
         You do not need a PayPal account. You can pay by card there too.
       </p>
     </div>

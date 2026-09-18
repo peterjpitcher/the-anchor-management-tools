@@ -244,6 +244,15 @@
   --color-guest-text-muted: #6f6a61;
   --color-guest-accent-text: #8b6914;
 
+  /* The guest lead line (handoff: 15px on 1.6). Guest pages otherwise share the
+     staff type scale: 11 meta, 12 xs, 13 ui, 14 sm, 16 base. Display sizes above
+     16px stay as the handoff specifies them. */
+  --text-guest-lead: 15px;
+  --text-guest-lead--line-height: 1.6;
+
+  /* The guest pages' reading column (max-w-guest). */
+  --container-guest: 560px;
+
   /* Radii. The theme above has 6/8/10/14/20px and no 12px, so `rounded-md`
      would silently give 10px on every guest card. These are unconditional. */
   --radius-guest-field: 6px;
@@ -442,19 +451,12 @@ nav[aria-label="Mobile navigation"] {
    employee onboarding.
    ================================================ */
 
-/* Shared full-bleed reset for standalone screens */
+/* Shared full-bleed frame for standalone screens. None of them render inside the app shell
+   (sign-in, error and unauthorised pages, the timeclock kiosk, employee onboarding), so they
+   fill the viewport directly. They used to carry negative margins meant to cancel the shell's
+   padding, which instead pushed every one of them 28px off the left of the screen and made the
+   sign-in page scroll sideways on a desktop (found 18 Sep 2026). */
 .kiosk, .onboard, .auth {
-  margin: calc(-1 * var(--spacing-shell-pad-top)) calc(-1 * var(--spacing-shell-pad-x)) calc(-1 * var(--spacing-shell-pad-bottom));
-  min-height: calc(100vh - var(--spacing-topbar));
-}
-
-/* The negative margins above exist to break these screens out of the authenticated app shell's
-   padding. The employee onboarding route group has no app shell, so applying them there drags
-   the content 28px off the left of the viewport. It went unnoticed while the route group layout
-   wrapped everything in its own centred container; that container has been removed because it
-   was also squeezing the flow to 672px and rendering a second header. */
-.employee-onboarding-shell .onboard,
-.employee-onboarding-shell .auth {
   margin: 0;
   min-height: 100vh;
 }

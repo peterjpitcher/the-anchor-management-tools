@@ -18,7 +18,7 @@ export const FohUnassignedBookings = React.memo(function FohUnassignedBookings(p
 
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
   const unassignedCardClass = cn(
-    'rounded-lg border border-amber-200 bg-warning-soft',
+    'rounded-lg border border-warning-border bg-warning-soft',
     isManagerKioskStyle ? 'p-2' : 'p-4'
   )
 
@@ -34,7 +34,7 @@ export const FohUnassignedBookings = React.memo(function FohUnassignedBookings(p
               type="button"
               onClick={() => onBookingClick(booking)}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-surface text-warning-fg hover:bg-amber-100',
+                'inline-flex min-h-touch items-center gap-1.5 rounded-md border border-warning-border bg-surface text-warning-fg hover:bg-warning/10 focus-visible:outline-hidden focus-visible:shadow-ring',
                 isManagerKioskStyle ? 'px-1.5 py-0.5 text-meta' : 'px-2 py-1 text-xs'
               )}
             >

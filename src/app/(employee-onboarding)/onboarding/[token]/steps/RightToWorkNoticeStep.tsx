@@ -57,7 +57,7 @@ export default function RightToWorkNoticeStep({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="rounded-lg border border-border bg-surface-muted p-4">
+      <div className="rounded-lg border border-border bg-surface-2 p-4">
         <h2 className="text-base font-semibold text-text-strong">Before your first shift</h2>
         <p className="mt-2 text-sm text-text-muted">
           Before you can start any shifts, a manager needs to see your right to work documents in

@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
@@ -28,7 +30,7 @@ export const amenityGridSchema = z.object({
 export type AmenityGridData = z.infer<typeof amenityGridSchema>
 
 const CELL_FONT =
-  "font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:21px;color:#1a1a1a"
+  `font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:21px;color:${GUEST.text}`
 
 function renderCell(
   item: AmenityGridData['items'][number],
@@ -36,7 +38,7 @@ function renderCell(
   bottomPadding: string,
 ): string {
   const padding = column === 0 ? `0 8px ${bottomPadding} 0` : `0 0 ${bottomPadding} 8px`
-  return `<td width="260" valign="top" class="stack" style="width:260px;padding:${padding};${CELL_FONT}"><span style="color:#8b6914;font-weight:600">${escapeEmailText(item.highlight)}</span> ${escapeEmailText(item.text)}</td>`
+  return `<td width="260" valign="top" class="stack" style="width:260px;padding:${padding};${CELL_FONT}"><span style="color:${GUEST.accentText};font-weight:600">${escapeEmailText(item.highlight)}</span> ${escapeEmailText(item.text)}</td>`
 }
 
 export const amenityGrid = defineBlock<AmenityGridData>({
@@ -66,7 +68,7 @@ export const amenityGrid = defineBlock<AmenityGridData>({
       .join('\n')
 
     return `
-<tr><td bgcolor="#f2ede3" class="gutter" style="background-color:#f2ede3;border-top:1px solid #e2dccf;padding:26px 32px">
+<tr><td bgcolor="${GUEST.sunk}" class="gutter" style="background-color:${GUEST.sunk};border-top:1px solid ${GUEST.border};padding:26px 32px">
 <table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>
 ${rows}
 </tbody></table>
