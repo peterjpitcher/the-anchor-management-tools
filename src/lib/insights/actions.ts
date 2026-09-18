@@ -1,6 +1,9 @@
 import { ACTION_SCORING } from './thresholds'
 import { scoreSignal } from './signals'
-import type { InsightSection, RankedAction } from './types'
+import type { ActionImpact, InsightSection, RankedAction } from './types'
+
+/** On equal scores, safety comes first, then money and customers, then staffing, then tidying up. */
+const IMPACT_ORDER: ActionImpact[] = ['safety', 'money', 'customer', 'staffing', 'housekeeping']
 
 /**
  * Manager actions (spec 4.7), derived only from the finished sections. Every red goes in
@@ -28,6 +31,7 @@ export function rankActions(sections: InsightSection[], today: string): { action
 
   candidates.sort((a, b) =>
     b.score - a.score
+    || IMPACT_ORDER.indexOf(a.impact) - IMPACT_ORDER.indexOf(b.impact)
     || (a.dueDate ?? '9999-12-31').localeCompare(b.dueDate ?? '9999-12-31')
     || a.sectionIndex - b.sectionIndex
     || a.signalKey.localeCompare(b.signalKey))

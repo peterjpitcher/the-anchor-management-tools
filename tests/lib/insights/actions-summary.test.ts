@@ -48,6 +48,18 @@ describe('rankActions', () => {
     expect(moreRedActions).toBe(2)
   })
 
+  it('puts a safety action above an equal-scoring one of lower impact, and the summary agrees', () => {
+    const stale = sig('stale', { rag: 'red', text: 'Old complaint', action: act('Resolve the old complaint', { dueDate: today, impact: 'customer' }) })
+    const safety = sig('safety', { rag: 'red', text: 'Safety complaint', action: act('Deal with the safety complaint', { dueDate: '2026-09-26', impact: 'money' }) })
+    const safer = sig('safer', { rag: 'red', text: 'Allergy complaint', action: act('Deal with the allergy complaint', { dueDate: '2026-09-26', impact: 'safety' }) })
+    // stale and safer both score 390; safety impact wins the tie despite the later due date.
+    expect(scoreSignal(stale, today)).toBe(scoreSignal(safer, today))
+    const sections = [sec('feedback', 'red', [stale, safety, safer])]
+    const { actions } = rankActions(sections, today)
+    expect(actions[0].text).toBe('Deal with the allergy complaint')
+    expect(buildSummary(sections, actions, windows).biggestConcern?.text).toBe('Allergy complaint')
+  })
+
   it('orders by urgency, then section order, and ignores not-checked sections', () => {
     const soon = sig('soon', { rag: 'red', action: act('Soon', { dueDate: '2026-09-26' }) })
     const later = sig('later', { rag: 'red', action: act('Later', { dueDate: '2026-10-05' }) })

@@ -149,11 +149,11 @@ function content(heavy: boolean): Record<SectionKey, SectionBuildResult> {
       notes: [],
     },
     cashing_up: {
-      headline: '3 of 7 trading days entered. Performance comparison not made: 4 trading days are missing.',
-      metrics: [{ label: 'Days entered', value: '3 of 7' }, { label: 'Takings entered', value: '£1,691 over 3 days' }],
+      headline: '4 of 7 trading days entered; Wed 23 and Thu 24 Sep not entered yet. Last complete week, Fri 11 to Thu 17 Sep: £4,120, in line with the usual week.',
+      metrics: [{ label: 'Cash-ups entered', value: '4 of 7' }, { label: 'Takings entered', value: '£2,210 over 4 days' }],
       lists: [],
-      signals: [issue('cashing_up.missing', 'red', 'Cash-ups missing for Mon 21, Tue 22 and Wed 23 Sep.', { action: action('Enter the missing cash-ups for Mon 21, Tue 22 and Wed 23 Sep', '/cashing-up/daily?date=2026-09-21', { target: 'list', impact: 'money' }) })],
-      notes: ['Performance comparison not made: 4 trading days are missing.'],
+      signals: [issue('cashing_up.missing', 'red', '3 trading days have gone more than 3 days without a cash-up: Tue 15, Wed 16 and Mon 21 Sep.', { action: action('Enter the missing cash-ups for Tue 15, Wed 16 and Mon 21 Sep', '/cashing-up/daily?date=2026-09-15', { target: 'list', impact: 'money' }) })],
+      notes: ['Not entered yet: Wed 23 Sep and Thu 24 Sep (within the usual 3-day entry window).'],
     },
     short_links: {
       headline: '774 tracked clicks this week; Sunday Lunch took 38%.',

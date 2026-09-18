@@ -25,6 +25,13 @@ export const SHIFT_ACCEPTANCE_CUTOFF_DAYS = 14;
 /** The same two weeks as a fixed 336-hour duration, for instant arithmetic. */
 export const SHIFT_ACCEPTANCE_CUTOFF_MS = SHIFT_ACCEPTANCE_CUTOFF_DAYS * 24 * 60 * 60 * 1000;
 
+/**
+ * Staff are warned about a still-pending shift this many days before the cutoff, so the
+ * warned shifts are the ones up to 16 days out. The weekly Insights report watches the same
+ * window, so the shifts it lists as awaiting acceptance are the ones staff were warned about.
+ */
+export const SHIFT_ACCEPTANCE_WARNING_DAYS_BEFORE_CUTOFF = 2;
+
 /** "HH:mm" or "HH:mm:ss" normalised to "HH:mm:ss" for zoned parsing. */
 function normaliseTime(startTime: string): string {
   const parts = startTime.split(':');

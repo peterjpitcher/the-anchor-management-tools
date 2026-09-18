@@ -4,11 +4,25 @@ import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { BohBookingsClient } from './BohBookingsClient'
+import { BohBookingsClient, type BohViewMode } from './BohBookingsClient'
 import { LinkButton } from '@/ds'
+import { isValidIsoDate } from '@/lib/dateUtils'
 
-export default async function TableBookingsBohPage() {
+const VIEW_MODES: BohViewMode[] = ['day', 'week', 'month']
+
+interface TableBookingsBohPageProps {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
+
+export default async function TableBookingsBohPage({ searchParams }: TableBookingsBohPageProps) {
   const supabase = await createClient()
+  // ?date=YYYY-MM-DD&view=day opens the board on a given day (the weekly Insights report links here).
+  // Anything invalid is ignored, so the page opens on today as before.
+  const params = searchParams ? await searchParams : {}
+  const rawDate = typeof params.date === 'string' ? params.date : undefined
+  const rawView = typeof params.view === 'string' ? params.view : undefined
+  const initialDate = rawDate && isValidIsoDate(rawDate) ? rawDate : undefined
+  const initialView = VIEW_MODES.find((mode) => mode === rawView)
 
   const [authResult, canView, canEdit, canManage, canViewReports, canManageSettings, canSendMessages, permissionsResult] = await Promise.all([
     supabase.auth.getUser(),
@@ -70,7 +84,14 @@ export default async function TableBookingsBohPage() {
         ) : undefined
       }
     >
-      <BohBookingsClient canEdit={canEdit} canManage={canManage} canWaiveDeposit={canWaiveDeposit} canSendMessages={canSendMessages} />
+      <BohBookingsClient
+        canEdit={canEdit}
+        canManage={canManage}
+        canWaiveDeposit={canWaiveDeposit}
+        canSendMessages={canSendMessages}
+        initialDate={initialDate}
+        initialView={initialView}
+      />
     </PageLayout>
   )
 }
