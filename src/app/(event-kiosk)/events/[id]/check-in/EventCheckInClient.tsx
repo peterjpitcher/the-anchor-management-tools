@@ -199,6 +199,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
       <Alert tone="info" title="Guest not found">
         Add their name to check in {normalizedPhone}.
       </Alert>
+      {/* min-h-touch: 44px fields on an iPad in landscape too (owner decision D6). */}
       <div className="grid gap-3 sm:grid-cols-2">
         <Input
           label="First name"
@@ -206,12 +207,14 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
           onChange={(e) => setNewGuestDetails((current) => ({ ...current, firstName: e.target.value }))}
           autoComplete="given-name"
           required
+          className="min-h-touch"
         />
         <Input
           label="Last name (optional)"
           value={newGuestDetails.lastName}
           onChange={(e) => setNewGuestDetails((current) => ({ ...current, lastName: e.target.value }))}
           autoComplete="family-name"
+          className="min-h-touch"
         />
       </div>
       <Input
@@ -221,6 +224,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
         onChange={(e) => setNewGuestDetails((current) => ({ ...current, email: e.target.value }))}
         autoComplete="email"
         placeholder="Optional"
+        className="min-h-touch"
       />
       <div className="flex flex-col gap-3">
         <Button type="submit" variant="primary" size="lg" loading={isPending} fullWidth className="h-14 text-base">
@@ -244,7 +248,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
 
     if (attendanceSummary.snowball?.eligible) {
       return (
-        <div className="rounded-default border border-amber-300 bg-warning-soft p-5 text-center">
+        <div className="rounded-default border border-warning-border bg-warning-soft p-5 text-center">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-warning-fg">Snowball eligible</p>
           <h3 className="mt-2 text-2xl font-bold text-warning-fg">Congratulations</h3>
           <p className="mt-3 text-sm leading-6 text-warning-fg">
@@ -298,7 +302,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
   )
 
   return (
-    <main className="min-h-screen bg-brand-700 px-4 py-6 text-white sm:px-6">
+    <main className="min-h-screen bg-brand-700 px-4 py-6 text-on-dark sm:px-6">
       <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-xl flex-col justify-center">
         <header className="mb-6 text-center">
           <div className="mx-auto mb-5 w-40 sm:w-52">
@@ -314,7 +318,7 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-brand-100">
             {eventDate} · {formatTime12Hour(event.time)}
           </p>
-          <h1 className="mt-3 text-3xl font-bold leading-tight text-white sm:text-4xl">{event.name}</h1>
+          <h1 className="mt-3 text-3xl font-bold leading-tight text-on-dark sm:text-4xl">{event.name}</h1>
         </header>
 
         <section className="rounded-default bg-surface p-5 text-text-strong shadow-lg sm:p-6">

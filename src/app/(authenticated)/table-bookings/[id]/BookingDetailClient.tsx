@@ -4,7 +4,8 @@ import { ChristmasCourseFields } from '@/components/features/table-bookings/Chri
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Badge, Button, ConfirmDialog, Input, Modal, Radio, Textarea } from '@/ds'
+import { Badge, Button, Card, ConfirmDialog, Input, Modal, Radio, Select, Textarea } from '@/ds'
+import { cn } from '@/lib/utils'
 import {
   STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT,
   defaultStaffMessageChannel,
@@ -222,17 +223,21 @@ function SectionCard({
   children: ReactNode
   className?: string
 }) {
+  // The DS card frame, so this page's sections match every other card in the app. The header is
+  // its own rather than CardHeader, which would turn these h2 section headings into h3 and
+  // truncate the description. cn() lets a caller's border colour (the Danger Zone) replace the
+  // default one instead of fighting it.
   return (
-    <section className={`rounded-lg border border-border bg-surface ${className}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+    <Card padding="none" className={cn(className)}>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-pad-card py-3">
         <div>
-          <h2 className="text-sm font-semibold text-text">{title}</h2>
+          <h2 className="text-sm font-semibold text-text-strong">{title}</h2>
           {description && <p className="mt-0.5 text-xs text-text-muted">{description}</p>}
         </div>
         {action}
       </div>
-      <div className="p-4">{children}</div>
-    </section>
+      <div className="p-pad-card">{children}</div>
+    </Card>
   )
 }
 
@@ -248,11 +253,9 @@ function DetailItem({ label, value }: { label: string; value: ReactNode }) {
 function StatusBadge({ booking }: { booking: Booking }) {
   const visualState = getTableBookingVisualState(booking)
   return (
-    <span
-      className={`text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded-sm border ${getTableBookingStatusBadgeClasses(visualState)}`}
-    >
+    <Badge className={getTableBookingStatusBadgeClasses(visualState)}>
       {getTableBookingStatusLabel(visualState)}
-    </span>
+    </Badge>
   )
 }
 
@@ -917,16 +920,17 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     // data-touch-targets: reached from BOH on a tablet, and its Danger Zone buttons are the
     // smallest destructive controls in the section. See the note in FohScheduleClient.
     <div className="space-y-6" data-touch-targets>
-      <section className="rounded-lg border border-border bg-surface p-4">
+      {/* The same DS card frame as the section cards below it. */}
+      <Card padding="none" className="p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge booking={booking} />
               {depositState.kind !== 'none' && (
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-sm border ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                <Badge className={getTableBookingDepositBadgeClasses(depositState.kind)}>
                   {depositState.label}
                   {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
-                </span>
+                </Badge>
               )}
               {booking.booking_type && (
                 <Badge tone="neutral">{formatLabel(booking.booking_type)}</Badge>
@@ -967,7 +971,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             </div>
           </div>
         </div>
-      </section>
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-6">
@@ -979,7 +983,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 label="Mobile"
                 value={
                   booking.customer?.mobile_number ? (
-                    <a href={`tel:${booking.customer.mobile_number}`} className="text-blue-600 hover:underline">
+                    <a
+                      href={`tel:${booking.customer.mobile_number}`}
+                      className="rounded-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
+                    >
                       {booking.customer.mobile_number}
                     </a>
                   ) : '-'
@@ -1188,28 +1195,29 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     Move table
                   </label>
                   <div className="flex flex-col gap-2 sm:flex-row xl:flex-col 2xl:flex-row">
-                    <select
-                      id="move-table-select"
-                      value={moveTableId}
-                      onChange={(e) => setMoveTableId(e.target.value)}
-                      disabled={loadingMoveTables || availableMoveTables.length === 0}
-                      className="w-full rounded-md border border-border-strong px-3 py-2 text-sm text-text focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
-                    >
-                      <option value="">
-                        {loadingMoveTables
-                          ? 'Loading available tables...'
-                          : availableMoveTables.length === 0
-                            ? 'No available tables'
-                            : 'Select table to move booking'}
-                      </option>
-                      {availableMoveTables.map((table) => (
-                        <option key={table.id} value={table.id}>
-                          {table.name}
-                          {table.table_number ? ` (${table.table_number})` : ''}
-                          {table.capacity ? ` - cap ${table.capacity}` : ''}
+                    <div className="min-w-0 grow">
+                      <Select
+                        id="move-table-select"
+                        value={moveTableId}
+                        onChange={(e) => setMoveTableId(e.target.value)}
+                        disabled={loadingMoveTables || availableMoveTables.length === 0}
+                      >
+                        <option value="">
+                          {loadingMoveTables
+                            ? 'Loading available tables...'
+                            : availableMoveTables.length === 0
+                              ? 'No available tables'
+                              : 'Select table to move booking'}
                         </option>
-                      ))}
-                    </select>
+                        {availableMoveTables.map((table) => (
+                          <option key={table.id} value={table.id}>
+                            {table.name}
+                            {table.table_number ? ` (${table.table_number})` : ''}
+                            {table.capacity ? ` - cap ${table.capacity}` : ''}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
                     <Button
                       size="sm"
                       variant="secondary"
@@ -1229,10 +1237,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
                 {depositState.kind !== 'none' ? (
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-sm border ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                  <Badge className={getTableBookingDepositBadgeClasses(depositState.kind)}>
                     {depositState.label}
                     {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
-                  </span>
+                  </Badge>
                 ) : (
                   <Badge tone="neutral">No deposit required</Badge>
                 )}
@@ -1310,12 +1318,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     onChange={(e) => setEmailSubject(e.target.value)}
                   />
                 )}
-                <textarea
+                <Textarea
                   value={smsBody}
                   onChange={(e) => setSmsBody(e.target.value)}
                   rows={5}
                   maxLength={emailChosen ? 2000 : 640}
-                  className="w-full rounded-md border border-border-strong px-3 py-2 text-sm text-text placeholder:text-text-subtle focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
                   placeholder="Type message..."
                 />
                 <div className="flex items-center justify-between">
@@ -1340,7 +1347,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             {operationalFlags.length > 0 ? (
               <ul className="space-y-2">
                 {operationalFlags.map((flag) => (
-                  <li key={flag} className="rounded-md bg-warning-soft px-3 py-2 text-sm text-warning-fg">
+                  <li key={flag} className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning-fg">
                     {flag}
                   </li>
                 ))}
@@ -1351,7 +1358,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           </SectionCard>
 
           {canManage && (
-            <SectionCard title="Danger Zone" className="border-red-200">
+            <SectionCard title="Danger Zone" className="border-danger-border">
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
@@ -1412,7 +1419,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     {entry.new_status ? (
                       <Badge tone="neutral">{formatLabel(entry.new_status)}</Badge>
                     ) : (
-                      <span className="text-xs text-gray-400">No status change</span>
+                      <span className="text-xs text-text-soft">No status change</span>
                     )}
                   </div>
                 </li>
@@ -1468,7 +1475,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         title="Edit booking"
         size="xl"
         footer={
-          <>
+          // Modals render outside the page's data-touch-targets wrapper, so each one opts in
+          // again: on a touch screen (BOH on the bar iPad) its controls get the 44px floor (D6).
+          <div className="contents" data-touch-targets>
             <Button variant="secondary" size="sm" onClick={() => setBookingEditOpen(false)}>
               Cancel
             </Button>
@@ -1480,11 +1489,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             >
               Save
             </Button>
-          </>
+          </div>
         }
       >
         {bookingEdit && (
-          <div className="space-y-5">
+          <div className="space-y-5" data-touch-targets>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Input
                 label="Date"
@@ -1562,7 +1571,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         title="Edit pre-order"
         size="lg"
         footer={
-          <>
+          <div className="contents" data-touch-targets>
             <Button variant="secondary" size="sm" onClick={() => setPreorderEditOpen(false)}>
               Cancel
             </Button>
@@ -1574,10 +1583,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             >
               Save
             </Button>
-          </>
+          </div>
         }
       >
-        <div className="space-y-4">
+        <div className="space-y-4" data-touch-targets>
           {preorderItems.map((item) => (
             <div key={item.id} className="rounded-md border border-border p-3">
               <p className="text-sm font-medium text-text">
@@ -1625,37 +1634,29 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         title="Edit party size"
         size="sm"
       >
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="party-size-input" className="block text-sm font-medium text-text">
-              New party size
-            </label>
-            <input
-              id="party-size-input"
-              type="number"
-              min={1}
-              max={20}
-              value={partySizeEditValue}
-              onChange={(e) => setPartySizeEditValue(e.target.value)}
-              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm text-text focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
-            />
-          </div>
+        <div className="space-y-4" data-touch-targets>
+          <Input
+            id="party-size-input"
+            label="New party size"
+            type="number"
+            min={1}
+            max={20}
+            value={partySizeEditValue}
+            onChange={(e) => setPartySizeEditValue(e.target.value)}
+          />
           <ChristmasCourseFields bookingId={booking.id} partySize={Number(partySizeEditValue)} onChange={setChristmasCourseCounts} />
           {partySizeNeedsLargerTable && (
-            <div className="rounded-md border border-amber-200 bg-warning-soft p-3">
+            <div className="space-y-3 rounded-md border border-warning-border bg-warning-soft p-3">
               <p className="text-sm text-warning-fg">
                 This party is larger than the current {assignedCapacity} seats. Saving will move it
                 to a larger table setup automatically — pick specific tables below if you&rsquo;d prefer.
               </p>
-              <label htmlFor="party-size-move-table" className="mt-3 block text-sm font-medium text-warning-fg">
-                Larger table
-              </label>
-              <select
+              <Select
                 id="party-size-move-table"
+                label="Larger table"
                 value={partySizeMoveTableId}
                 onChange={(event) => setPartySizeMoveTableId(event.target.value)}
                 disabled={loadingMoveTables || partySizeMoveTableOptions.length === 0}
-                className="mt-1 w-full rounded-md border border-amber-300 bg-surface px-3 py-2 text-sm text-text focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
               >
                 <option value="">
                   {loadingMoveTables
@@ -1671,7 +1672,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     {table.capacity ? ` - cap ${table.capacity}` : ''}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
           <label className="flex items-center gap-2 text-sm text-text">
@@ -1679,7 +1680,6 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               type="checkbox"
               checked={partySizeEditSendSms}
               onChange={(event) => setPartySizeEditSendSms(event.target.checked)}
-              className="rounded-sm border-border-strong text-green-600 focus:ring-green-500"
             />
             {/* The request goes by text, or by email first when table_party_size_deposit_email_first is on. */}
             Notify guest

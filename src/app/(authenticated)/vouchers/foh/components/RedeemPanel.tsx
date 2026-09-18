@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import { Button, Input } from '@/ds'
 import { UNDO_WINDOW_SECONDS } from '@/lib/vouchers/constants'
 import {
   newIdempotencyKey,
@@ -134,7 +135,7 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
     setUndoBusy(false)
 
     if (result.ok) {
-      setOutcome('Redemption undone. The voucher is active again.')
+      setOutcome('Redemption undone. The voucher is back to Issued.')
       const undoneNumber = success.number
       setSuccess(null)
       onMutated()
@@ -167,44 +168,49 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
 
       <div aria-live="polite">
         {outcome && (
-          <p role="status" className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-base text-info-fg">
+          <p role="status" className="rounded-md border border-info-border bg-info-soft px-3 py-2 text-base text-info-fg">
             {outcome}
           </p>
         )}
       </div>
 
       {success && (
-        <div className="rounded-xl border border-green-300 bg-success-soft p-4">
-          <p className="text-xl font-bold text-green-900">Marked as used</p>
-          <p className="mt-1 text-base text-green-900">
+        <div className="rounded-lg border border-success-border bg-success-soft p-4">
+          <p className="text-xl font-bold text-success-fg">Marked as used</p>
+          <p className="mt-1 text-base text-success-fg">
             <span className="font-mono font-semibold">{success.number}</span> - {success.typeTitle}
           </p>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             {undoSecondsLeft > 0 ? (
-              <button
+              // Warning outline so the undo reads as a cautious step, not the next action.
+              <Button
                 type="button"
+                variant="secondary"
+                size="lg"
                 onClick={handleUndo}
                 disabled={undoBusy || !staffId}
-                className="min-h-14 flex-1 rounded-lg border-2 border-amber-500 bg-surface px-4 py-3 text-lg font-semibold text-warning-fg hover:bg-warning-soft focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-14 flex-1 border-2 border-warning text-lg text-warning-fg hover:bg-warning-soft"
               >
                 {undoBusy ? 'Undoing...' : `Undo (${undoSecondsLeft}s left)`}
-              </button>
+              </Button>
             ) : (
-              <p className="flex min-h-14 flex-1 items-center rounded-lg border border-border-strong bg-surface px-4 text-base text-text">
+              <p className="flex min-h-14 flex-1 items-center rounded-default border border-border-strong bg-surface px-4 text-base text-text">
                 Undo window closed. Ask a manager if this was a mistake.
               </p>
             )}
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="lg"
               onClick={() => {
                 setSuccess(null)
                 setOutcome(null)
                 lookup.reset()
               }}
-              className="min-h-14 flex-1 rounded-lg bg-sidebar px-4 py-3 text-lg font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2"
+              className="h-14 flex-1 text-lg"
             >
               Next guest
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -222,31 +228,31 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
             <div className="mt-4 space-y-3 border-t border-border pt-4">
               {showBookingRef && (
                 <div>
-                  <label htmlFor="foh-redeem-booking-ref" className="block text-sm font-medium text-text">
+                  <label htmlFor="foh-redeem-booking-ref" className="mb-1 block text-sm font-medium text-text">
                     Booking reference (optional)
                   </label>
-                  <input
+                  <Input
                     id="foh-redeem-booking-ref"
                     type="text"
                     autoComplete="off"
                     value={bookingRef}
                     onChange={(event) => setBookingRef(event.target.value)}
-                    className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+                    className="h-12 text-base"
                   />
                 </div>
               )}
 
               <div>
-                <label htmlFor="foh-redeem-transaction-ref" className="block text-sm font-medium text-text">
+                <label htmlFor="foh-redeem-transaction-ref" className="mb-1 block text-sm font-medium text-text">
                   Till transaction reference (optional)
                 </label>
-                <input
+                <Input
                   id="foh-redeem-transaction-ref"
                   type="text"
                   autoComplete="off"
                   value={transactionRef}
                   onChange={(event) => setTransactionRef(event.target.value)}
-                  className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+                  className="h-12 text-base"
                 />
               </div>
 
@@ -260,20 +266,22 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
                 </p>
               )}
               {canEdit && !staffId && (
-                <p className="rounded-md border border-amber-300 bg-warning-soft px-3 py-2 text-base text-warning-fg">
+                <p className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-base text-warning-fg">
                   Choose your name at the top before marking the voucher as used.
                 </p>
               )}
 
               {canEdit && (
-                <button
+                <Button
                   type="button"
+                  variant="primary"
+                  size="lg"
                   onClick={() => setConfirmOpen(true)}
                   disabled={!canMarkUsed}
-                  className="min-h-14 w-full rounded-lg bg-sidebar px-4 py-3 text-xl font-bold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-14 w-full text-xl font-bold"
                 >
                   Mark as used
-                </button>
+                </Button>
               )}
             </div>
           )}

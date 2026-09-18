@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
+import { Card, Stat, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ds'
 import { BarChart } from '@/components/charts/BarChart'
 import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
 import {
@@ -115,10 +115,10 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
                     key={option.key}
                     href={`/table-bookings/reports?window=${option.key}`}
                     aria-current={active ? 'page' : undefined}
-                    className={`inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-xs transition max-shell:min-h-touch ${
+                    className={`inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-xs transition max-shell:min-h-touch focus-visible:outline-hidden focus-visible:shadow-ring ${
                       active
-                        ? 'border-blue-600 bg-blue-50 font-semibold text-blue-700'
-                        : 'font-medium border-border-strong bg-surface text-text-muted hover:border-gray-400 hover:text-text'
+                        ? 'border-primary bg-primary-soft font-semibold text-primary-soft-fg'
+                        : 'font-medium border-border-strong bg-surface text-text-muted hover:bg-surface-hover hover:text-text'
                     }`}
                   >
                     {option.label}
@@ -131,33 +131,27 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
 
         <div className="grid gap-4 lg:grid-cols-3">
           <Card>
-            <h3 className="text-sm font-semibold text-text-muted">Active Guests ({snapshot.selected_window.label})</h3>
-            <p className="mt-2 text-3xl font-semibold text-text">
-              {formatNumber(snapshot.new_vs_returning.active_guests_selected_window)}
-            </p>
-            <p className="mt-2 text-sm text-text-muted">
-              New: {formatNumber(snapshot.new_vs_returning.new_guests_selected_window)} | Returning: {formatNumber(snapshot.new_vs_returning.returning_guests_selected_window)}
-            </p>
+            <Stat
+              label={`Active Guests (${snapshot.selected_window.label})`}
+              value={formatNumber(snapshot.new_vs_returning.active_guests_selected_window)}
+              hint={`New: ${formatNumber(snapshot.new_vs_returning.new_guests_selected_window)} | Returning: ${formatNumber(snapshot.new_vs_returning.returning_guests_selected_window)}`}
+            />
           </Card>
 
           <Card>
-            <h3 className="text-sm font-semibold text-text-muted">Bookings (All Time)</h3>
-            <p className="mt-2 text-3xl font-semibold text-text">
-              {formatNumber(snapshot.bookings_by_type.all_time.total)}
-            </p>
-            <p className="mt-2 text-sm text-text-muted">
-              Event {formatNumber(snapshot.bookings_by_type.all_time.event)} | Table {formatNumber(snapshot.bookings_by_type.all_time.table)} | Private {formatNumber(snapshot.bookings_by_type.all_time.private)}
-            </p>
+            <Stat
+              label="Bookings (All Time)"
+              value={formatNumber(snapshot.bookings_by_type.all_time.total)}
+              hint={`Event ${formatNumber(snapshot.bookings_by_type.all_time.event)} | Table ${formatNumber(snapshot.bookings_by_type.all_time.table)} | Private ${formatNumber(snapshot.bookings_by_type.all_time.private)}`}
+            />
           </Card>
 
           <Card>
-            <h3 className="text-sm font-semibold text-text-muted">Bookings ({snapshot.selected_window.label})</h3>
-            <p className="mt-2 text-3xl font-semibold text-text">
-              {formatNumber(snapshot.bookings_by_type.selected_window.total)}
-            </p>
-            <p className="mt-2 text-sm text-text-muted">
-              Event {formatNumber(snapshot.bookings_by_type.selected_window.event)} | Table {formatNumber(snapshot.bookings_by_type.selected_window.table)} | Private {formatNumber(snapshot.bookings_by_type.selected_window.private)}
-            </p>
+            <Stat
+              label={`Bookings (${snapshot.selected_window.label})`}
+              value={formatNumber(snapshot.bookings_by_type.selected_window.total)}
+              hint={`Event ${formatNumber(snapshot.bookings_by_type.selected_window.event)} | Table ${formatNumber(snapshot.bookings_by_type.selected_window.table)} | Private ${formatNumber(snapshot.bookings_by_type.selected_window.private)}`}
+            />
           </Card>
         </div>
 
@@ -171,7 +165,7 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
               data={snapshot.covers_trend.buckets.map((bucket) => ({
                 label: bucket.label,
                 value: bucket.covers,
-                color: '#2563EB'
+                color: 'var(--color-chart-1)'
               }))}
               height={270}
               formatType="number"
@@ -215,64 +209,60 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <h3 className="text-base font-semibold text-text">Top Engaged Guests</h3>
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full divide-y divide-border text-sm">
-                <thead className="bg-surface-2">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 text-left font-medium text-text-muted">Guest</th>
-                    <th scope="col" className="px-3 py-2 text-right font-medium text-text-muted">Score</th>
-                    <th scope="col" className="px-3 py-2 text-right font-medium text-text-muted">30d</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border bg-surface">
-                  {snapshot.top_engaged_guests.length === 0 ? (
-                    <tr>
-                      <td className="px-3 py-3 text-text-muted" colSpan={3}>
-                        No engagement scores available yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    snapshot.top_engaged_guests.map((guest) => (
-                      <tr key={guest.customer_id}>
-                        <td className="px-3 py-2 text-text">{guest.name}</td>
-                        <td className="px-3 py-2 text-right font-medium text-text">{formatNumber(guest.total_score)}</td>
-                        <td className="px-3 py-2 text-right text-text">{formatNumber(guest.bookings_last_30)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <Table className="mt-4">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Guest</TableHead>
+                  <TableHead align="right">Score</TableHead>
+                  <TableHead align="right">30d</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {snapshot.top_engaged_guests.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="text-text-muted" colSpan={3}>
+                      No engagement scores available yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  snapshot.top_engaged_guests.map((guest) => (
+                    <TableRow key={guest.customer_id}>
+                      <TableCell>{guest.name}</TableCell>
+                      <TableCell align="right" className="font-medium">{formatNumber(guest.total_score)}</TableCell>
+                      <TableCell align="right">{formatNumber(guest.bookings_last_30)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </Card>
 
           <Card>
             <h3 className="text-base font-semibold text-text">Event Type Interest Segments</h3>
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full divide-y divide-border text-sm">
-                <thead className="bg-surface-2">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 text-left font-medium text-text-muted">Event Type</th>
-                    <th scope="col" className="px-3 py-2 text-right font-medium text-text-muted">Guests</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border bg-surface">
-                  {snapshot.event_type_interest_segments.length === 0 ? (
-                    <tr>
-                      <td className="px-3 py-3 text-text-muted" colSpan={2}>
-                        No event type activity available yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    snapshot.event_type_interest_segments.slice(0, 12).map((segment) => (
-                      <tr key={segment.event_type}>
-                        <td className="px-3 py-2 text-text">{segment.event_type}</td>
-                        <td className="px-3 py-2 text-right font-medium text-text">{formatNumber(segment.guest_count)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <Table className="mt-4">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Event Type</TableHead>
+                  <TableHead align="right">Guests</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {snapshot.event_type_interest_segments.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="text-text-muted" colSpan={2}>
+                      No event type activity available yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  snapshot.event_type_interest_segments.slice(0, 12).map((segment) => (
+                    <TableRow key={segment.event_type}>
+                      <TableCell>{segment.event_type}</TableCell>
+                      <TableCell align="right" className="font-medium">{formatNumber(segment.guest_count)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </Card>
         </div>
 

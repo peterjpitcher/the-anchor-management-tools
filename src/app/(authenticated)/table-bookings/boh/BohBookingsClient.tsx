@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, MessageSquare } from 'lucide-react'
-import { Badge, Button } from '@/ds'
+import { Alert, Badge, Button, Input, Segmented, Select } from '@/ds'
 import { EmptyState } from '@/ds'
 import toast from 'react-hot-toast'
 import { MessageGuestsModal } from './MessageGuestsModal'
@@ -11,6 +11,7 @@ import { FohCreateBookingModal } from '../foh/components/FohCreateBookingModal'
 import { useFohCreateBooking } from '../foh/hooks/useFohCreateBooking'
 import { buildTimelineRange } from '../foh/utils'
 import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
+import { cn } from '@/lib/utils'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -166,6 +167,19 @@ type BohBookingsResponse = {
 
 const BOH_AUTO_RETURN_IDLE_MS = 5 * 60 * 1000
 const BOH_AUTO_RETURN_POLL_MS = 30 * 1000
+
+const VIEW_OPTIONS: Array<{ id: BohViewMode; label: string }> = [
+  { id: 'day', label: 'Day' },
+  { id: 'week', label: 'Week' },
+  { id: 'month', label: 'Month' },
+]
+
+// One table look (design decision A6): small uppercase muted headers, as DS Table draws them.
+// The sort buttons sit in a sticky header inside the scrolling wrapper, so their focus ring is
+// drawn inset where the scroll cannot clip it.
+const TH_CLASS = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted'
+const SORT_BUTTON_CLASS =
+  'inline-flex items-center gap-1 rounded-sm uppercase tracking-wider hover:text-text focus-visible:outline-hidden focus-visible:shadow-ring-inset'
 
 const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
   { value: 'all', label: 'All statuses' },
@@ -390,7 +404,7 @@ function getDeltaDisplay(
 
   return {
     label: `${deltaText} (${percentText})`,
-    toneClass: positiveDirection ? 'text-green-700' : 'text-red-700'
+    toneClass: positiveDirection ? 'text-success-fg' : 'text-danger-fg'
   }
 }
 
@@ -873,69 +887,49 @@ export function BohBookingsClient({
             >
               Download PDF
             </Button>
-            <div className="ml-2 flex rounded-md border border-border-strong bg-surface-2 p-1">
-              {(['day', 'week', 'month'] as BohViewMode[]).map((candidate) => (
-                <button
-                  key={candidate}
-                  type="button"
-                  onClick={() => setView(candidate)}
-                  className={`rounded-sm px-3 py-1 text-xs font-medium ${
-                    view === candidate
-                      ? 'bg-surface text-text shadow-sm'
-                      : 'text-text-muted hover:text-text'
-                  }`}
-                >
-                  {candidate.charAt(0).toUpperCase() + candidate.slice(1)}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              className="ml-2"
+              options={VIEW_OPTIONS}
+              value={view}
+              onChange={(id) => setView(id as BohViewMode)}
+            />
           </div>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
           <div>
             <label htmlFor="boh-search" className="sr-only">Search bookings</label>
-            <input
+            <Input
               id="boh-search"
               type="search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="Search by guest, ref, table, phone, notes"
-              className="w-full rounded-md border border-border-strong px-3 py-2 text-sm text-text placeholder:text-text-subtle focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
             />
           </div>
           <div>
             <label htmlFor="boh-status-filter" className="sr-only">Filter by status</label>
-            <select
+            <Select
               id="boh-status-filter"
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-              className="w-full rounded-md border border-border-strong px-3 py-2 text-sm text-text focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
-            >
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+              options={STATUS_OPTIONS}
+            />
           </div>
         </div>
 
         {statusTotals.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {statusTotals.slice(0, 8).map(([status, count]) => (
-              <span
-                key={status}
-                className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusBadgeClasses(status)}`}
-              >
+              <Badge key={status} className={getStatusBadgeClasses(status)}>
                 {getStatusLabel(status)}: {count}
-              </span>
+              </Badge>
             ))}
           </div>
         )}
 
         {createStatusMessage && (
-          <div role="status" className="mt-3 rounded-md border border-green-200 bg-success-soft px-3 py-2 text-sm text-green-800">
+          <div role="status" className="mt-3 rounded-md border border-success-border bg-success-soft px-3 py-2 text-sm text-success-fg">
             {createStatusMessage}
           </div>
         )}
@@ -946,20 +940,12 @@ export function BohBookingsClient({
           page. A manager reads that as a dead service, not a broken request. The error
           banner lived further down, below five full-width cards on a narrow screen. */}
       {error ? (
-        <div
-          role="alert"
-          className="rounded-lg border border-amber-300 bg-warning-soft px-4 py-3 text-sm text-warning-fg"
-        >
-          <p className="font-semibold">These figures could not be loaded</p>
-          <p className="mt-0.5">{error}</p>
-          <button
-            type="button"
-            onClick={() => void loadBookings()}
-            className="mt-2 rounded-md border border-amber-400 bg-surface px-3 py-1.5 text-sm font-medium text-warning-fg hover:bg-amber-100"
-          >
+        <Alert tone="warning" title="These figures could not be loaded">
+          <p>{error}</p>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void loadBookings()} className="mt-2">
             Try again
-          </button>
-        </div>
+          </Button>
+        </Alert>
       ) : (
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {metricsCards.map((card) => {
@@ -1075,7 +1061,7 @@ export function BohBookingsClient({
         <div className="max-h-[680px] overflow-auto overflow-x-auto">
           {loading && (
             <div className="flex items-center gap-2 px-4 py-3">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-border-strong border-t-gray-600" />
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-border-strong border-t-text-muted" />
               <p className="text-sm text-text-muted">Loading bookings…</p>
             </div>
           )}
@@ -1115,9 +1101,9 @@ export function BohBookingsClient({
                         </p>
                         <p className="mt-0.5 text-xs text-text-muted">{formatBookingDateTime(booking)}</p>
                       </div>
-                      <span className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-meta font-medium ${getStatusBadgeClasses(visualState)}`}>
+                      <Badge size="sm" className={`shrink-0 ${getStatusBadgeClasses(visualState)}`}>
                         {getStatusLabel(visualState)}
-                      </span>
+                      </Badge>
                     </div>
 
                     {booking.event_name && (
@@ -1161,11 +1147,11 @@ export function BohBookingsClient({
                           <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
                         )}
                         {depositState.kind !== 'none' && (
-                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-meta font-medium ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                          <Badge size="sm" className={getTableBookingDepositBadgeClasses(depositState.kind)}>
                             {depositState.label}
                             {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
                             {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}
-                          </span>
+                          </Badge>
                         )}
                       </div>
                     )}
@@ -1189,43 +1175,43 @@ export function BohBookingsClient({
             <table className="hidden min-w-full divide-y divide-border text-sm md:table">
               <thead className="sticky top-0 z-10 bg-surface-2">
                 <tr>
-                  <th scope="col" className="px-3 py-2 text-left font-semibold text-text">
-                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('datetime')}>
-                      Date/Time <span className="text-gray-400">{sortIndicator('datetime')}</span>
+                  <th scope="col" className={TH_CLASS}>
+                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('datetime')}>
+                      Date/Time <span className="text-text-subtle">{sortIndicator('datetime')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="px-3 py-2 text-left font-semibold text-text">
-                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('guest')}>
-                      Guest <span className="text-gray-400">{sortIndicator('guest')}</span>
+                  <th scope="col" className={TH_CLASS}>
+                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('guest')}>
+                      Guest <span className="text-text-subtle">{sortIndicator('guest')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="hidden px-3 py-2 text-left font-semibold text-text lg:table-cell">
-                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('reference')}>
-                      Ref <span className="text-gray-400">{sortIndicator('reference')}</span>
+                  <th scope="col" className={cn(TH_CLASS, 'hidden lg:table-cell')}>
+                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('reference')}>
+                      Ref <span className="text-text-subtle">{sortIndicator('reference')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="px-3 py-2 text-right font-semibold text-text">
-                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('party_size')}>
-                      Party <span className="text-gray-400">{sortIndicator('party_size')}</span>
+                  <th scope="col" className={cn(TH_CLASS, 'text-right')}>
+                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('party_size')}>
+                      Party <span className="text-text-subtle">{sortIndicator('party_size')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="px-3 py-2 text-left font-semibold text-text">
-                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('tables')}>
-                      Tables <span className="text-gray-400">{sortIndicator('tables')}</span>
+                  <th scope="col" className={TH_CLASS}>
+                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('tables')}>
+                      Tables <span className="text-text-subtle">{sortIndicator('tables')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="px-3 py-2 text-left font-semibold text-text">
-                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('status')}>
-                      Status <span className="text-gray-400">{sortIndicator('status')}</span>
+                  <th scope="col" className={TH_CLASS}>
+                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('status')}>
+                      Status <span className="text-text-subtle">{sortIndicator('status')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="hidden px-3 py-2 text-left font-semibold text-text lg:table-cell">
-                    <button type="button" className="inline-flex items-center gap-1 rounded-sm focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('phone')}>
-                      Phone <span className="text-gray-400">{sortIndicator('phone')}</span>
+                  <th scope="col" className={cn(TH_CLASS, 'hidden lg:table-cell')}>
+                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('phone')}>
+                      Phone <span className="text-text-subtle">{sortIndicator('phone')}</span>
                     </button>
                   </th>
-                  <th scope="col" className="hidden px-3 py-2 text-left font-semibold text-text lg:table-cell">Deposit</th>
-                  <th scope="col" className="px-3 py-2 text-right font-semibold text-text">Action</th>
+                  <th scope="col" className={cn(TH_CLASS, 'hidden lg:table-cell')}>Deposit</th>
+                  <th scope="col" className={cn(TH_CLASS, 'text-right')}>Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-surface">
@@ -1265,18 +1251,18 @@ export function BohBookingsClient({
                       )}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-meta font-medium ${getStatusBadgeClasses(visualState)}`}>
+                      <Badge size="sm" className={getStatusBadgeClasses(visualState)}>
                         {getStatusLabel(visualState)}
-                      </span>
+                      </Badge>
                     </td>
                     <td className="hidden px-3 py-2 text-text whitespace-nowrap lg:table-cell">{booking.customer?.mobile_number || '—'}</td>
                     <td className="hidden px-3 py-2 whitespace-nowrap lg:table-cell">
                       {depositState.kind !== 'none' ? (
-                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-meta font-medium ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                        <Badge size="sm" className={getTableBookingDepositBadgeClasses(depositState.kind)}>
                           {depositState.label}
                           {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
                           {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}
-                        </span>
+                        </Badge>
                       ) : null}
                     </td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">

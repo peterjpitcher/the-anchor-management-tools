@@ -1,14 +1,14 @@
 'use client'
 
 import React from 'react'
-import { cn } from '@/lib/utils'
+import { Badge, Button } from '@/ds'
 import {
   formatIsoDateLong,
   formatLondonTimestamp,
   formatPounds,
   type FohVoucherLookupItem
 } from '../lib'
-import { statusLabel, statusPillClass } from './voucher-status'
+import { statusLabel, statusTone } from './voucher-status'
 
 type VoucherCardMode = 'redeem' | 'handout'
 
@@ -70,17 +70,13 @@ export function VoucherCard({ item, mode, onViewReplacement, children }: Voucher
   const reason = blockedReason(item, mode)
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
+    <div className="rounded-lg border border-border bg-surface p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-mono text-xl font-bold text-text">{item.number}</span>
-        <span
-          className={cn(
-            'inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold',
-            statusPillClass(item.status)
-          )}
-        >
+        {/* Kiosk-sized: read at arm's length on the bar iPad. */}
+        <Badge tone={statusTone(item.status)} className="px-3 py-1 text-sm font-semibold">
           {statusLabel(item.status)}
-        </span>
+        </Badge>
       </div>
 
       <h3 className="mt-3 text-2xl font-extrabold leading-tight text-text">{item.typeTitle}</h3>
@@ -129,13 +125,13 @@ export function VoucherCard({ item, mode, onViewReplacement, children }: Voucher
       </dl>
 
       {actionable && mode === 'redeem' && item.alcohol && (
-        <p className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-base font-medium text-info-fg">
+        <p className="mt-3 rounded-md border border-info-border bg-info-soft px-3 py-2 text-base font-medium text-info-fg">
           Includes alcohol: check the guest is 18 or over before serving.
         </p>
       )}
 
       {actionable && item.expiringSoon && item.expiresInDays !== null && (
-        <p className="mt-3 rounded-md border border-amber-300 bg-warning-soft px-3 py-2 text-base font-medium text-warning-fg">
+        <p className="mt-3 rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-base font-medium text-warning-fg">
           {item.expiresInDays === 0
             ? 'Expires today.'
             : `Expires in ${item.expiresInDays} ${item.expiresInDays === 1 ? 'day' : 'days'}.`}
@@ -143,16 +139,18 @@ export function VoucherCard({ item, mode, onViewReplacement, children }: Voucher
       )}
 
       {reason && (
-        <div className="mt-3 rounded-md border border-red-200 bg-danger-soft px-3 py-2">
+        <div className="mt-3 rounded-md border border-danger-border bg-danger-soft px-3 py-2">
           <p className="text-base font-medium text-danger-fg">{reason}</p>
           {item.status === 'replaced' && item.replacementNumber && onViewReplacement && (
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="lg"
               onClick={() => onViewReplacement(item.replacementNumber as string)}
-              className="mt-2 min-h-touch rounded-md border border-red-300 bg-surface px-4 py-2 text-base font-semibold text-danger-fg hover:bg-danger-soft focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1"
+              className="mt-2 min-h-touch text-base"
             >
               View {item.replacementNumber}
-            </button>
+            </Button>
           )}
         </div>
       )}

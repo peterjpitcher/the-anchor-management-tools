@@ -143,56 +143,73 @@ export function getTableBookingStatusLabel(state: string | null | undefined): st
   }
 }
 
-export function getTableBookingStatusBadgeClasses(state: string | null | undefined): string {
-  switch (state) {
-    case 'private_block':
-      return 'bg-slate-200 text-slate-800 border-slate-300';
-    case 'confirmed':
-    case 'pending':
-      return 'bg-success-soft text-green-800 border-green-200';
-    case 'seated':
-      return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-    case 'pending_payment':
-      return 'bg-yellow-100 text-warning-fg border-yellow-200';
-    case 'left':
-    case 'completed':
-      return 'bg-surface-hover text-text-muted border-border';
-    case 'no_show':
-      return 'bg-danger-soft text-red-700 border-red-200';
-    case 'cancelled':
-      return 'bg-surface-hover text-text-muted border-border';
-    case 'visited_waiting_for_review':
-    case 'review_clicked':
-      return 'bg-purple-100 text-purple-900 border-purple-200';
-    default:
-      return 'bg-surface-hover text-text border-border';
+type TableBookingStatusTone =
+  | 'primary'
+  | 'success'
+  | 'warning'
+  | 'danger'
+  | 'neutral'
+  | 'cat-2'
+  | 'cat-3';
+
+/**
+ * The one colour decision for a booking's status (owner decision D4, 18 September 2026):
+ * Booked is primary, Seated success, Pending payment warning, No-show danger, and Cancelled,
+ * Left and Completed neutral. The review states and private blocks carry no status meaning, so
+ * they take category colours. Badges and FOH timeline blocks both read this map, so a booking
+ * is the same colour on every screen. Any state not listed here is neutral.
+ */
+export const TABLE_BOOKING_STATUS_TONE: Record<string, TableBookingStatusTone> = {
+  confirmed: 'primary',
+  pending: 'primary',
+  seated: 'success',
+  pending_payment: 'warning',
+  no_show: 'danger',
+  cancelled: 'neutral',
+  left: 'neutral',
+  completed: 'neutral',
+  visited_waiting_for_review: 'cat-3',
+  review_clicked: 'cat-3',
+  private_block: 'cat-2',
+};
+
+// Full class strings, never built from the tone name: Tailwind only generates classes it can
+// read in the source. Badge strings match DS Badge's tones, so a status badge sits beside a DS
+// Badge without looking different.
+const STATUS_TONE_BADGE_CLASSES: Record<TableBookingStatusTone, string> = {
+  primary: 'bg-primary-soft text-primary-soft-fg border-primary/20',
+  success: 'bg-success-soft text-success-fg border-success-border',
+  warning: 'bg-warning-soft text-warning-fg border-warning-border',
+  danger: 'bg-danger-soft text-danger-fg border-danger-border',
+  neutral: 'bg-surface-2 text-text-muted border-border',
+  'cat-2': 'bg-cat-2-soft text-cat-2-fg border-cat-2/20',
+  'cat-3': 'bg-cat-3-soft text-cat-3-fg border-cat-3/20',
+};
+
+const STATUS_TONE_BLOCK_CLASSES: Record<TableBookingStatusTone, string> = {
+  primary: 'border-primary/40 bg-primary/15 text-primary-soft-fg',
+  success: 'border-success/40 bg-success/15 text-success-fg',
+  warning: 'border-warning/40 bg-warning/15 text-warning-fg',
+  danger: 'border-danger/40 bg-danger/15 text-danger-fg',
+  neutral: 'border-border-strong bg-surface-hover text-text-muted',
+  'cat-2': 'border-cat-2/40 bg-cat-2/15 text-cat-2-fg',
+  'cat-3': 'border-cat-3/40 bg-cat-3/15 text-cat-3-fg',
+};
+
+function getTableBookingStatusTone(state: string | null | undefined): TableBookingStatusTone {
+  // Own keys only, so a stray state such as "constructor" cannot pick up an Object method.
+  if (state && Object.prototype.hasOwnProperty.call(TABLE_BOOKING_STATUS_TONE, state)) {
+    return TABLE_BOOKING_STATUS_TONE[state];
   }
+  return 'neutral';
+}
+
+export function getTableBookingStatusBadgeClasses(state: string | null | undefined): string {
+  return STATUS_TONE_BADGE_CLASSES[getTableBookingStatusTone(state)];
 }
 
 export function getTableBookingStatusBlockClasses(state: string | null | undefined): string {
-  switch (state) {
-    case 'private_block':
-      return 'border-slate-400 bg-slate-300/90 text-slate-900';
-    case 'seated':
-      return 'border-emerald-300 bg-emerald-200/90 text-emerald-900';
-    case 'left':
-      return 'border-sky-300 bg-sky-200/90 text-sky-900';
-    case 'confirmed':
-      return 'border-green-300 bg-green-200/90 text-green-900';
-    case 'pending_payment':
-      return 'border-amber-300 bg-amber-200/90 text-warning-fg';
-    case 'no_show':
-      return 'border-red-300 bg-red-200/90 text-danger-fg';
-    case 'cancelled':
-      return 'border-border-strong bg-border/90 text-text';
-    case 'completed':
-      return 'border-blue-300 bg-blue-200/90 text-info-fg';
-    case 'visited_waiting_for_review':
-    case 'review_clicked':
-      return 'border-purple-300 bg-purple-200/90 text-purple-900';
-    default:
-      return 'border-border-strong bg-border/90 text-text';
-  }
+  return STATUS_TONE_BLOCK_CLASSES[getTableBookingStatusTone(state)];
 }
 
 export function getTableBookingDepositState(
@@ -278,19 +295,19 @@ function getPaymentMethodLabel(method: string | null | undefined): string | null
   }
 }
 
+// Deposit badges use the same DS Badge tones: paid is success, an outstanding deposit is
+// warning, a deposit the party size calls for (not yet asked for) is info, and a waived or
+// absent deposit is neutral because nothing is owed.
+const DEPOSIT_BADGE_CLASSES: Record<TableBookingDepositState['kind'], string> = {
+  paid: 'bg-success-soft text-success-fg border-success-border',
+  pending: 'bg-warning-soft text-warning-fg border-warning-border',
+  required: 'bg-info-soft text-info-fg border-info-border',
+  waived: 'bg-surface-2 text-text-muted border-border',
+  none: 'bg-surface-2 text-text-muted border-border',
+};
+
 export function getTableBookingDepositBadgeClasses(kind: TableBookingDepositState['kind']): string {
-  switch (kind) {
-    case 'paid':
-      return 'border-green-300 bg-success-soft text-green-800';
-    case 'pending':
-      return 'border-amber-300 bg-warning-soft text-warning-fg';
-    case 'required':
-      return 'border-blue-300 bg-blue-50 text-info-fg';
-    case 'waived':
-      return 'border-border-strong bg-surface-2 text-text-muted';
-    default:
-      return 'border-border bg-surface-2 text-text-muted';
-  }
+  return DEPOSIT_BADGE_CLASSES[kind] ?? DEPOSIT_BADGE_CLASSES.none;
 }
 
 export function formatGbp(amount: number): string {

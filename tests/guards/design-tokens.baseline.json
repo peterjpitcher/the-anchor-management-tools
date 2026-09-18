@@ -6,7 +6,7 @@
     "sidebar-outside-shell": 3
   },
   "src/app/(authenticated)/customers/[id]/page.tsx": {
-    "raw-palette": 15
+    "raw-palette": 11
   },
   "src/app/(authenticated)/customers/insights/page.tsx": {
     "raw-palette": 10,
@@ -110,9 +110,6 @@
   },
   "src/app/(authenticated)/mileage/insights/_components/MileageInsightsClient.tsx": {
     "hex-colour": 1
-  },
-  "src/app/(authenticated)/parking/_components/ParkingClient.tsx": {
-    "raw-palette": 4
   },
   "src/app/(authenticated)/private-bookings/[id]/InvoiceBookingModal.tsx": {
     "raw-palette": 1
@@ -248,102 +245,6 @@
   "src/app/(authenticated)/settings/table-bookings/TableSetupManager.tsx": {
     "raw-palette": 4
   },
-  "src/app/(authenticated)/table-bookings/[id]/BookingDetailClient.tsx": {
-    "raw-palette": 15
-  },
-  "src/app/(authenticated)/table-bookings/boh/BohBookingsClient.tsx": {
-    "raw-palette": 26
-  },
-  "src/app/(authenticated)/table-bookings/foh/FohClockWidget.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/(authenticated)/table-bookings/foh/FohScheduleClient.tsx": {
-    "sidebar-outside-shell": 1
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohBookingDetailModal.tsx": {
-    "raw-palette": 32
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohChangeTimeModal.tsx": {
-    "raw-palette": 11,
-    "sidebar-outside-shell": 2
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohCreateBookingModal.tsx": {
-    "raw-palette": 21,
-    "sidebar-outside-shell": 8
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohHeader.tsx": {
-    "raw-palette": 21,
-    "sidebar-outside-shell": 10
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohMiniModals.tsx": {
-    "raw-palette": 2,
-    "sidebar-outside-shell": 2
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohOutsideBookings.tsx": {
-    "raw-palette": 1,
-    "sidebar-outside-shell": 1
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohTimeline.tsx": {
-    "raw-palette": 6,
-    "sidebar-outside-shell": 3
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohUnassignedBookings.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(authenticated)/table-bookings/reports/page.tsx": {
-    "raw-palette": 4,
-    "hex-colour": 1
-  },
-  "src/app/(authenticated)/vouchers/[number]/VoucherDetailClient.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/vouchers/all/LedgerClient.tsx": {
-    "raw-palette": 22
-  },
-  "src/app/(authenticated)/vouchers/foh/VouchersFohClient.tsx": {
-    "sidebar-outside-shell": 3
-  },
-  "src/app/(authenticated)/vouchers/foh/components/ConfirmDialog.tsx": {
-    "sidebar-outside-shell": 4
-  },
-  "src/app/(authenticated)/vouchers/foh/components/CustomerAttach.tsx": {
-    "raw-palette": 2,
-    "sidebar-outside-shell": 16
-  },
-  "src/app/(authenticated)/vouchers/foh/components/HandOutPanel.tsx": {
-    "raw-palette": 12,
-    "sidebar-outside-shell": 19
-  },
-  "src/app/(authenticated)/vouchers/foh/components/NumberSearch.tsx": {
-    "raw-palette": 1,
-    "sidebar-outside-shell": 6
-  },
-  "src/app/(authenticated)/vouchers/foh/components/RedeemPanel.tsx": {
-    "raw-palette": 8,
-    "sidebar-outside-shell": 10
-  },
-  "src/app/(authenticated)/vouchers/foh/components/StaffPicker.tsx": {
-    "sidebar-outside-shell": 2
-  },
-  "src/app/(authenticated)/vouchers/foh/components/VoucherCard.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/(authenticated)/vouchers/foh/components/voucher-status.ts": {
-    "raw-palette": 9
-  },
-  "src/app/(authenticated)/vouchers/foh/page.tsx": {
-    "sidebar-outside-shell": 3
-  },
-  "src/app/(authenticated)/vouchers/handout/HandoutClient.tsx": {
-    "raw-palette": 10,
-    "sidebar-outside-shell": 1
-  },
-  "src/app/(authenticated)/vouchers/page.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/vouchers/types/page.tsx": {
-    "raw-palette": 1
-  },
   "src/app/(employee-onboarding)/onboarding/[token]/steps/CreateAccountStep.tsx": {
     "raw-palette": 4
   },
@@ -364,9 +265,6 @@
   },
   "src/app/(employee-onboarding)/onboarding/success/page.tsx": {
     "raw-palette": 5
-  },
-  "src/app/(event-kiosk)/events/[id]/check-in/EventCheckInClient.tsx": {
-    "raw-palette": 1
   },
   "src/app/(staff-portal)/portal/leave/CancelLeaveRequestButton.tsx": {
     "raw-palette": 4
@@ -391,15 +289,6 @@
   },
   "src/app/(staff-portal)/portal/shifts/page.tsx": {
     "raw-palette": 21
-  },
-  "src/app/(timeclock)/layout.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(timeclock)/timeclock/_components/TimeclockClient.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(timeclock)/timeclock/page.tsx": {
-    "hex-colour": 3
   },
   "src/app/actions/calendar-notes.ts": {
     "hex-colour": 1
@@ -540,9 +429,6 @@
     "raw-palette": 7
   },
   "src/components/features/private-bookings/VenueSpaceDeleteButton.tsx": {
-    "raw-palette": 1
-  },
-  "src/components/features/table-bookings/preorder/SeasonalPreorderSection.tsx": {
     "raw-palette": 1
   },
   "src/components/modals/AddEmergencyContactModal.tsx": {
@@ -815,9 +701,6 @@
   },
   "src/lib/table-bookings/guest-emails.ts": {
     "hex-colour": 6
-  },
-  "src/lib/table-bookings/ui.ts": {
-    "raw-palette": 41
   },
   "src/lib/voucher-card-template.ts": {
     "hex-colour": 9
