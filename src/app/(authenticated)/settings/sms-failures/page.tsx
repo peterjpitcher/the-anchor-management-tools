@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatErrorMessage } from '@/lib/sms-status'
-import { Badge, Button, Card, LinkButton, PageLayout, Section, Stat } from '@/ds'
+import { Alert, Badge, Button, Card, LinkButton, PageLayout, Section, Stat } from '@/ds'
 import { loadUndeliveredGuestMessages } from '@/lib/notifications/undelivered'
 import { dismissSmsFailureFromForm, retrySmsFailureFromForm } from './actions'
 import { UndeliveredGuestMessagesSection } from './UndeliveredGuestMessagesSection'
@@ -198,9 +198,9 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
     >
       <div className="space-y-6">
         {error && (
-          <Card className="border-danger/30 bg-danger-soft p-4 text-sm text-danger-fg">
+          <Alert tone="danger">
             Failed to load SMS failures: {error.message}
-          </Card>
+          </Alert>
         )}
 
         <Section title="Summary">

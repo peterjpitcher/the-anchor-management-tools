@@ -125,12 +125,12 @@ function RateHistory({
       </div>
 
       {rates.length === 0 ? (
-        <p className="text-sm text-gray-400 italic">No rates set yet.</p>
+        <p className="text-sm text-text-soft italic">No rates set yet.</p>
       ) : (
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-xs text-gray-400 border-b border-border">
+            <tr className="text-xs text-text-muted border-b border-border">
               <th scope="col" className="text-left pb-1 font-medium">Rate</th>
               <th scope="col" className="text-left pb-1 font-medium">Effective from</th>
               <th scope="col" className="text-left pb-1 font-medium">Status</th>
@@ -139,7 +139,7 @@ function RateHistory({
           </thead>
           <tbody>
             {rates.map(r => (
-              <tr key={r.id} className="border-b border-gray-50">
+              <tr key={r.id} className="border-b border-border">
                 <td className="py-1.5 font-medium text-text">
                   {editingRateId === r.id ? (
                     <Input
@@ -166,7 +166,7 @@ function RateHistory({
                   ) : r.id === current?.id ? (
                     <Badge variant="success" size="sm">Current</Badge>
                   ) : (
-                    <span className="text-gray-400 text-xs">Historical</span>
+                    <Badge tone="neutral" size="sm">Historical</Badge>
                   )}
                 </td>
                 {canManage && (
@@ -289,12 +289,12 @@ function BandCard({
       <button
         type="button"
         onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center justify-between p-4 text-left hover:bg-surface-hover transition-colors"
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-surface-hover transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset"
       >
         <div className="flex items-center gap-3">
           {expanded
-            ? <ChevronDownIcon className="h-4 w-4 text-gray-400" />
-            : <ChevronRightIcon className="h-4 w-4 text-gray-400" />
+            ? <ChevronDownIcon className="h-4 w-4 text-text-subtle" />
+            : <ChevronRightIcon className="h-4 w-4 text-text-subtle" />
           }
           <div>
             <p className="font-medium text-text">{band.label}</p>
@@ -305,9 +305,9 @@ function BandCard({
         </div>
         <div className="flex items-center gap-3">
           {currentRate ? (
-            <span className="text-sm font-semibold text-green-700">{formatRate(currentRate.hourly_rate)}</span>
+            <span className="text-sm font-semibold text-text">{formatRate(currentRate.hourly_rate)}</span>
           ) : (
-            <span className="text-sm text-gray-400 italic">No rate set</span>
+            <span className="text-sm text-text-soft italic">No rate set</span>
           )}
           {!band.is_active && <Badge variant="default" size="sm">Inactive</Badge>}
         </div>
@@ -495,7 +495,7 @@ export default function PayBandsManager({ canManage, initialBands, initialRates 
       )}
 
       {bands.length === 0 ? (
-        <p className="text-sm text-gray-400 italic py-4 text-center">
+        <p className="text-sm text-text-soft italic py-4 text-center">
           No age bands configured yet. Create your first band above.
         </p>
       ) : (

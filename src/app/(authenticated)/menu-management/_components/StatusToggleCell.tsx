@@ -66,7 +66,7 @@ export function StatusToggleCell({
         type="button"
         onClick={() => void handleToggle()}
         disabled={isSaving}
-        className="inline-flex items-center gap-2 rounded-sm transition-colors hover:bg-surface-hover px-1 py-0.5 disabled:opacity-50"
+        className="inline-flex items-center gap-2 rounded-sm transition-colors hover:bg-surface-hover px-1 py-0.5 disabled:opacity-50 focus-visible:outline-hidden focus-visible:shadow-ring-inset"
         aria-label={`Toggle ${entityName} ${optimisticActive ? 'active' : 'inactive'}`}
       >
         <Badge tone={optimisticActive ? 'success' : 'neutral'}>{optimisticActive ? 'Active' : 'Inactive'}</Badge>

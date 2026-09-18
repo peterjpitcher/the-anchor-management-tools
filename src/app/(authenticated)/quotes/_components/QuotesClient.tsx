@@ -26,6 +26,7 @@ import {
 import { getQuotes, getQuoteSummary } from '@/app/actions/quotes'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { quoteStatusLabel, quoteStatusTone } from '@/lib/invoices/status-ui'
 
 // ---------------------------------------------------------------------------
 // Shared finance SectionNav items.
@@ -79,17 +80,6 @@ const STATUS_OPTIONS = [
   { value: 'rejected', label: 'Rejected' },
   { value: 'expired', label: 'Expired' },
 ]
-
-function statusBadgeTone(status: QuoteStatus): 'neutral' | 'success' | 'info' | 'danger' | 'warning' {
-  switch (status) {
-    case 'draft': return 'neutral'
-    case 'sent': return 'info'
-    case 'accepted': return 'success'
-    case 'rejected': return 'danger'
-    case 'expired': return 'warning'
-    default: return 'neutral'
-  }
-}
 
 const FALLBACK_SUMMARY: QuoteSummary = {
   total_pending: 0,
@@ -269,8 +259,8 @@ export default function QuotesClient({
                       <TableCell className="text-text-muted">{new Date(q.quote_date).toLocaleDateString('en-GB')}</TableCell>
                       <TableCell className="text-text-muted">{new Date(q.valid_until).toLocaleDateString('en-GB')}</TableCell>
                       <TableCell>
-                        <Badge tone={statusBadgeTone(q.status)} dot>
-                          {q.status.charAt(0).toUpperCase() + q.status.slice(1)}
+                        <Badge tone={quoteStatusTone(q.status)} dot>
+                          {quoteStatusLabel(q.status)}
                         </Badge>
                       </TableCell>
                       <TableCell align="right" className="font-medium tabular-nums">
@@ -288,7 +278,7 @@ export default function QuotesClient({
                             </Button>
                           ) : null}
                           {q.converted_to_invoice_id && (
-                            <span className="text-sm text-success font-medium">Converted</span>
+                            <span className="text-sm text-success-fg font-medium">Converted</span>
                           )}
                         </div>
                       </TableCell>
@@ -308,8 +298,8 @@ export default function QuotesClient({
                       {q.reference && <p className="text-sm text-text-muted truncate">{q.reference}</p>}
                       <p className="text-sm text-text-muted mt-1">{q.vendor?.name || '-'}</p>
                     </div>
-                    <Badge tone={statusBadgeTone(q.status)} dot>
-                      {q.status.charAt(0).toUpperCase() + q.status.slice(1)}
+                    <Badge tone={quoteStatusTone(q.status)} dot>
+                      {quoteStatusLabel(q.status)}
                     </Badge>
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-sm mb-3">
@@ -331,7 +321,7 @@ export default function QuotesClient({
                         </Button>
                       ) : null}
                       {q.converted_to_invoice_id && (
-                        <span className="text-sm text-success font-medium">Converted</span>
+                        <span className="text-sm text-success-fg font-medium">Converted</span>
                       )}
                     </div>
                   </div>

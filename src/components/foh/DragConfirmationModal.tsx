@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
-import { Button } from '@/ds'
+import { Alert, Button, Modal } from '@/ds'
 import type { PendingMove } from '@/app/(authenticated)/table-bookings/foh/useFohDrag'
 
 interface DragConfirmationModalProps {
@@ -12,6 +11,11 @@ interface DragConfirmationModalProps {
   error: string | null
 }
 
+/**
+ * Confirms a drag on the FOH timeline. Built on DS Modal like every other FOH dialog: Escape and a
+ * click on the backdrop both cancel, as they did when this was a hand-built overlay, and the
+ * dialog now also keeps keyboard focus inside itself while it is open.
+ */
 export function DragConfirmationModal({
   pendingMove,
   onConfirm,
@@ -19,15 +23,6 @@ export function DragConfirmationModal({
   isSubmitting,
   error,
 }: DragConfirmationModalProps) {
-  useEffect(() => {
-    if (!pendingMove) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [pendingMove, onCancel])
-
   if (!pendingMove) return null
 
   const title = pendingMove.type === 'time' ? 'Change Booking Time' : 'Move to Different Table'
@@ -46,48 +41,43 @@ export function DragConfirmationModal({
     )
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="drag-confirm-title"
-    >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-overlay"
-        onClick={onCancel}
-        aria-hidden="true"
-      />
-
-      {/* Modal */}
-      <div className="relative z-10 w-full max-w-sm rounded-lg bg-surface p-6 shadow-lg">
-        <h2
-          id="drag-confirm-title"
-          className="mb-3 text-lg font-semibold text-text-strong"
-        >
-          {title}
-        </h2>
-
-        <p className="mb-5 text-sm text-text-muted">{message}</p>
-
-        <div className="flex justify-end gap-3">
-          <Button type="button" variant="ghost" size="lg" onClick={onCancel} disabled={isSubmitting}>
+    <Modal
+      open
+      onClose={onCancel}
+      title={title}
+      width="sm"
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            className="min-h-touch"
+          >
             Cancel
           </Button>
-          <Button type="button" variant="primary" size="lg" onClick={onConfirm} disabled={isSubmitting}>
+          <Button
+            type="button"
+            variant="primary"
+            size="lg"
+            onClick={onConfirm}
+            disabled={isSubmitting}
+            className="min-h-touch"
+          >
             {isSubmitting ? 'Moving…' : 'Confirm'}
           </Button>
-        </div>
+        </>
+      }
+    >
+      <p className="text-sm text-text-muted">{message}</p>
 
-        {error && (
-          <p
-            className="mt-4 rounded-sm border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger-fg"
-            role="alert"
-          >
-            {error}
-          </p>
-        )}
-      </div>
-    </div>
+      {error && (
+        <Alert tone="danger" size="sm" className="mt-4">
+          {error}
+        </Alert>
+      )}
+    </Modal>
   )
 }

@@ -1,5 +1,7 @@
 'use client'
 
+import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
+
 import { useEffect, useMemo, useState } from 'react'
 import { sendChasePaymentEmail, getInvoiceEmailLogs } from '@/app/actions/email'
 import { Modal, ModalActions } from '@/ds'
@@ -32,17 +34,16 @@ export function ChasePaymentModal({ invoice, isOpen, onClose, onSuccess }: Chase
   const dueDate = new Date(invoice.due_date)
   const today = new Date()
   const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
-  const outstandingAmount = invoice.total_amount - invoice.paid_amount
+  const outstandingAmount = invoiceBalanceDue(invoice)
   
-  const [subject, setSubject] = useState(`Gentle reminder: Invoice ${invoice.invoice_number} - ${daysOverdue} days overdue`)
-  const [body, setBody] = useState(
-    `Hi ${invoice.vendor?.contact_name || invoice.vendor?.name || 'there'},
+  const defaultSubject = `Gentle reminder: Invoice ${invoice.invoice_number} - ${daysOverdue} days overdue`
+  const defaultBody = `Hi ${invoice.vendor?.contact_name || invoice.vendor?.name || 'there'},
 
 I hope you're well!
 
 Just a gentle reminder that invoice ${invoice.invoice_number} was due on ${dueDate.toLocaleDateString('en-GB')} and is now ${daysOverdue} ${daysOverdue === 1 ? 'day' : 'days'} overdue.
 
-Amount Outstanding: £${outstandingAmount.toFixed(2)}
+${invoiceIssuedCreditTotal(invoice) > 0 ? `Credits applied: £${invoiceIssuedCreditTotal(invoice).toFixed(2)}\n` : ''}Amount Outstanding: £${outstandingAmount.toFixed(2)}
 
 I understand things can get busy, so this is just a friendly nudge. If there's anything I can help with or if you need to discuss payment arrangements, please don't hesitate to get in touch.
 
@@ -52,7 +53,15 @@ Orange Jelly Limited
 07990587315
 
 P.S. I've attached a copy of the invoice for your reference.`
-  )
+  const [subject, setSubject] = useState(defaultSubject)
+  const [body, setBody] = useState(defaultBody)
+
+  // A newly issued credit must update a mounted dialog before it is sent.
+  useEffect(() => {
+    if (!isOpen) return
+    setSubject(defaultSubject)
+    setBody(defaultBody)
+  }, [isOpen, defaultSubject, defaultBody])
 
   // Load email logs
   useEffect(() => {
@@ -152,11 +161,12 @@ P.S. I've attached a copy of the invoice for your reference.`
           >
             Cancel
           </Button>
-          <Button onClick={handleSend}
+          <Button
+            variant="primary"
+            onClick={handleSend}
             disabled={!toEmails}
             loading={sending}
             leftIcon={<Send className="h-4 w-4" />}
-            className="bg-orange-600 hover:bg-orange-700 focus:ring-orange-500"
           >
             Send Reminder
           </Button>
@@ -165,8 +175,8 @@ P.S. I've attached a copy of the invoice for your reference.`
     >
       <div className="space-y-4">
         {/* Chase Payment Header */}
-        <div className="flex items-center gap-3 pb-4 border-b">
-          <Clock className="h-6 w-6 text-orange-600" />
+        <div className="flex items-center gap-3 pb-4 border-b border-border">
+          <Clock className="h-6 w-6 text-warning" />
           <div>
             <p className="text-sm text-text-muted">Invoice is {daysOverdue} {daysOverdue === 1 ? 'day' : 'days'} overdue</p>
           </div>
@@ -235,7 +245,7 @@ P.S. I've attached a copy of the invoice for your reference.`
           title="Attachment"
           description={`Invoice ${invoice.invoice_number} (PDF format) will be attached as a reminder.`}
         >
-          <p className="text-sm text-orange-700 mt-2">
+          <p className="text-sm text-warning-fg mt-2">
             <strong>Outstanding:</strong> £{outstandingAmount.toFixed(2)} • <strong>Due:</strong> {dueDate.toLocaleDateString('en-GB')}
           </p>
         </Alert>

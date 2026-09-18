@@ -16,6 +16,9 @@ import { formatDateInLondon } from '@/lib/dateUtils'
  *
  * Margin 4 is the specified quiet zone. Anything less is below spec for print and
  * is the usual cause of a code that scans on screen and fails off paper.
+ *
+ * Pure black on pure white is the scanner's maximum contrast, not a brand colour,
+ * so the two stay literal rather than coming from src/lib/brand/palette.ts.
  */
 export const QR_OPTIONS = {
   errorCorrectionLevel: 'H',

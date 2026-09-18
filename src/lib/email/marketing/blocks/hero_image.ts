@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText, escapeEmailUrl } from '../escape'
 import { defineBlock } from './types'
 
@@ -63,7 +65,7 @@ function imageRow(data: HeroImageData): string {
   return `<!-- IMAGE SLOT: replace this whole row with the row below once the photo is hosted
 <tr><td style="padding:0;font-size:0;line-height:0"><img src="https://YOUR-HOST/hero-christmas-table.jpg" width="${data.image.width}" height="${data.image.height}" alt="${escapeEmailText(data.image.alt)}" style="display:block;width:100%;max-width:600px;height:auto;border:0"></td></tr>
 -->
-<tr><td align="center" valign="middle" height="${data.image.height}" style="height:${data.image.height}px;background-color:#f5e6d3;border-bottom:1px solid #e2dccf;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;font-weight:600;line-height:20px;letter-spacing:0.14em;text-transform:uppercase;color:#8b6914">${escapeEmailText(data.placeholder_label)}<br>${escapeEmailText(data.placeholder_caption)}</td></tr>`
+<tr><td align="center" valign="middle" height="${data.image.height}" style="height:${data.image.height}px;background-color:${GUEST.sand};border-bottom:1px solid ${GUEST.border};font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;font-weight:600;line-height:20px;letter-spacing:0.14em;text-transform:uppercase;color:${GUEST.accentText}">${escapeEmailText(data.placeholder_label)}<br>${escapeEmailText(data.placeholder_caption)}</td></tr>`
 }
 
 export const heroImage = defineBlock<HeroImageData>({
@@ -93,17 +95,17 @@ export const heroImage = defineBlock<HeroImageData>({
   render: (data) => `
 ${imageRow(data)}
 
-<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:40px 32px 8px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;mso-line-height-rule:exactly;letter-spacing:0.18em;text-transform:uppercase;color:#8b6914">${escapeEmailText(data.kicker)}</td></tr>
-<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:10px 32px 0;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:38px;font-weight:400;line-height:44px;mso-line-height-rule:exactly;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.headline)}</td></tr>
+<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:40px 32px 8px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;mso-line-height-rule:exactly;letter-spacing:0.18em;text-transform:uppercase;color:${GUEST.accentText}">${escapeEmailText(data.kicker)}</td></tr>
+<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:10px 32px 0;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:38px;font-weight:400;line-height:44px;mso-line-height-rule:exactly;letter-spacing:-0.02em;color:${GUEST.green}">${escapeEmailText(data.headline)}</td></tr>
 ${data.body
   .map(
     (paragraph, index) =>
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:${index === 0 ? '16px' : '14px'} 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:27px;mso-line-height-rule:exactly;color:#1a1a1a">${escapeEmailText(paragraph)}</td></tr>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:${index === 0 ? '16px' : '14px'} 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:27px;mso-line-height-rule:exactly;color:${GUEST.text}">${escapeEmailText(paragraph)}</td></tr>`,
   )
   .join('\n')}
 
-<tr><td bgcolor="#faf8f3" align="center" style="background-color:#faf8f3;padding:26px 32px 34px">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tbody><tr><td align="center" bgcolor="#8b6914" style="background-color:#8b6914;border-radius:999px"><a href="${escapeEmailUrl(data.cta_url)}" style="display:block;padding:15px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:#ffffff;text-decoration:none">${escapeEmailText(data.cta_label)}</a></td></tr></tbody></table>
+<tr><td bgcolor="${GUEST.cream}" align="center" style="background-color:${GUEST.cream};padding:26px 32px 34px">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tbody><tr><td align="center" bgcolor="${GUEST.buttonBg}" style="background-color:${GUEST.buttonBg};border-radius:999px"><a href="${escapeEmailUrl(data.cta_url)}" style="display:block;padding:15px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:${GUEST.buttonText};text-decoration:none">${escapeEmailText(data.cta_label)}</a></td></tr></tbody></table>
 </td></tr>
 `,
   text: (data) =>

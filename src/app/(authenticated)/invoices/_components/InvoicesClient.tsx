@@ -1,5 +1,7 @@
 'use client'
 
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
+
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
@@ -36,6 +38,7 @@ import { toast } from '@/ds'
 import { downloadInvoicePdf } from '@/lib/invoices/download-pdf'
 import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
 import { getCurrentQuarterDateRange } from '@/lib/invoices/date-ranges'
+import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 import { MobileInvoiceCard } from '../MobileInvoiceCard'
 
 // ---------------------------------------------------------------------------
@@ -123,23 +126,6 @@ const STATUS_TAB_LIST = [
   { id: 'paid', label: 'Paid' },
   { id: 'overdue', label: 'Overdue' },
 ]
-
-function statusBadgeTone(status: InvoiceStatus): 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info' {
-  switch (status) {
-    case 'draft': return 'neutral'
-    case 'sent': return 'info'
-    case 'partially_paid': return 'warning'
-    case 'paid': return 'success'
-    case 'overdue': return 'danger'
-    case 'void': return 'neutral'
-    case 'written_off': return 'neutral'
-    default: return 'neutral'
-  }
-}
-
-function statusLabel(status: string): string {
-  return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -453,7 +439,7 @@ export default function InvoicesClient({
                         {new Date(inv.due_date).toLocaleDateString('en-GB')}
                       </TableCell>
                       <TableCell>
-                        <Badge tone={statusBadgeTone(inv.status)} dot>{statusLabel(inv.status)}</Badge>
+                        <Badge tone={invoiceStatusTone(inv.status)} dot>{invoiceStatusLabel(inv.status)}</Badge>
                       </TableCell>
                       <TableCell align="right" className="font-medium tabular-nums">
                         {inv.total_amount < 0 ? (
@@ -462,10 +448,10 @@ export default function InvoicesClient({
                       </TableCell>
                       <TableCell align="right">
                         {inv.status === 'paid' ? (
-                          <span className="text-success">Paid</span>
+                          <span className="text-success-fg">Paid</span>
                         ) : (
                           <span className={inv.status === 'overdue' ? 'text-danger font-medium' : ''}>
-                            {formatCurrency(inv.total_amount - inv.paid_amount)}
+                            {formatCurrency(invoiceBalanceDue(inv))}
                           </span>
                         )}
                       </TableCell>

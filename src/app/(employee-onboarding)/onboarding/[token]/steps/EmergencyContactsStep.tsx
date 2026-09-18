@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Button, Field, Input } from '@/ds';
 import { saveOnboardingSection } from '@/app/actions/employeeInvite';
 
 interface ContactData {
@@ -93,19 +94,14 @@ export default function EmergencyContactsStep({ token, initialData, onSuccess }:
         {label}{required && <span className="text-danger ml-1">*</span>}
       </h3>
       {(['name', 'relationship', 'phone_number', 'mobile_number', 'address'] as (keyof ContactData)[]).map((field) => (
-        <div key={field}>
-          <label className="block text-sm font-medium text-text mb-1 capitalize">
-            {field.replace(/_/g, ' ')}
-            {field === 'name' && required && <span className="text-danger ml-1">*</span>}
-          </label>
-          <input
+        <Field key={field} label={field.replace(/_/g, ' ')} required={field === 'name' && required}>
+          <Input
             type="text"
             value={values[field]}
             onChange={(e) => onChange(field, e.target.value)}
             required={field === 'name' && required}
-            className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
           />
-        </div>
+        </Field>
       ))}
     </div>
   );
@@ -130,13 +126,9 @@ export default function EmergencyContactsStep({ token, initialData, onSuccess }:
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"
-      >
+      <Button type="submit" variant="primary" className="w-full" disabled={loading}>
         {loading ? 'Saving...' : 'Save & Continue'}
-      </button>
+      </Button>
     </form>
   );
 }

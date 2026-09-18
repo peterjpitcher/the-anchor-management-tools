@@ -19,9 +19,11 @@ export const VOUCHER_STATUS_LABELS: Record<VoucherStatus, string> = {
   replaced: 'Replaced',
 }
 
-type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
+export type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
 
-const STATUS_TONES: Record<VoucherStatus, BadgeTone> = {
+// The one voucher status map (owner decision D5, 18 Sep 2026): the ledger, the detail page
+// and the FOH kiosk (vouchers/foh/components/voucher-status.ts) all read these words and tones.
+export const VOUCHER_STATUS_TONES: Record<VoucherStatus, BadgeTone> = {
   generated: 'neutral',
   issued: 'info',
   redeemed: 'success',
@@ -31,7 +33,7 @@ const STATUS_TONES: Record<VoucherStatus, BadgeTone> = {
 }
 
 export function VoucherStatusBadge({ status }: { status: VoucherStatus }) {
-  return <Badge tone={STATUS_TONES[status]}>{VOUCHER_STATUS_LABELS[status]}</Badge>
+  return <Badge tone={VOUCHER_STATUS_TONES[status]}>{VOUCHER_STATUS_LABELS[status]}</Badge>
 }
 
 export const VOUCHER_EVENT_ACTION_LABELS: Record<VoucherEventAction, string> = {

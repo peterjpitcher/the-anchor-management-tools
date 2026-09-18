@@ -10,6 +10,7 @@
  * emails go out from a no-reply address, so the footer names the address that reaches a person
  * rather than inviting a reply into a mailbox nobody reads.
  */
+import { GUEST } from '@/lib/brand/palette'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 
 export const GUEST_EMAIL_ADDRESS = 'manager@the-anchor.pub'
@@ -25,11 +26,11 @@ export function guestContactTextLine(): string {
  */
 export function guestContactHtmlBlock(): string {
   return [
-    '<p style="margin:16px 0 0;font-size:15px;line-height:1.5;color:#4b5563">',
+    `<p style="margin:16px 0 0;font-size:15px;line-height:1.5;color:${GUEST.textMuted}">`,
     'Any questions, call us on ',
-    `<a href="${GUEST_CONTACT.telHref}" style="color:#005131">${GUEST_CONTACT.phoneDisplay}</a>`,
+    `<a href="${GUEST_CONTACT.telHref}" style="color:${GUEST.green}">${GUEST_CONTACT.phoneDisplay}</a>`,
     ' or email ',
-    `<a href="mailto:${GUEST_EMAIL_ADDRESS}" style="color:#005131">${GUEST_EMAIL_ADDRESS}</a>.`,
+    `<a href="mailto:${GUEST_EMAIL_ADDRESS}" style="color:${GUEST.green}">${GUEST_EMAIL_ADDRESS}</a>.`,
     '</p>',
   ].join('')
 }

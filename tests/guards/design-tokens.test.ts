@@ -41,15 +41,58 @@ const ACCEPTED_HEX: Array<{ file: string; reason: string }> = [
     file: 'src/app/icon.tsx',
     reason: 'The favicon is rendered by next/og ImageResponse, outside the app stylesheet.',
   },
+  {
+    file: 'src/app/global-error.tsx',
+    reason: 'Replaces the root layout, so the app stylesheet may not load; styled inline with the token values.',
+  },
 ]
 
 const PALETTE = 'slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose'
 const VARIANTS = '(?:[a-z0-9@\\[\\]=&>*_.-]+:)*'
-/** A bare word such as `rounded` only counts as a class when it stands alone in a class list. */
-const WORD_START = '(?<=^|[\\s\'"`])'
-const WORD_END = '(?=$|[\\s\'"`])'
+type Rule = {
+  id: string
+  applies: (file: string) => boolean
+  why: string
+  /** Counted with a regex over the whole file (comments removed)... */
+  pattern?: RegExp
+  /** ...or with a custom counter. */
+  count?: (text: string) => number
+}
 
-type Rule = { id: string; pattern: RegExp; applies: (file: string) => boolean; why: string }
+/** Single-word utilities, so a class list made of them still reads as classes. */
+const SINGLE_WORD_UTILITIES = new Set([
+  'flex', 'grid', 'block', 'inline', 'hidden', 'contents', 'table', 'relative', 'absolute', 'fixed',
+  'sticky', 'static', 'isolate', 'grow', 'shrink', 'truncate', 'italic', 'underline', 'uppercase',
+  'lowercase', 'capitalize', 'visible', 'invisible', 'container', 'antialiased', 'rounded', 'shadow',
+  'border', 'group', 'peer', 'transition', 'outline',
+])
+const STRING_LITERALS = /'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`/g
+
+/**
+ * The strings in a file that read as class lists: at least two tokens, most of them shaped like
+ * utilities, and at least one hyphenated or variant class. Prose ("rounded to the nearest
+ * mile") and code (a variable called shadow) never qualify. Same rule as the codemod.
+ */
+function classListStrings(text: string): string[] {
+  const lists: string[] = []
+  for (const match of text.matchAll(STRING_LITERALS)) {
+    const body = match[0].slice(1, -1)
+    const tokens = body.trim().split(/\s+/).filter(Boolean)
+    if (tokens.length < 2) continue
+    const hyphenated = tokens.filter((token) => /[-:[]/.test(token)).length
+    const classy = tokens.filter((token) => /[-:[]/.test(token) || SINGLE_WORD_UTILITIES.has(token)).length
+    if (hyphenated > 0 && classy / tokens.length >= 0.6) lists.push(body)
+  }
+  return lists
+}
+
+/** How many times a bare utility word (rounded, shadow) appears as a class. */
+function countBareWord(text: string, word: string): number {
+  const re = new RegExp(`(?:^|\\s)${VARIANTS}${word}(?=\\s|$)`, 'g')
+  return classListStrings(text).reduce((total, list) => total + (list.match(re) ?? []).length, 0)
+}
+
+const NAMED_OFF_SCALE_SHADOW = new RegExp(`(?<![\\w-])${VARIANTS}shadow-(?:md|xl|2xl)(?![\\w-])`, 'g')
 
 const everywhere = () => true
 
@@ -73,7 +116,7 @@ const RULES: Rule[] = [
     id: 'bare-rounded',
     applies: everywhere,
     why: 'Bare rounded is 4px, below the scale. Use rounded-sm (6px) or a DS component.',
-    pattern: new RegExp(`${WORD_START}${VARIANTS}rounded${WORD_END}`, 'gm'),
+    count: (text) => countBareWord(text, 'rounded'),
   },
   {
     id: 'off-scale-radius',
@@ -85,7 +128,7 @@ const RULES: Rule[] = [
     id: 'off-scale-shadow',
     applies: everywhere,
     why: 'Bare shadow, shadow-md and shadow-xl are untinted Tailwind defaults. Use shadow-xs, sm, default, lg or ring.',
-    pattern: new RegExp(`(?:${WORD_START}${VARIANTS}shadow${WORD_END})|(?:(?<![\\w-])${VARIANTS}shadow-(?:md|xl|2xl)(?![\\w-]))`, 'gm'),
+    count: (text) => countBareWord(text, 'shadow') + (text.match(NAMED_OFF_SCALE_SHADOW) ?? []).length,
   },
   {
     id: 'dark-variant',
@@ -150,7 +193,7 @@ function countAll(): Counts {
     const text = stripComments(readFileSync(full, 'utf8'))
     for (const rule of RULES) {
       if (!rule.applies(file)) continue
-      const n = (text.match(rule.pattern) ?? []).length
+      const n = rule.count ? rule.count(text) : (text.match(rule.pattern!) ?? []).length
       if (n > 0) (counts[file] ??= {})[rule.id] = n
     }
   }

@@ -8,7 +8,11 @@
 // card-by-card page pairs. Black ink only, no fold line.
 //
 // This is a standalone print document like contract-template.ts: it must not
-// import app UI tokens. Fonts and artwork are embedded (no CDN dependency when
+// depend on the app stylesheet. Its colours are literal values from the GUEST
+// palette in src/lib/brand/palette.ts (a guest keeps this card): ink and soft
+// ink are the guest text colour (the terms print at 8.6px, so they never go
+// lighter), muted ink is the guest muted text and hairlines the strong guest
+// border. Fonts and artwork are embedded (no CDN dependency when
 // VOUCHER_FONTS_SELF_HOSTED is true). Render through generatePDFFromHTML with
 // { format: 'A4', landscape: true, preferCSSPageSize: true, printBackground: true,
 // margin: { top: '0', right: '0', bottom: '0', left: '0' } }.
@@ -27,6 +31,7 @@ import {
   ANCHOR_LOGO_BLACK_DATA_URI,
   QR_EVENTS_BOOKING_DATA_URI,
 } from '@/lib/vouchers/card-assets'
+import { GUEST } from '@/lib/brand/palette'
 
 export interface VoucherCardInput {
   voucherNumber: string
@@ -147,9 +152,9 @@ function normaliseTypeDefinition(typeId: string, raw: unknown): CardTypeDefiniti
 // removed, print sizes baked in). Every measurement matches the handoff.
 function cardStylesheet(): string {
   return `${VOUCHER_CARD_FONT_FACE_CSS}
-:root{--paper:#fff;--ink:#161616;--ink-soft:#363636;--ink-mute:#6b6b6b;--rule:#cfcfcf;--pad:12mm;--font-display:'DM Serif Display',Georgia,serif;--font-body:'Outfit',system-ui,-apple-system,sans-serif;--font-script:'Clicker Script',cursive}
+:root{--paper:${GUEST.surface};--ink:${GUEST.text};--ink-soft:${GUEST.text};--ink-mute:${GUEST.textMuted};--rule:${GUEST.borderStrong};--pad:12mm;--font-display:'DM Serif Display',Georgia,serif;--font-body:'Outfit',system-ui,-apple-system,sans-serif;--font-script:'Clicker Script',cursive}
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:#fff}
+html,body{margin:0;padding:0;background:${GUEST.surface}}
 body{font-family:var(--font-body);color:var(--ink);-webkit-print-color-adjust:exact;print-color-adjust:exact}
 @page{size:A4 landscape;margin:0}
 .page{width:296.6mm;height:209.6mm;background:var(--paper);position:relative;display:flex;overflow:hidden;page-break-inside:avoid;break-inside:avoid;page-break-after:always;break-after:page}
@@ -398,9 +403,9 @@ export function buildTermsSheetHtml(params: TermsSheetHtmlParams): string {
 <title>The Anchor - Voucher terms (${safeVersion})</title>
 ${VOUCHER_CARD_FONT_LINKS_HTML}<style>
 ${VOUCHER_CARD_FONT_FACE_CSS}
-:root{--ink:#161616;--ink-soft:#363636;--ink-mute:#6b6b6b;--rule:#cfcfcf;--font-display:'DM Serif Display',Georgia,serif;--font-body:'Outfit',system-ui,-apple-system,sans-serif}
+:root{--ink:${GUEST.text};--ink-soft:${GUEST.text};--ink-mute:${GUEST.textMuted};--rule:${GUEST.borderStrong};--font-display:'DM Serif Display',Georgia,serif;--font-body:'Outfit',system-ui,-apple-system,sans-serif}
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:#fff}
+html,body{margin:0;padding:0;background:${GUEST.surface}}
 body{font-family:var(--font-body);color:var(--ink);-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .sheet-head{padding-bottom:5mm;margin-bottom:6mm;border-bottom:1.4px solid var(--ink)}
 .sheet-kicker{font-weight:600;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-mute);margin:0 0 2mm}

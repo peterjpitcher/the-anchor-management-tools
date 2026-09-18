@@ -74,7 +74,7 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
       </div>
 
       {days > 0 && (
-        <div className="rounded-lg border px-3 py-2 text-sm bg-blue-50 border-blue-100 text-info-fg">
+        <div className="rounded-lg border border-info-border bg-info-soft px-3 py-2 text-sm text-info-fg">
           <strong>{days} day{days !== 1 ? 's' : ''}</strong> requested
         </div>
       )}
@@ -89,7 +89,7 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
       </FormGroup>
 
       <div className="flex gap-2">
-        <Button type="button" onClick={handleSubmit} disabled={isPending}>
+        <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
           {isPending ? 'Submitting…' : 'Submit request'}
         </Button>
         <Button type="button" variant="ghost" onClick={() => router.push('/portal/leave')}>

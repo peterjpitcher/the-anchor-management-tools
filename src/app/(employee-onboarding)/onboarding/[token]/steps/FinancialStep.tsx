@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Button, Input } from '@/ds';
 import { saveOnboardingSection } from '@/app/actions/employeeInvite';
 
 interface FinancialData {
@@ -85,20 +86,17 @@ export default function FinancialStep({ token, initialData, onSuccess }: Financi
     type = 'text',
     inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']
   ) => (
-    <div>
-      <label htmlFor={id} className="block text-sm font-medium text-text mb-1">{label}</label>
-      <input
-        id={id}
-        type={type}
-        inputMode={inputMode}
-        value={data[id]}
-        onChange={(e) => setData({ ...data, [id]: e.target.value })}
-        className={`block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-500 ${
-          errors[id] ? 'border-red-300 focus:border-red-500' : 'border-border-strong focus:border-border-focus'
-        }`}
-      />
-      {errors[id] && <p className="mt-1 text-xs text-danger">{errors[id]}</p>}
-    </div>
+    // The Input's own label and error props, not a Field wrapper: the Input draws the danger
+    // border, and links the message with aria-describedby and aria-invalid.
+    <Input
+      id={id}
+      label={label}
+      type={type}
+      inputMode={inputMode}
+      value={data[id]}
+      onChange={(e) => setData({ ...data, [id]: e.target.value })}
+      error={errors[id]}
+    />
   );
 
   return (
@@ -126,13 +124,9 @@ export default function FinancialStep({ token, initialData, onSuccess }: Financi
 
       {globalError && <p className="text-sm text-danger">{globalError}</p>}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"
-      >
+      <Button type="submit" variant="primary" className="w-full" disabled={loading}>
         {loading ? 'Saving...' : 'Save & Continue'}
-      </button>
+      </Button>
     </form>
   );
 }

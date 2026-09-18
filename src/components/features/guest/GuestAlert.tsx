@@ -70,8 +70,8 @@ export function GuestAlert({
       <Icon aria-hidden="true" className="mt-[2px] h-4 w-4 shrink-0" />
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        {title ? <p className="text-[13px] font-bold leading-[1.4]">{title}</p> : null}
-        <div className={cn('text-[14px] leading-[1.6]', BODY_CLASS[tone])}>{children}</div>
+        {title ? <p className="text-ui font-bold leading-[1.4]">{title}</p> : null}
+        <div className={cn('text-sm leading-[1.6]', BODY_CLASS[tone])}>{children}</div>
         {action ? <div className="pt-1">{action}</div> : null}
       </div>
     </div>

@@ -139,7 +139,7 @@ export function TellUsClient({ src }: TellUsClientProps) {
         <div className="flex flex-col gap-2">
           <label
             id="rating-label"
-            className="font-anchor-body text-[15px] font-semibold text-guest-text"
+            className="font-anchor-body text-guest-lead font-semibold text-guest-text"
           >
             How would you rate your visit?
           </label>
@@ -171,7 +171,7 @@ export function TellUsClient({ src }: TellUsClientProps) {
             onClick={() => setShowContact((v) => !v)}
             aria-expanded={showContact}
             aria-controls="contact-details"
-            className="self-start text-left font-anchor-body text-[14px] font-semibold text-guest-accent-text underline underline-offset-[3px] hover:no-underline"
+            className="self-start text-left font-anchor-body text-sm font-semibold text-guest-accent-text underline underline-offset-[3px] hover:no-underline"
           >
             {showContact ? 'Hide contact details' : 'Add your contact details if you\'d like us to follow up'}
           </button>
@@ -218,7 +218,7 @@ export function TellUsClient({ src }: TellUsClientProps) {
                   class is what keeps the tap target at 44px. */}
               <label
                 htmlFor="contactConsent"
-                className={cn(GUEST_CHOICE_ROW_CLASS, 'text-[13px] leading-[1.55]')}
+                className={cn(GUEST_CHOICE_ROW_CLASS, 'text-ui leading-[1.55]')}
               >
                 <input
                   id="contactConsent"

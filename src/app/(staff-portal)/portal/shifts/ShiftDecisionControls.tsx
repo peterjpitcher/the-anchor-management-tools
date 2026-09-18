@@ -4,7 +4,9 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { Button, IconButton, Textarea } from '@/ds';
 import { acceptPortalShift, rejectPortalShift, type ShiftAcceptanceStatus } from '@/app/actions/rota';
+import { rotaShiftStatusClasses } from '@/lib/rota/status-ui';
 import { validateShiftRejectionReason } from '@/lib/rota/shift-rejection-validation';
 
 type Props = {
@@ -42,15 +44,15 @@ export default function ShiftDecisionControls({
 
   if (acceptanceStatus === 'accepted' || acceptanceStatus === 'auto_accepted') {
     return (
-      <div className="mt-2 rounded-lg border border-green-100 bg-success-soft px-3 py-2 text-xs text-green-800">
+      <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${rotaShiftStatusClasses(acceptanceStatus)}`}>
         <p className="font-semibold">
           {acceptedLabel}{acceptedTime ? ` ${acceptedTime}` : ''}
         </p>
         {acceptanceStatus === 'auto_accepted' && autoAcceptReason && (
-          <p className="mt-1 text-green-700">{autoAcceptReason}</p>
+          <p className="mt-1">{autoAcceptReason}</p>
         )}
         {acceptanceStatus === 'accepted' && (
-          <p className="mt-1 text-green-700">Need to change it? Please contact Billy.</p>
+          <p className="mt-1">Need to change it? Please contact Billy.</p>
         )}
       </div>
     );
@@ -93,69 +95,65 @@ export default function ShiftDecisionControls({
   return (
     <div className="mt-3 space-y-2">
       {!rejecting ? (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-100 bg-warning-soft px-3 py-2">
+        <div className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 ${rotaShiftStatusClasses('pending')}`}>
           <div className="min-w-0">
-            <p className="text-xs font-medium text-warning-fg">
+            <p className="text-xs font-medium">
               Please accept or reject this shift.
             </p>
-            <p className="mt-0.5 text-xs text-warning-fg">
+            <p className="mt-0.5 text-xs">
               Auto-accepts on {autoAcceptDeadline}.
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <button
+            <IconButton
               type="button"
+              variant="primary"
               onClick={onAccept}
               disabled={isPending}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-green-600 text-white shadow-xs hover:bg-green-700 disabled:opacity-50"
-              aria-label="Accept shift"
+              label="Accept shift"
               title="Accept shift"
-            >
-              <CheckIcon className="h-4 w-4" />
-            </button>
-            <button
+              icon={<CheckIcon className="h-4 w-4" />}
+              className="rounded-pill"
+            />
+            <IconButton
               type="button"
+              variant="secondary"
               onClick={() => setRejecting(true)}
               disabled={isPending}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-200 bg-surface text-red-700 shadow-xs hover:bg-danger-soft disabled:opacity-50"
-              aria-label="Reject shift"
+              label="Reject shift"
               title="Reject shift"
-            >
-              <XMarkIcon className="h-4 w-4" />
-            </button>
+              icon={<XMarkIcon className="h-4 w-4" />}
+              className="rounded-pill border-danger-border text-danger-fg shadow-xs hover:bg-danger-soft"
+            />
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border border-red-100 bg-danger-soft p-3">
+        <div className="rounded-lg border border-danger-border bg-danger-soft p-3">
           <label htmlFor={`reject-note-${shiftId}`} className="text-xs font-medium text-danger-fg">
             Reason for manager
           </label>
-          <textarea
+          <Textarea
             id={`reject-note-${shiftId}`}
             value={note}
             onChange={event => setNote(event.target.value)}
             maxLength={500}
             required
             rows={3}
-            className="mt-1 w-full rounded-md border border-red-100 bg-surface px-2 py-1.5 text-xs text-text outline-none focus:border-red-300"
+            className="mt-1"
           />
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={onReject}
-              disabled={isPending}
-              className="rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-800 disabled:opacity-50"
-            >
+            <Button type="button" variant="danger" size="sm" onClick={onReject} disabled={isPending}>
               {isPending ? 'Saving...' : 'Confirm reject'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               onClick={() => { setRejecting(false); setNote(''); }}
               disabled={isPending}
-              className="rounded-md border border-red-100 bg-surface px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-danger-soft disabled:opacity-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}

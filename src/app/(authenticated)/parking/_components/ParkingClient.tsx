@@ -620,7 +620,6 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                                   customerId={booking.customer_id ?? null}
                                   name={`${booking.customer_first_name} ${booking.customer_last_name ?? ''}`.trim()}
                                   fallback="Unknown Customer"
-                                  className="text-blue-600 hover:text-blue-700"
                                 />
                               </div>
                             </TableCell>
@@ -643,7 +642,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                         key={booking.id}
                         type="button"
                         onClick={() => handleSelectBooking(booking)}
-                        className={`flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-surface-hover ${
+                        className={`flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset ${
                           selectedBooking?.id === booking.id ? 'bg-primary-soft' : ''
                         }`}
                       >
@@ -697,7 +696,6 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                           customerId={selectedBooking.customer_id ?? null}
                           name={`${selectedBooking.customer_first_name} ${selectedBooking.customer_last_name ?? ''}`.trim()}
                           fallback="Unknown Customer"
-                          className="text-blue-600 hover:text-blue-700"
                         />
                       }
                     />

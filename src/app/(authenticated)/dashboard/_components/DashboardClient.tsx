@@ -8,6 +8,7 @@ import {
   CardBody,
   Badge,
   Button,
+  LinkButton,
   Avatar,
   AvatarStack,
   Alert,
@@ -152,10 +153,10 @@ export default function DashboardClient({
                   <Link
                     key={item.id}
                     href={item.href}
-                    className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
+                    className={`flex items-start gap-3 p-3 rounded-lg border transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                       item.severity === 'high'
-                        ? 'bg-danger-soft border-danger/20 hover:bg-danger-soft'
-                        : 'bg-warning-soft border-warning/20 hover:bg-warning-soft'
+                        ? 'bg-danger-soft border-danger-border'
+                        : 'bg-warning-soft border-warning-border'
                     }`}
                   >
                     <div className="flex-1">
@@ -183,7 +184,7 @@ export default function DashboardClient({
                       <Link
                         key={action.label}
                         href={action.href}
-                        className="flex items-center justify-center p-3 bg-surface border border-border rounded-lg hover:border-primary hover:bg-primary-soft transition-all text-center text-xs font-medium text-text-muted hover:text-primary-soft-fg"
+                        className="flex items-center justify-center p-3 bg-surface border border-border rounded-lg hover:border-primary hover:bg-primary-soft transition-all text-center text-xs font-medium text-text-muted hover:text-primary-soft-fg focus-visible:outline-hidden focus-visible:shadow-ring"
                       >
                         {action.label}
                       </Link>
@@ -225,7 +226,7 @@ export default function DashboardClient({
                     const content = (
                       <>
                         <span className="min-w-0 flex-1 truncate text-text-muted">{item.title}</span>
-                        <span className="max-w-[55%] truncate text-xs text-text-subtle">{item.subtitle}</span>
+                        <span className="max-w-[55%] truncate text-xs text-text-soft">{item.subtitle}</span>
                       </>
                     )
 
@@ -233,7 +234,7 @@ export default function DashboardClient({
                       <Link
                         key={item.id}
                         href={item.href}
-                        className="flex min-w-0 items-start gap-2 rounded-md text-ui hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                        className="flex min-w-0 items-start gap-2 rounded-md text-ui hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring"
                       >
                         {content}
                       </Link>
@@ -248,7 +249,7 @@ export default function DashboardClient({
             )}
 
             <div className="h-px bg-border my-1" />
-            <Link href="/events" className="text-ui text-primary font-medium hover:underline">
+            <Link href="/events" className="rounded-sm text-ui text-primary font-medium hover:underline focus-visible:outline-hidden focus-visible:shadow-ring">
               View daily brief &rarr;
             </Link>
           </CardBody>
@@ -259,11 +260,9 @@ export default function DashboardClient({
             title="Upcoming events"
             subtitle={`Next 7 days · ${upcomingEvents.length} events`}
             action={
-              <Link href="/events">
-                <Button variant="ghost" size="sm">
-                  All events &rarr;
-                </Button>
-              </Link>
+              <LinkButton href="/events" variant="ghost" size="sm">
+                All events &rarr;
+              </LinkButton>
             }
           />
           <CardBody className="p-0">
@@ -275,7 +274,7 @@ export default function DashboardClient({
                   <Link
                     key={e.id}
                     href={e.href}
-                    className="grid grid-cols-[auto_1fr_auto] sm:grid-cols-[auto_1fr_auto_auto] items-center gap-3.5 py-2.5 border-t border-border first:border-t-0"
+                    className="grid grid-cols-[auto_1fr_auto] sm:grid-cols-[auto_1fr_auto_auto] items-center gap-3.5 py-2.5 border-t border-border first:border-t-0 focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                   >
                     <div className="w-11 text-center rounded-lg bg-primary-soft text-primary-soft-fg py-1.5 flex-shrink-0">
                       <div className="text-2xs font-bold tracking-wider uppercase">{e.dateLabel}</div>
@@ -320,7 +319,7 @@ export default function DashboardClient({
               ))
             )}
             <div className="h-px bg-border" />
-            <Link href="/settings/audit-logs" className="text-ui text-primary font-medium hover:underline">
+            <Link href="/settings/audit-logs" className="rounded-sm text-ui text-primary font-medium hover:underline focus-visible:outline-hidden focus-visible:shadow-ring">
               View audit log &rarr;
             </Link>
           </CardBody>
@@ -352,11 +351,11 @@ export default function DashboardClient({
             </div>
             <div>
               <div className="text-meta text-text-muted">Week vs last</div>
-              <div className={`text-base font-semibold tabular-nums ${revenueSummary.vsLastWeek.startsWith('-') ? 'text-danger' : revenueSummary.vsLastWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.vsLastWeek}</div>
+              <div className={`text-base font-semibold tabular-nums ${revenueSummary.vsLastWeek.startsWith('-') ? 'text-danger' : revenueSummary.vsLastWeek === '--' ? 'text-text-muted' : 'text-success-fg'}`}>{revenueSummary.vsLastWeek}</div>
             </div>
             <div>
               <div className="text-meta text-text-muted">Last year same week</div>
-              <div className={`text-base font-semibold tabular-nums ${revenueSummary.lastYearSameWeek.startsWith('-') ? 'text-danger' : revenueSummary.lastYearSameWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.lastYearSameWeek}</div>
+              <div className={`text-base font-semibold tabular-nums ${revenueSummary.lastYearSameWeek.startsWith('-') ? 'text-danger' : revenueSummary.lastYearSameWeek === '--' ? 'text-text-muted' : 'text-success-fg'}`}>{revenueSummary.lastYearSameWeek}</div>
             </div>
           </div>
         </CardBody>

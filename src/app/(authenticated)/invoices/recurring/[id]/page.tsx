@@ -15,6 +15,7 @@ import { DataTable } from '@/ds'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { invoiceStatusLabel } from '@/lib/invoices/status-ui'
 
 type GenerateInvoiceActionResult = Awaited<ReturnType<typeof generateInvoiceFromRecurring>>
 
@@ -308,7 +309,7 @@ export default function RecurringInvoiceDetailPage() {
             <div>
               <div className="text-sm text-text-muted">Status</div>
               <div className="mt-1">
-                <Badge variant={recurringInvoice.is_active ? 'success' : 'default'} size="sm">
+                <Badge tone={recurringInvoice.is_active ? 'success' : 'neutral'} size="sm">
                   {recurringInvoice.is_active ? 'Active' : 'Inactive'}
                 </Badge>
               </div>
@@ -322,7 +323,7 @@ export default function RecurringInvoiceDetailPage() {
             <div>
               <div className="text-sm text-text-muted">Frequency</div>
               <div className="mt-1 flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-gray-400" />
+                <Calendar className="h-4 w-4 text-text-subtle" />
                 <span className="capitalize">{recurringInvoice.frequency}</span>
               </div>
             </div>
@@ -330,7 +331,7 @@ export default function RecurringInvoiceDetailPage() {
             <div>
               <div className="text-sm text-text-muted">Payment Terms</div>
               <div className="mt-1 flex items-center gap-2">
-                <Clock className="h-4 w-4 text-gray-400" />
+                <Clock className="h-4 w-4 text-text-subtle" />
                 <span>{recurringInvoice.days_before_due} days</span>
               </div>
             </div>
@@ -378,7 +379,7 @@ export default function RecurringInvoiceDetailPage() {
               <div className="text-sm text-text-muted">Last Invoice</div>
               <div className="mt-1">
                 {recurringInvoice.last_invoice
-                  ? `${recurringInvoice.last_invoice.invoice_number} (${recurringInvoice.last_invoice.status})`
+                  ? `${recurringInvoice.last_invoice.invoice_number} (${invoiceStatusLabel(recurringInvoice.last_invoice.status)})`
                   : 'None'}
               </div>
             </div>
@@ -463,7 +464,7 @@ export default function RecurringInvoiceDetailPage() {
               <span>VAT:</span>
               <span>£{totals.vat.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between border-t pt-2 text-lg font-semibold">
+            <div className="flex justify-between border-t border-border pt-2 text-lg font-semibold">
               <span>Total:</span>
               <span>£{finalTotal.toFixed(2)}</span>
             </div>
@@ -505,7 +506,7 @@ export default function RecurringInvoiceDetailPage() {
               <dt className="text-sm text-text-muted">Last generated invoice</dt>
               <dd className="text-base font-medium text-text">
                 {recurringInvoice.last_invoice
-                  ? `${recurringInvoice.last_invoice.invoice_number} (${recurringInvoice.last_invoice.status})`
+                  ? `${recurringInvoice.last_invoice.invoice_number} (${invoiceStatusLabel(recurringInvoice.last_invoice.status)})`
                   : 'Not yet generated'}
               </dd>
             </div>

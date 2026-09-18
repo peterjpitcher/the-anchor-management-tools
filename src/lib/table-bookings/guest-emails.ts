@@ -15,6 +15,7 @@
  * Pure functions: no database, no clock, so they can be rendered with fixture data in tests.
  */
 
+import { GUEST } from '@/lib/brand/palette'
 import { formatDateInLondon, formatTime12Hour, formatTimeInLondon, isValidIsoDate } from '@/lib/dateUtils'
 import { GUEST_EMAIL_SIGN_OFF, guestContactHtmlBlock, guestContactTextLine } from '@/lib/email/guest-footer'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
@@ -27,8 +28,6 @@ export type TableBookingEmail = {
 }
 
 const FONT_FAMILY = 'Arial, Helvetica, sans-serif'
-/** The Anchor green, as the guest contact block and the guest pages already use it. */
-const BRAND_GREEN = '#005131'
 
 function escapeHtml(value: string): string {
   return value
@@ -139,22 +138,22 @@ function renderTableBookingEmail(layout: EmailLayout): TableBookingEmail {
           ...rows.map(
             (row) =>
               `<tr><td style="font-family:${FONT_FAMILY};font-size:15px;padding:8px 12px 8px 0;` +
-              `border-bottom:1px solid #eeeeee;color:#666666;white-space:nowrap;vertical-align:top">` +
+              `border-bottom:1px solid ${GUEST.border};color:${GUEST.textMuted};white-space:nowrap;vertical-align:top">` +
               `${escapeHtml(row.label)}</td>` +
               `<td style="font-family:${FONT_FAMILY};font-size:15px;padding:8px 0;` +
-              `border-bottom:1px solid #eeeeee;vertical-align:top">${escapeHtml(row.value)}</td></tr>`
+              `border-bottom:1px solid ${GUEST.border};vertical-align:top">${escapeHtml(row.value)}</td></tr>`
           ),
           '</table>',
         ].join('')
       : ''
 
   const html = [
-    `<div style="font-family:${FONT_FAMILY};max-width:600px;margin:0 auto;padding:20px;color:#1a1a1a">`,
+    `<div style="font-family:${FONT_FAMILY};max-width:600px;margin:0 auto;padding:20px;color:${GUEST.text}">`,
     // The preview line. Hidden in the body, read by the inbox.
     '<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden">',
     escapeHtml(layout.preheader),
     '</div>',
-    `<h2 style="font-family:${FONT_FAMILY};font-size:20px;line-height:1.3;margin:0 0 16px;color:${BRAND_GREEN}">`,
+    `<h2 style="font-family:${FONT_FAMILY};font-size:20px;line-height:1.3;margin:0 0 16px;color:${GUEST.green}">`,
     escapeHtml(layout.heading),
     '</h2>',
     ...paragraphs(layout.opening),
@@ -162,7 +161,7 @@ function renderTableBookingEmail(layout: EmailLayout): TableBookingEmail {
     ...paragraphs(layout.closing),
     layout.cta
       ? `<p style="margin:20px 0"><a href="${escapeHtml(layout.cta.url)}" ` +
-        `style="font-family:${FONT_FAMILY};display:inline-block;background:${BRAND_GREEN};color:#ffffff;` +
+        `style="font-family:${FONT_FAMILY};display:inline-block;background:${GUEST.buttonBg};color:${GUEST.buttonText};` +
         `font-size:16px;padding:12px 20px;border-radius:4px;text-decoration:none">` +
         `${escapeHtml(layout.cta.label)}</a></p>`
       : '',

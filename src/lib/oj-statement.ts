@@ -1,5 +1,6 @@
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { escapeHtml } from '@/lib/cron/alerting'
+import { STAFF } from '@/lib/brand/palette'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import {
   renderDocumentFooter,
@@ -56,11 +57,11 @@ function formatStatementDate(dateStr: string): string {
 const STATEMENT_BODY_CSS = `
     .statement-meta {
       font-size: 8pt;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
     }
 
     .statement-meta strong {
-      color: #111827;
+      color: ${STAFF.text};
     }
 
     .ledger {
@@ -78,13 +79,13 @@ const STATEMENT_BODY_CSS = `
     }
 
     .ledger th {
-      background: #f3f4f6;
+      background: ${STAFF.surfaceHover};
       padding: 5px 6px;
       text-align: left;
       font-size: 8pt;
       font-weight: 600;
-      color: #374151;
-      border-bottom: 2px solid #d1d5db;
+      color: ${STAFF.text};
+      border-bottom: 2px solid ${STAFF.borderStrong};
       text-transform: uppercase;
       letter-spacing: 0.3px;
     }
@@ -96,20 +97,20 @@ const STATEMENT_BODY_CSS = `
 
     .ledger td {
       padding: 4px 6px;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid ${STAFF.border};
       font-size: 8pt;
       vertical-align: top;
       word-break: break-word;
     }
 
     .ledger .opening td {
-      background: #fefce8;
+      background: ${STAFF.warningSoft};
       font-weight: 600;
     }
 
     .ledger .closing td {
-      background: #f0fdf4;
-      border-top: 2px solid #16a34a;
+      background: ${STAFF.primarySoft};
+      border-top: 2px solid ${STAFF.primary};
       border-bottom: none;
       font-size: 9pt;
       font-weight: 700;
@@ -117,7 +118,7 @@ const STATEMENT_BODY_CSS = `
     }
 
     .credit-amount {
-      color: #dc2626;
+      color: ${STAFF.danger};
     }
 
     .ageing {
@@ -128,15 +129,15 @@ const STATEMENT_BODY_CSS = `
     }
 
     .ageing th {
-      background: #f9fafb;
+      background: ${STAFF.surface2};
       padding: 4px 6px;
       font-size: 7pt;
       font-weight: 600;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
       text-transform: uppercase;
       letter-spacing: 0.3px;
       text-align: right;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid ${STAFF.border};
     }
 
     .ageing th:first-child {
@@ -148,36 +149,36 @@ const STATEMENT_BODY_CSS = `
       font-size: 9pt;
       font-weight: 600;
       text-align: right;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid ${STAFF.border};
     }
 
     .ageing td:first-child {
       text-align: left;
       font-weight: 400;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
     }
 
     .ageing .overdue-most {
-      color: #dc2626;
+      color: ${STAFF.danger};
     }
 
     .reconciliation {
       font-size: 7pt;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
       margin: 0 0 10px 0;
     }
 
     .statement-payment {
       margin-top: 12px;
       padding: 8px;
-      background: #f9fafb;
+      background: ${STAFF.surface2};
       border-radius: 4px;
       page-break-inside: avoid;
     }
 
     .statement-payment h3 {
       margin: 0 0 5px 0;
-      color: #111827;
+      color: ${STAFF.textStrong};
       font-size: 9pt;
       text-transform: uppercase;
       letter-spacing: 0.3px;
@@ -239,7 +240,7 @@ export function generateStatementHTML(input: StatementPDFInput): string {
     .join('\n')
 
   const emptyRow = `      <tr>
-        <td colspan="6" style="text-align: center; color: #6b7280;">No transactions in this period.</td>
+        <td colspan="6" style="text-align: center; color: ${STAFF.textMuted};">No transactions in this period.</td>
       </tr>`
 
   const closingBalanceDisplay = formatBalance(input.closingBalance)

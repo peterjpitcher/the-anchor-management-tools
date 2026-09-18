@@ -236,7 +236,6 @@ export function BusinessHoursManager({
               value={h.opens || ''}
               onChange={(e) => handleTimeChange(h.day_of_week, 'opens', e.target.value)}
               disabled={!editable || h.is_closed}
-              fullWidth
             />
           ) },
           { key: 'closes', header: 'Closes', cell: (h: any) => (
@@ -245,7 +244,6 @@ export function BusinessHoursManager({
               value={h.closes || ''}
               onChange={(e) => handleTimeChange(h.day_of_week, 'closes', e.target.value)}
               disabled={!editable || h.is_closed}
-              fullWidth
             />
           ) },
           { key: 'kopens', header: 'Kitchen Opens', cell: (h: any) => (
@@ -254,7 +252,6 @@ export function BusinessHoursManager({
               value={h.kitchen_opens || ''}
               onChange={(e) => handleKitchenTimeChange(h.day_of_week, 'kitchen_opens', e.target.value)}
               disabled={!editable || h.is_closed || h.is_kitchen_closed}
-              fullWidth
             />
           ) },
           { key: 'kcloses', header: 'Kitchen Closes', cell: (h: any) => (
@@ -263,7 +260,6 @@ export function BusinessHoursManager({
               value={h.kitchen_closes || ''}
               onChange={(e) => handleKitchenTimeChange(h.day_of_week, 'kitchen_closes', e.target.value)}
               disabled={!editable || h.is_closed || h.is_kitchen_closed}
-              fullWidth
             />
           ) },
           { key: 'slopens', header: 'Sun Lunch Start', cell: (h: any) => (
@@ -273,7 +269,6 @@ export function BusinessHoursManager({
                 value={getSundayLunchTime(h, 'starts_at')}
                 onChange={(e) => handleSundayLunchTimeChange('starts_at', e.target.value)}
                 disabled={!editable || h.is_closed}
-                fullWidth
                 placeholder="-"
               />
             ) : <span className="text-text-subtle text-center block">-</span>
@@ -285,14 +280,13 @@ export function BusinessHoursManager({
                 value={getSundayLunchTime(h, 'ends_at')}
                 onChange={(e) => handleSundayLunchTimeChange('ends_at', e.target.value)}
                 disabled={!editable || h.is_closed}
-                fullWidth
                 placeholder="-"
               />
             ) : <span className="text-text-subtle text-center block">-</span>
           ) },
         ]}
         renderMobileCard={(h: any) => (
-          <Card variant="bordered" padding="sm">
+          <Card padding="sm">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-text">{DAY_NAMES[h.day_of_week]}</h3>
               <Checkbox
@@ -312,43 +306,39 @@ export function BusinessHoursManager({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-text-muted mb-1">Opens</label>
                 <Input
+                  label="Opens"
                   type="time"
                   value={h.opens || ''}
                   onChange={(e) => handleTimeChange(h.day_of_week, 'opens', e.target.value)}
                   disabled={!editable || h.is_closed}
-                  fullWidth
                 />
               </div>
               <div>
-                <label className="block text-xs text-text-muted mb-1">Closes</label>
                 <Input
+                  label="Closes"
                   type="time"
                   value={h.closes || ''}
                   onChange={(e) => handleTimeChange(h.day_of_week, 'closes', e.target.value)}
                   disabled={!editable || h.is_closed}
-                  fullWidth
                 />
               </div>
               <div>
-                <label className="block text-xs text-text-muted mb-1">Kitchen Opens</label>
                 <Input
+                  label="Kitchen Opens"
                   type="time"
                   value={h.kitchen_opens || ''}
                   onChange={(e) => handleKitchenTimeChange(h.day_of_week, 'kitchen_opens', e.target.value)}
                   disabled={!editable || h.is_closed || h.is_kitchen_closed}
-                  fullWidth
                 />
               </div>
               <div>
-                <label className="block text-xs text-text-muted mb-1">Kitchen Closes</label>
                 <Input
+                  label="Kitchen Closes"
                   type="time"
                   value={h.kitchen_closes || ''}
                   onChange={(e) => handleKitchenTimeChange(h.day_of_week, 'kitchen_closes', e.target.value)}
                   disabled={!editable || h.is_closed || h.is_kitchen_closed}
-                  fullWidth
                 />
               </div>
             </div>
@@ -359,7 +349,7 @@ export function BusinessHoursManager({
       <FoodServiceEditor hours={hours} editable={editable} onChange={handleScheduleChange} />
 
       <div className="flex justify-end pt-4">
-        <Button type="submit" loading={isSaving} fullWidth={false} disabled={!editable || isSaving}>
+        <Button type="submit" loading={isSaving} disabled={!editable || isSaving}>
           {isSaving ? 'Saving...' : 'Save Changes'}
         </Button>
       </div>

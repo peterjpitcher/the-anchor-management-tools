@@ -438,13 +438,13 @@ export function RecipeDrawer({
           </div>
 
           {/* Collapsible textareas */}
-          <button
+          <Button
             type="button"
+            variant="link"
             onClick={() => setShowTextareas((prev) => !prev)}
-            className="text-sm font-medium text-blue-600 hover:text-blue-700"
           >
             {showTextareas ? 'Hide description, instructions & notes' : 'Add description, instructions & notes'}
-          </button>
+          </Button>
 
           {showTextareas && (
             <div className="space-y-3">

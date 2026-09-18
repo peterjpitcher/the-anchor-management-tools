@@ -73,7 +73,11 @@ export function Modal({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
+              {/* data-touch-targets: dialogs are portalled outside the page, so they opt in to the
+                  44px touch floor themselves (globals.css, pointer: coarse only). Confirm dialogs
+                  on the bar iPad were 31px otherwise (owner decision, 18 Sep 2026). */}
               <DialogPanel
+                data-touch-targets=""
                 className={cn(
                   'flex max-h-[92dvh] w-full flex-col overflow-hidden bg-surface rounded-t-xl shadow-lg sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg',
                   widthStyles[resolvedWidth]

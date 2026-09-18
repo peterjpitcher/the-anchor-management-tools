@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useRef, useState } from 'react'
+import { Button, Input } from '@/ds'
 import {
   fetchEventBookers,
   quickAddCustomer,
@@ -108,17 +109,20 @@ export function CustomerAttach({
       <div>
         <span className="block text-sm font-medium text-text">Customer (optional)</span>
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          <span className="inline-flex min-h-touch items-center rounded-lg border border-green-300 bg-success-soft px-4 py-2 text-base font-medium text-green-900">
+          {/* The attached customer reads as a selected chip, like the Won at chips. */}
+          <span className="inline-flex min-h-touch items-center rounded-pill border border-primary bg-primary-soft px-4 py-2 text-base font-medium text-primary-soft-fg">
             {value.name}
           </span>
           {!disabled && (
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="lg"
               onClick={() => onChange(null)}
-              className="min-h-touch rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1"
+              className="min-h-touch text-base"
             >
               Remove
-            </button>
+            </Button>
           )}
         </div>
         <div aria-live="polite">
@@ -146,7 +150,7 @@ export function CustomerAttach({
               type="button"
               disabled={disabled}
               onClick={() => onChange({ id: booker.customerId, name: booker.name })}
-              className="min-h-touch rounded-full border border-border-strong bg-surface px-4 py-2 text-base text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-touch rounded-pill border border-border bg-surface px-4 py-2 text-base text-text-muted hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:cursor-not-allowed disabled:opacity-50"
             >
               {booker.name}
               <span className="ml-1 text-sm text-text-muted">
@@ -157,16 +161,18 @@ export function CustomerAttach({
         </div>
       )}
 
-      <input
-        id={`${idPrefix}-customer-search`}
-        type="text"
-        autoComplete="off"
-        placeholder="Search by name or mobile"
-        value={searchTerm}
-        disabled={disabled}
-        onChange={(event) => setSearchTerm(event.target.value)}
-        className="mt-2 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text placeholder:text-text-subtle focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40 disabled:bg-surface-hover"
-      />
+      <div className="mt-2">
+        <Input
+          id={`${idPrefix}-customer-search`}
+          type="text"
+          autoComplete="off"
+          placeholder="Search by name or mobile"
+          value={searchTerm}
+          disabled={disabled}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          className="h-12 text-base"
+        />
+      </div>
 
       <div aria-live="polite">
         {searchResults.length > 0 && (
@@ -180,7 +186,7 @@ export function CustomerAttach({
                     setSearchTerm('')
                     setSearchResults([])
                   }}
-                  className="min-h-touch w-full px-4 py-2 text-left text-base text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sidebar/40"
+                  className="min-h-touch w-full px-4 py-2 text-left text-base text-text hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                 >
                   {customer.name}
                 </button>
@@ -196,56 +202,58 @@ export function CustomerAttach({
       </div>
 
       {!showQuickAdd ? (
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="lg"
           disabled={disabled}
           onClick={() => setShowQuickAdd(true)}
-          className="mt-2 min-h-touch rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-2 min-h-touch text-base"
         >
           Add a new customer
-        </button>
+        </Button>
       ) : (
         <div className="mt-2 rounded-lg border border-border bg-surface-2 p-3">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div className="min-w-0">
-              <label htmlFor={`${idPrefix}-quick-name`} className="block text-sm font-medium text-text">
+              <label htmlFor={`${idPrefix}-quick-name`} className="mb-1 block text-sm font-medium text-text">
                 Name
               </label>
-              <input
+              <Input
                 id={`${idPrefix}-quick-name`}
                 type="text"
                 autoComplete="off"
                 value={quickName}
                 onChange={(event) => setQuickName(event.target.value)}
-                className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+                className="h-12 text-base"
               />
             </div>
             <div className="min-w-0">
-              <label htmlFor={`${idPrefix}-quick-mobile`} className="block text-sm font-medium text-text">
+              <label htmlFor={`${idPrefix}-quick-mobile`} className="mb-1 block text-sm font-medium text-text">
                 Mobile
               </label>
-              <input
+              <Input
                 id={`${idPrefix}-quick-mobile`}
                 type="tel"
                 inputMode="tel"
                 autoComplete="off"
                 value={quickMobile}
                 onChange={(event) => setQuickMobile(event.target.value)}
-                className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+                className="h-12 text-base"
               />
             </div>
             <div className="min-w-0 sm:col-span-2">
-              <label htmlFor={`${idPrefix}-quick-email`} className="block text-sm font-medium text-text">
+              <label htmlFor={`${idPrefix}-quick-email`} className="mb-1 block text-sm font-medium text-text">
                 Email (optional, best for reminders)
               </label>
-              <input
+              <Input
                 id={`${idPrefix}-quick-email`}
                 type="email"
                 inputMode="email"
                 autoComplete="off"
                 value={quickEmail}
                 onChange={(event) => setQuickEmail(event.target.value)}
-                className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+                className="h-12 text-base"
               />
             </div>
           </div>
@@ -254,25 +262,29 @@ export function CustomerAttach({
             We will remind them about the voucher by email, or by text if they have no email address.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="lg"
               onClick={handleQuickAdd}
               disabled={busy}
-              className="min-h-touch rounded-lg bg-sidebar px-4 py-2 text-base font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-touch text-base"
             >
               {busy ? 'Adding...' : 'Add customer'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="secondary"
+              size="lg"
               onClick={() => {
                 setShowQuickAdd(false)
                 setStatusMessage(null)
               }}
               disabled={busy}
-              className="min-h-touch rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-touch text-base"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}

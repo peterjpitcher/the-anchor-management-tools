@@ -22,6 +22,9 @@ export type GuestButtonProps =
       type?: 'button' | 'submit'
       disabled?: boolean
       onClick?: () => void
+      /** Submitted with the form, so one form can carry two answers (e.g. yes and no). */
+      name?: string
+      value?: string
     })
   | (GuestButtonBase & { as: 'a'; href: string; external?: boolean; referrerPolicy?: string })
   | (GuestButtonBase & { as: 'link'; href: string })
@@ -38,8 +41,8 @@ const BASE_CLASS =
   'guest-btn guest-motion-lift inline-flex items-center justify-center rounded-full border-2 border-transparent text-center font-anchor-body font-semibold no-underline transition-[transform,translate,background-color,box-shadow,color] duration-200 ease-out active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none'
 
 const SIZE_CLASS: Record<GuestButtonSize, string> = {
-  sm: 'min-h-[44px] px-6 text-[14px]',
-  md: 'min-h-[48px] px-8 text-[16px]',
+  sm: 'min-h-[44px] px-6 text-sm',
+  md: 'min-h-[48px] px-8 text-base',
   lg: 'min-h-[56px] px-12 text-[18px]',
 }
 
@@ -118,6 +121,8 @@ export function GuestButton(props: GuestButtonProps): React.JSX.Element {
       className={classes}
       disabled={props.disabled}
       onClick={props.onClick}
+      name={props.name}
+      value={props.value}
     >
       {children}
     </button>

@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
-import { Modal, ModalActions } from '@/ds'
+import { Button, Input, Modal, ModalActions } from '@/ds'
 
 type FohPartySizeModalProps = {
   bookingId?: string | null
@@ -34,37 +34,33 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
       size="sm"
       footer={
         <ModalActions>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text hover:bg-surface-hover"
-          >
+          <Button type="button" variant="secondary" size="lg" onClick={onClose} className="min-h-touch">
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="primary"
+            size="lg"
             disabled={Boolean(bookingActionInFlight)}
             onClick={() => onConfirm(inputRef.current?.value ?? partySizeEditValue)}
-            className="rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-sidebar/90 disabled:opacity-50"
+            className="min-h-touch"
           >
             {bookingActionInFlight === 'party_size' ? 'Saving...' : 'Confirm'}
-          </button>
+          </Button>
         </ModalActions>
       }
     >
-      <label className="block text-sm font-medium text-text">
-        New party size
-        <input
-          ref={inputRef}
-          type="number"
-          min={1}
-          max={50}
-          value={partySizeEditValue}
-          onChange={(e) => onPartySizeChange(e.target.value)}
-          className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
-          autoFocus
-        />
-      </label>
+      <Input
+        ref={inputRef}
+        label="New party size"
+        type="number"
+        min={1}
+        max={50}
+        value={partySizeEditValue}
+        onChange={(e) => onPartySizeChange(e.target.value)}
+        className="min-h-touch"
+        autoFocus
+      />
       {open && props.bookingId && props.onCoursesChange ? <ChristmasCourseFields bookingId={props.bookingId} partySize={Number(partySizeEditValue)} onChange={props.onCoursesChange} /> : null}
     </Modal>
   )
@@ -97,40 +93,34 @@ export const FohWalkoutModal = React.memo(function FohWalkoutModal(props: FohWal
       size="sm"
       footer={
         <ModalActions>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text hover:bg-surface-hover"
-          >
+          <Button type="button" variant="secondary" size="lg" onClick={onClose} className="min-h-touch">
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="danger"
+            size="lg"
             disabled={Boolean(bookingActionInFlight)}
             onClick={onConfirm}
-            className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            className="min-h-touch"
           >
             {bookingActionInFlight === 'walkout' ? 'Saving...' : 'Confirm'}
-          </button>
+          </Button>
         </ModalActions>
       }
     >
-      <label className="block text-sm font-medium text-text">
-        Walkout amount
-        <div className="relative mt-1">
-          <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-sm text-text-muted">£</span>
-          <input
-            type="number"
-            min={0.01}
-            step={0.01}
-            value={walkoutAmountValue}
-            onChange={(e) => onAmountChange(e.target.value)}
-            className="w-full rounded-md border border-border-strong py-2 pl-7 pr-3 text-sm"
-            placeholder="0.00"
-            autoFocus
-          />
-        </div>
-      </label>
+      <Input
+        label="Walkout amount"
+        type="number"
+        min={0.01}
+        step={0.01}
+        value={walkoutAmountValue}
+        onChange={(e) => onAmountChange(e.target.value)}
+        icon={<span className="text-ui text-text-muted">£</span>}
+        className="min-h-touch"
+        placeholder="0.00"
+        autoFocus
+      />
     </Modal>
   )
 })

@@ -7,6 +7,7 @@ import { getUpcomingBirthday, calculateAge } from '@/lib/employeeUtils';
 import { displayName } from '@/lib/employees/display-name';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { format } from 'date-fns';
+import { STAFF } from '@/lib/brand/palette';
 import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
 import {
@@ -284,14 +285,14 @@ function generateBirthdayReminderEmail(birthdays: EmployeeWithBirthday[]): strin
       
       return `
         <tr>
-          <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+          <td style="padding: 12px; border-bottom: 1px solid ${STAFF.border};">
             <strong>${displayName(emp)}</strong><br>
-            <span style="color: #6b7280; font-size: 14px;">${emp.job_title || 'No title'}</span>
+            <span style="color: ${STAFF.textMuted}; font-size: 14px;">${emp.job_title || 'No title'}</span>
           </td>
-          <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+          <td style="padding: 12px; border-bottom: 1px solid ${STAFF.border}; text-align: center;">
             ${format(birthdayDate, 'EEEE, MMMM d')}
           </td>
-          <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+          <td style="padding: 12px; border-bottom: 1px solid ${STAFF.border}; text-align: center;">
             Turning ${emp.turning_age}
           </td>
         </tr>
@@ -306,21 +307,21 @@ function generateBirthdayReminderEmail(birthdays: EmployeeWithBirthday[]): strin
       <meta charset="utf-8">
       <title>Birthday Reminder</title>
     </head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f9fafb;">
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: ${STAFF.bg};">
       <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background-color: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); padding: 32px;">
-          <h1 style="color: #111827; font-size: 24px; margin-top: 0;">🎂 Upcoming Birthday Reminder</h1>
+        <div style="background-color: ${STAFF.surface}; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); padding: 32px;">
+          <h1 style="color: ${STAFF.text}; font-size: 24px; margin-top: 0;">🎂 Upcoming Birthday Reminder</h1>
           
-          <p style="color: #4b5563; margin: 20px 0;">
+          <p style="color: ${STAFF.textMuted}; margin: 20px 0;">
             The following employee${birthdays.length > 1 ? 's have birthdays' : ' has a birthday'} coming up next week:
           </p>
           
           <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
             <thead>
-              <tr style="background-color: #f3f4f6;">
-                <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">Employee</th>
-                <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151;">Birthday</th>
-                <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151;">Age</th>
+              <tr style="background-color: ${STAFF.surfaceHover};">
+                <th style="padding: 12px; text-align: left; font-weight: 600; color: ${STAFF.text};">Employee</th>
+                <th style="padding: 12px; text-align: center; font-weight: 600; color: ${STAFF.text};">Birthday</th>
+                <th style="padding: 12px; text-align: center; font-weight: 600; color: ${STAFF.text};">Age</th>
               </tr>
             </thead>
             <tbody>
@@ -328,15 +329,15 @@ function generateBirthdayReminderEmail(birthdays: EmployeeWithBirthday[]): strin
             </tbody>
           </table>
           
-          <div style="margin-top: 32px; padding: 16px; background-color: #fef3c7; border-radius: 6px;">
-            <p style="margin: 0; color: #92400e; font-size: 14px;">
+          <div style="margin-top: 32px; padding: 16px; background-color: ${STAFF.warningSoft}; border-radius: 6px;">
+            <p style="margin: 0; color: ${STAFF.warningFg}; font-size: 14px;">
               <strong>Reminder:</strong> Consider organizing a celebration or sending a birthday card to make their day special!
             </p>
           </div>
           
-          <hr style="margin: 32px 0; border: none; border-top: 1px solid #e5e7eb;">
+          <hr style="margin: 32px 0; border: none; border-top: 1px solid ${STAFF.border};">
           
-          <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+          <p style="color: ${STAFF.textMuted}; font-size: 12px; margin: 0;">
             This is an automated reminder from The Anchor Management System.<br>
             To manage birthday notifications, please visit the employee settings.
           </p>

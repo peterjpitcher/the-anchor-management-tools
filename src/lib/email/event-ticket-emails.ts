@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { GUEST } from '@/lib/brand/palette'
 import { sendEmail } from '@/lib/email/emailService'
 import {
   GUEST_EMAIL_SIGN_OFF,
@@ -50,8 +51,8 @@ const PREHEADER_PADDING = '&#8203;' + '&#847;'.repeat(56)
 const BUTTON_STYLE = [
   'display:inline-block',
   'padding:13px 22px',
-  'background:#111827',
-  'color:#ffffff',
+  `background:${GUEST.buttonBg}`,
+  `color:${GUEST.buttonText}`,
   'text-decoration:none',
   'border-radius:6px',
   'font-family:Arial,Helvetica,sans-serif',
@@ -129,7 +130,7 @@ function buildGuestEmailHtml(input: {
     : ''
 
   const footNote = input.footNote
-    ? `  <p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:#6b7280">${escapeHtml(input.footNote)}</p>`
+    ? `  <p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:${GUEST.textMuted}">${escapeHtml(input.footNote)}</p>`
     : ''
 
   return `<!DOCTYPE html>
@@ -139,10 +140,10 @@ function buildGuestEmailHtml(input: {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(input.title)}</title>
 </head>
-<body style="margin:0;padding:0;background:#f9fafb">
-<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f9fafb">${escapeHtml(input.preheader)}${PREHEADER_PADDING}</div>
-<div style="font-family:Arial,Helvetica,sans-serif;max-width:620px;margin:0 auto;padding:24px 20px;color:#111827">
-  <h2 style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:22px;line-height:1.3">${escapeHtml(input.heading)}</h2>
+<body style="margin:0;padding:0;background:${GUEST.bg}">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:${GUEST.bg}">${escapeHtml(input.preheader)}${PREHEADER_PADDING}</div>
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:620px;margin:0 auto;padding:24px 20px;color:${GUEST.text}">
+  <h2 style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:22px;line-height:1.3;color:${GUEST.green}">${escapeHtml(input.heading)}</h2>
 ${paragraphs}
 ${input.extraHtml ?? ''}
 ${cta}

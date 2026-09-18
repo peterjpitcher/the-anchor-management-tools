@@ -19,10 +19,34 @@
  * that order is what keeps the generated HTML unchanged.
  */
 
+import { STAFF } from '@/lib/brand/palette'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 
 /** One place for the cap, so two templates cannot disagree about it again. */
 export const LOGO_MAX_WIDTH_PX = 90
+
+/** How a document status reads: the tones of the app's DS Badge. */
+export type DocumentStatusTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
+
+const STATUS_BADGE_COLOURS: Record<DocumentStatusTone, { background: string; text: string; border: string }> = {
+  neutral: { background: STAFF.surface2, text: STAFF.textMuted, border: STAFF.border },
+  // The brand at 20% for the edge, as the app's primary badge draws it.
+  primary: { background: STAFF.primarySoft, text: STAFF.primarySoftFg, border: `${STAFF.primary}33` },
+  success: { background: STAFF.successSoft, text: STAFF.successFg, border: STAFF.successBorder },
+  warning: { background: STAFF.warningSoft, text: STAFF.warningFg, border: STAFF.warningBorder },
+  danger: { background: STAFF.dangerSoft, text: STAFF.dangerFg, border: STAFF.dangerBorder },
+  info: { background: STAFF.infoSoft, text: STAFF.infoFg, border: STAFF.infoBorder },
+}
+
+/**
+ * The inline colours for a `.status-badge`: soft fill, dark text and a pale border, as the
+ * app's Badge draws it. White 8pt text on a bright fill failed contrast on paper. The
+ * badge's 1px border takes 1px off its padding, so the badge is the size it always was.
+ */
+export function statusBadgeStyle(tone: DocumentStatusTone): string {
+  const colours = STATUS_BADGE_COLOURS[tone]
+  return `background-color: ${colours.background}; color: ${colours.text}; border-color: ${colours.border}`
+}
 
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
 const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07990587315'
@@ -76,7 +100,7 @@ export function renderDocumentHead(options: DocumentHeadOptions): string {
     body {
       font-family: Arial, sans-serif;
       line-height: 1.3;
-      color: #333;
+      color: ${STAFF.text};
       max-width: 800px;
       margin: 0 auto;
       padding: 5px;
@@ -88,7 +112,7 @@ export function renderDocumentHead(options: DocumentHeadOptions): string {
       justify-content: space-between;
       align-items: flex-start;
       margin-bottom: 10px;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid ${STAFF.border};
       padding-bottom: 8px;
     }
     
@@ -108,7 +132,7 @@ export function renderDocumentHead(options: DocumentHeadOptions): string {
     }
     
     h1 {
-      color: #111827;
+      color: ${STAFF.textStrong};
       margin: 0 0 5px 0;
       font-size: 16pt;
       font-weight: 700;
@@ -116,32 +140,34 @@ export function renderDocumentHead(options: DocumentHeadOptions): string {
     
     ${options.numberClass} {
       font-size: 10pt;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
       margin-bottom: 2px;
     }
     
     .status-badge {
       display: inline-block;
-      padding: 2px 8px;
+      padding: 1px 7px;
+      border: 1px solid ${STAFF.border};
       border-radius: 3px;
       font-size: 8pt;
       font-weight: 600;
-      color: white;
+      color: ${STAFF.textMuted};
+      background-color: ${STAFF.surface2};
       margin-top: 5px;
     }
     
     .company-details {
       margin-bottom: 10px;
       font-size: 8pt;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
     }
     
 ${options.bodyCss}    .footer {
       margin-top: 20px;
       padding-top: 10px;
-      border-top: 1px solid #e5e7eb;
+      border-top: 1px solid ${STAFF.border};
       text-align: center;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
       font-size: 7pt;
     }
     

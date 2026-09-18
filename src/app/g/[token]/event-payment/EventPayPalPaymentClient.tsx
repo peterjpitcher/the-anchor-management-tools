@@ -145,14 +145,14 @@ export function EventPayPalPaymentClient({
       </PayPalScriptProvider>
 
       {(paymentState === 'creating' || paymentState === 'paying') && (
-        <p className="text-center font-anchor-body text-[12px] leading-[1.5] text-guest-text-muted">
+        <p className="text-center font-anchor-body text-xs leading-[1.5] text-guest-text-muted">
           Processing payment, please wait.
         </p>
       )}
 
       <TrustLine />
 
-      <p className="text-center font-anchor-body text-[12px] leading-[1.5] text-guest-text-muted">
+      <p className="text-center font-anchor-body text-xs leading-[1.5] text-guest-text-muted">
         If PayPal does not load,{' '}
         <a
           className="font-medium text-guest-accent-text underline underline-offset-[3px]"

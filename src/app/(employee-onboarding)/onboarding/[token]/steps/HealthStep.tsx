@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Button, Checkbox, Field, Input, Textarea } from '@/ds';
 import { saveOnboardingSection } from '@/app/actions/employeeInvite';
 
 interface HealthData {
@@ -97,45 +98,36 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
   };
 
   const textField = (id: keyof HealthData, label: string, type = 'text') => (
-    <div>
-      <label htmlFor={id} className="block text-sm font-medium text-text mb-1">{label}</label>
-      <input
+    <Field label={label}>
+      <Input
         id={id}
         type={type}
         value={data[id] as string}
         onChange={(e) => setData({ ...data, [id]: e.target.value })}
-        className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
       />
-    </div>
+    </Field>
   );
 
   const checkField = (id: keyof HealthData, label: string) => (
-    <label className="flex items-start gap-3 cursor-pointer">
-      <input
-        type="checkbox"
-        checked={data[id] as boolean}
-        // A raw checkbox hands the handler the change event, not a boolean. The
-        // parameter was named `checked` and written straight into state, so every
-        // health, allergy and disability flag was stored as a React
-        // SyntheticEvent instead of true or false.
-        onChange={(event) => setData({ ...data, [id]: event.target.checked })}
-        className="mt-0.5 h-4 w-4 rounded-sm border-border-strong text-green-600 focus:ring-green-500"
-      />
-      <span className="text-sm text-text">{label}</span>
-    </label>
+    <Checkbox
+      checked={data[id] as boolean}
+      // The DS Checkbox hands the handler a boolean. The raw checkbox it replaced handed over
+      // the change event, which was once written straight into state, so every health,
+      // allergy and disability flag was stored as a React SyntheticEvent instead of true or false.
+      onChange={(checked) => setData({ ...data, [id]: checked })}
+      label={label}
+    />
   );
 
   const textareaField = (id: keyof HealthData, label: string) => (
-    <div>
-      <label htmlFor={id} className="block text-sm font-medium text-text mb-1">{label}</label>
-      <textarea
+    <Field label={label}>
+      <Textarea
         id={id}
         value={data[id] as string}
         onChange={(e) => setData({ ...data, [id]: e.target.value })}
         rows={3}
-        className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
       />
-    </div>
+    </Field>
   );
 
   return (
@@ -195,13 +187,9 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"
-      >
+      <Button type="submit" variant="primary" className="w-full" disabled={loading}>
         {loading ? 'Saving...' : 'Save & Continue'}
-      </button>
+      </Button>
     </form>
   );
 }

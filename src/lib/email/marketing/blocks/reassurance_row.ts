@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
@@ -18,7 +20,7 @@ export const reassuranceRowSchema = z.object({
 
 export type ReassuranceRowData = z.infer<typeof reassuranceRowSchema>
 
-const TICK = '<span style="color:#006b45;font-weight:600">&#10003;</span>&nbsp; '
+const TICK = `<span style="color:${GUEST.success};font-weight:600">&#10003;</span>&nbsp; `
 
 export const reassuranceRow = defineBlock<ReassuranceRowData>({
   type: 'reassurance_row',
@@ -28,8 +30,8 @@ export const reassuranceRow = defineBlock<ReassuranceRowData>({
     items: ['No commitment, just a conversation', 'We reply within 24 hours', 'Free customer parking'],
   },
   render: (data) =>
-    `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>
-<tr><td bgcolor="#faf8f3" align="center" class="gutter" style="background-color:#faf8f3;padding:18px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:22px;color:#6f6a61">${data.items
+    `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${GUEST.cream}"><tbody>
+<tr><td bgcolor="${GUEST.cream}" align="center" class="gutter" style="background-color:${GUEST.cream};padding:18px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:22px;color:${GUEST.textMuted}">${data.items
       .map((item) => `${TICK}${escapeEmailText(item)}`)
       .join(' &nbsp;&nbsp;')}</td></tr>
 </tbody></table>`,

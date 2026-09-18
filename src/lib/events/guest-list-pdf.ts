@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit'
 import type { GuestGroup } from '@/lib/events/guest-list-model'
+import { STAFF } from '@/lib/brand/palette'
 
 export interface GuestListEventHeader {
   name: string
@@ -40,19 +41,19 @@ export async function generateEventGuestListPdf(
   const totalGuests = groups.reduce((n, g) => n + g.lines.length, 0)
 
   const drawPageHeader = () => {
-    doc.font('Helvetica-Bold').fontSize(16).fillColor('#111827')
+    doc.font('Helvetica-Bold').fontSize(16).fillColor(STAFF.text)
       .text(pdfSafeText(header.name), left, PAGE_MARGIN, { width: right - left })
-    doc.font('Helvetica').fontSize(11).fillColor('#374151')
+    doc.font('Helvetica').fontSize(11).fillColor(STAFF.text)
       .text(`${header.dateLabel} · ${header.timeLabel}`, left, doc.y + 2)
       .text(`Confirmed guests: ${totalGuests}`, left, doc.y + 2)
-    doc.moveTo(left, doc.y + 6).lineTo(right, doc.y + 6).strokeColor('#9ca3af').stroke()
+    doc.moveTo(left, doc.y + 6).lineTo(right, doc.y + 6).strokeColor(STAFF.textSubtle).stroke()
     doc.y += 14
   }
 
   drawPageHeader()
 
   if (groups.length === 0) {
-    doc.font('Helvetica').fontSize(12).fillColor('#6b7280')
+    doc.font('Helvetica').fontSize(12).fillColor(STAFF.textMuted)
       .text('No confirmed guests yet.', left, doc.y + 8)
     doc.end()
     return done
@@ -62,19 +63,19 @@ export async function generateEventGuestListPdf(
     if (doc.y + ROW_HEIGHT > bottom) { doc.addPage(); drawPageHeader() }
     const y = doc.y
     // tick box
-    doc.rect(left, y + 4, TICK_BOX, TICK_BOX).lineWidth(0.75).strokeColor('#6b7280').stroke()
+    doc.rect(left, y + 4, TICK_BOX, TICK_BOX).lineWidth(0.75).strokeColor(STAFF.textSoft).stroke()
     // name (or blank)
-    doc.font(isBooker ? 'Helvetica-Bold' : 'Helvetica').fontSize(11).fillColor('#111827')
+    doc.font(isBooker ? 'Helvetica-Bold' : 'Helvetica').fontSize(11).fillColor(STAFF.text)
       .text(pdfSafeText(name || ''), left + TICK_BOX + 8, y + 2, {
         width: NAME_COLUMN_WIDTH, lineBreak: false, ellipsis: true,
       })
     if (isBooker) {
-      doc.font('Helvetica-Oblique').fontSize(8).fillColor('#9ca3af')
+      doc.font('Helvetica-Oblique').fontSize(8).fillColor(STAFF.textMuted)
         .text('(booked by)', left + TICK_BOX + 8, y + 15)
     }
     // blank ruled note area
     doc.moveTo(left + NOTE_LINE_INSET, y + ROW_HEIGHT - 6).lineTo(right, y + ROW_HEIGHT - 6)
-      .lineWidth(0.5).strokeColor('#d1d5db').stroke()
+      .lineWidth(0.5).strokeColor(STAFF.borderStrong).stroke()
     doc.y = y + ROW_HEIGHT
   }
 
@@ -84,7 +85,7 @@ export async function generateEventGuestListPdf(
     if (doc.y + needed > bottom) { doc.addPage(); drawPageHeader() }
     group.lines.forEach(line => drawRow(line.name, line.isBooker))
     if (idx < groups.length - 1) {
-      doc.moveTo(left, doc.y + 2).lineTo(right, doc.y + 2).lineWidth(0.5).strokeColor('#e5e7eb').stroke()
+      doc.moveTo(left, doc.y + 2).lineTo(right, doc.y + 2).lineWidth(0.5).strokeColor(STAFF.border).stroke()
       doc.y += 8
     }
   })
@@ -93,7 +94,7 @@ export async function generateEventGuestListPdf(
   const range = doc.bufferedPageRange()
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i)
-    doc.font('Helvetica').fontSize(8).fillColor('#9ca3af')
+    doc.font('Helvetica').fontSize(8).fillColor(STAFF.textMuted)
       .text(`Page ${i - range.start + 1} of ${range.count}`, left, bottom + 8, { width: right - left, align: 'right' })
   }
 

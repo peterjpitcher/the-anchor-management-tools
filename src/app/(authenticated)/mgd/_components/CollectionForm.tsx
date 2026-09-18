@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Button, Input, Field, Textarea, toast } from '@/ds'
+import { Alert, Button, Input, Field, Textarea, toast } from '@/ds'
 import { createCollection, updateCollection } from '@/app/actions/mgd'
 import type { MgdCollection } from '@/app/actions/mgd'
 
@@ -75,11 +75,7 @@ export function CollectionForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error && (
-        <div className="rounded-md bg-danger-soft p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       <Field label="Collection Date" required>
         <Input

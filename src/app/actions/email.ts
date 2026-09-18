@@ -1,5 +1,7 @@
 'use server'
 
+import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
+
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
@@ -456,7 +458,7 @@ export async function sendChasePaymentEmail(formData: FormData) {
     }
     
     // Calculate outstanding amount
-    const outstandingAmount = Math.max(0, Number(invoice.total_amount || 0) - Number(invoice.paid_amount || 0))
+    const outstandingAmount = invoiceBalanceDue(invoice)
 
     if (['paid', 'void', 'written_off'].includes(invoiceStatus)) {
       return { error: `Cannot send a chase email for an invoice with status "${invoice.status}"` }
@@ -474,7 +476,7 @@ I hope you're well!
 
 Just a gentle reminder that invoice ${invoice.invoice_number} was due on ${formatIsoDateForUk(dueDateIso)} and is now ${daysOverdue} ${daysOverdue === 1 ? 'day' : 'days'} overdue.
 
-Amount Outstanding: £${outstandingAmount.toFixed(2)}
+${invoiceIssuedCreditTotal(invoice) > 0 ? `Credits applied: £${invoiceIssuedCreditTotal(invoice).toFixed(2)}\n` : ''}Amount Outstanding: £${outstandingAmount.toFixed(2)}
 
 I understand things can get busy, so this is just a friendly nudge. If there's anything I can help with or if you need to discuss payment arrangements, please don't hesitate to get in touch.
 

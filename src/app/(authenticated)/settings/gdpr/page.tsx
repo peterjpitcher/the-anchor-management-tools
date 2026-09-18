@@ -95,7 +95,7 @@ export default function GDPRSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <ArrowDownTrayIcon className="h-5 w-5 mr-2 text-gray-400" />
+              <ArrowDownTrayIcon className="h-5 w-5 mr-2 text-text-subtle" />
               Export Your Data
             </CardTitle>
             <CardDescription className="mt-2 max-w-xl">
@@ -175,7 +175,7 @@ export default function GDPRSettingsPage() {
         </Card>
 
         {/* Privacy Rights Information */}
-        <Card variant="bordered" className="bg-blue-50 border-blue-200">
+        <Card className="border-info-border bg-info-soft">
           <CardHeader>
             <CardTitle>Your Privacy Rights</CardTitle>
           </CardHeader>
@@ -192,7 +192,7 @@ export default function GDPRSettingsPage() {
               </ul>
               <p className="mt-4">
                 For more information, please refer to our{' '}
-                <a href="/privacy" className="text-blue-600 hover:text-blue-500 underline">
+                <a href="/privacy" className="rounded-sm text-primary underline hover:text-primary-hover focus-visible:outline-hidden focus-visible:shadow-ring">
                   Privacy Policy
                 </a>
                 .

@@ -16,8 +16,9 @@ import {
   startOfMonth,
   startOfWeek,
 } from 'date-fns'
-import { Button } from '@/ds'
+import { Badge, Button, IconButton } from '@/ds'
 import { Card } from '@/ds'
+import { cn } from '@/lib/utils'
 import { Section } from '@/ds'
 import { ArrowLeftIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import { SpecialHoursModal } from './SpecialHoursModal'
@@ -156,7 +157,10 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
       title="Exceptions & Holidays Calendar"
       description="Click any date to close the venue or change hours."
     >
-      <Card padding="lg" className="space-y-4">
+      <Card padding="lg">
+        {/* Card pads an inner wrapper, so the spacing has to sit inside it: space-y-4 on the Card
+            itself only spaced that one wrapper and left the month header touching the grid. */}
+        <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-text">
@@ -164,13 +168,13 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
             </h3>
           </div>
           <div className="flex items-center gap-2">
-            <Button
+            <IconButton
               type="button"
               variant="secondary"
+              label="Previous month"
               onClick={() => setCurrentMonth((prev) => addMonths(prev, -1))}
-            >
-              <ArrowLeftIcon className="h-4 w-4" />
-            </Button>
+              icon={<ArrowLeftIcon className="h-4 w-4" />}
+            />
             <Button
               type="button"
               variant="secondary"
@@ -178,13 +182,13 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
             >
               Today
             </Button>
-            <Button
+            <IconButton
               type="button"
               variant="secondary"
+              label="Next month"
               onClick={() => setCurrentMonth((prev) => addMonths(prev, 1))}
-            >
-              <ArrowRightIcon className="h-4 w-4" />
-            </Button>
+              icon={<ArrowRightIcon className="h-4 w-4" />}
+            />
           </div>
         </div>
 
@@ -214,35 +218,35 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
                 hasSpecial && !isClosed && day.special?.is_kitchen_closed
               const closingOverride = day.overrides.find((override) => override.is_enabled === false)
               const enablingOverride = day.overrides.find((override) => override.is_enabled === true)
-              const classNames = [
-                'min-h-[88px] rounded-lg border px-2 py-2 text-left transition relative',
-                day.inCurrentMonth ? 'border-border' : 'border-border bg-surface-2 text-gray-400',
-                day.isToday ? 'ring-2 ring-primary ring-offset-2' : '',
-                canManage ? 'hover:border-primary hover:shadow-default cursor-pointer' : 'cursor-default',
-              ]
-
-              if (hasSpecial) {
-                if (isClosed) {
-                  classNames.push('bg-danger-soft border-red-200')
-                } else if (kitchenClosed) {
-                  classNames.push('bg-warning-soft border-amber-200')
-                } else {
-                  classNames.push('bg-blue-50 border-blue-200')
-                }
-              }
-
-              // Maintain visualization for old override system but deemphasize
-              if (closingOverride) {
-                classNames.push('bg-rose-50 border-rose-200 text-rose-900')
-              } else if (enablingOverride) {
-                classNames.push('bg-emerald-50 border-emerald-200 text-emerald-900')
-              }
+              // One state decides the tint and border. The old override system is still shown and
+              // wins over a special-hours entry, as it did when these classes were pushed in order.
+              // cn() puts the state last, so its border and tint beat the neutral ones: joining the
+              // classes as plain strings let Tailwind's emission order pick, and the grey border
+              // and the out-of-month grey hid the state colours.
+              const stateClasses = closingOverride
+                ? 'border-danger-border bg-danger-soft text-danger-fg'
+                : enablingOverride
+                  ? 'border-success-border bg-success-soft text-success-fg'
+                  : isClosed
+                    ? 'border-danger-border bg-danger-soft'
+                    : kitchenClosed
+                      ? 'border-warning-border bg-warning-soft'
+                      : hasSpecial
+                        ? 'border-info-border bg-info-soft'
+                        : 'border-border'
 
               return (
                 <button
                   key={day.iso}
                   type="button"
-                  className={classNames.join(' ')}
+                  className={cn(
+                    'relative min-h-[88px] rounded-lg border px-2 py-2 text-left transition',
+                    'focus-visible:outline-hidden focus-visible:shadow-ring-inset',
+                    !day.inCurrentMonth && 'bg-surface-2 text-text-soft',
+                    day.isToday && 'ring-2 ring-primary ring-offset-2',
+                    canManage ? 'cursor-pointer hover:border-primary hover:shadow-default' : 'cursor-default',
+                    stateClasses,
+                  )}
                   onClick={() => handleDateClick(day)}
                   disabled={!canManage}
                 >
@@ -250,9 +254,9 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
                   
                   {/* Status Badges */}
                   <div className="space-y-1 text-xs">
-                     {isClosed && <span className="inline-block px-1.5 py-0.5 rounded-sm bg-danger-soft text-danger-fg font-medium">Closed</span>}
-                     {!isClosed && kitchenClosed && <span className="inline-block px-1.5 py-0.5 rounded-sm bg-amber-100 text-warning-fg font-medium">Kitchen Closed</span>}
-                     {!isClosed && hasSpecial && !kitchenClosed && <span className="inline-block px-1.5 py-0.5 rounded-sm bg-blue-100 text-info-fg font-medium">Modified</span>}
+                     {isClosed && <Badge tone="danger" size="sm">Closed</Badge>}
+                     {!isClosed && kitchenClosed && <Badge tone="warning" size="sm">Kitchen Closed</Badge>}
+                     {!isClosed && hasSpecial && !kitchenClosed && <Badge tone="info" size="sm">Modified</Badge>}
                   </div>
 
                   {hasSpecial && (
@@ -278,6 +282,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
             })}
           </div>
         )}
+        </div>
         </div>
         </div>
       </Card>

@@ -1,5 +1,7 @@
 'use client'
 
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
+
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
@@ -73,7 +75,7 @@ export default function RecordPaymentPage() {
 
         setInvoice(result.invoice)
 
-        const outstanding = result.invoice.total_amount - result.invoice.paid_amount
+        const outstanding = invoiceBalanceDue(result.invoice)
         setAmount(outstanding > 0 ? outstanding.toFixed(2) : '0.00')
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load invoice')
@@ -98,7 +100,7 @@ export default function RecordPaymentPage() {
     }
 
     const paymentAmount = parseFloat(amount)
-    const outstanding = invoice.total_amount - invoice.paid_amount
+    const outstanding = invoiceBalanceDue(invoice)
 
     if (Number.isNaN(paymentAmount) || paymentAmount <= 0) {
       setError('Payment amount must be greater than 0')
@@ -164,7 +166,7 @@ export default function RecordPaymentPage() {
     )
   }
 
-  const outstanding = invoice.total_amount - invoice.paid_amount
+  const outstanding = invoiceBalanceDue(invoice)
 
   return (
     <PageLayout
@@ -188,11 +190,12 @@ export default function RecordPaymentPage() {
             </div>
             <div>
               <p className="text-sm text-text-muted">Already Paid</p>
-              <p className="text-xl font-bold text-green-600">£{invoice.paid_amount.toFixed(2)}</p>
+              <p className="text-xl font-bold text-success-fg">£{invoice.paid_amount.toFixed(2)}</p>
             </div>
             <div>
               <p className="text-sm text-text-muted">Outstanding</p>
-              <p className="text-xl font-bold text-danger">£{outstanding.toFixed(2)}</p>
+              {/* Red only once the invoice is overdue, the same rule as the invoice list. */}
+              <p className={`text-xl font-bold ${invoice.status === 'overdue' ? 'text-danger' : ''}`}>£{outstanding.toFixed(2)}</p>
             </div>
           </div>
         </Card>

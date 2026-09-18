@@ -1,7 +1,10 @@
-import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
+import type { InvoiceWithDetails } from '@/types/invoices'
 import { Card } from '@/ds'
 import { Badge } from '@/ds'
+import { IconButton } from '@/ds'
 import { Download } from 'lucide-react'
+import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 
 interface MobileInvoiceCardProps {
   invoice: InvoiceWithDetails
@@ -28,32 +31,9 @@ export function MobileInvoiceCard({
   const isOverdue = invoice.status === 'overdue'
   const isPaid = invoice.status === 'paid'
 
-  function getStatusBadgeVariant(
-    status: InvoiceStatus
-  ): 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' | 'secondary' {
-    switch (status) {
-      case 'draft':
-        return 'default'
-      case 'sent':
-        return 'info'
-      case 'partially_paid':
-        return 'warning'
-      case 'paid':
-        return 'success'
-      case 'overdue':
-        return 'error'
-      case 'void':
-        return 'secondary'
-      case 'written_off':
-        return 'secondary'
-      default:
-        return 'default'
-    }
-  }
-
   return (
-    <Card 
-      className={`p-4 transition-shadow hover:shadow-default ${onClick ? 'cursor-pointer' : ''}`}
+    <Card
+      className={`transition-shadow hover:shadow-default ${onClick ? 'cursor-pointer' : ''}`}
       onClick={() => onClick?.(invoice)}
     >
       <div className="mb-3 flex items-start justify-between">
@@ -71,9 +51,9 @@ export function MobileInvoiceCard({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <button
+          <IconButton
             type="button"
-            aria-label={`Download invoice ${invoice.invoice_number}`}
+            label={`Download invoice ${invoice.invoice_number}`}
             title={`Download invoice ${invoice.invoice_number}`}
             data-row-click-ignore="true"
             disabled={downloadDisabled}
@@ -81,13 +61,11 @@ export function MobileInvoiceCard({
               event.stopPropagation()
               onDownload?.(invoice)
             }}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-text focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Download className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <Badge variant={getStatusBadgeVariant(invoice.status)} size="sm">
-            {invoice.status.charAt(0).toUpperCase() +
-              invoice.status.slice(1).replace('_', ' ')}
+            icon={<Download className="h-4 w-4" aria-hidden="true" />}
+            className="text-text-muted hover:text-text"
+          />
+          <Badge tone={invoiceStatusTone(invoice.status)} size="sm" dot>
+            {invoiceStatusLabel(invoice.status)}
           </Badge>
         </div>
       </div>
@@ -107,7 +85,7 @@ export function MobileInvoiceCard({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between border-t pt-3">
+      <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
         <div>
           <div className="text-xs text-text-muted">Total Amount</div>
           <div className="text-lg font-semibold">
@@ -117,12 +95,12 @@ export function MobileInvoiceCard({
         <div className="text-right">
           <div className="text-xs text-text-muted">Balance</div>
           {isPaid ? (
-            <div className="font-semibold text-green-600">Paid</div>
+            <div className="font-semibold text-success-fg">Paid</div>
           ) : (
             <div
               className={`font-semibold ${isOverdue ? 'text-danger' : ''}`}
             >
-              {formatCurrency(invoice.total_amount - invoice.paid_amount)}
+              {formatCurrency(invoiceBalanceDue(invoice))}
             </div>
           )}
         </div>

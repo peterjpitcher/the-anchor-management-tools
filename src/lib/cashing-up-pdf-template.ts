@@ -1,3 +1,5 @@
+import { STAFF } from '@/lib/brand/palette';
+
 export interface WeeklyReportRow {
   date: string;
   status: string;
@@ -29,6 +31,76 @@ interface TemplateProps {
   logoUrl?: string;
 }
 
+/**
+ * The layout classes this sheet uses, written out here so rendering never fetches anything.
+ * The sheet used to load the Tailwind CDN mid-render. The values are Tailwind 3.4's, the
+ * version the CDN served, plus the parts of its base reset the layout relies on; colours come
+ * from STAFF. Only these classes exist in this document, because the app stylesheet is not
+ * loaded here. text-fine is the sheet's 9px table text, kept so the printed layout does not move.
+ */
+const SHEET_CSS = `
+        *, ::before, ::after { box-sizing: border-box; border-width: 0; border-style: solid; border-color: ${STAFF.border}; }
+        html { line-height: 1.5; }
+        body { margin: 0; line-height: inherit; }
+        h1, h3 { margin: 0; font-size: inherit; font-weight: inherit; }
+        table { text-indent: 0; border-color: inherit; border-collapse: collapse; }
+        img { display: block; vertical-align: middle; max-width: 100%; height: auto; }
+        .mx-auto { margin-left: auto; margin-right: auto; }
+        .mb-1 { margin-bottom: 0.25rem; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .mt-2 { margin-top: 0.5rem; }
+        .flex { display: flex; }
+        .h-16 { height: 4rem; }
+        .h-6 { height: 1.5rem; }
+        .h-8 { height: 2rem; }
+        .w-1\\/3 { width: 33.333333%; }
+        .w-16 { width: 4rem; }
+        .w-2\\/3 { width: 66.666667%; }
+        .w-full { width: 100%; }
+        .min-w-\\[80px\\] { min-width: 80px; }
+        .max-w-full { max-width: 100%; }
+        .border-collapse { border-collapse: collapse; }
+        .flex-col { flex-direction: column; }
+        .items-start { align-items: flex-start; }
+        .items-end { align-items: flex-end; }
+        .items-center { align-items: center; }
+        .justify-end { justify-content: flex-end; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 0.5rem; }
+        .gap-4 { gap: 1rem; }
+        .gap-6 { gap: 1.5rem; }
+        .whitespace-nowrap { white-space: nowrap; }
+        .border { border-width: 1px; }
+        .border-b { border-bottom-width: 1px; }
+        .border-l { border-left-width: 1px; }
+        .border-t { border-top-width: 1px; }
+        .border-none { border-style: none; }
+        .border-black { border-color: black; }
+        .border-border { border-color: ${STAFF.border}; }
+        .bg-surface-hover { background-color: ${STAFF.surfaceHover}; }
+        .p-0\\.5 { padding: 0.125rem; }
+        .p-1 { padding: 0.25rem; }
+        .p-2 { padding: 0.5rem; }
+        .px-0\\.5 { padding-left: 0.125rem; padding-right: 0.125rem; }
+        .pl-4 { padding-left: 1rem; }
+        .text-left { text-align: left; }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .text-2xl { font-size: 1.5rem; line-height: 2rem; }
+        .text-2xs { font-size: 10px; }
+        .text-fine { font-size: 9px; }
+        .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+        .text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; }
+        .font-bold { font-weight: 700; }
+        .font-medium { font-weight: 500; }
+        .font-normal { font-weight: 400; }
+        .text-text-muted { color: ${STAFF.textMuted}; }
+        .text-text-strong { color: ${STAFF.textStrong}; }
+        .text-text { color: ${STAFF.text}; }
+`;
+
 // ISO week number computed entirely in UTC on the plain YYYY-MM-DD business
 // date, so the result never shifts with the server timezone.
 function getWeekNumber(d: string) {
@@ -49,7 +121,7 @@ function formatCurrency(val: number) {
 export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, logoUrl }: TemplateProps): string {
   const logoHtml = logoUrl 
     ? `<img src="${logoUrl}" alt="Logo" class="h-16" />` 
-    : `<h1 class="text-2xl font-bold text-right">THE ANCHOR<br><span class="text-sm font-normal text-gray-600">Stanwell Moor Village</span></h1>`;
+    : `<h1 class="text-2xl font-bold text-right">THE ANCHOR<br><span class="text-sm font-normal text-text-muted">Stanwell Moor Village</span></h1>`;
 
   const weekNum = getWeekNumber(weekStartDate);
   const formattedDate = formatDate(weekStartDate);
@@ -128,8 +200,8 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
     }).join('');
     
     return `
-      <tr class="border-b text-xs hover:bg-gray-50">
-        <td class="border border-black p-0.5 whitespace-nowrap font-medium text-gray-900">${new Date(`${row.date}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}</td>
+      <tr class="border-b text-xs">
+        <td class="border border-black p-0.5 whitespace-nowrap font-medium text-text">${new Date(`${row.date}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}</td>
         ${cells}
       </tr>
     `;
@@ -145,7 +217,7 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
   }, {} as Record<number, number>);
 
   const denomFooterCells = DENOMINATIONS.map(denom => 
-    `<td class="border border-black p-1 text-right font-bold text-[10px]">£${denomTotals[denom].toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>`
+    `<td class="border border-black p-1 text-right font-bold text-2xs">£${denomTotals[denom].toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>`
   ).join('');
 
   return `
@@ -154,17 +226,17 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
     <head>
       <meta charset="utf-8">
       <title>Weekly Cashing Up - ${siteName}</title>
-      <script src="https://cdn.tailwindcss.com"></script>
       <style>
         body { font-family: sans-serif; -webkit-print-color-adjust: exact; font-size: 10px; }
         @page { size: A4 landscape; margin: 5mm; } /* Reduced margins */
         .header-box { border: 1px solid black; padding: 2px 6px; font-weight: bold; font-size: 0.9rem; display: inline-block; min-width: 150px; }
         table { border-collapse: collapse; width: 100%; }
         th, td { border: 1px solid black; }
-        .group-header { background-color: #f3f4f6; font-weight: bold; text-transform: uppercase; text-align: center; font-size: 0.7rem; } /* bg-gray-100 */
-        .col-header { font-size: 0.5rem; font-weight: bold; text-align: center; vertical-align: middle; height: 30px; background-color: #f3f4f6; } /* bg-gray-100 */
+        .group-header { background-color: ${STAFF.surfaceHover}; font-weight: bold; text-transform: uppercase; text-align: center; font-size: 0.7rem; } /* surface-hover */
+        .col-header { font-size: 0.5rem; font-weight: bold; text-align: center; vertical-align: middle; height: 30px; background-color: ${STAFF.surfaceHover}; } /* surface-hover */
         .footer-box { border: 1px solid black; height: 24px; width: 150px; display: inline-block; }
       </style>
+      <style>${SHEET_CSS}      </style>
     </head>
     <body class="p-2 max-w-full mx-auto">
       
@@ -189,7 +261,7 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
       </div>
 
       <!-- Main Table -->
-      <table class="mb-4 border border-black text-[9px]">
+      <table class="mb-4 border border-black text-fine">
         <thead>
           <!-- Group Headers -->
           <tr class="border-b border-black">
@@ -229,7 +301,7 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
           ${rows}
         </tbody>
         <tfoot class="font-bold border-t border-black">
-          <tr class="text-[9px] h-6 bg-gray-100">
+          <tr class="text-fine h-6 bg-surface-hover">
             <td class="p-0.5 text-center" colspan="2">WEEKLY TOTALS</td>
             <td class="p-0.5 text-right">${formatCurrency(totals.cash_expected)}</td>
             <td class="p-0.5 text-right">${formatCurrency(totals.cash_actual)}</td>
@@ -266,10 +338,10 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
         </div>
 
         <!-- Right: Denominations Breakdown (New Table) -->
-        <div class="w-2/3 pl-4 border-l border-gray-200">
-            <h3 class="text-xs font-bold text-gray-800 mb-1">Denominations Breakdown</h3>
-            <table class="w-full text-[9px] border-collapse border border-black">
-                <thead class="bg-gray-100">
+        <div class="w-2/3 pl-4 border-l border-border">
+            <h3 class="text-xs font-bold text-text-strong mb-1">Denominations Breakdown</h3>
+            <table class="w-full text-fine border-collapse border border-black">
+                <thead class="bg-surface-hover">
                     <tr>
                         <th class="border border-black p-0.5 w-16">Date</th>
                         ${DENOMINATIONS.map(d => `<th class="border border-black p-0.5 text-center">${d < 1 ? '£' + d.toFixed(2) : '£' + d}</th>`).join('')}
@@ -278,7 +350,7 @@ export function generateWeeklyCashupHTML({ weekData, siteName, weekStartDate, lo
                 <tbody>
                     ${denomRows}
                 </tbody>
-                <tfoot class="bg-gray-100 font-bold">
+                <tfoot class="bg-surface-hover font-bold">
                     <tr>
                         <td class="border border-black p-0.5">Totals</td>
                         ${denomFooterCells}

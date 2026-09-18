@@ -88,7 +88,7 @@ function getBlockedReasonMessage(reason: string | undefined): string {
 /** The closing "Need help?" line every waitlist screen ends on. */
 function HelpLine(): React.JSX.Element {
   return (
-    <p className="text-center font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+    <p className="text-center font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
       Need help? Call{' '}
       <a
         href={GUEST_CONTACT.telHref}
@@ -173,7 +173,7 @@ function ResultPanel({
               <GuestBadge tone={success ? 'success' : 'outstanding'}>{badgeLabel}</GuestBadge>
             </div>
 
-            <p className="font-anchor-body text-[15px] leading-[1.65] text-guest-text">{body}</p>
+            <p className="font-anchor-body text-guest-lead leading-[1.65] text-guest-text">{body}</p>
           </div>
         </GuestCard>
 
@@ -279,13 +279,13 @@ export default async function WaitlistOfferPage({
               the same tokens.
             */}
             <div className="flex flex-col gap-[5px]">
-              <span className="font-anchor-body text-[11px] font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted">
+              <span className="font-anchor-body text-meta font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted">
                 We are holding
               </span>
               <span className="font-anchor-display text-[42px] font-normal leading-none tracking-[-0.02em] text-guest-text-strong">
                 {seats} {seatWord}
               </span>
-              <span className="font-anchor-body text-[15px] leading-[1.5] text-guest-text-muted">
+              <span className="font-anchor-body text-guest-lead leading-[1.5] text-guest-text-muted">
                 for <span className="font-semibold text-guest-text">{eventName}</span>.
               </span>
             </div>
@@ -299,7 +299,7 @@ export default async function WaitlistOfferPage({
               </div>
             )}
 
-            <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+            <p className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
               {paymentNote}
             </p>
 

@@ -7,6 +7,7 @@
  * URI, and a content security policy stops Chromium fetching anything over the network.
  */
 
+import { STAFF } from '@/lib/brand/palette'
 import { renderDocumentFooter, renderDocumentHead, renderDocumentHeader } from '@/lib/pdf/document-chrome'
 import { formatLongDate } from '@/lib/mileage/periods'
 import type { MileageDriverBasis } from './dataset'
@@ -28,17 +29,17 @@ const VAT_EXCLUSION_LABELS: Record<VatExclusionReason, string> = {
 }
 
 const BODY_CSS = `    .mr-section { margin: 10px 0; }
-    .mr-heading { font-size: 11pt; font-weight: 700; color: #111827; margin: 12px 0 4px; }
-    .mr-meta-line { font-size: 9pt; color: #374151; margin: 1px 0; }
+    .mr-heading { font-size: 11pt; font-weight: 700; color: ${STAFF.textStrong}; margin: 12px 0 4px; }
+    .mr-meta-line { font-size: 9pt; color: ${STAFF.text}; margin: 1px 0; }
     .mr-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 4px 0 8px; }
     .mr-table thead { display: table-header-group; }
     .mr-table tr { page-break-inside: avoid; break-inside: avoid; }
-    .mr-table th, .mr-table td { border-bottom: 1px solid #e5e7eb; padding: 3px 4px; text-align: left; vertical-align: top; font-size: 8pt; overflow-wrap: anywhere; }
-    .mr-table th { background: #f3f4f6; font-weight: 700; }
+    .mr-table th, .mr-table td { border-bottom: 1px solid ${STAFF.border}; padding: 3px 4px; text-align: left; vertical-align: top; font-size: 8pt; overflow-wrap: anywhere; }
+    .mr-table th { background: ${STAFF.surfaceHover}; font-weight: 700; }
     .mr-table .mr-num { text-align: right; white-space: nowrap; }
-    .mr-table .mr-total td { font-weight: 700; border-top: 1px solid #374151; }
-    .mr-note { font-size: 8pt; color: #374151; margin: 3px 0; }
-    .mr-warning { font-size: 8pt; color: #92400e; font-weight: 700; margin: 3px 0; }
+    .mr-table .mr-total td { font-weight: 700; border-top: 1px solid ${STAFF.text}; }
+    .mr-note { font-size: 8pt; color: ${STAFF.text}; margin: 3px 0; }
+    .mr-warning { font-size: 8pt; color: ${STAFF.warningFg}; font-weight: 700; margin: 3px 0; }
 `
 
 interface Column {

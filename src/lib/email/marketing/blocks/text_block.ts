@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText, escapeEmailUrl } from '../escape'
 import { defineBlock } from './types'
 
@@ -38,14 +40,14 @@ function buttonCell(button: TextBlockButton): string {
     // White on the designer's #a57626 measures 4.02:1, which only clears AA for large text and
     // this label is 15px, so the fill darkens to the palette's #8b6914 where white reaches
     // 5.09:1 and passes AA. The ghost variant below keeps #8b6914 as gold text on cream.
-    return `<td align="center" bgcolor="#8b6914" style="background-color:#8b6914;border-radius:999px"><a href="${href}" style="display:block;padding:14px 28px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;line-height:20px;color:#ffffff;text-decoration:none">${label}</a></td>`
+    return `<td align="center" bgcolor="${GUEST.buttonBg}" style="background-color:${GUEST.buttonBg};border-radius:999px"><a href="${href}" style="display:block;padding:14px 28px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;line-height:20px;color:${GUEST.buttonText};text-decoration:none">${label}</a></td>`
   }
 
   if (button.variant === 'outline') {
-    return `<td align="center" style="border:2px solid #005131;border-radius:999px"><a href="${href}" style="display:block;padding:12px 26px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;line-height:20px;color:#005131;text-decoration:none">${label}</a></td>`
+    return `<td align="center" style="border:2px solid ${GUEST.green};border-radius:999px"><a href="${href}" style="display:block;padding:12px 26px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;line-height:20px;color:${GUEST.green};text-decoration:none">${label}</a></td>`
   }
 
-  return `<td align="center" style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;line-height:20px"><a href="${href}" style="color:#8b6914;text-decoration:none">${label}</a></td>`
+  return `<td align="center" style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;line-height:20px"><a href="${href}" style="color:${GUEST.accentText};text-decoration:none">${label}</a></td>`
 }
 
 export const textBlock = defineBlock<TextBlockData>({
@@ -69,23 +71,23 @@ export const textBlock = defineBlock<TextBlockData>({
   },
   render: (data) => {
     const rows: string[] = [
-      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px 32px 0;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>`,
+      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${GUEST.cream}"><tbody>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:32px 32px 0;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;letter-spacing:-0.02em;color:${GUEST.green}">${escapeEmailText(data.heading)}</td></tr>`,
     ]
 
     for (const paragraph of data.body ?? []) {
       rows.push(
-        `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:12px 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:27px;color:#1a1a1a">${escapeEmailText(paragraph)}</td></tr>`,
+        `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:12px 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:27px;color:${GUEST.text}">${escapeEmailText(paragraph)}</td></tr>`,
       )
     }
 
     if (data.list_items?.length) {
       rows.push(
-        `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:16px 32px 0"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
+        `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:16px 32px 0"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
       )
       for (const item of data.list_items) {
         rows.push(
-          `<tr><td width="22" valign="top" style="width:22px;font-family:'Outfit',Helvetica,Arial,sans-serif;font-size:16px;line-height:26px;color:#a57626">&#8226;</td><td style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:26px;color:#1a1a1a">${escapeEmailText(item)}</td></tr>`,
+          `<tr><td width="22" valign="top" style="width:22px;font-family:'Outfit',Helvetica,Arial,sans-serif;font-size:16px;line-height:26px;color:${GUEST.gold}">&#8226;</td><td style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:26px;color:${GUEST.text}">${escapeEmailText(item)}</td></tr>`,
         )
       }
       rows.push(`</tbody></table></td></tr>`)
@@ -93,7 +95,7 @@ export const textBlock = defineBlock<TextBlockData>({
 
     if (data.buttons?.length) {
       rows.push(
-        `<tr><td bgcolor="#faf8f3" align="center" style="background-color:#faf8f3;padding:24px 32px 0"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;margin:0 auto"><tbody><tr>`,
+        `<tr><td bgcolor="${GUEST.cream}" align="center" style="background-color:${GUEST.cream};padding:24px 32px 0"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;margin:0 auto"><tbody><tr>`,
       )
       data.buttons.forEach((button, index) => {
         if (index > 0) {
@@ -107,7 +109,7 @@ export const textBlock = defineBlock<TextBlockData>({
     }
 
     rows.push(
-      `<tr><td bgcolor="#faf8f3" align="center" style="background-color:#faf8f3;padding:30px 32px 32px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody><tr><td height="1" style="height:1px;background-color:#e2dccf;font-size:0;line-height:0">&nbsp;</td></tr></tbody></table></td></tr>`,
+      `<tr><td bgcolor="${GUEST.cream}" align="center" style="background-color:${GUEST.cream};padding:30px 32px 32px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody><tr><td height="1" style="height:1px;background-color:${GUEST.border};font-size:0;line-height:0">&nbsp;</td></tr></tbody></table></td></tr>`,
     )
     rows.push(`</tbody></table>`)
 

@@ -24,6 +24,7 @@
 import { sendEmail } from '@/lib/email/emailService'
 import { sendSMS } from '@/lib/twilio'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { GUEST } from '@/lib/brand/palette'
 import {
   GUEST_EMAIL_SIGN_OFF,
   guestContactHtmlBlock,
@@ -186,7 +187,7 @@ export function buildRefundEmail(input: RefundCopyInput): RefundCopy {
   const text = [...bodyLines, guestContactTextLine(), 'Thanks,', GUEST_EMAIL_SIGN_OFF].join('\n\n')
 
   const html = [
-    '<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.5;color:#1f2937">',
+    `<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.5;color:${GUEST.text}">`,
     // Escaped, because the name is free text a member of staff typed and an apostrophe or an
     // ampersand in it used to land straight in the markup.
     ...bodyLines.map((line) => `<p style="margin:0 0 12px">${escapeHtml(line)}</p>`),

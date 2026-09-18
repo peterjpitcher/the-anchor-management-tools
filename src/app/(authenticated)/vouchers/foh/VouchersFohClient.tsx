@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
-import { cn } from '@/lib/utils'
+import { Button } from '@/ds'
 import {
   fetchVoucherCounts,
   type FohStaffMember,
@@ -60,26 +60,18 @@ export function VouchersFohClient({ canEdit, staff, todayIso }: VouchersFohClien
 
   const staffName = staffId ? staff.find((member) => member.id === staffId)?.name ?? null : null
 
-  const tabButtonClass = (active: boolean) =>
-    cn(
-      'min-h-14 flex-1 rounded-lg border px-4 py-3 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2',
-      active
-        ? 'border-sidebar bg-sidebar text-white'
-        : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
-    )
-
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4">
       <dl className="grid grid-cols-3 gap-2 sm:gap-3">
-        <div className="min-w-0 rounded-xl border border-border bg-surface p-3 text-center">
+        <div className="min-w-0 rounded-lg border border-border bg-surface p-3 text-center">
           <dd className="text-3xl font-extrabold text-text">{counts ? counts.inStock : '-'}</dd>
           <dt className="mt-1 text-sm font-medium text-text-muted">In stock</dt>
         </div>
-        <div className="min-w-0 rounded-xl border border-border bg-surface p-3 text-center">
+        <div className="min-w-0 rounded-lg border border-border bg-surface p-3 text-center">
           <dd className="text-3xl font-extrabold text-text">{counts ? counts.out : '-'}</dd>
           <dt className="mt-1 text-sm font-medium text-text-muted">Out with guests</dt>
         </div>
-        <div className="min-w-0 rounded-xl border border-border bg-surface p-3 text-center">
+        <div className="min-w-0 rounded-lg border border-border bg-surface p-3 text-center">
           <dd className="text-3xl font-extrabold text-text">
             {counts ? counts.redeemedToday : '-'}
           </dd>
@@ -87,27 +79,32 @@ export function VouchersFohClient({ canEdit, staff, todayIso }: VouchersFohClien
         </div>
       </dl>
 
-      <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="rounded-lg border border-border bg-surface p-4">
         <StaffPicker staff={staff} value={staffId} onChange={handleStaffChange} />
       </div>
 
+      {/* The chosen mode is a filled primary button, the other a secondary one. */}
       <div className="flex gap-2" role="group" aria-label="Voucher actions">
-        <button
+        <Button
           type="button"
+          variant={tab === 'redeem' ? 'primary' : 'secondary'}
+          size="lg"
           onClick={() => setTab('redeem')}
           aria-pressed={tab === 'redeem'}
-          className={tabButtonClass(tab === 'redeem')}
+          className="h-14 flex-1 text-lg font-bold"
         >
           Redeem
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant={tab === 'handout' ? 'primary' : 'secondary'}
+          size="lg"
           onClick={() => setTab('handout')}
           aria-pressed={tab === 'handout'}
-          className={tabButtonClass(tab === 'handout')}
+          className="h-14 flex-1 text-lg font-bold"
         >
           Hand out
-        </button>
+        </Button>
       </div>
 
       {tab === 'redeem' ? (

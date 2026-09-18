@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 
 /**
@@ -48,7 +50,7 @@ export function renderShellHead(data: ShellData): string {
   body{margin:0;padding:0;width:100% !important;background-color:#e6e0d4;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
   table{border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;}
   img{border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;}
-  a{color:#8b6914;}
+  a{color:${GUEST.accentText};}
   @media only screen and (max-width:620px){
     .wrap{width:100% !important;max-width:100% !important;}
     .stack{display:block !important;width:100% !important;max-width:100% !important;box-sizing:border-box !important;}
@@ -59,7 +61,7 @@ export function renderShellHead(data: ShellData): string {
 <body style="margin:0;padding:0;background-color:#e6e0d4">
 <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#e6e0d4">${escapeEmailText(data.preheader)}${PREHEADER_PADDING}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background-color:#e6e0d4"><tbody><tr><td align="center" style="padding:24px 12px">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${GUEST.cream}">
 <tbody>
 `
 }

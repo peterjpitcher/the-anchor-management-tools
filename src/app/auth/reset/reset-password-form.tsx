@@ -3,13 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
-import { Container } from '@/ds'
-import { Card } from '@/ds'
-import { Form } from '@/ds'
-import { FormGroup } from '@/ds'
-import { Input } from '@/ds'
-import { Button } from '@/ds'
-import { toast } from '@/ds'
+import { Button, Field, Input, toast } from '@/ds'
+import { AuthCard } from '../_components/AuthCard'
 
 type Props = {
   email?: string
@@ -52,43 +47,34 @@ export default function ResetPasswordForm({ email }: Props) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
-      <Container size="sm">
-        <Card className="p-8">
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-semibold text-text">Set a new password</h1>
-            {email && <p className="mt-2 text-sm text-text-muted">Signed in as {email}</p>}
-          </div>
+    <AuthCard title="Set a new password" lead={email ? `Signed in as ${email}` : undefined}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Field label="New password" required hint="Minimum 8 characters">
+          <Input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="new-password"
+            minLength={8}
+            required
+          />
+        </Field>
 
-          <Form onSubmit={handleSubmit} className="space-y-5">
-            <FormGroup label="New password" required help="Minimum 8 characters">
-              <Input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-            </FormGroup>
+        <Field label="Confirm password" required>
+          <Input
+            type="password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            autoComplete="new-password"
+            minLength={8}
+            required
+          />
+        </Field>
 
-            <FormGroup label="Confirm password" required>
-              <Input
-                type="password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-            </FormGroup>
-
-            <Button type="submit" loading={isSubmitting} disabled={isSubmitting} fullWidth>
-              Save password
-            </Button>
-          </Form>
-        </Card>
-      </Container>
-    </div>
+        <Button type="submit" variant="primary" size="lg" loading={isSubmitting} disabled={isSubmitting} className="w-full">
+          Save password
+        </Button>
+      </form>
+    </AuthCard>
   )
 }

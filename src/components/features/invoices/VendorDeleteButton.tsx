@@ -1,6 +1,7 @@
 'use client'
 
 import { TrashIcon } from '@heroicons/react/24/outline'
+import { IconButton } from '@/ds'
 
 interface VendorDeleteButtonProps {
   vendorName: string
@@ -12,18 +13,17 @@ export function VendorDeleteButton({ vendorName, vendorId, deleteAction }: Vendo
   return (
     <form action={deleteAction} className="inline">
       <input type="hidden" name="vendorId" value={vendorId} />
-      <button
+      <IconButton
         type="submit"
-        aria-label={`Delete ${vendorName}`}
-        className="text-danger hover:text-red-700 transition-colors"
+        label={`Delete ${vendorName}`}
+        icon={<TrashIcon className="h-5 w-5" />}
+        className="text-danger hover:text-danger-fg"
         onClick={(e) => {
           if (!confirm(`Are you sure you want to delete "${vendorName}"? This action cannot be undone.`)) {
             e.preventDefault()
           }
         }}
-      >
-        <TrashIcon className="h-5 w-5" />
-      </button>
+      />
     </form>
   )
 }

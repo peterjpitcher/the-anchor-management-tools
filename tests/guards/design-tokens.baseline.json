@@ -1,12 +1,9 @@
 {
-  "src/app/(authenticated)/cashing-up/insights/_components/InsightsClient.tsx": {
-    "hex-colour": 3
-  },
   "src/app/(authenticated)/checklists/page.tsx": {
     "sidebar-outside-shell": 3
   },
   "src/app/(authenticated)/customers/[id]/page.tsx": {
-    "raw-palette": 15
+    "raw-palette": 11
   },
   "src/app/(authenticated)/customers/insights/page.tsx": {
     "raw-palette": 10,
@@ -36,84 +33,8 @@
   "src/app/(authenticated)/events/_components/EventImagePanel.tsx": {
     "raw-palette": 9
   },
-  "src/app/(authenticated)/expenses/_components/ExpenseFileViewer.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(authenticated)/expenses/_components/ExpenseForm.tsx": {
-    "raw-palette": 17
-  },
-  "src/app/(authenticated)/expenses/insights/_components/ExpensesInsightsClient.tsx": {
-    "hex-colour": 1
-  },
-  "src/app/(authenticated)/invoices/MobileInvoiceCard.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/invoices/[id]/InvoiceDetailClient.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(authenticated)/invoices/[id]/payment/page.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/invoices/export/page.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/invoices/new/page.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/invoices/recurring/[id]/page.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/invoices/recurring/page.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/invoices/vendors/page.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(authenticated)/menu-management/_components/MenuDishesTable.tsx": {
-    "raw-palette": 7
-  },
-  "src/app/(authenticated)/menu-management/dishes/_components/CompositionRow.tsx": {
-    "raw-palette": 41
-  },
-  "src/app/(authenticated)/menu-management/dishes/_components/DishCompositionTab.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/menu-management/dishes/_components/DishDrawer.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(authenticated)/menu-management/dishes/_components/DishGpAnalysisTab.tsx": {
-    "raw-palette": 19
-  },
-  "src/app/(authenticated)/menu-management/ingredients/_components/IngredientDrawer.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/(authenticated)/menu-management/recipes/_components/RecipeDrawer.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/menu-management/recipes/_components/RecipeIngredientRow.tsx": {
-    "raw-palette": 2
-  },
   "src/app/(authenticated)/messages/bulk/BulkMessagesClient.tsx": {
     "raw-palette": 1
-  },
-  "src/app/(authenticated)/mgd/_components/CollectionForm.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/mgd/insights/_components/MgdInsightsClient.tsx": {
-    "hex-colour": 1
-  },
-  "src/app/(authenticated)/mileage/_components/DestinationsClient.tsx": {
-    "raw-palette": 8,
-    "bare-rounded": 2
-  },
-  "src/app/(authenticated)/mileage/_components/TripForm.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/(authenticated)/mileage/insights/_components/MileageInsightsClient.tsx": {
-    "hex-colour": 1
-  },
-  "src/app/(authenticated)/parking/_components/ParkingClient.tsx": {
-    "raw-palette": 4
   },
   "src/app/(authenticated)/private-bookings/[id]/InvoiceBookingModal.tsx": {
     "raw-palette": 1
@@ -151,24 +72,6 @@
   "src/app/(authenticated)/private-bookings/sms-queue/page.tsx": {
     "raw-palette": 3
   },
-  "src/app/(authenticated)/quotes/[id]/page.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/quotes/new/page.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/receipts/_components/ui/ReceiptTableRow.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(authenticated)/receipts/monthly/MonthlyCharts.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/receipts/monthly/page.tsx": {
-    "raw-palette": 12
-  },
-  "src/app/(authenticated)/receipts/vendors/_components/VendorSummaryGrid.tsx": {
-    "raw-palette": 2
-  },
   "src/app/(authenticated)/roles/components/RoleForm.tsx": {
     "raw-palette": 6
   },
@@ -195,345 +98,30 @@
     "raw-palette": 4,
     "hex-colour": 1
   },
-  "src/app/(authenticated)/settings/api-keys/ApiKeysManager.tsx": {
-    "raw-palette": 8
-  },
-  "src/app/(authenticated)/settings/audit-logs/AuditLogsClient.tsx": {
-    "raw-palette": 17,
-    "bare-rounded": 3
-  },
-  "src/app/(authenticated)/settings/budgets/BudgetsManager.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/settings/business-hours/HoursVersionStrip.tsx": {
-    "sidebar-outside-shell": 2
-  },
-  "src/app/(authenticated)/settings/business-hours/SpecialHoursCalendar.tsx": {
-    "raw-palette": 13
-  },
-  "src/app/(authenticated)/settings/business-hours/SpecialHoursClientWrapper.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/settings/business-hours/SpecialHoursModal.tsx": {
-    "raw-palette": 6
-  },
   "src/app/(authenticated)/settings/calendar-notes/CalendarNotesManager.tsx": {
-    "hex-colour": 2
+    "hex-colour": 1
   },
   "src/app/(authenticated)/settings/customer-labels/CustomerLabelsClient.tsx": {
-    "raw-palette": 1,
-    "hex-colour": 10
+    "hex-colour": 8
   },
   "src/app/(authenticated)/settings/design-system/page.tsx": {
     "hex-colour": 26,
     "px-text-size": 7
   },
-  "src/app/(authenticated)/settings/event-categories/page.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/settings/gdpr/page.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(authenticated)/settings/import-messages/ImportMessagesClient.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/settings/pay-bands/PayBandsManager.tsx": {
-    "raw-palette": 9
-  },
-  "src/app/(authenticated)/settings/table-bookings/AllocationSettings.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/settings/table-bookings/SeasonalPeriods.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/settings/table-bookings/TableSetupManager.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/table-bookings/[id]/BookingDetailClient.tsx": {
-    "raw-palette": 15
-  },
-  "src/app/(authenticated)/table-bookings/boh/BohBookingsClient.tsx": {
-    "raw-palette": 26
-  },
-  "src/app/(authenticated)/table-bookings/foh/FohClockWidget.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/(authenticated)/table-bookings/foh/FohScheduleClient.tsx": {
-    "sidebar-outside-shell": 1
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohBookingDetailModal.tsx": {
-    "raw-palette": 32
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohChangeTimeModal.tsx": {
-    "raw-palette": 11,
-    "sidebar-outside-shell": 2
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohCreateBookingModal.tsx": {
-    "raw-palette": 21,
-    "sidebar-outside-shell": 8
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohHeader.tsx": {
-    "raw-palette": 21,
-    "sidebar-outside-shell": 10
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohMiniModals.tsx": {
-    "raw-palette": 2,
-    "sidebar-outside-shell": 2
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohOutsideBookings.tsx": {
-    "raw-palette": 1,
-    "sidebar-outside-shell": 1
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohTimeline.tsx": {
-    "raw-palette": 6,
-    "sidebar-outside-shell": 3
-  },
-  "src/app/(authenticated)/table-bookings/foh/components/FohUnassignedBookings.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(authenticated)/table-bookings/reports/page.tsx": {
-    "raw-palette": 4,
-    "hex-colour": 1
-  },
-  "src/app/(authenticated)/vouchers/[number]/VoucherDetailClient.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/vouchers/all/LedgerClient.tsx": {
-    "raw-palette": 22
-  },
-  "src/app/(authenticated)/vouchers/foh/VouchersFohClient.tsx": {
-    "sidebar-outside-shell": 3
-  },
-  "src/app/(authenticated)/vouchers/foh/components/ConfirmDialog.tsx": {
-    "sidebar-outside-shell": 4
-  },
-  "src/app/(authenticated)/vouchers/foh/components/CustomerAttach.tsx": {
-    "raw-palette": 2,
-    "sidebar-outside-shell": 16
-  },
-  "src/app/(authenticated)/vouchers/foh/components/HandOutPanel.tsx": {
-    "raw-palette": 12,
-    "sidebar-outside-shell": 19
-  },
-  "src/app/(authenticated)/vouchers/foh/components/NumberSearch.tsx": {
-    "raw-palette": 1,
-    "sidebar-outside-shell": 6
-  },
-  "src/app/(authenticated)/vouchers/foh/components/RedeemPanel.tsx": {
-    "raw-palette": 8,
-    "sidebar-outside-shell": 10
-  },
-  "src/app/(authenticated)/vouchers/foh/components/StaffPicker.tsx": {
-    "sidebar-outside-shell": 2
-  },
-  "src/app/(authenticated)/vouchers/foh/components/VoucherCard.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/(authenticated)/vouchers/foh/components/voucher-status.ts": {
-    "raw-palette": 9
-  },
-  "src/app/(authenticated)/vouchers/foh/page.tsx": {
-    "sidebar-outside-shell": 3
-  },
-  "src/app/(authenticated)/vouchers/handout/HandoutClient.tsx": {
-    "raw-palette": 10,
-    "sidebar-outside-shell": 1
-  },
-  "src/app/(authenticated)/vouchers/page.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/vouchers/types/page.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(employee-onboarding)/onboarding/[token]/steps/CreateAccountStep.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(employee-onboarding)/onboarding/[token]/steps/EmergencyContactsStep.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(employee-onboarding)/onboarding/[token]/steps/FinancialStep.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(employee-onboarding)/onboarding/[token]/steps/HealthStep.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/(employee-onboarding)/onboarding/[token]/steps/PersonalStep.tsx": {
-    "raw-palette": 8
-  },
-  "src/app/(employee-onboarding)/onboarding/[token]/steps/ReviewStep.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(employee-onboarding)/onboarding/success/page.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(event-kiosk)/events/[id]/check-in/EventCheckInClient.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(feedback)/feedback/tell-us/TellUsClient.tsx": {
-    "px-text-size": 3
-  },
-  "src/app/(staff-portal)/portal/leave/CancelLeaveRequestButton.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(staff-portal)/portal/leave/LeaveRequestForm.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(staff-portal)/portal/leave/page.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(staff-portal)/portal/shifts/CalendarSubscribeButton.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(staff-portal)/portal/shifts/OpenShiftRequestButton.tsx": {
-    "raw-palette": 8
-  },
-  "src/app/(staff-portal)/portal/shifts/PaySummaryCard.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(staff-portal)/portal/shifts/ShiftDecisionControls.tsx": {
-    "raw-palette": 16
-  },
-  "src/app/(staff-portal)/portal/shifts/page.tsx": {
-    "raw-palette": 21
-  },
-  "src/app/(timeclock)/layout.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(timeclock)/timeclock/_components/TimeclockClient.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(timeclock)/timeclock/page.tsx": {
-    "hex-colour": 3
-  },
   "src/app/actions/calendar-notes.ts": {
     "hex-colour": 1
-  },
-  "src/app/actions/employee-birthdays.ts": {
-    "hex-colour": 15
   },
   "src/app/actions/event-check-in.ts": {
     "hex-colour": 4
   },
-  "src/app/actions/mileage.ts": {
-    "bare-rounded": 3
-  },
-  "src/app/actions/oj-projects/entries.ts": {
-    "bare-rounded": 1
-  },
   "src/app/actions/rota-day-info.ts": {
     "hex-colour": 1
-  },
-  "src/app/api/cron/event-checklist-reminders/route.ts": {
-    "hex-colour": 10
-  },
-  "src/app/api/cron/event-guest-engagement/route.ts": {
-    "hex-colour": 1
-  },
-  "src/app/api/cron/oj-projects-billing/route.ts": {
-    "bare-rounded": 1
-  },
-  "src/app/api/cron/rota-unfilled-urgent/route.ts": {
-    "hex-colour": 5
-  },
-  "src/app/api/employees/[employee_id]/starter-pack/route.ts": {
-    "hex-colour": 1
-  },
-  "src/app/api/private-bookings/outcome/[outcome]/[token]/route.ts": {
-    "hex-colour": 5
   },
   "src/app/api/rota/hours/pdf/route.ts": {
     "hex-colour": 35
   },
   "src/app/api/rota/pdf/route.ts": {
     "hex-colour": 48
-  },
-  "src/app/api/unsubscribe/route.ts": {
-    "hex-colour": 3
-  },
-  "src/app/auth/confirm/route.ts": {
-    "hex-colour": 5
-  },
-  "src/app/auth/recover/page.tsx": {
-    "sidebar-outside-shell": 1
-  },
-  "src/app/auth/reset-password/page.tsx": {
-    "sidebar-outside-shell": 3
-  },
-  "src/app/auth/reset/reset-password-form.tsx": {
-    "sidebar-outside-shell": 1
-  },
-  "src/app/booking-portal/[token]/FreshPayPalLinkClient.tsx": {
-    "px-text-size": 2
-  },
-  "src/app/booking-portal/[token]/page.tsx": {
-    "px-text-size": 7
-  },
-  "src/app/g/[token]/card-capture/page.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/g/[token]/confirm-booking/page.tsx": {
-    "raw-palette": 8
-  },
-  "src/app/g/[token]/email-capture/page.tsx": {
-    "bare-rounded": 1,
-    "px-text-size": 4
-  },
-  "src/app/g/[token]/event-payment/EventPayPalPaymentClient.tsx": {
-    "px-text-size": 2
-  },
-  "src/app/g/[token]/event-payment/page.tsx": {
-    "px-text-size": 4
-  },
-  "src/app/g/[token]/manage-booking/page.tsx": {
-    "px-text-size": 3
-  },
-  "src/app/g/[token]/private-feedback/page.tsx": {
-    "px-text-size": 1
-  },
-  "src/app/g/[token]/sunday-preorder/page.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/g/[token]/table-manage/PreorderSection.tsx": {
-    "px-text-size": 7
-  },
-  "src/app/g/[token]/table-manage/formStyles.ts": {
-    "px-text-size": 1
-  },
-  "src/app/g/[token]/table-manage/page.tsx": {
-    "px-text-size": 2
-  },
-  "src/app/g/[token]/table-payment/TablePaymentClient.tsx": {
-    "px-text-size": 2
-  },
-  "src/app/g/[token]/table-payment/TablePaymentSuccessPanel.tsx": {
-    "px-text-size": 2
-  },
-  "src/app/g/[token]/waitlist-offer/page.tsx": {
-    "px-text-size": 5
-  },
-  "src/app/global-error.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/invoice-portal/[token]/InvoicePayClient.tsx": {
-    "px-text-size": 1
-  },
-  "src/app/invoice-portal/[token]/page.tsx": {
-    "px-text-size": 1
-  },
-  "src/app/layout.tsx": {
-    "hex-colour": 1
-  },
-  "src/app/legacy-link/[code]/LegacyLinkClient.tsx": {
-    "px-text-size": 6
-  },
-  "src/app/parking/guest/[id]/_components/PublicParkingClient.tsx": {
-    "px-text-size": 4
-  },
-  "src/app/parking/payment-error/page.tsx": {
-    "px-text-size": 3
-  },
-  "src/app/privacy/page.tsx": {
-    "px-text-size": 6
   },
   "src/components/features/catering/CateringManager.tsx": {
     "raw-palette": 1
@@ -613,65 +201,14 @@
   "src/components/features/events/SeoHealthIndicator.tsx": {
     "raw-palette": 9
   },
-  "src/components/features/guest/DetailGrid.tsx": {
-    "px-text-size": 2
-  },
-  "src/components/features/guest/DetailRow.tsx": {
-    "px-text-size": 2
-  },
-  "src/components/features/guest/GuestAlert.tsx": {
-    "px-text-size": 2
-  },
-  "src/components/features/guest/GuestAmount.tsx": {
-    "px-text-size": 2
-  },
-  "src/components/features/guest/GuestBadge.tsx": {
-    "px-text-size": 1
-  },
-  "src/components/features/guest/GuestButton.tsx": {
-    "px-text-size": 2
-  },
-  "src/components/features/guest/GuestField.tsx": {
-    "px-text-size": 3
-  },
-  "src/components/features/guest/GuestShell.tsx": {
-    "px-text-size": 5
-  },
-  "src/components/features/guest/TrustLine.tsx": {
-    "px-text-size": 1
-  },
-  "src/components/features/guest/styles.ts": {
-    "px-text-size": 5
-  },
-  "src/components/features/invoices/RefundDialog.tsx": {
-    "raw-palette": 3
-  },
-  "src/components/features/invoices/RefundHistoryTable.tsx": {
-    "raw-palette": 2
-  },
-  "src/components/features/invoices/VendorDeleteButton.tsx": {
-    "raw-palette": 1
-  },
   "src/components/features/messages/MessageThread.tsx": {
     "raw-palette": 7
   },
   "src/components/features/private-bookings/VenueSpaceDeleteButton.tsx": {
     "raw-palette": 1
   },
-  "src/components/features/shared/GuestCancelBooking.tsx": {
-    "px-text-size": 1
-  },
-  "src/components/features/shared/GuestPageShell.tsx": {
-    "sidebar-outside-shell": 1
-  },
-  "src/components/features/table-bookings/preorder/SeasonalPreorderSection.tsx": {
-    "raw-palette": 1
-  },
   "src/components/modals/AddEmergencyContactModal.tsx": {
     "raw-palette": 10
-  },
-  "src/components/modals/ChasePaymentModal.tsx": {
-    "raw-palette": 5
   },
   "src/components/modals/EditEmergencyContactModal.tsx": {
     "raw-palette": 10
@@ -702,257 +239,58 @@
   "src/lib/analytics/engagement-scoring.ts": {
     "hex-colour": 2
   },
-  "src/lib/cashing-up-pdf-template.ts": {
-    "raw-palette": 8,
-    "hex-colour": 2,
-    "px-text-size": 4
-  },
-  "src/lib/communications/monitoring.ts": {
-    "hex-colour": 3
-  },
-  "src/lib/constants.ts": {
-    "hex-colour": 6
-  },
-  "src/lib/contract-template.ts": {
-    "hex-colour": 22
-  },
-  "src/lib/cron/alerting.ts": {
-    "hex-colour": 3
-  },
-  "src/lib/email/event-ticket-emails.ts": {
-    "hex-colour": 6
-  },
-  "src/lib/email/guest-footer.ts": {
-    "hex-colour": 3
-  },
-  "src/lib/email/invoice-payment-emails.ts": {
-    "hex-colour": 16
-  },
-  "src/lib/email/marketing/blocks/amenity_grid.ts": {
-    "hex-colour": 5
-  },
   "src/lib/email/marketing/blocks/closing_panel_dark.ts": {
-    "hex-colour": 11
-  },
-  "src/lib/email/marketing/blocks/cta_outline.ts": {
-    "hex-colour": 4
-  },
-  "src/lib/email/marketing/blocks/deadline_bar.ts": {
-    "hex-colour": 4
-  },
-  "src/lib/email/marketing/blocks/divider_rule.ts": {
-    "hex-colour": 3
-  },
-  "src/lib/email/marketing/blocks/event_row.ts": {
-    "hex-colour": 13
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/fact_strip.ts": {
-    "hex-colour": 7
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/faq_rows.ts": {
-    "hex-colour": 9
-  },
-  "src/lib/email/marketing/blocks/feature_card.ts": {
-    "hex-colour": 13
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/footer.ts": {
-    "hex-colour": 11
+    "hex-colour": 3
   },
   "src/lib/email/marketing/blocks/footer_dark.ts": {
-    "hex-colour": 12
-  },
-  "src/lib/email/marketing/blocks/grid_cards_linked.ts": {
-    "hex-colour": 8
-  },
-  "src/lib/email/marketing/blocks/hero_framed.ts": {
-    "hex-colour": 9
-  },
-  "src/lib/email/marketing/blocks/hero_image.ts": {
-    "hex-colour": 17
+    "hex-colour": 6
   },
   "src/lib/email/marketing/blocks/hours_table.ts": {
-    "hex-colour": 7
-  },
-  "src/lib/email/marketing/blocks/image_full.ts": {
-    "hex-colour": 4
-  },
-  "src/lib/email/marketing/blocks/masthead_cream.ts": {
-    "hex-colour": 8
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/masthead_green.ts": {
-    "hex-colour": 5
-  },
-  "src/lib/email/marketing/blocks/masthead_seasonal.ts": {
     "hex-colour": 2
   },
-  "src/lib/email/marketing/blocks/media_row.ts": {
-    "hex-colour": 7
-  },
   "src/lib/email/marketing/blocks/menu_list.ts": {
-    "hex-colour": 11
-  },
-  "src/lib/email/marketing/blocks/note_bar.ts": {
-    "hex-colour": 7
-  },
-  "src/lib/email/marketing/blocks/offer_panel.ts": {
-    "hex-colour": 9
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/opening_hours_dates.ts": {
-    "hex-colour": 19
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/opening_hours_week.ts": {
-    "hex-colour": 17
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/opening_times.ts": {
-    "hex-colour": 13
-  },
-  "src/lib/email/marketing/blocks/price_tiles.ts": {
-    "hex-colour": 16
-  },
-  "src/lib/email/marketing/blocks/pull_quote.ts": {
-    "hex-colour": 5
-  },
-  "src/lib/email/marketing/blocks/reassurance_row.ts": {
-    "hex-colour": 5
-  },
-  "src/lib/email/marketing/blocks/review.ts": {
-    "hex-colour": 8
-  },
-  "src/lib/email/marketing/blocks/section_intro.ts": {
-    "hex-colour": 9
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/shell.ts": {
-    "hex-colour": 6
-  },
-  "src/lib/email/marketing/blocks/signoff_ps.ts": {
-    "hex-colour": 11
-  },
-  "src/lib/email/marketing/blocks/steps.ts": {
-    "hex-colour": 11
-  },
-  "src/lib/email/marketing/blocks/text_block.ts": {
-    "hex-colour": 22
-  },
-  "src/lib/email/marketing/blocks/two_up_cards.ts": {
-    "hex-colour": 7
+    "hex-colour": 4
   },
   "src/lib/email/marketing/blocks/whats_on_list.ts": {
-    "hex-colour": 20
+    "hex-colour": 1
   },
   "src/lib/email/marketing/blocks/whats_on_media.ts": {
-    "hex-colour": 19
-  },
-  "src/lib/email/private-booking-emails.ts": {
-    "hex-colour": 70
-  },
-  "src/lib/employee-starter-template.ts": {
-    "hex-colour": 26
-  },
-  "src/lib/event-booking-sheet-template.ts": {
-    "hex-colour": 6
+    "hex-colour": 1
   },
   "src/lib/events/artwork/composite.ts": {
-    "hex-colour": 2,
-    "off-scale-shadow": 2
+    "hex-colour": 2
   },
   "src/lib/events/artwork/geometry.ts": {
     "hex-colour": 7
   },
-  "src/lib/events/guest-list-pdf.ts": {
-    "hex-colour": 10
-  },
   "src/lib/export/qr-pack.ts": {
     "hex-colour": 2
   },
-  "src/lib/invoice-template-compact.ts": {
-    "hex-colour": 28
-  },
   "src/lib/maintenance/photo-normalise.ts": {
     "hex-colour": 1
-  },
-  "src/lib/menu/allergen-report.ts": {
-    "hex-colour": 24
-  },
-  "src/lib/mileage/report/pdf.ts": {
-    "hex-colour": 1
-  },
-  "src/lib/mileage/report/template.ts": {
-    "hex-colour": 7,
-    "bare-rounded": 2
-  },
-  "src/lib/oj-projects/billing-alerts.ts": {
-    "hex-colour": 9
-  },
-  "src/lib/oj-projects/invoice-revision.ts": {
-    "bare-rounded": 1
-  },
-  "src/lib/oj-statement.ts": {
-    "hex-colour": 20
-  },
-  "src/lib/oj-timesheet.ts": {
-    "hex-colour": 4
-  },
-  "src/lib/oj-work-record.ts": {
-    "hex-colour": 13
-  },
-  "src/lib/openai.ts": {
-    "bare-rounded": 3
-  },
-  "src/lib/pdf/document-chrome.ts": {
-    "hex-colour": 7
-  },
-  "src/lib/pnl/report-template.ts": {
-    "hex-colour": 32
-  },
-  "src/lib/private-bookings/event-sheet.ts": {
-    "hex-colour": 18
-  },
-  "src/lib/quote-template-compact.ts": {
-    "hex-colour": 28
-  },
-  "src/lib/receipts/export/claim-summary-pdf.ts": {
-    "hex-colour": 14
-  },
-  "src/lib/recruitment/interview-kit-template.ts": {
-    "hex-colour": 20
-  },
-  "src/lib/recruitment/kit-pdf.ts": {
-    "hex-colour": 1
-  },
-  "src/lib/recruitment/trial-brief-template.ts": {
-    "hex-colour": 13
-  },
-  "src/lib/refund-notifications.ts": {
-    "hex-colour": 1
-  },
-  "src/lib/rota/email-templates.ts": {
-    "hex-colour": 111
-  },
-  "src/lib/short-links/channels.ts": {
-    "hex-colour": 41
-  },
-  "src/lib/table-booking-sheet-template.ts": {
-    "hex-colour": 6
-  },
-  "src/lib/table-bookings/guest-emails.ts": {
-    "hex-colour": 6
-  },
-  "src/lib/table-bookings/ui.ts": {
-    "raw-palette": 41
-  },
-  "src/lib/voucher-card-template.ts": {
-    "hex-colour": 9
-  },
-  "src/lib/vouchers/reminders.ts": {
-    "hex-colour": 1
-  },
-  "src/lib/worker-agreement-template.ts": {
-    "hex-colour": 23
-  },
-  "src/services/cashing-up.service.ts": {
-    "hex-colour": 6
-  },
-  "src/services/receipts/receiptHelpers.ts": {
-    "bare-rounded": 3
   }
 }

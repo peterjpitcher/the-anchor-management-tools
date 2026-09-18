@@ -335,10 +335,10 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
                 key={status}
                 type="button"
                 onClick={() => toggleStatus(status)}
-                className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+                className={`rounded-pill border px-3 py-1 text-sm transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                   filters.status?.includes(status)
-                    ? 'border-green-600 bg-success-soft text-green-800 font-medium'
-                    : 'border-border-strong text-text-muted hover:border-gray-400'
+                    ? 'border-primary bg-primary-soft text-primary-soft-fg font-medium'
+                    : 'border-border bg-surface text-text-muted hover:bg-surface-hover'
                 }`}
               >
                 {VOUCHER_STATUS_LABELS[status]}
@@ -352,10 +352,10 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
                 key={type.id}
                 type="button"
                 onClick={() => toggleType(type.id)}
-                className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                className={`rounded-pill border px-3 py-1 text-xs transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                   filters.typeIds?.includes(type.id)
-                    ? 'border-green-600 bg-success-soft text-green-800 font-medium'
-                    : 'border-border-strong text-text-muted hover:border-gray-400'
+                    ? 'border-primary bg-primary-soft text-primary-soft-fg font-medium'
+                    : 'border-border bg-surface text-text-muted hover:bg-surface-hover'
                 }`}
               >
                 {type.displayTitle}
@@ -402,7 +402,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
               {filters.batchReady && (
                 <button
                   type="button"
-                  className="rounded-full border border-gray-300 px-3 py-1 text-gray-600 hover:border-gray-400"
+                  className="rounded-pill border border-primary bg-primary-soft px-3 py-1 text-primary-soft-fg focus-visible:outline-hidden focus-visible:shadow-ring"
                   onClick={() => update({ batchReady: undefined })}
                 >
                   Printable stock only ✕
@@ -411,7 +411,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
               {filters.eventId && (
                 <button
                   type="button"
-                  className="rounded-full border border-gray-300 px-3 py-1 text-gray-600 hover:border-gray-400"
+                  className="rounded-pill border border-primary bg-primary-soft px-3 py-1 text-primary-soft-fg focus-visible:outline-hidden focus-visible:shadow-ring"
                   onClick={() => update({ eventId: undefined })}
                 >
                   Filtered to one event ✕
@@ -420,7 +420,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
               {filters.customerId && (
                 <button
                   type="button"
-                  className="rounded-full border border-gray-300 px-3 py-1 text-gray-600 hover:border-gray-400"
+                  className="rounded-pill border border-primary bg-primary-soft px-3 py-1 text-primary-soft-fg focus-visible:outline-hidden focus-visible:shadow-ring"
                   onClick={() => update({ customerId: undefined })}
                 >
                   Filtered to one customer ✕
@@ -434,7 +434,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
       {selected.size > 0 && (
         <Card>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-gray-700">{selected.size} selected</span>
+            <span className="text-sm font-medium text-text">{selected.size} selected</span>
             <Button variant="secondary" size="sm" onClick={() => setCancelOpen(true)}>
               Cancel selected
             </Button>
@@ -479,7 +479,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
               {result.rows.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={11}>
-                    <div className="py-8 text-center text-sm text-gray-500">
+                    <div className="py-8 text-center text-sm text-text-muted">
                       No vouchers match these filters.
                     </div>
                   </TableCell>
@@ -500,7 +500,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="font-mono font-medium text-gray-900">
+                    <span className="font-mono font-medium text-text">
                       {row.voucher.voucherNumber}
                     </span>
                   </TableCell>
@@ -512,7 +512,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
                     {row.voucher.issuedAt ? (
                       <div>
                         <div>{shortDate(row.voucher.issuedAt)}</div>
-                        <div className="text-xs text-gray-500">{row.voucher.issuedByName}</div>
+                        <div className="text-xs text-text-muted">{row.voucher.issuedByName}</div>
                       </div>
                     ) : (
                       ''
@@ -526,7 +526,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
                     {row.voucher.redeemedAt ? (
                       <div>
                         <div>{shortDate(row.voucher.redeemedAt)}</div>
-                        <div className="text-xs text-gray-500">{row.voucher.redeemedByName}</div>
+                        <div className="text-xs text-text-muted">{row.voucher.redeemedByName}</div>
                       </div>
                     ) : (
                       ''
@@ -548,7 +548,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
             showItemsPerPage={false}
           />
         </div>
-        {loading && <div className="mt-2 text-sm text-gray-500">Loading…</div>}
+        {loading && <div className="mt-2 text-sm text-text-muted">Loading…</div>}
       </Card>
 
       <Modal
@@ -567,7 +567,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             Cancelling is permanent. Cancelled cards can never be reinstated or reprinted.
           </p>
           <Textarea

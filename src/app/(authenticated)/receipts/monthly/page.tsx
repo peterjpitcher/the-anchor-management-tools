@@ -1,6 +1,6 @@
 import { getMonthlyReceiptInsights } from '@/app/actions/receipts'
 import { MonthlyCharts, StackedBreakdownChart } from './MonthlyCharts'
-import { Card } from '@/ds'
+import { Badge, Card } from '@/ds'
 import { EmptyState } from '@/ds'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -49,8 +49,9 @@ type VarianceItem = {
 
 const RECEIPT_STATUSES = ['pending', 'completed', 'auto_completed', 'no_receipt_required', 'cant_find'] as const
 
-const SPENDING_PALETTE = ['bg-rose-500', 'bg-rose-400', 'bg-rose-300', 'bg-rose-200', 'bg-rose-600', 'bg-rose-700']
-const INCOME_PALETTE = ['bg-emerald-500', 'bg-emerald-400', 'bg-emerald-300', 'bg-emerald-200', 'bg-emerald-700', 'bg-emerald-600']
+// Chart series tokens. Each breakdown is its own chart, so both use the full categorical set:
+// six shades of one hue were hard to tell apart.
+const BREAKDOWN_PALETTE = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5', 'bg-chart-6']
 
 function formatCurrency(value: number) {
   return currencyFormatter.format(value ?? 0)
@@ -104,7 +105,7 @@ export default async function ReceiptsMonthlyPage() {
         <EmptyState
           title="No receipt data yet"
           description="Upload a bank statement to start tracking monthly trends."
-          action={<Link href="/receipts" className="text-success-fg hover:text-primary">Go to receipts workspace</Link>}
+          action={<Link href="/receipts" className="rounded-sm font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring">Go to receipts workspace</Link>}
         />
       </ReceiptsPageChrome>
     )
@@ -246,23 +247,23 @@ export default async function ReceiptsMonthlyPage() {
 
         <MonthlyCharts data={chartPoints} />
 
-        <div className="grid gap-6 xl:grid-cols-[2fr,2fr,1fr]">
+        <div className="grid gap-6 xl:grid-cols-[2fr_2fr_1fr]">
           <StackedBreakdownChart
             title="Where spending went"
             data={spendingStack}
-            palette={SPENDING_PALETTE}
+            palette={BREAKDOWN_PALETTE}
             emptyDescription="No spending recorded for the selected period."
           />
           <StackedBreakdownChart
             title="Income sources"
             data={incomeStack}
-            palette={INCOME_PALETTE}
+            palette={BREAKDOWN_PALETTE}
             emptyDescription="No income recorded for the selected period."
           />
           <InsightsFeed items={insightItems} />
         </div>
 
-        <Card variant="bordered" className="hidden md:block" header={<h2 className="text-lg font-semibold text-text-strong">Monthly breakdown</h2>}>
+        <Card className="hidden md:block" header={<h2 className="text-lg font-semibold text-text-strong">Monthly breakdown</h2>}>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-border text-sm">
               <thead className="bg-surface-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -328,7 +329,7 @@ export default async function ReceiptsMonthlyPage() {
             const automationRate = totalMonthReceipts > 0 ? automatedMonthReceipts / totalMonthReceipts : 0
 
             return (
-              <Card key={month.monthStart} variant="bordered">
+              <Card key={month.monthStart}>
                 <div className="space-y-3">
                   <h3 className="text-sm font-semibold text-text-strong">{monthLabel}</h3>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
@@ -389,13 +390,13 @@ function StatCard({
 }) {
   const toneClasses =
     tone === 'positive'
-      ? 'border-border bg-success-soft/40'
+      ? 'border-success-border bg-success-soft'
       : tone === 'negative'
-        ? 'border-border bg-danger-soft/40'
-        : 'border-border bg-surface-2/40'
+        ? 'border-danger-border bg-danger-soft'
+        : 'border-border bg-surface-2'
 
   return (
-    <Card variant="bordered" className={`h-full ${toneClasses}`}>
+    <Card className={`h-full ${toneClasses}`}>
       <div className="space-y-3">
         <p className="text-sm text-text-muted">{label}</p>
         <p className="text-3xl font-semibold text-text-strong">{value}</p>
@@ -413,13 +414,7 @@ function ChangePill({ delta, percent }: { delta?: number; percent?: number }) {
     return null
   }
 
-  const tone = delta !== undefined && delta > 0 ? 'negative' : delta !== undefined && delta < 0 ? 'positive' : 'neutral'
-  const toneClasses =
-    tone === 'positive'
-      ? 'bg-success-soft text-success-fg'
-      : tone === 'negative'
-        ? 'bg-danger-soft text-danger-fg'
-        : 'bg-surface-2 text-text-muted'
+  const tone = delta !== undefined && delta > 0 ? 'danger' : delta !== undefined && delta < 0 ? 'success' : 'neutral'
 
   const parts: string[] = []
   if (delta !== undefined && delta !== 0) {
@@ -435,9 +430,9 @@ function ChangePill({ delta, percent }: { delta?: number; percent?: number }) {
   }
 
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${toneClasses}`}>
+    <Badge tone={tone}>
       {parts.join(' · ')}
-    </span>
+    </Badge>
   )
 }
 
@@ -448,7 +443,6 @@ function InsightsFeed({
 }) {
   return (
     <Card
-      variant="bordered"
       className="h-full"
       header={<h3 className="text-base font-semibold text-text-strong">What changed this month</h3>}
     >
@@ -458,20 +452,14 @@ function InsightsFeed({
         <ol className="space-y-3">
           {items.map((item, index) => {
             const badgeTone =
-              item.tone === 'positive'
-                ? 'bg-success-soft text-success-fg'
-                : item.tone === 'negative'
-                  ? 'bg-danger-soft text-danger-fg'
-                  : 'bg-surface-2 text-text-muted'
+              item.tone === 'positive' ? 'success' : item.tone === 'negative' ? 'danger' : 'neutral'
             const badgeLabel =
               item.tone === 'positive' ? 'Opportunity' : item.tone === 'negative' ? 'Alert' : 'Watchlist'
 
             return (
               <li key={`${item.title}-${index}`} className="rounded-lg border border-border bg-surface/60 p-3">
                 <div className="mb-1 flex items-center gap-2">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badgeTone}`}>
-                    {badgeLabel}
-                  </span>
+                  <Badge tone={badgeTone}>{badgeLabel}</Badge>
                   <span className="text-sm font-semibold text-text">{item.title}</span>
                 </div>
                 <p className="text-xs text-text-muted">{item.detail}</p>
@@ -494,18 +482,15 @@ function TopList({
   badgeTone: 'income' | 'spend'
 }) {
   if (!items.length) {
-    return <p className="text-xs text-text-subtle">{emptyLabel}</p>
+    return <p className="text-xs text-text-soft">{emptyLabel}</p>
   }
-
-  const badgeStyles =
-    badgeTone === 'income' ? 'bg-success-soft text-success-fg' : 'bg-danger-soft text-danger-fg'
 
   return (
     <div className="space-y-1">
       {items.map((item) => (
         <div key={item.label} className="flex items-center justify-between gap-3">
           <span className="truncate text-sm font-medium text-text-strong" title={item.label}>{item.label}</span>
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badgeStyles}`}>{formatCurrencyCompact(item.amount)}</span>
+          <Badge tone={badgeTone === 'income' ? 'success' : 'danger'} className="shrink-0">{formatCurrencyCompact(item.amount)}</Badge>
         </div>
       ))}
     </div>

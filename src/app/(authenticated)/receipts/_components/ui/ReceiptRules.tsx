@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition, FormEvent, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
-import { Button, ConfirmDialog, Input, SearchInput, Select, Card, Badge, Spinner } from '@/ds'
+import { Button, Checkbox, ConfirmDialog, Input, SearchInput, Select, Card, Badge, Spinner } from '@/ds'
 import { Accordion } from '@/ds'
 import {
   toggleReceiptRule,
@@ -87,13 +87,13 @@ function MatchDescriptionTokenPreview({ value }: { value: string }) {
       {tokens.map((token, index) => (
         <span
           key={index}
-          className="inline-flex items-center rounded-full bg-info-soft px-2 py-0.5 text-xs font-medium text-info-fg border border-border"
+          className="inline-flex items-center rounded-full border border-info-border bg-info-soft px-2 py-0.5 text-xs font-medium text-info-fg"
         >
           {token}
         </span>
       ))}
       {hasEmpty && (
-        <span className="inline-flex items-center rounded-full bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger-fg border border-border">
+        <span className="inline-flex items-center rounded-full border border-danger-border bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger-fg">
           empty token — remove double commas
         </span>
       )}
@@ -103,7 +103,7 @@ function MatchDescriptionTokenPreview({ value }: { value: string }) {
 
 function RulePreviewPanel({ preview }: { preview: RulePreviewResult }) {
   return (
-    <div className="rounded-md border border-border bg-info-soft p-3 text-xs text-info-fg space-y-2">
+    <div className="rounded-md border border-info-border bg-info-soft p-3 text-xs text-info-fg space-y-2">
       <p className="font-semibold">Rule preview (every transaction)</p>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
         <span>Total matching</span><span className="font-medium">{preview.totalMatching}</span>
@@ -500,7 +500,7 @@ export function ReceiptRules({
               <Card>
                 <h3 className="text-base font-semibold text-text-strong mb-3">New rule</h3>
                 {pendingSuggestion && (
-                  <div className="mb-3 rounded-md border border-border bg-success-soft p-3 text-xs text-success-fg">
+                  <div className="mb-3 rounded-md border border-success-border bg-success-soft p-3 text-xs text-success-fg">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-medium text-success-fg">
                         Suggestion ready for {pendingSuggestion.setVendorName ?? pendingSuggestion.setExpenseCategory}
@@ -522,14 +522,12 @@ export function ReceiptRules({
                   </div>
                 )}
                 {suggestionsTotal > 0 && (
-                  <div className="mb-3 space-y-2 rounded-md border border-border bg-warning-soft p-3 text-xs text-warning-fg">
+                  <div className="mb-3 space-y-2 rounded-md border border-warning-border bg-warning-soft p-3 text-xs text-warning-fg">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-semibold">System suggestions ({suggestionsTotal})</p>
                       {canGovernRules && suggestions.length > 0 && (
                         <label className="flex items-center gap-1.5 text-warning-fg">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded-sm border-border"
+                          <Checkbox
                             checked={allSuggestionsSelected}
                             onChange={toggleSelectAllSuggestions}
                             disabled={isSuggestionsPending}
@@ -578,9 +576,7 @@ export function ReceiptRules({
                         <div key={suggestion.id} className="flex flex-wrap items-start justify-between gap-2 border-t border-border pt-2 first:border-t-0 first:pt-0">
                           <div className="flex min-w-0 items-start gap-2">
                             {canGovernRules && (
-                              <input
-                                type="checkbox"
-                                className="mt-0.5 h-4 w-4 rounded-sm border-border"
+                              <Checkbox
                                 checked={selectedSuggestionIds.includes(suggestion.id)}
                                 onChange={() => toggleSuggestionSelected(suggestion.id)}
                                 aria-label={`Select suggestion ${suggestion.suggested_name}`}
@@ -660,7 +656,7 @@ export function ReceiptRules({
                   </div>
                 )}
                 {retroPrompt && (
-                  <div className="mb-3 rounded-md border border-border bg-info-soft p-3 text-xs text-info-fg">
+                  <div className="mb-3 rounded-md border border-info-border bg-info-soft p-3 text-xs text-info-fg">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-medium text-info-fg">
                         Run rule “{retroPrompt.name}” on {retroScope === 'all' ? 'all transactions' : 'pending transactions'}?
@@ -709,8 +705,12 @@ export function ReceiptRules({
                           label: kindLabels[option],
                         }))} />
                       </div>
-                      <label className="flex items-center gap-2 text-xs text-text-muted">
-                        <input type="checkbox" name="reviewed" className="h-4 w-4 rounded-sm border-border-strong" />
+                      {/* A native tick, not the DS Checkbox: this form is reset after a rule is
+                          created, and the DS Checkbox keeps its own ticked state, so it would
+                          still show ticked over a cleared input. Native ticks get the brand
+                          colour from the base layer in globals.css. */}
+                      <label className="flex cursor-pointer items-start gap-3 text-ui text-text">
+                        <input type="checkbox" name="reviewed" className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer" />
                         Mark reviewed
                       </label>
                     </div>
@@ -913,10 +913,7 @@ export function ReceiptRules({
                                       label: kindLabels[option],
                                     }))} />
                                   </div>
-                                  <label className="flex items-center gap-2 text-xs text-text-muted">
-                                    <input type="checkbox" name="reviewed" className="h-4 w-4 rounded-sm border-border-strong" defaultChecked={Boolean(rule.reviewed_at)} />
-                                    Mark reviewed
-                                  </label>
+                                  <Checkbox name="reviewed" label="Mark reviewed" defaultChecked={Boolean(rule.reviewed_at)} />
                                 </div>
                               )}
                               <Input name="match_description" defaultValue={rule.match_description ?? ''} />

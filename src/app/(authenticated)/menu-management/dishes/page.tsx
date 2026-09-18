@@ -537,7 +537,7 @@ export default function MenuDishesPage(): React.ReactElement {
               onToggled={() => void loadDishes()}
             />
           ) : (
-            <Badge variant={dish.is_active ? 'success' : 'error'}>
+            <Badge tone={dish.is_active ? 'success' : 'neutral'}>
               {dish.is_active ? 'Active' : 'Inactive'}
             </Badge>
           );

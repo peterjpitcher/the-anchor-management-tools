@@ -14,7 +14,7 @@ export function TrustLine({ children, className }: TrustLineProps): React.JSX.El
   return (
     <p
       className={cn(
-        'flex items-center justify-center gap-[7px] font-anchor-body text-[12px] leading-[1.5] text-guest-text-muted',
+        'flex items-center justify-center gap-[7px] font-anchor-body text-xs leading-[1.5] text-guest-text-muted',
         className
       )}
     >

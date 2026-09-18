@@ -103,6 +103,7 @@ interface InvoicePayment {
 }
 
 export interface InvoiceWithDetails extends Invoice {
+  credits?: Array<{ status: string; amount_inc_vat: number | string }>
   vendor?: InvoiceVendor
   line_items?: InvoiceLineItem[]
   payments?: InvoicePayment[]

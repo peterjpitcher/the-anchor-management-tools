@@ -80,32 +80,30 @@ function KeyForm({
       className="space-y-4"
     >
       <div>
-        <label htmlFor="key-name" className="block text-sm font-medium text-text">Name *</label>
         <Input
+          label="Name *"
           type="text"
           id="key-name"
           required
           placeholder="e.g., Website Integration"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          fullWidth
         />
       </div>
 
       <div>
-        <label htmlFor="key-description" className="block text-sm font-medium text-text">Description</label>
         <Input
+          label="Description"
           type="text"
           id="key-description"
           placeholder="Optional description"
           value={formData.description}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          fullWidth
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-text mb-2">Permissions</label>
+        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-text-muted">Permissions</p>
         <div className="space-y-2">
           {PERMISSION_OPTIONS.map(option => (
             <Checkbox
@@ -119,15 +117,12 @@ function KeyForm({
       </div>
 
       <div>
-        <label htmlFor="key-rate-limit" className="block text-sm font-medium text-text">
-          Rate Limit (requests per hour)
-        </label>
         <Input
+          label="Rate Limit (requests per hour)"
           type="number"
           id="key-rate-limit"
           value={formData.rate_limit}
           onChange={(e) => setFormData({ ...formData, rate_limit: parseInt(e.target.value) || 1000 })}
-          fullWidth
         />
       </div>
 
@@ -255,7 +250,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
 
       {/* Create Form */}
       {canManage && showCreateForm && (
-        <Card variant="default" padding="md">
+        <Card padding="md">
           <h3 className="text-lg font-semibold mb-4">Create New API Key</h3>
           <KeyForm
             initial={{ name: '', description: '', permissions: ['read:events'], rate_limit: 1000 }}
@@ -269,7 +264,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
 
       {/* Edit Form */}
       {canManage && editingKey && (
-        <Card variant="default" padding="md">
+        <Card padding="md">
           <h3 className="text-lg font-semibold mb-1">Edit API Key</h3>
           <p className="text-sm text-text-muted mb-4">
             The key value itself cannot be changed. Only the name, description, permissions and rate limit can be updated.
@@ -291,28 +286,27 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
 
       {/* Show newly created key */}
       {showKey && canManage && (
-        <Card variant="default" padding="sm" className="bg-warning-soft border-yellow-200">
-          <h3 className="font-semibold text-yellow-900 mb-2">New API Key Created</h3>
-          <p className="text-sm text-warning-fg mb-3">
+        <Alert tone="warning" title="New API Key Created">
+          <p className="mb-3">
             Save this key now. You won&apos;t be able to see it again.
           </p>
           <div className="flex items-center space-x-2">
-            <code className="flex-1 bg-surface p-2 rounded-sm border border-yellow-300 font-mono text-sm">
+            <code className="flex-1 break-all rounded-sm border border-warning-border bg-surface p-2 font-mono text-sm text-text">
               {showKey}
             </code>
             <IconButton
               variant="secondary"
+              label="Copy API key"
               onClick={() => handleCopyKey(showKey)}
-              className="hover:bg-yellow-100"
             >
               <DocumentDuplicateIcon className="h-5 w-5 text-warning-fg" />
             </IconButton>
           </div>
-        </Card>
+        </Alert>
       )}
 
       {/* API Keys Table */}
-      <Card variant="default" padding="none">
+      <Card padding="none">
         <DataTable<ApiKey>
           data={keys}
           getRowKey={(k) => k.id}
@@ -329,7 +323,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
             ) },
             { key: 'rate', header: 'Rate Limit', align: 'right', cell: (k: ApiKey) => <span className="text-sm text-text">{k.rate_limit}/hour</span> },
             { key: 'last', header: 'Last Used', cell: (k: ApiKey) => <span className="text-sm text-text-muted">{k.last_used_at ? format(new Date(k.last_used_at), 'MMM d, yyyy HH:mm') : 'Never'}</span> },
-            { key: 'status', header: 'Status', cell: (k: ApiKey) => <Badge variant={k.is_active ? 'success' : 'error'}>{k.is_active ? 'Active' : 'Inactive'}</Badge> },
+            { key: 'status', header: 'Status', cell: (k: ApiKey) => <Badge tone={k.is_active ? 'success' : 'neutral'}>{k.is_active ? 'Active' : 'Inactive'}</Badge> },
             ...(canManage ? [{
               key: 'actions',
               header: '',
@@ -398,7 +392,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
       />
 
       {/* Usage Instructions */}
-      <Card variant="default" padding="md" className="bg-surface-2">
+      <Card variant="secondary" padding="md">
         <h3 className="text-lg font-semibold mb-4">API Usage</h3>
         <div className="space-y-3">
           <div>
@@ -406,14 +400,14 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
             <p className="text-sm text-text-muted mb-2">
               Include your API key in the Authorization header:
             </p>
-            <code className="block bg-gray-900 text-gray-100 p-3 rounded-sm text-sm">
+            <code className="block rounded-sm border border-border bg-surface p-3 font-mono text-sm text-text">
               Authorization: Bearer YOUR_API_KEY
             </code>
           </div>
 
           <div>
             <h4 className="font-medium mb-1">Example Request</h4>
-            <code className="block bg-gray-900 text-gray-100 p-3 rounded-sm text-sm whitespace-pre">
+            <code className="block overflow-x-auto whitespace-pre rounded-sm border border-border bg-surface p-3 font-mono text-sm text-text">
 {`curl -H "Authorization: Bearer YOUR_API_KEY" \\
   ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/api/events`}
             </code>

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
-import { Modal, ModalActions, ConfirmDialog } from '@/ds';
+import { Button, Modal, ModalActions, ConfirmDialog, Select } from '@/ds';
 import { clockIn, clockOut } from '@/app/actions/timeclock';
 import type { OpenSessionSummary } from '@/app/actions/timeclock';
 import { displayName } from '@/lib/employees/display-name';
@@ -74,16 +74,17 @@ export default function FohClockWidget({ employees, initialSessions }: FohClockW
 
   return (
     <>
-      {/* Clocked-in employee badges */}
+      {/* Clocked-in employee badges. They sit on the kiosk's dark green header, outside the
+          screen's data-touch-targets wrapper, so they set the 44px floor themselves (D6). */}
       {sessions.map(s => (
         <button
           key={s.id}
           type="button"
           onClick={() => setConfirmSession(s)}
-          className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-surface/20 px-3 py-1 text-xs font-medium text-white transition hover:bg-surface/30"
+          className="inline-flex min-h-touch items-center gap-1.5 rounded-pill border border-on-dark-subtle bg-on-dark-hover px-3 py-1 text-xs font-medium text-on-dark transition hover:bg-on-dark-active focus-visible:outline-hidden focus-visible:shadow-ring"
           title={`Clocked in at ${formatClockInTime(s.clock_in_at)} — click to clock out`}
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-green-300" />
+          <span className="h-1.5 w-1.5 rounded-full bg-brand-300" />
           {s.employee_name} · {formatClockInTime(s.clock_in_at)}
         </button>
       ))}
@@ -92,7 +93,7 @@ export default function FohClockWidget({ employees, initialSessions }: FohClockW
       <button
         type="button"
         onClick={() => { setSelectedId(''); setShowClockInModal(true); }}
-        className="inline-flex items-center gap-1.5 rounded-md border border-white/40 bg-surface/15 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-surface/25"
+        className="inline-flex min-h-touch items-center gap-1.5 rounded-md border border-on-dark-subtle bg-on-dark-hover px-3 py-1.5 text-xs font-semibold text-on-dark shadow-sm transition hover:bg-on-dark-active focus-visible:outline-hidden focus-visible:shadow-ring"
       >
         Clock In
       </button>
@@ -105,21 +106,25 @@ export default function FohClockWidget({ employees, initialSessions }: FohClockW
         size="sm"
         footer={
           <ModalActions>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="lg"
               onClick={() => setShowClockInModal(false)}
-              className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400"
+              className="min-h-touch"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="primary"
+              size="lg"
               onClick={handleClockIn}
               disabled={clockInPending || !selectedId}
-              className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-touch"
             >
               {clockInPending ? 'Clocking in…' : 'Clock In'}
-            </button>
+            </Button>
           </ModalActions>
         }
       >
@@ -127,23 +132,19 @@ export default function FohClockWidget({ employees, initialSessions }: FohClockW
           {availableEmployees.length === 0 ? (
             <p className="text-sm text-text-muted">All staff are already clocked in.</p>
           ) : (
-            <div>
-              <label htmlFor="foh-clock-in-employee" className="block text-sm font-medium text-text mb-1.5">
-                Who&apos;s clocking in?
-              </label>
-              <select
-                id="foh-clock-in-employee"
-                value={selectedId}
-                onChange={e => setSelectedId(e.target.value)}
-                className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
-                autoFocus
-              >
-                <option value="">Select employee…</option>
-                {availableEmployees.map(e => (
-                  <option key={e.employee_id} value={e.employee_id}>{empName(e)}</option>
-                ))}
-              </select>
-            </div>
+            <Select
+              id="foh-clock-in-employee"
+              label="Who's clocking in?"
+              value={selectedId}
+              onChange={e => setSelectedId(e.target.value)}
+              className="min-h-touch"
+              autoFocus
+            >
+              <option value="">Select employee…</option>
+              {availableEmployees.map(e => (
+                <option key={e.employee_id} value={e.employee_id}>{empName(e)}</option>
+              ))}
+            </Select>
           )}
         </div>
       </Modal>

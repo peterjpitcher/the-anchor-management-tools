@@ -1,5 +1,6 @@
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { escapeHtml } from '@/lib/cron/alerting'
+import { STAFF } from '@/lib/brand/palette'
 
 export async function generateOjTimesheetPDF(input: {
   invoiceNumber: string
@@ -23,7 +24,7 @@ export async function generateOjTimesheetPDF(input: {
       @page { size: A4; margin: 12mm; }
       body {
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-        color: #111827;
+        color: ${STAFF.text};
         font-size: 11px;
         line-height: 1.4;
       }
@@ -32,7 +33,7 @@ export async function generateOjTimesheetPDF(input: {
         margin: 0 0 6px 0;
       }
       .meta {
-        color: #374151;
+        color: ${STAFF.text};
         margin: 0 0 10px 0;
       }
       .meta div { margin: 2px 0; }
@@ -44,9 +45,9 @@ export async function generateOjTimesheetPDF(input: {
         line-height: 1.35;
         margin: 0;
         padding: 10px;
-        border: 1px solid #e5e7eb;
+        border: 1px solid ${STAFF.border};
         border-radius: 6px;
-        background: #f9fafb;
+        background: ${STAFF.surface2};
       }
     </style>
   </head>

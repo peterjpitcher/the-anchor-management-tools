@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText, escapeEmailUrl } from '../escape'
 import { defineBlock, type EmailImage } from './types'
 
@@ -77,7 +79,7 @@ function eventRowMarkup(event: WhatsOnMediaEventData): string {
   return [
     `<tr>`,
     `<td width="196" valign="top" class="stack" style="width:196px;padding:16px 16px 0 16px"><a href="${href}" style="text-decoration:none"><img src="${imageSrc(event.image)}" width="${event.image.width}" height="${event.image.height}" alt="${escapeEmailText(event.image.alt)}" style="display:block;width:100%;max-width:100%;height:auto;border:0"></a></td>`,
-    `<td valign="top" class="stack" style="padding:14px 18px 16px 16px"><div style="font-family:${SANS};font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.14em;text-transform:uppercase;color:#8b6914">${escapeEmailText(event.date)}</div><div style="font-family:${SERIF};font-size:19px;line-height:25px;color:#005131;padding-top:4px">${escapeEmailText(event.name)}</div><div style="font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61;padding-top:4px">${escapeEmailText(event.detail)}</div><div style="font-family:${SANS};font-size:14px;font-weight:600;line-height:20px;padding-top:8px"><a href="${href}" style="color:#8b6914;text-decoration:none">${escapeEmailText(event.cta_label)}</a></div></td>`,
+    `<td valign="top" class="stack" style="padding:14px 18px 16px 16px"><div style="font-family:${SANS};font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.14em;text-transform:uppercase;color:${GUEST.accentText}">${escapeEmailText(event.date)}</div><div style="font-family:${SERIF};font-size:19px;line-height:25px;color:${GUEST.green};padding-top:4px">${escapeEmailText(event.name)}</div><div style="font-family:${SANS};font-size:13px;line-height:20px;color:${GUEST.textMuted};padding-top:4px">${escapeEmailText(event.detail)}</div><div style="font-family:${SANS};font-size:14px;font-weight:600;line-height:20px;padding-top:8px"><a href="${href}" style="color:${GUEST.accentText};text-decoration:none">${escapeEmailText(event.cta_label)}</a></div></td>`,
     `</tr>`,
   ].join('\n')
 }
@@ -130,13 +132,13 @@ export const whatsOnMedia = defineBlock<WhatsOnMediaData>({
   },
   render: (data) =>
     [
-      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px 32px 4px;font-family:${SANS};font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.18em;text-transform:uppercase;color:#8b6914">${escapeEmailText(data.kicker)}</td></tr>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:8px 32px 14px;font-family:${SERIF};font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:0 32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#ffffff;border:1px solid #e2dccf"><tbody>`,
+      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${GUEST.cream}"><tbody>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:32px 32px 4px;font-family:${SANS};font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.18em;text-transform:uppercase;color:${GUEST.accentText}">${escapeEmailText(data.kicker)}</td></tr>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:8px 32px 14px;font-family:${SERIF};font-size:26px;line-height:32px;letter-spacing:-0.02em;color:${GUEST.green}">${escapeEmailText(data.heading)}</td></tr>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:0 32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:${GUEST.surface};border:1px solid ${GUEST.border}"><tbody>`,
       data.events.map(eventRowMarkup).join(`\n${HAIRLINE_ROW}\n`),
       `</tbody></table></td></tr>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:14px 32px 30px;font-family:${SANS};font-size:14px;font-weight:600;line-height:20px"><a href="${escapeEmailUrl(data.all_events_url)}" style="color:#8b6914;text-decoration:none">See everything on this month &rarr;</a></td></tr>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:14px 32px 30px;font-family:${SANS};font-size:14px;font-weight:600;line-height:20px"><a href="${escapeEmailUrl(data.all_events_url)}" style="color:${GUEST.accentText};text-decoration:none">See everything on this month &rarr;</a></td></tr>`,
       `</tbody></table>`,
     ].join('\n'),
   text: (data) => {

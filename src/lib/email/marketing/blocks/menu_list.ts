@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
@@ -60,23 +62,23 @@ export const menuList = defineBlock<MenuListData>({
   },
   render: (data) => {
     const rows: string[] = [
-      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px 32px 6px;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:0 32px 26px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
+      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${GUEST.cream}"><tbody>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:32px 32px 6px;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;letter-spacing:-0.02em;color:${GUEST.green}">${escapeEmailText(data.heading)}</td></tr>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:0 32px 26px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
     ]
 
     data.items.forEach((item, index) => {
       const isLast = index === data.items.length - 1
       const rule = isLast ? '' : 'border-bottom:1px solid #efe9dd;'
       const tag = item.tag
-        ? ` <span style="font-family:'Outfit',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;color:#006b45">${escapeEmailText(item.tag)}</span>`
+        ? ` <span style="font-family:'Outfit',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;color:${GUEST.greenLight}">${escapeEmailText(item.tag)}</span>`
         : ''
 
       rows.push(
-        `<tr><td valign="baseline" style="padding:16px 12px 4px 0;${rule}font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:19px;line-height:25px;color:#1a1a1a">${escapeEmailText(item.name)}${tag}</td><td valign="baseline" align="right" width="70" style="width:70px;padding:16px 0 4px;${rule}font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:19px;line-height:25px;color:#8b6914">${escapeEmailText(item.price)}</td></tr>`,
+        `<tr><td valign="baseline" style="padding:16px 12px 4px 0;${rule}font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:19px;line-height:25px;color:${GUEST.text}">${escapeEmailText(item.name)}${tag}</td><td valign="baseline" align="right" width="70" style="width:70px;padding:16px 0 4px;${rule}font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:19px;line-height:25px;color:${GUEST.accentText}">${escapeEmailText(item.price)}</td></tr>`,
       )
       rows.push(
-        `<tr><td colspan="2" style="padding:6px 0 ${isLast ? '0' : '14px'};${rule}font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:22px;color:#6f6a61">${escapeEmailText(item.description)}</td></tr>`,
+        `<tr><td colspan="2" style="padding:6px 0 ${isLast ? '0' : '14px'};${rule}font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:22px;color:${GUEST.textMuted}">${escapeEmailText(item.description)}</td></tr>`,
       )
     })
 

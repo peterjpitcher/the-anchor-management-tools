@@ -25,6 +25,7 @@ import {
   GuestShell,
   GuestCard,
   GuestAlert,
+  GuestButton,
   GuestField,
   guestFieldControlProps,
 } from '@/components/features/guest'
@@ -190,7 +191,7 @@ export default async function EmailCapturePage({ params, searchParams }: PagePro
             />
           </GuestField>
 
-          <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+          <p className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
             {GUEST_MARKETING_EMAIL_LABEL}
           </p>
 
@@ -215,31 +216,27 @@ export default async function EmailCapturePage({ params, searchParams }: PagePro
             booking confirmation now goes by email when the address works, so promising it
             "by text" was untrue for exactly the guests who tick this box.
           */}
-          <label className="flex items-start gap-3 font-anchor-body text-[14px] leading-[1.6] text-guest-text">
+          <label className="flex items-start gap-3 font-anchor-body text-sm leading-[1.6] text-guest-text">
             <input
               type="checkbox"
               name="stop_marketing_sms"
               value="yes"
-              className="mt-[3px] h-[18px] w-[18px] flex-shrink-0 rounded border-guest-line accent-anchor-green"
+              className="mt-[3px] flex-shrink-0"
             />
             <span>{GUEST_MARKETING_SMS_STOP_LABEL}</span>
           </label>
 
           {/*
-            A plain <button> rather than GuestButton: this form posts without JavaScript, and
-            GuestButton's link variant would not submit it. The classes mirror the primary
-            variant so it is visually identical to every other guest page.
+            GuestButton's default renders a real <button type="submit">, so the form still
+            posts without JavaScript. It is the gold primary pill every other guest page uses.
           */}
-          <button
-            type="submit"
-            className="inline-flex w-full items-center justify-center rounded-[10px] bg-anchor-green px-5 py-[14px] font-anchor-body text-[16px] font-semibold text-anchor-cream-text transition-colors hover:bg-anchor-green-deep"
-          >
+          <GuestButton type="submit" variant="primary" fullWidth>
             Add my email
-          </button>
+          </GuestButton>
         </form>
       </GuestCard>
 
-      <p className="font-anchor-body text-[12px] leading-[1.6] text-guest-text-muted">
+      <p className="font-anchor-body text-xs leading-[1.6] text-guest-text-muted">
         We will never pass your address to anyone else, and every email has an unsubscribe
         link. Your booking confirmations and reminders carry on either way.
       </p>

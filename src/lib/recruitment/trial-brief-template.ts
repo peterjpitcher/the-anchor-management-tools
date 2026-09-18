@@ -1,4 +1,5 @@
 import { RECRUITMENT_TRIAL_DRESS_CODE } from '@/lib/recruitment/contact'
+import { STAFF } from '@/lib/brand/palette'
 
 /**
  * Trial brief, printed on UK A4.
@@ -81,29 +82,29 @@ export function generateRecruitmentTrialBriefHtml(input: {
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --ink: #1f2933;
-    --muted: #6b7280;
-    --line: #d8d5cc;
-    --accent: #111111;
-    --gold: #666666;
-    --cream: #fbfaf7;
+    --ink: ${STAFF.text};
+    --muted: ${STAFF.textMuted};
+    --line: ${STAFF.borderStrong};
+    --accent: ${STAFF.text};
+    --gold: ${STAFF.textMuted};
+    --cream: ${STAFF.surface2};
     --row: 2.25rem;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; background: #f2f2f2; color: var(--ink);
+    margin: 0; background: ${STAFF.surfaceHover}; color: var(--ink);
     font-family: Outfit, Arial, sans-serif; font-size: 15px; line-height: 1.6;
     -webkit-font-smoothing: antialiased;
   }
   .toolbar {
     display: flex; align-items: center; justify-content: space-between; gap: 16px;
     max-width: 210mm; margin: 24px auto -8px; padding: 12px 18px;
-    background: var(--accent); color: #fff; border-radius: 12px;
+    background: var(--accent); color: ${STAFF.primaryFg}; border-radius: 12px;
   }
   .tb-label { font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; }
   .btn-print {
     appearance: none; border: 0; cursor: pointer; font-weight: 600; font-size: 14px;
-    color: var(--ink); background: #e5e2d8; padding: 10px 22px; border-radius: 999px;
+    color: var(--ink); background: ${STAFF.border}; padding: 10px 22px; border-radius: 999px;
   }
   .doc {
     max-width: 210mm; margin: 24px auto; background: var(--cream);
@@ -129,11 +130,11 @@ export function generateRecruitmentTrialBriefHtml(input: {
   .sec-lead { color: var(--muted); font-size: 13.5px; margin: 0 0 8px; }
   .sec-rule { height: 2px; background: var(--gold); width: 46px; border-radius: 2px; margin: 8px 0 16px; }
   .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: #fff; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: ${STAFF.surface}; }
   .card h3 { margin: 0 0 6px; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
   .card ul { margin: 0; padding-left: 18px; }
   .card li { font-size: 12.5px; margin-bottom: 3px; line-height: 1.35; }
-  .callout { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 12px 14px; background: #fff; margin: 12px 0; }
+  .callout { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 12px 14px; background: ${STAFF.surface}; margin: 12px 0; }
   .callout p { margin: 0 0 6px; }
   .callout ul { margin: 4px 0 0; padding-left: 18px; }
   .callout li { margin-bottom: 3px; }
@@ -150,8 +151,8 @@ export function generateRecruitmentTrialBriefHtml(input: {
   @page { size: A4; margin: 14mm 16mm 18mm; }
   @media print {
     html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    html, body { margin: 0; padding: 0; background: #fff; }
-    .doc { max-width: none !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; background: #fff; }
+    html, body { margin: 0; padding: 0; background: ${STAFF.surface}; }
+    .doc { max-width: none !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; background: ${STAFF.surface}; }
     .screen-only { display: none !important; }
     h2.sec, .card h3, .sec-lead, .sec-rule, .q { break-after: avoid; page-break-after: avoid; }
     .card, .callout, li, .lines { break-inside: avoid; page-break-inside: avoid; }

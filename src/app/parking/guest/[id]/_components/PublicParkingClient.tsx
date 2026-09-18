@@ -178,15 +178,15 @@ export default function PublicParkingClient({ booking, paymentNotice, canRetryPa
               <AssuranceIcon className="h-[15px] w-[15px]" />
             </span>
             <div className="flex min-w-0 flex-col">
-              <p className="text-[13px] font-semibold leading-[1.4] text-guest-text">{title}</p>
-              <p className="text-[12px] leading-[1.5] text-guest-text-muted">{sub}</p>
+              <p className="text-ui font-semibold leading-[1.4] text-guest-text">{title}</p>
+              <p className="text-xs leading-[1.5] text-guest-text-muted">{sub}</p>
             </div>
           </div>
         ))}
       </div>
 
       <div className="flex flex-col gap-2.5">
-        <p className="font-anchor-body text-[13px] leading-[1.6] text-guest-text-muted">
+        <p className="font-anchor-body text-ui leading-[1.6] text-guest-text-muted">
           Need help? Call us on{' '}
           <span className="font-bold text-guest-text">{GUEST_CONTACT.phoneDisplay}</span>
         </p>
@@ -199,7 +199,7 @@ export default function PublicParkingClient({ booking, paymentNotice, canRetryPa
         <a
           href={GUEST_CONTACT.website}
           referrerPolicy="no-referrer"
-          className="font-anchor-body text-[13px] font-semibold leading-[1.6] text-guest-accent-text underline underline-offset-[3px] hover:no-underline"
+          className="font-anchor-body text-ui font-semibold leading-[1.6] text-guest-accent-text underline underline-offset-[3px] hover:no-underline"
         >
           Return to The Anchor website
         </a>

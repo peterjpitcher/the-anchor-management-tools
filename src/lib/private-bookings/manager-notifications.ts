@@ -3,6 +3,7 @@ import { sendEmail } from '@/lib/email/emailService'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createGuestToken } from '@/lib/guest/tokens'
 import { logger } from '@/lib/logger'
+import { STAFF } from '@/lib/brand/palette'
 
 const LONDON_TIMEZONE = 'Europe/London'
 const DEFAULT_MANAGER_EMAIL = 'manager@the-anchor.pub'

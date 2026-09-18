@@ -49,6 +49,10 @@ function addDaysIsoDate(baseDateIso: string, days: number): string {
   return getLocalIsoDate(date)
 }
 
+// A colour staff pick and store on each note: data, not a styling token. One constant, so the
+// form default and the fallback for a malformed stored value cannot drift apart.
+const DEFAULT_NOTE_COLOUR = '#0EA5E9'
+
 function createEmptyNoteForm(defaultDateIso?: string): CalendarNoteFormState {
   const baseDate = defaultDateIso ?? getLocalIsoDate()
   return {
@@ -56,7 +60,7 @@ function createEmptyNoteForm(defaultDateIso?: string): CalendarNoteFormState {
     end_date: baseDate,
     title: '',
     notes: '',
-    color: '#0EA5E9',
+    color: DEFAULT_NOTE_COLOUR,
   }
 }
 
@@ -76,7 +80,7 @@ function describeDateRange(note: CalendarNote): string {
 function normalizeColor(input: string): string {
   const trimmed = input.trim()
   if (/^#[0-9A-Fa-f]{6}$/.test(trimmed)) return trimmed.toUpperCase()
-  return '#0EA5E9'
+  return DEFAULT_NOTE_COLOUR
 }
 
 export default function CalendarNotesManager({
