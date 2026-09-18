@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { updateOnboardingChecklist, getOnboardingProgress } from '@/app/actions/employeeActions'
 import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
-import { toast } from '@/ds'
+import { ProgressBar, toast } from '@/ds'
 
 interface OnboardingChecklistTabProps {
   employeeId: string
@@ -73,7 +73,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        <Loader2 className="h-8 w-8 animate-spin text-text-subtle" />
       </div>
     )
   }
@@ -107,12 +107,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
             <span className="text-sm font-medium text-text">Overall Progress</span>
             <span className="text-sm font-medium text-text">{progress.percentage}%</span>
           </div>
-          <div className="w-full bg-border rounded-full h-2">
-            <div
-              className="bg-green-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${progress.percentage}%` }}
-            />
-          </div>
+          <ProgressBar value={progress.percentage} tone="success" size="md" label="Onboarding progress" />
           <p className="mt-2 text-sm text-text-muted">
             {progress.completed} of {progress.total} tasks completed
           </p>
@@ -139,14 +134,15 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
                   <button type="button"
                     onClick={() => handleToggle(item.field, item.completed)}
                     disabled={isUpdating || !canEdit}
-                    className="flex-shrink-0 mt-0.5"
+                    aria-label={item.label}
+                    className="flex-shrink-0 mt-0.5 rounded-full focus-visible:outline-hidden focus-visible:shadow-ring"
                   >
                     {isUpdating ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                      <Loader2 className="h-5 w-5 animate-spin text-text-subtle" />
                     ) : item.completed ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      <CheckCircle2 className="h-5 w-5 text-success" />
                     ) : (
-                      <Circle className="h-5 w-5 text-gray-400 hover:text-text-muted" />
+                      <Circle className="h-5 w-5 text-text-subtle hover:text-text-muted" />
                     )}
                   </button>
                   
@@ -173,7 +169,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
       </div>
 
       {/* Additional Information */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-info-soft border border-info-border rounded-lg p-4">
         <h4 className="text-sm font-medium text-info-fg mb-2">Important Notes</h4>
         <ul className="text-sm text-info-fg space-y-1">
           <li>• WhatsApp groups are for shift coordination and team communication</li>
@@ -185,12 +181,12 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
 
       {/* Special handling for Prospective employees */}
       {progress.completed === progress.total && (
-        <div className="bg-success-soft border border-green-200 rounded-lg p-4">
+        <div className="bg-success-soft border border-success-border rounded-lg p-4">
           <div className="flex">
-            <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+            <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0" />
             <div className="ml-3">
-              <h4 className="text-sm font-medium text-green-900">Onboarding Complete!</h4>
-              <p className="text-sm text-green-800 mt-1">
+              <h4 className="text-sm font-medium text-success-fg">Onboarding Complete!</h4>
+              <p className="text-sm text-success-fg mt-1">
                 All onboarding tasks have been completed. This employee is ready to start work.
               </p>
             </div>

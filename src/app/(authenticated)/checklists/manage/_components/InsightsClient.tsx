@@ -88,7 +88,7 @@ export function InsightsClient({ data, error }: InsightsClientProps) {
                     <TableCell className="font-medium text-text">{person.name}</TableCell>
                     <TableCell>
                       {person.score == null ? (
-                        <span className="text-text-subtle">n/a (fewer than 30)</span>
+                        <span className="text-text-soft">n/a (fewer than 30)</span>
                       ) : (
                         <Badge tone={bandTone(person.band)}>{person.score.toFixed(1)} / 10</Badge>
                       )}

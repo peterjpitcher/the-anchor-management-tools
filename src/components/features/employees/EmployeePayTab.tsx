@@ -163,10 +163,10 @@ export default function EmployeePayTab({
 
       {/* Current rate banner */}
       {currentRate && (
-        <div className="rounded-lg bg-success-soft border border-green-100 px-4 py-3 flex items-center justify-between">
+        <div className="rounded-lg bg-success-soft border border-success-border px-4 py-3 flex items-center justify-between">
           <div>
-            <p className="text-xs text-green-700 font-medium uppercase tracking-wide">Current hourly rate</p>
-            <p className="text-2xl font-bold text-green-800 mt-0.5">{formatRate(currentRate.rate)}</p>
+            <p className="text-xs text-success-fg font-medium uppercase tracking-wide">Current hourly rate</p>
+            <p className="text-2xl font-bold text-success-fg mt-0.5">{formatRate(currentRate.rate)}</p>
           </div>
           <Badge variant="success" size="sm">
             {currentRate.source === 'override' ? 'Individual override' : 'Age band'}
@@ -220,7 +220,7 @@ export default function EmployeePayTab({
               <span className="text-sm text-text">
                 {initialPaySettings?.max_weekly_hours != null
                   ? `${initialPaySettings.max_weekly_hours} hrs/week`
-                  : <span className="text-gray-400">Not set</span>}
+                  : <span className="text-text-soft">Not set</span>}
               </span>
             )}
           </dd>
@@ -232,7 +232,7 @@ export default function EmployeePayTab({
         <div className="space-y-3">
           {settingsError && <Alert variant="error">{settingsError}</Alert>}
           <div className="flex gap-2">
-            <Button type="button" onClick={handleSaveSettings} disabled={settingsIsPending}>
+            <Button type="button" variant="primary" onClick={handleSaveSettings} disabled={settingsIsPending}>
               {settingsIsPending ? 'Saving…' : 'Save settings'}
             </Button>
             <Button
@@ -277,7 +277,7 @@ export default function EmployeePayTab({
           {showOverrideForm && canEdit && (
             <div className="mb-4 p-3 bg-surface-2 rounded-lg border border-border space-y-3">
               <p className="text-xs font-medium text-text-muted">New effective-dated rate override</p>
-              {overrideError && <p className="text-xs text-danger">{overrideError}</p>}
+              {overrideError && <p className="text-xs text-danger-fg">{overrideError}</p>}
               <div className="grid grid-cols-2 gap-3">
                 <FormGroup label="Hourly rate (£)" htmlFor="override-rate">
                   <Input
@@ -300,7 +300,7 @@ export default function EmployeePayTab({
                 </FormGroup>
               </div>
               <div className="flex gap-2">
-                <Button type="button" size="sm" onClick={handleAddOverride} disabled={overrideIsPending}>
+                <Button type="button" size="sm" variant="primary" onClick={handleAddOverride} disabled={overrideIsPending}>
                   {overrideIsPending ? 'Saving…' : 'Save override'}
                 </Button>
                 <Button type="button" size="sm" variant="ghost" onClick={() => setShowOverrideForm(false)}>
@@ -311,12 +311,12 @@ export default function EmployeePayTab({
           )}
 
           {overrides.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No individual overrides set. Rate is calculated from age band.</p>
+            <p className="text-sm text-text-soft italic">No individual overrides set. Rate is calculated from age band.</p>
           ) : (
             <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-gray-400 border-b border-border">
+                <tr className="text-xs text-text-muted border-b border-border">
                   <th scope="col" className="text-left pb-1.5 font-medium">Rate</th>
                   <th scope="col" className="text-left pb-1.5 font-medium">Effective from</th>
                   <th scope="col" className="text-left pb-1.5 font-medium">Status</th>
@@ -329,7 +329,7 @@ export default function EmployeePayTab({
                   const isUpcoming = ov.effective_from > today;
                   const isCurrent = !isUpcoming && overrides.find(o => o.effective_from <= today)?.id === ov.id;
                   return (
-                    <tr key={ov.id} className="border-b border-gray-50">
+                    <tr key={ov.id} className="border-b border-border">
                       <td className="py-2 font-medium text-text">
                         {editingOverrideId === ov.id ? (
                           <Input
@@ -355,14 +355,14 @@ export default function EmployeePayTab({
                           ? <Badge variant="warning" size="sm">Upcoming</Badge>
                           : isCurrent
                           ? <Badge variant="success" size="sm">Current</Badge>
-                          : <span className="text-gray-400 text-xs">Historical</span>
+                          : <span className="text-text-soft text-xs">Historical</span>
                         }
                       </td>
                       {canEdit && (
                         <td className="py-2 text-right">
                           {editingOverrideId === ov.id ? (
                             <div className="flex justify-end gap-2">
-                              <Button type="button" size="sm" onClick={handleUpdateOverride} disabled={overrideIsPending}>
+                              <Button type="button" size="sm" variant="primary" onClick={handleUpdateOverride} disabled={overrideIsPending}>
                                 Save
                               </Button>
                               <Button type="button" size="sm" variant="ghost" onClick={() => setEditingOverrideId(null)}>

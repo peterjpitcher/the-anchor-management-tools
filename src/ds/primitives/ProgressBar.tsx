@@ -7,6 +7,8 @@ interface ProgressBarProps {
   value: number
   tone?: ProgressTone
   size?: ProgressSize
+  /** What the bar measures, read out by screen readers ("Onboarding progress"). */
+  label?: string
   className?: string
 }
 
@@ -21,6 +23,7 @@ export function ProgressBar({
   value,
   tone = 'primary',
   size = 'sm',
+  label,
   className,
 }: ProgressBarProps) {
   const clamped = Math.min(100, Math.max(0, value))
@@ -33,6 +36,7 @@ export function ProgressBar({
         className
       )}
       role="progressbar"
+      aria-label={label}
       aria-valuenow={clamped}
       aria-valuemin={0}
       aria-valuemax={100}

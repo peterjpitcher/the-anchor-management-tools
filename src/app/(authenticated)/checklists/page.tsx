@@ -1,5 +1,4 @@
-import Link from 'next/link'
-import { PageLayout } from '@/ds'
+import { LinkButton, PageLayout } from '@/ds'
 import { getTodayChecklist } from '@/app/actions/checklists'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { ChecklistScreen } from './_components/ChecklistScreen'
@@ -19,16 +18,13 @@ export default async function ChecklistsTodayPage() {
       })}`
     : 'Opening and closing tasks'
 
-  // Matches the FOH vouchers screen: same PageLayout, same solid green
+  // Matches the FOH vouchers screen: same PageLayout, same primary
   // "Back to the floor" action in the header. Both are iPad screens a member of
   // staff steps up to mid-shift, so they should not look like two different apps.
   const backToFloor = (
-    <Link
-      href="/table-bookings/foh"
-      className="inline-flex min-h-touch items-center justify-center rounded-md bg-sidebar px-4 py-2 text-sm font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40"
-    >
+    <LinkButton href="/table-bookings/foh" variant="primary" size="lg" className="min-h-touch">
       Back to the floor
-    </Link>
+    </LinkButton>
   )
 
   return (

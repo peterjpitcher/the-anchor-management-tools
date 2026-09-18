@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Button } from '@/ds'
 
 interface EmployeeHeaderActionsProps {
   /** The primary action shown inline on mobile (e.g. Edit). */
@@ -25,16 +26,16 @@ export function EmployeeHeaderActions({ primary, secondary }: EmployeeHeaderActi
         {primary}
         {hasSecondary && (
           <div className="relative">
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={() => setOpen((v) => !v)}
               aria-expanded={open}
               aria-haspopup="menu"
-              className="inline-flex items-center gap-1 rounded-md border border-border-strong bg-surface px-3 py-2 text-sm font-medium text-text"
+              iconRight={<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M5.5 7.5 10 12l4.5-4.5" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>}
             >
               More
-              <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M5.5 7.5 10 12l4.5-4.5" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>
-            </button>
+            </Button>
             {open && (
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden="true" />

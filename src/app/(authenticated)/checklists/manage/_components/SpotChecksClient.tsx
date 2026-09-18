@@ -82,7 +82,7 @@ export function SpotChecksClient({ items, error }: SpotChecksClientProps) {
                 item.note ? (
                   <p className="text-sm text-text-muted">Note: {item.note}</p>
                 ) : (
-                  <p className="text-sm text-text-subtle">No note.</p>
+                  <p className="text-sm text-text-soft">No note.</p>
                 )
               ) : (
                 <>

@@ -62,14 +62,14 @@ export function QuickAddNoteSheet({ employeeId, className }: QuickAddNoteSheetPr
               autoFocus
             />
             {state?.errors?.note_text && (
-              <p className="mt-1 text-sm text-danger">{state.errors.note_text}</p>
+              <p className="mt-1 text-sm text-danger-fg">{state.errors.note_text}</p>
             )}
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button type="button" variant="secondary" onClick={() => setOpen(false)} disabled={isPending} className="w-full sm:w-auto">
               Cancel
             </Button>
-            <Button type="submit" loading={isPending} className="w-full sm:w-auto">
+            <Button type="submit" variant="primary" loading={isPending} className="w-full sm:w-auto">
               Save note
             </Button>
           </div>

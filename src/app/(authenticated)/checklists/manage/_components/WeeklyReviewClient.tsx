@@ -517,7 +517,7 @@ function CellButton({ row, cell, todayBusiness, onSelect }: CellButtonProps) {
       // Names truncate in the cell, so hover carries the full detail. Screen readers
       // ignore title when aria-label is set, so this adds nothing for them to repeat.
       title={cellAccessibleName(row, cell, display)}
-      className={`relative flex h-11 w-full items-center justify-center px-1 text-xs font-semibold transition-colors focus:z-10 focus-visible:outline-none focus-visible:shadow-ring hover:brightness-95 ${STATE_STYLE[display]}`}
+      className={`relative flex h-11 w-full items-center justify-center px-1 text-xs font-semibold transition-colors focus:z-10 focus-visible:outline-hidden focus-visible:shadow-ring hover:brightness-95 ${STATE_STYLE[display]}`}
     >
       {/* max-w caps what this cell contributes to the column's intrinsic width, so a
           long name ellipsises instead of stretching the day column across the grid. */}

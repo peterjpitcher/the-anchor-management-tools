@@ -86,7 +86,7 @@ export function AttributionPicker({
                         onSelect({ employeeId: c.employeeId, name: c.name })
                         setQuery('')
                       }}
-                      className="flex min-h-touch w-full items-center justify-between gap-2 rounded-md px-2 py-3 text-left hover:bg-surface-2"
+                      className="flex min-h-touch w-full items-center justify-between gap-2 rounded-md px-2 py-3 text-left hover:bg-surface-2 focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                     >
                       <span className="truncate text-sm">{c.name}</span>
                       {c.clockedIn ? (

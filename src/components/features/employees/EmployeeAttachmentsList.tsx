@@ -5,10 +5,10 @@ import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import type { EmployeeAttachment } from '@/types/database'
 import { deleteEmployeeAttachment, getAttachmentSignedUrl } from '@/app/actions/employeeActions'
-import { PaperClipIcon, ArrowDownTrayIcon, TrashIcon, ExclamationTriangleIcon, EyeIcon } from '@heroicons/react/24/outline'
+import { PaperClipIcon, ArrowDownTrayIcon, TrashIcon, EyeIcon } from '@heroicons/react/24/outline'
 import { formatBytes } from '@/lib/utils'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { toast } from '@/ds'
+import { Button, IconButton, Modal, toast } from '@/ds'
 
 interface EmployeeAttachmentsListProps {
   employeeId: string
@@ -45,13 +45,9 @@ function DeleteAttachmentButton({
   function SubmitActualDeleteButton() {
     const { pending } = useFormStatus()
     return (
-      <button
-        type="submit"
-        disabled={pending}
-        className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto disabled:opacity-50"
-      >
+      <Button type="submit" variant="danger" disabled={pending}>
         {pending ? 'Deleting…' : 'Delete'}
-      </button>
+      </Button>
     )
   }
 
@@ -61,60 +57,36 @@ function DeleteAttachmentButton({
 
   return (
     <>
-      <button
+      <IconButton
         onClick={() => setIsOpen(true)}
         type="button"
-        className="p-2 sm:p-1 font-medium text-danger hover:text-danger disabled:opacity-50 touch-target"
+        size="md"
+        className="text-danger hover:bg-danger-soft hover:text-danger-fg"
         title="Delete Attachment"
-      >
-        <TrashIcon className="h-5 w-5" />
-        <span className="sr-only">Delete {attachmentName}</span>
-      </button>
+        label={`Delete ${attachmentName}`}
+        icon={<TrashIcon className="h-5 w-5" />}
+      />
 
-      {isOpen && (
-        <div className="relative z-50" aria-labelledby="delete-attachment" role="dialog" aria-modal="true">
-          <div className="fixed inset-0 bg-gray-500/75 transition-opacity" />
-          <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-              <form
-                action={dispatch}
-                className="relative transform overflow-hidden rounded-lg bg-surface px-4 pt-5 pb-4 text-left shadow-lg transition-all sm:my-8 w-full max-w-lg sm:p-6"
-              >
-                <input type="hidden" name="employee_id" value={employeeId} />
-                <input type="hidden" name="attachment_id" value={attachmentId} />
-                <div className="sm:flex sm:items-start">
-                  <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-danger-soft sm:mx-0 sm:h-10 sm:w-10">
-                    <ExclamationTriangleIcon className="h-6 w-6 text-danger" aria-hidden="true" />
-                  </div>
-                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                    <h3 className="text-lg font-medium leading-6 text-text" id="delete-attachment">
-                      Delete Attachment
-                    </h3>
-                    <div className="mt-2">
-                      <p className="text-sm text-text-muted">
-                        Are you sure you want to delete &quot;{attachmentName}&quot;? This action cannot be undone.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                {state?.type === 'error' && (
-                  <p className="mt-3 text-sm text-danger text-center sm:text-left sm:ml-14">{state.message}</p>
-                )}
-                <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-                  <SubmitActualDeleteButton />
-                  <button
-                    type="button"
-                    onClick={() => setIsOpen(false)}
-                    className="mt-3 inline-flex w-full justify-center rounded-md bg-surface px-3 py-2 text-sm font-semibold text-text shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-surface-hover sm:mt-0 sm:w-auto"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
+      {/* A DS Modal rather than ConfirmDialog: the delete is a server-action form, and the
+          buttons stay inside it so the submit button can read the form's pending state. */}
+      <Modal open={isOpen} onClose={() => setIsOpen(false)} title="Delete Attachment" width="md">
+        <form action={dispatch}>
+          <input type="hidden" name="employee_id" value={employeeId} />
+          <input type="hidden" name="attachment_id" value={attachmentId} />
+          <p className="text-sm text-text-muted">
+            Are you sure you want to delete &quot;{attachmentName}&quot;? This action cannot be undone.
+          </p>
+          {state?.type === 'error' && (
+            <p className="mt-3 text-sm text-danger-fg">{state.message}</p>
+          )}
+          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+            <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>
+              Cancel
+            </Button>
+            <SubmitActualDeleteButton />
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
     </>
   )
 }
@@ -208,7 +180,7 @@ export default function EmployeeAttachmentsList({
           <li key={attachment.attachment_id} className="py-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center space-x-3">
-                <PaperClipIcon className="h-5 w-5 flex-shrink-0 text-gray-400" />
+                <PaperClipIcon className="h-5 w-5 flex-shrink-0 text-text-subtle" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-text">{attachment.file_name}</p>
                   <p className="truncate text-xs text-text-muted">
@@ -219,25 +191,25 @@ export default function EmployeeAttachmentsList({
               </div>
               <div className="flex flex-shrink-0 items-center space-x-2">
                 {isViewable(attachment.mime_type) && (
-                  <button
+                  <IconButton
                     type="button"
+                    size="md"
                     onClick={() => handleView(attachment)}
-                    className="p-2 sm:p-1 text-text-muted hover:text-text"
+                    className="text-text-muted hover:text-text"
                     disabled={viewing === attachment.attachment_id}
-                  >
-                    <EyeIcon className="h-5 w-5" />
-                    <span className="sr-only">View {attachment.file_name}</span>
-                  </button>
+                    label={`View ${attachment.file_name}`}
+                    icon={<EyeIcon className="h-5 w-5" />}
+                  />
                 )}
-                <button
+                <IconButton
                   type="button"
+                  size="md"
                   onClick={() => handleDownload(attachment)}
-                  className="p-2 sm:p-1 text-text-muted hover:text-text"
+                  className="text-text-muted hover:text-text"
                   disabled={downloading === attachment.attachment_id}
-                >
-                  <ArrowDownTrayIcon className="h-5 w-5" />
-                  <span className="sr-only">Download {attachment.file_name}</span>
-                </button>
+                  label={`Download ${attachment.file_name}`}
+                  icon={<ArrowDownTrayIcon className="h-5 w-5" />}
+                />
                 {canDelete && attachment.storage_path && (
                   <DeleteAttachmentButton
                     employeeId={employeeId}

@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation'
 import { addEmployeeAttachment } from '@/app/actions/employeeActions'
 import type { AttachmentFormState } from '@/types/actions'
 import type { AttachmentCategory } from '@/types/database'
-import { Button } from '@/ds'
-import { toast } from '@/ds'
+import { Button, Select, Textarea, toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 
 const ATTACHMENT_ALLOWED_MIME_TYPES = [
@@ -102,7 +101,7 @@ export default function AddEmployeeAttachmentForm({
             ref={fileInputRef}
             accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.doc,.docx,.txt"
             required
-            className="block w-full text-sm text-text border border-border-strong rounded-lg cursor-pointer bg-surface-2 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-soft file:text-primary hover:file:bg-primary-soft/80 disabled:cursor-not-allowed"
+            className="block w-full text-sm text-text border border-border-strong rounded-lg cursor-pointer bg-surface-2 outline-hidden focus-visible:border-border-focus focus-visible:shadow-ring file:mr-4 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-soft file:text-primary hover:file:bg-primary-soft/80 disabled:cursor-not-allowed"
             disabled={!hasCategories || isUploading}
             onChange={(event) => {
               const file = event.target.files?.[0]
@@ -133,7 +132,7 @@ export default function AddEmployeeAttachmentForm({
           Accepted: PDF, Word, JPG, PNG, TIFF, TXT (max 10&nbsp;MB).
         </p>
         {state?.errors?.attachment_file && (
-          <p className="mt-1 text-sm text-danger">{state.errors.attachment_file}</p>
+          <p className="mt-1 text-sm text-danger-fg">{state.errors.attachment_file}</p>
         )}
       </div>
 
@@ -141,29 +140,30 @@ export default function AddEmployeeAttachmentForm({
         <label htmlFor="category_id" className="block text-sm font-medium leading-6 text-text">
           Category
         </label>
-        <select
-          id="category_id"
-          name="category_id"
-          className="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-10 text-text ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-primary sm:text-sm sm:leading-6"
-          defaultValue={hasCategories ? '' : 'no-category'}
-          required
-          disabled={!hasCategories}
-        >
-          <option value="" disabled>
-            Select a category
-          </option>
-          {!hasCategories && (
-            <option value="no-category" disabled>
-              No categories available
+        <div className="mt-2">
+          <Select
+            id="category_id"
+            name="category_id"
+            defaultValue={hasCategories ? '' : 'no-category'}
+            required
+            disabled={!hasCategories}
+          >
+            <option value="" disabled>
+              Select a category
             </option>
-          )}
-          {categories.map((category) => (
-            <option key={category.category_id} value={category.category_id}>
-              {category.category_name}
-            </option>
-          ))}
-        </select>
-        {state?.errors?.category_id && <p className="mt-1 text-sm text-danger">{state.errors.category_id}</p>}
+            {!hasCategories && (
+              <option value="no-category" disabled>
+                No categories available
+              </option>
+            )}
+            {categories.map((category) => (
+              <option key={category.category_id} value={category.category_id}>
+                {category.category_name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        {state?.errors?.category_id && <p className="mt-1 text-sm text-danger-fg">{state.errors.category_id}</p>}
       </div>
 
       <div>
@@ -171,22 +171,21 @@ export default function AddEmployeeAttachmentForm({
           Description (Optional)
         </label>
         <div className="mt-2">
-          <textarea
+          <Textarea
             id="description"
             name="description"
             rows={2}
-            className="block w-full rounded-md border-0 py-1.5 text-text shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-text-subtle focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6"
             defaultValue=""
           />
         </div>
-        {state?.errors?.description && <p className="mt-1 text-sm text-danger">{state.errors.description}</p>}
+        {state?.errors?.description && <p className="mt-1 text-sm text-danger-fg">{state.errors.description}</p>}
       </div>
 
       {state?.type === 'error' && state.errors?.general && (
-        <p className="mt-1 text-sm text-danger">{state.errors.general}</p>
+        <p className="mt-1 text-sm text-danger-fg">{state.errors.general}</p>
       )}
       {state?.type === 'error' && state.message && !state.errors && (
-        <p className="mt-1 text-sm text-danger">{state.message}</p>
+        <p className="mt-1 text-sm text-danger-fg">{state.message}</p>
       )}
 
       <div className="flex justify-end">

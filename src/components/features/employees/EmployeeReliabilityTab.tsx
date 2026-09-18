@@ -156,7 +156,7 @@ export default function EmployeeReliabilityTab({ reliability }: EmployeeReliabil
                   {eventDetail(event) && (
                     <p className="mt-1 text-sm text-text-muted">{eventDetail(event)}</p>
                   )}
-                  <p className="mt-1 text-xs text-gray-400">{event.source}</p>
+                  <p className="mt-1 text-xs text-text-soft">{event.source}</p>
                 </div>
               </div>
             ))}

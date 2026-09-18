@@ -204,7 +204,7 @@ export function RolesContent() {
               key={role.id}
               type="button"
               onClick={() => setSelectedRoleId(role.id)}
-              className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
+              className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset ${
                 role.id === selectedRoleId ? 'bg-primary-soft' : 'hover:bg-surface-hover'
               }`}
             >

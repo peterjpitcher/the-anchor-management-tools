@@ -35,4 +35,12 @@ describe('Alert', () => {
     render(<Alert tone="warning">Heads up</Alert>)
     expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull()
   })
+
+  it('is an alert by default and a quiet status when asked', () => {
+    const { rerender } = render(<Alert tone="danger">Document expired</Alert>)
+    expect(screen.getByRole('alert')).toHaveTextContent('Document expired')
+    rerender(<Alert tone="success" role="status">Right to work verified</Alert>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent('Right to work verified')
+  })
 })

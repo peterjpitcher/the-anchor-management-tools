@@ -2,7 +2,7 @@
 
 import { useEffect, useActionState } from 'react';
 import { inviteEmployee } from '@/app/actions/employeeInvite';
-import { toast } from '@/ds';
+import { Button, Input, Modal, toast } from '@/ds';
 
 interface InviteEmployeeModalProps {
   onClose: () => void;
@@ -22,85 +22,54 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
     }
   }, [state, onSuccess, onClose]);
 
+  // The buttons stay inside the form (not the Modal footer) so Send Invite submits it.
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
-      <div className="fixed inset-0 bg-gray-500/75" onClick={onClose} />
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative w-full max-w-md rounded-lg bg-surface shadow-lg p-6">
-          <h2 className="text-lg font-semibold text-text mb-1">Invite Employee</h2>
-          <p className="text-sm text-text-muted mb-6">
-            Enter the employee&apos;s email address. They will receive an invite to create their account and complete their profile.
-          </p>
+    <Modal open onClose={onClose} title="Invite Employee" width="md">
+      <p className="text-sm text-text-muted mb-6">
+        Enter the employee&apos;s email address. They will receive an invite to create their account and complete their profile.
+      </p>
 
-          <form action={formAction} className="space-y-4">
-            <div>
-              <label htmlFor="invite-email" className="block text-sm font-medium text-text mb-1">
-                Email address
-              </label>
-              <input
-                id="invite-email"
-                name="email"
-                type="email"
-                required
-                autoFocus
-                className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
-                placeholder="employee@example.com"
-              />
-            </div>
+      <form action={formAction} className="space-y-4">
+        <Input
+          id="invite-email"
+          name="email"
+          type="email"
+          label="Email address"
+          required
+          autoFocus
+          placeholder="employee@example.com"
+        />
 
-            <div>
-              <label htmlFor="invite-job-title" className="block text-sm font-medium text-text mb-1">
-                Job title
-              </label>
-              <input
-                id="invite-job-title"
-                name="job_title"
-                type="text"
-                className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
-                placeholder="e.g. Bar Staff"
-              />
-            </div>
+        <Input
+          id="invite-job-title"
+          name="job_title"
+          type="text"
+          label="Job title"
+          placeholder="e.g. Bar Staff"
+        />
 
-            <div>
-              <label htmlFor="invite-start-date" className="block text-sm font-medium text-text mb-1">
-                Employment start date
-              </label>
-              <input
-                id="invite-start-date"
-                name="employment_start_date"
-                type="date"
-                required
-                className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
-              />
-              <p className="mt-1 text-xs text-text-muted">
-                Set now so their length of service is right from day one. Completing onboarding
-                does not ask for it, so this is the only place it gets recorded.
-              </p>
-            </div>
+        <Input
+          id="invite-start-date"
+          name="employment_start_date"
+          type="date"
+          label="Employment start date"
+          required
+          hint="Set now so their length of service is right from day one. Completing onboarding does not ask for it, so this is the only place it gets recorded."
+        />
 
-            {state?.type === 'error' && (
-              <p className="text-sm text-danger">{state.message}</p>
-            )}
+        {state?.type === 'error' && (
+          <p className="text-sm text-danger-fg">{state.message}</p>
+        )}
 
-            <div className="flex gap-3 justify-end mt-6">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md px-4 py-2 text-sm font-semibold text-text ring-1 ring-inset ring-gray-300 hover:bg-surface-hover"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={pending}
-                className="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"
-              >
-                {pending ? 'Sending...' : 'Send Invite'}
-              </button>
-            </div>
-          </form>
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" disabled={pending}>
+            {pending ? 'Sending...' : 'Send Invite'}
+          </Button>
         </div>
-      </div>
-    </div>
+      </form>
+    </Modal>
   );
 }

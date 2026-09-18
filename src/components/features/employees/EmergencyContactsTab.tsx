@@ -5,8 +5,8 @@ import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import type { EmployeeEmergencyContact } from '@/types/database'
 import { deleteEmergencyContact } from '@/app/actions/employeeActions'
-import { Button } from '@/ds'
-import { PencilIcon, TrashIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { Badge, Button, IconButton, Modal } from '@/ds'
+import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import AddEmergencyContactModal from '@/components/modals/AddEmergencyContactModal'
 import EditEmergencyContactModal from '@/components/modals/EditEmergencyContactModal'
 
@@ -19,13 +19,9 @@ interface EmergencyContactsTabProps {
 function ConfirmDeleteButton() {
   const { pending } = useFormStatus()
   return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto disabled:opacity-50"
-    >
+    <Button type="submit" variant="danger" disabled={pending}>
       {pending ? 'Deleting…' : 'Delete'}
-    </button>
+    </Button>
   )
 }
 
@@ -48,56 +44,36 @@ function DeleteContactButton({
 
   return (
     <>
-      <button
+      <IconButton
         type="button"
+        size="sm"
         onClick={() => setIsOpen(true)}
-        className="p-1 text-red-400 hover:text-danger"
+        className="text-danger hover:bg-danger-soft hover:text-danger-fg"
         title="Delete contact"
-      >
-        <TrashIcon className="h-4 w-4" />
-        <span className="sr-only">Delete {contact.name}</span>
-      </button>
+        label={`Delete ${contact.name}`}
+        icon={<TrashIcon className="h-4 w-4" />}
+      />
 
-      {isOpen && (
-        <div className="relative z-50" role="dialog" aria-modal="true">
-          <div className="fixed inset-0 bg-gray-500/75 transition-opacity" />
-          <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-              <form
-                action={formAction}
-                className="relative transform overflow-hidden rounded-lg bg-surface px-4 pt-5 pb-4 text-left shadow-lg sm:my-8 w-full max-w-sm sm:p-6"
-              >
-                <input type="hidden" name="contact_id" value={contact.id} />
-                <input type="hidden" name="employee_id" value={contact.employee_id} />
-                <div className="sm:flex sm:items-start">
-                  <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-danger-soft sm:mx-0 sm:h-10 sm:w-10">
-                    <ExclamationTriangleIcon className="h-6 w-6 text-danger" aria-hidden="true" />
-                  </div>
-                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                    <h3 className="text-base font-semibold leading-6 text-text">Delete contact</h3>
-                    <p className="mt-2 text-sm text-text-muted">
-                      Remove <strong>{contact.name}</strong> as an emergency contact? This cannot be undone.
-                    </p>
-                  </div>
-                </div>
-                {state?.type === 'error' && (
-                  <p className="mt-3 text-sm text-danger sm:ml-14">{state.message}</p>
-                )}
-                <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-                  <ConfirmDeleteButton />
-                  <button
-                    type="button"
-                    onClick={() => setIsOpen(false)}
-                    className="mt-3 inline-flex w-full justify-center rounded-md bg-surface px-3 py-2 text-sm font-semibold text-text shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-surface-hover sm:mt-0 sm:w-auto"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
+      {/* A DS Modal rather than ConfirmDialog: the delete is a server-action form, and the
+          buttons stay inside it so the submit button can read the form's pending state. */}
+      <Modal open={isOpen} onClose={() => setIsOpen(false)} title="Delete contact" width="sm">
+        <form action={formAction}>
+          <input type="hidden" name="contact_id" value={contact.id} />
+          <input type="hidden" name="employee_id" value={contact.employee_id} />
+          <p className="text-sm text-text-muted">
+            Remove <strong>{contact.name}</strong> as an emergency contact? This cannot be undone.
+          </p>
+          {state?.type === 'error' && (
+            <p className="mt-3 text-sm text-danger-fg">{state.message}</p>
+          )}
+          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+            <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>
+              Cancel
+            </Button>
+            <ConfirmDeleteButton />
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
     </>
   )
 }
@@ -125,7 +101,7 @@ export default function EmergencyContactsTab({
           <p className="mt-1 text-sm text-text-muted">A list of emergency contacts for this employee.</p>
         </div>
         {canEdit && (
-          <Button onClick={() => setIsAddOpen(true)}>Add Contact</Button>
+          <Button variant="primary" onClick={() => setIsAddOpen(true)}>Add Contact</Button>
         )}
       </div>
 
@@ -156,15 +132,9 @@ export default function EmergencyContactsTab({
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-sm font-medium">{contact.name}</h3>
                     {contact.priority && contact.priority !== 'Other' && (
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium ${
-                          contact.priority === 'Primary'
-                            ? 'bg-success-soft text-green-800'
-                            : 'bg-blue-100 text-info-fg'
-                        }`}
-                      >
+                      <Badge tone={contact.priority === 'Primary' ? 'success' : 'info'}>
                         {contact.priority}
-                      </span>
+                      </Badge>
                     )}
                     {contact.relationship && (
                       <p className="text-sm text-text-muted">{contact.relationship}</p>
@@ -177,15 +147,15 @@ export default function EmergencyContactsTab({
 
                 {canEdit && (
                   <div className="flex items-center gap-1 ml-4 flex-shrink-0">
-                    <button
+                    <IconButton
                       type="button"
+                      size="sm"
                       onClick={() => setEditingContact(contact)}
-                      className="p-1 text-gray-400 hover:text-text-muted"
+                      className="text-text-subtle hover:text-text-muted"
                       title="Edit contact"
-                    >
-                      <PencilIcon className="h-4 w-4" />
-                      <span className="sr-only">Edit {contact.name}</span>
-                    </button>
+                      label={`Edit ${contact.name}`}
+                      icon={<PencilIcon className="h-4 w-4" />}
+                    />
                     <DeleteContactButton
                       contact={contact}
                       onDeleted={() => router.refresh()}

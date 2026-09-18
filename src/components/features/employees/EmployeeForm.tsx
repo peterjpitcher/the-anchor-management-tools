@@ -13,7 +13,7 @@ import { Input } from '@/ds';
 import { Textarea } from '@/ds';
 import { Select } from '@/ds';
 import { Checkbox } from '@/ds';
-import { Button } from '@/ds';
+import { Button, ProgressBar } from '@/ds';
 
 interface EmployeeFormProps {
   employee?: Employee; // For editing, not used in this initial "add" form
@@ -171,12 +171,7 @@ export default function EmployeeForm({
             <span className="text-xs text-text-muted">Step {currentStep + 1} of {totalSteps}</span>
             <span className="text-sm font-medium text-text">{currentStepData.title}</span>
           </div>
-          <div className="w-full bg-border rounded-full h-2">
-            <div
-              className="bg-green-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
-            />
-          </div>
+          <ProgressBar value={((currentStep + 1) / totalSteps) * 100} size="md" label="Form progress" />
         </div>
       )}
 

@@ -88,11 +88,11 @@ function PortalInviteButton({ employeeId }: { employeeId: string }) {
     else { toast.error(result.message) }
   }
 
-  if (sent) return <span className="text-xs text-success">Invite sent</span>
+  if (sent) return <span className="text-xs text-success-fg">Invite sent</span>
   return (
-    <button type="button" onClick={handleClick} disabled={pending} className="text-xs text-primary hover:underline disabled:opacity-50">
+    <Button type="button" variant="link" size="sm" onClick={handleClick} disabled={pending}>
       {pending ? 'Sending...' : 'Send portal invite'}
-    </button>
+    </Button>
   )
 }
 
@@ -255,14 +255,14 @@ export default function EmployeesClient({ initialData, initialError, permissions
                               <Link href={`/employees/${emp.employee_id}`} className="text-ui font-semibold text-text-strong hover:text-primary">
                                 {employeeListName(emp)}
                               </Link>
-                              {!emp.first_name && <span className="text-meta text-text-subtle ml-1">(pending)</span>}
+                              {!emp.first_name && <span className="text-meta text-text-soft ml-1">(pending)</span>}
                             </div>
                           </div>
                         </TableCell>
                         <TableCell className="text-ui">{emp.job_title || '--'}</TableCell>
                         <TableCell>
                           <div className="text-ui">{emp.employment_start_date ? formatDate(emp.employment_start_date) : '--'}</div>
-                          <div className="text-meta text-text-subtle">{calculateLengthOfService(emp.employment_start_date)}</div>
+                          <div className="text-meta text-text-soft">{calculateLengthOfService(emp.employment_start_date)}</div>
                         </TableCell>
                         <TableCell className="text-ui">{emp.holiday_days_current_year ?? 0} days</TableCell>
                         <TableCell>
