@@ -6,14 +6,12 @@ const {
   getPayPalOrder,
   loggerError,
   sendTableBookingConfirmedAfterDepositSmsIfAllowed,
-  sendManagerTableBookingCreatedEmailIfAllowed,
 } = vi.hoisted(() => ({
   supabaseFrom: vi.fn(),
   capturePayPalPayment: vi.fn(),
   getPayPalOrder: vi.fn(),
   loggerError: vi.fn(),
   sendTableBookingConfirmedAfterDepositSmsIfAllowed: vi.fn().mockResolvedValue({ sms: null }),
-  sendManagerTableBookingCreatedEmailIfAllowed: vi.fn().mockResolvedValue({ sent: true }),
 }))
 
 vi.mock('@/lib/api/auth', () => ({
@@ -41,8 +39,6 @@ vi.mock('@/lib/logger', () => ({
 vi.mock('@/lib/table-bookings/bookings', () => ({
   sendTableBookingConfirmedAfterDepositSmsIfAllowed: (...args: unknown[]) =>
     sendTableBookingConfirmedAfterDepositSmsIfAllowed(...args),
-  sendManagerTableBookingCreatedEmailIfAllowed: (...args: unknown[]) =>
-    sendManagerTableBookingCreatedEmailIfAllowed(...args),
 }))
 
 import { POST } from '@/app/api/external/table-bookings/[id]/paypal/capture-order/route'

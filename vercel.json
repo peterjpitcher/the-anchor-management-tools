@@ -222,20 +222,12 @@
       "schedule": "0 1 * * *"
     },
     {
-      "path": "/api/cron/private-bookings-weekly-summary",
-      "schedule": "0 7,8 * * 5"
-    },
-    {
       "path": "/api/cron/generate-slots",
       "schedule": "0 0 * * 1"
     },
     {
       "path": "/api/cron/employee-invite-chase",
       "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/leave-approval-reminders",
-      "schedule": "30 9 * * *"
     },
     {
       "path": "/api/cron/rota-auto-close",
@@ -248,10 +240,6 @@
     {
       "path": "/api/cron/payroll-periods",
       "schedule": "15 6 * * *"
-    },
-    {
-      "path": "/api/cron/rota-manager-alert",
-      "schedule": "0 7,8 * * 5"
     },
     {
       "path": "/api/cron/rota-unfilled-urgent",
@@ -296,18 +284,6 @@
     {
       "path": "/api/cron/checklists-generate",
       "schedule": "0 4,5 * * *"
-    },
-    {
-      "path": "/api/cron/checklists-closing-alert",
-      "schedule": "0 8,9 * * *"
-    },
-    {
-      "path": "/api/cron/checklists-weekly-summary",
-      "schedule": "0 7,8 * * 5"
-    },
-    {
-      "path": "/api/cron/maintenance-weekly-snapshot",
-      "schedule": "0 7,8 * * 5"
     },
     {
       "path": "/api/cron/maintenance-photo-cleanup",

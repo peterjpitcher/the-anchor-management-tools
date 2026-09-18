@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sendEmail = vi.hoisted(() => vi.fn())
-const queueManagerReportEmail = vi.hoisted(() => vi.fn())
-vi.mock('@/lib/manager-report/queue', () => ({ queueManagerReportEmail }))
 const sendSMS = vi.hoisted(() => vi.fn())
 const draftRecruitmentEmail = vi.hoisted(() => vi.fn())
 
@@ -23,9 +21,9 @@ import {
   retryRecruitmentCommunication,
   sendRecruitmentApplicationReceivedEmail,
   sendRecruitmentSms,
-  sendRecruitmentManagerAlert,
   sendRecruitmentTemplateEmail,
 } from '@/lib/recruitment/communications'
+import * as recruitmentCommunications from '@/lib/recruitment/communications'
 
 function maybeSingleChain(result: { data: any; error: any }) {
   const chain: any = {}
@@ -108,69 +106,28 @@ const application = {
 describe('recruitment communications safety', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    queueManagerReportEmail.mockResolvedValue({ success: true, queued: true, emailMessageId: 'queue-1' })
     process.env.RECRUITMENT_FROM_EMAIL = 'peter@orangejelly.co.uk'
     process.env.RECRUITMENT_NOTIFICATION_EMAIL = 'manager@the-anchor.pub'
   })
 
-  it('queues manager recruitment alerts without claiming delivery', async () => {
-    const communications = insertUpdateChain()
-    const supabase = mockSupabase({
-      recruitment_email_templates: maybeSingleChain({ data: null, error: null }),
-      recruitment_communications: communications,
-    })
-    const result = await sendRecruitmentManagerAlert({
-      alertType: 'Interview booked', alertBody: 'Jane booked an interview.', candidateId: 'candidate-1',
-    }, supabase)
-    expect(result).toMatchObject({ success: true, queued: true, messageId: null })
-    expect(sendEmail).not.toHaveBeenCalled()
-    expect(queueManagerReportEmail).toHaveBeenCalledWith(expect.objectContaining({
-      section: 'recruitment', key: 'comm-1', to: 'manager@the-anchor.pub',
-      metadata: expect.objectContaining({ communication_id: 'comm-1' }),
-    }))
-    expect(communications.insert).toHaveBeenCalledWith(expect.objectContaining({ delivery_status: 'queued', sent_at: null, provider_message_id: null }))
-    expect(communications.update).not.toHaveBeenCalled()
+  // Recruitment manager alerts are no longer created or resent: the weekly insights report
+  // covers recruitment. Applicant emails and SMS are unchanged (tested below).
+  it('no longer offers a manager alert sender', () => {
+    expect(recruitmentCommunications).not.toHaveProperty('sendRecruitmentManagerAlert')
   })
 
-  it('records failed recruitment queue acceptance as failed and permits retry', async () => {
-    queueManagerReportEmail.mockResolvedValue({ success: false, error: 'queue unavailable' })
-    const communications = insertUpdateChain()
-    const supabase = mockSupabase({
-      recruitment_email_templates: maybeSingleChain({ data: null, error: null }),
-      recruitment_communications: communications,
-    })
-    await expect(sendRecruitmentManagerAlert({
-      alertType: 'Review', alertBody: 'Review Jane.', candidateId: 'candidate-1',
-    }, supabase)).rejects.toThrow('queue unavailable')
-    expect(communications.update).toHaveBeenCalledWith(expect.objectContaining({ delivery_status: 'failed', sent_at: null }))
-    expect(sendEmail).not.toHaveBeenCalled()
-  })
-
-  it('retries manager alerts with the original key and recipient without creating duplicate communications', async () => {
+  it.each(['queued', 'failed', 'sent'])('refuses to resend an old %s manager alert and writes nothing', async (deliveryStatus) => {
     const communications = retryCommunicationChain({
       id: 'comm-original', type: 'manager_alert', channel: 'email', subject: 'Review Jane',
       final_body: 'Review Jane.', candidate_id: 'candidate-1', application_id: 'application-1',
-      delivery_status: 'failed', metadata: { recipient_email: 'original@example.com' },
+      delivery_status: deliveryStatus, metadata: { recipient_email: 'original@example.com' },
     })
     const supabase = mockSupabase({ recruitment_communications: communications })
-    await retryRecruitmentCommunication('comm-original', 'user-1', supabase)
+    await expect(retryRecruitmentCommunication('comm-original', 'user-1', supabase))
+      .rejects.toThrow('Recruitment manager alerts are no longer sent')
     expect(communications.insert).not.toHaveBeenCalled()
-    expect(sendEmail).not.toHaveBeenCalled()
-    expect(queueManagerReportEmail).toHaveBeenCalledWith(expect.objectContaining({
-      section: 'recruitment', key: 'comm-original', to: 'original@example.com',
-      metadata: expect.objectContaining({ communication_id: 'comm-original' }),
-    }))
-    expect(communications.update).toHaveBeenCalledWith(expect.objectContaining({ delivery_status: 'queued', sent_at: null }))
-  })
-
-  it('does not queue a delivered manager alert again', async () => {
-    const communications = retryCommunicationChain({
-      id: 'comm-original', type: 'manager_alert', channel: 'email', delivery_status: 'sent',
-    })
-    await retryRecruitmentCommunication('comm-original', 'user-1', mockSupabase({ recruitment_communications: communications }))
-    expect(queueManagerReportEmail).not.toHaveBeenCalled()
-    expect(sendEmail).not.toHaveBeenCalled()
     expect(communications.update).not.toHaveBeenCalled()
+    expect(sendEmail).not.toHaveBeenCalled()
   })
 
   it('sends recruitment SMS without creating or linking customers', async () => {

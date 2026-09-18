@@ -16,7 +16,7 @@ import { applyDistributedRateLimit } from '@/lib/distributed-rate-limit'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getClientIp, verifyTurnstileToken } from '@/lib/turnstile'
 import { getRecruitmentCvMaxBytes, validateRecruitmentCvUpload } from '@/lib/recruitment/files'
-import { sendRecruitmentApplicationReceivedEmail, sendRecruitmentManagerAlert } from '@/lib/recruitment/communications'
+import { sendRecruitmentApplicationReceivedEmail } from '@/lib/recruitment/communications'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { createRecruitmentApplication, processRecruitmentApplicationAi } from '@/services/recruitment'
 import type { RecruitmentCvUpload } from '@/types/recruitment'
@@ -255,33 +255,10 @@ async function handleRecruitmentApplication(request: NextRequest) {
         console.error('Recruitment application received email failed', error)
       }
 
-      let processed: Awaited<ReturnType<typeof processRecruitmentApplicationAi>> | null = null
       try {
-        processed = await processRecruitmentApplicationAi(result.application.id, supabase)
+        await processRecruitmentApplicationAi(result.application.id, supabase)
       } catch (error) {
         console.error('Deferred recruitment AI processing failed', error)
-      }
-
-      const application = processed?.application ?? result.application
-      const cvExtractionError = processed?.cvExtractionError ?? result.cvExtractionError
-      try {
-        await sendRecruitmentManagerAlert({
-          applicationId: application.id,
-          alertType: application.status === 'talent_pool'
-            ? 'talent pool candidate'
-            : application.ai_recommendation === 'fast_track'
-              ? 'fast-track'
-              : 'new application',
-          alertBody: [
-            `${result.candidate.first_name ?? ''} ${result.candidate.last_name ?? ''}`.trim() || result.candidate.email || 'A candidate',
-            application.job_posting?.title ? `applied for ${application.job_posting.title}.` : 'joined the recruitment talent pool.',
-            application.ai_score != null ? `AI score: ${application.ai_score}.` : '',
-            cvExtractionError ? `CV review needed: ${cvExtractionError}.` : '',
-            processed?.scoringError ? `Scoring review needed: ${processed.scoringError}.` : '',
-          ].filter(Boolean).join(' '),
-        }, supabase)
-      } catch (error) {
-        console.error('Recruitment manager alert failed', error)
       }
     })
 

@@ -4,10 +4,7 @@ import { POST } from './route'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import { recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
-import {
-  sendManagerTableBookingCreatedEmailIfAllowed,
-  sendTableBookingCreatedSmsIfAllowed,
-} from '@/lib/table-bookings/bookings'
+import { sendTableBookingCreatedSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import {
   FOH_BOOKING_CLIENT_CONTRACT,
   FOH_BOOKING_CLIENT_HEADER,
@@ -68,7 +65,6 @@ vi.mock('@/lib/table-bookings/bookings', () => ({
   mapTableBookingBlockedReason: vi.fn((reason: string | null) => reason ?? 'blocked'),
   createTablePaymentToken: vi.fn().mockResolvedValue('tok_test'),
   alignTablePaymentHoldToScheduledSend: vi.fn().mockResolvedValue(null),
-  sendManagerTableBookingCreatedEmailIfAllowed: vi.fn().mockResolvedValue({ ok: true }),
   sendTableBookingCreatedSmsIfAllowed: vi.fn().mockResolvedValue({ ok: true, scheduledFor: null }),
 }))
 
@@ -539,8 +535,6 @@ describe('POST /api/foh/bookings: walk-ins are not sent a booking confirmation',
 
     expect(res.status).toBe(201)
     expect(sendTableBookingCreatedSmsIfAllowed).not.toHaveBeenCalled()
-    // The manager still hears about it.
-    expect(sendManagerTableBookingCreatedEmailIfAllowed).toHaveBeenCalled()
   })
 
   it('still sends the guest notice for an ordinary booking taken by telephone', async () => {

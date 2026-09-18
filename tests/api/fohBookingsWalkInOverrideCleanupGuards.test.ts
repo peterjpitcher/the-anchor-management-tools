@@ -31,7 +31,6 @@ vi.mock('@/lib/table-bookings/bookings', () => ({
   alignTablePaymentHoldToScheduledSend: vi.fn(),
   createTablePaymentToken: vi.fn(),
   mapTableBookingBlockedReason: vi.fn(() => 'no_table'),
-  sendManagerTableBookingCreatedEmailIfAllowed: vi.fn(),
   sendTableBookingCreatedSmsIfAllowed: vi.fn(),
 }))
 

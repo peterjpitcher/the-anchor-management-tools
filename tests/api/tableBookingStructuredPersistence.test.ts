@@ -14,7 +14,6 @@ const {
   error,
   createTablePaymentToken,
   sendTableBookingCreatedSmsIfAllowed,
-  sendManagerTableBookingCreatedEmailIfAllowed,
   alignTablePaymentHoldToScheduledSend,
   mapTableBookingBlockedReason,
   recordAnalyticsEvent,
@@ -28,7 +27,6 @@ const {
   error: vi.fn(),
   createTablePaymentToken: vi.fn().mockResolvedValue({ url: 'https://example.com/pay' }),
   sendTableBookingCreatedSmsIfAllowed: vi.fn().mockResolvedValue({ sms: null }),
-  sendManagerTableBookingCreatedEmailIfAllowed: vi.fn().mockResolvedValue({ sent: true }),
   alignTablePaymentHoldToScheduledSend: vi.fn(async () => undefined),
   mapTableBookingBlockedReason: vi.fn((reason?: string) => (reason as any) ?? null),
   recordAnalyticsEvent: vi.fn(),
@@ -104,7 +102,6 @@ vi.mock('@/lib/table-bookings/bookings', () => ({
   alignTablePaymentHoldToScheduledSend,
   createTablePaymentToken,
   mapTableBookingBlockedReason,
-  sendManagerTableBookingCreatedEmailIfAllowed,
   sendTableBookingCreatedSmsIfAllowed,
   // The route quotes the deposit the RPC actually charged rather than recomputing it from party
   // size, so this mirrors the real helper: prefer the RPC's figure, fall back only when there is

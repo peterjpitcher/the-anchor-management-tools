@@ -50,7 +50,7 @@ describe('manager report cron boundary', () => {
   it('does not alert on a normal send or while waiting for sections', async () => {
     mocks.deliver.mockResolvedValueOnce({ success: true, sent: 1 })
     expect((await GET(authorised())).status).toBe(200)
-    mocks.deliver.mockResolvedValueOnce({ success: true, sent: 0, skipped: 'waiting_for_sections', notCheckedSections: ['events'] })
+    mocks.deliver.mockResolvedValueOnce({ success: true, sent: 0, skipped: 'waiting_for_sections', heldBackSections: ['events'] })
     expect((await GET(authorised())).status).toBe(200)
     expect(mocks.alert).not.toHaveBeenCalled()
   })
@@ -59,5 +59,21 @@ describe('manager report cron boundary', () => {
     mocks.deliver.mockResolvedValue({ success: true, sent: 1, notCheckedSections: ['cashing_up', 'events'] })
     expect((await GET(authorised())).status).toBe(200)
     expect(mocks.alert).toHaveBeenCalledWith('manager-weekly-report', expect.any(Error), { sections: ['cashing_up', 'events'] })
+  })
+
+  it('still names the sections when a later step failed after the report was accepted', async () => {
+    mocks.deliver.mockResolvedValue({ success: false, sent: 1, error: 'Report state was not saved', notCheckedSections: ['rota'] })
+    const response = await GET(authorised())
+    expect(response.status).toBe(500)
+    expect(mocks.alert).toHaveBeenCalledTimes(2)
+    expect(mocks.alert).toHaveBeenNthCalledWith(1, 'manager-weekly-report', expect.any(Error), undefined)
+    expect(mocks.alert).toHaveBeenNthCalledWith(2, 'manager-weekly-report', expect.any(Error), { sections: ['rota'] })
+  })
+
+  it('keeps the section alert when the failure alert itself fails', async () => {
+    mocks.deliver.mockResolvedValue({ success: false, sent: 1, error: 'Report state was not saved', notCheckedSections: ['rota'] })
+    mocks.alert.mockRejectedValueOnce(new Error('Alert transport down'))
+    expect((await GET(authorised())).status).toBe(500)
+    expect(mocks.alert).toHaveBeenLastCalledWith('manager-weekly-report', expect.any(Error), { sections: ['rota'] })
   })
 })

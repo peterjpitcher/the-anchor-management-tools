@@ -185,7 +185,6 @@ All guarded by `authorizeCronRequest()` (`src/lib/cron-auth.ts`, CRON_SECRET bea
 | `/api/cron/reconcile-sms` | `*/15 * * * *` |
 | `/api/cron/paypal-deposit-reconciliation` | `*/15 * * * *` |
 | `/api/cron/recruitment-calendar-retry` | `*/30 * * * *` |
-| `/api/cron/private-bookings-weekly-summary` | `0 * * * *` |
 | `/api/cron/table-booking-deposit-timeout` | `0 * * * *` |
 | `/api/cron/recruitment-reminders` | `0 * * * *` |
 | `/api/cron/oj-projects-retainer-projects` | `0 0 1 * *` |
@@ -208,7 +207,6 @@ All guarded by `authorizeCronRequest()` (`src/lib/cron-auth.ts`, CRON_SECRET bea
 | `/api/cron/birthday-reminders` | `0 9 * * *` |
 | `/api/cron/oj-projects-billing-reminders` | `0 9 * * *` |
 | `/api/cron/employee-invite-chase` | `0 9 * * *` |
-| `/api/cron/rota-manager-alert` | `0 18 * * 0` (Sun) |
 | `/api/cron/rota-staff-email` | `0 21 * * 0` (Sun) |
 
 **Cron routes that exist but are NOT scheduled in `vercel.json`** (manual/ad-hoc triggers): `/api/cron/backfill-marketing-links`, `/api/cron/pub-ops-event-calendar-sync`, `/api/cron/sunday-lunch-prep`, `/api/cron/sunday-preorder`, plus `/api/jobs/process-now`.

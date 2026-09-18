@@ -168,8 +168,11 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
 
   // Completed
   if (task.state === 'done') {
+    // An out-of-range reading cannot be undone (the server refuses too): the row is the
+    // manager's only record of it, and the alert below already says who to tell.
     const canUndo =
       !task.locked &&
+      !task.valueBreach &&
       identity?.employeeId === task.completedByEmployeeId &&
       task.completedAt != null &&
       Date.now() - new Date(task.completedAt).getTime() < UNDO_WINDOW_MS

@@ -21,7 +21,6 @@ import {
   createRecruitmentJobPosting,
   duplicateRecruitmentJobPosting,
   eraseRecruitmentCandidate,
-  formatRecruitmentAppointmentTime,
   getRecruitmentApplicationsForCsv,
   getRecruitmentDashboard,
   getRecruitmentCandidatesPage,
@@ -52,12 +51,10 @@ import {
   syncRecruitmentAppointmentCalendar,
 } from '@/lib/recruitment/calendar'
 import {
-  describeRecruitmentAppointmentCandidate,
   draftRecruitmentEmailForApplication,
   previewRecruitmentDecisionEmail,
   retryRecruitmentCommunication,
   sendRecruitmentApplicationReceivedEmail,
-  sendRecruitmentManagerAlert,
   sendRecruitmentTemplateEmail,
 } from '@/lib/recruitment/communications'
 import type { RecruitmentAppointmentType, RecruitmentTemplateType } from '@/types/recruitment'
@@ -202,20 +199,6 @@ async function formCvUpload(formData: FormData, key = 'cv') {
 
 function parseDateTimeLocal(value: string | null): string | null {
   return parseLondonDateTimeLocalToIso(value)
-}
-
-async function notifyRecruitmentManager(input: {
-  applicationId?: string | null
-  candidateId?: string | null
-  alertType: string
-  alertBody: string
-  currentUserId?: string | null
-}) {
-  try {
-    await sendRecruitmentManagerAlert(input)
-  } catch (error) {
-    console.error('Recruitment manager alert failed', error)
-  }
 }
 
 function parseJobPostingForm(formData: FormData) {
@@ -544,23 +527,6 @@ export async function createManualRecruitmentApplicationAction(_prevState: unkno
     } catch (error) {
       console.error('Recruitment application received email failed', error)
     }
-
-    await notifyRecruitmentManager({
-      applicationId: result.application.id,
-      alertType: result.application.status === 'talent_pool'
-        ? 'talent pool candidate'
-        : result.application.ai_recommendation === 'fast_track'
-          ? 'fast-track'
-          : 'new application',
-      alertBody: [
-        `${result.candidate.first_name ?? ''} ${result.candidate.last_name ?? ''}`.trim() || result.candidate.email || 'A candidate',
-        result.application.job_posting?.title ? `applied for ${result.application.job_posting.title}.` : 'was added to the talent pool.',
-        result.application.ai_score != null ? `AI score: ${result.application.ai_score}.` : '',
-        result.cvExtractionError ? `CV review needed: ${result.cvExtractionError}.` : '',
-        result.scoringError ? `Scoring review needed: ${result.scoringError}.` : '',
-      ].filter(Boolean).join(' '),
-      currentUserId: user.id,
-    })
 
     await auditRecruitmentMutation({
       user,
@@ -1012,19 +978,6 @@ export async function recordRecruitmentAppointmentOutcomeAction(formData: FormDa
       meal_provided: formBool(formData, 'meal_provided'),
     }, user.id)
 
-    if ((result as any).status === 'no_show') {
-      const noShowCandidate = await loadRecruitmentAppointment(appointmentId)
-        .then(describeRecruitmentAppointmentCandidate)
-        .catch(() => 'A candidate')
-      await notifyRecruitmentManager({
-        applicationId: (result as any).application_id,
-        candidateId: (result as any).candidate_id,
-        alertType: 'no-show action needed',
-        alertBody: `${noShowCandidate} was marked as a no-show for a recruitment appointment. Review the application and decide whether to rebook or close it.`,
-        currentUserId: user.id,
-      })
-    }
-
     await auditRecruitmentMutation({
       user,
       operation: 'record_outcome',
@@ -1058,16 +1011,6 @@ export async function cancelRecruitmentAppointmentAction(formData: FormData): Pr
       resourceId: appointmentId,
       status: 'success',
       newValues: { status: (appointment as any).status ?? 'cancelled' },
-    })
-    const cancelledCandidate = await loadRecruitmentAppointment(appointmentId)
-      .then(describeRecruitmentAppointmentCandidate)
-      .catch(() => 'A candidate')
-    await notifyRecruitmentManager({
-      applicationId: (appointment as any).application_id,
-      candidateId: (appointment as any).candidate_id,
-      alertType: 'appointment cancelled',
-      alertBody: `${cancelledCandidate} — recruitment appointment cancelled by staff. The application is on hold — review and rebook or close it.`,
-      currentUserId: user.id,
     })
     revalidatePath('/recruitment')
     return { success: true, data: appointment, message: 'Appointment cancelled.' }
@@ -1126,13 +1069,7 @@ async function scheduleRecruitmentAppointmentForCandidate(
     const appointment = await loadRecruitmentAppointment(appointmentId)
     const ics = generateRecruitmentAppointmentIcs(appointment)
 
-    const candidateName = [appointment.candidate?.first_name, appointment.candidate?.last_name]
-      .filter(Boolean)
-      .join(' ') || appointment.candidate?.email || 'A candidate'
-    const roleTitle = appointment.application?.job_posting?.title
-    const whenLabel = formatRecruitmentAppointmentTime(appointment)
-
-    const [calendarResult, emailResult, managerEmailResult] = await Promise.allSettled([
+    const [calendarResult, emailResult] = await Promise.allSettled([
       syncRecruitmentAppointmentCalendar(appointmentId),
       sendRecruitmentTemplateEmail(applicationId, templateType, {
         currentUserId: user.id,
@@ -1143,20 +1080,10 @@ async function scheduleRecruitmentAppointmentForCandidate(
           contentType: 'text/calendar; charset=utf-8; method=REQUEST',
         }],
       }),
-      sendRecruitmentManagerAlert({
-        applicationId,
-        candidateId: appointment.candidate_id,
-        alertType: appointmentType === 'trial_shift' ? 'trial scheduled' : 'interview scheduled',
-        alertBody: `${candidateName}${roleTitle ? ` (${roleTitle})` : ''} — ${typeLabel} booked for ${whenLabel} at ${appointment.location}. Scheduled manually by a manager.`,
-        currentUserId: user.id,
-      }),
     ])
 
     if (calendarResult.status === 'rejected') {
       console.error('Recruitment staff schedule calendar sync failed', calendarResult.reason)
-    }
-    if (managerEmailResult.status === 'rejected') {
-      console.error('Recruitment staff schedule manager alert failed', managerEmailResult.reason)
     }
 
     await auditRecruitmentMutation({
@@ -1172,7 +1099,6 @@ async function scheduleRecruitmentAppointmentForCandidate(
         scheduled_start: appointment.scheduled_start,
         calendar_status: calendarResult.status === 'fulfilled' ? calendarResult.value.status : 'failed',
         confirmation_email_sent: emailResult.status === 'fulfilled',
-        manager_email_sent: managerEmailResult.status === 'fulfilled',
       },
     })
     revalidatePath('/recruitment')
@@ -1521,13 +1447,6 @@ export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormD
         employee_id: invite.employeeId,
         job_title: jobTitle,
       },
-    })
-    await notifyRecruitmentManager({
-      applicationId,
-      candidateId: application.candidate_id,
-      alertType: 'candidate hired',
-      alertBody: `${application.candidate.first_name ?? 'A candidate'} has been hired and an employee invite was sent (${jobTitle}).`,
-      currentUserId: user.id,
     })
     revalidatePath('/recruitment')
     revalidatePath('/employees')

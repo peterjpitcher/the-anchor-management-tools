@@ -1,4 +1,3 @@
-import { queueManagerReportEmail } from '@/lib/manager-report/queue'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail, type EmailAttachment } from '@/lib/email/emailService'
@@ -383,122 +382,6 @@ async function loadRecruitmentApplicationForComms(
   if (error) throw error
   if (!data) throw new Error('Application not found.')
   return data
-}
-
-// Manager alerts are read in an inbox, away from the ATS, so the body has to say
-// who it is about — an alert that only gives a date and a venue is unactionable.
-// Takes an appointment loaded via loadRecruitmentAppointment (candidate + job_posting).
-export function describeRecruitmentAppointmentCandidate(appointment: {
-  candidate?: { first_name?: string | null; last_name?: string | null; email?: string | null } | null
-  application?: { job_posting?: { title?: string | null } | null } | null
-}): string {
-  const name = [appointment.candidate?.first_name, appointment.candidate?.last_name]
-    .filter(Boolean)
-    .join(' ') || appointment.candidate?.email || 'A candidate'
-  const roleTitle = appointment.application?.job_posting?.title
-  return roleTitle ? `${name} (${roleTitle})` : name
-}
-
-export async function sendRecruitmentManagerAlert(
-  input: {
-    alertType: string
-    alertBody: string
-    applicationId?: string | null
-    candidateId?: string | null
-    currentUserId?: string | null
-    subject?: string | null
-  },
-  supabase: GenericClient = createAdminClient()
-) {
-  const to = process.env.RECRUITMENT_NOTIFICATION_EMAIL || 'manager@the-anchor.pub'
-  let application: any = null
-  let candidateId = input.candidateId ?? null
-
-  if (input.applicationId) {
-    application = await loadRecruitmentApplicationForComms(input.applicationId, supabase)
-    candidateId = application.candidate_id
-  }
-
-  if (!candidateId) {
-    throw new Error('Manager alert requires an application or candidate.')
-  }
-
-  const mergeData: MergeData = {
-    alert_type: input.alertType,
-    alert_body: input.alertBody,
-  }
-
-  const { data: template } = await supabase
-    .from('recruitment_email_templates')
-    .select('subject, body')
-    .eq('type', 'manager_alert')
-    .eq('is_active', true)
-    .maybeSingle()
-
-  const subject = mergeTemplate(input.subject ?? template?.subject ?? 'Recruitment alert - {{alert_type}}', mergeData)
-  const body = normalizeBodyText(mergeTemplate(template?.body ?? '{{alert_body}}', mergeData))
-  assertNoUnresolvedPlaceholders(subject, body)
-
-  const { data: communication, error: commError } = await supabase
-    .from('recruitment_communications')
-    .insert({
-      application_id: input.applicationId ?? null,
-      candidate_id: candidateId,
-      type: 'manager_alert',
-      channel: 'email',
-      subject,
-      final_body: body,
-      edited_by: input.currentUserId ?? null,
-      sent_by: input.currentUserId ?? null,
-      delivery_status: 'queued',
-      sent_at: null,
-      provider_message_id: null,
-      provider: 'email_service',
-      metadata: {
-        recipient_email: to,
-        alert_type: input.alertType,
-        role_title: application ? roleTitle(application) : null,
-      },
-    })
-    .select('id')
-    .single()
-
-  if (commError) throw commError
-
-  const result = await queueManagerReportEmail({
-    section: 'recruitment',
-    key: communication.id,
-    to,
-    subject,
-    text: body,
-    metadata: {
-      application_id: input.applicationId ?? null,
-      candidate_id: candidateId,
-      communication_id: communication.id,
-      summary: body,
-    },
-  })
-
-  if (!result.success) {
-    const { error: updateError } = await supabase
-      .from('recruitment_communications')
-      .update({
-        delivery_status: 'failed',
-        provider_message_id: null,
-        sent_at: null,
-        metadata: {
-          recipient_email: to,
-          alert_type: input.alertType,
-          role_title: application ? roleTitle(application) : null,
-          error: result.error ?? null,
-        },
-      })
-      .eq('id', communication.id)
-    if (updateError) throw updateError
-    throw new Error(result.error || 'Recruitment manager alert failed.')
-  }
-
-  return { success: true, communicationId: communication.id, queued: true, messageId: null }
 }
 
 export async function draftRecruitmentEmailForApplication(
@@ -974,37 +857,15 @@ export async function retryRecruitmentCommunication(
   if (error) throw error
   if (!original) throw new Error('Communication not found.')
 
-  if (original.channel === 'email' && original.type === 'manager_alert') {
-    if (original.delivery_status === 'sent') {
-      return { success: true as const, communicationId: original.id, retryOfCommunicationId: communicationId }
-    }
-    const result = await queueManagerReportEmail({
-      section: 'recruitment',
-      key: original.id,
-      to: original.metadata?.recipient_email || process.env.RECRUITMENT_NOTIFICATION_EMAIL || 'manager@the-anchor.pub',
-      subject: original.subject || 'Recruitment alert',
-      text: original.final_body,
-      metadata: {
-        application_id: original.application_id,
-        candidate_id: original.candidate_id,
-        communication_id: original.id,
-        summary: original.final_body,
-      },
-    })
-    if (!result.success) throw new Error(result.error || 'Recruitment manager alert queue failed.')
-    // A retry reuses its source row and cannot create a second report entry.
-    if (original.delivery_status !== 'queued') {
-      const { error: updateError } = await supabase.from('recruitment_communications')
-        .update({ delivery_status: 'queued', provider_message_id: null, sent_at: null })
-        .eq('id', original.id)
-        .eq('delivery_status', original.delivery_status)
-      if (updateError) throw updateError
-    }
-    return { success: true as const, queued: true, communicationId: original.id, retryOfCommunicationId: communicationId }
+  // Recruitment manager alerts are no longer sent: open applications and appointments are
+  // covered by the recruitment section of the weekly insights report. Old alert rows stay
+  // as history and cannot be resent from here.
+  if (original.type === 'manager_alert') {
+    throw new Error('Recruitment manager alerts are no longer sent. Recruitment is covered by the weekly insights report.')
   }
 
   const candidate = original.candidate as any
-  const retryBody = original.channel === 'email' && original.type !== 'manager_alert'
+  const retryBody = original.channel === 'email'
     ? finalizeRecruitmentEmailBody(original.final_body)
     : original.final_body
   const metadata = {
@@ -1039,9 +900,7 @@ export async function retryRecruitmentCommunication(
   let failure: string | null = null
 
   if (original.channel === 'email') {
-    const to = original.type === 'manager_alert'
-      ? process.env.RECRUITMENT_NOTIFICATION_EMAIL || 'manager@the-anchor.pub'
-      : candidate?.email
+    const to = candidate?.email
     if (!to) throw new Error('No email address is available for retry.')
 
     const result = await sendEmail({

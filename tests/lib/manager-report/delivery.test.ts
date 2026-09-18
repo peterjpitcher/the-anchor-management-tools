@@ -164,7 +164,10 @@ describe('weekly insights delivery', () => {
 
   it('holds the report back while a section is not checked, then sends it from 09:00 naming the sections', async () => {
     buildReport.mockImplementation(async (now: Date) => buildFixtureReport({ now, notChecked: ['cashing_up' as SectionKey] }))
-    expect(await run()).toMatchObject({ success: true, sent: 0, skipped: 'waiting_for_sections', notCheckedSections: ['cashing_up'] })
+    const held = await run()
+    expect(held).toMatchObject({ success: true, sent: 0, skipped: 'waiting_for_sections', heldBackSections: ['cashing_up'] })
+    // Nothing went out, so there is nothing for the route to raise yet.
+    expect(held.notCheckedSections).toBeUndefined()
     expect(reportRows()).toHaveLength(0)
     expect(send).not.toHaveBeenCalled()
 
@@ -174,6 +177,37 @@ describe('weekly insights delivery', () => {
     date = new Date('2026-09-25T08:00:00Z') // 09:00 BST
     expect(await run()).toMatchObject({ success: true, sent: 1, notCheckedSections: ['cashing_up'] })
     expect(send.mock.calls[0][0].html).toContain('⚪ Not checked: Cashing up')
+  })
+
+  it('names the not-checked sections when the 09:00 report only goes out on a later retry', async () => {
+    buildReport.mockImplementation(async (now: Date) => buildFixtureReport({ now, notChecked: ['rota' as SectionKey] }))
+    date = new Date('2026-09-25T08:00:00Z') // 09:00 BST: frozen with rota not checked
+    send.mockResolvedValueOnce({ success: false, error: 'Provider unavailable' })
+    const failed = await run()
+    expect(failed).toMatchObject({ success: false, sent: 0, error: 'Provider unavailable' })
+    expect(failed.notCheckedSections).toBeUndefined()
+    expect(reportRows()[0]).toMatchObject({ status: 'queued', metadata: { notChecked: ['rota'] } })
+
+    date = new Date('2026-09-25T09:00:00Z') // 10:00 BST: the frozen report goes out unchanged
+    expect(await run()).toEqual({ success: true, sent: 1, notCheckedSections: ['rota'] })
+    expect(send).toHaveBeenCalledTimes(2)
+    expect(send.mock.calls[1][0]).toEqual(send.mock.calls[0][0])
+    expect(buildReport).toHaveBeenCalledTimes(1)
+
+    date = new Date('2026-09-25T10:00:00Z') // nothing left to send, so nothing to name again
+    expect(await run()).toEqual({ success: true, sent: 0, skipped: 'already_reported' })
+  })
+
+  it('names the not-checked sections when a step fails after the provider accepted the report', async () => {
+    buildReport.mockImplementation(async (now: Date) => buildFixtureReport({ now, notChecked: ['rota' as SectionKey] }))
+    date = new Date('2026-09-25T08:00:00Z')
+    db.failures.push({ table: 'email_messages', operation: 'update', matches: payload => payload.status === 'sent' })
+    expect(await run()).toMatchObject({ success: false, sent: 1, notCheckedSections: ['rota'] })
+
+    date = new Date('2026-09-25T09:00:00Z') // finalised without a second send
+    expect(await run()).toEqual({ success: true, sent: 0, skipped: 'already_reported' })
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(reportRows()[0].status).toBe('sent')
   })
 
   it('uses a report built at a later hour once every section can be read', async () => {

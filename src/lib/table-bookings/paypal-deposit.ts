@@ -1,9 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
-import {
-  sendManagerTableBookingCreatedEmailIfAllowed,
-  sendTableBookingConfirmedAfterDepositSmsIfAllowed,
-} from '@/lib/table-bookings/bookings'
+import { sendTableBookingConfirmedAfterDepositSmsIfAllowed } from '@/lib/table-bookings/bookings'
 
 export type PayPalDepositCaptureBooking = {
   id: string
@@ -128,13 +125,6 @@ export async function sendTableBookingDepositCapturedNotifications(
 
   if (input.customerId) {
     tasks.push(sendTableBookingConfirmedAfterDepositSmsIfAllowed(supabase, input.tableBookingId))
-    tasks.push(
-      sendManagerTableBookingCreatedEmailIfAllowed(supabase, {
-        tableBookingId: input.tableBookingId,
-        fallbackCustomerId: input.customerId,
-        createdVia: input.createdVia,
-      }),
-    )
   }
 
   const outcomes = await Promise.allSettled(tasks)
