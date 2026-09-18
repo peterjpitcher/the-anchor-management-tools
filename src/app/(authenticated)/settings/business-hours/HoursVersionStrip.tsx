@@ -4,6 +4,7 @@ import { useCallback, useState, useTransition } from 'react'
 import toast from 'react-hot-toast'
 import { Alert, Button, Field, Input, Modal } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { cn } from '@/lib/utils'
 import {
   createScheduledHoursVersion,
   publishHoursVersion,
@@ -124,15 +125,16 @@ export function HoursVersionStrip({
         role="tab"
         aria-selected={isSelected}
         onClick={() => onSelect(version.id)}
-        className={`min-h-touch rounded-md border px-3 py-2 text-sm font-medium ${
+        className={cn(
+          'min-h-touch rounded-md border px-3 py-2 text-sm font-medium focus-visible:outline-hidden focus-visible:shadow-ring',
           isSelected
-            ? 'border-sidebar bg-sidebar text-white'
-            : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
-        }`}
+            ? 'border-primary bg-primary text-primary-fg'
+            : 'border-border-strong bg-surface text-text hover:bg-surface-hover',
+        )}
       >
         {name}
         {version.status === 'draft' && (
-          <span className={`ml-2 text-xs ${isSelected ? 'text-white/80' : 'text-text-muted'}`}>Draft</span>
+          <span className={cn('ml-2 text-xs', isSelected ? 'text-on-dark-muted' : 'text-text-muted')}>Draft</span>
         )}
       </button>
     )
@@ -156,7 +158,7 @@ export function HoursVersionStrip({
           <button
             type="button"
             onClick={() => setShowPast(v => !v)}
-            className="text-sm text-text-muted underline"
+            className="rounded-sm text-sm text-text-muted underline focus-visible:outline-hidden focus-visible:shadow-ring"
           >
             {showPast ? 'Hide' : 'Show'} {past.length} past schedule{past.length === 1 ? '' : 's'}
           </button>

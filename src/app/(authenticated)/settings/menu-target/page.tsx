@@ -26,7 +26,7 @@ export default async function MenuTargetSettingsPage() {
         title="Standard target"
         subtitle="Adjusting this value updates all dishes and future GP calculations."
       >
-        <Card className="p-6">
+        <Card>
           <MenuTargetForm initialTarget={currentTarget} />
         </Card>
       </Section>

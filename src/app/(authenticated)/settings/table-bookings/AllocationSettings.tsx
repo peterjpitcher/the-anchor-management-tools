@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Button, Card, Input, Section } from '@/ds'
+import { Button, Card, Checkbox, Input, Section, Textarea } from '@/ds'
 
 /**
  * Everything that decides how tables are handed out.
@@ -141,33 +141,24 @@ export function AllocationSettings() {
   const sundayUplift = Number(valueFor('turn_time_sunday_uplift_minutes', String(numberOf(bag, 'turn_time_sunday_uplift_minutes', 15))))
 
   const numberField = (key: string, label: string, fallback: number, hint?: string) => (
-    <div>
-      <label htmlFor={key} className="block text-sm font-medium text-text">{label}</label>
-      <Input
-        id={key}
-        type="number"
-        value={String(valueFor(key, String(numberOf(bag, key, fallback))))}
-        onChange={(e) => set(key, e.target.value)}
-        className="mt-1"
-      />
-      {hint && <p className="mt-1 text-xs text-text-muted">{hint}</p>}
-    </div>
+    <Input
+      id={key}
+      label={label}
+      hint={hint}
+      type="number"
+      value={String(valueFor(key, String(numberOf(bag, key, fallback))))}
+      onChange={(e) => set(key, e.target.value)}
+    />
   )
 
   const toggleField = (key: string, label: string, fallback: boolean, hint?: string) => (
-    <div className="flex items-start gap-3">
-      <input
-        id={key}
-        type="checkbox"
-        checked={Boolean(valueFor(key, boolOf(bag, key, fallback)))}
-        onChange={(e) => set(key, e.target.checked)}
-        className="mt-1 h-4 w-4"
-      />
-      <div>
-        <label htmlFor={key} className="text-sm font-medium text-text">{label}</label>
-        {hint && <p className="text-xs text-text-muted">{hint}</p>}
-      </div>
-    </div>
+    <Checkbox
+      id={key}
+      label={label}
+      description={hint}
+      checked={Boolean(valueFor(key, boolOf(bag, key, fallback)))}
+      onChange={(checked) => set(key, checked)}
+    />
   )
 
   const saveButton = (section: SectionKey, keys: string[]) => (
@@ -229,7 +220,7 @@ export function AllocationSettings() {
               Sundays: <strong>{Math.max(0, paceSunday - reserveSunday)}</strong> covers.
             </p>
             {(paceRegular - reserveRegular <= 0 || paceSunday - reserveSunday <= 0) && (
-              <p className="mt-1 text-red-700">
+              <p className="mt-1 text-danger-fg">
                 That closes online booking completely. The reserve must be smaller than the pace.
               </p>
             )}
@@ -324,22 +315,16 @@ export function AllocationSettings() {
         <Card>
           <div className="space-y-4">
             {PUBLIC_REASONS.map((reason) => (
-              <div key={reason.key}>
-                <label htmlFor={`booking_message_${reason.key}`} className="block text-sm font-medium text-text">
-                  {reason.label}
-                </label>
-                <textarea
-                  id={`booking_message_${reason.key}`}
-                  rows={2}
-                  maxLength={200}
-                  value={String(valueFor(`booking_message_${reason.key}`, textOf(bag, `booking_message_${reason.key}`)))}
-                  onChange={(e) => set(`booking_message_${reason.key}`, e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
-                />
-                {'hint' in reason && reason.hint && (
-                  <p className="mt-1 text-xs text-text-muted">{reason.hint}</p>
-                )}
-              </div>
+              <Textarea
+                key={reason.key}
+                id={`booking_message_${reason.key}`}
+                label={reason.label}
+                hint={'hint' in reason ? reason.hint : undefined}
+                rows={2}
+                maxLength={200}
+                value={String(valueFor(`booking_message_${reason.key}`, textOf(bag, `booking_message_${reason.key}`)))}
+                onChange={(e) => set(`booking_message_${reason.key}`, e.target.value)}
+              />
             ))}
           </div>
           {saveButton('messages', PUBLIC_REASONS.map((r) => `booking_message_${r.key}`))}

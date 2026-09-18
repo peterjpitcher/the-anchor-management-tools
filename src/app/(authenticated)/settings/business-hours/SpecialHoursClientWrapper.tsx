@@ -102,7 +102,7 @@ export function SpecialHoursClientWrapper({
                                           <>
                                               <span>Open: {exception.opens || 'N/A'} - {exception.closes || 'N/A'}</span>
                                               {exception.is_kitchen_closed ? (
-                                                  <span className="ml-4 text-orange-600">Kitchen closed</span>
+                                                  <span className="ml-4 text-warning-fg">Kitchen closed</span>
                                               ) : exception.kitchen_opens && exception.kitchen_closes ? (
                                                   <span className="ml-4">
                                                       Kitchen: {exception.kitchen_opens} - {exception.kitchen_closes}

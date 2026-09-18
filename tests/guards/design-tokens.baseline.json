@@ -33,30 +33,6 @@
   "src/app/(authenticated)/events/_components/EventImagePanel.tsx": {
     "raw-palette": 9
   },
-  "src/app/(authenticated)/menu-management/_components/MenuDishesTable.tsx": {
-    "raw-palette": 7
-  },
-  "src/app/(authenticated)/menu-management/dishes/_components/CompositionRow.tsx": {
-    "raw-palette": 41
-  },
-  "src/app/(authenticated)/menu-management/dishes/_components/DishCompositionTab.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/menu-management/dishes/_components/DishDrawer.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(authenticated)/menu-management/dishes/_components/DishGpAnalysisTab.tsx": {
-    "raw-palette": 19
-  },
-  "src/app/(authenticated)/menu-management/ingredients/_components/IngredientDrawer.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/(authenticated)/menu-management/recipes/_components/RecipeDrawer.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/menu-management/recipes/_components/RecipeIngredientRow.tsx": {
-    "raw-palette": 2
-  },
   "src/app/(authenticated)/messages/bulk/BulkMessagesClient.tsx": {
     "raw-palette": 1
   },
@@ -122,59 +98,15 @@
     "raw-palette": 4,
     "hex-colour": 1
   },
-  "src/app/(authenticated)/settings/api-keys/ApiKeysManager.tsx": {
-    "raw-palette": 8
-  },
-  "src/app/(authenticated)/settings/audit-logs/AuditLogsClient.tsx": {
-    "raw-palette": 17,
-    "bare-rounded": 3
-  },
-  "src/app/(authenticated)/settings/budgets/BudgetsManager.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/settings/business-hours/HoursVersionStrip.tsx": {
-    "sidebar-outside-shell": 2
-  },
-  "src/app/(authenticated)/settings/business-hours/SpecialHoursCalendar.tsx": {
-    "raw-palette": 13
-  },
-  "src/app/(authenticated)/settings/business-hours/SpecialHoursClientWrapper.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/settings/business-hours/SpecialHoursModal.tsx": {
-    "raw-palette": 6
-  },
   "src/app/(authenticated)/settings/calendar-notes/CalendarNotesManager.tsx": {
-    "hex-colour": 2
+    "hex-colour": 1
   },
   "src/app/(authenticated)/settings/customer-labels/CustomerLabelsClient.tsx": {
-    "raw-palette": 1,
-    "hex-colour": 10
+    "hex-colour": 8
   },
   "src/app/(authenticated)/settings/design-system/page.tsx": {
     "hex-colour": 26,
     "px-text-size": 7
-  },
-  "src/app/(authenticated)/settings/event-categories/page.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/settings/gdpr/page.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(authenticated)/settings/import-messages/ImportMessagesClient.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/settings/pay-bands/PayBandsManager.tsx": {
-    "raw-palette": 9
-  },
-  "src/app/(authenticated)/settings/table-bookings/AllocationSettings.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/settings/table-bookings/SeasonalPeriods.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/settings/table-bookings/TableSetupManager.tsx": {
-    "raw-palette": 4
   },
   "src/app/actions/calendar-notes.ts": {
     "hex-colour": 1

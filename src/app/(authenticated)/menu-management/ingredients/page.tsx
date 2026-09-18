@@ -555,7 +555,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
               }}
             />
           ) : (
-            <Badge variant={ingredient.is_active ? 'success' : 'error'}>
+            <Badge tone={ingredient.is_active ? 'success' : 'neutral'}>
               {ingredient.is_active ? 'Active' : 'Inactive'}
             </Badge>
           );
@@ -610,8 +610,6 @@ export default function MenuIngredientsPage(): React.ReactElement {
           const value = event.target.value;
           setAllergenReportDepartment(isMenuPurchaseDepartment(value) ? value : 'all');
         }}
-        selectSize="sm"
-        fullWidth={false}
         aria-label="Allergen report department"
         options={ALLERGEN_REPORT_DEPARTMENT_OPTIONS}
         className="w-40"

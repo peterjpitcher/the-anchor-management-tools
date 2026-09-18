@@ -18,6 +18,8 @@ import { EmptyState } from '@/ds'
 import { Spinner } from '@/ds'
 import { Alert } from '@/ds'
 import { Pagination } from '@/ds'
+import { DescriptionList } from '@/ds'
+import type { DescriptionListItem } from '@/ds/composites/DescriptionList'
 
 type FiltersState = {
   operationType: string
@@ -362,8 +364,8 @@ export default function AuditLogsClient({
                     header: 'Time',
                     cell: (log: AuditLog) => (
                       <div>
-                        <div className="text-sm text-gray-900">{formatDate(log.created_at)}</div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-sm text-text">{formatDate(log.created_at)}</div>
+                        <div className="text-xs text-text-muted">
                           {new Date(log.created_at).toLocaleTimeString()}
                         </div>
                       </div>
@@ -391,7 +393,7 @@ export default function AuditLogsClient({
                       <div>
                         <div className="text-sm">{log.resource_type}</div>
                         {log.resource_id && (
-                          <div className="text-xs text-gray-500">ID: {log.resource_id.slice(0, 8)}...</div>
+                          <div className="text-xs text-text-muted">ID: {log.resource_id.slice(0, 8)}...</div>
                         )}
                       </div>
                     ),
@@ -405,7 +407,7 @@ export default function AuditLogsClient({
                           {log.operation_status}
                         </Badge>
                         {log.error_message && (
-                          <div className="text-xs text-red-600 mt-1">{log.error_message}</div>
+                          <div className="text-xs text-danger mt-1">{log.error_message}</div>
                         )}
                       </div>
                     ),
@@ -441,51 +443,29 @@ export default function AuditLogsClient({
             return null
           }
 
+          const jsonBlock = (value: unknown) => (
+            <pre className="max-w-full overflow-x-auto rounded-sm bg-surface-hover p-2 text-xs sm:text-sm">
+              {JSON.stringify(value, null, 2)}
+            </pre>
+          )
+          const detailItems: DescriptionListItem[] = [
+            { key: 'id', label: 'Log ID', value: log.id },
+            { key: 'timestamp', label: 'Timestamp', value: new Date(log.created_at).toLocaleString() },
+          ]
+          if (log.old_values) {
+            detailItems.push({ key: 'old_values', label: 'Old Values', value: jsonBlock(log.old_values), span: 2 })
+          }
+          if (log.new_values) {
+            detailItems.push({ key: 'new_values', label: 'New Values', value: jsonBlock(log.new_values), span: 2 })
+          }
+          if (log.additional_info) {
+            detailItems.push({ key: 'additional_info', label: 'Additional Info', value: jsonBlock(log.additional_info), span: 2 })
+          }
+
           return (
             <Section title="Log Details">
               <Card>
-                <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Log ID</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{log.id}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Timestamp</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
-                      {new Date(log.created_at).toLocaleString()}
-                    </dd>
-                  </div>
-                  {log.old_values && (
-                    <div className="sm:col-span-2">
-                      <dt className="text-sm font-medium text-gray-500">Old Values</dt>
-                      <dd className="mt-1 text-sm text-gray-900">
-                        <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-xs sm:text-sm max-w-full">
-                          {JSON.stringify(log.old_values, null, 2)}
-                        </pre>
-                      </dd>
-                    </div>
-                  )}
-                  {log.new_values && (
-                    <div className="sm:col-span-2">
-                      <dt className="text-sm font-medium text-gray-500">New Values</dt>
-                      <dd className="mt-1 text-sm text-gray-900">
-                        <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-xs sm:text-sm max-w-full">
-                          {JSON.stringify(log.new_values, null, 2)}
-                        </pre>
-                      </dd>
-                    </div>
-                  )}
-                  {log.additional_info && (
-                    <div className="sm:col-span-2">
-                      <dt className="text-sm font-medium text-gray-500">Additional Info</dt>
-                      <dd className="mt-1 text-sm text-gray-900">
-                        <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-xs sm:text-sm max-w-full">
-                          {JSON.stringify(log.additional_info, null, 2)}
-                        </pre>
-                      </dd>
-                    </div>
-                  )}
-                </dl>
+                <DescriptionList items={detailItems} />
               </Card>
             </Section>
           )

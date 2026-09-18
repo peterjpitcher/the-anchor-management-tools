@@ -1,9 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Input } from '@/ds';
-import { Select } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Badge, FormGroup, IconButton, Input, Select } from '@/ds';
 import { ChevronDownIcon, ChevronUpIcon, TrashIcon } from '@heroicons/react/20/solid';
 import { cn } from '@/lib/utils';
 
@@ -38,42 +36,26 @@ const INCLUSION_TYPES = [
 // Option group visual helpers
 // ---------------------------------------------------------------------------
 
-const GROUP_COLORS = ['blue', 'purple', 'amber', 'emerald', 'rose', 'cyan', 'orange', 'teal'] as const;
+// Option groups are categories with no status meaning, so they take the cat-* tokens. Two are
+// left out on purpose: cat-6 is the same amber as the warning tokens the upgrade state uses (an
+// amber group used to look exactly like an upgrade row), and cat-8 is the stone grey that reads
+// as the neutral "removable" state. The pill classes go on a DS Badge (which has no category
+// tones), in the same soft, -fg and /20 border shades as the booking status map's categories.
+const GROUP_STYLES = [
+  { border: 'border-l-cat-1', pill: 'border-cat-1/20 bg-cat-1-soft text-cat-1-fg' },
+  { border: 'border-l-cat-2', pill: 'border-cat-2/20 bg-cat-2-soft text-cat-2-fg' },
+  { border: 'border-l-cat-3', pill: 'border-cat-3/20 bg-cat-3-soft text-cat-3-fg' },
+  { border: 'border-l-cat-4', pill: 'border-cat-4/20 bg-cat-4-soft text-cat-4-fg' },
+  { border: 'border-l-cat-5', pill: 'border-cat-5/20 bg-cat-5-soft text-cat-5-fg' },
+  { border: 'border-l-cat-7', pill: 'border-cat-7/20 bg-cat-7-soft text-cat-7-fg' },
+] as const;
 
-type GroupColor = (typeof GROUP_COLORS)[number];
+type GroupStyle = (typeof GROUP_STYLES)[number];
 
-function getGroupColor(group: string): GroupColor {
+function getGroupStyle(group: string): GroupStyle {
   let hash = 0;
   for (let i = 0; i < group.length; i++) hash = group.charCodeAt(i) + ((hash << 5) - hash);
-  return GROUP_COLORS[Math.abs(hash) % GROUP_COLORS.length];
-}
-
-function borderColorClass(color: GroupColor): string {
-  const map: Record<GroupColor, string> = {
-    blue: 'border-l-blue-400',
-    purple: 'border-l-purple-400',
-    amber: 'border-l-amber-400',
-    emerald: 'border-l-emerald-400',
-    rose: 'border-l-rose-400',
-    cyan: 'border-l-cyan-400',
-    orange: 'border-l-orange-400',
-    teal: 'border-l-teal-400',
-  };
-  return map[color];
-}
-
-function badgeClasses(color: GroupColor): string {
-  const map: Record<GroupColor, string> = {
-    blue: 'bg-blue-100 text-blue-700',
-    purple: 'bg-purple-100 text-purple-700',
-    amber: 'bg-amber-100 text-warning-fg',
-    emerald: 'bg-emerald-100 text-emerald-700',
-    rose: 'bg-rose-100 text-rose-700',
-    cyan: 'bg-cyan-100 text-cyan-700',
-    orange: 'bg-orange-100 text-orange-700',
-    teal: 'bg-teal-100 text-teal-700',
-  };
-  return map[color];
+  return GROUP_STYLES[Math.abs(hash) % GROUP_STYLES.length];
 }
 
 // ---------------------------------------------------------------------------
@@ -231,15 +213,15 @@ export function IngredientCompositionRow({
   const showUpgradePrice = inclusionType === 'upgrade';
 
   const groupTrimmed = row.option_group?.trim() || '';
-  const groupColor = (inclusionType === 'choice' && groupTrimmed) ? getGroupColor(groupTrimmed) : null;
+  const groupStyle = (inclusionType === 'choice' && groupTrimmed) ? getGroupStyle(groupTrimmed) : null;
 
   // Visual styling per inclusion type
   const borderStyle = inclusionType === 'removable'
-    ? 'border-l-4 border-dashed border-l-gray-400'
+    ? 'border-l-4 border-dashed border-l-border-strong'
     : inclusionType === 'upgrade'
-      ? 'border-l-4 border-l-amber-400'
-      : groupColor
-        ? cn('border-l-4', borderColorClass(groupColor))
+      ? 'border-l-4 border-l-warning'
+      : groupStyle
+        ? cn('border-l-4', groupStyle.border)
         : '';
 
   return (
@@ -250,26 +232,19 @@ export function IngredientCompositionRow({
       {/* Badge row */}
       {inclusionType === 'removable' && (
         <div className="mb-1">
-          <span className="inline-block rounded-full bg-surface-hover px-2 py-0.5 text-xs font-medium text-text-muted">
-            (removable)
-          </span>
+          <Badge tone="neutral">(removable)</Badge>
         </div>
       )}
-      {inclusionType === 'choice' && groupTrimmed && groupColor && (
+      {inclusionType === 'choice' && groupTrimmed && groupStyle && (
         <div className="mb-1">
-          <span className={cn(
-            'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
-            badgeClasses(groupColor),
-          )}>
-            {groupTrimmed}
-          </span>
+          <Badge className={groupStyle.pill}>{groupTrimmed}</Badge>
         </div>
       )}
       {inclusionType === 'upgrade' && (
         <div className="mb-1">
-          <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-warning-fg">
+          <Badge tone="warning">
             Upgrade +£{parseFloat(row.upgrade_price || '0').toFixed(2)}
-          </span>
+          </Badge>
         </div>
       )}
 
@@ -325,12 +300,11 @@ export function IngredientCompositionRow({
         </FormGroup>
 
         {showGroup && (
-          <>
-            <input
+          <div className="w-24 shrink-0">
+            <Input
               type="text"
               value={row.option_group}
               onChange={(e) => onChange(index, { option_group: e.target.value })}
-              className="w-24 shrink-0 rounded-sm border border-border-strong px-2 py-1 text-sm placeholder:text-text-subtle focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               placeholder="Group"
               title="Enter a group name (e.g. Chips, Peas) to mark as one of several options."
               list={`ing-groups-${index}`}
@@ -341,7 +315,7 @@ export function IngredientCompositionRow({
                 {existingGroups.map((g) => <option key={g} value={g} />)}
               </datalist>
             )}
-          </>
+          </div>
         )}
 
         {showUpgradePrice && (
@@ -359,32 +333,31 @@ export function IngredientCompositionRow({
         {/* Line cost display */}
         {lineCost !== null && (
           <div className="shrink-0 pb-0.5 text-right">
-            <p className="text-xs text-gray-400">Cost</p>
+            <p className="text-xs text-text-soft">Cost</p>
             <p className="text-sm font-semibold text-text">£{lineCost.toFixed(2)}</p>
             {unitCost !== null && (
-              <p className="text-2xs text-gray-400">@ £{unitCost.toFixed(4)}/unit</p>
+              <p className="text-2xs text-text-soft">@ £{unitCost.toFixed(4)}/unit</p>
             )}
           </div>
         )}
 
-        <div className="flex shrink-0 items-center gap-1 pb-0.5">
-          <button
+        {/* Field height, so the buttons line up with the inputs beside them. */}
+        <div className="flex shrink-0 items-center gap-1">
+          <IconButton
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
-            className="rounded-sm p-1.5 text-gray-400 hover:bg-surface-hover hover:text-text-muted"
-            aria-label={expanded ? 'Collapse advanced fields' : 'Expand advanced fields'}
-          >
-            {expanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
-          </button>
-          <button
+            label={expanded ? 'Collapse advanced fields' : 'Expand advanced fields'}
+            icon={expanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+            className="text-text-subtle hover:text-text-muted"
+          />
+          <IconButton
             type="button"
             onClick={() => onRemove(index)}
             disabled={!canRemove}
-            className="rounded-sm p-1.5 text-gray-400 hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Remove ingredient"
-          >
-            <TrashIcon className="h-4 w-4" />
-          </button>
+            label="Remove ingredient"
+            icon={<TrashIcon className="h-4 w-4" />}
+            className="text-text-subtle hover:bg-danger-soft hover:text-danger"
+          />
         </div>
       </div>
 
@@ -502,15 +475,15 @@ export function RecipeCompositionRow({
   const showUpgradePrice = inclusionType === 'upgrade';
 
   const groupTrimmed = row.option_group?.trim() || '';
-  const groupColor = (inclusionType === 'choice' && groupTrimmed) ? getGroupColor(groupTrimmed) : null;
+  const groupStyle = (inclusionType === 'choice' && groupTrimmed) ? getGroupStyle(groupTrimmed) : null;
 
   // Visual styling per inclusion type
   const borderStyle = inclusionType === 'removable'
-    ? 'border-l-4 border-dashed border-l-gray-400'
+    ? 'border-l-4 border-dashed border-l-border-strong'
     : inclusionType === 'upgrade'
-      ? 'border-l-4 border-l-amber-400'
-      : groupColor
-        ? cn('border-l-4', borderColorClass(groupColor))
+      ? 'border-l-4 border-l-warning'
+      : groupStyle
+        ? cn('border-l-4', groupStyle.border)
         : '';
 
   return (
@@ -521,26 +494,19 @@ export function RecipeCompositionRow({
       {/* Badge row */}
       {inclusionType === 'removable' && (
         <div className="mb-1">
-          <span className="inline-block rounded-full bg-surface-hover px-2 py-0.5 text-xs font-medium text-text-muted">
-            (removable)
-          </span>
+          <Badge tone="neutral">(removable)</Badge>
         </div>
       )}
-      {inclusionType === 'choice' && groupTrimmed && groupColor && (
+      {inclusionType === 'choice' && groupTrimmed && groupStyle && (
         <div className="mb-1">
-          <span className={cn(
-            'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
-            badgeClasses(groupColor),
-          )}>
-            {groupTrimmed}
-          </span>
+          <Badge className={groupStyle.pill}>{groupTrimmed}</Badge>
         </div>
       )}
       {inclusionType === 'upgrade' && (
         <div className="mb-1">
-          <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-warning-fg">
+          <Badge tone="warning">
             Upgrade +£{parseFloat(row.upgrade_price || '0').toFixed(2)}
-          </span>
+          </Badge>
         </div>
       )}
 
@@ -585,12 +551,11 @@ export function RecipeCompositionRow({
         </FormGroup>
 
         {showGroup && (
-          <>
-            <input
+          <div className="w-24 shrink-0">
+            <Input
               type="text"
               value={row.option_group}
               onChange={(e) => onChange(index, { option_group: e.target.value })}
-              className="w-24 shrink-0 rounded-sm border border-border-strong px-2 py-1 text-sm placeholder:text-text-subtle focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               placeholder="Group"
               title="Enter a group name (e.g. Chips, Peas) to mark as one of several options."
               list={`rec-groups-${index}`}
@@ -601,7 +566,7 @@ export function RecipeCompositionRow({
                 {existingGroups.map((g) => <option key={g} value={g} />)}
               </datalist>
             )}
-          </>
+          </div>
         )}
 
         {showUpgradePrice && (
@@ -619,32 +584,31 @@ export function RecipeCompositionRow({
         {/* Line cost display */}
         {recipeLineCost !== null && (
           <div className="shrink-0 pb-0.5 text-right">
-            <p className="text-xs text-gray-400">Cost</p>
+            <p className="text-xs text-text-soft">Cost</p>
             <p className="text-sm font-semibold text-text">£{recipeLineCost.toFixed(2)}</p>
             {recipeUnitCost !== null && (
-              <p className="text-2xs text-gray-400">@ £{recipeUnitCost.toFixed(4)}/portion</p>
+              <p className="text-2xs text-text-soft">@ £{recipeUnitCost.toFixed(4)}/portion</p>
             )}
           </div>
         )}
 
-        <div className="flex shrink-0 items-center gap-1 pb-0.5">
-          <button
+        {/* Field height, so the buttons line up with the inputs beside them. */}
+        <div className="flex shrink-0 items-center gap-1">
+          <IconButton
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
-            className="rounded-sm p-1.5 text-gray-400 hover:bg-surface-hover hover:text-text-muted"
-            aria-label={expanded ? 'Collapse advanced fields' : 'Expand advanced fields'}
-          >
-            {expanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
-          </button>
-          <button
+            label={expanded ? 'Collapse advanced fields' : 'Expand advanced fields'}
+            icon={expanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+            className="text-text-subtle hover:text-text-muted"
+          />
+          <IconButton
             type="button"
             onClick={() => onRemove(index)}
             disabled={!canRemove}
-            className="rounded-sm p-1.5 text-gray-400 hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Remove recipe"
-          >
-            <TrashIcon className="h-4 w-4" />
-          </button>
+            label="Remove recipe"
+            icon={<TrashIcon className="h-4 w-4" />}
+            className="text-text-subtle hover:bg-danger-soft hover:text-danger"
+          />
         </div>
       </div>
 

@@ -341,7 +341,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="font-medium text-text">{template.name}</h3>
-                          <Badge variant={template.is_active ? 'success' : 'warning'} size="sm">
+                          <Badge tone={template.is_active ? 'success' : 'neutral'} size="sm">
                             {template.is_active ? 'Active' : 'Inactive'}
                           </Badge>
                           {template.is_default && (

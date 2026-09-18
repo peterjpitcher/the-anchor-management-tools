@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Input } from '@/ds';
 import { Select } from '@/ds';
 import { FormGroup } from '@/ds';
-import { Button } from '@/ds';
+import { IconButton } from '@/ds';
 import { ChevronDownIcon, ChevronUpIcon, TrashIcon } from '@heroicons/react/20/solid';
 
 // ---------------------------------------------------------------------------
@@ -143,29 +143,30 @@ export function RecipeIngredientRow({
           </Select>
         </FormGroup>
 
-        <div className="flex shrink-0 items-center gap-1 pb-0.5">
-          <button
+        {/* Field height, so the buttons line up with the inputs beside them. */}
+        <div className="flex shrink-0 items-center gap-1">
+          <IconButton
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
-            className="rounded-sm p-1.5 text-gray-400 hover:bg-surface-hover hover:text-text-muted"
-            aria-label={expanded ? 'Collapse advanced fields' : 'Expand advanced fields'}
-          >
-            {expanded ? (
-              <ChevronUpIcon className="h-4 w-4" />
-            ) : (
-              <ChevronDownIcon className="h-4 w-4" />
-            )}
-          </button>
+            label={expanded ? 'Collapse advanced fields' : 'Expand advanced fields'}
+            icon={
+              expanded ? (
+                <ChevronUpIcon className="h-4 w-4" />
+              ) : (
+                <ChevronDownIcon className="h-4 w-4" />
+              )
+            }
+            className="text-text-subtle hover:text-text-muted"
+          />
 
-          <button
+          <IconButton
             type="button"
             onClick={() => onRemove(index)}
             disabled={!canRemove}
-            className="rounded-sm p-1.5 text-gray-400 hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Remove ingredient"
-          >
-            <TrashIcon className="h-4 w-4" />
-          </button>
+            label="Remove ingredient"
+            icon={<TrashIcon className="h-4 w-4" />}
+            className="text-text-subtle hover:bg-danger-soft hover:text-danger"
+          />
         </div>
       </div>
 

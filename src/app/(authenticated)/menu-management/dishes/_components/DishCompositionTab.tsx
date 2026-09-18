@@ -564,7 +564,7 @@ function CostBreakdownFooter({
   return (
     <div className="space-y-2 rounded-lg border border-dashed border-border-strong bg-surface-2 p-4">
       {missingCostItems.length > 0 && (
-        <div role="alert" className="rounded-md border border-amber-200 bg-warning-soft px-3 py-2 text-xs text-warning-fg">
+        <div role="alert" className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-xs text-warning-fg">
           Cost data incomplete. Missing costs: {missingCostItems.join(', ')}. GP figures are unreliable until these are priced.
         </div>
       )}

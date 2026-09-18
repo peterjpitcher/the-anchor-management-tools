@@ -16,7 +16,7 @@ import { EventCategoryFormGrouped } from '@/components/features/events/EventCate
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 // import { Section } from '@/ds'
-import { Button } from '@/ds'
+import { Button, IconButton } from '@/ds'
 import { Badge } from '@/ds'
 import { toast } from '@/ds'
 import { EmptyState } from '@/ds'
@@ -293,20 +293,20 @@ const [categories, setCategories] = useState<EventCategory[]>([])
       header: '',
       cell: (category: EventCategory) => (
         <div className="flex items-center space-x-2">
-          <button type="button"
+          <IconButton
+            type="button"
+            label="Edit"
             onClick={() => handleOpenForm(category)}
-            className="text-blue-600 hover:text-info-fg"
-          >
-            <PencilIcon className="h-5 w-5" />
-            <span className="sr-only">Edit</span>
-          </button>
-          <button type="button"
+            icon={<PencilIcon className="h-5 w-5" />}
+            className="text-primary hover:text-primary-hover"
+          />
+          <IconButton
+            type="button"
+            label="Delete"
             onClick={() => setDeleteConfirm(category)}
+            icon={<TrashIcon className="h-5 w-5" />}
             className="text-danger hover:text-danger-fg"
-          >
-            <TrashIcon className="h-5 w-5" />
-            <span className="sr-only">Delete</span>
-          </button>
+          />
         </div>
       ),
     },
