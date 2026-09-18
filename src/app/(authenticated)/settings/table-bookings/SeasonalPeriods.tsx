@@ -652,7 +652,10 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
     }
     const date = draft.starts_on || '2000-01-01'
 
-    return [2, 6, 12].map((partySize) => {
+    // Two ordinary tables and a party exactly at the group threshold, the first size where the
+    // larger-wins rule has two deposits to compare. This was a hard-coded 12 while the threshold was
+    // 10, and it stopped ever reaching the group rule when the threshold rose to 15.
+    return [2, 6, LARGE_GROUP_DEPOSIT_THRESHOLD].map((partySize) => {
       const result = resolveTableBookingDeposit({
         partySize,
         bookingDate: date,
@@ -669,7 +672,9 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
               ? 'no deposit'
               : 'no deposit, collection is switched off below'
             : `${formatGbp(result.deposit.amount)} (${
-                result.deposit.rule === 'group' ? 'the 10-plus group rule is larger' : 'this period'
+                result.deposit.rule === 'group'
+                  ? `the ${LARGE_GROUP_DEPOSIT_THRESHOLD}-plus group rule is larger`
+                  : 'this period'
               })`,
       }
     })
