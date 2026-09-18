@@ -37,21 +37,25 @@ export function EmployeeHeaderActions({ primary, secondary }: EmployeeHeaderActi
               More
             </Button>
             {open && (
-              <>
-                <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden="true" />
-                <div
-                  role="menu"
-                  className="absolute right-0 top-full z-40 mt-1 flex w-56 max-w-[calc(100vw-1.5rem)] flex-col gap-1 rounded-md border border-border bg-surface p-2 shadow-lg"
-                  onClick={() => setOpen(false)}
-                >
-                  {secondary.filter(Boolean).map((action, i) => (
-                    <div key={i} className="[&_a]:w-full [&_button]:w-full [&>*]:w-full">
-                      {action}
-                    </div>
-                  ))}
-                </div>
-              </>
+              <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden="true" />
             )}
+            {/* Hidden, never unmounted, when closed. Begin Separation, Mark as Former and
+                Delete Employee own their dialogs, and choosing one closes this menu in the
+                same click; unmounting the items took the dialog with them, so nothing opened.
+                Those dialogs are DS Modals, which render on the body, so hiding the menu
+                does not hide them. */}
+            <div
+              role="menu"
+              hidden={!open}
+              className="absolute right-0 top-full z-40 mt-1 flex w-56 max-w-[calc(100vw-1.5rem)] flex-col gap-1 rounded-md border border-border bg-surface p-2 shadow-lg"
+              onClick={() => setOpen(false)}
+            >
+              {secondary.filter(Boolean).map((action, i) => (
+                <div key={i} className="[&_a]:w-full [&_button]:w-full [&>*]:w-full">
+                  {action}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
