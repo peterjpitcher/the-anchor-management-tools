@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Alert, Card, CardHeader, CardBody } from '@/ds'
+import { Alert, Button, Card, CardHeader, CardBody } from '@/ds'
 import {
   hourLabel,
   londonClockLabel,
@@ -284,17 +284,17 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
       {allTasks.length > 0 && (
         <>
           <dl className="grid grid-cols-3 gap-2 sm:gap-3">
-            <div className="min-w-0 rounded-xl border border-border bg-surface p-3 text-center">
+            <div className="min-w-0 rounded-lg border border-border bg-surface p-3 text-center">
               <dd className="text-3xl font-extrabold text-text">{toDoCount}</dd>
               <dt className="mt-1 text-sm font-medium text-text-muted">To do</dt>
             </div>
-            <div className="min-w-0 rounded-xl border border-border bg-surface p-3 text-center">
+            <div className="min-w-0 rounded-lg border border-border bg-surface p-3 text-center">
               <dd className="text-3xl font-extrabold text-text">{doneCount}</dd>
               <dt className="mt-1 text-sm font-medium text-text-muted">Done</dt>
             </div>
             {/* Deliberately not labelled "Total": this counts what is showing, and more
                 tasks arrive later in the day. It read "Total 28" on a 50 task day. */}
-            <div className="min-w-0 rounded-xl border border-border bg-surface p-3 text-center">
+            <div className="min-w-0 rounded-lg border border-border bg-surface p-3 text-center">
               <dd className="text-3xl font-extrabold text-text">{allTasks.length}</dd>
               <dt className="mt-1 text-sm font-medium text-text-muted">Showing</dt>
             </div>
@@ -327,7 +327,7 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
       )}
 
       {groups.length > 0 && (
-        <div className="sticky top-0 z-20 rounded-xl border border-border bg-surface px-3 py-2 shadow-sm">
+        <div className="sticky top-0 z-20 rounded-lg border border-border bg-surface px-3 py-2 shadow-sm">
           <AttributionPicker
             identity={identity}
             candidates={candidates}
@@ -341,14 +341,15 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
               <span className="text-xs text-text-muted">
                 {doneCount} of {allTasks.length} done
               </span>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 onClick={() => setShowDone((v) => !v)}
                 aria-pressed={showDone}
-                className="min-h-touch rounded-md px-3 py-2 text-sm font-medium text-primary hover:bg-surface-2"
+                className="min-h-touch text-primary"
               >
                 {showDone ? 'Hide done' : `Show done (${doneCount})`}
-              </button>
+              </Button>
             </div>
           )}
         </div>

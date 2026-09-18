@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ButtonHTMLAttributes } from 'react'
 import EmployeeStatusActions from '@/components/features/employees/EmployeeStatusActions'
 
 const previewMock = vi.hoisted(() => vi.fn())
@@ -29,10 +28,10 @@ vi.mock('@/app/actions/employeeInvite', () => ({
   revokeEmployeeAccess: revokeMock,
 }))
 
-vi.mock('@/ds', () => ({
-  Button: ({ loading: _loading, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean }) => (
-    <button {...props} />
-  ),
+// The real design-system components render the dialogs (DS Modal and ConfirmDialog); only the
+// toast is replaced so the tests can read what was announced.
+vi.mock('@/ds', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/ds')>()),
   toast: toastMock,
 }))
 

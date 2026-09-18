@@ -191,12 +191,12 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
               {task.completedAt ? `, ${formatDateTime12Hour(task.completedAt)}` : ''}
             </p>
             {task.valueRecorded != null && (
-              <p className="mt-1 text-xs text-text-subtle">
+              <p className="mt-1 text-xs text-text-soft">
                 Reading: {task.valueRecorded}
                 {task.valueUnit ? ` ${task.valueUnit}` : ''}
               </p>
             )}
-            {task.notes && <p className="mt-1 text-xs text-text-subtle">Note: {task.notes}</p>}
+            {task.notes && <p className="mt-1 text-xs text-text-soft">Note: {task.notes}</p>}
             {task.valueBreach && (
               <div className="mt-2">
                 <Alert
@@ -244,7 +244,7 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
         </div>
         {/* The whole point of asking for a reason is that somebody reads it. */}
         {task.skipReason && (
-          <p className="mt-1 text-xs text-text-subtle">Reason: {task.skipReason}</p>
+          <p className="mt-1 text-xs text-text-soft">Reason: {task.skipReason}</p>
         )}
       </div>
     )
@@ -286,13 +286,15 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
           />
         </div>
       ) : (
-        <button
+        <Button
           type="button"
+          variant="link"
+          size="sm"
           onClick={() => setShowNotes(true)}
-          className="mt-2 text-xs text-primary"
+          className="mt-2"
         >
           Add a note
-        </button>
+        </Button>
       )}
 
       {showSkipReason && (

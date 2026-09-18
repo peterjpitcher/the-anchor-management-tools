@@ -3,11 +3,7 @@
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { CalendarDaysIcon, PlusIcon } from '@heroicons/react/24/outline';
-import { Badge } from '@/ds';
-import { Button } from '@/ds';
-import { Input } from '@/ds';
-import { FormGroup } from '@/ds';
-import { Alert } from '@/ds';
+import { Alert, Badge, Button, FormGroup, Input, ProgressBar, Segmented } from '@/ds';
 import { bookApprovedHoliday, type LeaveRequest } from '@/app/actions/leave';
 import type { EmployeePaySettings } from '@/app/actions/pay-bands';
 import type { RotaSettings } from '@/app/actions/rota-settings';
@@ -171,7 +167,7 @@ export default function EmployeeHolidaysTab({
             />
           </FormGroup>
           <div className="flex gap-2">
-            <Button type="button" onClick={handleBook} disabled={bookIsPending}>
+            <Button type="button" variant="primary" onClick={handleBook} disabled={bookIsPending}>
               {bookIsPending ? 'Saving…' : 'Confirm booking'}
             </Button>
             <Button type="button" variant="ghost" onClick={() => { setShowBookForm(false); setBookError(''); }}>
@@ -182,46 +178,30 @@ export default function EmployeeHolidaysTab({
       )}
 
       {/* Year selector */}
-      <div className="flex items-center gap-2">
-        {availableYears.map(y => (
-          <button
-            key={y}
-            type="button"
-            onClick={() => setSelectedYear(y)}
-            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-              y === selectedYear
-                ? 'bg-gray-900 text-white'
-                : 'bg-surface-hover text-text-muted hover:bg-border'
-            }`}
-          >
-            {yearLabel(y)}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        options={availableYears.map(y => ({ id: String(y), label: yearLabel(y) }))}
+        value={String(selectedYear)}
+        onChange={id => setSelectedYear(Number(id))}
+      />
 
       {/* Allowance progress */}
       <div className="rounded-lg border border-border p-4 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium text-text">Holiday year {yearLabel(selectedYear)}</p>
-          <span className={`text-sm font-semibold ${overAllowance ? 'text-danger' : 'text-text'}`}>
+          <span className={`text-sm font-semibold ${overAllowance ? 'text-danger-fg' : 'text-text'}`}>
             {approvedDays} / {allowance} days
           </span>
         </div>
-        <div className="w-full bg-surface-hover rounded-full h-2">
-          <div
-            className={`h-2 rounded-full transition-all ${overAllowance ? 'bg-red-500' : 'bg-green-500'}`}
-            style={{ width: `${progressPct}%` }}
-          />
-        </div>
+        <ProgressBar value={progressPct} tone={overAllowance ? 'danger' : 'success'} size="md" label="Holiday allowance used" />
         <div className="flex gap-4 text-xs text-text-muted">
           <span>{allowance - approvedDays > 0 ? `${allowance - approvedDays} days remaining` : `${approvedDays - allowance} days over allowance`}</span>
-          {pendingDays > 0 && <span className="text-warning">{pendingDays} pending</span>}
+          {pendingDays > 0 && <span className="text-warning-fg">{pendingDays} pending</span>}
         </div>
       </div>
 
       {/* Leave request list */}
       {yearRequests.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-8 text-center text-sm text-gray-400">
+        <div className="flex flex-col items-center justify-center py-8 text-center text-sm text-text-soft">
           <CalendarDaysIcon className="h-8 w-8 mb-2 text-text-subtle" />
           No leave requests for {yearLabel(selectedYear)}.
         </div>

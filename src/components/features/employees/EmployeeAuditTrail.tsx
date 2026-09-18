@@ -103,9 +103,9 @@ export function EmployeeAuditTrail({
   }
 
   const getActionColor = (operationType: string) => {
-    if (operationType === 'create') return 'bg-success-soft text-green-800'
+    if (operationType === 'create') return 'bg-success-soft text-success-fg'
     if (operationType === 'delete' || operationType.includes('delete')) return 'bg-danger-soft text-danger-fg'
-    if (operationType === 'update' || operationType.includes('update')) return 'bg-blue-100 text-info-fg'
+    if (operationType === 'update' || operationType.includes('update')) return 'bg-info-soft text-info-fg'
     return 'bg-surface-hover text-text'
   }
 
@@ -313,7 +313,8 @@ export function EmployeeAuditTrail({
                         <div>
                           <span
                             className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                              isAudit ? getActionColor(log!.operation_type) : 'bg-amber-100 text-warning-fg'
+                              // A note is a kind of entry, not a warning, so it takes a category colour.
+                              isAudit ? getActionColor(log!.operation_type) : 'bg-cat-6-soft text-cat-6-fg'
                             }`}
                           >
                             {isAudit ? (

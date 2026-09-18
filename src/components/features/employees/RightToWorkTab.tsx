@@ -11,7 +11,7 @@ import {
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ActionFormState } from '@/types/actions'
 import type { EmployeeRightToWork } from '@/types/database'
-import { ConfirmDialog, toast } from '@/ds'
+import { Alert, Button, ConfirmDialog, Input, Select, Textarea, toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 import { formatDateInLondon, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { AlertCircle, CheckCircle, Clock, Upload, Eye, Download, Trash2 } from 'lucide-react'
@@ -31,13 +31,9 @@ interface RightToWorkTabProps {
 
 function SubmitButton({ disabled, pending }: { disabled: boolean; pending: boolean }) {
   return (
-    <button
-      type="submit"
-      disabled={pending || disabled}
-      className="rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 disabled:opacity-50"
-    >
+    <Button type="submit" variant="primary" disabled={pending || disabled}>
       {pending ? 'Saving…' : 'Save Right to Work'}
-    </button>
+    </Button>
   )
 }
 
@@ -210,64 +206,32 @@ export default function RightToWorkTab({
       {rightToWorkData && (
         <div className="space-y-3">
           {isExpired && (
-            <div className="rounded-md bg-danger-soft p-4">
-              <div className="flex">
-                <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-danger-fg">Document Expired</h3>
-                  <p className="mt-1 text-sm text-red-700">
-                    This document expired on{' '}
-                    {formatDateInLondon(rightToWorkData.document_expiry_date!)}.
-                    Obtain and record updated documentation now.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <Alert tone="danger" title="Document Expired" icon={<AlertCircle className="h-5 w-5" />}>
+              This document expired on{' '}
+              {formatDateInLondon(rightToWorkData.document_expiry_date!)}.
+              Obtain and record updated documentation now.
+            </Alert>
           )}
 
           {isExpiringSoon && (
-            <div className="rounded-md bg-warning-soft p-4">
-              <div className="flex">
-                <Clock className="h-5 w-5 text-yellow-400 flex-shrink-0" />
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-warning-fg">Document Expiring Soon</h3>
-                  <p className="mt-1 text-sm text-warning-fg">
-                    This document expires on{' '}
-                    {formatDateInLondon(rightToWorkData.document_expiry_date!)}.
-                    Please obtain updated documentation before expiry.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <Alert tone="warning" title="Document Expiring Soon" icon={<Clock className="h-5 w-5" />}>
+              This document expires on{' '}
+              {formatDateInLondon(rightToWorkData.document_expiry_date!)}.
+              Please obtain updated documentation before expiry.
+            </Alert>
           )}
 
           {isFollowUpDue && (
-            <div className="rounded-md bg-danger-soft p-4">
-              <div className="flex">
-                <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-danger-fg">Follow-up Required</h3>
-                  <p className="mt-1 text-sm text-red-700">
-                    A follow-up check was due on{' '}
-                    {formatDateInLondon(rightToWorkData.follow_up_date!)}.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <Alert tone="danger" title="Follow-up Required" icon={<AlertCircle className="h-5 w-5" />}>
+              A follow-up check was due on{' '}
+              {formatDateInLondon(rightToWorkData.follow_up_date!)}.
+            </Alert>
           )}
 
           {rightToWorkData.document_type && !isExpired && !isExpiringSoon && !isFollowUpDue && (
-            <div className="rounded-md bg-success-soft p-4">
-              <div className="flex">
-                <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0" />
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-green-800">Right to Work Verified</h3>
-                  <p className="mt-1 text-sm text-green-700">
-                    This employee&apos;s right to work has been verified and is currently valid.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <Alert tone="success" role="status" title="Right to Work Verified" icon={<CheckCircle className="h-5 w-5" />}>
+              This employee&apos;s right to work has been verified and is currently valid.
+            </Alert>
           )}
         </div>
       )}
@@ -286,18 +250,17 @@ export default function RightToWorkTab({
             Check Method
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <select
+            <Select
               id="check_method"
               name="check_method"
               defaultValue={rightToWorkData?.check_method ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
             >
               <option value="">Select check method</option>
               <option value="manual">Manual check (original documents)</option>
               <option value="online">Online Home Office check (eVisa)</option>
               <option value="digital">Digital check (IDSP)</option>
-            </select>
+            </Select>
           </div>
         </div>
 
@@ -306,12 +269,11 @@ export default function RightToWorkTab({
             Document Type <span className="text-danger">*</span>
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <select
+            <Select
               id="document_type"
               name="document_type"
               defaultValue={rightToWorkData?.document_type ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
               required
             >
               <option value="" disabled>
@@ -322,7 +284,7 @@ export default function RightToWorkTab({
                   {isLegacyDocumentType(option) ? `Legacy – ${option}` : option}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
 
@@ -331,13 +293,12 @@ export default function RightToWorkTab({
             Verification Date <span className="text-danger">*</span>
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <input
+            <Input
               type="date"
               id="verification_date"
               name="verification_date"
               defaultValue={rightToWorkData?.verification_date?.split('T')[0] ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
               required
             />
           </div>
@@ -348,13 +309,12 @@ export default function RightToWorkTab({
             Document Reference
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <input
+            <Input
               type="text"
               id="document_reference"
               name="document_reference"
               defaultValue={rightToWorkData?.document_reference ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
             />
           </div>
         </div>
@@ -364,13 +324,12 @@ export default function RightToWorkTab({
             Expiry Date
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <input
+            <Input
               type="date"
               id="document_expiry_date"
               name="document_expiry_date"
               defaultValue={rightToWorkData?.document_expiry_date?.split('T')[0] ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
             />
           </div>
         </div>
@@ -380,13 +339,12 @@ export default function RightToWorkTab({
             Follow-up Date
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <input
+            <Input
               type="date"
               id="follow_up_date"
               name="follow_up_date"
               defaultValue={rightToWorkData?.follow_up_date?.split('T')[0] ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
             />
           </div>
         </div>
@@ -396,13 +354,12 @@ export default function RightToWorkTab({
             Additional Details
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <textarea
+            <Textarea
               id="document_details"
               name="document_details"
               rows={3}
               defaultValue={rightToWorkData?.document_details ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
             />
           </div>
         </div>
@@ -414,7 +371,7 @@ export default function RightToWorkTab({
           <div className="mt-1 sm:col-span-3 sm:mt-0 space-y-3">
             <label className="flex items-center justify-between rounded-md border border-dashed border-border-strong px-4 py-3 text-sm text-text-muted">
               <div className="flex items-center space-x-3">
-                <Upload className="h-5 w-5 text-gray-400" />
+                <Upload className="h-5 w-5 text-text-subtle" />
                 <span>{selectedFileName ?? 'Upload scan or photo (PDF/JPG/PNG)'}</span>
               </div>
 	              <input
@@ -466,14 +423,14 @@ export default function RightToWorkTab({
                         href={photoUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-700"
+                        className="text-primary hover:underline"
                       >
                         View current document
                       </a>
                       <a
                         href={photoUrl}
                         download
-                        className="inline-flex items-center text-blue-600 hover:text-blue-700"
+                        className="inline-flex items-center text-primary hover:underline"
                       >
                         <Download className="mr-1 h-4 w-4" /> Download
                       </a>
@@ -483,15 +440,17 @@ export default function RightToWorkTab({
                   )}
                 </div>
                 {canEdit && (
-                  <button
+                  <Button
                     type="button"
-                    className="inline-flex items-center rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-danger hover:bg-danger-soft disabled:opacity-50"
+                    variant="secondary"
+                    size="sm"
+                    className="text-danger-fg border-danger-border hover:bg-danger-soft"
                     onClick={() => setDeletePhotoOpen(true)}
                     disabled={deletingPhoto}
+                    icon={<Trash2 className="h-4 w-4" />}
                   >
-                    <Trash2 className="mr-1 h-4 w-4" />
                     {deletingPhoto ? 'Deleting…' : 'Delete'}
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
@@ -499,14 +458,14 @@ export default function RightToWorkTab({
         </div>
 
         {state?.type === 'error' && state.errors && (
-          <div className="rounded-md bg-danger-soft p-3 text-sm text-red-700">
+          <Alert tone="danger" size="sm">
             {Object.values(state.errors).flat().join(', ')}
-          </div>
+          </Alert>
         )}
         {state?.type === 'error' && state.message && !state.errors && (
-          <div className="rounded-md bg-danger-soft p-3 text-sm text-red-700">
+          <Alert tone="danger" size="sm">
             {state.message}
-          </div>
+          </Alert>
 	        )}
 
 	        <div className="flex justify-end">

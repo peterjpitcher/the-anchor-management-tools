@@ -19,6 +19,8 @@ interface AlertProps {
   icon?: React.ReactNode
   children?: React.ReactNode
   className?: string
+  /** `status` for news that is not urgent, such as a verified banner, so it is not announced as an alert. */
+  role?: 'alert' | 'status'
   /** Shows a Dismiss button at the top right. */
   closable?: boolean
   /** Called by the Dismiss button. Without it the alert hides itself. */
@@ -42,7 +44,7 @@ const variantToTone: Record<string, AlertTone> = {
   info: 'info',
 }
 
-export function Alert({ tone, variant, title, description, actions, icon, children, className, closable = false, onClose, size }: AlertProps) {
+export function Alert({ tone, variant, title, description, actions, icon, children, className, closable = false, onClose, size, role = 'alert' }: AlertProps) {
   const [dismissed, setDismissed] = useState(false)
   if (dismissed) return null
 
@@ -67,7 +69,7 @@ export function Alert({ tone, variant, title, description, actions, icon, childr
         toneStyles[resolvedTone],
         className
       )}
-      role="alert"
+      role={role}
     >
       {icon && (
         <span className="shrink-0 w-6 h-6 flex items-center justify-center" aria-hidden="true">

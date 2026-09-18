@@ -212,7 +212,7 @@ export function SetupClient({ checklists, error }: SetupClientProps) {
                         {template.isSpotCheckable ? (
                           <Badge tone="neutral">Yes</Badge>
                         ) : (
-                          <span className="text-text-subtle">No</span>
+                          <span className="text-text-soft">No</span>
                         )}
                       </TableCell>
                       <TableCell align="center">

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { cn } from '@/lib/utils'
+import { Select, Tabs } from '@/ds'
 
 interface TabItem {
   key: string
@@ -15,8 +15,8 @@ interface EmployeeDetailTabsProps {
 
 /**
  * Employee-detail tabs. On mobile (10 tabs won't fit a phone-width strip) it renders
- * a full-width <select> so every tab is one tap away; from md up it's the usual
- * underline strip. Kept local to this page so it doesn't affect the shared ds Tabs.
+ * a full-width select so every tab is one tap away; from md up it's the DS Tabs
+ * underline strip. DS Tabs also renders the active tab's panel, on every screen size.
  */
 export function EmployeeDetailTabs({ tabs }: EmployeeDetailTabsProps) {
   const [active, setActive] = useState(tabs[0]?.key ?? '')
@@ -25,44 +25,27 @@ export function EmployeeDetailTabs({ tabs }: EmployeeDetailTabsProps) {
   return (
     <div className="min-w-0">
       {/* Mobile: dropdown */}
-      <div className="mb-3 md:hidden">
+      <div className="md:hidden">
         <label htmlFor="employee-tab-select" className="sr-only">Select section</label>
-        <select
+        <Select
           id="employee-tab-select"
-          value={active}
+          value={activeTab?.key ?? ''}
           onChange={(e) => setActive(e.target.value)}
-          className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm font-medium text-text"
-        >
-          {tabs.map((t) => (
-            <option key={t.key} value={t.key}>{t.label}</option>
-          ))}
-        </select>
+          options={tabs.map((t) => ({ value: t.key, label: t.label }))}
+        />
       </div>
 
-      {/* Desktop: underline strip */}
-      <div role="tablist" className="mb-4 hidden items-center gap-1 overflow-x-auto border-b border-border md:flex">
-        {tabs.map((t) => {
-          const isActive = t.key === activeTab?.key
-          return (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setActive(t.key)}
-              className={cn(
-                'relative whitespace-nowrap px-4 py-2.5 text-ui font-medium transition-colors',
-                isActive ? 'text-green-700' : 'text-text-muted hover:text-text',
-              )}
-            >
-              {t.label}
-              {isActive && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-green-700" />}
-            </button>
-          )
-        })}
+      {/* Desktop: the DS underline strip; hidden on mobile, where the select above stands in. */}
+      <div className="min-w-0">
+        <Tabs
+          tabs={tabs.map((t) => ({ id: t.key, label: t.label, content: t.content }))}
+          activeTab={activeTab?.key}
+          onTabChange={setActive}
+          // Nine tabs need about 900px; wrap them rather than hide the last ones off the edge,
+          // since the DS strip hides its scrollbar.
+          className="hidden md:flex md:flex-wrap"
+        />
       </div>
-
-      <div className="min-w-0">{activeTab?.content}</div>
     </div>
   )
 }

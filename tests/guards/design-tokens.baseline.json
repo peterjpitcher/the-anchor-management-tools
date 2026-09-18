@@ -1,21 +1,6 @@
 {
-  "src/app/(authenticated)/checklists/page.tsx": {
-    "sidebar-outside-shell": 3
-  },
   "src/app/(authenticated)/dashboard/dashboard-data.ts": {
     "hex-colour": 1
-  },
-  "src/app/(authenticated)/employees/[employee_id]/_components/EmployeeDetailTabs.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/employees/[employee_id]/page.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/employees/birthdays/page.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(authenticated)/roles/components/RoleForm.tsx": {
-    "raw-palette": 6
   },
   "src/app/(authenticated)/rota/AddShiftsModal.tsx": {
     "raw-palette": 4
@@ -64,48 +49,6 @@
   },
   "src/app/api/rota/pdf/route.ts": {
     "hex-colour": 48
-  },
-  "src/components/features/employees/AddEmployeeAttachmentForm.tsx": {
-    "raw-palette": 2
-  },
-  "src/components/features/employees/DeleteEmployeeButton.tsx": {
-    "raw-palette": 4
-  },
-  "src/components/features/employees/EmergencyContactsTab.tsx": {
-    "raw-palette": 8
-  },
-  "src/components/features/employees/EmployeeAttachmentsList.tsx": {
-    "raw-palette": 5
-  },
-  "src/components/features/employees/EmployeeAuditTrail.tsx": {
-    "raw-palette": 3
-  },
-  "src/components/features/employees/EmployeeForm.tsx": {
-    "raw-palette": 1
-  },
-  "src/components/features/employees/EmployeeHolidaysTab.tsx": {
-    "raw-palette": 4
-  },
-  "src/components/features/employees/EmployeeNotesList.tsx": {
-    "raw-palette": 1
-  },
-  "src/components/features/employees/EmployeePayTab.tsx": {
-    "raw-palette": 8
-  },
-  "src/components/features/employees/EmployeeReliabilityTab.tsx": {
-    "raw-palette": 1
-  },
-  "src/components/features/employees/EmployeeStatusActions.tsx": {
-    "raw-palette": 20
-  },
-  "src/components/features/employees/InviteEmployeeModal.tsx": {
-    "raw-palette": 7
-  },
-  "src/components/features/employees/OnboardingChecklistTab.tsx": {
-    "raw-palette": 11
-  },
-  "src/components/features/employees/RightToWorkTab.tsx": {
-    "raw-palette": 26
   },
   "src/components/schedule-calendar/ScheduleCalendarList.tsx": {
     "raw-palette": 3,

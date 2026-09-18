@@ -155,7 +155,7 @@ export function TodosClient({ initial, error }: TodosClientProps) {
                     {todo.description && (
                       <p className="mt-1 text-xs text-text-muted">{todo.description}</p>
                     )}
-                    <p className="mt-1 text-xs text-text-subtle">
+                    <p className="mt-1 text-xs text-text-soft">
                       {todo.dueDate ? `Due ${formatDueDate(todo.dueDate)}` : 'No due date'}
                       {todo.assignedEmployeeName ? ` · Assigned to ${todo.assignedEmployeeName}` : ''}
                       {todo.state === 'done' && todo.completedByName

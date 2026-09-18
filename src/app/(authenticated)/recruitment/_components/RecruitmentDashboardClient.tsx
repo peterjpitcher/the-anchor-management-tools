@@ -27,6 +27,7 @@ import {
   Dropdown,
   DropdownItem,
   Input,
+  Modal,
   PageHeader,
   SearchInput,
   SectionNav,
@@ -623,7 +624,7 @@ function SlotDateTimeInput({
 function ActionStateMessage({ state }: { state: any }) {
   if (!state) return null
   return (
-    <p className={`text-xs ${state.success ? 'text-success' : 'text-danger'}`}>
+    <p className={`text-xs ${state.success ? 'text-success-fg' : 'text-danger'}`}>
       {state.success ? state.message || 'Saved.' : state.error}
     </p>
   )
@@ -725,7 +726,7 @@ function ActionFeedbackForm({
         </fieldset>
         {pending && <p className="text-xs text-text-muted">Working...</p>}
         {state?.error && <p className="text-xs text-danger">{state.error}</p>}
-        {state?.success && <p className="text-xs text-success">{state.success}</p>}
+        {state?.success && <p className="text-xs text-success-fg">{state.success}</p>}
       </form>
       <ConfirmDialog
         open={Boolean(confirmData)}
@@ -1532,6 +1533,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               <label className="flex items-center gap-2 text-sm text-text-muted">
                 <input
                   type="checkbox"
+                  className="accent-primary"
                   checked={showArchived}
                   onChange={event => {
                     setShowArchived(event.target.checked)
@@ -1631,6 +1633,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <TableHead>
                         <input
                           type="checkbox"
+                          className="accent-primary"
                           checked={paginatedApplications.length > 0 && paginatedApplications.every((application: any) => selectedBulkIds.includes(application.id))}
                           onChange={event => {
                             const pageIds = paginatedApplications.map((application: any) => application.id)
@@ -1660,6 +1663,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         <TableCell className="align-top">
                           <input
                             type="checkbox"
+                            className="accent-primary"
                             checked={selectedBulkIds.includes(application.id)}
                             onChange={event => toggleBulkId(application.id, event.target.checked)}
                             aria-label={`Select ${candidateName(application.candidate)}`}
@@ -1780,7 +1784,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     {nextActionHint && <p className="mt-2 text-xs text-text-muted">{nextActionHint}</p>}
                     {barActionPending && <p className="mt-1 text-xs text-text-muted">Working...</p>}
                     {barActionState?.error && <p className="mt-1 text-xs text-danger">{barActionState.error}</p>}
-                    {barActionState?.success && <p className="mt-1 text-xs text-success">{barActionState.success}</p>}
+                    {barActionState?.success && <p className="mt-1 text-xs text-success-fg">{barActionState.success}</p>}
 
                     {/* The border lives on the tab strip, not the sticky wrapper, so the
                         wrapper can carry padding below it. Without that padding, content
@@ -1833,7 +1837,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       })()}
 
                       {selectedCvExtractionMessage && (
-                        <div className="rounded-sm border border-warning/30 bg-warning-soft p-3 text-sm text-warning-fg">
+                        <div className="rounded-sm border border-warning-border bg-warning-soft p-3 text-sm text-warning-fg">
                           <p className="font-medium">CV extraction needs review</p>
                           <p className="mt-1">{selectedCvExtractionMessage}</p>
                           {selectedApplication.candidate?.cv_file_path && (
@@ -1984,11 +1988,11 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             </ProfileField>
                             <div className="grid grid-cols-1 gap-2 text-sm text-text sm:grid-cols-2">
                               <label className="flex items-center gap-2">
-                                <input type="checkbox" name="sms_consent" defaultChecked={selectedApplication.candidate?.sms_consent === true} />
+                                <input type="checkbox" name="sms_consent" defaultChecked={selectedApplication.candidate?.sms_consent === true} className="accent-primary" />
                                 SMS consent
                               </label>
                               <label className="flex items-center gap-2">
-                                <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedApplication.candidate?.future_recruitment_consent === true} />
+                                <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedApplication.candidate?.future_recruitment_consent === true} className="accent-primary" />
                                 Future recruitment consent
                               </label>
                             </div>
@@ -2076,7 +2080,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                         </Select>
                                       </Field>
                                       <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                                        <input type="checkbox" name="meal_provided" defaultChecked={apt.meal_provided === true} />
+                                        <input type="checkbox" name="meal_provided" defaultChecked={apt.meal_provided === true} className="accent-primary" />
                                         Meal provided
                                       </label>
                                       <div className="sm:col-span-2">
@@ -2308,7 +2312,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             <Textarea name="body" defaultValue={emailDraft.body} rows={6} />
                             <Input name="offer_terms" placeholder="Offer terms if sending an offer" />
                             {duplicateEmailWarning && (
-                              <p className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                              <p className="rounded-sm border border-warning-border bg-warning-soft px-3 py-2 text-xs text-warning-fg">
                                 {duplicateEmailWarning}
                               </p>
                             )}
@@ -2395,61 +2399,58 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       </details>
                     </div>
                   )}
+                  {/* DS Modals rendered inside the drawer, so Headless UI stacks them as nested
+                      dialogs (like the ConfirmDialog below). The buttons stay inside each form so
+                      the submit buttons can read the form's pending state. */}
                   {hireDialogOpen && selectedApplication && (
-                    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setHireDialogOpen(false)}>
-                      <div className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-lg" onClick={e => e.stopPropagation()}>
-                        <p className="text-sm font-semibold text-text-strong">Create employee invite</p>
-                        <p className="mt-1 text-xs text-text-muted">
-                          Creates an employee invite for {candidateName(selectedApplication.candidate)} and links it to this application.
-                        </p>
-                        <ActionFeedbackForm
-                          action={hireFormAction}
-                          className="mt-3 space-y-3"
-                          successMessage="Employee invite created."
-                          onSuccess={() => { setHireDialogOpen(false); router.refresh() }}
-                        >
-                          <input type="hidden" name="application_id" value={selectedApplication.id} />
-                          <ProfileField label="Job title for the employee invite">
-                            <Input name="job_title" placeholder="e.g. Bar and floor team member" />
-                          </ProfileField>
-                          <div className="flex items-center justify-end gap-2">
-                            <Button type="button" variant="secondary" onClick={() => setHireDialogOpen(false)}>Cancel</Button>
-                            <SubmitButton>Create employee invite</SubmitButton>
-                          </div>
-                        </ActionFeedbackForm>
-                      </div>
-                    </div>
+                    <Modal open onClose={() => setHireDialogOpen(false)} title="Create employee invite" width="md">
+                      <p className="text-xs text-text-muted">
+                        Creates an employee invite for {candidateName(selectedApplication.candidate)} and links it to this application.
+                      </p>
+                      <ActionFeedbackForm
+                        action={hireFormAction}
+                        className="mt-3 space-y-3"
+                        successMessage="Employee invite created."
+                        onSuccess={() => { setHireDialogOpen(false); router.refresh() }}
+                      >
+                        <input type="hidden" name="application_id" value={selectedApplication.id} />
+                        <ProfileField label="Job title for the employee invite">
+                          <Input name="job_title" placeholder="e.g. Bar and floor team member" />
+                        </ProfileField>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button type="button" variant="secondary" onClick={() => setHireDialogOpen(false)}>Cancel</Button>
+                          <SubmitButton>Create employee invite</SubmitButton>
+                        </div>
+                      </ActionFeedbackForm>
+                    </Modal>
                   )}
 
                   {stageDialogOpen && selectedApplication && (
-                    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setStageDialogOpen(false)}>
-                      <div className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-lg" onClick={e => e.stopPropagation()}>
-                        <p className="text-sm font-semibold text-text-strong">Change stage manually</p>
-                        <p className="mt-1 text-xs text-text-muted">
-                          Use this only when the normal actions do not fit. It records a status change with no email to the candidate.
-                        </p>
-                        <ActionFeedbackForm
-                          action={statusFormAction}
-                          className="mt-3 space-y-3"
-                          successMessage="Stage saved."
-                          onSuccess={() => { setStageDialogOpen(false); router.refresh() }}
-                        >
-                          <input type="hidden" name="application_id" value={selectedApplication.id} />
-                          <input type="hidden" name="note" value="Status changed manually" />
-                          <ProfileField label="Stage">
-                            <Select name="status" defaultValue={selectedApplication.status}>
-                              {statusOptions.map(status => (
-                                <option key={status} value={status}>{statusLabel(status)}</option>
-                              ))}
-                            </Select>
-                          </ProfileField>
-                          <div className="flex items-center justify-end gap-2">
-                            <Button type="button" variant="secondary" onClick={() => setStageDialogOpen(false)}>Cancel</Button>
-                            <SubmitButton>Save stage</SubmitButton>
-                          </div>
-                        </ActionFeedbackForm>
-                      </div>
-                    </div>
+                    <Modal open onClose={() => setStageDialogOpen(false)} title="Change stage manually" width="md">
+                      <p className="text-xs text-text-muted">
+                        Use this only when the normal actions do not fit. It records a status change with no email to the candidate.
+                      </p>
+                      <ActionFeedbackForm
+                        action={statusFormAction}
+                        className="mt-3 space-y-3"
+                        successMessage="Stage saved."
+                        onSuccess={() => { setStageDialogOpen(false); router.refresh() }}
+                      >
+                        <input type="hidden" name="application_id" value={selectedApplication.id} />
+                        <input type="hidden" name="note" value="Status changed manually" />
+                        <ProfileField label="Stage">
+                          <Select name="status" defaultValue={selectedApplication.status}>
+                            {statusOptions.map(status => (
+                              <option key={status} value={status}>{statusLabel(status)}</option>
+                            ))}
+                          </Select>
+                        </ProfileField>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button type="button" variant="secondary" onClick={() => setStageDialogOpen(false)}>Cancel</Button>
+                          <SubmitButton>Save stage</SubmitButton>
+                        </div>
+                      </ActionFeedbackForm>
+                    </Modal>
                   )}
 
                   <ConfirmDialog
@@ -2463,10 +2464,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   />
 
                   {decisionDialog && selectedApplication && (
-                    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDecisionDialog(null)}>
-                      <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-lg border border-border bg-surface p-4 shadow-lg" onClick={e => e.stopPropagation()}>
-                        <p className="text-sm font-semibold text-text-strong">{DECISION_CONFIG[decisionDialog.decision].confirm}</p>
-                        <form action={decisionFormAction} className="mt-3 space-y-3">
+                    <Modal open onClose={() => setDecisionDialog(null)} title={DECISION_CONFIG[decisionDialog.decision].confirm} width="md">
+                        <form action={decisionFormAction} className="space-y-3">
                           <input type="hidden" name="application_id" value={selectedApplication.id} />
                           <input type="hidden" name="decision" value={decisionDialog.decision} />
                           <div>
@@ -2478,7 +2477,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               <div className="flex items-center justify-between">
                                 <p className="text-xs font-semibold uppercase text-text-muted">Email to candidate</p>
                                 <label className="flex items-center gap-1 text-xs text-text">
-                                  <input type="checkbox" name="send_email" checked={decisionSendEmail} disabled={!candidateHasEmail} onChange={e => setDecisionSendEmail(e.target.checked)} />
+                                  <input type="checkbox" name="send_email" checked={decisionSendEmail} disabled={!candidateHasEmail} onChange={e => setDecisionSendEmail(e.target.checked)} className="accent-primary" />
                                   Send email
                                 </label>
                               </div>
@@ -2500,8 +2499,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           </div>
                           <ActionStateMessage state={decisionState} />
                         </form>
-                      </div>
-                    </div>
+                    </Modal>
                   )}
                 </div>
               )}
@@ -2528,12 +2526,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <Textarea name="cover_note" placeholder="Cover note" rows={3} />
                     </div>
                     <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" name="sms_consent" defaultChecked />
+                      <input type="checkbox" name="sms_consent" defaultChecked className="accent-primary" />
                       SMS consent
                     </label>
                     <input type="hidden" name="sms_consent" value="false" />
                     <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" name="future_recruitment_consent" defaultChecked />
+                      <input type="checkbox" name="future_recruitment_consent" defaultChecked className="accent-primary" />
                       Future recruitment consent
                     </label>
                     <input type="hidden" name="future_recruitment_consent" value="false" />

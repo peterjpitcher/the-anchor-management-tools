@@ -180,14 +180,14 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                     {employee.status}
                   </Badge>
                 ) : field.isEmail ? (
-                  <a href={`mailto:${field.value}`} className="text-blue-600 hover:text-blue-700">
+                  <a href={`mailto:${field.value}`} className="text-primary hover:underline">
                     {field.value}
                   </a>
                 ) : field.isPhone ? (
                   field.value === 'N/A' ? (
                     field.value
                   ) : (
-                    <a href={`tel:${field.value}`} className="text-blue-600 hover:text-blue-700">
+                    <a href={`tel:${field.value}`} className="text-primary hover:underline">
                       {field.value}
                     </a>
                   )
@@ -402,7 +402,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
             id="notes"
             title="Notes"
             description="Track key updates and conversations related to this employee."
-            className="bg-surface shadow-default ring-1 ring-black/5"
+            className="bg-surface border border-border shadow-sm"
           >
             <div className="space-y-6">
               {permissions.canEdit && (
@@ -423,7 +423,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                 ? 'Manage employee documents and files.'
                 : 'You do not have permission to view employee documents.'
             }
-            className="bg-surface shadow-default ring-1 ring-black/5"
+            className="bg-surface border border-border shadow-sm"
           >
             <div className="space-y-6">
               {permissions.canViewDocuments ? (

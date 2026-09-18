@@ -138,7 +138,7 @@ export default async function EmployeeBirthdaysPage() {
               <Card key={monthName}>
                 <div className="bg-surface-2 px-3 sm:px-4 py-2 sm:py-3 border-b border-border -m-6 mb-6">
                   <h2 className="text-base sm:text-lg font-medium text-text flex flex-wrap items-center">
-                    <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2 text-gray-400" />
+                    <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2 text-text-subtle" />
                     <span>{monthName}</span>
                     <span className="ml-2 text-xs sm:text-sm text-text-muted">({monthBirthdays.length} birthday{monthBirthdays.length !== 1 ? 's' : ''})</span>
                   </h2>
@@ -151,7 +151,7 @@ export default async function EmployeeBirthdaysPage() {
                           <div className="flex items-center">
                             <Link
                               href={`/employees/${birthday.employee_id}`}
-                              className="text-sm font-medium text-blue-600 hover:text-blue-700 truncate"
+                              className="text-sm font-medium text-primary hover:underline truncate"
                             >
                               {displayName(birthday)}
                             </Link>

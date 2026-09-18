@@ -399,7 +399,7 @@ export function MaintenancePhotos({
                   href={photo.signedUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block overflow-hidden rounded-md border border-border focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                  className="block overflow-hidden rounded-md border border-border focus-visible:outline-hidden focus-visible:shadow-ring"
                 >
                   {/*
                     A plain img, not next/image. The optimiser rejects a signed

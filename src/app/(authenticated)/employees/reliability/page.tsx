@@ -5,7 +5,7 @@ import {
   getTeamReliabilityLeaderboard,
   type TeamReliabilitySort,
 } from '@/services/employee-reliability';
-import { Badge, Card, CardBody, PageHeader } from '@/ds';
+import { Badge, Card, CardBody, LinkButton, PageHeader } from '@/ds';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,18 +85,16 @@ export default async function EmployeeReliabilityLeaderboardPage({ searchParams 
         subtitle={`${rankedCount} ranked staff · last 90 days`}
         actions={
           <div className="flex items-center gap-2">
-            <Link
+            <LinkButton
               href={includeFormer ? '/employees/reliability' : '/employees/reliability?includeFormer=1'}
-              className="inline-flex h-btn-h-sm items-center justify-center rounded-[7px] border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text hover:bg-surface-hover"
+              variant="secondary"
+              size="sm"
             >
               {includeFormer ? 'Active only' : 'Include former'}
-            </Link>
-            <Link
-              href="/employees"
-              className="inline-flex h-btn-h-sm items-center justify-center rounded-[7px] border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text hover:bg-surface-hover"
-            >
+            </LinkButton>
+            <LinkButton href="/employees" variant="secondary" size="sm">
               Back to employees
-            </Link>
+            </LinkButton>
           </div>
         }
       />
