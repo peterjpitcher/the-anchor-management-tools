@@ -55,7 +55,7 @@ export const LinkButton = forwardRef<HTMLAnchorElement, LinkButtonProps>(
     ref,
   ) => {
     const classes = cn(
-      'inline-flex items-center justify-center gap-1.5 border font-medium transition-all no-underline',
+      'inline-flex items-center justify-center gap-1.5 border font-semibold transition-all no-underline',
       // Guarantee a >=44px tap target on mobile (sm size is only 34px tall otherwise)
       'max-shell:min-h-touch',
       'focus-visible:outline-hidden focus-visible:shadow-ring',
