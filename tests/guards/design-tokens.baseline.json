@@ -245,51 +245,6 @@
   "src/app/(authenticated)/settings/table-bookings/TableSetupManager.tsx": {
     "raw-palette": 4
   },
-  "src/app/(employee-onboarding)/onboarding/[token]/steps/CreateAccountStep.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(employee-onboarding)/onboarding/[token]/steps/EmergencyContactsStep.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(employee-onboarding)/onboarding/[token]/steps/FinancialStep.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(employee-onboarding)/onboarding/[token]/steps/HealthStep.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/(employee-onboarding)/onboarding/[token]/steps/PersonalStep.tsx": {
-    "raw-palette": 8
-  },
-  "src/app/(employee-onboarding)/onboarding/[token]/steps/ReviewStep.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(employee-onboarding)/onboarding/success/page.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(staff-portal)/portal/leave/CancelLeaveRequestButton.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(staff-portal)/portal/leave/LeaveRequestForm.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(staff-portal)/portal/leave/page.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(staff-portal)/portal/shifts/CalendarSubscribeButton.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(staff-portal)/portal/shifts/OpenShiftRequestButton.tsx": {
-    "raw-palette": 8
-  },
-  "src/app/(staff-portal)/portal/shifts/PaySummaryCard.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(staff-portal)/portal/shifts/ShiftDecisionControls.tsx": {
-    "raw-palette": 16
-  },
-  "src/app/(staff-portal)/portal/shifts/page.tsx": {
-    "raw-palette": 21
-  },
   "src/app/actions/calendar-notes.ts": {
     "hex-colour": 1
   },

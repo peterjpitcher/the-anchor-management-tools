@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Button, Field, Input } from '@/ds';
 import { createEmployeeAccount } from '@/app/actions/employeeInvite';
 
 interface CreateAccountStepProps {
@@ -65,48 +66,36 @@ export default function CreateAccountStep({
         </p>
       </div>
 
-      <div>
-        <label htmlFor="password" className="block text-sm font-medium text-text mb-1">
-          Password
-        </label>
-        <input
+      <Field label="Password">
+        <Input
           id="password"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
           minLength={8}
-          className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
           placeholder="At least 8 characters"
         />
-      </div>
+      </Field>
 
-      <div>
-        <label htmlFor="confirm-password" className="block text-sm font-medium text-text mb-1">
-          Confirm Password
-        </label>
-        <input
+      <Field label="Confirm Password">
+        <Input
           id="confirm-password"
           type="password"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           required
-          className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
           placeholder="Re-enter your password"
         />
-      </div>
+      </Field>
 
       {error && (
         <p className="text-sm text-danger">{error}</p>
       )}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"
-      >
+      <Button type="submit" variant="primary" className="w-full" disabled={loading}>
         {loading ? loadingLabel : buttonLabel}
-      </button>
+      </Button>
     </form>
   );
 }

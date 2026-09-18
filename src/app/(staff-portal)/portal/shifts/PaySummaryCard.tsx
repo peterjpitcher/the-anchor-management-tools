@@ -35,7 +35,7 @@ export default function PaySummaryCard({ current }: PaySummaryCardProps): React.
       {/* Period Navigator */}
       <div className="bg-surface-2 border-b border-border px-4 py-2 flex items-center justify-between">
         <span className="text-sm font-medium text-text">{period.periodLabel}</span>
-        <a href="#pay-disclaimer" className="touch-target flex items-center justify-center p-1 text-gray-400 hover:text-text-muted" title="Pay disclaimer">
+        <a href="#pay-disclaimer" className="touch-target flex items-center justify-center p-1 text-text-subtle hover:text-text-muted" title="Pay disclaimer">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
             <path d="M8 7V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -80,13 +80,13 @@ export default function PaySummaryCard({ current }: PaySummaryCardProps): React.
         {period.holidayPay !== null && (
           <div className="px-4 py-1.5 flex justify-between">
             <span className="text-sm text-text-muted">Holiday Pay Earned</span>
-            <span className="text-sm font-semibold text-green-700">{fmtPay(period.holidayPay)}</span>
+            <span className="text-sm font-semibold text-success-fg">{fmtPay(period.holidayPay)}</span>
           </div>
         )}
 
         {!hasPay && (
           <div className="px-4 py-1.5">
-            <p className="text-xs text-warning">Hourly rate not configured — speak to your manager</p>
+            <p className="text-xs text-warning-fg">Hourly rate not configured. Speak to your manager.</p>
           </div>
         )}
       </div>

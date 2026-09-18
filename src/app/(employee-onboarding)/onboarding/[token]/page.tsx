@@ -1,6 +1,5 @@
 import { getOnboardingSnapshot, validateInviteToken } from '@/app/actions/employeeInvite'
-import Link from 'next/link'
-import { Icon, Button } from '@/ds'
+import { Icon, LinkButton } from '@/ds'
 import OnboardingClient from './_components/OnboardingClient'
 
 interface OnboardingPageProps {
@@ -47,11 +46,9 @@ export default async function OnboardingPage({ params }: OnboardingPageProps) {
               ? 'Your staff portal access has already been set up.'
               : 'Your employee profile has already been completed.'}
           </p>
-          <Link href="/auth/login" className="w-full">
-            <Button variant="primary" size="lg" className="w-full" type="button">
-              Sign in here
-            </Button>
-          </Link>
+          <LinkButton href="/auth/login" variant="primary" size="lg" className="w-full">
+            Sign in here
+          </LinkButton>
         </div>
       </div>
     )

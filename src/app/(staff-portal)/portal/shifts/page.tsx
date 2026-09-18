@@ -30,6 +30,8 @@ import {
   shiftStartInstant,
 } from '@/lib/rota/acceptance-cutoff';
 import { format, parseISO } from 'date-fns';
+import { Badge } from '@/ds';
+import { ROTA_SHIFT_STATUS_CLASSES } from '@/lib/rota/status-ui';
 import CalendarSubscribeButton from './CalendarSubscribeButton';
 import PaySummaryCard from './PaySummaryCard';
 import type { PeriodSummary } from './PaySummaryCard';
@@ -136,10 +138,12 @@ function dateLabel(iso: string): string {
   return formatShortDate(iso);
 }
 
-function deptColour(dept: string): string {
+// A department is a category, not a status, so it takes the category tokens: bar is cat-1
+// (sky) and every other department cat-5 (orange), the same split this page has always made.
+function deptBadgeClasses(dept: string): string {
   return dept === 'bar'
-    ? 'bg-blue-50 border-blue-200 text-info-fg'
-    : 'bg-orange-50 border-orange-200 text-orange-800';
+    ? 'border-cat-1/20 bg-cat-1-soft text-cat-1-fg'
+    : 'border-cat-5/20 bg-cat-5-soft text-cat-5-fg';
 }
 
 function employeeDisplayName(
@@ -520,7 +524,7 @@ export default async function MyShiftsPage({
   if (!employee) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-text">My Shifts</h2>
+        <h2 className="text-xl font-semibold text-text-strong">My Shifts</h2>
         <p className="text-sm text-text-muted">
           Your account is not linked to an employee profile. Please contact your manager.
         </p>
@@ -677,7 +681,7 @@ export default async function MyShiftsPage({
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-semibold text-text">My Shifts</h2>
+        <h2 className="text-xl font-semibold text-text-strong">My Shifts</h2>
         <p className="text-sm text-text-muted mt-0.5">
           Hi {empName} - here are {isPortalShiftManager ? 'the' : 'your'} published shifts for this pay period.
         </p>
@@ -690,7 +694,7 @@ export default async function MyShiftsPage({
               Previous
             </a>
           ) : (
-            <span className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text-subtle">Previous</span>
+            <span className="touch-target inline-flex items-center justify-center rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text opacity-50">Previous</span>
           )}
 
           <div className="text-center">
@@ -707,7 +711,7 @@ export default async function MyShiftsPage({
               Next
             </a>
           ) : (
-            <span className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text-subtle">Next</span>
+            <span className="touch-target inline-flex items-center justify-center rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text opacity-50">Next</span>
           )}
         </div>
       </div>
@@ -717,14 +721,14 @@ export default async function MyShiftsPage({
       {dates.length === 0 ? (
         <div className="bg-surface rounded-lg border border-border p-6 text-center">
           <p className="text-sm text-text-muted">No published shifts in this pay period.</p>
-          <p className="text-xs text-gray-400 mt-1">Check another period or wait for your manager to publish the rota.</p>
+          <p className="text-xs text-text-soft mt-1">Check another period or wait for your manager to publish the rota.</p>
         </div>
       ) : (
         <div className="space-y-2">
           {dates.map(date => (
             <div key={date} className="bg-surface rounded-lg border border-border overflow-hidden">
-              <div className={`px-4 py-2 border-b ${isToday(date) ? 'bg-blue-50 border-blue-100' : 'bg-surface-2 border-border'}`}>
-                <p className={`text-sm font-semibold ${isToday(date) ? 'text-blue-700' : 'text-text'}`}>
+              <div className={`px-4 py-2 border-b ${isToday(date) ? 'bg-primary-soft border-primary/20' : 'bg-surface-2 border-border'}`}>
+                <p className={`text-sm font-semibold ${isToday(date) ? 'text-primary-soft-fg' : 'text-text'}`}>
                   {dateLabel(date)}
                   {isToday(date) ? '' : ` · ${formatDate(date).split(',')[0]}`}
                 </p>
@@ -748,7 +752,7 @@ export default async function MyShiftsPage({
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           {isPortalShiftManager && (
-                            <p className={`mb-1 text-xs font-semibold ${isOwnShift ? 'text-blue-700' : 'text-text-muted'}`}>
+                            <p className={`mb-1 text-xs font-semibold ${isOwnShift ? 'text-primary' : 'text-text-muted'}`}>
                               {isOwnShift ? 'You' : shift.employee_name ?? 'Staff member'}
                             </p>
                           )}
@@ -762,28 +766,28 @@ export default async function MyShiftsPage({
                             {shift.is_overnight ? ' (+1)' : ''}
                           </p>
                           <div className="flex flex-wrap items-center gap-2 mt-1">
-                            <span className={`text-xs px-1.5 py-0.5 rounded-sm border ${isOtherStaffShift ? 'border-border bg-surface-hover text-text-muted' : deptColour(shift.department)} font-medium`}>
+                            <Badge size="sm" className={isOtherStaffShift ? undefined : deptBadgeClasses(shift.department)}>
                               {shift.department}
-                            </span>
-                            <span className={`text-xs ${isOtherStaffShift ? 'text-gray-400' : 'text-text-muted'}`}>
+                            </Badge>
+                            <span className={`text-xs ${isOtherStaffShift ? 'text-text-soft' : 'text-text-muted'}`}>
                               {paidHours.toFixed(1)}h paid
                             </span>
                             {shift.unpaid_break_minutes > 0 && (
-                              <span className={`text-xs ${isOtherStaffShift ? 'text-text-subtle' : 'text-gray-400'}`}>
+                              <span className="text-xs text-text-soft">
                                 {shift.unpaid_break_minutes} min break
                               </span>
                             )}
                             {(() => {
                               const badge = premiumBadgeLabel(shift);
                               return badge ? (
-                                <span className={`text-xs px-1.5 py-0.5 rounded-sm border font-medium ${isOtherStaffShift ? 'border-border bg-surface-hover text-text-muted' : 'border-amber-200 bg-warning-soft text-warning-fg'}`}>
+                                <Badge tone={isOtherStaffShift ? 'neutral' : 'warning'} size="sm">
                                   {badge}
-                                </span>
+                                </Badge>
                               ) : null;
                             })()}
                           </div>
                           {shift.notes && (
-                            <p className={`mt-1 text-xs ${isOtherStaffShift ? 'text-gray-400' : 'text-text-muted'}`}>
+                            <p className={`mt-1 text-xs ${isOtherStaffShift ? 'text-text-soft' : 'text-text-muted'}`}>
                               {shift.notes}
                             </p>
                           )}
@@ -809,35 +813,36 @@ export default async function MyShiftsPage({
 
       <div className="space-y-2">
         <div>
-          <h3 className="text-base font-semibold text-text">Open shifts this pay period</h3>
+          <h3 className="text-base font-semibold text-text-strong">Open shifts this pay period</h3>
           <p className="text-xs text-text-muted mt-0.5">You can ask to work these shifts. A manager still needs to approve it.</p>
         </div>
         {openShifts.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-center text-sm text-gray-400">
+          <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-center text-sm text-text-soft">
             No open shifts in this pay period.
           </div>
         ) : (
           openShifts.map(shift => {
             const paidHours = calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
             return (
-              <div key={shift.id} className="bg-warning-soft rounded-lg border border-amber-200 px-4 py-3">
-                <div className="flex items-start justify-between gap-3">
+              <div key={shift.id} className="bg-warning-soft rounded-lg border border-warning-border px-4 py-3">
+                {/* Wraps so the request form drops below the shift details on a phone. */}
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-text">
                       {formatFullDate(shift.shift_date)} · {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
                       {shift.is_overnight ? ' (+1)' : ''}
                     </p>
                     <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <span className={`text-xs px-1.5 py-0.5 rounded-sm border ${deptColour(shift.department)} font-medium`}>
+                      <Badge size="sm" className={deptBadgeClasses(shift.department)}>
                         {shift.department}
-                      </span>
+                      </Badge>
                       <span className="text-xs text-text-muted">{paidHours.toFixed(1)}h paid</span>
                       {(() => {
                         const badge = premiumBadgeLabel(shift);
                         return badge ? (
-                          <span className="text-xs px-1.5 py-0.5 rounded-sm border border-amber-200 bg-warning-soft text-warning-fg font-medium">
+                          <Badge tone="warning" size="sm">
                             {badge}
-                          </span>
+                          </Badge>
                         ) : null;
                       })()}
                     </div>
@@ -852,19 +857,19 @@ export default async function MyShiftsPage({
 
       <div className="space-y-2">
         <div>
-          <h3 className="text-base font-semibold text-text">Couldn&apos;t Work</h3>
+          <h3 className="text-base font-semibold text-text-strong">Couldn&apos;t Work</h3>
           <p className="text-xs text-text-muted mt-0.5">Records for this pay period, added by your manager in the rota.</p>
         </div>
         {couldntWorkRecords.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-center text-sm text-gray-400">
+          <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-center text-sm text-text-soft">
             No Couldn&apos;t Work records.
           </div>
         ) : (
           <div className="space-y-2">
             {couldntWorkRecords.map(record => (
-              <div key={record.id} className="rounded-lg border border-red-100 bg-danger-soft px-4 py-3">
-                <p className="text-sm font-medium text-red-950">{formatFullDate(record.shift_date)}</p>
-                <p className="mt-0.5 text-xs text-danger-fg">{record.sick_reason || 'No reason recorded'}</p>
+              <div key={record.id} className={`rounded-lg border px-4 py-3 ${ROTA_SHIFT_STATUS_CLASSES.sick}`}>
+                <p className="text-sm font-medium">{formatFullDate(record.shift_date)}</p>
+                <p className="mt-0.5 text-xs">{record.sick_reason || 'No reason recorded'}</p>
               </div>
             ))}
           </div>
@@ -874,7 +879,7 @@ export default async function MyShiftsPage({
       <CalendarSubscribeButton feedUrl={feedUrl} />
 
       {currentSummary && (
-        <p id="pay-disclaimer" className="text-xs text-gray-400 mt-8 leading-relaxed">
+        <p id="pay-disclaimer" className="text-xs text-text-soft mt-8 leading-relaxed">
           These figures are provided for guidance only. Your actual pay may differ due to required
           statutory deductions including PAYE income tax, National Insurance contributions, student
           loan repayments, and any other applicable deductions. Please refer to your payslip for
