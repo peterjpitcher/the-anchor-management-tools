@@ -28,7 +28,7 @@ export function GuestAmount({
     <div
       className={cn('flex flex-col gap-[5px]', inline && 'items-end text-right', className)}
     >
-      <span className="font-anchor-body text-[11px] font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted">
+      <span className="font-anchor-body text-meta font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted">
         {label}
       </span>
 
@@ -42,7 +42,7 @@ export function GuestAmount({
       </span>
 
       {sub ? (
-        <span className="font-anchor-body text-[15px] leading-[1.55] text-guest-text-muted">
+        <span className="font-anchor-body text-guest-lead leading-[1.55] text-guest-text-muted">
           {sub}
         </span>
       ) : null}

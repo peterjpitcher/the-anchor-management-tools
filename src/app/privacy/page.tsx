@@ -27,19 +27,19 @@ const SECTION_CLASS = 'flex flex-col gap-2.5'
 
 const H2_CLASS = 'font-anchor-display text-[21px] font-normal leading-[1.3] text-guest-text-strong'
 
-const P_CLASS = 'font-anchor-body text-[15px] leading-[1.7] text-guest-text'
+const P_CLASS = 'font-anchor-body text-guest-lead leading-[1.7] text-guest-text'
 
 /** Sub-labels such as "2.1 Information You Provide". */
-const SUB_LABEL_CLASS = 'font-anchor-body text-[14px] leading-[1.5] text-guest-text-strong'
+const SUB_LABEL_CLASS = 'font-anchor-body text-sm leading-[1.5] text-guest-text-strong'
 
 const UL_CLASS =
-  'list-disc space-y-[5px] pl-5 font-anchor-body text-[15px] leading-[1.6] text-guest-text'
+  'list-disc space-y-[5px] pl-5 font-anchor-body text-guest-lead leading-[1.6] text-guest-text'
 
 const LINK_CLASS =
   'font-semibold text-guest-accent-text underline underline-offset-[3px] hover:no-underline'
 
 /** Data Controller, ICO and Contact Us blocks sit in the recessed panel. */
-const CONTACT_BOX_CLASS = cn(GUEST_SUNK_BOX_CLASS, 'p-[15px] text-[14px] leading-[1.7]')
+const CONTACT_BOX_CLASS = cn(GUEST_SUNK_BOX_CLASS, 'p-[15px] text-sm leading-[1.7]')
 
 export default function PrivacyPolicy() {
   const lastUpdated = new Date('2024-12-21').toLocaleDateString('en-GB', {
@@ -57,20 +57,20 @@ export default function PrivacyPolicy() {
       bodyClassName="gap-0 px-0 pt-0 pb-0 sm:px-0 sm:pt-0 sm:pb-0"
     >
       <section className="w-full bg-anchor-green-deep px-5 py-8">
-        <div className="mx-auto flex w-full max-w-[560px] flex-col gap-2">
-          <p className="font-anchor-body text-[11px] font-semibold uppercase leading-none tracking-[0.18em] text-anchor-gold-bright">
+        <div className="mx-auto flex w-full max-w-guest flex-col gap-2">
+          <p className="font-anchor-body text-meta font-semibold uppercase leading-none tracking-[0.18em] text-anchor-gold-bright">
             The Anchor
           </p>
           <h1 className="font-anchor-display text-[34px] font-normal leading-[1.2] tracking-[-0.02em] text-anchor-cream-text">
             Privacy Policy
           </h1>
-          <p className="font-anchor-body text-[14px] leading-[1.5] text-anchor-cream-text/70">
+          <p className="font-anchor-body text-sm leading-[1.5] text-anchor-cream-text/70">
             Last updated: {lastUpdated}
           </p>
         </div>
       </section>
 
-      <article className="mx-auto flex w-full max-w-[560px] flex-col gap-[22px] px-[18px] pb-[34px] pt-7">
+      <article className="mx-auto flex w-full max-w-guest flex-col gap-[22px] px-[18px] pb-[34px] pt-7">
         <section className={SECTION_CLASS}>
           <h2 className={H2_CLASS}>1. Introduction</h2>
           <p className={P_CLASS}>

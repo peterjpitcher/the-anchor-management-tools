@@ -59,7 +59,7 @@ export function GuestCancelBooking({
   return (
     <div className="border-t border-guest-border-strong pt-5">
       <div className="rounded-guest-card border border-anchor-danger/[0.30] bg-anchor-danger/[0.06] p-4">
-        <p className="font-anchor-body text-[15px] font-bold leading-[1.4] text-anchor-danger">
+        <p className="font-anchor-body text-guest-lead font-bold leading-[1.4] text-anchor-danger">
           Are you sure you want to cancel?
         </p>
         <p className="mt-1 font-anchor-body text-ui leading-[1.55] text-guest-text">

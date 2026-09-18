@@ -15,7 +15,7 @@
  * #a57626 behind type.
  */
 export const GUEST_SUBMIT_PRIMARY_CLASS =
-  'guest-btn guest-motion-lift inline-flex min-h-[48px] w-full items-center justify-center rounded-full border-2 border-transparent bg-anchor-gold-dark px-8 text-center font-anchor-body text-[16px] font-semibold text-white no-underline transition-[transform,translate,background-color,box-shadow,color] duration-200 ease-out hover:-translate-y-0.5 hover:bg-anchor-gold-deep hover:shadow-guest-gold active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none sm:w-auto'
+  'guest-btn guest-motion-lift inline-flex min-h-[48px] w-full items-center justify-center rounded-full border-2 border-transparent bg-anchor-gold-dark px-8 text-center font-anchor-body text-base font-semibold text-white no-underline transition-[transform,translate,background-color,box-shadow,color] duration-200 ease-out hover:-translate-y-0.5 hover:bg-anchor-gold-deep hover:shadow-guest-gold active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none sm:w-auto'
 
 /** The seat block and the read-only seat row share one shell. */
 export const PREORDER_SEAT_BLOCK_CLASS =

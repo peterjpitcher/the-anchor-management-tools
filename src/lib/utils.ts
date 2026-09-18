@@ -13,7 +13,7 @@ import {
 const twMerge = extendTailwindMerge({
   extend: {
     theme: {
-      text: ['2xs', 'meta', 'ui'],
+      text: ['2xs', 'meta', 'ui', 'guest-lead'],
       radius: ['default', 'pill', 'guest-field', 'guest-card'],
       shadow: ['default', 'ring', 'ring-inset', 'guest-card', 'guest-gold', 'guest-focus'],
       spacing: [
@@ -23,6 +23,7 @@ const twMerge = extendTailwindMerge({
       ],
       ease: ['default'],
       breakpoint: ['shell'],
+      container: ['guest'],
     },
   },
 });

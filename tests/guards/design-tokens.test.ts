@@ -41,6 +41,10 @@ const ACCEPTED_HEX: Array<{ file: string; reason: string }> = [
     file: 'src/app/icon.tsx',
     reason: 'The favicon is rendered by next/og ImageResponse, outside the app stylesheet.',
   },
+  {
+    file: 'src/app/global-error.tsx',
+    reason: 'Replaces the root layout, so the app stylesheet may not load; styled inline with the token values.',
+  },
 ]
 
 const PALETTE = 'slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose'

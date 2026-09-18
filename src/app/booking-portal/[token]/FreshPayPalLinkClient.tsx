@@ -41,10 +41,10 @@ export function FreshPayPalLinkClient({ portalToken }: FreshPayPalLinkClientProp
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex flex-col gap-[3px]">
-        <p className="font-anchor-body text-[14px] font-semibold leading-[1.4] text-guest-text">
+        <p className="font-anchor-body text-sm font-semibold leading-[1.4] text-guest-text">
           Deposit payment link
         </p>
-        <p className="font-anchor-body text-[12px] leading-[1.6] text-guest-text-muted">
+        <p className="font-anchor-body text-xs leading-[1.6] text-guest-text-muted">
           PayPal links usually expire after 6 hours. Use this button to create a fresh link.
         </p>
       </div>

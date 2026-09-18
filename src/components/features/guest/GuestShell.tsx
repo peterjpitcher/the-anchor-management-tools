@@ -24,7 +24,7 @@ type GuestShellProps = {
  */
 export function GuestShell({
   children,
-  maxWidthClassName = 'max-w-[560px]',
+  maxWidthClassName = 'max-w-guest',
   bodyClassName,
   centred = false,
 }: GuestShellProps): React.JSX.Element {
@@ -63,8 +63,8 @@ export function GuestShell({
       </main>
 
       <footer className="w-full bg-anchor-green-deep px-5 py-[22px]">
-        <div className="mx-auto flex w-full max-w-[560px] flex-col gap-[11px]">
-          <p className="text-[12px] leading-[1.6] text-anchor-cream-text/70">
+        <div className="mx-auto flex w-full max-w-guest flex-col gap-[11px]">
+          <p className="text-xs leading-[1.6] text-anchor-cream-text/70">
             {GUEST_CONTACT.addressLine}
           </p>
 
@@ -78,7 +78,7 @@ export function GuestShell({
           <a
             href={GUEST_CONTACT.telHref}
             referrerPolicy="no-referrer"
-            className="text-[13px] font-medium text-anchor-gold-bright no-underline hover:underline"
+            className="text-ui font-medium text-anchor-gold-bright no-underline hover:underline"
           >
             {GUEST_CONTACT.phoneDisplay}
           </a>
@@ -86,7 +86,7 @@ export function GuestShell({
           <a
             href={GUEST_CONTACT.emailHref}
             referrerPolicy="no-referrer"
-            className="text-[13px] font-medium text-anchor-gold-bright no-underline hover:underline"
+            className="text-ui font-medium text-anchor-gold-bright no-underline hover:underline"
           >
             {GUEST_CONTACT.email}
           </a>
@@ -95,14 +95,14 @@ export function GuestShell({
             <a
               href={GUEST_CONTACT.website}
               referrerPolicy="no-referrer"
-              className="text-[12px] text-anchor-cream-text/[0.82] no-underline hover:underline"
+              className="text-xs text-anchor-cream-text/[0.82] no-underline hover:underline"
             >
               The Anchor website
             </a>
             <a
               href="/privacy"
               referrerPolicy="no-referrer"
-              className="text-[12px] text-anchor-cream-text/[0.82] no-underline hover:underline"
+              className="text-xs text-anchor-cream-text/[0.82] no-underline hover:underline"
             >
               Privacy
             </a>

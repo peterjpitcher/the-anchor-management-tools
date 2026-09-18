@@ -368,9 +368,6 @@
   "src/app/(event-kiosk)/events/[id]/check-in/EventCheckInClient.tsx": {
     "raw-palette": 1
   },
-  "src/app/(feedback)/feedback/tell-us/TellUsClient.tsx": {
-    "px-text-size": 3
-  },
   "src/app/(staff-portal)/portal/leave/CancelLeaveRequestButton.tsx": {
     "raw-palette": 4
   },
@@ -449,87 +446,8 @@
   "src/app/auth/confirm/route.ts": {
     "hex-colour": 5
   },
-  "src/app/auth/recover/page.tsx": {
-    "sidebar-outside-shell": 1
-  },
-  "src/app/auth/reset-password/page.tsx": {
-    "sidebar-outside-shell": 3
-  },
-  "src/app/auth/reset/reset-password-form.tsx": {
-    "sidebar-outside-shell": 1
-  },
-  "src/app/booking-portal/[token]/FreshPayPalLinkClient.tsx": {
-    "px-text-size": 2
-  },
-  "src/app/booking-portal/[token]/page.tsx": {
-    "px-text-size": 7
-  },
-  "src/app/g/[token]/card-capture/page.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/g/[token]/confirm-booking/page.tsx": {
-    "raw-palette": 8
-  },
-  "src/app/g/[token]/email-capture/page.tsx": {
-    "bare-rounded": 1,
-    "px-text-size": 4
-  },
-  "src/app/g/[token]/event-payment/EventPayPalPaymentClient.tsx": {
-    "px-text-size": 2
-  },
-  "src/app/g/[token]/event-payment/page.tsx": {
-    "px-text-size": 4
-  },
-  "src/app/g/[token]/manage-booking/page.tsx": {
-    "px-text-size": 3
-  },
-  "src/app/g/[token]/private-feedback/page.tsx": {
-    "px-text-size": 1
-  },
-  "src/app/g/[token]/sunday-preorder/page.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/g/[token]/table-manage/PreorderSection.tsx": {
-    "px-text-size": 7
-  },
-  "src/app/g/[token]/table-manage/formStyles.ts": {
-    "px-text-size": 1
-  },
-  "src/app/g/[token]/table-manage/page.tsx": {
-    "px-text-size": 2
-  },
-  "src/app/g/[token]/table-payment/TablePaymentClient.tsx": {
-    "px-text-size": 2
-  },
-  "src/app/g/[token]/table-payment/TablePaymentSuccessPanel.tsx": {
-    "px-text-size": 2
-  },
-  "src/app/g/[token]/waitlist-offer/page.tsx": {
-    "px-text-size": 5
-  },
-  "src/app/global-error.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/invoice-portal/[token]/InvoicePayClient.tsx": {
-    "px-text-size": 1
-  },
-  "src/app/invoice-portal/[token]/page.tsx": {
-    "px-text-size": 1
-  },
   "src/app/layout.tsx": {
     "hex-colour": 1
-  },
-  "src/app/legacy-link/[code]/LegacyLinkClient.tsx": {
-    "px-text-size": 6
-  },
-  "src/app/parking/guest/[id]/_components/PublicParkingClient.tsx": {
-    "px-text-size": 4
-  },
-  "src/app/parking/payment-error/page.tsx": {
-    "px-text-size": 3
-  },
-  "src/app/privacy/page.tsx": {
-    "px-text-size": 6
   },
   "src/components/features/catering/CateringManager.tsx": {
     "raw-palette": 1
@@ -609,36 +527,6 @@
   "src/components/features/events/SeoHealthIndicator.tsx": {
     "raw-palette": 9
   },
-  "src/components/features/guest/DetailGrid.tsx": {
-    "px-text-size": 2
-  },
-  "src/components/features/guest/DetailRow.tsx": {
-    "px-text-size": 2
-  },
-  "src/components/features/guest/GuestAlert.tsx": {
-    "px-text-size": 2
-  },
-  "src/components/features/guest/GuestAmount.tsx": {
-    "px-text-size": 2
-  },
-  "src/components/features/guest/GuestBadge.tsx": {
-    "px-text-size": 1
-  },
-  "src/components/features/guest/GuestButton.tsx": {
-    "px-text-size": 2
-  },
-  "src/components/features/guest/GuestField.tsx": {
-    "px-text-size": 3
-  },
-  "src/components/features/guest/GuestShell.tsx": {
-    "px-text-size": 5
-  },
-  "src/components/features/guest/TrustLine.tsx": {
-    "px-text-size": 1
-  },
-  "src/components/features/guest/styles.ts": {
-    "px-text-size": 5
-  },
   "src/components/features/invoices/RefundDialog.tsx": {
     "raw-palette": 3
   },
@@ -653,12 +541,6 @@
   },
   "src/components/features/private-bookings/VenueSpaceDeleteButton.tsx": {
     "raw-palette": 1
-  },
-  "src/components/features/shared/GuestCancelBooking.tsx": {
-    "px-text-size": 1
-  },
-  "src/components/features/shared/GuestPageShell.tsx": {
-    "sidebar-outside-shell": 1
   },
   "src/components/features/table-bookings/preorder/SeasonalPreorderSection.tsx": {
     "raw-palette": 1
