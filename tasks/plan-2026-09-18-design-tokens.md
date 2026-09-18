@@ -30,8 +30,8 @@
 | PR-01 | Token system and `cn()` repair | [x] | dc84d8cc, f45155db | dpl_4i8mu8Q23pukm9haq4nYUQJkk2WY, live 18 Sep 12:03 |
 | PR-02 | Design-token guard test (ratchet) | [x] | 2a3e7976 | dpl_CkErfQyuuNaakVR5NKycj2yX41gc, live 18 Sep 12:12 |
 | PR-03 | Global CSS clean-up and legacy variables | [x] | 119bbd4d | dpl_DithYX9NAWfeJwHmfjfZUXpZivfC, live 18 Sep 12:25 |
-| PR-04 | Toasts, JS token accessors, charts, avatars | [ ] | | |
-| PR-05 | DS primitives and compat wrappers | [ ] | | |
+| PR-04 | Toasts, JS token accessors, charts, avatars | [x] | 87845543 | dpl_DKe52tLKAs7YikBe4RiZo5iQFN4d, live 18 Sep 13:13 |
+| PR-05 | DS primitives and compat wrappers | [x] | see git log | shipped with PR-06 |
 | PR-06 | DS composites and app shell | [ ] | | |
 | PR-07 | Codemod step A (value-equal swaps) | [ ] | | |
 | PR-08 | Codemod step B (secondary greys darken) | [ ] | | |
@@ -69,7 +69,7 @@
 - **A5 One in-page tab style:** DS `Tabs` (brand underline). `src/ds/compat/TabNav.tsx` renders the same look.
 - **A6 One table style:** DS `Table` (small uppercase `text-text-muted` header on `bg-surface-2`). `DataTable` is restyled to match it; its internals are not rebuilt.
 - **A7 One page chrome:** `PageLayout` adopts `PageHeader`'s look (warm `bg-bg` page, same title size and weight). It keeps a `headerVariant="dark"` style for the FOH kiosk header (`src/app/(authenticated)/table-bookings/foh/page.tsx:67` relies on the grey band today).
-- **A8 One focus pattern:** controls use `focus-visible:outline-hidden focus-visible:shadow-ring`; text fields use `focus:border-border-focus focus:shadow-ring` (error state: `focus:border-danger focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-danger)_20%,transparent)]`). `outline-hidden` (not `outline-none`) keeps a visible focus in Windows forced-colours mode.
+- **A8 One focus pattern:** controls use `focus-visible:outline-hidden focus-visible:shadow-ring`, or `focus-visible:shadow-ring-inset` when the control sits in an overflow-hidden or scrolling container that would clip the outer ring (accordion items, tab strips, table headers; added 18 Sep during PR-05); text fields use `focus:border-border-focus focus:shadow-ring` (error state: `focus:border-danger focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-danger)_20%,transparent)]`). `outline-hidden` (not `outline-none`) keeps a visible focus in Windows forced-colours mode.
 - **A9 Disabled state:** `disabled:opacity-50` everywhere (60, 40, 30 and 70 normalise to 50). No token.
 - **A10 Radius and shadow names stay as they are** (renaming would move 1,000+ uses again). Bare `rounded`, `rounded-2xl`, `rounded-3xl`, bare `shadow`, `shadow-md`, `shadow-xl` and `shadow-2xl` are banned by the guard and codemodded away.
 - **A11 Category colours stay data where users pick them** (shift templates, calendar notes, customer labels, event categories). Static app categories (departments, dish groups, booking types in charts) use the new `cat-*` tokens. The shift and calendar option lists become one list.
@@ -108,6 +108,7 @@ Existing tokens keep their names except where stated. After PR-01 the `@theme st
 | | `--color-danger-border` | `#fecaca` | `border-danger-border` |
 | | `--color-info-border` | `#bae6fd` | `border-info-border` |
 | Overlay | `--color-overlay` | `rgb(12 10 9 / 0.5)` | `bg-overlay` |
+| Focus ring, inset | `--shadow-ring-inset` | `inset 0 0 0 2px var(--color-border-focus)` | `focus-visible:shadow-ring-inset` (added during PR-05) |
 | On dark surfaces | `--color-on-dark` | `#ffffff` | `text-on-dark` |
 | | `--color-on-dark-muted` | `rgb(255 255 255 / 0.72)` | `text-on-dark-muted` |
 | | `--color-on-dark-subtle` | `rgb(255 255 255 / 0.4)` | |
@@ -541,17 +542,17 @@ Findings source: `audit-results.json` keys `token-system-inventory.legacy_blocks
 
 Acceptance: the guard baseline for every file in `src/ds/primitives/` and `src/ds/compat/` is zero for every rule, except `Avatar.tsx` (none left after PR-04) and hex in `ColorSwatch`-style data props if any exist (list them in the commit).
 
-- [ ] **Button** (`Button.tsx`): `text-[13px]` to `text-ui`; `rounded-[7px]`/`rounded-[9px]` to `rounded-sm`/`rounded-default`; inline `rgba(0,0,0,.08)` shadows (line 27) to `shadow-xs`; move `sizeStyles` before `variantStyles` in the `cn()` call (lines 90 and 91) so `variant="link"` stays flush at every size (fixes `/settings/background-jobs` and the role permissions modal); focus pattern A8; `max-shell:min-h-touch` for the touch rule; `disabled:opacity-50`.
-- [ ] **LinkButton, IconButton, Switch, Checkbox, Radio, Segmented-like controls:** same focus pattern, radius on the scale, `max-shell:`, touch size via `min-h-touch`.
-- [ ] **Input, Select, Textarea:** text sizes to `text-ui`; built-in label adopts Field's classes (A2); hint text `text-text-soft` (A3); error focus shadow per A8; confirm with `tests/lib/cn.test.ts` style assertion that `cn()` of the base plus error classes keeps only the danger shadow. Implement Input's ignored `rightElement` prop (declared at `Input.tsx:24`, used by `MenuTargetForm.tsx:65` for the % sign): render it absolutely at the right inside the field wrapper with `pr-9` on the input.
-- [ ] **Field:** hint `text-text-soft`; `(optional)` marker stays `text-text-subtle` only if it is decorative, otherwise `text-text-soft`.
-- [ ] **Badge:** implement the ignored `icon`, `size` and `title` props (`Badge.tsx:58`): `icon` renders before children at 12px, `size` `sm` uses `text-meta px-1.5` and `md` the current size, `title` sets the `title` attribute. Background jobs status icons on `/settings/background-jobs` then show.
-- [ ] **Alert:** implement `closable`, `onClose` and `size` (`Alert.tsx:40`): a close `IconButton` with `aria-label="Dismiss"` when `closable`, local dismissed state when no `onClose`; `size="sm"` uses `text-ui` and tighter padding. Messages on `/settings/table-bookings` become dismissible.
-- [ ] **Modal, Drawer, ConfirmDialog:** scrims `bg-black/50` (`Modal.tsx:62`), `bg-black/30` (`Drawer.tsx:78`) become `bg-overlay`.
-- [ ] **Pagination** (27 raw classes): to tokens; the page-size select (line 203) gets a width and colour (`border border-border-strong`) or becomes DS `Select size="sm"`.
-- [ ] **Accordion** (17 raw classes), **Stat** (`fontVariantNumeric` inline style at line 68 becomes `tabular-nums`; hint `text-text-soft`), **Empty**, **Spinner**, **ProgressBar**, **Tooltip**, **Popover**, **Dropdown**, **FileUpload**, **DateTimePicker**, **Stepper**, **SearchInput**: every remaining raw class to tokens per the Canonical mapping; `text-[10px]`/`text-[11px]`/`text-[13px]` to `text-2xs`/`text-meta`/`text-ui`.
-- [ ] **compat/TabNav** (16 raw classes, green-600 underline): render exactly the DS `Tabs` look (A5). **compat/RadioGroup, SortableHeader, StatGroup, FilterPanel, EmptyState, BackButton, CardParts, PopoverParts, ModalActions, DrawerActions, Form, FormGroup, Container:** tokens only.
-- [ ] P-VISUAL harness rendering every primitive in every variant, desktop and 375px; baseline update; P-GATES; P-COMMIT `fix(ds): primitives use tokens only and honour their documented props`; P-SHIP.
+- [x] **Button** (`Button.tsx`): `text-[13px]` to `text-ui`; `rounded-[7px]`/`rounded-[9px]` to `rounded-sm`/`rounded-default`; inline `rgba(0,0,0,.08)` shadows (line 27) to `shadow-xs`; move `sizeStyles` before `variantStyles` in the `cn()` call (lines 90 and 91) so `variant="link"` stays flush at every size (fixes `/settings/background-jobs` and the role permissions modal); focus pattern A8; `max-shell:min-h-touch` for the touch rule; `disabled:opacity-50`.
+- [x] **LinkButton, IconButton, Switch, Checkbox, Radio, Segmented-like controls:** same focus pattern, radius on the scale, `max-shell:`, touch size via `min-h-touch`.
+- [x] **Input, Select, Textarea:** text sizes to `text-ui`; built-in label adopts Field's classes (A2); hint text `text-text-soft` (A3); error focus shadow per A8; confirm with `tests/lib/cn.test.ts` style assertion that `cn()` of the base plus error classes keeps only the danger shadow. Implement Input's ignored `rightElement` prop (declared at `Input.tsx:24`, used by `MenuTargetForm.tsx:65` for the % sign): render it absolutely at the right inside the field wrapper with `pr-9` on the input.
+- [x] **Field:** hint `text-text-soft`; `(optional)` marker stays `text-text-subtle` only if it is decorative, otherwise `text-text-soft`.
+- [x] **Badge:** implement the ignored `icon`, `size` and `title` props (`Badge.tsx:58`): `icon` renders before children at 12px, `size` `sm` uses `text-meta px-1.5` and `md` the current size, `title` sets the `title` attribute. Background jobs status icons on `/settings/background-jobs` then show.
+- [x] **Alert:** implement `closable`, `onClose` and `size` (`Alert.tsx:40`): a close `IconButton` with `aria-label="Dismiss"` when `closable`, local dismissed state when no `onClose`; `size="sm"` uses `text-ui` and tighter padding. Messages on `/settings/table-bookings` become dismissible.
+- [x] **Modal, Drawer, ConfirmDialog:** scrims `bg-black/50` (`Modal.tsx:62`), `bg-black/30` (`Drawer.tsx:78`) become `bg-overlay`.
+- [x] **Pagination** (27 raw classes): to tokens; the page-size select (line 203) gets a width and colour (`border border-border-strong`) or becomes DS `Select size="sm"`.
+- [x] **Accordion** (17 raw classes), **Stat** (`fontVariantNumeric` inline style at line 68 becomes `tabular-nums`; hint `text-text-soft`), **Empty**, **Spinner**, **ProgressBar**, **Tooltip**, **Popover**, **Dropdown**, **FileUpload**, **DateTimePicker**, **Stepper**, **SearchInput**: every remaining raw class to tokens per the Canonical mapping; `text-[10px]`/`text-[11px]`/`text-[13px]` to `text-2xs`/`text-meta`/`text-ui`.
+- [x] **compat/TabNav** (16 raw classes, green-600 underline): render exactly the DS `Tabs` look (A5). **compat/RadioGroup, SortableHeader, StatGroup, FilterPanel, EmptyState, BackButton, CardParts, PopoverParts, ModalActions, DrawerActions, Form, FormGroup, Container:** tokens only.
+- [x] P-VISUAL harness rendering every primitive in every variant, desktop and 375px; baseline update; P-GATES; P-COMMIT `fix(ds): primitives use tokens only and honour their documented props`; P-SHIP.
 
 ## PR-06: DS composites and app shell
 
@@ -794,3 +795,4 @@ export const GUEST = {
 - 2026-09-18: PR-02 first baseline: 456 files; raw-palette 4599, hex-colour 1327, px-text-size 405, bare-rounded 207, sidebar-outside-shell 104, dark-variant 62, off-scale-shadow 45, legacy-hsl-var 8, raw-820-breakpoint 5, off-scale-radius 2. Guard ignores comments, which is why shadows count lower than the audit.
 - 2026-09-18: PR-03 notes: only 1 responsive grid has a base of 3+ columns (style guide icons), so removing the grid collapse is safe; no fixed bottom-0 elements exist; print sheets are generated HTML, so the pale default border cannot affect them. Harness at 375px: stat grid 2 columns, divider #ececea, checkbox brand green; at 800px 4 columns.
 - 2026-09-18: PR-04 notes: resolveToken takes no fallback (a fallback would be hex in a component); canvas ignores an empty colour, and @theme static guarantees the tokens exist in the browser. Harness: direct react-hot-toast error toast now matches the DS error toast exactly; DS info toast is sky like Alert; avatars use avatar-1..6; the canvas bar paints rgb(0,106,78).
+- 2026-09-18: PR-05 done by a 4-agent workflow plus a reviewer (5 fixes). Added --shadow-ring-inset because accordion items, tab strips and table headers clip the outer ring. Native radios keep the browser outline (Safari may not draw a box-shadow on them). Parked: SortableHeader renders a button directly in a tr with no th (ExpensesClient, expenses and mileage insights), pre-existing invalid markup.

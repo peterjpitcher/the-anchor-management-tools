@@ -66,7 +66,7 @@ export const Empty = forwardRef<HTMLDivElement, EmptyProps>(function Empty({
           {resolvedIcon}
         </div>
       )}
-      <h3 className={cn('font-semibold text-text', styles.title)}>{title}</h3>
+      <h3 className={cn('font-semibold text-text-strong', styles.title)}>{title}</h3>
       {description && (
         <p className={cn('mt-1 max-w-sm text-sm text-text-muted', centered && 'mx-auto')}>
           {description}

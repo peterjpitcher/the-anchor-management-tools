@@ -30,7 +30,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     return (
       <div className="flex flex-col">
         {label && (
-          <label htmlFor={id} className="text-[13px] font-medium text-text mb-1">
+          <label htmlFor={id} className="block text-xs font-medium uppercase tracking-wider text-text-muted mb-1">
             {label}
           </label>
         )}
@@ -40,10 +40,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             ref={ref}
             id={id}
             className={cn(
-              'h-[var(--spacing-input-h)] px-3 pr-8 text-[13px] bg-surface border border-border rounded-default w-full',
-              'outline-none transition-[border-color,box-shadow] duration-[120ms] appearance-none',
+              'h-input-h px-3 pr-8 text-ui bg-surface border border-border rounded-default w-full',
+              'outline-hidden transition-[border-color,box-shadow] duration-[120ms] appearance-none',
               'focus:border-border-focus focus:shadow-ring',
-              error && 'border-danger focus:border-danger focus:shadow-[0_0_0_3px_rgba(220,38,38,0.15)]',
+              error && 'border-danger focus:border-danger focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-danger)_20%,transparent)]',
               disabled && 'opacity-50 cursor-not-allowed bg-surface-2',
               className
             )}
@@ -85,7 +85,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           </p>
         )}
         {!error && hint && (
-          <p id={hintId} className="text-text-subtle text-xs mt-1">
+          <p id={hintId} className="text-text-soft text-xs mt-1">
             {hint}
           </p>
         )}
