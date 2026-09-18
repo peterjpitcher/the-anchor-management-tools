@@ -156,8 +156,8 @@ function roundPence(amount: number): number {
 
 /** "£250" or "£1,234.50": pence only when there are some. */
 function money(amount: number): string {
-  const rounded = roundPence(amount)
-  return formatMoney(rounded, { pence: Math.round(rounded * 100) % 100 !== 0 })
+  const exact = roundPence(amount)
+  return formatMoney(exact, { pence: Math.round(exact * 100) % 100 !== 0 })
 }
 
 function trimmed(value: string | null | undefined): string | null {

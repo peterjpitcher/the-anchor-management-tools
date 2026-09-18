@@ -786,11 +786,64 @@ describe('checklists section: a late or failed overnight sweep', () => {
     expect(result.notes).toEqual([
       'Checks for Fri 18 Sep, Sat 19 Sep, Sun 20 Sep, Mon 21 Sep, Tue 22 Sep, Wed 23 Sep and Thu 24 Sep should have locked overnight and have not, so those days are left out.',
     ])
+    // The page figures too: misses and spot checks count only on settled days, so they are
+    // unknown; the readings taken are final, so their count stands.
+    expect(metric(result, 'Readings out of range').value).toBe('0')
+    expect(metric(result, 'Misses with no accountable person').value).toBe('Not judged yet')
+    expect(metric(result, 'Spot checks recorded')).toEqual({ label: 'Spot checks recorded', value: 'Not judged yet' })
     expectCleanOutput(result)
 
     const report = await reportFor(rows)
     expect(report.sections[0].status).toBe('amber')
     expect(report.actions.map((action) => action.signalKey)).toEqual(['checklists.not_locked'])
+  })
+
+  it('still reports every out-of-range reading when the week did not lock', async () => {
+    // A reading is final once recorded and no alert goes out at completion any more, so the
+    // report must not wait for the lock: by the next report the day would be last week.
+    const readings = Array.from({ length: 7 }, (_, index) => instance(addDays(THIS_WEEK_START, index), {
+      title_snapshot: 'Fridge 2 temperature',
+      value_breach: true,
+      value_recorded: 9,
+      value_unit: 'degC',
+      value_min: 0,
+      value_max: 5,
+      locked_at: null,
+    }))
+    const rows = [...history(), ...rangeRows(THIS_WEEK_START, THIS_WEEK_END, { locked: false }), ...readings]
+    const result = await build(makeDb(rows))
+    expect(keys(result)).toEqual(['checklists.breaches', 'checklists.not_locked'])
+    expect(signal(result, 'checklists.breaches')).toMatchObject({ rag: 'amber', emailSafe: true, text: '7 readings were out of range this week.' })
+    expect(signal(result, 'checklists.breaches')?.action?.members).toHaveLength(7)
+    expect(metric(result, 'Readings out of range').value).toBe('7')
+    expect(list(result, 'Readings out of range this week').items).toHaveLength(7)
+    expect(result.headline).toBe('Checks for 7 days were not locked overnight, so completion cannot be judged. 7 readings were out of range.')
+    expectCleanOutput(result)
+  })
+
+  it('reports a reading from a day the sweep has not locked in that Friday\'s email, once', async () => {
+    const reading = instance('2026-09-24', {
+      title_snapshot: 'Fridge 2 temperature',
+      value_breach: true,
+      value_recorded: 9,
+      value_unit: 'degC',
+      value_min: 0,
+      value_max: 5,
+      locked_at: null,
+    })
+    const rows = [...history(), ...rangeRows(THIS_WEEK_START, '2026-09-23'), ...dayRows('2026-09-24', { locked: false }), reading]
+    const result = await build(makeDb(rows))
+    expect(keys(result)).toEqual([`checklists.breach.${reading.id as string}`, 'checklists.not_locked'])
+    expect(signal(result, `checklists.breach.${reading.id as string}`)?.text).toBe('Fridge 2 temperature read 9°C on Thu 24 Sep, outside 0°C to 5°C.')
+    expect(metric(result, 'Readings out of range').value).toBe('1')
+    expect(result.headline).toBe('Checks are mostly on track at 100% done, but 1 reading out of range and Thu 24 Sep not locked overnight.')
+    const report = await reportFor(rows)
+    expect(report.actions.map((action) => action.signalKey)).toContain(`checklists.breach.${reading.id as string}`)
+
+    // A week later the lock has caught up and the day is last week: not reported again.
+    const later = [...rows.map((row) => (row.locked_at === null ? { ...row, locked_at: '2026-09-26T04:01:00Z' } : row)), ...rangeRows('2026-09-25', '2026-10-01')]
+    const nextFriday = await build(makeDb(later), new Date('2026-10-02T05:00:00Z'))
+    expect(keys(nextFriday).filter((key) => key.startsWith('checklists.breach'))).toEqual([])
   })
 
   it('holds back the win and flags the gap when the sweep stalls part way through the week', async () => {
@@ -914,6 +967,9 @@ describe('checklists section: empty and immature states', () => {
     // Nothing was recorded, so missed and late are unknown rather than 0.
     expect(metric(result, 'Missed').value).toBe('No records')
     expect(metric(result, 'Done late')).toEqual({ label: 'Done late', value: 'No records' })
+    expect(metric(result, 'Readings out of range').value).toBe('No records')
+    expect(metric(result, 'Misses with no accountable person').value).toBe('No records')
+    expect(metric(result, 'Spot checks recorded')).toEqual({ label: 'Spot checks recorded', value: 'No records' })
     expect(metric(result, 'Completion, last 8 weeks').value).toBe('none, none, none, none, none, none, none, none')
     expect(list(result, 'Missed this week')).toMatchObject({ items: [], emptyText: 'Nothing was missed this week.' })
     expectCleanOutput(result)

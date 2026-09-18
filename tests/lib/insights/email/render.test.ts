@@ -104,6 +104,26 @@ describe('renderInsightsEmail', () => {
     if (shownReds < reds.length) expect(html).toMatch(/including \d+ to action/)
   })
 
+  it('prints the status word beside every emoji, exception rows included, so a black-and-white print keeps the status', () => {
+    const words: Record<string, string> = { '🔴': 'Action', '🟠': 'Watch', '🟢': 'OK', '⚪': 'Not checked' }
+    for (const options of [{}, { heavy: true, notChecked: ['parking'] }]) {
+      const { html, text } = render(options)
+      for (const output of [html, text]) {
+        const marks = [...output.matchAll(/(🔴|🟠|🟢|⚪)(.{0,13})/gu)]
+        expect(marks.length).toBeGreaterThan(10)
+        for (const [, mark, after] of marks) expect(after.startsWith(` ${words[mark]}`), `${mark}${after}`).toBe(true)
+      }
+    }
+    // Exception rows of every colour carry their word, in both parts (the manager actions
+    // below them are numbered, so only the section rows are looked at here).
+    const { html, text } = render()
+    const sectionsHtml = html.slice(0, html.indexOf('Manager actions this week'))
+    for (const status of ['🔴 Action', '🟠 Watch', '🟢 OK']) {
+      expect(sectionsHtml).toMatch(new RegExp(`<li style="margin:0 0 5px">${status}: `, 'u'))
+      expect(text).toMatch(new RegExp(`\\n- ${status}: `, 'u'))
+    }
+  })
+
   it('lists not-checked sections in the summary and labels them', () => {
     const { html, subject } = render({ notChecked: ['cashing_up'] })
     expect(html).toContain('⚪ Not checked: Cashing up')

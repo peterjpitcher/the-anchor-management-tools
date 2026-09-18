@@ -397,7 +397,10 @@ The next scheduled campaign is named.
 | No campaign this week | Green, "No campaigns this week. Next: <name>, <date>" |
 
 **Cases.** A campaign still sending, or first sent in the last 24 hours, is labelled "early figures" and
-raises no signals. Open rates are labelled indicative and never drive a signal alone. Marketing began
+raises no signals. A campaign first sent in the 24 hours before last week's report (06:00 London on the
+first day of this week) was still early then, so this report runs its checks, names it as last week's
+late send, and leaves it out of this week's figures (live: 1 of 12 sends went out on a Thursday after
+06:00). Open rates are labelled indicative and never drive a signal alone. Marketing began
 on 16 August 2026 (collection start constant).
 
 ### 5.4 Customer feedback
@@ -575,7 +578,9 @@ covered."
   `src/lib/checklists/scoring.ts`; highest and lowest among staff with at least 10 completions; repeat
   missers (an accountable person with 3 or more misses this week or 6 or more in 4 weeks). The email
   shows counts ("2 staff repeatedly missed checks").
-- Misses with no accountable person counted as "unassigned". Value breaches this week. Spot checks
+- Misses with no accountable person counted as "unassigned". Value breaches this week, from every done
+  check with a reading out of range whether or not its day has locked: a recorded reading is final
+  and no alert goes out at completion any more, so waiting for a late lock would lose it. Spot checks
   drawn against recorded.
 - A one-line answer to "are the checks being done properly, consistently and by the right people?"
 
@@ -609,7 +614,9 @@ says the chase sits under Private hire, so the same invoice never produces two a
 **Scope.** `cashup_sessions` with `voided_at` null and status `submitted`, `approved` or `locked`
 (drafts count as not entered); amounts from `cashup_payment_breakdowns`. Trading days come from the
 business-hours and special-hours logic moved out of `src/app/actions/missing-cashups.ts` into
-`src/lib/cashing-up/`, with the missing void filter added.
+`src/lib/cashing-up/`. A voided cash-up cannot be replaced (one cash-up per site and date, voided or
+not), so the staff missing-dates list still counts it as entered, and the report shows its day as
+"voided, not re-entered" with no action; its takings are unknown, so its week is not compared.
 
 Production shows cash-ups are routinely entered 1 to 11 days late (median about 66 hours); at the
 Friday 06:00 report the previous day was entered on 1 of 28 Fridays. The rules below allow for that,
@@ -725,7 +732,8 @@ As 4.7. Last in the report, after Recruitment.
   - Figures: at most 4 per section.
   - The footer: "Printed copies contain staff and customer details. Shred after the meeting."
 - **Layout rules** (tested): white everywhere, with no `background` or `bgcolor` on any element; dark
-  text (`#111111`); 1px grey borders on figure tables; one column, 680px maximum; real `<ul>`/`<ol>`
+  text (the app's `--color-text`, through `src/lib/brand/palette.ts`, the one place email hex may live
+  under the design-token guard); 1px grey borders on figure tables; one column, 680px maximum; real `<ul>`/`<ol>`
   with inline padding; no `white-space:pre-line`; status as emoji plus word; every link absolute on
   the validated `NEXT_PUBLIC_APP_URL` origin; under 90 KB; a plain-text version with "- " bullets and
   numbered actions.

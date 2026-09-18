@@ -308,7 +308,9 @@ describe('cashing up section', () => {
       expect(metric(result, 'Takings')?.value).toBe('£3,000')
     })
 
-    it('counts approved and locked cash-ups as entered and ignores voided ones', async () => {
+    it('counts approved and locked cash-ups as entered, and a voided day as voided with no action', async () => {
+      // A voided cash-up cannot be replaced (one cash-up per site and date, voided or not),
+      // so calling its day missing would raise an action nobody can complete.
       const sessions = [
         ...history(),
         ...days(THIS_WEEK, (date) => {
@@ -319,8 +321,48 @@ describe('cashing up section', () => {
         }),
       ]
       const result = await build(db({ sessions }))
-      const [missing] = byKey(result, 'cashing_up.missing.')
-      expect(missing.text).toBe('1 trading day has gone more than 3 days without a cash-up: Mon 21 Sep.')
+      expect(result.signals).toEqual([])
+      expect(result.headline).toBe(
+        '6 of 7 trading days entered; Mon 21 Sep voided, not re-entered. Takings £3,000 over 6 entered days. '
+        + 'Last complete week, Fri 11 to Thu 17 Sep: £3,500, in line with the usual week.',
+      )
+      expect(metric(result, 'Cash-ups entered')).toEqual({ label: 'Cash-ups entered', value: '6 of 7 trading days', comparison: 'Mon 21 Sep voided, not re-entered' })
+      expect(metric(result, 'Takings')?.value).toBe('£3,000')
+      expect(result.lists[0].items[3]).toEqual({ text: 'Mon 21 Sep: voided, not re-entered.', href: `${TEST_APP_URL}/cashing-up/daily?date=2026-09-21` })
+      expect(result.lists[1].items).toEqual([])
+      // Its takings are unknown, so this week is not compared; last week stands in.
+      expect(result.notes).toEqual([
+        `${LAST_WEEK_NOTE}1 trading day this week was voided and not re-entered.`,
+        'Mon 21 Sep has a voided cash-up that was not re-entered, so its takings are not known. A voided day cannot be entered again, so it is not counted as missing.',
+      ])
+      expectClean(result)
+
+      const report = await buildInsightsReport({
+        createDb: () => db({ sessions }).asDb(),
+        now: new Date('2026-09-25T05:00:00Z'),
+        appUrl: TEST_APP_URL,
+        sections: [cashingUpSection],
+      })
+      expect(report.sections[0].status).toBe('green')
+      expect(report.actions).toEqual([])
+    })
+
+    it('never calls a voided day missing, before this week or inside the entry window', async () => {
+      const voided = ['2026-09-15', '2026-09-23']
+      const sessions = [
+        ...history(),
+        ...days(THIS_WEEK),
+      ].map((row) => (voided.includes(row.session_date as string) ? session(row.session_date as string, { voided: true }) : row))
+      const result = await build(db({ sessions }))
+      expect(byKey(result, 'cashing_up.missing.')).toEqual([])
+      expect(issues(result)).toEqual([])
+      expect(result.lists[0].items[5]).toEqual({ text: 'Wed 23 Sep: voided, not re-entered.', href: `${TEST_APP_URL}/cashing-up/daily?date=2026-09-23` })
+      expect(result.headline).toBe('6 of 7 trading days entered; Wed 23 Sep voided, not re-entered. Takings £3,000 over 6 entered days.')
+      expect(result.notes).toEqual([
+        'Performance comparison not made: 2 trading days across this week and last week were voided and not re-entered.',
+        'Tue 15 Sep and Wed 23 Sep have voided cash-ups that were not re-entered, so their takings are not known. A voided day cannot be entered again, so they are not counted as missing.',
+      ])
+      expectClean(result)
     })
 
     it('names missing days before this week, within the 14 days up to the entry window', async () => {
@@ -956,7 +998,9 @@ describe('cashing up section', () => {
 })
 
 describe('cash-up trading days', () => {
-  it('finds missing dates for the missing-cash-ups page, ignoring voided cash-ups but not drafts', async () => {
+  it('finds missing dates for the missing-cash-ups page, counting drafts and voided cash-ups as entered', async () => {
+    // As before the move: a draft is opened rather than started again, and a voided day can
+    // never be entered again (one cash-up per site and date, voided or not), so neither is listed.
     const fake = db({
       sessions: [
         session('2026-09-20'),
@@ -971,7 +1015,7 @@ describe('cash-up trading days', () => {
       to: '2026-09-24',
       now: new Date('2026-09-25T05:00:00Z'),
     })
-    expect(dates).toEqual(['2026-09-22', '2026-09-23', '2026-09-24'])
+    expect(dates).toEqual(['2026-09-23', '2026-09-24'])
   })
 
   it('counts a date no published hours cover as closed', async () => {

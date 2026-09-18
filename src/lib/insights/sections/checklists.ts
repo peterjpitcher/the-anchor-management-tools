@@ -42,6 +42,12 @@ import type {
 // lock ran a day late until 15 Aug 2026, leaving 42 to 51 Thursday checks unlocked at 06:00
 // on four Fridays; since then every check has locked by 05:07.
 //
+// Out-of-range readings are the exception to waiting for the lock. A reading is final once it
+// is recorded (undoChecklistInstance refuses a breach row), and the report is now the only
+// place a manager hears of one (no alert is written at completion any more), so every done
+// check with value_breach this week counts whether or not its day has locked. Waiting would
+// drop it for good when the sweep runs late: by the next report its day is last week.
+//
 // Completion = done / (done + missed); skipped and not applicable are excluded, pending is
 // ignored. "Late" is was_late (completed after the grace deadline), the same rule the
 // on-time score in src/lib/checklists/scoring.ts uses (live: identical on every done row).
@@ -348,13 +354,19 @@ interface HeadlineFacts {
   openEmptyDates: string[]
 }
 
+function uncountedHeadline(f: HeadlineFacts): string {
+  if (f.overdueDates.length > 0) return `Checks for ${daysText(f.overdueDates)} were not locked overnight, so completion cannot be judged.`
+  if (f.settledDays > 0) return 'No checks counted this week: every check was skipped.'
+  if (f.openEmptyDates.length > 0) return 'No checklist records this week, so completion cannot be judged.'
+  if (f.waitingDates.length > 0) return 'This week\'s checks are not locked yet, so completion cannot be judged.'
+  return 'The venue was closed all week, so no checks were due.'
+}
+
 function headlineFor(f: HeadlineFacts): string {
   if (f.rate === null) {
-    if (f.overdueDates.length > 0) return `Checks for ${daysText(f.overdueDates)} were not locked overnight, so completion cannot be judged.`
-    if (f.settledDays > 0) return 'No checks counted this week: every check was skipped.'
-    if (f.openEmptyDates.length > 0) return 'No checklist records this week, so completion cannot be judged.'
-    if (f.waitingDates.length > 0) return 'This week\'s checks are not locked yet, so completion cannot be judged.'
-    return 'The venue was closed all week, so no checks were due.'
+    // Readings do not wait for the lock, so they are named even when completion cannot be.
+    const breaches = f.breaches > 0 ? ` ${plural(f.breaches, 'reading')} ${f.breaches === 1 ? 'was' : 'were'} out of range.` : ''
+    return `${uncountedHeadline(f)}${breaches}`
   }
   const pct = percent(f.rate)
   const issues: string[] = []
@@ -450,8 +462,9 @@ export async function buildChecklistsSection(ctx: SectionContext): Promise<Secti
   // Checks on counted days that can still be done: left out until they lock.
   const stillOpen = instances.filter((row) =>
     isInRange(row.business_date, thisWeek) && settledDates.has(row.business_date) && isStillOpen(row))
-  const breaches = weekRows
-    .filter((row) => row.state === 'done' && row.value_breach)
+  // Every reading this week, locked or not: a recorded reading is final (see the top of the file).
+  const breaches = instances
+    .filter((row) => isInRange(row.business_date, thisWeek) && row.state === 'done' && row.value_breach)
     .sort((a, b) => a.business_date.localeCompare(b.business_date) || a.id.localeCompare(b.id))
 
   // Spot checks on settled days only: an unsettled day's draw can still be recorded.
@@ -744,18 +757,22 @@ export async function buildChecklistsSection(ctx: SectionContext): Promise<Secti
       value: weekRow.join(', '),
       comparison: `oldest first, weeks ending ${formatDayDate(weeks[weeks.length - 1].end)} to ${formatDayDate(thisWeek.end)}`,
     },
-    { label: 'Readings out of range', value: formatCount(breaches.length) },
+    // Counted whatever the lock, so only a week with no records at all has no figure.
+    { label: 'Readings out of range', value: uncounted === 'No records' ? uncounted : formatCount(breaches.length) },
     {
       label: 'Staff repeatedly missing checks',
       value: formatCount(repeatMissers.length),
       comparison: `${CHECKLISTS.repeatMissesThisWeek} or more this week, or ${CHECKLISTS.repeatMissesFourWeeks} or more in 4 weeks`,
     },
-    { label: 'Misses with no accountable person', value: formatCount(unassigned) },
-    {
-      label: 'Spot checks recorded',
-      value: `${formatCount(spotRecorded)} of ${formatCount(spotDrawn)} drawn`,
-      ...(spotExpected > 0 ? { comparison: `${formatCount(spotExpected)} expected` } : {}),
-    },
+    // Misses and spot checks are only counted on settled days, so with none they are unknown.
+    { label: 'Misses with no accountable person', value: uncounted ?? formatCount(unassigned) },
+    uncounted
+      ? { label: 'Spot checks recorded', value: uncounted }
+      : {
+        label: 'Spot checks recorded',
+        value: `${formatCount(spotRecorded)} of ${formatCount(spotDrawn)} drawn`,
+        ...(spotExpected > 0 ? { comparison: `${formatCount(spotExpected)} expected` } : {}),
+      },
   ]
 
   // -------------------------------------------------------------------------

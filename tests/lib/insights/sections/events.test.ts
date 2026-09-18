@@ -480,6 +480,23 @@ describe('hosted events section', () => {
     expect(result.upcoming).toEqual([])
   })
 
+  it('counts only listed events as needing attention and names postponed ones on their own', async () => {
+    const postponed = event({ name: 'Music Bingo', date: '2026-09-30', event_status: 'postponed' })
+    const onTrack = event({ name: 'Live Music', date: '2026-10-05' })
+    const { result } = await build([postponed, onTrack], [booking(onTrack, 50, THIS_WEEK)])
+    expect(find(result, `events.win.${onTrack.id}`).kind).toBe('win')
+    // The one listed event is fine, so nothing reads as if it needs attention.
+    expect(result.headline).toBe('1 event in the next 14 days, 50 seats booked (83% of capacity). 1 postponed event needs a new date.')
+    expect(result.metrics).toContainEqual({ label: 'Events needing attention', value: '0' })
+    expect(result.metrics).toContainEqual({ label: 'Postponed in the next 14 days', value: '1' })
+
+    const noCapacity = event({ name: 'Open Mic', date: '2026-10-07', capacity: null })
+    const two = await build([postponed, onTrack, noCapacity], [booking(onTrack, 50, THIS_WEEK), booking(noCapacity, 10, THIS_WEEK)])
+    expect(two.result.headline).toBe('2 events in the next 14 days, 60 seats booked. 1 needs attention. 1 postponed event needs a new date.')
+    expect(two.result.metrics).toContainEqual({ label: 'Events needing attention', value: '1' })
+    expectPrintable(two.result)
+  })
+
   it('still flags an empty fortnight when the only event in it is postponed', async () => {
     const postponed = event({ date: '2026-09-30', event_status: 'postponed' })
     const { result } = await build([postponed])
