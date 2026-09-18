@@ -190,11 +190,12 @@ export default function RecordPaymentPage() {
             </div>
             <div>
               <p className="text-sm text-text-muted">Already Paid</p>
-              <p className="text-xl font-bold text-green-600">£{invoice.paid_amount.toFixed(2)}</p>
+              <p className="text-xl font-bold text-success-fg">£{invoice.paid_amount.toFixed(2)}</p>
             </div>
             <div>
               <p className="text-sm text-text-muted">Outstanding</p>
-              <p className="text-xl font-bold text-danger">£{outstanding.toFixed(2)}</p>
+              {/* Red only once the invoice is overdue, the same rule as the invoice list. */}
+              <p className={`text-xl font-bold ${invoice.status === 'overdue' ? 'text-danger' : ''}`}>£{outstanding.toFixed(2)}</p>
             </div>
           </div>
         </Card>

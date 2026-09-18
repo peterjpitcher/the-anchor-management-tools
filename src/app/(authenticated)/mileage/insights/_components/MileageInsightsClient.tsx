@@ -140,7 +140,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
           <BarChart
             data={chartData}
             height={300}
-            color="#10B981"
+            color="var(--color-chart-1)"
             formatType="number"
             onBarClick={handleBarClick}
           />

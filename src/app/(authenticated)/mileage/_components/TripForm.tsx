@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition, useCallback } from 'react'
-import { Alert, Button, Input, Modal, Select } from '@/ds'
+import { Alert, Badge, Button, Input, Modal, Select } from '@/ds'
 import {
   createTrip,
   updateTrip,
@@ -310,9 +310,7 @@ export function TripForm({
       }
     >
       <div className="space-y-5">
-        {error && (
-          <div className="rounded-md bg-danger-soft p-3 text-sm text-red-700">{error}</div>
-        )}
+        {error && <Alert tone="danger">{error}</Alert>}
 
         {isLockedShape && (
           <Alert
@@ -374,9 +372,7 @@ export function TripForm({
           <h4 className="text-sm font-medium text-text mb-3">Route</h4>
 
           <div className="flex items-center gap-2 mb-3 text-sm text-text-muted">
-            <span className="inline-flex items-center justify-center rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-green-700">
-              Start
-            </span>
+            <Badge tone="success">Start</Badge>
             <span className="font-medium">{homeBase?.name ?? 'The Anchor'}</span>
           </div>
 
@@ -393,7 +389,7 @@ export function TripForm({
                     {fromName} {'\u2192'} {toName}
                   </div>
                   <div className="flex items-center gap-2">
-                    <ArrowRightIcon className="h-4 w-4 shrink-0 text-gray-400" />
+                    <ArrowRightIcon className="h-4 w-4 shrink-0 text-text-subtle" />
                     <div className="min-w-0 flex-1">
                       <Select
                         className="w-full"
@@ -424,7 +420,7 @@ export function TripForm({
                       <Button
                         variant="ghost"
                         size="sm"
-                        icon={<TrashIcon className="h-4 w-4 text-red-400" />}
+                        icon={<TrashIcon className="h-4 w-4 text-danger" />}
                         aria-label={`Remove stop ${index + 1}`}
                         onClick={() => removeStop(index)}
                       />
@@ -455,10 +451,8 @@ export function TripForm({
               {homeBase?.name ?? 'The Anchor'}
             </div>
             <div className="flex items-center gap-2">
-              <ArrowRightIcon className="h-4 w-4 shrink-0 text-gray-400" />
-              <span className="inline-flex items-center justify-center rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-green-700">
-                Return
-              </span>
+              <ArrowRightIcon className="h-4 w-4 shrink-0 text-text-subtle" />
+              <Badge tone="success">Return</Badge>
               <span className="text-sm font-medium text-text-muted">{homeBase?.name ?? 'The Anchor'}</span>
               <Input
                 className="w-28 shrink-0 ml-auto"
@@ -507,7 +501,7 @@ export function TripForm({
                   <div className="border-t border-border-strong pt-1 font-medium text-text">
                     Amount Due: {'\u00A3'}{rateSplit.amountDue.toFixed(2)}
                   </div>
-                  <div className="text-xs text-warning">
+                  <div className="text-xs text-warning-fg">
                     This trip crosses the {THRESHOLD_MILES.toLocaleString()}-mile threshold
                   </div>
                 </>

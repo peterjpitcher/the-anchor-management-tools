@@ -161,11 +161,12 @@ P.S. I've attached a copy of the invoice for your reference.`
           >
             Cancel
           </Button>
-          <Button onClick={handleSend}
+          <Button
+            variant="primary"
+            onClick={handleSend}
             disabled={!toEmails}
             loading={sending}
             leftIcon={<Send className="h-4 w-4" />}
-            className="bg-orange-600 hover:bg-orange-700 focus:ring-orange-500"
           >
             Send Reminder
           </Button>
@@ -174,8 +175,8 @@ P.S. I've attached a copy of the invoice for your reference.`
     >
       <div className="space-y-4">
         {/* Chase Payment Header */}
-        <div className="flex items-center gap-3 pb-4 border-b">
-          <Clock className="h-6 w-6 text-orange-600" />
+        <div className="flex items-center gap-3 pb-4 border-b border-border">
+          <Clock className="h-6 w-6 text-warning" />
           <div>
             <p className="text-sm text-text-muted">Invoice is {daysOverdue} {daysOverdue === 1 ? 'day' : 'days'} overdue</p>
           </div>
@@ -244,7 +245,7 @@ P.S. I've attached a copy of the invoice for your reference.`
           title="Attachment"
           description={`Invoice ${invoice.invoice_number} (PDF format) will be attached as a reminder.`}
         >
-          <p className="text-sm text-orange-700 mt-2">
+          <p className="text-sm text-warning-fg mt-2">
             <strong>Outstanding:</strong> £{outstandingAmount.toFixed(2)} • <strong>Due:</strong> {dueDate.toLocaleDateString('en-GB')}
           </p>
         </Alert>

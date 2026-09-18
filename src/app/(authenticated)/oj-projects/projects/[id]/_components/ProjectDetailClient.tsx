@@ -28,6 +28,7 @@ import { deleteEntry } from '@/app/actions/oj-projects/entries'
 import { removeProjectContact } from '@/app/actions/oj-projects/project-contacts'
 import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
 import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
+import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -254,11 +255,11 @@ export function ProjectDetailClient({
                 </div>
                 <div>
                   <p className="text-xs text-text-muted">Billed</p>
-                  <p className="font-medium text-info">{formatCurrency(totals.billed)}</p>
+                  <p className="font-medium text-info-fg">{formatCurrency(totals.billed)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-text-muted">Paid</p>
-                  <p className="font-medium text-success">{formatCurrency(totals.paid)}</p>
+                  <p className="font-medium text-success-fg">{formatCurrency(totals.paid)}</p>
                 </div>
               </div>
             </CardBody>
@@ -454,11 +455,11 @@ export function ProjectDetailClient({
                   </div>
                   <div>
                     <p className="text-xs text-text-muted">Paid</p>
-                    <p className="text-sm font-semibold text-success">{formatCurrency(payments.totals.totalPaid)}</p>
+                    <p className="text-sm font-semibold text-success-fg">{formatCurrency(payments.totals.totalPaid)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-text-muted">Outstanding</p>
-                    <p className={`text-sm font-semibold ${payments.totals.totalOutstanding > 0 ? 'text-danger' : 'text-success'}`}>
+                    <p className={`text-sm font-semibold ${payments.totals.totalOutstanding > 0 ? 'text-danger' : 'text-success-fg'}`}>
                       {formatCurrency(payments.totals.totalOutstanding)}
                     </p>
                   </div>
@@ -477,8 +478,8 @@ export function ProjectDetailClient({
                             of {formatCurrency(item.invoice.invoiceTotal)} invoice
                           </p>
                         )}
-                        <Badge tone={item.invoice.status === 'paid' ? 'success' : 'warning'}>
-                          {item.invoice.status}
+                        <Badge tone={invoiceStatusTone(item.invoice.status)} dot>
+                          {invoiceStatusLabel(item.invoice.status)}
                         </Badge>
                       </div>
                     </div>

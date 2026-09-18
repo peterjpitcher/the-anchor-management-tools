@@ -320,7 +320,7 @@ export default function NewRecurringInvoicePage() {
           
           <div className="space-y-4">
             {lineItems.map((item, index) => (
-              <div key={index} className="border rounded-lg p-4">
+              <div key={index} className="border border-border rounded-lg p-4">
                 <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                   <div className="md:col-span-6">
                     <div className="flex gap-2 mb-2">
@@ -509,7 +509,7 @@ export default function NewRecurringInvoicePage() {
               <span className="font-medium">£{totalVat.toFixed(2)}</span>
             </div>
             
-            <div className="flex justify-between text-lg font-bold border-t pt-2">
+            <div className="flex justify-between text-lg font-bold border-t border-border pt-2">
               <span>Total:</span>
               <span>£{total.toFixed(2)}</span>
             </div>

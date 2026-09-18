@@ -52,6 +52,7 @@ import {
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 import { addMonthsToIsoDate } from '@/lib/oj-projects/recurring-periods'
 import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
+import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -744,7 +745,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                 </div>
                 <div className="p-3 rounded-lg bg-surface-2 col-span-2">
                   <p className="text-xs text-text-muted">Total Outstanding (inc VAT)</p>
-                  <p className={`text-xl font-bold ${balance.totalOutstanding > 0 ? 'text-danger' : 'text-success'}`}>
+                  <p className={`text-xl font-bold ${balance.totalOutstanding > 0 ? 'text-danger' : 'text-success-fg'}`}>
                     {formatCurrency(balance.totalOutstanding)}
                   </p>
                 </div>
@@ -757,7 +758,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                 started and abandoned, which freezes the work it covers.
               */}
               {balance.draftInvoiceTotal > 0 && (
-                <div className="mt-3 flex items-center justify-between rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+                <div className="mt-3 flex items-center justify-between rounded-lg border border-warning-border bg-warning-soft p-3 text-sm">
                   <span className="text-text-muted">
                     Draft, not yet sent (excluded from the total)
                   </span>
@@ -833,8 +834,8 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                       </div>
                       <div className="text-right">
                         <p className="font-medium">{formatCurrency(inv.total_amount)}</p>
-                        <Badge tone={inv.status === 'paid' ? 'success' : inv.outstanding > 0 ? 'warning' : 'info'}>
-                          {inv.status}
+                        <Badge tone={invoiceStatusTone(inv.status)} dot>
+                          {invoiceStatusLabel(inv.status)}
                         </Badge>
                       </div>
                     </div>
@@ -1171,7 +1172,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                               <td className="py-1">{txn.date}</td>
                               <td className="py-1 truncate max-w-[120px]">{txn.description}</td>
                               <td className="py-1 text-right">{txn.debit != null ? formatCurrency(txn.debit) : ''}</td>
-                              <td className="py-1 text-right text-success">{txn.credit != null ? formatCurrency(txn.credit) : ''}</td>
+                              <td className="py-1 text-right text-success-fg">{txn.credit != null ? formatCurrency(txn.credit) : ''}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1180,7 +1181,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                   )}
                   <div className="flex justify-between mt-2 pt-2 border-t border-border font-medium">
                     <span>Closing balance</span>
-                    <span className={statement.closingBalance > 0 ? 'text-danger' : 'text-success'}>
+                    <span className={statement.closingBalance > 0 ? 'text-danger' : 'text-success-fg'}>
                       {formatCurrency(statement.closingBalance)}
                     </span>
                   </div>
@@ -1212,7 +1213,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
           {previewError && <p className="text-danger">{previewError}</p>}
 
           {!previewError && previewVendor && !previewVendor.would_invoice && (
-            <p className="rounded-lg border border-warning/40 bg-warning/10 p-3">
+            <p className="rounded-lg border border-warning-border bg-warning-soft p-3 text-warning-fg">
               {previewVendor.reason || 'No invoice would be generated for this period.'}
             </p>
           )}

@@ -364,7 +364,7 @@ export default function EditRecurringInvoicePage() {
           <Card title="Line Items">
             <div className="space-y-4">
               {lineItems.map((item, index) => (
-                <div key={index} className="border rounded-lg p-4 space-y-4">
+                <div key={index} className="border border-border rounded-lg p-4 space-y-4">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                     <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-4">
                       <FormGroup label="Catalog Item" className="md:col-span-2">
@@ -517,7 +517,7 @@ export default function EditRecurringInvoicePage() {
                 <span>VAT:</span>
                 <span>£{totals.totalVat.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between font-bold text-lg pt-2 border-t">
+              <div className="flex justify-between font-bold text-lg pt-2 border-t border-border">
                 <span>Total:</span>
                 <span>£{totals.total.toFixed(2)}</span>
               </div>

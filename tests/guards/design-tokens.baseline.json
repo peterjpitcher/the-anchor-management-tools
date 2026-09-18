@@ -1,7 +1,4 @@
 {
-  "src/app/(authenticated)/cashing-up/insights/_components/InsightsClient.tsx": {
-    "hex-colour": 3
-  },
   "src/app/(authenticated)/checklists/page.tsx": {
     "sidebar-outside-shell": 3
   },
@@ -36,39 +33,6 @@
   "src/app/(authenticated)/events/_components/EventImagePanel.tsx": {
     "raw-palette": 9
   },
-  "src/app/(authenticated)/expenses/_components/ExpenseFileViewer.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(authenticated)/expenses/_components/ExpenseForm.tsx": {
-    "raw-palette": 17
-  },
-  "src/app/(authenticated)/expenses/insights/_components/ExpensesInsightsClient.tsx": {
-    "hex-colour": 1
-  },
-  "src/app/(authenticated)/invoices/MobileInvoiceCard.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/invoices/[id]/InvoiceDetailClient.tsx": {
-    "raw-palette": 5
-  },
-  "src/app/(authenticated)/invoices/[id]/payment/page.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/invoices/export/page.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/invoices/new/page.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/invoices/recurring/[id]/page.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/invoices/recurring/page.tsx": {
-    "raw-palette": 2
-  },
-  "src/app/(authenticated)/invoices/vendors/page.tsx": {
-    "raw-palette": 3
-  },
   "src/app/(authenticated)/menu-management/_components/MenuDishesTable.tsx": {
     "raw-palette": 7
   },
@@ -95,21 +59,6 @@
   },
   "src/app/(authenticated)/messages/bulk/BulkMessagesClient.tsx": {
     "raw-palette": 1
-  },
-  "src/app/(authenticated)/mgd/_components/CollectionForm.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/mgd/insights/_components/MgdInsightsClient.tsx": {
-    "hex-colour": 1
-  },
-  "src/app/(authenticated)/mileage/_components/DestinationsClient.tsx": {
-    "raw-palette": 8
-  },
-  "src/app/(authenticated)/mileage/_components/TripForm.tsx": {
-    "raw-palette": 6
-  },
-  "src/app/(authenticated)/mileage/insights/_components/MileageInsightsClient.tsx": {
-    "hex-colour": 1
   },
   "src/app/(authenticated)/private-bookings/[id]/InvoiceBookingModal.tsx": {
     "raw-palette": 1
@@ -146,24 +95,6 @@
   },
   "src/app/(authenticated)/private-bookings/sms-queue/page.tsx": {
     "raw-palette": 3
-  },
-  "src/app/(authenticated)/quotes/[id]/page.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/quotes/new/page.tsx": {
-    "raw-palette": 1
-  },
-  "src/app/(authenticated)/receipts/_components/ui/ReceiptTableRow.tsx": {
-    "raw-palette": 3
-  },
-  "src/app/(authenticated)/receipts/monthly/MonthlyCharts.tsx": {
-    "raw-palette": 4
-  },
-  "src/app/(authenticated)/receipts/monthly/page.tsx": {
-    "raw-palette": 12
-  },
-  "src/app/(authenticated)/receipts/vendors/_components/VendorSummaryGrid.tsx": {
-    "raw-palette": 2
   },
   "src/app/(authenticated)/roles/components/RoleForm.tsx": {
     "raw-palette": 6
@@ -371,15 +302,6 @@
   "src/components/features/events/SeoHealthIndicator.tsx": {
     "raw-palette": 9
   },
-  "src/components/features/invoices/RefundDialog.tsx": {
-    "raw-palette": 3
-  },
-  "src/components/features/invoices/RefundHistoryTable.tsx": {
-    "raw-palette": 2
-  },
-  "src/components/features/invoices/VendorDeleteButton.tsx": {
-    "raw-palette": 1
-  },
   "src/components/features/messages/MessageThread.tsx": {
     "raw-palette": 7
   },
@@ -388,9 +310,6 @@
   },
   "src/components/modals/AddEmergencyContactModal.tsx": {
     "raw-palette": 10
-  },
-  "src/components/modals/ChasePaymentModal.tsx": {
-    "raw-palette": 5
   },
   "src/components/modals/EditEmergencyContactModal.tsx": {
     "raw-palette": 10

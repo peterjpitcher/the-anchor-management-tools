@@ -2,6 +2,8 @@
 
 import { useState, useRef, useCallback, type FormEvent, type DragEvent } from 'react'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { X } from 'lucide-react'
+import { Alert, Button, Checkbox, Field, IconButton, Input, Textarea } from '@/ds'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -212,32 +214,21 @@ export function ExpenseForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {error && (
-        <div className="rounded-md bg-danger-soft p-4 text-sm text-red-700  ">
-          {error}
-        </div>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       {/* Date + Company */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="expense_date" className="block text-sm font-medium text-text ">
-            Date <span className="text-danger">*</span>
-          </label>
-          <input
+        <Field label="Date" required>
+          <Input
             id="expense_date"
             type="date"
             required
             value={expenseDate}
             onChange={(e) => setExpenseDate(e.target.value)}
-            className="mt-1 block min-h-touch w-full rounded-md border border-border-strong px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:ring-1 focus:ring-blue-500 sm:min-h-0"
           />
-        </div>
-        <div>
-          <label htmlFor="company_ref" className="block text-sm font-medium text-text ">
-            Company / Ref <span className="text-danger">*</span>
-          </label>
-          <input
+        </Field>
+        <Field label="Company / Ref" required>
+          <Input
             id="company_ref"
             type="text"
             required
@@ -245,17 +236,13 @@ export function ExpenseForm({
             value={companyRef}
             onChange={(e) => setCompanyRef(e.target.value)}
             placeholder="e.g. Costco, B&Q"
-            className="mt-1 block min-h-touch w-full rounded-md border border-border-strong px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:ring-1 focus:ring-blue-500 sm:min-h-0"
           />
-        </div>
+        </Field>
       </div>
 
       {/* Justification */}
-      <div>
-        <label htmlFor="justification" className="block text-sm font-medium text-text ">
-          Justification <span className="text-danger">*</span>
-        </label>
-        <input
+      <Field label="Justification" required>
+        <Input
           id="justification"
           type="text"
           required
@@ -263,17 +250,13 @@ export function ExpenseForm({
           value={justification}
           onChange={(e) => setJustification(e.target.value)}
           placeholder="Why was this expense incurred?"
-          className="mt-1 block min-h-touch w-full rounded-md border border-border-strong px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:ring-1 focus:ring-blue-500 sm:min-h-0"
         />
-      </div>
+      </Field>
 
       {/* Amount + VAT */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div>
-          <label htmlFor="amount" className="block text-sm font-medium text-text ">
-            Amount (£) <span className="text-danger">*</span>
-          </label>
-          <input
+        <Field label="Amount (£)" required>
+          <Input
             id="amount"
             type="number"
             required
@@ -282,29 +265,21 @@ export function ExpenseForm({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
-            className="mt-1 block min-h-touch w-full rounded-md border border-border-strong px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:ring-1 focus:ring-blue-500 sm:min-h-0"
+          />
+        </Field>
+        <div className="flex items-end pb-2">
+          <Checkbox
+            label="VAT Applicable"
+            checked={vatApplicable}
+            onChange={(checked) => {
+              setVatApplicable(checked)
+              if (!checked) setVatAmount('0')
+            }}
           />
         </div>
-        <div className="flex items-end pb-2">
-          <label className="flex items-center gap-2 text-sm font-medium text-text ">
-            <input
-              type="checkbox"
-              checked={vatApplicable}
-              onChange={(e) => {
-                setVatApplicable(e.target.checked)
-                if (!e.target.checked) setVatAmount('0')
-              }}
-              className="h-4 w-4 rounded-sm border-border-strong text-blue-600 focus:ring-blue-500"
-            />
-            VAT Applicable
-          </label>
-        </div>
         {vatApplicable && (
-          <div>
-            <label htmlFor="vat_amount" className="block text-sm font-medium text-text ">
-              VAT Amount (£)
-            </label>
-            <input
+          <Field label="VAT Amount (£)">
+            <Input
               id="vat_amount"
               type="number"
               min="0"
@@ -312,33 +287,28 @@ export function ExpenseForm({
               value={vatAmount}
               onChange={(e) => setVatAmount(e.target.value)}
               placeholder="0.00"
-              className="mt-1 block min-h-touch w-full rounded-md border border-border-strong px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:ring-1 focus:ring-blue-500 sm:min-h-0"
             />
-          </div>
+          </Field>
         )}
       </div>
 
       {/* Notes */}
-      <div>
-        <label htmlFor="notes" className="block text-sm font-medium text-text ">
-          Notes
-        </label>
-        <textarea
+      <Field label="Notes">
+        <Textarea
           id="notes"
           rows={3}
           maxLength={2000}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Optional notes..."
-          className="mt-1 block min-h-touch w-full rounded-md border border-border-strong px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:ring-1 focus:ring-blue-500 sm:min-h-0"
         />
-      </div>
+      </Field>
 
       {/* Receipt upload */}
       <div>
-        <label className="block text-sm font-medium text-text mb-2">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-text-muted">
           Receipt Images
-        </label>
+        </p>
 
         {/* Existing files (edit mode) */}
         {existingFiles.length > 0 && (
@@ -346,7 +316,7 @@ export function ExpenseForm({
             {existingFiles.map((file) => (
               <div
                 key={file.id}
-                className="group relative flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm  "
+                className="group relative flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm"
               >
                 {file.mime_type.startsWith('image/') && file.signed_url ? (
                   <img
@@ -355,37 +325,39 @@ export function ExpenseForm({
                     className="h-10 w-10 rounded-sm object-cover"
                   />
                 ) : (
-                  <span className="flex h-10 w-10 items-center justify-center rounded-sm bg-border text-xs font-medium text-text-muted  ">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-sm bg-border text-xs font-medium text-text-muted">
                     PDF
                   </span>
                 )}
                 <span className="max-w-[120px] truncate">{file.file_name}</span>
                 {onDeleteFile && (
-                  <button
+                  <IconButton
                     type="button"
+                    size="sm"
                     disabled={deletingFileId === file.id}
+                    loading={deletingFileId === file.id}
                     onClick={() => handleDeleteExistingFile(file.id)}
-                    className="ml-1 text-danger hover:text-red-700 disabled:opacity-50"
-                    aria-label={`Delete ${file.file_name}`}
-                  >
-                    {deletingFileId === file.id ? '...' : '\u00d7'}
-                  </button>
+                    label={`Delete ${file.file_name}`}
+                    icon={<X className="h-4 w-4" aria-hidden="true" />}
+                    className="ml-1 text-danger hover:text-danger-fg"
+                  />
                 )}
               </div>
             ))}
           </div>
         )}
 
-        {/* Drop zone */}
+        {/* Drop zone: same look as the DS FileUpload. Kept local because this one reports
+            rejected files and resets the input so the same file can be picked again. */}
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
+          className={`cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
             isDragging
-              ? 'border-blue-400 bg-blue-50  '
-              : 'border-border-strong hover:border-gray-400  '
+              ? 'border-primary bg-primary-soft'
+              : 'border-border hover:border-border-strong'
           }`}
           role="button"
           tabIndex={0}
@@ -396,10 +368,10 @@ export function ExpenseForm({
             }
           }}
         >
-          <p className="text-sm text-text-muted ">
+          <p className="text-sm text-text-muted">
             Drag and drop receipt images here, or click to browse
           </p>
-          <p className="mt-1 text-xs text-gray-400 ">
+          <p className="mt-1 text-xs text-text-soft">
             JPEG, PNG, WebP, HEIC, PDF — max {MAX_FILE_SIZE_MB}MB each
           </p>
           <input
@@ -423,42 +395,33 @@ export function ExpenseForm({
             {pendingFiles.map((file, idx) => (
               <div
                 key={`${file.name}-${idx}`}
-                className="flex items-center justify-between rounded-md bg-surface-2 px-3 py-2 text-sm "
+                className="flex items-center justify-between rounded-md bg-surface-2 px-3 py-2 text-sm"
               >
                 <span className="truncate">{file.name}</span>
-                <button
+                <IconButton
                   type="button"
+                  size="sm"
                   onClick={() => removePendingFile(idx)}
-                  className="ml-2 text-danger hover:text-red-700"
-                  aria-label={`Remove ${file.name}`}
-                >
-                  {'\u00d7'}
-                </button>
+                  label={`Remove ${file.name}`}
+                  icon={<X className="h-4 w-4" aria-hidden="true" />}
+                  className="ml-2 text-danger hover:text-danger-fg"
+                />
               </div>
             ))}
           </div>
         )}
 
         {fileError && (
-          <p className="mt-2 text-sm text-danger ">{fileError}</p>
+          <p className="mt-2 text-sm text-danger">{fileError}</p>
         )}
       </div>
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-3 border-t border-border pt-4 ">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isLoading}
-          className="rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-50   "
-        >
+      <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={isLoading}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
+        </Button>
+        <Button type="submit" variant="primary" disabled={isLoading}>
           {isLoading
             ? uploading
               ? 'Uploading files...'
@@ -466,7 +429,7 @@ export function ExpenseForm({
             : isEditing
               ? 'Update Expense'
               : 'Create Expense'}
-        </button>
+        </Button>
       </div>
     </form>
   )
