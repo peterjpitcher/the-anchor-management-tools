@@ -7,7 +7,7 @@ import type { CalendarEntry, ScheduleDailyOps } from './types'
 import type { ReactNode } from 'react'
 import { compareEntries } from './sort'
 import { CONTENT_GAP_LABELS, entryGaps } from './filters'
-import { calendarColourNeedsLightText } from './appearance'
+import { CALENDAR_BLACK, CALENDAR_WHITE, calendarColourNeedsLightText } from './appearance'
 import { CalendarKindBadge } from './CalendarKindBadge'
 import { CalendarEntryTooltip } from './CalendarEntryTooltip'
 import { entryTooltipText } from './tooltip-text'
@@ -82,7 +82,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                         key={group.date.toISOString()}
                         className={cn(
                             'rounded-md border overflow-hidden bg-surface shadow-sm',
-                            isTodayGroup ? 'border-gray-950' : 'border-border'
+                            isTodayGroup ? 'border-primary' : 'border-border'
                         )}
                     >
                         <h2
@@ -94,7 +94,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                 // 56px into the card and bisected the first event row.
                                 'text-sm font-semibold px-3 py-2 border-b',
                                 isTodayGroup
-                                    ? 'border-gray-950 bg-gray-950 text-white'
+                                    ? 'border-primary bg-primary text-primary-fg'
                                     : 'bg-surface-hover text-text border-border'
                             )}
                         >
@@ -126,7 +126,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                     const isPastEntry = isPast(entry.end) && !isTodayGroup
                                     const isCancelled = entry.status === 'cancelled'
                                     const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
-                                    const secondaryTextClass = lightText ? 'text-white/80' : 'text-black/70'
+                                    const secondaryTextClass = lightText ? 'text-on-dark-muted' : 'text-black/70'
                                     const details = (
                                         <>
                                             <div
@@ -170,9 +170,9 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                                 isPastEntry && 'opacity-70'
                                             )}
                                             style={{
-                                                borderColor: isCancelled ? '#111827' : entry.color,
-                                                backgroundColor: isCancelled ? '#FFFFFF' : entry.color,
-                                                color: lightText ? '#FFFFFF' : '#111827',
+                                                borderColor: isCancelled ? CALENDAR_BLACK : entry.color,
+                                                backgroundColor: isCancelled ? CALENDAR_WHITE : entry.color,
+                                                color: lightText ? CALENDAR_WHITE : CALENDAR_BLACK,
                                             }}
                                         >
                                             <div className="flex w-20 shrink-0 flex-col items-start gap-1 pt-0.5">
@@ -192,7 +192,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                                         ev.preventDefault()
                                                         onEntryClick(entry)
                                                     }}
-                                                    className="block flex-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-1"
+                                                    className="block flex-1 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-1"
                                                     title={entryTooltipText(entry)}
                                                 >
                                                     {details}
@@ -204,7 +204,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                                 <button
                                                     type="button"
                                                     onClick={() => onEntryClick(entry)}
-                                                    className="block min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-1"
+                                                    className="block min-w-0 flex-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-1"
                                                     title={entryTooltipText(entry)}
                                                 >
                                                     {details}
@@ -218,7 +218,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                                 <span
                                                     className={cn(
                                                         'rounded-sm px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide',
-                                                        lightText ? 'bg-surface/20 text-white' : 'bg-black/10 text-text-strong'
+                                                        lightText ? 'bg-on-dark-active text-on-dark' : 'bg-black/10 text-text-strong'
                                                     )}
                                                 >
                                                     {entry.statusLabel}

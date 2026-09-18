@@ -27,7 +27,7 @@ import type {
   ScheduleCalendarView,
   ScheduleDailyOps,
 } from './types'
-import { CALENDAR_COLOUR_OPTIONS, kindColor } from './appearance'
+import { CALENDAR_COLOUR_OPTIONS, DEFAULT_CALENDAR_NOTE_COLOUR } from './appearance'
 import { entryGaps, type CalendarContentGap } from './filters'
 import {
   CAL_MONTH_PARAM,
@@ -551,7 +551,7 @@ export function VenueCalendar({
       end_date: iso,
       title: '',
       notes: '',
-      color: kindColor('calendar_note'),
+      color: DEFAULT_CALENDAR_NOTE_COLOUR,
       original: null,
     })
   }
@@ -567,7 +567,7 @@ export function VenueCalendar({
       notes: note.notes ?? '',
       // Keep whatever colour is stored, including values outside the palette.
       // Forcing a palette choice would silently recolour older notes.
-      color: note.color || kindColor('calendar_note'),
+      color: note.color || DEFAULT_CALENDAR_NOTE_COLOUR,
       original: note,
     })
   }
@@ -850,13 +850,14 @@ export function VenueCalendar({
                       onClick={() => setNoteEditor((f) => (f ? { ...f, color: option.value } : f))}
                       className={cn(
                         'flex min-h-11 items-center gap-2 rounded-md border px-2.5 py-2 text-left text-xs font-medium transition-colors',
+                        'focus-visible:outline-hidden focus-visible:shadow-ring',
                         selected
-                          ? 'border-gray-950 bg-surface-hover text-text-strong ring-2 ring-gray-950 ring-offset-1'
+                          ? 'border-primary bg-primary-soft text-text-strong ring-2 ring-primary ring-offset-1'
                           : 'border-border-strong bg-surface text-text hover:bg-surface-hover',
                       )}
                     >
                       <span
-                        className="h-5 w-5 shrink-0 rounded-sm border border-black/20"
+                        className="h-5 w-5 shrink-0 rounded-sm border border-border-strong"
                         style={{ backgroundColor: option.value }}
                         aria-hidden="true"
                       />
@@ -884,7 +885,7 @@ export function VenueCalendar({
             </FormGroup>
 
             {confirmingDelete && (
-              <div className="rounded-md border border-red-300 bg-danger-soft p-3 text-xs text-danger-fg">
+              <div className="rounded-md border border-danger-border bg-danger-soft p-3 text-xs text-danger-fg">
                 <p className="font-medium">Delete this note permanently?</p>
                 <p className="mt-1">
                   This cannot be undone, and it also removes the entry from the shared Pub Ops
@@ -918,7 +919,7 @@ export function VenueCalendar({
                 <Button
                   variant="ghost"
                   type="button"
-                  className="mr-auto text-red-700"
+                  className="mr-auto text-danger-fg"
                   onClick={() => setConfirmingDelete(true)}
                   disabled={isSavingNote || isDeletingNote}
                 >

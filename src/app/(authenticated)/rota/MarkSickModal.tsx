@@ -2,8 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
-import { XMarkIcon } from '@heroicons/react/24/outline';
-import { Alert, Button, FormGroup } from '@/ds';
+import { Alert, Button, FormGroup, Modal, Textarea } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { markEmployeeCouldntWork, markShiftSick } from '@/app/actions/rota';
 import type { RotaShift } from '@/app/actions/rota';
@@ -69,59 +68,48 @@ export default function MarkSickModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl bg-surface shadow-lg"
-        onClick={event => event.stopPropagation()}
-      >
-        <div className="flex items-start justify-between border-b border-border p-5">
-          <div>
-            <h2 className="text-lg font-semibold text-text-strong">Mark as Couldn&apos;t Work</h2>
-            <p className="text-sm text-text-muted">{formatDate(shift?.shift_date ?? shiftDate ?? '')}</p>
-            <p className="mt-0.5 text-sm font-medium text-text-strong">{employeeName}</p>
-            {shift ? (
-              <p className="mt-1 text-sm text-text-muted">
-                {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
-              </p>
-            ) : (
-              <p className="mt-1 text-sm text-text-muted">No shift scheduled</p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-sm p-1 text-text-subtle hover:text-text-muted"
-            aria-label="Close"
-          >
-            <XMarkIcon className="h-5 w-5" />
-          </button>
+    <Modal
+      open
+      onClose={onClose}
+      title="Mark as Couldn't Work"
+      width="md"
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
+            {isPending ? 'Saving...' : "Mark Couldn't Work"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <p className="text-sm text-text-muted">{formatDate(shift?.shift_date ?? shiftDate ?? '')}</p>
+          <p className="mt-0.5 text-sm font-medium text-text-strong">{employeeName}</p>
+          {shift ? (
+            <p className="mt-1 text-sm text-text-muted">
+              {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-text-muted">No shift scheduled</p>
+          )}
         </div>
 
-        <div className="space-y-4 p-5">
-          {error && <Alert variant="error">{error}</Alert>}
+        {error && <Alert variant="error">{error}</Alert>}
 
-          <FormGroup label="Reason" htmlFor="sick-reason" required>
-            <textarea
-              id="sick-reason"
-              value={reason}
-              onChange={event => setReason(event.target.value)}
-              maxLength={500}
-              rows={4}
-              className="w-full rounded-default border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition-[border-color,box-shadow] focus:border-border-focus focus:shadow-ring"
-              placeholder="e.g. Unable to work, flu symptoms"
-            />
-          </FormGroup>
-
-          <div className="flex gap-2 pt-1">
-            <Button type="button" onClick={handleSubmit} disabled={isPending}>
-              {isPending ? 'Saving...' : "Mark Couldn't Work"}
-            </Button>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={isPending}>
-              Cancel
-            </Button>
-          </div>
-        </div>
+        <FormGroup label="Reason" htmlFor="sick-reason" required>
+          <Textarea
+            id="sick-reason"
+            value={reason}
+            onChange={event => setReason(event.target.value)}
+            maxLength={500}
+            rows={4}
+            placeholder="e.g. Unable to work, flu symptoms"
+          />
+        </FormGroup>
       </div>
-    </div>
+    </Modal>
   );
 }

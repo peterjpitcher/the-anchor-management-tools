@@ -2,14 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
-import { XMarkIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/ds';
+import { Alert, Badge, Button, Checkbox, FormGroup, Input, Modal, Select } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
-import { Input } from '@/ds';
-import { Select } from '@/ds';
-import { FormGroup } from '@/ds';
-import { Badge } from '@/ds';
-import { Alert } from '@/ds';
 import { updateShift, deleteShift } from '@/app/actions/rota';
 import type { RotaShift, RotaEmployee, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';
@@ -17,6 +11,7 @@ import MarkSickModal from './MarkSickModal';
 import { PremiumControl, usePremiumControl } from './CreateShiftModal';
 import { displayName } from '@/lib/employees/display-name';
 import { calculatePaidHours } from '@/lib/rota/pay-math';
+import { ROTA_SHIFT_STATUS_CLASSES, rotaDepartmentClasses, rotaShiftStatusClasses } from '@/lib/rota/status-ui';
 
 interface ShiftDetailModalProps {
   shift: RotaShift;
@@ -62,12 +57,6 @@ function describePremium(shift: RotaShift): string | null {
   return label;
 }
 
-const DEPT_BADGE: Record<string, 'info' | 'warning'> = { bar: 'info', kitchen: 'warning' };
-const STATUS_BADGE: Record<string, 'success' | 'error' | 'default'> = {
-  scheduled: 'success',
-  sick: 'error',
-  cancelled: 'default',
-};
 const STATUS_LABEL: Record<string, string> = {
   scheduled: 'Scheduled',
   sick: "Couldn't Work",
@@ -147,11 +136,9 @@ function auditLines(entry: ShiftAuditTrailEntry, valueLabels: Record<string, str
   });
 }
 
-function acceptanceBadgeVariant(status: RotaShift['acceptance_status']): 'success' | 'warning' | 'error' | 'default' {
-  if (status === 'pending') return 'warning';
-  if (status === 'rejected') return 'error';
-  if (status === 'accepted' || status === 'auto_accepted') return 'success';
-  return 'default';
+/** Badge colours from the shared rota map. A shift with no acceptance status keeps the neutral badge. */
+function acceptanceBadgeClasses(status: RotaShift['acceptance_status']): string | undefined {
+  return status ? rotaShiftStatusClasses(status) : undefined;
 }
 
 export default function ShiftDetailModal({
@@ -246,292 +233,277 @@ export default function ShiftDetailModal({
   };
 
   return (
-    <>
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div
-        className="bg-surface rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between p-5 border-b border-border">
-          <div>
-            <p className="text-sm text-text-muted">{formatDate(shift.shift_date)}</p>
-            <p className="text-lg font-semibold text-text-strong mt-0.5">{empName}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 text-text-subtle hover:text-text-muted rounded-sm"
-          >
-            <XMarkIcon className="h-5 w-5" />
-          </button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title={empName}
+      width="md"
+      footer={
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-text-muted">{formatDate(shift.shift_date)}</p>
+        {!editing ? (
+          /* Read view */
+          <>
+            <div className="flex flex-wrap gap-2">
+              <Badge size="sm" className={rotaDepartmentClasses(shift.department)}>
+                {shift.department}
+              </Badge>
+              <Badge size="sm" className={rotaShiftStatusClasses(shift.status)}>
+                {STATUS_LABEL[shift.status] ?? shift.status}
+              </Badge>
+              <Badge size="sm" className={acceptanceBadgeClasses(shift.acceptance_status)}>
+                {acceptanceStatus}
+              </Badge>
+            </div>
 
-        <div className="p-5 space-y-4">
-          {!editing ? (
-            /* Read view */
-            <>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant={DEPT_BADGE[shift.department] ?? 'default'} size="sm">
-                  {shift.department}
-                </Badge>
-                <Badge variant={STATUS_BADGE[shift.status] ?? 'default'} size="sm">
-                  {STATUS_LABEL[shift.status] ?? shift.status}
-                </Badge>
-                <Badge variant={acceptanceBadgeVariant(shift.acceptance_status)} size="sm">
-                  {acceptanceStatus}
-                </Badge>
-              </div>
-
-              <dl className="space-y-2">
-                {shift.name && (
-                  <div className="flex justify-between text-sm">
-                    <dt className="text-text-muted">Shift label</dt>
-                    <dd className="max-w-[260px] text-right font-medium text-text-strong">{shift.name}</dd>
-                  </div>
-                )}
-                {!isCouldntWork && (
-                  <>
-                    <div className="flex justify-between text-sm">
-                      <dt className="text-text-muted">Time</dt>
-                      <dd className="text-text-strong font-medium">{formatTime12Hour(shift.start_time)} – {formatTime12Hour(shift.end_time)}{shift.is_overnight ? ' (+1)' : ''}</dd>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <dt className="text-text-muted">Break</dt>
-                      <dd className="text-text-strong">{shift.unpaid_break_minutes} min</dd>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <dt className="text-text-muted">Paid hours</dt>
-                      <dd className="text-text-strong font-medium">{paidH.toFixed(1)}h</dd>
-                    </div>
-                    {premiumSummary && (
-                      <div className="flex justify-between text-sm">
-                        <dt className="text-text-muted">Premium</dt>
-                        <dd className="text-text-strong text-right max-w-[260px]">{premiumSummary}</dd>
-                      </div>
-                    )}
-                  </>
-                )}
+            <dl className="space-y-2">
+              {shift.name && (
                 <div className="flex justify-between text-sm">
-                  <dt className="text-text-muted">Acceptance</dt>
-                  <dd className="text-text-strong text-right max-w-[260px]">
-                    <span className="font-medium">{acceptanceStatus}</span>
-                    {acceptanceDetail && <span className="block text-xs text-text-muted">{acceptanceDetail}</span>}
-                    {shift.auto_accept_reason && <span className="block text-xs text-text-muted">{shift.auto_accept_reason}</span>}
-                  </dd>
-                </div>
-                {shift.notes && (
-                  <div className="flex justify-between text-sm">
-                    <dt className="text-text-muted">Notes</dt>
-                    <dd className="text-text-strong text-right max-w-[240px]">{shift.notes}</dd>
-                  </div>
-                )}
-                {shift.status === 'sick' && shift.sick_reason && (
-                  <div className="flex justify-between text-sm">
-                    <dt className="text-text-muted">Couldn&apos;t Work reason</dt>
-                    <dd className="text-text-strong text-right max-w-[240px]">{shift.sick_reason}</dd>
-                  </div>
-                )}
-              </dl>
-
-              {shift.is_open_shift && (
-                <div className="rounded-lg border border-warning/25 bg-warning-soft p-3">
-                  <p className="text-sm font-semibold text-warning-fg">Open shift requests</p>
-                  {openShiftRequests.length === 0 ? (
-                    <p className="mt-1 text-xs text-warning-fg">No requests yet.</p>
-                  ) : (
-                    <div className="mt-2 space-y-2">
-                      {openShiftRequests.map(request => (
-                        <div key={request.id} className="rounded-md bg-surface/70 px-3 py-2 text-xs text-warning-fg">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium">{request.employee_name}</span>
-                            <span className="capitalize text-warning-fg">{request.status}</span>
-                          </div>
-                          {request.note && <p className="mt-1 text-warning-fg">{request.note}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <dt className="text-text-muted">Shift label</dt>
+                  <dd className="max-w-[260px] text-right font-medium text-text-strong">{shift.name}</dd>
                 </div>
               )}
+              {!isCouldntWork && (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <dt className="text-text-muted">Time</dt>
+                    <dd className="text-text-strong font-medium">{formatTime12Hour(shift.start_time)} – {formatTime12Hour(shift.end_time)}{shift.is_overnight ? ' (+1)' : ''}</dd>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <dt className="text-text-muted">Break</dt>
+                    <dd className="text-text-strong">{shift.unpaid_break_minutes} min</dd>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <dt className="text-text-muted">Paid hours</dt>
+                    <dd className="text-text-strong font-medium">{paidH.toFixed(1)}h</dd>
+                  </div>
+                  {premiumSummary && (
+                    <div className="flex justify-between text-sm">
+                      <dt className="text-text-muted">Premium</dt>
+                      <dd className="text-text-strong text-right max-w-[260px]">{premiumSummary}</dd>
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="flex justify-between text-sm">
+                <dt className="text-text-muted">Acceptance</dt>
+                <dd className="text-text-strong text-right max-w-[260px]">
+                  <span className="font-medium">{acceptanceStatus}</span>
+                  {acceptanceDetail && <span className="block text-xs text-text-muted">{acceptanceDetail}</span>}
+                  {shift.auto_accept_reason && <span className="block text-xs text-text-muted">{shift.auto_accept_reason}</span>}
+                </dd>
+              </div>
+              {shift.notes && (
+                <div className="flex justify-between text-sm">
+                  <dt className="text-text-muted">Notes</dt>
+                  <dd className="text-text-strong text-right max-w-[240px]">{shift.notes}</dd>
+                </div>
+              )}
+              {shift.status === 'sick' && shift.sick_reason && (
+                <div className="flex justify-between text-sm">
+                  <dt className="text-text-muted">Couldn&apos;t Work reason</dt>
+                  <dd className="text-text-strong text-right max-w-[240px]">{shift.sick_reason}</dd>
+                </div>
+              )}
+            </dl>
 
-              {rejectionHistory.length > 0 && (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
-                  <p className="text-sm font-semibold text-rose-950">Rejected shift history</p>
+            {shift.is_open_shift && (
+              <div className="rounded-lg border border-warning-border bg-warning-soft p-3">
+                <p className="text-sm font-semibold text-warning-fg">Open shift requests</p>
+                {openShiftRequests.length === 0 ? (
+                  <p className="mt-1 text-xs text-warning-fg">No requests yet.</p>
+                ) : (
                   <div className="mt-2 space-y-2">
-                    {rejectionHistory.map(rejection => (
-                      <div key={rejection.id} className="rounded-md bg-surface/75 px-3 py-2 text-xs text-rose-950">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-medium">{rejectedEmployeeNames[rejection.employee_id] ?? 'Unknown staff member'}</span>
-                          <span className="text-rose-700">{formatDateTime(rejection.rejected_at)}</span>
+                    {openShiftRequests.map(request => (
+                      <div key={request.id} className="rounded-md bg-surface/70 px-3 py-2 text-xs text-warning-fg">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">{request.employee_name}</span>
+                          <span className="capitalize text-warning-fg">{request.status}</span>
                         </div>
-                        <p className="mt-1 text-rose-800">
-                          {formatTime12Hour(rejection.start_time)} – {formatTime12Hour(rejection.end_time)}
-                          {rejection.is_overnight ? ' (+1)' : ''}
-                          {rejection.department ? ` · ${rejection.department}` : ''}
-                        </p>
-                        {rejection.rejection_note && <p className="mt-1 text-rose-800">{rejection.rejection_note}</p>}
+                        {request.note && <p className="mt-1 text-warning-fg">{request.note}</p>}
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+            )}
+
+            {rejectionHistory.length > 0 && (
+              <div className={`rounded-lg p-3 ${ROTA_SHIFT_STATUS_CLASSES.rejected}`}>
+                <p className="text-sm font-semibold">Rejected shift history</p>
+                <div className="mt-2 space-y-2">
+                  {rejectionHistory.map(rejection => (
+                    <div key={rejection.id} className="rounded-md bg-danger-soft px-3 py-2 text-xs text-danger-fg">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium">{rejectedEmployeeNames[rejection.employee_id] ?? 'Unknown staff member'}</span>
+                        <span>{formatDateTime(rejection.rejected_at)}</span>
+                      </div>
+                      <p className="mt-1">
+                        {formatTime12Hour(rejection.start_time)} – {formatTime12Hour(rejection.end_time)}
+                        {rejection.is_overnight ? ' (+1)' : ''}
+                        {rejection.department ? ` · ${rejection.department}` : ''}
+                      </p>
+                      {rejection.rejection_note && <p className="mt-1">{rejection.rejection_note}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-lg border border-border bg-surface-2 p-3">
+              <p className="text-sm font-semibold text-text-strong">Shift audit trail</p>
+              {auditTrail.length === 0 ? (
+                <p className="mt-1 text-xs text-text-muted">No recorded changes for this shift.</p>
+              ) : (
+                <div className="mt-2 space-y-3">
+                  {auditTrail.map(entry => {
+                    const lines = auditLines(entry, auditValueLabels);
+                    return (
+                      <div key={entry.id} className="border-l-2 border-border-strong pl-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-text-strong">{operationLabel(entry.operation_type)}</p>
+                          <p className="text-xs text-text-muted">{formatDateTime(entry.created_at)}</p>
+                        </div>
+                        <p className="mt-0.5 text-xs text-text-muted">By {entry.user_name || entry.user_email || 'System'}</p>
+                        {lines.length > 0 && (
+                          <ul className="mt-1 space-y-0.5 text-xs text-text">
+                            {lines.map(line => <li key={line}>{line}</li>)}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
+            </div>
 
-              <div className="rounded-lg border border-border bg-surface-2 p-3">
-                <p className="text-sm font-semibold text-text-strong">Shift audit trail</p>
-                {auditTrail.length === 0 ? (
-                  <p className="mt-1 text-xs text-text-muted">No recorded changes for this shift.</p>
+            {canEdit && (
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Button type="button" size="sm" onClick={() => setEditing(true)} disabled={isPending}>
+                  Edit
+                </Button>
+                {shift.status === 'scheduled' && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setShowSickModal(true)}
+                    disabled={isPending}
+                  >
+                    Mark Couldn&apos;t Work
+                  </Button>
+                )}
+                {!confirmDelete ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setConfirmDelete(true)}
+                    disabled={isPending}
+                    className="text-danger-fg hover:text-danger-fg hover:bg-danger-soft"
+                  >
+                    Delete
+                  </Button>
                 ) : (
-                  <div className="mt-2 space-y-3">
-                    {auditTrail.map(entry => {
-                      const lines = auditLines(entry, auditValueLabels);
-                      return (
-                        <div key={entry.id} className="border-l-2 border-border-strong pl-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs font-semibold text-text-strong">{operationLabel(entry.operation_type)}</p>
-                            <p className="text-xs text-text-muted">{formatDateTime(entry.created_at)}</p>
-                          </div>
-                          <p className="mt-0.5 text-xs text-text-muted">By {entry.user_name || entry.user_email || 'System'}</p>
-                          {lines.length > 0 && (
-                            <ul className="mt-1 space-y-0.5 text-xs text-text">
-                              {lines.map(line => <li key={line}>{line}</li>)}
-                            </ul>
-                          )}
-                        </div>
-                      );
-                    })}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-danger-fg">Delete this shift?</span>
+                    <Button type="button" size="sm" variant="danger" onClick={handleDelete} disabled={isPending}>
+                      {isPending ? 'Deleting…' : 'Confirm'}
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
+                      Cancel
+                    </Button>
                   </div>
                 )}
               </div>
+            )}
+          </>
+        ) : (
+          /* Edit view */
+          <div className="space-y-3">
+            {error && <Alert variant="error">{error}</Alert>}
 
-              {canEdit && (
-                <div className="flex flex-wrap gap-2 pt-2">
-                  <Button type="button" size="sm" onClick={() => setEditing(true)} disabled={isPending}>
-                    Edit
-                  </Button>
-                  {shift.status === 'scheduled' && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => setShowSickModal(true)}
-                      disabled={isPending}
-                    >
-                      Mark Couldn&apos;t Work
-                    </Button>
-                  )}
-                  {!confirmDelete ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setConfirmDelete(true)}
-                      disabled={isPending}
-                      className="text-danger-fg hover:text-danger-fg hover:bg-danger-soft"
-                    >
-                      Delete
-                    </Button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-danger-fg">Delete this shift?</span>
-                      <Button type="button" size="sm" onClick={handleDelete} disabled={isPending}
-                        className="!bg-danger !text-white hover:!bg-danger">
-                        {isPending ? 'Deleting…' : 'Confirm'}
-                      </Button>
-                      <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            /* Edit view */
-            <div className="space-y-3">
-              {error && <Alert variant="error">{error}</Alert>}
+            <FormGroup label="Shift label (optional)" htmlFor="sd-name">
+              <Input
+                id="sd-name"
+                placeholder='e.g. "Evening Bar"'
+                value={name}
+                onChange={e => setName(e.target.value)}
+              />
+            </FormGroup>
 
-              <FormGroup label="Shift label (optional)" htmlFor="sd-name">
-                <Input
-                  id="sd-name"
-                  placeholder='e.g. "Evening Bar"'
-                  value={name}
-                  onChange={e => setName(e.target.value)}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormGroup label="Start time" htmlFor="sd-start" required>
+                <Input id="sd-start" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
+              </FormGroup>
+              <FormGroup label="End time" htmlFor="sd-end" required>
+                <Input id="sd-end" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+              </FormGroup>
+              <FormGroup label="Break (mins)" htmlFor="sd-break">
+                <Input id="sd-break" type="number" min="0" max="120" value={breakMins} onChange={e => setBreakMins(e.target.value)} />
+              </FormGroup>
+              <FormGroup label="Department" htmlFor="sd-dept">
+                <Select
+                  id="sd-dept"
+                  value={department}
+                  onChange={e => setDepartment(e.target.value)}
+                  options={departments.map(d => ({ value: d.name, label: d.label }))}
                 />
               </FormGroup>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <FormGroup label="Start time" htmlFor="sd-start" required>
-                  <Input id="sd-start" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
-                </FormGroup>
-                <FormGroup label="End time" htmlFor="sd-end" required>
-                  <Input id="sd-end" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
-                </FormGroup>
-                <FormGroup label="Break (mins)" htmlFor="sd-break">
-                  <Input id="sd-break" type="number" min="0" max="120" value={breakMins} onChange={e => setBreakMins(e.target.value)} />
-                </FormGroup>
-                <FormGroup label="Department" htmlFor="sd-dept">
-                  <Select
-                    id="sd-dept"
-                    value={department}
-                    onChange={e => setDepartment(e.target.value)}
-                    options={departments.map(d => ({ value: d.name, label: d.label }))}
-                  />
-                </FormGroup>
-              </div>
-
-              <div className="flex items-center gap-2 text-sm">
-                <input
-                  id="sd-overnight"
-                  type="checkbox"
-                  checked={overnight}
-                  onChange={e => setOvernight(e.target.checked)}
-                  className="rounded-sm border-border-strong text-info-fg"
-                />
-                <label htmlFor="sd-overnight" className="text-text">Overnight shift</label>
-              </div>
-
-              <PremiumControl state={premium} idPrefix="sd" />
-
-              <FormGroup label="Notes (optional)" htmlFor="sd-notes">
-                <Input
-                  id="sd-notes"
-                  placeholder="Optional notes"
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                />
-              </FormGroup>
-
-              {startTime && endTime && (
-                <p className="text-sm text-text-muted">
-                  Paid: <strong>{calculatePaidHours(startTime, endTime, parseInt(breakMins) || 0, overnight).toFixed(1)}h</strong>
-                </p>
-              )}
-
-              <div className="flex gap-2 pt-1">
-                <Button type="button" onClick={handleSaveEdit} disabled={isPending}>
-                  {isPending ? 'Saving…' : 'Save changes'}
-                </Button>
-                <Button type="button" variant="ghost" onClick={() => { setEditing(false); setError(''); }}>
-                  Cancel
-                </Button>
-              </div>
             </div>
-          )}
-        </div>
+
+            <Checkbox
+              id="sd-overnight"
+              label="Overnight shift"
+              checked={overnight}
+              onChange={checked => setOvernight(checked)}
+            />
+
+            <PremiumControl state={premium} idPrefix="sd" />
+
+            <FormGroup label="Notes (optional)" htmlFor="sd-notes">
+              <Input
+                id="sd-notes"
+                placeholder="Optional notes"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+              />
+            </FormGroup>
+
+            {startTime && endTime && (
+              <p className="text-sm text-text-muted">
+                Paid: <strong>{calculatePaidHours(startTime, endTime, parseInt(breakMins) || 0, overnight).toFixed(1)}h</strong>
+              </p>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <Button type="button" variant="primary" onClick={handleSaveEdit} disabled={isPending}>
+                {isPending ? 'Saving…' : 'Save changes'}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => { setEditing(false); setError(''); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
-    {showSickModal && (
-      <MarkSickModal
-        shift={shift}
-        employeeName={empName}
-        onClose={() => setShowSickModal(false)}
-        onMarked={(updated) => {
-          setShift(updated);
-          onUpdated(updated);
-        }}
-      />
-    )}
-    </>
+      {/* Rendered inside this dialog so Headless UI stacks it on top as a nested dialog. */}
+      {showSickModal && (
+        <MarkSickModal
+          shift={shift}
+          employeeName={empName}
+          onClose={() => setShowSickModal(false)}
+          onMarked={(updated) => {
+            setShift(updated);
+            onUpdated(updated);
+          }}
+        />
+      )}
+    </Modal>
   );
 }

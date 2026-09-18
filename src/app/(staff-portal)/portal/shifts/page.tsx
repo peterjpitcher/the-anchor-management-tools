@@ -31,7 +31,8 @@ import {
 } from '@/lib/rota/acceptance-cutoff';
 import { format, parseISO } from 'date-fns';
 import { Badge } from '@/ds';
-import { ROTA_SHIFT_STATUS_CLASSES } from '@/lib/rota/status-ui';
+// Department colours are the rota's own, so staff see the same colours as managers.
+import { ROTA_SHIFT_STATUS_CLASSES, rotaDepartmentClasses } from '@/lib/rota/status-ui';
 import CalendarSubscribeButton from './CalendarSubscribeButton';
 import PaySummaryCard from './PaySummaryCard';
 import type { PeriodSummary } from './PaySummaryCard';
@@ -136,14 +137,6 @@ function dateLabel(iso: string): string {
   if (isToday(iso)) return 'Today';
   if (isTomorrow(iso)) return 'Tomorrow';
   return formatShortDate(iso);
-}
-
-// A department is a category, not a status, so it takes the category tokens: bar is cat-1
-// (sky) and every other department cat-5 (orange), the same split this page has always made.
-function deptBadgeClasses(dept: string): string {
-  return dept === 'bar'
-    ? 'border-cat-1/20 bg-cat-1-soft text-cat-1-fg'
-    : 'border-cat-5/20 bg-cat-5-soft text-cat-5-fg';
 }
 
 function employeeDisplayName(
@@ -766,7 +759,7 @@ export default async function MyShiftsPage({
                             {shift.is_overnight ? ' (+1)' : ''}
                           </p>
                           <div className="flex flex-wrap items-center gap-2 mt-1">
-                            <Badge size="sm" className={isOtherStaffShift ? undefined : deptBadgeClasses(shift.department)}>
+                            <Badge size="sm" className={isOtherStaffShift ? undefined : rotaDepartmentClasses(shift.department)}>
                               {shift.department}
                             </Badge>
                             <span className={`text-xs ${isOtherStaffShift ? 'text-text-soft' : 'text-text-muted'}`}>
@@ -833,7 +826,7 @@ export default async function MyShiftsPage({
                       {shift.is_overnight ? ' (+1)' : ''}
                     </p>
                     <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <Badge size="sm" className={deptBadgeClasses(shift.department)}>
+                      <Badge size="sm" className={rotaDepartmentClasses(shift.department)}>
                         {shift.department}
                       </Badge>
                       <span className="text-xs text-text-muted">{paidHours.toFixed(1)}h paid</span>

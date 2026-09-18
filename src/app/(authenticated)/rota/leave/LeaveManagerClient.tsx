@@ -3,10 +3,7 @@
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { CheckIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/ds';
-import { Badge } from '@/ds';
-import { Input } from '@/ds';
-import { ConfirmDialog } from '@/ds';
+import { Badge, Button, ConfirmDialog, IconButton, Input, ProgressBar } from '@/ds';
 import { deleteLeaveRequest, reviewLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave';
 import type { LeaveRequest } from '@/app/actions/leave';
 
@@ -129,48 +126,48 @@ function LeaveRequestRow({
         <div className="flex flex-wrap items-center justify-end gap-1.5 ml-3 shrink-0">
           {canApprove && request.status === 'pending' && !expanded && (
             <>
-              <button
+              <IconButton
                 type="button"
+                size="sm"
                 onClick={e => { e.stopPropagation(); setConfirmDecision('approved'); }}
                 disabled={isPending}
-                className="p-1 text-success-fg hover:text-success-fg hover:bg-success-soft rounded-sm"
+                className="text-success-fg hover:bg-success-soft"
                 title="Approve"
-                aria-label={`Approve ${empName} holiday request`}
-              >
-                <CheckIcon className="h-4 w-4" />
-              </button>
-              <button
+                label={`Approve ${empName} holiday request`}
+                icon={<CheckIcon className="h-4 w-4" />}
+              />
+              <IconButton
                 type="button"
+                size="sm"
                 onClick={e => { e.stopPropagation(); setConfirmDecision('declined'); }}
                 disabled={isPending}
-                className="p-1 text-danger-fg hover:text-danger-fg hover:bg-danger-soft rounded-sm"
+                className="text-danger-fg hover:bg-danger-soft"
                 title="Decline"
-                aria-label={`Decline ${empName} holiday request`}
-              >
-                <XMarkIcon className="h-4 w-4" />
-              </button>
+                label={`Decline ${empName} holiday request`}
+                icon={<XMarkIcon className="h-4 w-4" />}
+              />
             </>
           )}
           {canEdit && (
             <>
-              <button
+              <IconButton
                 type="button"
+                size="sm"
                 onClick={e => { e.stopPropagation(); setExpanded(true); setIsEditing(true); }}
-                className="p-1 text-text-muted hover:text-text-strong hover:bg-surface-hover rounded-sm"
+                className="text-text-muted hover:text-text-strong"
                 title="Edit dates"
-                aria-label={`Edit ${empName} holiday request`}
-              >
-                <PencilIcon className="h-4 w-4" />
-              </button>
-              <button
+                label={`Edit ${empName} holiday request`}
+                icon={<PencilIcon className="h-4 w-4" />}
+              />
+              <IconButton
                 type="button"
+                size="sm"
                 onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
-                className="p-1 text-danger-fg hover:text-danger-fg hover:bg-danger-soft rounded-sm"
+                className="text-danger-fg hover:bg-danger-soft"
                 title="Delete request"
-                aria-label={`Delete ${empName} holiday request`}
-              >
-                <TrashIcon className="h-4 w-4" />
-              </button>
+                label={`Delete ${empName} holiday request`}
+                icon={<TrashIcon className="h-4 w-4" />}
+              />
             </>
           )}
           {expanded ? (
@@ -199,12 +196,11 @@ function LeaveRequestRow({
                 </dt>
                 <dd>
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-surface-hover rounded-full h-1.5">
-                      <div
-                        className={`h-1.5 rounded-full ${usageProgress.isOverAllowance ? 'bg-danger' : 'bg-success'}`}
-                        style={{ width: `${usageProgress.percent}%` }}
-                      />
-                    </div>
+                    <ProgressBar
+                      value={usageProgress.percent}
+                      tone={usageProgress.isOverAllowance ? 'danger' : 'success'}
+                      className="flex-1"
+                    />
                     <span className={`text-xs font-medium ${usageProgress.isOverAllowance ? 'text-danger-fg' : 'text-text'}`}>
                       {usageProgress.count} / {usageProgress.allowance} days
                     </span>
@@ -237,6 +233,7 @@ function LeaveRequestRow({
                 <Button
                   type="button"
                   size="sm"
+                  variant="primary"
                   onClick={() => setConfirmDecision('approved')}
                   disabled={isPending}
                 >
@@ -248,7 +245,7 @@ function LeaveRequestRow({
                   variant="secondary"
                   onClick={() => setConfirmDecision('declined')}
                   disabled={isPending}
-                  className="!text-danger-fg !border-danger/25 hover:!bg-danger-soft"
+                  className="text-danger-fg border-danger-border hover:bg-danger-soft"
                 >
                   Decline
                 </Button>
@@ -289,7 +286,7 @@ function LeaveRequestRow({
                   </div>
                   {editError && <p role="alert" className="text-xs text-danger-fg">{editError}</p>}
                   <div className="flex gap-2">
-                    <Button type="button" size="sm" onClick={handleSaveDates} disabled={isPending}>
+                    <Button type="button" size="sm" variant="primary" onClick={handleSaveDates} disabled={isPending}>
                       {isPending ? 'Saving…' : 'Save dates'}
                     </Button>
                     <Button
@@ -393,7 +390,7 @@ export default function LeaveManagerClient({
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-text-subtle italic py-6 text-center">
+        <p className="text-sm text-text-soft italic py-6 text-center">
           No {filter === 'all' ? '' : filter} requests.
         </p>
       ) : (

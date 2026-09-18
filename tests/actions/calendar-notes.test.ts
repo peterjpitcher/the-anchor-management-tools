@@ -48,6 +48,7 @@ import {
   deleteCalendarNote,
   updateCalendarNote,
 } from '@/app/actions/calendar-notes'
+import { DEFAULT_CALENDAR_NOTE_COLOUR } from '@/lib/rota/shift-template-colours'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
@@ -197,5 +198,35 @@ describe('calendar note Google sync hooks', () => {
     })
     expect(admin.from).toHaveBeenCalledTimes(1)
     expect(mockedProcessSync).not.toHaveBeenCalled()
+  })
+})
+
+describe('calendar note colour', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedPermission.mockResolvedValue(true)
+    mockedQueueReady.mockResolvedValue(true)
+    mockedCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: 'user-1', email: 'staff@example.com' } },
+          error: null,
+        }),
+      },
+    })
+  })
+
+  it('gives a new note with no colour the first palette colour, the default every calendar screen uses', async () => {
+    const insert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: baseRow, error: null }),
+      }),
+    })
+    mockedCreateAdminClient.mockReturnValue({ from: vi.fn().mockReturnValue({ insert }) })
+
+    await createCalendarNote({ note_date: baseRow.note_date, title: baseRow.title })
+
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ color: DEFAULT_CALENDAR_NOTE_COLOUR }))
+    expect(DEFAULT_CALENDAR_NOTE_COLOUR).toBe('#7DD3FC')
   })
 })

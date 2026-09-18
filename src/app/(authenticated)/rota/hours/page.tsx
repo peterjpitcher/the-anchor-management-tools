@@ -16,6 +16,7 @@ import {
 } from '@/lib/rota/hours-report';
 import { loadHoursReportData, type EmployeeRow } from '@/lib/rota/hours-report-data';
 import { displayName } from '@/lib/employees/display-name';
+import { ROTA_HOURS_SERIES_COLOURS } from '@/lib/rota/status-ui';
 import { PageLayout } from '@/ds';
 import { rotaNavItems } from '../nav';
 import HoursByEmployeeClient, {
@@ -31,17 +32,10 @@ import HoursByEmployeeClient, {
 export const dynamic = 'force-dynamic';
 
 const TIMEZONE = 'Europe/London';
-const COLOURS = [
-  'var(--color-primary)',
-  'var(--color-success)',
-  '#7c3aed',
-  '#0f766e',
-  '#be123c',
-  '#9333ea',
-  '#0f766e',
-  '#be185d',
-  '#6d28d9',
-];
+// One line colour per employee: the six chart tokens, then the category colours they do not
+// already use, so up to nine people get distinct lines (the old list repeated one teal). The list
+// lives in the shared rota map so the printed report gives each person the same colour.
+const COLOURS = ROTA_HOURS_SERIES_COLOURS.map(colour => colour.css);
 
 interface HoursPageProps {
   searchParams: Promise<{

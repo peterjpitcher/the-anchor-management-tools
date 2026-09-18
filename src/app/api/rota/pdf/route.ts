@@ -7,11 +7,21 @@ import {
   getLeaveDaysForWeek,
 } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/app/actions/rota';
+import { getShiftTemplates } from '@/app/actions/rota-templates';
+import type { ShiftTemplate } from '@/app/actions/rota-templates';
 import { generatePDFFromHTML } from '@/lib/pdf-generator';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { displayName } from '@/lib/employees/display-name';
 import { calculatePaidHours } from '@/lib/rota/pay-math';
 import { countsTowardHours } from '@/lib/rota/shift-counting';
+import {
+  SHIFT_TEMPLATE_COLOURS,
+  getShiftColourLabel,
+  resolveShiftColour,
+  shiftColourNeedsLightText,
+} from '@/lib/rota/shift-template-colours';
+import { CATEGORY, STAFF } from '@/lib/brand/palette';
+import { rotaDepartmentCategory } from '@/lib/rota/status-ui';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 
 // ---------------------------------------------------------------------------
@@ -78,6 +88,73 @@ function empWeekHours(employeeId: string, shifts: RotaShift[]): number {
     .reduce((sum, s) => sum + shiftPaidHours(s), 0);
 }
 
+// Names come from staff records and settings, so they are escaped before they go into the page
+// the PDF renderer loads.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// The shift's department, capitalised as payroll shows it. Every department that was not bar
+// used to print as "Kitchen", runners and hosts included.
+function departmentLabel(department: string): string {
+  const name = department.trim().replace(/[_-]+/g, ' ');
+  return escapeHtml(name.charAt(0).toUpperCase() + name.slice(1));
+}
+
+// ---------------------------------------------------------------------------
+// Colours. A shift takes the colour /rota draws it in.
+// ---------------------------------------------------------------------------
+
+type ChipColours = { bg: string; border: string; fg: string };
+
+/** White ink on the dark shift colours, as /rota draws it. */
+const ON_DARK_TEXT = STAFF.primaryFg;
+
+const SICK_CHIP: ChipColours = { bg: STAFF.dangerSoft, border: STAFF.dangerBorder, fg: STAFF.dangerFg };
+
+/** The name /rota and its legend give a sick shift. The print said "Sick" until 18 Sep 2026. */
+const COULDNT_WORK_LABEL = "Couldn't Work";
+
+/** 20% opacity as the last two digits of a hex colour (0x33 is 51, a fifth of 255). */
+const ALPHA_20 = '33';
+
+// A department's own look, the same as rotaDepartmentClasses gives it on /rota: its category's
+// soft background, dark text and a border of the category colour at 20% (border-cat-N/20), or the
+// neutral chip for a department with no category.
+function departmentChipColours(department: string): ChipColours {
+  const category = rotaDepartmentCategory(department);
+  if (!category) return { bg: STAFF.surface2, border: STAFF.border, fg: STAFF.textMuted };
+  const { base, soft, fg } = CATEGORY[category - 1];
+  return { bg: soft, border: `${base}${ALPHA_20}`, fg };
+}
+
+// The same choices as the shift blocks on /rota: the template or automatic colour, white text on
+// the dark ones and a strong edge on white; a Couldn't Work shift in danger; and the department
+// look when neither the template nor the role and start time give a colour. Each chip carries a
+// 1px border, paid for with 1px less padding, so the white shifts show on white paper and the
+// cell sizes do not change.
+function shiftChipColours(shift: RotaShift, templateById: Map<string, ShiftTemplate>): ChipColours {
+  if (shift.status === 'sick') return SICK_CHIP;
+  const colour = resolveShiftColour(shift, shift.template_id ? templateById.get(shift.template_id) : null);
+  if (!colour) return departmentChipColours(shift.department);
+  return {
+    bg: colour,
+    border: getShiftColourLabel(colour) === 'White' ? STAFF.borderStrong : colour,
+    fg: shiftColourNeedsLightText(colour) ? ON_DARK_TEXT : STAFF.text,
+  };
+}
+
+function leaveChipColours(status: LeaveDayWithRequest['status']): ChipColours {
+  return status === 'approved'
+    ? { bg: STAFF.successSoft, border: STAFF.successBorder, fg: STAFF.successFg }
+    : { bg: STAFF.warningSoft, border: STAFF.warningBorder, fg: STAFF.warningFg };
+}
+
 // ---------------------------------------------------------------------------
 // HTML generation
 // ---------------------------------------------------------------------------
@@ -88,36 +165,37 @@ function buildShiftCell(
   employeeId: string,
   date: string,
   fs: number,
+  templateById: Map<string, ShiftTemplate>,
 ): string {
   const cellShifts = shifts.filter(
     s => s.employee_id === employeeId && s.shift_date === date && s.status !== 'cancelled'
   );
   const cellLeave = leaveDays.find(l => l.employee_id === employeeId && l.leave_date === date);
 
-  const leaveHtml = cellLeave
-    ? `<div style="text-align:center;border-radius:3px;font-size:${fs - 1}px;padding:1px 3px;margin-bottom:2px;font-weight:600;
-        background:${cellLeave.status === 'approved' ? '#dcfce7' : '#fef9c3'};
-        color:${cellLeave.status === 'approved' ? '#166534' : '#854d0e'}">
+  let leaveHtml = '';
+  if (cellLeave) {
+    const leave = leaveChipColours(cellLeave.status);
+    leaveHtml = `<div style="text-align:center;border-radius:3px;font-size:${fs - 1}px;padding:0 2px;border:1px solid ${leave.border};margin-bottom:2px;font-weight:600;
+        background:${leave.bg};
+        color:${leave.fg}">
         ${cellLeave.status === 'approved' ? 'Holiday' : 'Holiday&nbsp;(P)'}
-      </div>`
-    : '';
+      </div>`;
+  }
 
   const shiftsHtml = cellShifts.map(shift => {
     const isSick = shift.status === 'sick';
-    const isBar = shift.department === 'bar';
-    const bg = isSick ? '#fee2e2' : isBar ? '#dbeafe' : '#ffedd5';
-    const fg = isSick ? '#991b1b' : isBar ? '#1e40af' : '#9a3412';
+    const chip = shiftChipColours(shift, templateById);
     const nameHtml = shift.name
-      ? `<div style="font-size:${fs - 1}px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${shift.name}</div>`
+      ? `<div style="font-size:${fs - 1}px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(shift.name)}</div>`
       : '';
-    return `<div style="background:${bg};color:${fg};border-radius:3px;padding:2px 4px;margin-bottom:2px;font-size:${fs}px">
+    return `<div style="background:${chip.bg};color:${chip.fg};border:1px solid ${chip.border};border-radius:3px;padding:1px 3px;margin-bottom:2px;font-size:${fs}px">
       ${nameHtml}
       <div style="font-weight:600">${formatTime(shift.start_time)}–${formatTime(shift.end_time)}</div>
-      <div style="font-size:${fs - 1}px;opacity:0.85">${isSick ? 'Sick' : isBar ? 'Bar' : 'Kitchen'}${shiftHoursSuffix(shift)}</div>
+      <div style="font-size:${fs - 1}px;opacity:0.85">${isSick ? COULDNT_WORK_LABEL : departmentLabel(shift.department)}${shiftHoursSuffix(shift)}</div>
     </div>`;
   }).join('');
 
-  return `<td style="padding:3px 4px;border:1px solid #d1d5db;vertical-align:top">${leaveHtml}${shiftsHtml}</td>`;
+  return `<td style="padding:3px 4px;border:1px solid ${STAFF.borderStrong};vertical-align:top">${leaveHtml}${shiftsHtml}</td>`;
 }
 
 function buildRotaHTML(
@@ -127,7 +205,9 @@ function buildRotaHTML(
   leaveDays: LeaveDayWithRequest[],
   days: string[],
   generatedAt: string,
+  templates: ShiftTemplate[],
 ): string {
+  const templateById = new Map(templates.map(template => [template.id, template]));
   const openShifts = shifts.filter(s => s.is_open_shift || !s.employee_id);
 
   // Scale font sizes down when there are many employees so everything fits
@@ -137,22 +217,22 @@ function buildRotaHTML(
 
   const dayHeaders = days.map(d => {
     const { weekday, date } = formatDayHeader(d);
-    return `<th style="padding:4px 4px;border:1px solid #d1d5db;text-align:center;font-weight:600;color:#374151;font-size:${headerFontSize}px">
+    return `<th style="padding:4px 4px;border:1px solid ${STAFF.borderStrong};text-align:center;font-weight:600;color:${STAFF.text};font-size:${headerFontSize}px">
       <div>${weekday}</div>
-      <div style="font-weight:400;color:#6b7280;font-size:${headerFontSize - 1}px">${date}</div>
+      <div style="font-weight:400;color:${STAFF.textMuted};font-size:${headerFontSize - 1}px">${date}</div>
     </th>`;
   }).join('');
 
   const employeeRows = employees.map(emp => {
     const totalHrs = empWeekHours(emp.employee_id, shifts);
-    const cells = days.map(d => buildShiftCell(shifts, leaveDays, emp.employee_id, d, baseFontSize)).join('');
+    const cells = days.map(d => buildShiftCell(shifts, leaveDays, emp.employee_id, d, baseFontSize, templateById)).join('');
     return `<tr>
-      <td style="padding:4px 6px;border:1px solid #d1d5db;font-weight:600;font-size:${headerFontSize}px;vertical-align:top;word-break:break-word">
-        ${empDisplayName(emp)}
-        ${emp.job_title ? `<div style="font-weight:400;color:#6b7280;font-size:${headerFontSize - 1}px">${emp.job_title}</div>` : ''}
+      <td style="padding:4px 6px;border:1px solid ${STAFF.borderStrong};font-weight:600;font-size:${headerFontSize}px;vertical-align:top;word-break:break-word">
+        ${escapeHtml(empDisplayName(emp))}
+        ${emp.job_title ? `<div style="font-weight:400;color:${STAFF.textMuted};font-size:${headerFontSize - 1}px">${escapeHtml(emp.job_title)}</div>` : ''}
       </td>
       ${cells}
-      <td style="padding:4px 4px;border:1px solid #d1d5db;text-align:center;font-weight:700;font-size:${headerFontSize}px;vertical-align:top;color:${totalHrs > 0 ? '#111' : '#d1d5db'}">
+      <td style="padding:4px 4px;border:1px solid ${STAFF.borderStrong};text-align:center;font-weight:700;font-size:${headerFontSize}px;vertical-align:top;color:${totalHrs > 0 ? STAFF.text : STAFF.textMuted}">
         ${totalHrs > 0 ? totalHrs.toFixed(1) : '-'}
       </td>
     </tr>`;
@@ -162,34 +242,41 @@ function buildRotaHTML(
     const cells = days.map(d => {
       const dayOpen = openShifts.filter(s => s.shift_date === d && s.status !== 'cancelled');
       const inner = dayOpen.map(shift => {
-        const isBar = shift.department === 'bar';
-        return `<div style="border-radius:3px;padding:2px 4px;margin-bottom:2px;font-size:${baseFontSize}px;
-          background:${isBar ? '#dbeafe' : '#ffedd5'};color:${isBar ? '#1e40af' : '#9a3412'}">
+        const chip = shiftChipColours(shift, templateById);
+        return `<div style="border-radius:3px;padding:1px 3px;border:1px solid ${chip.border};margin-bottom:2px;font-size:${baseFontSize}px;
+          background:${chip.bg};color:${chip.fg}">
           <div style="font-weight:600">${formatTime(shift.start_time)}–${formatTime(shift.end_time)}</div>
-          <div style="font-size:${baseFontSize - 1}px;opacity:0.85">${isBar ? 'Bar' : 'Kitchen'}${shiftHoursSuffix(shift)}</div>
+          <div style="font-size:${baseFontSize - 1}px;opacity:0.85">${departmentLabel(shift.department)}${shiftHoursSuffix(shift)}</div>
         </div>`;
       }).join('');
-      return `<td style="padding:3px 4px;border:1px solid #d1d5db;vertical-align:top">${inner}</td>`;
+      return `<td style="padding:3px 4px;border:1px solid ${STAFF.borderStrong};vertical-align:top">${inner}</td>`;
     }).join('');
-    return `<tr style="background:#fffbeb">
-      <td style="padding:4px 6px;border:1px solid #d1d5db;font-weight:600;font-size:${headerFontSize}px;vertical-align:top;color:#92400e">Open shifts</td>
+    return `<tr style="background:${STAFF.warningSoft}">
+      <td style="padding:4px 6px;border:1px solid ${STAFF.borderStrong};font-weight:600;font-size:${headerFontSize}px;vertical-align:top;color:${STAFF.warningFg}">Open shifts</td>
       ${cells}
-      <td style="border:1px solid #d1d5db"></td>
+      <td style="border:1px solid ${STAFF.borderStrong}"></td>
     </tr>`;
   })() : '';
 
-  const legendItems = [
-    { bg: '#dbeafe', label: 'Bar' },
-    { bg: '#ffedd5', label: 'Kitchen' },
-    { bg: '#fee2e2', label: 'Sick' },
-    { bg: '#dcfce7', label: 'Holiday (approved)' },
-    { bg: '#fef9c3', label: 'Holiday (pending)' },
-  ].map(({ bg, label }) =>
-    `<span style="display:flex;align-items:center;gap:4px;font-size:9px;color:#374151">
-      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${bg};border:1px solid #e5e7eb"></span>
+  // Shift colours follow /rota, so the key is the /rota one: the eight shift colours in one
+  // strip. The status chips keep their own entries.
+  const shiftColourKey = `<span style="display:flex;align-items:center;gap:4px;font-size:9px;color:${STAFF.text}">
+      <span style="display:inline-flex">${SHIFT_TEMPLATE_COLOURS.map(({ value }) =>
+        `<span style="display:inline-block;width:5px;height:10px;background:${value};border:1px solid ${STAFF.borderStrong}"></span>`
+      ).join('')}</span>
+      Shift colour follows role and start time
+    </span>`;
+  const statusItems = [
+    { colours: SICK_CHIP, label: COULDNT_WORK_LABEL },
+    { colours: leaveChipColours('approved'), label: 'Holiday (approved)' },
+    { colours: leaveChipColours('pending'), label: 'Holiday (pending)' },
+  ].map(({ colours, label }) =>
+    `<span style="display:flex;align-items:center;gap:4px;font-size:9px;color:${STAFF.text}">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colours.bg};border:1px solid ${colours.border}"></span>
       ${label}
     </span>`
   ).join('');
+  const legendItems = shiftColourKey + statusItems;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -201,8 +288,8 @@ function buildRotaHTML(
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-size: ${baseFontSize}px;
-    color: #111;
-    background: white;
+    color: ${STAFF.text};
+    background: ${STAFF.surface};
     padding: 0;
   }
   table { border-collapse: collapse; width: 100%; table-layout: fixed; }
@@ -218,15 +305,15 @@ function buildRotaHTML(
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
     <div>
       <div style="font-size:16px;font-weight:700">Weekly Rota</div>
-      <div style="font-size:11px;color:#374151;margin-top:2px">${formatWeekRange(days)}</div>
+      <div style="font-size:11px;color:${STAFF.text};margin-top:2px">${formatWeekRange(days)}</div>
     </div>
     <div style="text-align:right">
       <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:10px;font-weight:600;
-        background:${week.status === 'published' ? '#dcfce7' : '#fef9c3'};
-        color:${week.status === 'published' ? '#166534' : '#854d0e'};margin-bottom:3px">
+        background:${week.status === 'published' ? STAFF.successSoft : STAFF.warningSoft};
+        color:${week.status === 'published' ? STAFF.successFg : STAFF.warningFg};margin-bottom:3px">
         ${week.status === 'published' ? 'Published' : 'Draft'}
       </span>
-      <div style="font-size:9px;color:#9ca3af">Printed ${generatedAt}</div>
+      <div style="font-size:9px;color:${STAFF.textMuted}">Printed ${generatedAt}</div>
     </div>
   </div>
 
@@ -238,10 +325,10 @@ function buildRotaHTML(
       <col style="width:36px">
     </colgroup>
     <thead>
-      <tr style="background:#f9fafb">
-        <th style="padding:4px 6px;border:1px solid #d1d5db;text-align:left;font-weight:600;color:#374151;font-size:${headerFontSize}px">Employee</th>
+      <tr style="background:${STAFF.surface2}">
+        <th style="padding:4px 6px;border:1px solid ${STAFF.borderStrong};text-align:left;font-weight:600;color:${STAFF.text};font-size:${headerFontSize}px">Employee</th>
         ${dayHeaders}
-        <th style="padding:4px 4px;border:1px solid #d1d5db;text-align:center;font-weight:600;color:#374151;font-size:${headerFontSize}px">Hrs</th>
+        <th style="padding:4px 4px;border:1px solid ${STAFF.borderStrong};text-align:center;font-weight:600;color:${STAFF.text};font-size:${headerFontSize}px">Hrs</th>
       </tr>
     </thead>
     <tbody>
@@ -252,7 +339,7 @@ function buildRotaHTML(
 
   <!-- Legend -->
   <div style="margin-top:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-    <span style="font-size:9px;color:#6b7280;font-weight:600">Legend:</span>
+    <span style="font-size:9px;color:${STAFF.textMuted};font-weight:600">Legend:</span>
     ${legendItems}
   </div>
 </div>
@@ -297,11 +384,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   });
 
   // Fetch data
-  const [weekResult, employeesResult, shiftsResult, leaveDaysResult] = await Promise.all([
+  const [weekResult, employeesResult, shiftsResult, leaveDaysResult, templatesResult] = await Promise.all([
     getOrCreateRotaWeek(weekStart),
     getActiveEmployeesForRota(weekStart),
     getWeekShifts(weekStart),
     getLeaveDaysForWeek(weekStart),
+    getShiftTemplates(),
   ]);
 
   if (!weekResult.success) {
@@ -312,6 +400,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const employees: RotaEmployee[] = employeesResult.success ? employeesResult.data : [];
   const shifts: RotaShift[] = shiftsResult.success ? shiftsResult.data : [];
   const leaveDays: LeaveDayWithRequest[] = leaveDaysResult.success ? leaveDaysResult.data : [];
+  // Same as /rota: active templates only, and without them every shift takes its automatic colour.
+  const templates: ShiftTemplate[] = templatesResult.success ? templatesResult.data.filter(t => t.is_active) : [];
 
   // London, not the server clock: the print stamp was an hour out through BST.
   const generatedAt = formatDateInLondon(new Date(), {
@@ -320,7 +410,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   });
 
   // Build HTML
-  const html = buildRotaHTML(week, employees, shifts, leaveDays, days, generatedAt);
+  const html = buildRotaHTML(week, employees, shifts, leaveDays, days, generatedAt, templates);
 
   // Generate PDF (A4 landscape, single page)
   let pdfBuffer: Buffer;

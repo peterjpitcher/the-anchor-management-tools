@@ -3,12 +3,13 @@
 import { useState, useMemo, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/ds';
+import { Badge, Button, IconButton } from '@/ds';
 import { addShiftsFromTemplates } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
 import { displayName } from '@/lib/employees/display-name';
 import { calculatePaidHours } from '@/lib/rota/pay-math';
+import { rotaDepartmentClasses } from '@/lib/rota/status-ui';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,20 +61,6 @@ function formatDayHeader(isoDate: string): string {
 
 function empName(emp: RotaEmployee): string {
   return displayName(emp, 'Unknown');
-}
-
-function deptBadgeClass(dept: string): string {
-// Department and payroll-flag colours stay on the raw palette deliberately. They
-// encode a CATEGORY, not a state, and the design system only has state tones
-// (success, warning, danger, info). Mapping kitchen onto the warning tone would
-// make a normal kitchen shift read as a problem. A category ramp is a design
-// decision, not a mechanical swap: see F15 in tasks/rota-review-2026-08-18.md.
-  const map: Record<string, string> = {
-    bar: 'bg-info-soft text-info-fg',
-    kitchen: 'bg-orange-100 text-orange-700',
-    runner: 'bg-success-soft text-success-fg',
-  };
-  return map[dept] ?? 'bg-surface-hover text-text-muted';
 }
 
 // ---------------------------------------------------------------------------
@@ -229,7 +216,7 @@ export default function AddShiftsModal({
           <span className="text-xs font-semibold text-text uppercase tracking-wide">
             {DAY_NAMES[dayIndex]}
           </span>
-          <span className="text-xs text-text-subtle">{formatDayHeader(date)}</span>
+          <span className="text-xs text-text-soft">{formatDayHeader(date)}</span>
           {allExist && (
             <span className="ml-auto text-xs text-success-fg font-medium">
               ✓ All scheduled templates already added
@@ -239,7 +226,7 @@ export default function AddShiftsModal({
 
         {/* Rows */}
         {noneScheduled ? (
-          <p className="px-5 py-2 text-xs text-text-subtle italic">
+          <p className="px-5 py-2 text-xs text-text-soft italic">
             No templates scheduled for {DAY_NAMES[dayIndex]}s — use &ldquo;Other templates&rdquo; below to add manually.
           </p>
         ) : (
@@ -264,15 +251,15 @@ export default function AddShiftsModal({
                   disabled={isDisabled}
                   onChange={() => toggleScheduled(globalIdx)}
                   onClick={e => e.stopPropagation()}
-                  className="h-4 w-4 rounded-sm border-border-strong text-info-fg accent-blue-600 shrink-0"
+                  className="h-4 w-4 accent-primary shrink-0"
                   aria-label={`${item.template.name} on ${DAY_NAMES[dayIndex]}`}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-sm font-medium text-text-strong">{item.template.name}</span>
-                    <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded-full ${deptBadgeClass(item.template.department)}`}>
+                    <Badge size="sm" className={rotaDepartmentClasses(item.template.department)}>
                       {item.template.department}
-                    </span>
+                    </Badge>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs text-text-muted">
@@ -288,14 +275,14 @@ export default function AddShiftsModal({
                   </div>
                 </div>
                 {item.state === 'recommended' && (
-                  <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-info-soft text-info-fg uppercase tracking-wide shrink-0">
+                  <Badge tone="info" size="sm" className="shrink-0 uppercase tracking-wide">
                     Recommended
-                  </span>
+                  </Badge>
                 )}
                 {item.state === 'exists' && (
-                  <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-surface-hover text-text-subtle uppercase tracking-wide shrink-0">
+                  <Badge tone="neutral" size="sm" className="shrink-0 uppercase tracking-wide">
                     Already added
-                  </span>
+                  </Badge>
                 )}
               </div>
             );
@@ -310,8 +297,11 @@ export default function AddShiftsModal({
   // ---------------------------------------------------------------------------
 
   return (
+    // Kept as its own sheet rather than the DS Modal: the day headers stick to the top of
+    // the scrolling list and the footer carries the running count, which the DS Modal's
+    // padded body cannot hold.
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-overlay"
       onClick={onClose}
     >
       <div
@@ -331,14 +321,13 @@ export default function AddShiftsModal({
               {existsCount > 0 && ` · ${existsCount} already scheduled`}
             </p>
           </div>
-          <button
+          <IconButton
             type="button"
+            size="sm"
             onClick={onClose}
-            className="p-1 text-text-subtle hover:text-text-muted rounded-sm"
-            aria-label="Close"
-          >
-            <XMarkIcon className="h-5 w-5" />
-          </button>
+            label="Close"
+            icon={<XMarkIcon className="h-5 w-5" />}
+          />
         </div>
 
         {/* Body */}
@@ -348,7 +337,7 @@ export default function AddShiftsModal({
 
           {/* Floating templates */}
           {floating.length > 0 && (
-            <div className="bg-warning-soft border-t border-warning/25 px-5 py-3">
+            <div className="bg-warning-soft border-t border-warning-border px-5 py-3">
               <p className="text-xs font-semibold text-warning-fg uppercase tracking-wide mb-2">
                 ⚡ Other templates — no assigned day
               </p>
@@ -360,15 +349,15 @@ export default function AddShiftsModal({
                       type="checkbox"
                       checked={item.checked}
                       onChange={() => toggleFloating(idx)}
-                      className="h-4 w-4 rounded-sm border-border-strong accent-amber-600 shrink-0"
+                      className="h-4 w-4 accent-primary shrink-0"
                       aria-label={item.template.name}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-sm font-medium text-text-strong">{item.template.name}</span>
-                        <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded-full ${deptBadgeClass(item.template.department)}`}>
+                        <Badge size="sm" className={rotaDepartmentClasses(item.template.department)}>
                           {item.template.department}
-                        </span>
+                        </Badge>
                         <span className="text-xs text-text-muted">
                           {item.template.start_time.slice(0, 5)}–{item.template.end_time.slice(0, 5)}
                           {' · '}
@@ -385,7 +374,7 @@ export default function AddShiftsModal({
                       value={item.day}
                       onChange={e => setFloatingDay(idx, e.target.value)}
                       disabled={!item.checked}
-                      className={`text-xs border rounded-md px-2 py-1.5 shrink-0 min-w-[110px] ${
+                      className={`text-xs border rounded-md px-2 py-1.5 shrink-0 min-w-[110px] outline-hidden focus:border-border-focus focus:shadow-ring ${
                         item.checked && !item.day
                           ? 'border-danger bg-danger-soft'
                           : 'border-border-strong bg-surface'
@@ -418,6 +407,7 @@ export default function AddShiftsModal({
             </Button>
             <Button
               type="button"
+              variant="primary"
               onClick={handleSubmit}
               disabled={isPending || totalSelected === 0 || floatingValidationError}
             >

@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { Button, Card, CardBody, CardHeader, Input, SearchInput } from '@/ds';
 import { cn } from '@/lib/utils';
+import { ROTA_CHART_COLOURS } from '@/lib/rota/status-ui';
 
 export interface HoursEmployeeOption {
   id: string;
@@ -110,8 +111,10 @@ interface SickRecordRow {
   reason: string | null;
 }
 
-const HOLIDAY_COLOUR = '#d97706';
-const SICK_COLOUR = '#2563eb';
+// Approved holiday is success and Couldn't Work is danger, the same as on the rota itself
+// (this report once drew them amber and blue).
+const HOLIDAY_COLOUR = ROTA_CHART_COLOURS.holiday;
+const SICK_COLOUR = ROTA_CHART_COLOURS.couldntWork;
 
 function formatHours(value: number): string {
   return `${value.toFixed(1)}h`;
@@ -224,8 +227,8 @@ function HoursTooltip({
       {holidayDays > 0 && (
         <div className="mt-2 border-t border-border pt-2">
           <div className="flex items-center justify-between gap-3">
-            <span className="flex items-center gap-1.5 text-warning-fg">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-warning" />
+            <span className="flex items-center gap-1.5 text-success-fg">
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: HOLIDAY_COLOUR }} />
               Holiday booked
             </span>
             <span className="font-semibold text-text-strong">{formatHolidayDays(holidayDays)}</span>
@@ -242,8 +245,8 @@ function HoursTooltip({
       {sickDays > 0 && (
         <div className="mt-2 border-t border-border pt-2">
           <div className="flex items-center justify-between gap-3">
-            <span className="flex items-center gap-1.5 text-danger">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-danger" />
+            <span className="flex items-center gap-1.5 text-danger-fg">
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: SICK_COLOUR }} />
               Couldn&apos;t Work recorded
             </span>
             <span className="font-semibold text-text-strong">{formatSickDays(sickDays)}</span>
@@ -326,7 +329,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
               disabled={employees.length === 0}
               className={cn(
                 'flex min-h-input-h w-full items-center justify-between gap-3 rounded-default border border-border bg-surface px-3 py-2 text-left',
-                'outline-none transition-[border-color,box-shadow] duration-[120ms]',
+                'outline-hidden transition-[border-color,box-shadow] duration-[120ms]',
                 'hover:bg-surface-hover focus-visible:border-border-focus focus-visible:shadow-ring',
                 employees.length === 0 && 'cursor-not-allowed bg-surface-2 opacity-50'
               )}
@@ -349,7 +352,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
             <PopoverPanel
               className={cn(
                 'absolute left-0 z-50 mt-2 w-full min-w-[min(28rem,calc(100vw-2rem))] rounded-default border border-border bg-surface p-3 shadow-lg',
-                'focus:outline-none'
+                'focus:outline-hidden'
               )}
             >
               <div className="flex items-center justify-between gap-2">
@@ -403,7 +406,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
                           onClick={() => toggleEmployee(employee.id)}
                           className={cn(
                             'flex w-full items-center gap-3 rounded-default px-2.5 py-2 text-left transition-colors',
-                            'hover:bg-surface-hover focus-visible:outline-none focus-visible:shadow-ring',
+                            'hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring',
                             selected && 'bg-primary-soft'
                           )}
                         >
@@ -553,7 +556,7 @@ export default function HoursByEmployeeClient({
               Employees: <span className="font-semibold text-text-strong">{series.length}</span>
             </div>
             <div className="flex items-center gap-2 justify-self-start sm:order-4 xl:order-5">
-              <Button type="button" onClick={applyFilters}>
+              <Button type="button" variant="primary" onClick={applyFilters}>
                 Apply
               </Button>
               <a
@@ -561,8 +564,8 @@ export default function HoursByEmployeeClient({
                 download
                 aria-disabled={series.length === 0}
                 className={cn(
-                  'inline-flex h-btn-h items-center justify-center gap-1.5 rounded-default border border-border-strong bg-surface px-3 text-ui font-semibold text-text no-underline',
-                  'transition-[background,border-color,color,transform,box-shadow] duration-[120ms] hover:bg-surface-hover focus-visible:outline-none focus-visible:shadow-ring active:translate-y-[0.5px]',
+                  'inline-flex h-btn-h items-center justify-center gap-1.5 rounded-default border border-border-strong bg-surface px-3 text-ui font-semibold text-text no-underline max-shell:min-h-touch',
+                  'transition-[background,border-color,color,transform,box-shadow] duration-[120ms] hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring active:translate-y-[0.5px]',
                   series.length === 0 && 'pointer-events-none opacity-50'
                 )}
               >
@@ -654,7 +657,7 @@ export default function HoursByEmployeeClient({
                         domain={[0, absenceAxisMax]}
                         allowDecimals={false}
                         tickFormatter={(value) => `${value}d`}
-                        tick={{ fontSize: 11, fill: 'var(--color-warning-fg)' }}
+                        tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }}
                         axisLine={false}
                         tickLine={false}
                       />

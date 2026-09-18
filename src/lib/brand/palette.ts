@@ -52,6 +52,21 @@ export const STAFF = {
 /** Chart series 1 to 6, as the app draws them (--color-chart-1 .. -6). */
 export const CHART_SERIES = ['#006A4E', '#0284c7', '#d97706', '#7c3aed', '#db2777', '#0d9488'] as const
 
+/**
+ * Category colours 1 to 8 (--color-cat-N, -soft and -fg), for fixed app categories such as rota
+ * departments. CATEGORY[0] is cat-1.
+ */
+export const CATEGORY = [
+  { base: '#0284c7', soft: '#e0f2fe', fg: '#075985' },
+  { base: '#4f46e5', soft: '#e0e7ff', fg: '#3730a3' },
+  { base: '#7c3aed', soft: '#ede9fe', fg: '#5b21b6' },
+  { base: '#db2777', soft: '#fce7f3', fg: '#9d174d' },
+  { base: '#ea580c', soft: '#ffedd5', fg: '#9a3412' },
+  { base: '#d97706', soft: '#fef3c7', fg: '#92400e' },
+  { base: '#0d9488', soft: '#ccfbf1', fg: '#115e59' },
+  { base: '#57534e', soft: '#f5f5f4', fg: '#292524' },
+] as const
+
 export const GUEST = {
   green: '#005131',
   greenDeep: '#0c1d11',

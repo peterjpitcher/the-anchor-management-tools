@@ -6,7 +6,7 @@ import type {
     CalendarNoteCalendarOverview,
 } from '@/app/(authenticated)/events/get-events-command-center'
 import type { CalendarEntry, CalendarEntryContent, CalendarEntryStatus } from './types'
-import { kindColor } from './appearance'
+import { DEFAULT_CALENDAR_NOTE_COLOUR, kindColor } from './appearance'
 import { formatTimeInLondon, toLocalIsoDate as toLondonIsoDate } from '@/lib/dateUtils'
 
 // --- Helpers ---
@@ -360,7 +360,7 @@ export function calendarNoteToEntry(note: CalendarNoteCalendarOverview): Calenda
         allDay: !hasStartTime,
         spansMultipleDays,
         endsNextDay: false,
-        color: note.color || kindColor('calendar_note'),
+        color: note.color || DEFAULT_CALENDAR_NOTE_COLOUR,
         subtitle: null,
         status: null,
         statusLabel: null,

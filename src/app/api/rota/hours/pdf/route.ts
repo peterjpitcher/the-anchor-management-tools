@@ -17,24 +17,20 @@ import {
 } from '@/lib/rota/hours-report';
 import { loadHoursReportData, type EmployeeRow } from '@/lib/rota/hours-report-data';
 import { displayName } from '@/lib/employees/display-name';
+import { STAFF } from '@/lib/brand/palette';
+import { ROTA_CHART_PRINT_COLOURS, ROTA_HOURS_SERIES_COLOURS } from '@/lib/rota/status-ui';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 const TIMEZONE = 'Europe/London';
-const COLOURS = [
-  '#0f766e',
-  '#16a34a',
-  '#7c3aed',
-  '#0f766e',
-  '#be123c',
-  '#9333ea',
-  '#0f766e',
-  '#be185d',
-  '#6d28d9',
-];
-const HOLIDAY_COLOUR = '#d97706';
-const SICK_COLOUR = '#2563eb';
+// The same meanings as the /rota/hours screen and the rota itself: approved holiday is success and
+// Couldn't Work is danger (this report drew them amber and blue until 18 Sep 2026).
+const HOLIDAY_COLOUR = ROTA_CHART_PRINT_COLOURS.holiday;
+const SICK_COLOUR = ROTA_CHART_PRINT_COLOURS.couldntWork;
+// One line colour per employee, from the same list and in the same order as the screen, so each
+// person has the same colour on paper as on /rota/hours.
+const COLOURS = ROTA_HOURS_SERIES_COLOURS.map(colour => colour.print);
 
 type EmployeeOption = {
   id: string;
@@ -172,7 +168,7 @@ function buildChartSvg(chartData: ChartRow[], series: HoursSeries[]): string {
   const grid = hourTicks.map(value => {
     const y = yForHours(value);
     return `
-      <line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="#e5e7eb" stroke-width="1" />
+      <line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="${STAFF.border}" stroke-width="1" />
       <text x="${margin.left - 12}" y="${y + 4}" text-anchor="end" class="axis-label">${value}h</text>
     `;
   }).join('');
@@ -244,14 +240,14 @@ function buildChartSvg(chartData: ChartRow[], series: HoursSeries[]): string {
   return `
     <svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Hours by week chart">
       <style>
-        .axis-label { font: 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #6b7280; }
-        .absence-axis { fill: #92400e; }
-        .legend-label { font: 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #374151; }
+        .axis-label { font: 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: ${STAFF.textMuted}; }
+        .absence-axis { fill: ${STAFF.textMuted}; }
+        .legend-label { font: 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: ${STAFF.text}; }
       </style>
       ${legend}
       ${grid}
       ${absenceLabels}
-      <line x1="${margin.left}" y1="${chartBottom}" x2="${width - margin.right}" y2="${chartBottom}" stroke="#d1d5db" stroke-width="1" />
+      <line x1="${margin.left}" y1="${chartBottom}" x2="${width - margin.right}" y2="${chartBottom}" stroke="${STAFF.borderStrong}" stroke-width="1" />
       ${absenceBars}
       ${employeeLines}
       ${xLabels}
@@ -295,7 +291,7 @@ function buildReportHtml(model: ReportModel): string {
   <meta charset="UTF-8">
   <style>
     * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; background: #ffffff; color: #111827; }
+    html, body { margin: 0; padding: 0; background: ${STAFF.surface}; color: ${STAFF.text}; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     @media print {
       @page { size: A4 landscape; margin: 0; }
@@ -306,7 +302,7 @@ function buildReportHtml(model: ReportModel): string {
       min-height: 210mm;
       padding: 12mm;
       page-break-after: always;
-      background: #ffffff;
+      background: ${STAFF.surface};
     }
     .page:last-child { page-break-after: auto; }
     .chart-page {
@@ -335,7 +331,7 @@ function buildReportHtml(model: ReportModel): string {
     .meta {
       margin-top: 2mm;
       font-size: 11px;
-      color: #4b5563;
+      color: ${STAFF.textMuted};
     }
     .stats {
       display: grid;
@@ -344,14 +340,14 @@ function buildReportHtml(model: ReportModel): string {
       min-width: 92mm;
     }
     .stat {
-      border: 1px solid #e5e7eb;
+      border: 1px solid ${STAFF.border};
       border-radius: 6px;
       padding: 3mm;
-      background: #f9fafb;
+      background: ${STAFF.surface2};
     }
     .stat-label {
       font-size: 9px;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
       font-weight: 600;
     }
     .stat-value {
@@ -359,15 +355,15 @@ function buildReportHtml(model: ReportModel): string {
       font-size: 16px;
       line-height: 1;
       font-weight: 700;
-      color: #111827;
+      color: ${STAFF.text};
     }
     .chart-frame {
       flex: 1;
       min-height: 0;
-      border: 1px solid #e5e7eb;
+      border: 1px solid ${STAFF.border};
       border-radius: 8px;
       padding: 5mm;
-      background: #ffffff;
+      background: ${STAFF.surface};
     }
     .chart-svg {
       width: 100%;
@@ -379,9 +375,9 @@ function buildReportHtml(model: ReportModel): string {
       display: flex;
       align-items: center;
       justify-content: center;
-      border: 1px dashed #d1d5db;
+      border: 1px dashed ${STAFF.borderStrong};
       border-radius: 8px;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
       font-size: 12px;
     }
     .section + .section { margin-top: 9mm; }
@@ -396,17 +392,17 @@ function buildReportHtml(model: ReportModel): string {
     th {
       text-align: left;
       padding: 2.4mm 2.8mm;
-      border: 1px solid #d1d5db;
-      background: #f3f4f6;
-      color: #374151;
+      border: 1px solid ${STAFF.borderStrong};
+      background: ${STAFF.surfaceHover};
+      color: ${STAFF.text};
       font-size: 9px;
       font-weight: 700;
     }
     td {
       padding: 2.4mm 2.8mm;
-      border: 1px solid #e5e7eb;
+      border: 1px solid ${STAFF.border};
       vertical-align: top;
-      color: #374151;
+      color: ${STAFF.text};
       overflow-wrap: anywhere;
     }
     .dot {
@@ -420,8 +416,8 @@ function buildReportHtml(model: ReportModel): string {
     .empty-cell {
       padding: 8mm;
       text-align: center;
-      color: #6b7280;
-      background: #f9fafb;
+      color: ${STAFF.textMuted};
+      background: ${STAFF.surface2};
     }
   </style>
 </head>

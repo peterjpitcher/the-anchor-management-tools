@@ -11,8 +11,10 @@ import {
   processPubOpsCalendarNoteQueueItem,
 } from '@/lib/google-calendar-notes'
 import { logAuditEvent } from './audit'
+import { DEFAULT_CALENDAR_NOTE_COLOUR } from '@/lib/rota/shift-template-colours'
 
-const DEFAULT_NOTE_COLOR = '#0EA5E9'
+// The same default as every calendar screen: the first colour in the shared palette.
+const DEFAULT_NOTE_COLOR = DEFAULT_CALENDAR_NOTE_COLOUR
 const MAX_AI_GENERATION_RANGE_DAYS = 730
 
 const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { CalendarDaysIcon, ClipboardDocumentIcon, CheckIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
-import { Button } from '@/ds';
+import { Button, IconButton } from '@/ds';
 
 interface RotaFeedButtonProps {
   feedUrl: string;
@@ -100,14 +100,14 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
                 <p className="text-sm font-semibold text-text-strong">Calendar feed</p>
                 <p className="text-xs text-text-muted mt-0.5">Subscribe to see all rota shifts in your calendar app. Rota changes appear within 24 hours of publishing (Google Calendar), or sooner in Apple Calendar and Outlook.</p>
               </div>
-              <button
+              <IconButton
                 type="button"
+                size="sm"
                 onClick={() => setOpen(false)}
-                aria-label="Close calendar feed popover"
-                className="p-1 text-text-subtle hover:text-text-muted rounded-sm shrink-0 ml-2"
-              >
-                <XMarkIcon className="h-4 w-4" />
-              </button>
+                label="Close calendar feed popover"
+                icon={<XMarkIcon className="h-4 w-4" />}
+                className="shrink-0 ml-2"
+              />
             </div>
 
             <div className="flex gap-2">
@@ -115,19 +115,21 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
                 type="text"
                 readOnly
                 value={feedUrl}
-                className="flex-1 min-w-0 text-xs border border-border rounded-lg px-2.5 py-1.5 bg-surface-2 text-text-muted truncate focus:outline-none"
+                className="flex-1 min-w-0 text-xs border border-border rounded-lg px-2.5 py-1.5 bg-surface-2 text-text-muted truncate outline-hidden focus:border-border-focus focus:shadow-ring"
                 onFocus={e => e.target.select()}
               />
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 onClick={handleCopy}
-                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-surface-hover hover:bg-surface-hover rounded-lg transition-colors"
+                className="shrink-0"
+                icon={copied
+                  ? <CheckIcon className="h-3.5 w-3.5 text-success-fg" />
+                  : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
               >
-                {copied
-                  ? <><CheckIcon className="h-3.5 w-3.5 text-success-fg" />Copied</>
-                  : <><ClipboardDocumentIcon className="h-3.5 w-3.5" />Copy</>
-                }
-              </button>
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
             </div>
 
             <div className="bg-surface-2 rounded-lg p-3 space-y-1.5">
