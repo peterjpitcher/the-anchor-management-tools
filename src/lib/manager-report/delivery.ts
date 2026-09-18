@@ -46,8 +46,14 @@ export interface ManagerReportDeliveryResult {
   sent: number
   skipped?: string
   error?: string
-  /** Sections sent as "not checked". The route raises an operator alert naming them. */
+  /**
+   * Sections marked "not checked" in a report accepted by the provider during this run,
+   * whether it was built now or frozen by an earlier run. The route raises an operator
+   * alert naming them.
+   */
   notCheckedSections?: string[]
+  /** Sections not checked yet while the report is held back before 09:00. Nothing was sent for them. */
+  heldBackSections?: string[]
 }
 export interface ManagerReportDeliveryDependencies {
   db: Db
@@ -143,6 +149,11 @@ export async function deliverManagerReport(
   const owner = randomUUID()
   let lockId: string | undefined
   let sent = 0
+  // Collected from every report accepted in this run, so a 09:00 report that only goes out on
+  // a later retry still names its not-checked sections.
+  const notCheckedSent: string[] = []
+  const sentNotChecked = (): Pick<ManagerReportDeliveryResult, 'notCheckedSections'> =>
+    notCheckedSent.length > 0 ? { notCheckedSections: [...notCheckedSent] } : {}
   let completed = false
   let failureMessage: string | null = null
   try {
@@ -189,6 +200,7 @@ export async function deliverManagerReport(
         metadata.providerMessageId = result.messageId
         await saveReport(db, row.id, metadata)
         sent += 1
+        for (const key of metadata.notChecked ?? []) if (!notCheckedSent.includes(key)) notCheckedSent.push(key)
       }
       await renew()
       await finaliseSources(db, metadata)
@@ -204,7 +216,7 @@ export async function deliverManagerReport(
     if (existingError) throw new Error(existingError.message)
     if ((existing ?? []).length > 0) {
       completed = true
-      return { success: true, sent, ...(sent === 0 ? { skipped: 'already_reported' } : {}) }
+      return { success: true, sent, ...(sent === 0 ? { skipped: 'already_reported' } : {}), ...sentNotChecked() }
     }
 
     const to = managerRecipient()
@@ -218,7 +230,7 @@ export async function deliverManagerReport(
       // Nothing is frozen, so the next hourly run builds afresh and may find every section.
       console.error('Manager weekly report held back: sections not checked', { sections: report.notChecked })
       completed = true
-      return { success: true, sent, skipped: 'waiting_for_sections', notCheckedSections: report.notChecked }
+      return { success: true, sent, skipped: 'waiting_for_sections', heldBackSections: report.notChecked, ...sentNotChecked() }
     }
 
     await renew()
@@ -244,10 +256,11 @@ export async function deliverManagerReport(
     if (error || !data) throw new Error(error?.message ?? 'Report payload was not frozen')
     await deliver(data as EmailRow)
     completed = true
-    return { success: true, sent, ...(report.notChecked.length > 0 ? { notCheckedSections: report.notChecked } : {}) }
+    return { success: true, sent, ...sentNotChecked() }
   } catch (error) {
     failureMessage = error instanceof Error ? error.message : 'Manager report delivery failed'
-    return { success: false, sent, error: failureMessage }
+    // A report may have been accepted before a later step failed: its sections still need naming.
+    return { success: false, sent, error: failureMessage, ...sentNotChecked() }
   } finally {
     if (lockId) {
       try {

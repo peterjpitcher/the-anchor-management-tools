@@ -23,7 +23,6 @@ import {
   chargedDepositAmount,
   createTablePaymentToken,
   mapTableBookingBlockedReason,
-  sendManagerTableBookingCreatedEmailIfAllowed,
   sendTableBookingCreatedSmsIfAllowed,
   type TableBookingNotificationChannel,
   type TableBookingRpcResult
@@ -703,7 +702,7 @@ export async function POST(request: NextRequest) {
       ) {
         let smsSendResult: Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>> | null = null
 
-        const [smsOutcome, emailOutcome] = await Promise.allSettled([
+        const [smsOutcome] = await Promise.allSettled([
           // `skip_customer_sms` suppresses the TEXT, not the whole notice.
           //
           // The website sets it for a booking it is handing straight to PayPal, so the guest is
@@ -719,15 +718,6 @@ export async function POST(request: NextRequest) {
             nextStepUrl,
             skipCustomerSms: payload.skip_customer_sms === true && bookingResult.state === 'pending_payment'
           }),
-          // Defer manager email for website bookings awaiting deposit payment —
-          // it will be sent in the capture-order route once payment is confirmed.
-          (payload.skip_customer_sms && bookingResult.state === 'pending_payment')
-            ? Promise.resolve({ sent: false, skipped: true, reason: 'deferred_to_payment_capture' } as Awaited<ReturnType<typeof sendManagerTableBookingCreatedEmailIfAllowed>>)
-            : sendManagerTableBookingCreatedEmailIfAllowed(supabase, {
-                tableBookingId: bookingResult.table_booking_id || null,
-                fallbackCustomerId: customerResolution.customerId,
-                createdVia: 'api'
-              })
         ])
 
         if (smsOutcome.status === 'fulfilled') {
@@ -744,25 +734,6 @@ export async function POST(request: NextRequest) {
             }
           })
           smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
-        }
-
-        if (emailOutcome.status === 'fulfilled') {
-          const managerEmailResult = emailOutcome.value
-          if (!managerEmailResult.sent && managerEmailResult.error) {
-            logger.warn('Failed to send manager booking-created email', {
-              metadata: {
-                tableBookingId: bookingResult.table_booking_id || null,
-                error: managerEmailResult.error
-              }
-            })
-          }
-        } else {
-          logger.warn('Manager booking-created email task rejected unexpectedly', {
-            metadata: {
-              tableBookingId: bookingResult.table_booking_id || null,
-              error: emailOutcome.reason instanceof Error ? emailOutcome.reason.message : String(emailOutcome.reason)
-            }
-          })
         }
 
         if (

@@ -52,10 +52,6 @@ const ACCEPTED: Array<{ file: string; reason: string }> = [
     reason: 'Chart data over oj_entries, which gains about 290 rows a year.',
   },
   {
-    file: 'src/app/api/cron/private-bookings-weekly-summary/route.ts',
-    reason: 'private_bookings_with_details holds about 69 rows.',
-  },
-  {
     file: 'src/app/api/cron/event-guest-engagement/route.ts',
     reason: 'A 22-day booking window; bookings holds 1,538 rows in total and one event peaks at 398.',
   },

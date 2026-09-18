@@ -13,8 +13,6 @@ import {
   earliestFutureWindow,
   isDueNow,
 } from '@/lib/checklists/window'
-import { jobQueue } from '@/lib/unified-job-queue'
-import { buildValueBreachEmail } from '@/lib/checklists/value-breach-email'
 import { disambiguatedNames, displayName } from '@/lib/employees/display-name'
 
 // The business date comes from currentBusinessDate(), which honours
@@ -211,7 +209,7 @@ export async function completeChecklistInstance(input: {
   const { data: inst, error: fetchErr } = await db
     .from('checklist_task_instances')
     .select(
-      'id, state, locked_at, grace_until, requires_value, value_min, value_max, value_unit, title_snapshot, instruction_snapshot, department',
+      'id, state, locked_at, grace_until, requires_value, value_min, value_max',
     )
     .eq('id', input.instanceId)
     .maybeSingle()
@@ -264,57 +262,11 @@ export async function completeChecklistInstance(input: {
     additional_info: { completed_by_employee_id: input.employeeId, breach },
   })
 
-  if (breach) {
-    const [{ data: employee }, settings] = await Promise.all([
-      db
-        .from('employees')
-        .select('first_name, last_name')
-        .eq('employee_id', input.employeeId)
-        .maybeSingle(),
-      getChecklistSettings(),
-    ])
-    // Deliberately the LEGAL name, not the preferred name. A value breach is a
-    // food-safety record and this alert is the paper trail a manager (or an EHO
-    // reading it over their shoulder) works from, so it names the person as their
-    // records do. Every on-screen surface uses displayName; this one does not.
-    const completedByName = employee
-      ? [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Team member'
-      : 'Team member'
-    const email = buildValueBreachEmail({
-      title: inst.title_snapshot as string,
-      instruction: (inst.instruction_snapshot as string | null) ?? null,
-      department: inst.department as string,
-      recordedValue: input.value ?? null,
-      valueUnit: (inst.value_unit as string | null) ?? null,
-      valueMin: (inst.value_min as number | string | null) ?? null,
-      valueMax: (inst.value_max as number | string | null) ?? null,
-      completedByName,
-      completedAt: now.toISOString(),
-      notes: input.notes ?? null,
-    })
-    const to = process.env.CHECKLIST_MANAGER_EMAIL || 'manager@the-anchor.pub'
-    const { error: outboxErr } = await db
-      .from('checklist_email_outbox')
-      .insert({
-        email_type: 'value_breach',
-        source_type: 'instance',
-        source_id: input.instanceId,
-        idempotency_key: `value_breach:${input.instanceId}`,
-        to_addresses: [to],
-        subject: email.subject,
-        body_html: email.bodyHtml,
-        status: settings.emailsEnabled ? 'pending' : 'held',
-        next_attempt_at: now.toISOString(),
-      })
-    // Ignore only a duplicate (23505: the breach alert is already queued for this instance);
-    // surface any other failure so a lost alert is not swallowed silently.
-    if (outboxErr && (outboxErr as { code?: string }).code !== '23505') {
-      return { success: true, breach: true, error: `Saved, but the alert could not be queued: ${outboxErr.message}` }
-    }
-    if (settings.emailsEnabled) {
-      await jobQueue.enqueue('checklist_email_outbox_process', {}, { unique: `checklist_outbox:breach:${input.instanceId}` })
-    }
-  }
+  // An out-of-range reading is recorded on the instance above (value_recorded, value_breach,
+  // who and when). It is no longer emailed to managers: the checklists section of the weekly
+  // insights report and the Problems page list every out-of-range reading from these rows, and
+  // staff are told on screen who to tell. undoChecklistInstance refuses to reset a breach, so
+  // this row stays the manager's record of it.
 
   revalidatePath('/checklists')
   return { success: true, breach }
@@ -390,6 +342,19 @@ export async function skipChecklistInstance(input: {
   return { success: true }
 }
 
+// Not exported: a 'use server' module may only export async functions.
+const BREACH_UNDO_REFUSED =
+  'An out-of-range reading cannot be undone. Tell a manager so they can check it.'
+
+/**
+ * Lets the person who ticked a task reset it to pending within 15 minutes.
+ *
+ * An out-of-range reading is never reset. The instance row is the only record a manager
+ * sees of it (the weekly insights report and the Problems page read `value_breach` from
+ * these rows; the email that once went out at completion no longer exists), so undoing it
+ * and re-entering an in-range value would erase the breach. The guard sits in the update
+ * itself so a breach can never be cleared, whatever the screen showed.
+ */
 export async function undoChecklistInstance(input: {
   instanceId: string
   employeeId: string
@@ -414,12 +379,22 @@ export async function undoChecklistInstance(input: {
     .eq('id', input.instanceId)
     .eq('state', 'done')
     .eq('completed_by_employee_id', input.employeeId)
+    .eq('value_breach', false)
     .is('locked_at', null)
     .gte('completed_at', cutoff)
     .select('id')
     .maybeSingle()
   if (error) return { error: error.message }
-  if (!updated) return { error: 'Too late to undo, or this was not your tick' }
+  if (!updated) {
+    // Say why when the reason is the breach, so nobody tries again thinking it was the clock.
+    const { data: current } = await db
+      .from('checklist_task_instances')
+      .select('value_breach')
+      .eq('id', input.instanceId)
+      .maybeSingle()
+    if (current?.value_breach) return { error: BREACH_UNDO_REFUSED }
+    return { error: 'Too late to undo, or this was not your tick' }
+  }
   revalidatePath('/checklists')
   return { success: true }
 }

@@ -14,7 +14,6 @@ import {
   chargedDepositAmount,
   createTablePaymentToken,
   mapTableBookingBlockedReason,
-  sendManagerTableBookingCreatedEmailIfAllowed,
   sendTableBookingCreatedSmsIfAllowed,
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
@@ -1764,26 +1763,6 @@ async function createFohTableBooking(
         customerId,
         tableBookingId: bookingResult.table_booking_id,
         eventType: 'table_deposit_started',
-      })
-    }
-  }
-
-  if (
-    bookingResult.state === 'confirmed' ||
-    bookingResult.state === 'pending_payment'
-  ) {
-    const managerEmailResult = await sendManagerTableBookingCreatedEmailIfAllowed(auth.supabase, {
-      tableBookingId: bookingResult.table_booking_id || null,
-      fallbackCustomerId: customerId,
-      createdVia: payload.walk_in === true ? 'foh_walk_in' : 'foh'
-    })
-    if (!managerEmailResult.sent && managerEmailResult.error) {
-      logger.warn('Failed to send manager booking-created email for FOH booking', {
-        metadata: {
-          userId: auth.userId,
-          tableBookingId: bookingResult.table_booking_id || null,
-          error: managerEmailResult.error
-        }
       })
     }
   }

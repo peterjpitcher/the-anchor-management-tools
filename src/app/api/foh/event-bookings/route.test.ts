@@ -25,7 +25,6 @@ vi.mock('@/lib/analytics/events', () => ({
   recordAnalyticsEvent: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/lib/table-bookings/bookings', () => ({
-  sendManagerTableBookingCreatedEmailIfAllowed: vi.fn().mockResolvedValue({ sent: true }),
 }))
 vi.mock('@/lib/utils', () => ({
   formatPhoneForStorage: vi.fn((value: string) => value),

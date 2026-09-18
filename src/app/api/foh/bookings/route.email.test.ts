@@ -46,7 +46,6 @@ vi.mock('@/lib/table-bookings/bookings', () => ({
   mapTableBookingBlockedReason: vi.fn((reason: string | null) => reason ?? 'blocked'),
   createTablePaymentToken: vi.fn().mockResolvedValue('tok_test'),
   alignTablePaymentHoldToScheduledSend: vi.fn().mockResolvedValue(null),
-  sendManagerTableBookingCreatedEmailIfAllowed: vi.fn().mockResolvedValue({ ok: true }),
   sendTableBookingCreatedSmsIfAllowed: vi.fn().mockResolvedValue({ ok: true, scheduledFor: null }),
 }))
 

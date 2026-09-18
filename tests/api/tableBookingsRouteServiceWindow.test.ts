@@ -47,7 +47,6 @@ vi.mock('@/lib/table-bookings/bookings', async (importActual) => ({
   ...(await importActual<typeof import('@/lib/table-bookings/bookings')>()),
   alignTablePaymentHoldToScheduledSend: vi.fn(),
   createTablePaymentToken: vi.fn(),
-  sendManagerTableBookingCreatedEmailIfAllowed: vi.fn().mockResolvedValue({ sent: true }),
   sendTableBookingCreatedSmsIfAllowed: vi.fn(),
 }))
 

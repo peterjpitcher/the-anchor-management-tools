@@ -37,10 +37,6 @@ vi.mock('@/lib/twilio', () => ({
   sendSMS: vi.fn(),
 }))
 
-vi.mock('@/lib/table-bookings/bookings', () => ({
-  sendManagerTableBookingCreatedEmailIfAllowed: vi.fn().mockResolvedValue({ sent: true }),
-}))
-
 const { warn, error, info } = vi.hoisted(() => ({
   warn: vi.fn(),
   error: vi.fn(),
@@ -57,7 +53,6 @@ vi.mock('@/lib/logger', () => ({
 
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { sendSMS } from '@/lib/twilio'
-import { sendManagerTableBookingCreatedEmailIfAllowed } from '@/lib/table-bookings/bookings'
 import { POST } from '@/app/api/foh/event-bookings/route'
 import {
   FOH_BOOKING_CLIENT_CONTRACT,
@@ -394,130 +389,6 @@ describe('FOH event booking route SMS safety meta', () => {
       })
     )
     expect(sendSMS).not.toHaveBeenCalled()
-  })
-
-  it('logs rejected manager email tasks instead of silently swallowing them', async () => {
-    const eventId = '11111111-1111-4111-8111-111111111111'
-    const customerId = '22222222-2222-4222-8222-222222222222'
-
-    ;(sendManagerTableBookingCreatedEmailIfAllowed as unknown as vi.Mock).mockRejectedValueOnce(new Error('smtp down'))
-
-    const eventMaybeSingle = vi.fn().mockResolvedValue({
-      data: {
-        id: eventId,
-        booking_mode: 'table',
-        name: 'Test Event',
-        date: '2026-01-01',
-        start_datetime: '2026-01-01T19:00:00Z',
-      },
-      error: null,
-    })
-    const eventEq = vi.fn().mockReturnValue({ maybeSingle: eventMaybeSingle })
-    const eventSelect = vi.fn().mockReturnValue({ eq: eventEq })
-
-    const customerMaybeSingle = vi.fn().mockResolvedValue({
-      data: {
-        id: customerId,
-        mobile_e164: null,
-        mobile_number: null,
-      },
-      error: null,
-    })
-    const customerEq = vi.fn().mockReturnValue({ maybeSingle: customerMaybeSingle })
-    const customerSelect = vi.fn().mockReturnValue({ eq: customerEq })
-
-    const tableBookingSeatedMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'table-booking-1' },
-      error: null,
-    })
-    const tableBookingSeatedSelect = vi.fn().mockReturnValue({ maybeSingle: tableBookingSeatedMaybeSingle })
-    const tableBookingSeatedIs = vi.fn().mockReturnValue({ select: tableBookingSeatedSelect })
-    const tableBookingSeatedEq = vi.fn().mockReturnValue({ is: tableBookingSeatedIs })
-    const tableBookingUpdate = vi.fn().mockReturnValue({ eq: tableBookingSeatedEq })
-
-    const supabase = {
-      from: vi.fn((table: string) => {
-        if (table === 'events') {
-          return { select: eventSelect }
-        }
-        if (table === 'customers') {
-          return { select: customerSelect }
-        }
-        if (table === 'table_bookings') {
-          return { update: tableBookingUpdate }
-        }
-        throw new Error(`Unexpected table: ${table}`)
-      }),
-      rpc: vi.fn(async (name: string) => {
-        if (name === 'create_event_booking_v06') {
-          return {
-            data: {
-              state: 'confirmed',
-              booking_id: 'booking-1',
-              payment_mode: 'free',
-              event_id: eventId,
-              event_name: 'Test Event',
-              event_start_datetime: '2026-01-01T19:00:00Z',
-              seats_remaining: 10,
-            },
-            error: null,
-          }
-        }
-        if (name === 'create_event_table_reservation_v05') {
-          return {
-            data: {
-              state: 'confirmed',
-              table_booking_id: 'table-booking-1',
-              table_name: 'Table 1',
-            },
-            error: null,
-          }
-        }
-        throw new Error(`Unexpected RPC: ${name}`)
-      }),
-    }
-
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
-      ok: true,
-      userId: 'user-1',
-      supabase,
-    })
-
-    const request = new NextRequest('http://localhost/api/foh/event-bookings', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
-      },
-      body: JSON.stringify({
-        customer_mode: 'selected',
-        event_id: eventId,
-        customer_id: customerId,
-        seats: 2,
-        walk_in: true,
-      }),
-    })
-
-    const response = await POST(request as any)
-    const payload = await response.json()
-
-    expect(response.status).toBe(201)
-    expect(payload).toMatchObject({
-      success: true,
-      data: expect.objectContaining({
-        state: 'confirmed',
-        table_booking_id: 'table-booking-1',
-      }),
-    })
-    expect(warn).toHaveBeenCalledWith(
-      'FOH event booking side-effect task rejected unexpectedly',
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          label: 'email:manager_table_booking_created',
-          tableBookingId: 'table-booking-1',
-        }),
-      })
-    )
   })
 
   it('fails closed when table-reservation rollback hold release updates zero rows but active holds still remain', async () => {

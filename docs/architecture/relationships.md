@@ -88,10 +88,10 @@ Most-referenced tables (from `.from('…')` usage in `'use server'` files; via-s
 | SMS | reconcile-sms, cleanup-rate-limits |
 | Customers | apply-customer-labels, engagement-scoring, birthday-reminders |
 | Invoices / OJ | auto-send-invoices, invoice-reminders, recurring-invoices, oj-projects-billing, oj-projects-billing-reminders, oj-projects-retainer-projects |
-| Private bookings | private-booking-monitor, private-bookings-weekly-summary, private-bookings-expire-holds |
+| Private bookings | private-booking-monitor, private-bookings-expire-holds |
 | Table bookings | table-booking-deposit-timeout, paypal-deposit-reconciliation |
 | Parking | parking-notifications |
-| Rota / payroll | rota-auto-close, rota-manager-alert, rota-staff-email, rota-shift-acceptance, payroll-periods |
+| Rota / payroll | rota-auto-close, rota-staff-email, rota-shift-acceptance, payroll-periods |
 | Employees | employee-invite-chase, employee-separations |
 | Recruitment | recruitment-reminders, recruitment-calendar-retry, recruitment-retention |
 | Marketing | backfill-marketing-links* |

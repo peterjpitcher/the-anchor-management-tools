@@ -32,7 +32,6 @@ vi.mock('@/lib/table-bookings/bookings', () => ({
   createTableCardCaptureToken: vi.fn(),
   createTablePaymentToken: vi.fn(),
   mapTableBookingBlockedReason: vi.fn(),
-  sendManagerTableBookingCreatedEmailIfAllowed: vi.fn(),
   sendTableBookingCreatedSmsIfAllowed: vi.fn(),
 }))
 

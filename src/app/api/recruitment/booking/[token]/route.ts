@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server'
 import { createApiResponse, createErrorResponse } from '@/lib/api/auth'
 import {
   claimRecruitmentAppointmentSlot,
-  formatRecruitmentAppointmentTime,
   previewRecruitmentBookingToken,
 } from '@/services/recruitment'
 import {
@@ -10,11 +9,7 @@ import {
   loadRecruitmentAppointment,
   syncRecruitmentAppointmentCalendar,
 } from '@/lib/recruitment/calendar'
-import {
-  describeRecruitmentAppointmentCandidate,
-  sendRecruitmentManagerAlert,
-  sendRecruitmentTemplateEmail,
-} from '@/lib/recruitment/communications'
+import { sendRecruitmentTemplateEmail } from '@/lib/recruitment/communications'
 import { guardPublicRecruitmentRequest } from '@/lib/recruitment/public-security'
 
 type RouteContext = {
@@ -92,12 +87,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
           }],
         }
       ),
-      sendRecruitmentManagerAlert({
-        applicationId: appointment.application_id,
-        candidateId: appointment.candidate_id,
-        alertType: appointment.type === 'trial_shift' ? 'trial booked' : 'interview booked',
-        alertBody: `${describeRecruitmentAppointmentCandidate(appointment)} — ${appointmentSubjectLabel(appointment.type)} booked for ${formatRecruitmentAppointmentTime(appointment)} at ${appointment.location}. Booked by the candidate.`,
-      }),
     ])
 
     return createApiResponse({
@@ -113,8 +102,4 @@ export async function POST(request: NextRequest, context: RouteContext) {
       409
     )
   }
-}
-
-function appointmentSubjectLabel(type: string | null | undefined) {
-  return type === 'trial_shift' ? 'Trial shift' : 'Interview'
 }

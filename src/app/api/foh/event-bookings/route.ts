@@ -6,7 +6,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
-import { sendManagerTableBookingCreatedEmailIfAllowed } from '@/lib/table-bookings/bookings'
 import { logger } from '@/lib/logger'
 import {
   isSundayLunchOnlyEvent,
@@ -525,25 +524,6 @@ async function createFohEventBooking(
             eventId: payload.event_id
           }
         )
-      })
-
-      sideEffectTasks.push({
-        label: 'email:manager_table_booking_created',
-        promise: sendManagerTableBookingCreatedEmailIfAllowed(auth.supabase, {
-          tableBookingId,
-          fallbackCustomerId: customerId,
-          createdVia: payload.walk_in === true ? 'foh_event_walk_in' : 'foh_event'
-        }).then((emailResult) => {
-          if (!emailResult.sent && emailResult.error) {
-            logger.warn('Failed to send manager booking-created email for FOH event booking', {
-              metadata: {
-                userId: auth.userId,
-                tableBookingId,
-                error: emailResult.error
-              }
-            })
-          }
-        })
       })
     }
 

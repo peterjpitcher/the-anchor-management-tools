@@ -33,10 +33,12 @@ Turnstile-checked endpoints: `event-bookings`, `table-bookings`, `feedback`, `pr
 
 External API auth: `src/lib/api/auth.ts` hashes keys (SHA-256) and looks them up in `api_keys` (permissions, `rate_limit`, `is_active`, `expires_at`); `checkRateLimit()` is per key.
 
-## 2. Scheduled jobs inventory (2026-09-06)
+## 2. Scheduled jobs inventory (2026-09-18)
 
-- `vercel.json` has 57 schedules: 56 under `/api/cron/*` plus `/api/jobs/process?process=true&batch=30`, which drains the job queue.
-- `src/app/api/cron/` has 59 route folders. Three have no schedule: `backfill-marketing-links`, `sunday-lunch-prep`, `sunday-preorder`.
+- `vercel.json` has 51 schedules: 50 under `/api/cron/*` plus `/api/jobs/process?process=true&batch=30`, which drains the job queue.
+- `src/app/api/cron/` has 53 route folders. Three have no schedule: `backfill-marketing-links`, `sunday-lunch-prep`, `sunday-preorder`.
+- `manager-weekly-report` (`0 * * * 5`, hourly on Fridays) sends the weekly insights report from 06:00 London: one report per Friday, held back until 09:00 while any section cannot be read, operator alert on failure. It first finishes any frozen old-format report. See `docs/manager-weekly-report.md`.
+- Retired by the insights report build of 18 September 2026 (routes and schedules removed): `leave-approval-reminders`, `rota-manager-alert`, `private-bookings-weekly-summary`, `checklists-weekly-summary`, `maintenance-weekly-snapshot`, and `checklists-closing-alert` (it only fed the report after 5 September 2026).
 - Every cron route authenticates with `Authorization: Bearer CRON_SECRET` through `src/lib/cron-auth.ts`. Failures email `CRON_ALERT_EMAIL` when set; run outcomes go through `src/lib/cron-run-results.ts`.
 - Regenerate the comparison:
 

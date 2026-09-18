@@ -22,7 +22,6 @@ vi.mock('@/lib/table-bookings/bookings', () => ({
   alignTablePaymentHoldToScheduledSend: vi.fn(),
   createTablePaymentToken: vi.fn().mockResolvedValue({ url: 'https://example.com/pay' }),
   mapTableBookingBlockedReason: vi.fn(() => 'no_table'),
-  sendManagerTableBookingCreatedEmailIfAllowed: vi.fn(),
   sendTableBookingCreatedSmsIfAllowed: vi.fn(),
 }))
 
@@ -36,10 +35,7 @@ vi.mock('@/app/actions/audit', () => ({
 
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
-import {
-  sendManagerTableBookingCreatedEmailIfAllowed,
-  sendTableBookingCreatedSmsIfAllowed,
-} from '@/lib/table-bookings/bookings'
+import { sendTableBookingCreatedSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import { POST } from '@/app/api/foh/bookings/route'
 import {
   FOH_BOOKING_CLIENT_CONTRACT,
@@ -54,9 +50,6 @@ describe('FOH bookings retired Sunday preorder guards', () => {
       resolutionError: undefined,
     })
     ;(sendTableBookingCreatedSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({ sms: null })
-    ;(sendManagerTableBookingCreatedEmailIfAllowed as unknown as vi.Mock).mockResolvedValue({
-      sent: true,
-    })
   })
 
   it('ignores stale FOH pre-order payload fields and creates a regular booking', async () => {

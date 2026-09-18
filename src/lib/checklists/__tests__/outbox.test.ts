@@ -128,13 +128,13 @@ describe('runOutboxProcess', () => {
     vi.useRealTimers()
   })
 
+  // Manager checklist alerts are no longer written to the outbox (the weekly insights report
+  // covers them), so everything left is sent immediately and nothing is held for a report.
   it.each([
-    ['value_breach', 'instance', 'checklist_alerts'],
-    ['weekly_summary', 'week', 'checklist_summary'],
-    ['system_alert', 'closing_night', 'checklist_alerts'],
-    ['system_alert', 'season', 'checklist_alerts'],
-    ['system_alert', 'generation_run', null],
-  ])('processes %s from %s once across concurrent workers', async (emailType, sourceType, section) => {
+    ['system_alert', 'generation_run', 'peter@example.com'],
+    ['system_alert', 'mismatch', 'peter@example.com'],
+    ['system_alert', 'season', 'manager@example.com'],
+  ])('sends %s from %s once across concurrent workers', async (emailType, sourceType, to) => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-26T10:58:35.000Z'))
 
@@ -142,10 +142,10 @@ describe('runOutboxProcess', () => {
       id: 'outbox-1',
       email_type: emailType,
       source_type: sourceType,
-      source_id: 'instance-1',
-      idempotency_key: 'value_breach:instance-1',
-      to_addresses: [section ? 'manager@example.com' : 'peter@example.com'],
-      subject: 'Checklist alert: Cellar Cooler is above the limit (15 degC)',
+      source_id: 'source-1',
+      idempotency_key: `${sourceType}:source-1`,
+      to_addresses: [to],
+      subject: 'Checklist generation failed for 2026-07-26',
       body_html: '<p>Alert</p>',
       status: 'pending',
       attempts: 0,
@@ -153,47 +153,35 @@ describe('runOutboxProcess', () => {
       created_at: '2026-07-26T10:58:03.000Z',
     })
     const send = vi.fn().mockResolvedValue({ success: true, messageId: 'message-1' })
-    const queue = vi.fn().mockResolvedValue({ success: true, queued: true, emailMessageId: 'queue-1' })
 
     const results = await Promise.all([
-      runOutboxProcess({ db: db as never, send, queue }),
-      runOutboxProcess({ db: db as never, send, queue }),
+      runOutboxProcess({ db: db as never, send }),
+      runOutboxProcess({ db: db as never, send }),
     ])
 
-    if (section) {
-      expect(send).not.toHaveBeenCalled()
-      expect(queue).toHaveBeenCalledTimes(1)
-      expect(queue).toHaveBeenCalledWith(expect.objectContaining({
-        section, key: 'outbox-1', to: 'manager@example.com',
-        metadata: expect.objectContaining({ checklist_outbox_id: 'outbox-1' }),
-      }))
-      expect(db.rows[0]).toMatchObject({ status: 'held', sent_at: null, message_id: null })
-      expect(results.map((result) => result.queued).sort()).toEqual([0, 1])
-      expect(results.map((result) => result.sent)).toEqual([0, 0])
-    } else {
-      expect(queue).not.toHaveBeenCalled()
-      expect(send).toHaveBeenCalledTimes(1)
-      expect(send).toHaveBeenCalledWith(expect.objectContaining({
-        to: 'peter@example.com', idempotencyKey: 'checklist:outbox-1', commType: 'checklist_alert',
-      }))
-      expect(db.rows[0]).toMatchObject({ status: 'sent', message_id: 'message-1' })
-      expect(results.map((result) => result.sent).sort()).toEqual([0, 1])
-    }
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      to, idempotencyKey: 'checklist:outbox-1', commType: 'checklist_alert',
+    }))
+    expect(db.rows[0]).toMatchObject({ status: 'sent', message_id: 'message-1' })
+    expect(db.rows[0].status).not.toBe('held')
+    expect(results.map((result) => result.sent).sort()).toEqual([0, 1])
+    expect(results.every((result) => !('queued' in result))).toBe(true)
   })
-  it('keeps a failed manager queue entry pending for retry without sending directly', async () => {
+
+  it('keeps a failed send pending for retry with backoff', async () => {
     const db = new FakeOutboxDb({
-      id: 'outbox-1', email_type: 'value_breach', source_type: 'instance',
-      subject: 'Temperature alert', to_addresses: ['manager@example.com'],
+      id: 'outbox-1', email_type: 'system_alert', source_type: 'generation_run',
+      subject: 'Checklist generation failed', to_addresses: ['peter@example.com'],
       status: 'pending', next_attempt_at: null, attempts: 0,
     })
-    const send = vi.fn()
-    const queue = vi.fn().mockResolvedValue({ success: false, error: 'queue unavailable' })
+    const send = vi.fn().mockResolvedValue({ success: false, error: 'provider unavailable' })
     const results = await Promise.all([
-      runOutboxProcess({ db: db as never, send, queue }),
-      runOutboxProcess({ db: db as never, send, queue }),
+      runOutboxProcess({ db: db as never, send }),
+      runOutboxProcess({ db: db as never, send }),
     ])
-    expect(send).not.toHaveBeenCalled()
-    expect(db.rows[0]).toMatchObject({ status: 'pending', attempts: 1, error_message: 'queue unavailable' })
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(db.rows[0]).toMatchObject({ status: 'pending', attempts: 1, error_message: 'provider unavailable' })
     expect(db.rows[0].sent_at).toBeUndefined()
     expect(results.map(result => result.retried).sort()).toEqual([0, 1])
   })
