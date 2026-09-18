@@ -78,6 +78,19 @@ describe('NAV_GROUPS', () => {
     expect(dashboard?.href).toBe('/dashboard')
   })
 
+  it('puts Insights directly after Dashboard, for super admins only', () => {
+    const overview = NAV_GROUPS[0].items.map((item) => item.id)
+    expect(overview.indexOf('insights')).toBe(overview.indexOf('dashboard') + 1)
+    const insights = NAV_GROUPS[0].items.find((item) => item.id === 'insights')
+    expect(insights).toMatchObject({ href: '/insights', superAdminOnly: true })
+
+    const allowEverything = (): boolean => true
+    const asStaff = filterNavGroupsForPermissions(NAV_GROUPS, allowEverything).flatMap((group) => group.items.map((item) => item.id))
+    const asSuperAdmin = filterNavGroupsForPermissions(NAV_GROUPS, allowEverything, { isSuperAdmin: true }).flatMap((group) => group.items.map((item) => item.id))
+    expect(asStaff).not.toContain('insights')
+    expect(asSuperAdmin).toContain('insights')
+  })
+
   it('gives every group its own label', () => {
     // The mobile drawer renders these. It used to index a positional array of
     // titles instead, which broke as soon as a group was filtered out.

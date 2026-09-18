@@ -55,12 +55,15 @@ export function AppShell({
     // The bottom tab bar, Messages included, sat underneath the browser chrome,
     // and because the shell is overflow-hidden with the scrolling on <main>, the
     // page could never be scrolled to bring it back.
-    <div className={cn('flex min-h-dvh bg-bg', showSidebar && !fohMode && 'max-shell:h-[100dvh] max-shell:flex-col max-shell:overflow-hidden')}>
+    // Print: the chrome hides and the scroll containers open up, so a printed page (the
+    // weekly Insights report above all) runs across pages instead of being cut at one screen.
+    <div className={cn('flex min-h-dvh bg-bg print:block print:h-auto print:min-h-0 print:overflow-visible print:bg-surface', showSidebar && !fohMode && 'max-shell:h-[100dvh] max-shell:flex-col max-shell:overflow-hidden')}>
       {/* Desktop sidebar. Its badges read the NavCountsProvider below, which is
           mounted on `showSidebar && !fohMode`. The caller keeps `showSidebar`
           and `!fohMode` equal, so the sidebar is always inside the provider; if
           that ever diverges, badges fall back to empty (no crash). */}
       {showSidebar && (
+        <div className="contents print:hidden">
         <Sidebar
           navGroups={navGroups}
           userName={userName}
@@ -68,6 +71,7 @@ export function AppShell({
           onSignOut={onSignOut}
           isSigningOut={isSigningOut}
         />
+        </div>
       )}
 
       {/* Mobile drawer and tab chrome — hidden in FOH chromeless mode. */}
@@ -84,28 +88,30 @@ export function AppShell({
       )}
 
       {/* Main content area */}
-      <div className="flex-1 min-w-0 flex flex-col max-shell:min-h-0">
-        {showSidebar && !fohMode ? (
-          <MobileTopbar onMenuOpen={openMobile} />
-        ) : (
-          <Topbar
-            onMenuOpen={undefined}
-            fohMode={fohMode}
-            userName={userName}
-            onSignOut={onSignOut}
-            isSigningOut={isSigningOut}
-          />
-        )}
-        {fohMode && fohEmployeeId && (
-          <FohClockBand employeeId={fohEmployeeId} />
-        )}
+      <div className="flex-1 min-w-0 flex flex-col max-shell:min-h-0 print:block">
+        <div className="contents print:hidden">
+          {showSidebar && !fohMode ? (
+            <MobileTopbar onMenuOpen={openMobile} />
+          ) : (
+            <Topbar
+              onMenuOpen={undefined}
+              fohMode={fohMode}
+              userName={userName}
+              onSignOut={onSignOut}
+              isSigningOut={isSigningOut}
+            />
+          )}
+          {fohMode && fohEmployeeId && (
+            <FohClockBand employeeId={fohEmployeeId} />
+          )}
+        </div>
         {/* The bottom tab bar is a flex sibling in normal flow, not an overlay,
             and it carries its own safe-area padding, so <main> only needs
             ordinary bottom padding. Reserving a further 88px plus the inset on
             top of that left a dead band at the foot of every mobile page. */}
         <main
           className={cn(
-            'flex-1 overflow-auto bg-bg',
+            'flex-1 overflow-auto bg-bg print:overflow-visible print:bg-surface print:!p-0',
             showSidebar && !fohMode
               ? 'p-[12px_16px_24px] shell:p-[22px_28px_40px]'
               : 'p-[12px_16px_40px] shell:p-[22px_28px_40px]',
@@ -115,7 +121,11 @@ export function AppShell({
         </main>
       </div>
 
-      {showSidebar && !fohMode && <MobileBottomNav navGroups={navGroups} onMore={openMobile} />}
+      {showSidebar && !fohMode && (
+        <div className="contents print:hidden">
+          <MobileBottomNav navGroups={navGroups} onMore={openMobile} />
+        </div>
+      )}
     </div>
   )
 

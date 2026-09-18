@@ -1,23 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deliverManagerReport } from '@/lib/manager-report/delivery'
-import { queueManagerReportEmail } from '@/lib/manager-report/queue'
+import { managerReportId } from '@/lib/manager-report/ids'
 import { managerReportPeriod } from '@/lib/manager-report/schedule'
 import type { createAdminClient } from '@/lib/supabase/admin'
 import type { EmailOptions } from '@/lib/email/emailService'
+import type { InsightsReport, SectionKey } from '@/lib/insights/types'
+import { buildFixtureReport } from '../insights/helpers/report-fixture'
 
 const mocks = vi.hoisted(() => ({ admin: vi.fn() }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: mocks.admin }))
 vi.mock('@/lib/email/emailService', () => ({ sendEmail: vi.fn(() => { throw new Error('No real transport allowed') }) }))
-vi.mock('@/lib/manager-report/render', () => ({
-  renderManagerReport: ({ entries }: { entries: { subject: string }[] }) => ({
-    subject: `Weekly report: ${entries.length}`, html: entries.map(e => e.subject).join('<br>'),
-    text: entries.map(e => e.subject).join('\n'),
-    attachment: { filename: 'details.html', contentType: 'text/html', content: '<p>All details</p>' },
-  }),
-}))
+vi.mock('@/lib/insights/registry', () => ({ buildWeeklyInsights: vi.fn(() => { throw new Error('No live report build allowed') }) }))
 
 type Row = Record<string, unknown>
 interface Failure { table: string; operation: string; matches?: (payload: Row) => boolean }
+
+function readPath(row: Row, key: string): unknown {
+  if (!key.includes('->>')) return row[key]
+  const [column, field] = key.split('->>')
+  const value = row[column]
+  return value && typeof value === 'object' ? (value as Row)[field] : undefined
+}
+
 class MemoryDb {
   rows: Record<string, Row[]> = { email_messages: [], cron_job_runs: [], recruitment_communications: [], checklist_email_outbox: [], leave_reminder_log: [] }
   failures: Failure[] = []
@@ -35,9 +39,8 @@ class MemoryQuery implements PromiseLike<{ data: Row[] | Row | null; error: { co
     this.operation = 'upsert'; this.payload = row; this.ignore = options.ignoreDuplicates ?? false; this.conflict = options.onConflict ?? 'id'; return this
   }
   update(row: Row): this { this.operation = 'update'; this.payload = row; return this }
-  eq(key: string, value: unknown): this { this.filters.push(row => row[key] === value); return this }
+  eq(key: string, value: unknown): this { this.filters.push(row => readPath(row, key) === value); return this }
   gt(key: string, value: string): this { this.filters.push(row => String(row[key]) > value); return this }
-  lte(key: string, value: string): this { this.filters.push(row => String(row[key]) <= value); return this }
   in(key: string, values: unknown[]): this { this.filters.push(row => values.includes(row[key])); return this }
   order(key: string): this { this.sort = key; return this }
   limit(value: number): this { this.max = value; return this }
@@ -65,7 +68,7 @@ class MemoryQuery implements PromiseLike<{ data: Row[] | Row | null; error: { co
           if (!this.ignore) Object.assign(duplicate, structuredClone(this.payload))
           results = this.ignore ? [] : [duplicate]
         } else {
-          const row = { id: `generated-${rows.length}`, created_at: '2026-09-04T07:00:00.000Z', ...structuredClone(this.payload) }
+          const row = { id: `generated-${rows.length}`, created_at: '2026-09-25T05:00:00.000Z', ...structuredClone(this.payload) }
           rows.push(row); results = [row]
         }
       } else {
@@ -82,175 +85,191 @@ class MemoryQuery implements PromiseLike<{ data: Row[] | Row | null; error: { co
 let db: MemoryDb
 let date: Date
 let send: ReturnType<typeof vi.fn<(options: EmailOptions) => Promise<{ success: boolean; messageId?: string; error?: string }>>>
-function run() { return deliverManagerReport({ db: db.asDb(), send, now: () => date }) }
-async function queue(key = 'booking-1', metadata?: Row, to = 'manager@example.test') {
-  return queueManagerReportEmail({ section: 'table_bookings', key, to, subject: `Booking ${key}`, html: '<p>Booking</p>', metadata })
-}
+let buildReport: ReturnType<typeof vi.fn<(now: Date, appUrl: string) => Promise<InsightsReport>>>
+function run() { return deliverManagerReport({ db: db.asDb(), send, now: () => date, buildReport }) }
 const reportRows = () => db.rows.email_messages.filter(row => row.comm_type === 'manager_weekly_report')
-const itemRows = () => db.rows.email_messages.filter(row => row.comm_type === 'manager_report_item')
+
+function legacyReport(periodKey: string, overrides: Row = {}, metadata: Row = {}): Row {
+  const id = managerReportId(['manager_weekly_report', periodKey, 'manager@example.test'])
+  const row = {
+    id, to_address: 'manager@example.test', comm_type: 'manager_weekly_report', status: 'queued',
+    subject: 'Old format', body_html: '<p>old</p>', body_text: 'old', created_at: `${periodKey}T08:00:00.000Z`,
+    metadata: {
+      periodKey,
+      sources: [{ id: 'item-1', checklistOutboxId: 'checklist', communicationId: 'communication', leaveRequestId: 'leave', leaveReminderKind: 'waiting' }],
+      payload: { to: 'manager@example.test', from: 'reports@example.test', subject: 'Old format', html: '<p>old</p>', provider: 'resend', idempotencyKey: `manager-weekly-report/${id}` },
+      ...metadata,
+    },
+    ...overrides,
+  }
+  db.rows.email_messages.push(row)
+  db.rows.email_messages.push({ id: 'item-1', comm_type: 'manager_report_item', status: 'queued', metadata: { section: 'table_bookings', key: 'b1' } })
+  db.rows.checklist_email_outbox.push({ id: 'checklist', status: 'held' })
+  db.rows.recruitment_communications.push({ id: 'communication', delivery_status: 'queued' })
+  return row
+}
 
 beforeEach(() => {
-  db = new MemoryDb(); date = new Date('2026-09-04T08:00:00Z')
+  db = new MemoryDb()
+  date = new Date('2026-09-25T05:00:00Z') // Friday 06:00 BST
   send = vi.fn(async () => ({ success: true, messageId: 'provider-1' }))
+  buildReport = vi.fn(async (now: Date) => buildFixtureReport({ now }))
   mocks.admin.mockReturnValue(db.asDb())
   vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://management.example.test')
   vi.stubEnv('EMAIL_FROM_ADDRESS', 'reports@example.test')
-  vi.stubEnv('MANAGER_EMAIL', 'manager@example.test')
+  vi.stubEnv('MANAGER_EMAIL', 'Manager@Example.test')
+  vi.spyOn(console, 'error').mockImplementation(() => undefined)
 })
 
-describe('manager report queue', () => {
-  it('atomically deduplicates recipient/source/section without resetting sent items', async () => {
-    const first = await queue()
-    itemRows()[0].status = 'sent'
-    const retry = await queue(undefined, undefined, ' Manager@Example.Test ')
-    expect(retry.emailMessageId).toBe(first.emailMessageId)
-    expect(itemRows()).toHaveLength(1)
-    expect(itemRows()[0].status).toBe('sent')
-    await queue('booking-1', undefined, 'other@example.test')
-    expect(itemRows()).toHaveLength(2)
-  })
-  it('reports persistence failure and invalid input truthfully', async () => {
-    db.failures.push({ table: 'email_messages', operation: 'upsert' })
-    expect(await queue()).toMatchObject({ success: false, error: 'Injected database failure' })
-    expect(await queue('')).toMatchObject({ success: false })
-    expect(await queue('bad-recipient', undefined, 'one@example.test,other.test')).toMatchObject({ success: false })
-    expect(itemRows()).toHaveLength(0)
-  })
-})
-
-describe('Friday local schedule', () => {
+describe('Friday 06:00 local schedule', () => {
   it.each([
-    ['2026-09-04T07:59:59Z', false], ['2026-09-04T08:00:00Z', true],
-    ['2026-01-02T08:59:59Z', false], ['2026-01-02T09:00:00Z', true],
-    ['2026-09-04T22:00:00Z', true], ['2026-09-04T23:00:00Z', false],
-    ['2026-09-05T09:00:00Z', false],
+    ['2026-09-25T04:59:59Z', false], ['2026-09-25T05:00:00Z', true],
+    ['2026-01-02T05:59:59Z', false], ['2026-01-02T06:00:00Z', true],
+    ['2026-09-25T22:00:00Z', true], ['2026-09-25T23:00:00Z', false],
+    ['2026-09-26T06:00:00Z', false],
   ])('%s has eligibility %s', (value, expected) => expect(Boolean(managerReportPeriod(new Date(value)))).toBe(expected))
-  it('keeps both report boundaries at 09:00 through the DST transition', () => {
-    expect(managerReportPeriod(new Date('2026-04-03T08:00:00Z'))).toMatchObject({
-      periodStart: '2026-03-27T09:00:00.000Z', periodEnd: '2026-04-03T08:00:00.000Z',
+
+  it('keeps 06:00 London across the March clock change', () => {
+    expect(managerReportPeriod(new Date('2026-04-03T05:00:00Z'))).toMatchObject({
+      key: '2026-04-03', periodStart: '2026-03-27T06:00:00.000Z', periodEnd: '2026-04-03T05:00:00.000Z',
     })
   })
 })
 
-describe('durable delivery', () => {
-  it('skips outside Friday and sends an empty weekly report once', async () => {
-    date = new Date('2026-09-05T08:00:00Z')
+describe('weekly insights delivery', () => {
+  it('skips outside Friday, then builds, freezes and sends one report', async () => {
+    date = new Date('2026-09-26T05:00:00Z')
     expect(await run()).toMatchObject({ success: true, skipped: 'outside_friday_window' })
     expect(db.calls).toHaveLength(0)
-    date = new Date('2026-09-04T08:00:00Z')
+    date = new Date('2026-09-25T05:00:00Z')
     expect(await run()).toMatchObject({ success: true, sent: 1 })
-    expect(send.mock.calls[0][0].subject).toBe('Weekly report: 0')
-    await run()
     expect(send).toHaveBeenCalledTimes(1)
+    const payload = send.mock.calls[0][0]
+    expect(payload).toMatchObject({
+      to: 'manager@example.test', from: 'reports@example.test', provider: 'resend', suppressionMode: 'fail_closed',
+      idempotencyKey: `manager-weekly-report/${managerReportId(['insights_weekly_report', '2026-09-25', 'manager@example.test'])}`,
+    })
+    expect(payload.subject).toMatch(/^The Anchor weekly report, Fri 25 Sep: /)
+    expect(payload.html).toContain('<ul')
+    expect(payload.attachments).toBeUndefined()
+    expect(buildReport).toHaveBeenCalledWith(date, 'https://management.example.test')
+    expect(reportRows()).toHaveLength(1)
+    expect(reportRows()[0]).toMatchObject({ status: 'sent', metadata: { periodKey: '2026-09-25', format: 'insights', sources: [] } })
+
+    date = new Date('2026-09-25T06:00:00Z')
+    expect(await run()).toMatchObject({ success: true, sent: 0, skipped: 'already_reported' })
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(buildReport).toHaveBeenCalledTimes(1)
   })
-  it('sends one report per recipient, freezing sender, attachment and membership', async () => {
-    await queue('one'); await queue('two'); await queue('three', undefined, 'other@example.test')
+
+  it('holds the report back while a section is not checked, then sends it from 09:00 naming the sections', async () => {
+    buildReport.mockImplementation(async (now: Date) => buildFixtureReport({ now, notChecked: ['cashing_up' as SectionKey] }))
+    expect(await run()).toMatchObject({ success: true, sent: 0, skipped: 'waiting_for_sections', notCheckedSections: ['cashing_up'] })
+    expect(reportRows()).toHaveLength(0)
+    expect(send).not.toHaveBeenCalled()
+
+    date = new Date('2026-09-25T07:00:00Z') // 08:00 BST, still waiting
+    expect(await run()).toMatchObject({ skipped: 'waiting_for_sections' })
+
+    date = new Date('2026-09-25T08:00:00Z') // 09:00 BST
+    expect(await run()).toMatchObject({ success: true, sent: 1, notCheckedSections: ['cashing_up'] })
+    expect(send.mock.calls[0][0].html).toContain('⚪ Not checked: Cashing up')
+  })
+
+  it('uses a report built at a later hour once every section can be read', async () => {
+    buildReport.mockImplementationOnce(async (now: Date) => buildFixtureReport({ now, notChecked: ['events' as SectionKey] }))
+    expect(await run()).toMatchObject({ skipped: 'waiting_for_sections' })
+    date = new Date('2026-09-25T06:00:00Z')
+    expect(await run()).toMatchObject({ success: true, sent: 1 })
+    expect(send.mock.calls[0][0].html).not.toContain('Not checked: Hosted events')
+  })
+
+  it('finishes an old-format frozen report for this Friday first and builds nothing new', async () => {
+    const legacy = legacyReport('2026-09-25')
+    expect(await run()).toMatchObject({ success: true, sent: 1 })
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send.mock.calls[0][0]).toEqual((legacy.metadata as Row).payload)
+    expect(buildReport).not.toHaveBeenCalled()
+    expect(db.rows.checklist_email_outbox[0].status).toBe('sent')
+    expect(db.rows.recruitment_communications[0].delivery_status).toBe('sent')
+    expect(db.rows.leave_reminder_log[0]).toMatchObject({ request_id: 'leave', reminder_kind: 'waiting' })
+    expect(db.rows.email_messages.find(row => row.id === 'item-1')?.status).toBe('sent')
+  })
+
+  it('finishes last week\'s old-format report, then sends this week\'s insights report', async () => {
+    legacyReport('2026-09-18')
     expect(await run()).toMatchObject({ success: true, sent: 2 })
-    expect(send).toHaveBeenCalledTimes(2)
-    expect(send.mock.calls[0][0]).toMatchObject({ provider: 'resend', from: 'reports@example.test',
-      attachments: [{ content: Buffer.from('<p>All details</p>').toString('base64') }] })
-    expect(itemRows().every(row => row.status === 'sent')).toBe(true)
-    expect(await run()).toMatchObject({ success: true, sent: 0 })
-    expect(send).toHaveBeenCalledTimes(2)
+    expect(send.mock.calls.map(call => call[0].subject)).toEqual(['Old format', expect.stringMatching(/^The Anchor weekly report/)])
   })
-  it('paginates beyond the database page limit', async () => {
-    for (let i = 0; i < 1001; i++) await queue(`booking-${i}`)
+
+  it('finalises an accepted old-format report without sending it again', async () => {
+    legacyReport('2026-09-18', {}, { acceptedAt: '2026-09-18T08:00:05.000Z', providerMessageId: 'old-provider', firstAttemptAt: '2026-09-18T08:00:00.000Z' })
     expect(await run()).toMatchObject({ success: true, sent: 1 })
-    expect(send.mock.calls[0][0].subject).toBe('Weekly report: 1001')
-    expect(itemRows().filter(row => row.status === 'sent')).toHaveLength(1001)
-  })
-  it('excludes simultaneous attempts using the unique lease and CAS stale takeover', async () => {
-    await queue()
-    db.rows.cron_job_runs.push({ id: 'old-lock', job_name: 'manager-weekly-report', run_key: 'delivery', status: 'running', started_at: '2026-09-04T07:00:00Z' })
-    const results = await Promise.all([run(), run()])
-    expect(results.some(result => result.skipped === 'already_running')).toBe(true)
     expect(send).toHaveBeenCalledTimes(1)
+    expect(send.mock.calls[0][0].subject).toMatch(/^The Anchor weekly report/)
+    expect(db.rows.checklist_email_outbox[0].status).toBe('sent')
   })
-  it('retries provider failure with the identical immutable payload and keeps late arrivals for next week', async () => {
-    await queue('first')
+
+  it('treats an old-format report already sent today as this Friday\'s report', async () => {
+    legacyReport('2026-09-25', { status: 'sent' })
+    expect(await run()).toMatchObject({ success: true, sent: 0, skipped: 'already_reported' })
+    expect(buildReport).not.toHaveBeenCalled()
+  })
+
+  it('ignores queued items from the old queue and leaves them as they are', async () => {
+    db.rows.email_messages.push({ id: 'orphan', comm_type: 'manager_report_item', status: 'queued', metadata: { section: 'rota', key: 'x' } })
+    expect(await run()).toMatchObject({ success: true, sent: 1 })
+    expect(db.rows.email_messages.find(row => row.id === 'orphan')?.status).toBe('queued')
+  })
+
+  it('retries a provider failure with the identical frozen payload and never rebuilds it', async () => {
     send.mockResolvedValueOnce({ success: false, error: 'Provider unavailable' })
-    expect(await run()).toMatchObject({ success: false })
+    expect(await run()).toMatchObject({ success: false, error: 'Provider unavailable' })
     const firstPayload = structuredClone(send.mock.calls[0][0])
-    expect(itemRows()[0].status).toBe('queued')
-    await queue('late')
+    expect(reportRows()[0].status).toBe('queued')
     vi.stubEnv('EMAIL_FROM_ADDRESS', 'changed@example.test')
-    date = new Date('2026-09-04T09:00:00Z')
+    date = new Date('2026-09-25T06:00:00Z')
     expect(await run()).toMatchObject({ success: true, sent: 1 })
     expect(send.mock.calls[1][0]).toEqual(firstPayload)
-    expect(itemRows().filter(row => row.status === 'queued')).toHaveLength(1)
-    date = new Date('2026-09-11T08:00:00Z')
-    expect(await run()).toMatchObject({ success: true, sent: 1 })
-    expect(itemRows().every(row => row.status === 'sent')).toBe(true)
+    expect(buildReport).toHaveBeenCalledTimes(1)
   })
-  it('reuses the same provider key and payload after acceptance persistence fails', async () => {
-    await queue()
-    db.failures.push({ table: 'email_messages', operation: 'update', matches: payload => Boolean((payload.metadata as Row)?.acceptedAt) })
-    expect(await run()).toMatchObject({ success: false })
-    expect(itemRows()[0].status).toBe('queued')
-    date = new Date('2026-09-04T09:00:00Z')
-    expect(await run()).toMatchObject({ success: true })
-    expect(send).toHaveBeenCalledTimes(2)
-    expect(send.mock.calls[1][0]).toEqual(send.mock.calls[0][0])
-  })
-  it('finalises recorded acceptance without calling provider again after item update failure', async () => {
-    await queue()
-    db.failures.push({ table: 'email_messages', operation: 'update', matches: payload => payload.status === 'sent' && !payload.metadata })
-    expect(await run()).toMatchObject({ success: false })
-    date = new Date('2026-09-11T08:00:00Z')
-    expect(await run()).toMatchObject({ success: true })
-    expect(send).toHaveBeenCalledTimes(2)
-    expect(itemRows()[0].status).toBe('sent')
-  })
-  it('blocks ambiguous sends outside the provider deduplication window, preserving backlog', async () => {
-    await queue()
+
+  it('blocks a new week while an earlier send is outside the provider deduplication window', async () => {
     send.mockResolvedValueOnce({ success: false, error: 'Network timeout' })
     await run()
-    date = new Date('2026-09-11T08:00:00Z')
-    await queue('next-week')
+    date = new Date('2026-10-02T05:00:00Z')
     expect(await run()).toMatchObject({ success: false, error: expect.stringContaining('needs provider reconciliation') })
     expect(send).toHaveBeenCalledTimes(1)
-    expect(itemRows().every(row => row.status === 'queued')).toBe(true)
+    expect(buildReport).toHaveBeenCalledTimes(1)
   })
+
   it('treats a provider id as acceptance even when the transport log reports failure', async () => {
-    await queue()
-    send.mockResolvedValueOnce({ success: false, messageId: 'accepted-provider-id', error: 'Logging failed' })
+    send.mockResolvedValueOnce({ success: false, messageId: 'accepted', error: 'Logging failed' })
     expect(await run()).toMatchObject({ success: true, sent: 1 })
-    expect(itemRows()[0].status).toBe('sent')
-    await run()
-    expect(send).toHaveBeenCalledTimes(1)
+    expect(reportRows()[0].status).toBe('sent')
   })
-  it('does not send when the immutable payload could not be persisted', async () => {
-    await queue()
+
+  it('does not send when the frozen payload could not be saved', async () => {
     db.failures.push({ table: 'email_messages', operation: 'insert' })
     expect(await run()).toMatchObject({ success: false })
     expect(send).not.toHaveBeenCalled()
-    expect(itemRows()[0].status).toBe('queued')
     expect(db.rows.cron_job_runs[0]).toMatchObject({ status: 'failed', error_message: 'Injected database failure' })
     expect(await run()).toMatchObject({ success: true, sent: 1 })
   })
-  it('retries source finalisation failure without sending the accepted payload again', async () => {
-    db.rows.checklist_email_outbox.push({ id: 'checklist', status: 'held' })
-    await queue('references', { checklist_outbox_id: 'checklist' })
-    db.failures.push({ table: 'checklist_email_outbox', operation: 'update' })
-    expect(await run()).toMatchObject({ success: false })
-    expect(itemRows()[0].status).toBe('queued')
-    expect(await run()).toMatchObject({ success: true })
-    expect(send).toHaveBeenCalledTimes(1)
-    expect(db.rows.checklist_email_outbox[0].status).toBe('sent')
+
+  it('fails without sending when the report build fails or the recipient is invalid', async () => {
+    buildReport.mockRejectedValueOnce(new Error('Insights need a valid app URL'))
+    expect(await run()).toMatchObject({ success: false, error: 'Insights need a valid app URL' })
+    vi.stubEnv('MANAGER_EMAIL', 'one@example.test, two@example.test')
+    expect(await run()).toMatchObject({ success: false, error: 'Manager report recipient is invalid' })
+    expect(send).not.toHaveBeenCalled()
+    expect(reportRows()).toHaveLength(0)
   })
-  it('finalises recruitment, checklist and holiday ledgers only after provider acceptance', async () => {
-    db.rows.recruitment_communications.push({ id: 'communication', delivery_status: 'queued' })
-    db.rows.checklist_email_outbox.push({ id: 'checklist', status: 'held' })
-    await queue('references', { communication_id: 'communication', checklist_outbox_id: 'checklist', leave_request_id: 'leave', leave_reminder_kind: 'pending' })
-    send.mockResolvedValueOnce({ success: false, error: 'Unavailable' })
-    await run()
-    expect(db.rows.leave_reminder_log).toHaveLength(0)
-    expect(db.rows.checklist_email_outbox[0].status).toBe('held')
-    expect(db.rows.recruitment_communications[0].delivery_status).toBe('queued')
-    expect(await run()).toMatchObject({ success: true })
-    expect(db.rows.leave_reminder_log[0]).toMatchObject({ request_id: 'leave', reminder_kind: 'pending', sent_to: ['manager@example.test'] })
-    expect(db.rows.checklist_email_outbox[0].status).toBe('sent')
-    expect(db.rows.recruitment_communications[0].delivery_status).toBe('sent')
-    expect(reportRows()[0].status).toBe('sent')
+
+  it('excludes simultaneous attempts using the unique lease and a stale takeover', async () => {
+    db.rows.cron_job_runs.push({ id: 'old-lock', job_name: 'manager-weekly-report', run_key: 'delivery', status: 'running', started_at: '2026-09-25T04:00:00Z' })
+    const results = await Promise.all([run(), run()])
+    expect(results.some(result => result.skipped === 'already_running')).toBe(true)
+    expect(send).toHaveBeenCalledTimes(1)
   })
 })

@@ -2,10 +2,24 @@ import { randomUUID } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isValidEmailAddress } from '@/lib/notifications/channel'
 import { sendEmail, type EmailOptions } from '@/lib/email/emailService'
-import { managerReportId } from './queue'
-import { managerReportPeriod } from './schedule'
-import { renderManagerReport } from './render'
-import { MANAGER_REPORT_SECTIONS, type ManagerReportEntry, type ManagerReportSection } from './types'
+import { renderInsightsEmail } from '@/lib/insights/email/render'
+import { buildWeeklyInsights } from '@/lib/insights/registry'
+import type { InsightsReport } from '@/lib/insights/types'
+import { managerReportId } from './ids'
+import { londonHour, managerReportPeriod, PARTIAL_SEND_HOUR_LONDON } from './schedule'
+
+/**
+ * Friday manager report delivery (spec 7 and 8).
+ *
+ * The report is the weekly insights report, built live from the engine at the first
+ * attempt from 06:00 London. Once built with every section checked (or from 09:00 with
+ * some marked "not checked"), the payload is frozen in `email_messages` and sent with a
+ * stable Resend idempotency key; retries resend the identical payload.
+ *
+ * Old-format reports frozen before the switch carry source references (checklist outbox,
+ * recruitment communications, leave reminders, queued items). They are still finished
+ * here, including source finalisation, before anything new is built.
+ */
 
 type Db = ReturnType<typeof createAdminClient>
 interface SourceReference {
@@ -14,8 +28,11 @@ interface SourceReference {
 }
 interface ReportMetadata {
   periodKey: string
+  /** 'insights' for the new report. Absent on old-format reports. */
+  format?: 'insights'
   sources: SourceReference[]
   payload: EmailOptions
+  notChecked?: string[]
   firstAttemptAt?: string
   acceptedAt?: string
   providerMessageId?: string
@@ -25,26 +42,35 @@ interface EmailRow {
   body_text: string | null; created_at: string; metadata: Record<string, unknown>
 }
 export interface ManagerReportDeliveryResult {
-  success: boolean; sent: number; skipped?: string; error?: string
+  success: boolean
+  sent: number
+  skipped?: string
+  error?: string
+  /** Sections sent as "not checked". The route raises an operator alert naming them. */
+  notCheckedSections?: string[]
 }
 export interface ManagerReportDeliveryDependencies {
   db: Db
   send: typeof sendEmail
   now: () => Date
+  buildReport?: (now: Date, appUrl: string) => Promise<InsightsReport>
 }
 const PAGE_SIZE = 500
 const LEASE_MS = 10 * 60 * 1000
 // Leave an hour of headroom before Resend forgets an idempotency key.
 const RETRY_WINDOW_MS = 23 * 60 * 60 * 1000
 
-async function listQueued(db: Db, commType: string, before?: string): Promise<EmailRow[]> {
+function defaultBuildReport(now: Date, appUrl: string): Promise<InsightsReport> {
+  return buildWeeklyInsights({ createDb: (signal) => createAdminClient({ signal }), now, appUrl })
+}
+
+async function listQueued(db: Db, commType: string): Promise<EmailRow[]> {
   const rows: EmailRow[] = []
   let cursor: string | undefined
   for (;;) {
     let query = db.from('email_messages')
       .select('id,to_address,subject,body_html,body_text,created_at,metadata')
       .eq('comm_type', commType).eq('status', 'queued').order('id').limit(PAGE_SIZE)
-    if (before) query = query.lte('created_at', before)
     if (cursor) query = query.gt('id', cursor)
     const { data, error } = await query
     if (error) throw new Error(error.message)
@@ -55,18 +81,6 @@ async function listQueued(db: Db, commType: string, before?: string): Promise<Em
   }
 }
 
-function toEntry(row: EmailRow): ManagerReportEntry {
-  const section = row.metadata.section as ManagerReportSection
-  if (!MANAGER_REPORT_SECTIONS.includes(section) || typeof row.metadata.key !== 'string') {
-    throw new Error(`Invalid manager report item ${row.id}`)
-  }
-  return {
-    id: row.id, section, key: row.metadata.key, to: row.to_address,
-    subject: row.subject ?? '', html: row.body_html ?? undefined, text: row.body_text ?? undefined,
-    createdAt: row.created_at, metadata: row.metadata,
-  }
-}
-
 async function saveReport(db: Db, id: string, metadata: ReportMetadata, status = 'queued'): Promise<void> {
   const { data, error } = await db.from('email_messages').update({
     metadata, status, ...(metadata.acceptedAt ? { sent_at: metadata.acceptedAt } : {}),
@@ -74,6 +88,7 @@ async function saveReport(db: Db, id: string, metadata: ReportMetadata, status =
   if (error || !data) throw new Error(error?.message ?? 'Report state was not saved')
 }
 
+/** Old-format reports only: new reports carry no sources, so this does nothing for them. */
 async function finaliseSources(db: Db, metadata: ReportMetadata): Promise<void> {
   for (const source of metadata.sources) {
     if (source.leaveRequestId && source.leaveReminderKind) {
@@ -109,7 +124,13 @@ async function finaliseSources(db: Db, metadata: ReportMetadata): Promise<void> 
   }
 }
 
-/** No report payload is rebuilt after freezing, including attachments, sender and reply-to. */
+function managerRecipient(): string {
+  const manager = (process.env.MANAGER_EMAIL || 'manager@the-anchor.pub').trim().toLowerCase()
+  if (!isValidEmailAddress(manager) || /[,;<>\s]/.test(manager)) throw new Error('Manager report recipient is invalid')
+  return manager
+}
+
+/** No report payload is rebuilt after freezing, including sender and reply-to. */
 export async function deliverManagerReport(
   dependencies?: ManagerReportDeliveryDependencies,
 ): Promise<ManagerReportDeliveryResult> {
@@ -118,13 +139,14 @@ export async function deliverManagerReport(
   if (!period) return { success: true, sent: 0, skipped: 'outside_friday_window' }
   const db = dependencies?.db ?? createAdminClient()
   const send = dependencies?.send ?? sendEmail
+  const buildReport = dependencies?.buildReport ?? defaultBuildReport
   const owner = randomUUID()
   let lockId: string | undefined
   let sent = 0
   let completed = false
   let failureMessage: string | null = null
   try {
-    // A single global lease also serialises recovery of previous weeks against a new batch.
+    // A single global lease also serialises recovery of previous weeks against a new build.
     const stamp = now().toISOString()
     const { data: inserted, error: insertError } = await db.from('cron_job_runs').insert({
       job_name: 'manager-weekly-report', run_key: 'delivery', status: 'running', started_at: stamp, error_message: owner,
@@ -172,54 +194,57 @@ export async function deliverManagerReport(
       await finaliseSources(db, metadata)
       await saveReport(db, row.id, metadata, 'sent')
     }
-    // Finish frozen reports first. An ambiguous earlier send blocks a new week's report.
+
+    // Finish frozen reports first, old format or new. An ambiguous earlier send blocks a new week's report.
     for (const pending of await listQueued(db, 'manager_weekly_report')) await deliver(pending)
-    const entries = (await listQueued(db, 'manager_report_item', period.periodEnd)).map(toEntry)
-    const manager = (process.env.MANAGER_EMAIL || 'manager@the-anchor.pub').trim().toLowerCase()
-    if (!isValidEmailAddress(manager) || /[,;<>]/.test(manager)) throw new Error('Manager report recipient is invalid')
-    const recipients = new Map<string, ManagerReportEntry[]>([[manager, []]])
-    for (const entry of entries) recipients.set(entry.to, [...(recipients.get(entry.to) ?? []), entry])
-    for (const [to, items] of recipients) {
-      await renew()
-      const id = managerReportId(['manager_weekly_report', period.key, to])
-      const { data: existing, error: existingError } = await db.from('email_messages').select('id').eq('id', id).maybeSingle()
-      if (existingError) throw new Error(existingError.message)
-      // Late arrivals after the immutable report was frozen stay queued for next Friday.
-      if (existing) continue
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL
-      const from = process.env.EMAIL_FROM_ADDRESS
-      if (!appUrl || !from) throw new Error('Manager report app URL and email sender must be configured')
-      const rendered = renderManagerReport({ entries: items, ...period, appUrl })
-      const metadata: ReportMetadata = {
-        periodKey: period.key,
-        sources: items.map(item => ({
-          id: item.id,
-          checklistOutboxId: typeof item.metadata?.checklist_outbox_id === 'string' ? item.metadata.checklist_outbox_id : undefined,
-          communicationId: typeof item.metadata?.communication_id === 'string' ? item.metadata.communication_id : undefined,
-          leaveRequestId: typeof item.metadata?.leave_request_id === 'string' ? item.metadata.leave_request_id : undefined,
-          leaveReminderKind: typeof item.metadata?.leave_reminder_kind === 'string' ? item.metadata.leave_reminder_kind : undefined,
-        })),
-        payload: {
-          to, from, replyTo: process.env.EMAIL_REPLY_TO ?? '',
-          subject: rendered.subject, html: rendered.html, text: rendered.text,
-          provider: 'resend', commType: 'manager_weekly_report_delivery',
-          idempotencyKey: `manager-weekly-report/${id}`, suppressionMode: 'fail_closed',
-          metadata: { manager_report_id: id },
-          ...(rendered.attachment ? { attachments: [{ name: rendered.attachment.filename,
-            contentType: rendered.attachment.contentType,
-            content: Buffer.from(rendered.attachment.content, 'utf8').toString('base64'),
-          }] } : {}),
-        },
-      }
-      const { data, error } = await db.from('email_messages').insert({
-        id, to_address: to, from_address: from, comm_type: 'manager_weekly_report', status: 'queued',
-        subject: rendered.subject, body_html: rendered.html, body_text: rendered.text, metadata,
-      }).select('id,to_address,subject,body_html,body_text,created_at,metadata').single()
-      if (error || !data) throw new Error(error?.message ?? 'Report payload was not frozen')
-      await deliver(data as EmailRow)
+
+    // One report per Friday: an old-format report already recorded for today also counts.
+    const { data: existing, error: existingError } = await db.from('email_messages').select('id')
+      .eq('comm_type', 'manager_weekly_report').eq('metadata->>periodKey', period.key).limit(1)
+    if (existingError) throw new Error(existingError.message)
+    if ((existing ?? []).length > 0) {
+      completed = true
+      return { success: true, sent, ...(sent === 0 ? { skipped: 'already_reported' } : {}) }
     }
+
+    const to = managerRecipient()
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+    const from = process.env.EMAIL_FROM_ADDRESS
+    if (!appUrl || !from) throw new Error('Manager report app URL and email sender must be configured')
+
+    await renew()
+    const report = await buildReport(now(), appUrl)
+    if (report.notChecked.length > 0 && londonHour(now()) < PARTIAL_SEND_HOUR_LONDON) {
+      // Nothing is frozen, so the next hourly run builds afresh and may find every section.
+      console.error('Manager weekly report held back: sections not checked', { sections: report.notChecked })
+      completed = true
+      return { success: true, sent, skipped: 'waiting_for_sections', notCheckedSections: report.notChecked }
+    }
+
+    await renew()
+    const id = managerReportId(['insights_weekly_report', period.key, to])
+    const rendered = renderInsightsEmail(report, { appUrl })
+    const metadata: ReportMetadata = {
+      periodKey: period.key,
+      format: 'insights',
+      sources: [],
+      notChecked: report.notChecked,
+      payload: {
+        to, from, replyTo: process.env.EMAIL_REPLY_TO ?? '',
+        subject: rendered.subject, html: rendered.html, text: rendered.text,
+        provider: 'resend', commType: 'manager_weekly_report_delivery',
+        idempotencyKey: `manager-weekly-report/${id}`, suppressionMode: 'fail_closed',
+        metadata: { manager_report_id: id },
+      },
+    }
+    const { data, error } = await db.from('email_messages').insert({
+      id, to_address: to, from_address: from, comm_type: 'manager_weekly_report', status: 'queued',
+      subject: rendered.subject, body_html: rendered.html, body_text: rendered.text, metadata,
+    }).select('id,to_address,subject,body_html,body_text,created_at,metadata').single()
+    if (error || !data) throw new Error(error?.message ?? 'Report payload was not frozen')
+    await deliver(data as EmailRow)
     completed = true
-    return { success: true, sent }
+    return { success: true, sent, ...(report.notChecked.length > 0 ? { notCheckedSections: report.notChecked } : {}) }
   } catch (error) {
     failureMessage = error instanceof Error ? error.message : 'Manager report delivery failed'
     return { success: false, sent, error: failureMessage }
