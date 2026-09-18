@@ -74,7 +74,7 @@ export function GuestField({
 
   return (
     <div className={cn('flex flex-col gap-2', className)}>
-      <label htmlFor={id} className="font-anchor-body text-[14px] font-semibold text-guest-text">
+      <label htmlFor={id} className="font-anchor-body text-sm font-semibold text-guest-text">
         {label}
         {/* The control carries `required`, which is what assistive tech reads.
             This marker is purely visual. */}
@@ -82,7 +82,7 @@ export function GuestField({
       </label>
 
       {hint ? (
-        <p id={hintId} className="font-anchor-body text-[12px] leading-[1.55] text-guest-text-muted">
+        <p id={hintId} className="font-anchor-body text-xs leading-[1.55] text-guest-text-muted">
           {hint}
         </p>
       ) : null}
@@ -92,7 +92,7 @@ export function GuestField({
       {error ? (
         <p
           id={errorId}
-          className="font-anchor-body text-[13px] font-medium leading-[1.55] text-anchor-danger"
+          className="font-anchor-body text-ui font-medium leading-[1.55] text-anchor-danger"
         >
           {error}
         </p>

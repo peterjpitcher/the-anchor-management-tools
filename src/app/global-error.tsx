@@ -7,6 +7,60 @@ import {
   retryPendingNavigation,
 } from '@/components/features/shared/ChunkErrorReloader';
 
+/*
+ * This page replaces the root layout, so the app stylesheet (and every Tailwind class) may not
+ * be loaded when it shows, and the chunk-failure case is exactly when a stylesheet can fail to
+ * arrive. It is styled inline with the design-token values from src/app/globals.css instead,
+ * so it always renders in the app's colours. Keep these in step with the tokens.
+ */
+const TOKEN = {
+  bg: '#fafaf9',
+  surface: '#ffffff',
+  border: '#ececea',
+  text: '#1c1917',
+  textMuted: '#57534e',
+  primary: '#006A4E',
+  primaryFg: '#ffffff',
+  dangerFg: '#991b1b',
+  surfaceHover: '#f5f5f4',
+} as const;
+
+const page: React.CSSProperties = {
+  display: 'flex',
+  minHeight: '100vh',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  margin: 0,
+  background: TOKEN.bg,
+  color: TOKEN.text,
+  fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+};
+
+const card: React.CSSProperties = {
+  width: '100%',
+  maxWidth: 448,
+  padding: 32,
+  background: TOKEN.surface,
+  border: `1px solid ${TOKEN.border}`,
+  borderRadius: 14,
+  boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 1px rgba(15, 23, 42, 0.04)',
+};
+
+const heading: React.CSSProperties = { margin: '0 0 16px', fontSize: 24, fontWeight: 700 };
+const body: React.CSSProperties = { margin: '0 0 24px', color: TOKEN.textMuted, lineHeight: 1.5 };
+
+const button: React.CSSProperties = {
+  padding: '8px 16px',
+  border: 0,
+  borderRadius: 8,
+  background: TOKEN.primary,
+  color: TOKEN.primaryFg,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: 'pointer',
+};
+
 export default function GlobalError({
   error,
   reset,
@@ -25,19 +79,15 @@ export default function GlobalError({
 
   if (isChunkError) {
     return (
-      <html>
-        <body>
-          <div className="flex min-h-screen items-center justify-center bg-bg p-4">
-            <div className="bg-surface p-8 rounded-sm shadow-sm max-w-md w-full text-center">
-              <h2 className="text-2xl font-bold text-text mb-4">Page update available</h2>
-              <p className="text-text-muted mb-6">
+      <html lang="en">
+        <body style={{ margin: 0 }}>
+          <div style={page}>
+            <div style={{ ...card, textAlign: 'center' }}>
+              <h2 style={heading}>Page update available</h2>
+              <p style={body}>
                 A new version of this page has been deployed. Please reload to continue.
               </p>
-              <button
-                type="button"
-                className="px-4 py-2 bg-blue-600 text-white rounded-sm"
-                onClick={retryPendingNavigation}
-              >
+              <button type="button" style={button} onClick={retryPendingNavigation}>
                 Reload page
               </button>
             </div>
@@ -48,26 +98,30 @@ export default function GlobalError({
   }
 
   return (
-    <html>
-      <body>
-        <div className="flex min-h-screen items-center justify-center bg-bg p-4">
-          <div className="bg-surface p-8 rounded-sm shadow-sm max-w-md w-full">
-            <h2 className="text-2xl font-bold text-danger mb-4">Something went wrong!</h2>
-            <p className="text-text-muted mb-6">An unexpected error occurred. Please try again.</p>
-            <div className="flex gap-4">
-              <button type="button"
-                className="px-4 py-2 bg-blue-600 text-white rounded-sm"
-                onClick={() => reset()}
-              >
-                Try again
-              </button>
-            </div>
+    <html lang="en">
+      <body style={{ margin: 0 }}>
+        <div style={page}>
+          <div style={card}>
+            <h2 style={{ ...heading, color: TOKEN.dangerFg }}>Something went wrong!</h2>
+            <p style={body}>An unexpected error occurred. Please try again.</p>
+            <button type="button" style={button} onClick={() => reset()}>
+              Try again
+            </button>
             {process.env.NODE_ENV === 'development' && (
-              <details className="mt-6">
-                <summary className="cursor-pointer text-sm text-text-muted">
+              <details style={{ marginTop: 24 }}>
+                <summary style={{ cursor: 'pointer', fontSize: 14, color: TOKEN.textMuted }}>
                   Error details
                 </summary>
-                <pre className="mt-2 text-xs bg-surface-hover p-2 rounded-sm overflow-auto">
+                <pre
+                  style={{
+                    marginTop: 8,
+                    padding: 8,
+                    overflow: 'auto',
+                    fontSize: 12,
+                    background: TOKEN.surfaceHover,
+                    borderRadius: 6,
+                  }}
+                >
                   {error?.stack || 'No stack trace'}
                 </pre>
               </details>

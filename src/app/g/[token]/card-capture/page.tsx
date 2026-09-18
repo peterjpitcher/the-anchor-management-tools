@@ -1,18 +1,30 @@
+import {
+  GuestCard,
+  GuestShell,
+  GUEST_H1_CLASS,
+  GUEST_INTRO_CLASS,
+  GUEST_KICKER_CLASS,
+} from '@/components/features/guest'
+
+/** Retired landing, still reached from old SMS links. Rendered in the guest brand shell. */
 export default function CardCapturePage() {
   return (
-    <main className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center space-y-4">
-        <h1 className="text-2xl font-semibold text-gray-900">No action needed</h1>
-        <p className="text-gray-600">
-          Card details are no longer required to secure your booking.
-        </p>
-        <p className="text-gray-600">
-          Your booking has been confirmed. You will receive an SMS confirmation shortly.
-        </p>
-        <p className="text-sm text-gray-400">
-          If you have any questions, please contact us directly.
-        </p>
-      </div>
-    </main>
+    <GuestShell>
+      <section className="flex flex-col gap-6">
+        <div className={GUEST_INTRO_CLASS}>
+          <p className={GUEST_KICKER_CLASS}>Table booking</p>
+          <h1 className={GUEST_H1_CLASS}>No action needed</h1>
+        </div>
+        <GuestCard>
+          <div className="flex flex-col gap-4 font-anchor-body text-base leading-[1.6] text-guest-text">
+            <p>Card details are no longer required to secure your booking.</p>
+            <p>Your booking has been confirmed. You will receive an SMS confirmation shortly.</p>
+            <p className="text-sm text-guest-text-muted">
+              If you have any questions, please contact us directly.
+            </p>
+          </div>
+        </GuestCard>
+      </section>
+    </GuestShell>
   )
 }

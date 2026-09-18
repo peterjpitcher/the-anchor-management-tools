@@ -272,7 +272,7 @@ export default async function TableManageBookingPage({
         <GuestCard variant="accent">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 flex-col gap-[3px]">
-              <span className="font-anchor-body text-[11px] font-semibold uppercase leading-none tracking-[0.1em] text-guest-text-muted">
+              <span className="font-anchor-body text-meta font-semibold uppercase leading-none tracking-[0.1em] text-guest-text-muted">
                 Booking
               </span>
               <span className="break-words font-anchor-display text-[26px] font-normal leading-[1.15] text-guest-text-strong">
@@ -297,7 +297,7 @@ export default async function TableManageBookingPage({
 
         {!preview.can_edit ? (
           <GuestCard>
-            <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+            <p className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
               Booking changes are no longer available. Please call to make any changes.
             </p>
           </GuestCard>

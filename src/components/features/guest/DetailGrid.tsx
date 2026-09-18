@@ -22,10 +22,10 @@ export function DetailGrid({ items, className }: DetailGridProps): React.JSX.Ele
     <div className={cn('grid grid-cols-1 gap-[15px] min-[380px]:grid-cols-2', className)}>
       {items.map((item, index) => (
         <div key={index} className="flex min-w-0 flex-col gap-[3px]">
-          <span className="font-anchor-body text-[11px] font-semibold uppercase leading-none tracking-[0.1em] text-guest-text-muted">
+          <span className="font-anchor-body text-meta font-semibold uppercase leading-none tracking-[0.1em] text-guest-text-muted">
             {item.label}
           </span>
-          <span className="font-anchor-body text-[14px] font-semibold leading-[1.4] text-guest-text">
+          <span className="font-anchor-body text-sm font-semibold leading-[1.4] text-guest-text">
             {item.value}
           </span>
         </div>

@@ -52,12 +52,12 @@ export function TablePaymentSuccessPanel({
             <GuestBadge tone="success">Paid</GuestBadge>
           </div>
 
-          <p className="font-anchor-body text-[15px] leading-[1.65] text-guest-text">
+          <p className="font-anchor-body text-guest-lead leading-[1.65] text-guest-text">
             Thanks. We are confirming your booking now. You will receive a text confirmation
             shortly.
           </p>
 
-          <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+          <p className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
             If you do not receive confirmation, call {GUEST_CONTACT.phoneDisplay}.
           </p>
         </div>

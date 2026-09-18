@@ -185,7 +185,7 @@ export function TablePaymentClient({
             </PayPalScriptProvider>
 
             {paymentState === 'paying' && (
-              <p className="text-center font-anchor-body text-[12px] leading-[1.5] text-guest-text-muted">
+              <p className="text-center font-anchor-body text-xs leading-[1.5] text-guest-text-muted">
                 Processing payment, please wait…
               </p>
             )}
@@ -195,7 +195,7 @@ export function TablePaymentClient({
         )}
       </GuestCard>
 
-      <p className="text-center font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+      <p className="text-center font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
         Need help? Call{' '}
         <a
           href={GUEST_CONTACT.telHref}

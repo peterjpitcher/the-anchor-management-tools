@@ -12,35 +12,39 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatDateWithTimeForSms } from '@/lib/dateUtils'
 import { isAnswerable, lookupConfirmToken } from '@/lib/table-bookings/confirm-token'
+import {
+  GuestAlert,
+  GuestButton,
+  GuestShell,
+  GUEST_H1_CLASS,
+  GUEST_INTRO_CLASS,
+  GUEST_KICKER_CLASS,
+} from '@/components/features/guest'
 
 export const dynamic = 'force-dynamic'
-
-const RAW_CONTACT_PHONE = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'
-
-/** The env var carries the number unspaced, which reads as a string of digits to a guest. */
-const CONTACT_PHONE_HREF = RAW_CONTACT_PHONE.replace(/\s/g, '')
-const CONTACT_PHONE_DISPLAY = /^0\d{10}$/.test(CONTACT_PHONE_HREF)
-  ? `${CONTACT_PHONE_HREF.slice(0, 5)} ${CONTACT_PHONE_HREF.slice(5)}`
-  : RAW_CONTACT_PHONE
 
 type PageProps = {
   params: Promise<{ token: string }>
   searchParams: Promise<{ state?: string }>
 }
 
+/**
+ * The guest brand shell, like every other /g page. GuestShell's footer carries the pub's
+ * phone number from the company record, which is the way out of every dead-end below.
+ */
 function Shell({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
-      <h1 className="text-2xl font-semibold text-gray-900">{title}</h1>
-      <div className="mt-4 space-y-4 text-gray-700">{children}</div>
-      <p className="mt-8 text-sm text-gray-500">
-        The Anchor, Stanwell Moor. Anything else, call us on{' '}
-        <a className="underline" href={`tel:${CONTACT_PHONE_HREF}`}>
-          {CONTACT_PHONE_DISPLAY}
-        </a>
-        .
-      </p>
-    </main>
+    <GuestShell>
+      <section className="flex flex-col gap-6">
+        <div className={GUEST_INTRO_CLASS}>
+          <p className={GUEST_KICKER_CLASS}>Table booking</p>
+          <h1 className={GUEST_H1_CLASS}>{title}</h1>
+        </div>
+        <div className="flex flex-col gap-4 font-anchor-body text-base leading-[1.6] text-guest-text">
+          {children}
+        </div>
+      </section>
+    </GuestShell>
   )
 }
 
@@ -120,31 +124,19 @@ export default async function ConfirmBookingPage({ params, searchParams }: PageP
         {greeting}our table
         {booking.partySize ? ` for ${booking.partySize}` : ''} is {bookingMoment}.
       </p>
-      <p className="text-sm text-gray-500">Booking reference {booking.bookingReference}</p>
+      <p className="text-sm text-guest-text-muted">Booking reference {booking.bookingReference}</p>
 
-      <form method="POST" action={`/g/${token}/confirm-booking/action`} className="space-y-3 pt-2">
-        <button
-          type="submit"
-          name="answer"
-          value="yes"
-          className="w-full rounded-lg bg-emerald-700 px-4 py-4 text-lg font-semibold text-white"
-        >
+      <form method="POST" action={`/g/${token}/confirm-booking/action`} className="flex flex-col gap-3 pt-2">
+        <GuestButton type="submit" name="answer" value="yes" variant="primary" size="lg" fullWidth>
           Yes, we&apos;ll be there
-        </button>
-        <button
-          type="submit"
-          name="answer"
-          value="no"
-          className="w-full rounded-lg border border-gray-300 px-4 py-4 text-lg font-medium text-gray-700"
-        >
+        </GuestButton>
+        <GuestButton type="submit" name="answer" value="no" variant="outline" size="lg" fullWidth>
           Sorry, I need to cancel
-        </button>
+        </GuestButton>
       </form>
 
       {state === 'busy' ? (
-        <p className="text-sm text-amber-700">
-          That did not go through. Please try once more in a moment.
-        </p>
+        <GuestAlert tone="notice">That did not go through. Please try once more in a moment.</GuestAlert>
       ) : null}
     </Shell>
   )

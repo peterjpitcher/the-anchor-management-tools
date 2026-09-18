@@ -109,10 +109,10 @@ function addonCountPhrase(count: number): string {
 
 /** Seat title, shared by the editable fieldset legend and the read-only row. */
 const SEAT_TITLE_CLASS =
-  'font-anchor-body text-[14px] font-bold leading-[1.4] text-guest-text-strong'
+  'font-anchor-body text-sm font-bold leading-[1.4] text-guest-text-strong'
 
 /** Small print inside a seat block: the read-only choices and dietary lines. */
-const SEAT_TEXT_CLASS = 'font-anchor-body text-[14px] leading-[1.6] text-guest-text'
+const SEAT_TEXT_CLASS = 'font-anchor-body text-sm leading-[1.6] text-guest-text'
 
 export function PreorderSection({
   order,
@@ -146,7 +146,7 @@ export function PreorderSection({
         >
           Your food choices
         </h2>
-        <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+        <p className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
           {order.covers.some(cover => cover.courseCount != null)
             ? `Guests having two or three courses from the ${menuName} menu choose their dishes in advance. Guests on one course have nothing to pre-order.`
             : `Everyone eating from the ${menuName} menu chooses their main course in advance so the kitchen can prepare it. A starter and a pudding are optional.`}
@@ -156,7 +156,7 @@ export function PreorderSection({
       {hasAddons && (
         <p
           id={ADDON_NOTE_ID}
-          className="rounded-guest-card border border-anchor-gold/[0.35] bg-anchor-gold/[0.07] px-[15px] py-[13px] font-anchor-body text-[13px] leading-[1.6] text-guest-text"
+          className="rounded-guest-card border border-anchor-gold/[0.35] bg-anchor-gold/[0.07] px-[15px] py-[13px] font-anchor-body text-ui leading-[1.6] text-guest-text"
         >
           {PREORDER_ADDON_GUEST_NOTE}
         </p>
@@ -165,7 +165,7 @@ export function PreorderSection({
       {cutoff.editable ? (
         <>
           {cutoff.at && (
-            <p className="font-anchor-body text-[13px] leading-[1.55] text-guest-text-muted">
+            <p className="font-anchor-body text-ui leading-[1.55] text-guest-text-muted">
               You can change these until {formatDateTime12Hour(cutoff.at)}.
             </p>
           )}
@@ -278,7 +278,7 @@ export function PreorderSection({
                           className="rounded-guest-field border border-guest-border bg-guest-sunk px-[14px] py-3 sm:col-span-2"
                           aria-describedby={ADDON_NOTE_ID}
                         >
-                          <legend className="px-1 font-anchor-body text-[13px] font-semibold leading-[1.4] text-guest-text">
+                          <legend className="px-1 font-anchor-body text-ui font-semibold leading-[1.4] text-guest-text">
                             Add-ons for seat {ordinal} (optional)
                           </legend>
 
@@ -319,7 +319,7 @@ export function PreorderSection({
 
                           <p
                             aria-live="polite"
-                            className="mt-2 font-anchor-body text-[13px] leading-[1.55] text-guest-text-muted"
+                            className="mt-2 font-anchor-body text-ui leading-[1.55] text-guest-text-muted"
                           >
                             {seatAddons.count === 0
                               ? 'No add-ons saved for this seat yet.'

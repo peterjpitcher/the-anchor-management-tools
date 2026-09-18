@@ -4,17 +4,8 @@ import { useState, Suspense } from 'react'
 // import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft } from 'lucide-react'
-import Image from 'next/image'
-import { Form, FormActions } from '@/ds'
-import { FormGroup } from '@/ds'
-import { Input } from '@/ds'
-import { Button } from '@/ds'
-import { LinkButton } from '@/ds'
-import { toast } from '@/ds'
-import { Container } from '@/ds'
-import { Card } from '@/ds'
-import { EmptyState } from '@/ds'
-import { Spinner } from '@/ds'
+import { Button, Field, Input, LinkButton, Spinner, toast } from '@/ds'
+import { AuthCard } from '../_components/AuthCard'
 
 // ResetPasswordForm component - Client Component
 function ResetPasswordForm() {
@@ -54,109 +45,46 @@ function ResetPasswordForm() {
 
   if (isSubmitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
-        <Container size="sm">
-          <div className="mx-auto w-64 mb-6">
-            <Image 
-              src="/logo.png" 
-              alt="The Anchor Logo" 
-              width={256}
-              height={256}
-              className="w-full h-auto"
-              priority 
-            />
-          </div>
-          
-          <EmptyState icon={null}
-            title="Check your email"
-            description={`We've sent a password reset link to ${email}`}
-            action={(
-              <LinkButton
-                href="/auth/login"
-                variant="secondary"
-              >
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to login
-              </LinkButton>
-            )}
-          />
-        </Container>
-      </div>
+      <AuthCard title="Check your email" lead={`We've sent a password reset link to ${email}`}>
+        <LinkButton href="/auth/login" variant="secondary" size="lg" className="w-full">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to login
+        </LinkButton>
+      </AuthCard>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
-      <Container size="sm">
-        <div className="text-center mb-8">
-          {/* Logo */}
-          <div className="mx-auto w-64 mb-2">
-            <Image 
-              src="/logo.png" 
-              alt="The Anchor Logo" 
-              width={256}
-              height={256}
-              className="w-full h-auto"
-              priority 
-            />
-          </div>
-          
-          {/* Title */}
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">
-            Reset your password
-          </h1>
-          <p className="mt-2 text-xs sm:text-sm text-white/80">
-            Enter your email address and we&apos;ll send you a reset link
-          </p>
+    <AuthCard
+      title="Reset your password"
+      lead="Enter your email address and we'll send you a reset link."
+    >
+      <form onSubmit={handleSubmit} autoComplete="on" className="flex flex-col gap-4">
+        <Field label="Email address" required>
+          <Input
+            id="reset-email"
+            name="reset-email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
+        </Field>
+
+        <Button type="submit" variant="primary" size="lg" disabled={isLoading} loading={isLoading} className="w-full">
+          Send reset email
+        </Button>
+
+        <div className="text-center">
+          <a href="/auth/login" className="auth__link inline-flex items-center text-xs">
+            <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+            Back to login
+          </a>
         </div>
-
-        <Card>
-          <Form onSubmit={handleSubmit} autoComplete="on">
-            {/* Email Field */}
-            <FormGroup
-              label="Email address"
-              required
-            >
-              <Input
-                id="reset-email"
-                name="reset-email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-              />
-            </FormGroup>
-
-            {/* Submit Button */}
-            <FormActions>
-              <Button
-                type="submit"
-                disabled={isLoading}
-                loading={isLoading}
-                fullWidth
-                size="lg"
-              >
-                Send reset email
-              </Button>
-            </FormActions>
-
-            {/* Back to Login Link */}
-            <div className="text-center mt-4">
-              <LinkButton
-                href="/auth/login"
-                variant="secondary"
-                size="sm"
-              >
-                <ArrowLeft className="mr-1 h-4 w-4" />
-                Back to login
-              </LinkButton>
-            </div>
-          </Form>
-        </Card>
-      </Container>
-    </div>
+      </form>
+    </AuthCard>
   )
 }
 
@@ -164,7 +92,7 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
+      <div className="auth">
         <Spinner size="lg" />
       </div>
     }>

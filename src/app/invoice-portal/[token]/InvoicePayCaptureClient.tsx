@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { GuestAlert } from '@/components/features/guest/GuestAlert'
+import { StatusNote } from './StatusNote'
 import { captureInvoicePaymentByToken } from '@/app/actions/invoicePayPalActions'
 
 type Phase = 'capturing' | 'done' | 'error'
@@ -63,23 +63,23 @@ export function InvoicePayCaptureClient({
 
   if (phase === 'capturing') {
     return (
-      <GuestAlert tone="notice" role="status" live="polite" className="mb-[18px]">
+      <StatusNote tone="notice" role="status" live="polite" className="mb-4">
         Confirming your payment. Please don&apos;t close this page.
-      </GuestAlert>
+      </StatusNote>
     )
   }
 
   if (phase === 'done') {
     return (
-      <GuestAlert tone="success" role="status" live="polite" className="mb-[18px]">
+      <StatusNote tone="success" role="status" live="polite" className="mb-4">
         Payment received. Thank you.
-      </GuestAlert>
+      </StatusNote>
     )
   }
 
   return (
-    <GuestAlert tone="problem" role="alert" className="mb-[18px]">
+    <StatusNote tone="problem" role="alert" className="mb-4">
       {message}
-    </GuestAlert>
+    </StatusNote>
   )
 }

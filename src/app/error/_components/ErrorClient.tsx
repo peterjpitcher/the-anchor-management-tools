@@ -1,7 +1,6 @@
 'use client'
 
-import Link from 'next/link'
-import { Icon, Button } from '@/ds'
+import { Icon, Button, LinkButton } from '@/ds'
 
 interface ErrorClientProps {
   title: string
@@ -37,11 +36,9 @@ export default function ErrorClient({ title, message, code }: ErrorClientProps) 
           >
             Try again
           </Button>
-          <Link href="/dashboard" className="w-full">
-            <Button variant="secondary" size="lg" className="w-full" type="button">
-              Back to Dashboard
-            </Button>
-          </Link>
+          <LinkButton href="/dashboard" variant="secondary" size="lg" className="w-full">
+            Back to Dashboard
+          </LinkButton>
         </div>
 
         <div className="auth__footer">

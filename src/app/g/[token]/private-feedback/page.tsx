@@ -172,7 +172,7 @@ export default async function PrivateBookingFeedbackPage({
                 <Check className="h-4 w-4 text-anchor-success" />
               </span>
 
-              <p className="font-anchor-body text-[15px] leading-[1.65] text-guest-text">
+              <p className="font-anchor-body text-guest-lead leading-[1.65] text-guest-text">
                 We have received your feedback for booking {preview.private_booking_id || ''}.
               </p>
             </div>

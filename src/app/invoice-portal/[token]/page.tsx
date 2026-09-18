@@ -3,23 +3,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyInvoiceToken } from '@/lib/invoices/invoice-token'
 import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import {
-  GuestShell,
-  GuestCard,
-  GuestAmount,
-  GuestAlert,
-  DetailRow,
-  TrustLine,
-} from '@/components/features/guest'
-import {
-  GUEST_H1_CLASS,
-  GUEST_INTRO_CLASS,
-  GUEST_KICKER_CLASS,
-  GUEST_LEAD_CLASS,
-} from '@/components/features/guest/styles'
+import { Card } from '@/ds'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { invoiceReplyToAddress } from '@/lib/email/invoice-sender'
+import { cn } from '@/lib/utils'
 import { InvoicePayClient } from './InvoicePayClient'
 import { InvoicePayCaptureClient } from './InvoicePayCaptureClient'
+import { OrangeJellyShell } from './OrangeJellyShell'
+import { StatusNote } from './StatusNote'
 
 // Public, and its content changes with every payment, so it must never be
 // cached or prerendered.
@@ -34,6 +25,27 @@ export const metadata = {
 
 function formatMoney(amount: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
+}
+
+/**
+ * Where invoice questions go: the Orange Jelly reply-to mailbox the invoice emails use, or the
+ * company record when that is not configured. Never an invented address.
+ */
+function questionsEmail(): string {
+  const configured = invoiceReplyToAddress()
+  if (!configured) return GUEST_CONTACT.email
+  return configured.match(/<([^<>]+)>/)?.[1]?.trim() ?? configured
+}
+
+function InvoiceRow({ label, value, emphasis }: { label: string; value: string; emphasis?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b border-border py-2 text-sm last:border-b-0">
+      <span className="text-text-muted">{label}</span>
+      <span className={cn('text-right tabular-nums', emphasis ? 'font-semibold text-text-strong' : 'font-medium text-text')}>
+        {value}
+      </span>
+    </div>
+  )
 }
 
 export default async function InvoicePortalPage({
@@ -121,15 +133,17 @@ export default async function InvoicePortalPage({
   // portal token in the path. The one in the query string is always PayPal's.
   const paypalOrderId = typeof query.token === 'string' ? query.token : null
 
+  const contactEmail = questionsEmail()
+
   return (
-    <GuestShell>
-      <div className={GUEST_INTRO_CLASS}>
-        <p className={GUEST_KICKER_CLASS}>Invoice {invoice.invoice_number}</p>
-        <h1 className={GUEST_H1_CLASS}>{heading}</h1>
-        <p className={GUEST_LEAD_CLASS}>{lead}</p>
+    <OrangeJellyShell>
+      <div className="flex flex-col gap-1">
+        <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Invoice {invoice.invoice_number}</p>
+        <h1 className="text-2xl font-bold tracking-tight text-text-strong">{heading}</h1>
+        <p className="text-sm text-text-muted">{lead}</p>
       </div>
 
-      <GuestCard variant="accent">
+      <Card padding="lg">
         {/* Runs before the figures below are read, so what is shown is the
             state after payment. */}
         {invoiceCollectible && paymentPending && paypalOrderId && (
@@ -137,69 +151,74 @@ export default async function InvoicePortalPage({
         )}
 
         {showAmount && (
-          <GuestAmount
-            label={settled ? creditTotal > 0 ? 'Payments received' : 'Paid in full' : 'Amount due now'}
-            value={formatMoney(settled ? paid : Math.max(outstanding, 0))}
-          />
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-text-muted">
+              {settled ? creditTotal > 0 ? 'Payments received' : 'Paid in full' : 'Amount due now'}
+            </p>
+            <p className="mt-1 text-3xl font-bold tabular-nums text-text-strong">
+              {formatMoney(settled ? paid : Math.max(outstanding, 0))}
+            </p>
+          </div>
         )}
 
-        <div className={showAmount ? 'mt-[18px]' : ''}>
-          <DetailRow label="Invoice" value={invoice.invoice_number} />
-          <DetailRow label="Invoice total" value={formatMoney(total)} />
-          {creditTotal > 0 && <DetailRow label="Credits applied" value={formatMoney(creditTotal)} />}
-          {paid > 0 && <DetailRow label="Already paid" value={formatMoney(paid)} />}
+        <div className={showAmount ? 'mt-4' : ''}>
+          <InvoiceRow label="Invoice" value={invoice.invoice_number} />
+          <InvoiceRow label="Invoice total" value={formatMoney(total)} />
+          {creditTotal > 0 && <InvoiceRow label="Credits applied" value={formatMoney(creditTotal)} />}
+          {paid > 0 && <InvoiceRow label="Already paid" value={formatMoney(paid)} />}
           {invoiceCollectible && (
-            <DetailRow
+            <InvoiceRow
               label="Due"
               value={formatDateInLondon(invoice.due_date, {
                 day: 'numeric',
                 month: 'long',
                 year: 'numeric',
               })}
-              emphasis="deadline"
+              emphasis
             />
           )}
         </div>
 
-        <div className="mt-[18px]">
+        <div className="mt-4 flex flex-col gap-3">
           {settled && (
-            <GuestAlert tone="success" role="status">
+            <StatusNote tone="success">
               {creditTotal > 0 ? 'This invoice is settled, including the credits shown above. Thank you.' : 'This invoice is paid in full. Thank you.'}
-            </GuestAlert>
+            </StatusNote>
           )}
           {withdrawn && (
-            <GuestAlert tone="notice" role="status">
+            <StatusNote tone="notice">
               This invoice has been cancelled, so there is nothing to pay. If you
               were expecting to pay something, please get in touch.
-            </GuestAlert>
+            </StatusNote>
           )}
           {notYetIssued && (
-            <GuestAlert tone="notice" role="status">
+            <StatusNote tone="notice">
               This invoice has not been issued yet.
-            </GuestAlert>
+            </StatusNote>
           )}
           {paymentUnavailable && (
-            <GuestAlert tone="notice" role="status">
+            <StatusNote tone="notice">
               Online payment is not available for this invoice.
-            </GuestAlert>
+            </StatusNote>
           )}
           {payable && <InvoicePayClient token={token} amountDue={outstanding} />}
         </div>
 
         {payable && (
-          <div className="mt-[18px]">
-            <TrustLine />
-          </div>
+          <p className="mt-4 flex items-center justify-center gap-2 text-xs text-text-muted">
+            <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
+            Secure payment via PayPal
+          </p>
         )}
-      </GuestCard>
+      </Card>
 
-      <p className="mt-6 text-center font-anchor-body text-[13px] leading-[1.6] text-guest-text-muted">
+      <p className="text-center text-ui leading-relaxed text-text-muted">
         Questions about this invoice? Email{' '}
-        <a href={GUEST_CONTACT.emailHref} className="underline underline-offset-2">
-          {GUEST_CONTACT.email}
+        <a href={`mailto:${contactEmail}`} className="text-primary underline underline-offset-2">
+          {contactEmail}
         </a>{' '}
         or call {GUEST_CONTACT.phoneDisplay}.
       </p>
-    </GuestShell>
+    </OrangeJellyShell>
   )
 }
