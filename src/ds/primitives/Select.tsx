@@ -21,11 +21,14 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, hint, options, placeholder, selectSize: _selectSize, fullWidth: _fullWidth, id: idProp, className, disabled, children, ...rest }, ref) => {
+  ({ label, error, hint, options, placeholder, selectSize: _selectSize, fullWidth: _fullWidth, id: idProp, className, disabled, children, 'aria-describedby': ariaDescribedBy, ...rest }, ref) => {
     const autoId = useId()
     const id = idProp ?? autoId
     const errorId = `${id}-error`
     const hintId = `${id}-hint`
+    // A description passed in (a Field's hint or error, or the page's own) joins this
+    // field's own error or hint rather than replacing it.
+    const describedBy = [error ? errorId : hint ? hintId : null, ariaDescribedBy].filter(Boolean).join(' ') || undefined
 
     return (
       <div className="flex flex-col">
@@ -49,7 +52,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             )}
             disabled={disabled}
             aria-invalid={error ? 'true' : undefined}
-            aria-describedby={error ? errorId : hint ? hintId : undefined}
+            aria-describedby={describedBy}
             {...rest}
           >
             {placeholder && (

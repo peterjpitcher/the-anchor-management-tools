@@ -327,6 +327,7 @@ export default function BackgroundJobsClient({
               variant="secondary"
               size="sm"
               onClick={() => handleRetry(job.id)}
+              label="Retry job"
               title="Retry job"
               disabled={isMutating}
             >
@@ -338,6 +339,7 @@ export default function BackgroundJobsClient({
               variant="secondary"
               size="sm"
               onClick={() => handleDelete(job.id)}
+              label="Delete job"
               title="Delete job"
               disabled={isMutating}
             >

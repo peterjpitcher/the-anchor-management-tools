@@ -270,11 +270,13 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
             Download Template
           </Button>
           {!isPreviewMode && (
-            // A label rather than a DS Button: clicking it opens the hidden file input. The
-            // classes are DS Button primary (md), so it matches the button beside it.
+            // A label rather than a DS Button: clicking it opens the file input inside. The
+            // classes are DS Button primary (md), so it matches the button beside it. The input
+            // is sr-only, not hidden, so the Tab key still reaches it; the label then draws
+            // the DS focus ring for it.
             <label
               htmlFor="csv-upload"
-              className="relative inline-flex h-btn-h max-shell:min-h-touch items-center justify-center gap-1.5 whitespace-nowrap rounded-default border border-primary bg-primary px-3 text-ui font-semibold text-primary-fg shadow-xs transition-[background,border-color] duration-[120ms] hover:border-primary-hover hover:bg-primary-hover cursor-pointer"
+              className="relative inline-flex h-btn-h max-shell:min-h-touch items-center justify-center gap-1.5 whitespace-nowrap rounded-default border border-primary bg-primary px-3 text-ui font-semibold text-primary-fg shadow-xs transition-[background,border-color] duration-[120ms] hover:border-primary-hover hover:bg-primary-hover cursor-pointer has-[:focus-visible]:outline-hidden has-[:focus-visible]:shadow-ring"
             >
               <CloudArrowUpIcon className="w-4 h-4" />
               <span>Upload CSV</span>
@@ -283,7 +285,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
                 type="file"
                 accept=".csv"
                 onChange={handleFileUpload}
-                className="hidden"
+                className="sr-only"
               />
             </label>
           )}

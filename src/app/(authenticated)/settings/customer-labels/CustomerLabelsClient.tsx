@@ -345,11 +345,12 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
             </FormGroup>
 
             <FormGroup label="Color">
-              <div className="grid grid-cols-4 gap-2">
+              <div role="group" aria-label="Color" className="grid grid-cols-4 gap-2">
                 {PRESET_COLORS.map((color) => (
                   <button
                     key={color.value}
                     type="button"
+                    aria-pressed={formData.color === color.value}
                     className={cn(
                       'h-9 rounded-md border focus-visible:outline-hidden focus-visible:shadow-ring disabled:cursor-not-allowed disabled:opacity-50',
                       formData.color === color.value && 'ring-2 ring-primary ring-offset-2',
@@ -371,13 +372,14 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
             </FormGroup>
 
             <FormGroup label="Icon">
-              <div className="grid grid-cols-3 gap-2">
+              <div role="group" aria-label="Icon" className="grid grid-cols-3 gap-2">
                 {PRESET_ICONS.map((icon) => {
                   const IconComponent = icon.icon;
                   return (
                     <button
                       key={icon.value}
                       type="button"
+                      aria-pressed={formData.icon === icon.value}
                       className={cn(
                         'flex h-10 items-center justify-center gap-2 rounded-md border text-sm focus-visible:outline-hidden focus-visible:shadow-ring disabled:cursor-not-allowed disabled:opacity-50',
                         formData.icon === icon.value ? 'border-primary bg-primary-soft text-primary-soft-fg' : 'border-border',
