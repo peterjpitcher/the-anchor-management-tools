@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { formatDateTime } from '@/lib/dateUtils'
+import { formatDateInLondon, formatDateTime } from '@/lib/dateUtils'
 import { Button, toast } from '@/ds'
 import { ClockIcon, UserIcon, ChatBubbleLeftRightIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline'
 import type { AuditLogEntry, EmployeeNoteWithAuthor } from '@/app/actions/employeeDetails'
@@ -159,7 +159,7 @@ export function EmployeeAuditTrail({
       const sickReason = typeof additionalInfo.sick_reason === 'string' ? additionalInfo.sick_reason : null
 
       if (shiftDate) {
-        const dateLabel = new Date(`${shiftDate}T00:00:00`).toLocaleDateString('en-GB', {
+        const dateLabel = formatDateInLondon(shiftDate, {
           day: 'numeric',
           month: 'short',
           year: 'numeric'
@@ -198,7 +198,7 @@ export function EmployeeAuditTrail({
       const impactedShiftCount = typeof additionalInfo.impacted_shift_count === 'number' ? additionalInfo.impacted_shift_count : null
 
       if (shiftDate) {
-        const dateLabel = new Date(`${shiftDate}T00:00:00`).toLocaleDateString('en-GB', {
+        const dateLabel = formatDateInLondon(shiftDate, {
           day: 'numeric',
           month: 'short',
           year: 'numeric'
@@ -207,12 +207,12 @@ export function EmployeeAuditTrail({
       }
 
       if (startDate && endDate) {
-        const startLabel = new Date(`${startDate}T00:00:00`).toLocaleDateString('en-GB', {
+        const startLabel = formatDateInLondon(startDate, {
           day: 'numeric',
           month: 'short',
           year: 'numeric'
         })
-        const endLabel = new Date(`${endDate}T00:00:00`).toLocaleDateString('en-GB', {
+        const endLabel = formatDateInLondon(endDate, {
           day: 'numeric',
           month: 'short',
           year: 'numeric'

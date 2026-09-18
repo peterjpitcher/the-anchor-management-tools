@@ -16,6 +16,7 @@ import {
   type EmployeePaySettings,
   type EmployeeRateOverride,
 } from '@/app/actions/pay-bands';
+import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 
 interface EmployeePayTabProps {
   employeeId: string;
@@ -31,7 +32,7 @@ function formatRate(rate: number) {
 }
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatDateInLondon(iso, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export default function EmployeePayTab({
@@ -325,7 +326,7 @@ export default function EmployeePayTab({
               </thead>
               <tbody>
                 {overrides.map((ov) => {
-                  const today = new Date().toISOString().slice(0, 10);
+                  const today = getTodayIsoDate();
                   const isUpcoming = ov.effective_from > today;
                   const isCurrent = !isUpcoming && overrides.find(o => o.effective_from <= today)?.id === ov.id;
                   return (
