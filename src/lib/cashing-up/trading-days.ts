@@ -111,9 +111,11 @@ export interface FindMissingCashupsOptions {
 }
 
 /**
- * Trading dates for one site with no cash-up. Any live (not voided) session counts as a
- * cash-up, whatever its status, so a draft is opened rather than started again. Yesterday is
- * skipped while its hours are still in force.
+ * Trading dates for one site with no cash-up. Any session counts as a cash-up, whatever its
+ * status, so a draft is opened rather than started again. A voided session counts too: the
+ * app allows one session per site and date, voided or not, so a voided day can never be
+ * entered again, and listing it as missing would leave a date on the page nobody can clear.
+ * Yesterday is skipped while its hours are still in force.
  */
 export async function findMissingCashupDates(db: Db, options: FindMissingCashupsOptions): Promise<string[]> {
   const dates = eachIsoDateInRange(options.from, options.to)
@@ -125,7 +127,6 @@ export async function findMissingCashupDates(db: Db, options: FindMissingCashups
         .from('cashup_sessions')
         .select('id, session_date')
         .eq('site_id', options.siteId)
-        .is('voided_at', null)
         .gte('session_date', options.from)
         .lte('session_date', options.to)
         .order('id')

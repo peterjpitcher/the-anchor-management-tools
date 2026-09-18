@@ -1,3 +1,5 @@
+import { whenLondonClockReaches } from '@/lib/dateUtils'
+import { REPORT_HOUR_LONDON } from '@/lib/manager-report/schedule'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { readCampaignDeliveryStats, type CampaignDeliveryStats } from '@/services/marketing-campaigns'
 import { compare, hasMinimumHistory } from '../compare'
@@ -30,9 +32,17 @@ import type {
 // partial figures: its bounces and complaints are final for what was sent, so those two checks
 // run, but the click, unsubscribe and best-campaign checks do not. Paused campaigns and
 // campaigns reaching fewer than 50 people stay out of averages.
+//
+// Late sends: a campaign first sent on the Thursday after 06:00 is still early when the Friday
+// report is built, and by the next Friday it belongs to last week. So each report also checks
+// last week's campaigns that were still early at last week's report, named as such, and never
+// counts them in this week's figures. Live, 18 Sep 2026: 1 of 12 sends went out then.
 
 type Audience = 'customer' | 'business'
 type RateKey = 'clickRate' | 'clickToOpen' | 'openRate' | 'bounceRate' | 'unsubscribeRate'
+
+/** Said of a late send from last week wherever it is named. */
+const LATE_SEND_PHRASE = 'too new to check last week'
 
 interface StartedCampaignRow {
   id: string
@@ -169,6 +179,20 @@ function toFigures(ctx: SectionContext, row: StartedCampaignRow, stats: Campaign
   }
 }
 
+/**
+ * Last week's report was built at the report hour on the first day of this week (Friday 06:00
+ * London for the Friday email). A campaign first sent less than 24 hours before that was still
+ * early then, so no check ran on it; this is the instant after which that is true. The fixed
+ * report hour is used, not this build's clock time, so a retried build (07:00 to 09:00) never
+ * skips a campaign sent early on the Thursday. Built on the London clock, so it holds across a
+ * clock change.
+ */
+function lateSendCutoffMs(ctx: SectionContext): number {
+  const instant = whenLondonClockReaches(ctx.windows.thisWeek.start, `${String(REPORT_HOUR_LONDON).padStart(2, '0')}:00`)
+  if (!instant) throw new Error('Could not place last week\'s report on the clock')
+  return instant.getTime() - MARKETING.earlyFiguresHours * 3_600_000
+}
+
 /** Earliest scheduled send per audience and overall. */
 function nextSends(rows: ScheduledCampaignRow[]): { overall: NextSend | null; byAudience: Map<Audience, NextSend> } {
   const sorted = rows
@@ -203,11 +227,16 @@ export async function buildMarketingSection(ctx: SectionContext): Promise<Sectio
   const byStart = (a: StartedCampaignRow, b: StartedCampaignRow): number =>
     Date.parse(a.started_at) - Date.parse(b.started_at) || a.id.localeCompare(b.id)
   const thisWeekRows = startedRows.filter((row) => isInRange(londonDateOf(row.started_at), w.thisWeek)).sort(byStart)
+  // Last week's late sends: still early when last week's report was built, so checked here.
+  const lateCutoffMs = lateSendCutoffMs(ctx)
+  const lateRows = startedRows
+    .filter((row) => isInRange(londonDateOf(row.started_at), w.lastWeek) && Date.parse(row.started_at) > lateCutoffMs)
+    .sort(byStart)
 
-  if (thisWeekRows.length === 0) return noCampaignResult(next.overall)
+  if (thisWeekRows.length === 0 && lateRows.length === 0) return noCampaignResult(next.overall)
 
-  // Only the audiences sent to this week need a baseline.
-  const audiences = new Set(thisWeekRows.map((row) => audienceOf(row.audience_type)))
+  // Only the audiences sent to this week, or checked late from last week, need a baseline.
+  const audiences = new Set([...thisWeekRows, ...lateRows].map((row) => audienceOf(row.audience_type)))
   const rows = startedRows.filter((row) => audiences.has(audienceOf(row.audience_type))).sort(byStart)
   const stats = await readCampaignDeliveryStats(
     ctx.db,
@@ -219,26 +248,29 @@ export async function buildMarketingSection(ctx: SectionContext): Promise<Sectio
     return toFigures(ctx, row, read)
   })
   const current = figures.filter((campaign) => isInRange(campaign.startDate, w.thisWeek))
+  const lateIds = new Set(lateRows.map((row) => row.id))
+  const late = figures.filter((campaign) => lateIds.has(campaign.id))
   const earlier = figures.filter((campaign) => isInRange(campaign.startDate, w.previous13Weeks))
 
   const historyFor = (baseline: Baseline): boolean => hasMinimumHistory(COLLECTION_STARTS.marketing, baseline.range.start)
-  const baselineCampaigns = (audience: Audience, baseline: Baseline): CampaignFigures[] =>
-    earlier.filter((campaign) => campaign.counted && campaign.audience === audience && isInRange(campaign.startDate, baseline.range))
+  /** Counted campaigns to one audience in the baseline, never the campaign being judged (a late send is in last week). */
+  const baselineCampaigns = (audience: Audience, baseline: Baseline, exceptId?: string): CampaignFigures[] =>
+    earlier.filter((campaign) => campaign.counted && campaign.audience === audience && campaign.id !== exceptId && isInRange(campaign.startDate, baseline.range))
   /** Mean of the campaigns' rates; null with no history or no counted campaign. */
-  const average = (audience: Audience, baseline: Baseline, key: RateKey): number | null => {
+  const average = (audience: Audience, baseline: Baseline, key: RateKey, exceptId?: string): number | null => {
     if (!historyFor(baseline)) return null
-    const values = baselineCampaigns(audience, baseline)
+    const values = baselineCampaigns(audience, baseline, exceptId)
       .map((campaign) => campaign[key])
       .filter((value): value is number => value !== null)
     return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null
   }
-  const describeAverages = (audience: Audience, key: RateKey): string => {
+  const describeAverages = (campaign: CampaignFigures, key: RateKey): string => {
     const parts = baselines.map((baseline) => {
       if (!historyFor(baseline)) return `${baseline.label} not enough history yet`
-      const value = average(audience, baseline, key)
+      const value = average(campaign.audience, baseline, key, campaign.id)
       return value === null ? `${baseline.label} none to compare` : `${baseline.label} ${pct(value)}`
     })
-    return `${audience === 'customer' ? 'Customer' : 'Business'} average: ${parts.join(', ')}.`
+    return `${campaign.audience === 'customer' ? 'Customer' : 'Business'} average: ${parts.join(', ')}.`
   }
 
   const signals: InsightSignal[] = []
@@ -248,9 +280,16 @@ export async function buildMarketingSection(ctx: SectionContext): Promise<Sectio
     if (rag === 'red' || !itemRag.has(id)) itemRag.set(id, rag)
   }
 
-  for (const campaign of current) {
-    if (campaign.early) continue
-    const name = campaignName(campaign.name)
+  /**
+   * Every check on one campaign. `peers` are the campaigns judged alongside it for the best
+   * click rate. A late send from last week names its day, so nobody takes it for one of this
+   * week's campaigns.
+   */
+  const judge = (campaign: CampaignFigures, peers: CampaignFigures[], lateSend: boolean): void => {
+    if (campaign.early) return
+    const sentOn = formatDayDate(campaign.startDate)
+    const name = lateSend ? `${campaignName(campaign.name)} (sent ${sentOn}, ${LATE_SEND_PHRASE})` : campaignName(campaign.name)
+    const actionName = lateSend ? `${campaignName(campaign.name)} (sent ${sentOn})` : name
     const entity = `marketing_campaign:${campaign.id}`
     const href = ctx.link(`/marketing/campaigns/${campaign.id}`)
     const dueDate = next.byAudience.get(campaign.audience)?.date
@@ -269,7 +308,7 @@ export async function buildMarketingSection(ctx: SectionContext): Promise<Sectio
         text: `${name}: ${bounceFact}.`,
         emailSafe: true,
         action: {
-          text: `Check list quality before the next ${campaign.audience} send: ${name} had a ${bounceFact}`,
+          text: `Check list quality before the next ${campaign.audience} send: ${actionName} had a ${bounceFact}`,
           href,
           target: 'record',
           ...(dueDate ? { dueDate } : {}),
@@ -299,9 +338,9 @@ export async function buildMarketingSection(ctx: SectionContext): Promise<Sectio
     }
 
     // Paused part way: clicks and unsubscribes cover only part of the list, so stop here.
-    if (campaign.pausedPartWay) continue
+    if (campaign.pausedPartWay) return
 
-    const unsubscribeAverage = average(campaign.audience, thirteenWeeks, 'unsubscribeRate')
+    const unsubscribeAverage = average(campaign.audience, thirteenWeeks, 'unsubscribeRate', campaign.id)
     if (
       unsubscribeAverage !== null
       && campaign.unsubscribeRate !== null
@@ -318,7 +357,7 @@ export async function buildMarketingSection(ctx: SectionContext): Promise<Sectio
         text: `${name}: ${plural(campaign.unsubscribed, 'unsubscribe')}, ${pct(campaign.unsubscribeRate)} of delivered ${usual} for ${campaign.audience} emails over 13 weeks.`,
         emailSafe: true,
         action: {
-          text: `Review frequency and content: ${name} lost ${plural(campaign.unsubscribed, 'subscriber')}, at least twice the usual rate`,
+          text: `Review frequency and content: ${actionName} lost ${plural(campaign.unsubscribed, 'subscriber')}, at least twice the usual rate`,
           href,
           target: 'record',
           ...(dueDate ? { dueDate } : {}),
@@ -327,7 +366,7 @@ export async function buildMarketingSection(ctx: SectionContext): Promise<Sectio
       })
     }
 
-    const clickAverage = average(campaign.audience, thirteenWeeks, 'clickRate')
+    const clickAverage = average(campaign.audience, thirteenWeeks, 'clickRate', campaign.id)
     if (clickAverage !== null && campaign.clickRate !== null) {
       const vsAverage = compare(campaign.clickRate, clickAverage, 0, MARKETING.clickBelowRatio)
       const shortfall = clickAverage * campaign.delivered - campaign.clickers
@@ -345,10 +384,10 @@ export async function buildMarketingSection(ctx: SectionContext): Promise<Sectio
     }
 
     // Best click rate: counted campaigns only, with a 13-week baseline of at least 3 campaigns.
-    const bestBaseline = historyFor(thirteenWeeks) ? baselineCampaigns(campaign.audience, thirteenWeeks) : []
+    const bestBaseline = historyFor(thirteenWeeks) ? baselineCampaigns(campaign.audience, thirteenWeeks, campaign.id) : []
     const rivals = [
       ...bestBaseline,
-      ...current.filter((other) => other.id !== campaign.id && other.counted && other.audience === campaign.audience),
+      ...peers.filter((other) => other.id !== campaign.id && other.counted && other.audience === campaign.audience),
     ]
     if (
       campaign.counted
@@ -368,38 +407,73 @@ export async function buildMarketingSection(ctx: SectionContext): Promise<Sectio
     }
   }
 
-  const lists: InsightList[] = current.map((campaign) => campaignList(ctx, campaign, describeAverages, itemRag))
-  const metrics = buildMetrics(current, next.overall, (campaign) => {
+  for (const campaign of current) judge(campaign, current, false)
+  for (const campaign of late) judge(campaign, late, true)
+
+  const lists: InsightList[] = [
+    ...current.map((campaign) => campaignList(ctx, campaign, describeAverages, itemRag, false)),
+    ...late.map((campaign) => campaignList(ctx, campaign, describeAverages, itemRag, true)),
+  ]
+  // This week's figures are this week's campaigns only; a late send is in its list and signals.
+  const metrics = current.length === 0 ? noCampaignMetrics(next.overall) : buildMetrics(current, next.overall, (campaign) => {
     if (campaign.early) return 'early figures'
     if (campaign.pausedPartWay) return 'paused part way'
     if (!historyFor(baselines[1])) return 'not enough history yet'
     const value = average(campaign.audience, baselines[1], 'clickRate')
     return value === null ? `no earlier ${campaign.audience} campaigns to compare` : `4-week ${campaign.audience} average ${pct(value)}`
   })
+  const headline = current.length === 0
+    ? noCampaignHeadline(next.overall)
+    : headlineFor(current, (campaign) => average(campaign.audience, baselines[1], 'clickRate'))
 
   return {
-    headline: headlineFor(current, (campaign) => average(campaign.audience, baselines[1], 'clickRate')),
+    headline: `${headline}${lateHeadline(late)}`,
     metrics,
     lists,
     signals,
-    notes: notesFor(current, baselines, w.today),
+    notes: [...lateNotes(late), ...notesFor([...current, ...late], baselines, w.today)],
   }
+}
+
+function noCampaignHeadline(next: NextSend | null): string {
+  return next
+    ? `No campaigns this week. Next: ${campaignName(next.name)}, ${formatDayDate(next.date)}.`
+    : 'No campaigns this week and none scheduled.'
+}
+
+function noCampaignMetrics(next: NextSend | null): InsightMetric[] {
+  return [
+    { label: 'Campaigns this week', value: '0' },
+    nextMetric(next),
+    { label: 'Bookings from email', value: 'Not measurable yet' },
+  ]
 }
 
 function noCampaignResult(next: NextSend | null): SectionBuildResult {
   return {
-    headline: next
-      ? `No campaigns this week. Next: ${campaignName(next.name)}, ${formatDayDate(next.date)}.`
-      : 'No campaigns this week and none scheduled.',
-    metrics: [
-      { label: 'Campaigns this week', value: '0' },
-      nextMetric(next),
-      { label: 'Bookings from email', value: 'Not measurable yet' },
-    ],
+    headline: noCampaignHeadline(next),
+    metrics: noCampaignMetrics(next),
     lists: [],
     signals: [],
     notes: [],
   }
+}
+
+function lateHeadline(late: CampaignFigures[]): string {
+  if (late.length === 0) return ''
+  if (late.length === 1) {
+    return ` Also checked: ${campaignName(late[0].name)}, first sent ${formatDayDate(late[0].startDate)}, ${LATE_SEND_PHRASE}.`
+  }
+  return ` Also checked: ${plural(late.length, 'campaign')} first sent late last week, too new to check then.`
+}
+
+function lateNotes(late: CampaignFigures[]): string[] {
+  if (late.length === 0) return []
+  const hours = plural(MARKETING.earlyFiguresHours, 'hour')
+  if (late.length === 1) {
+    return [`${campaignName(late[0].name)} was first sent on ${formatDayDate(late[0].startDate)}, less than ${hours} before last week's report, so it is checked in this one. It is not counted in this week's figures.`]
+  }
+  return [`${plural(late.length, 'campaign')} were first sent less than ${hours} before last week's report, so they are checked in this one. They are not counted in this week's figures.`]
 }
 
 function nextMetric(next: NextSend | null): InsightMetric {
@@ -472,8 +546,9 @@ function buildMetrics(
 function campaignList(
   ctx: SectionContext,
   campaign: CampaignFigures,
-  describeAverages: (audience: Audience, key: RateKey) => string,
+  describeAverages: (campaign: CampaignFigures, key: RateKey) => string,
   itemRag: Map<string, Rag>,
+  lateSend: boolean,
 ): InsightList {
   const href = ctx.link(`/marketing/campaigns/${campaign.id}`)
   const item = (text: string, key?: RateKey | 'complaints'): InsightListItem => {
@@ -482,7 +557,7 @@ function campaignList(
   }
   // Early figures get no averages. Paused part way, only the bounce rate is final enough to compare.
   const compared = (text: string, key: RateKey): string =>
-    campaign.early || (campaign.pausedPartWay && key !== 'bounceRate') ? text : `${text} ${describeAverages(campaign.audience, key)}`
+    campaign.early || (campaign.pausedPartWay && key !== 'bounceRate') ? text : `${text} ${describeAverages(campaign, key)}`
   const soFar = campaign.early || campaign.pausedPartWay ? ' so far' : ''
   const skipped = campaign.skipped > 0 ? `; ${formatCount(campaign.skipped)} skipped` : ''
   const items: InsightListItem[] = [item(`Delivered ${formatCount(campaign.delivered)} of ${formatCount(campaign.sent)} sent${soFar}${skipped}.`)]
@@ -513,8 +588,9 @@ function campaignList(
     ? ', early figures'
     : campaign.pausedPartWay ? ', paused part way'
       : campaign.status === 'cancelled' ? ', cancelled part way' : ''
+  const late = lateSend ? `, ${LATE_SEND_PHRASE}` : ''
   return {
-    title: `${campaignName(campaign.name)} (${campaign.audience} email, first sent ${formatDayDate(campaign.startDate)}${state})`,
+    title: `${campaignName(campaign.name)} (${campaign.audience} email, first sent ${formatDayDate(campaign.startDate)}${late}${state})`,
     items,
   }
 }

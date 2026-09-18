@@ -598,6 +598,104 @@ describe('marketing section', () => {
     })
   })
 
+  describe('late sends from last week', () => {
+    /** Fri 2 Oct 2026 06:00 London (BST): this week 25 Sep to 1 Oct, last week 18 to 24 Sep. */
+    const NEXT_FRIDAY = new Date('2026-10-02T05:00:00.000Z')
+    const LATE_TEXT = 'Thursday send (sent Thu 24 Sep, too new to check last week)'
+
+    function thursdaySend(db: FakeDb, startedAt = '2026-09-24T09:00:00.000Z'): void {
+      // Thu 24 Sep 10:00 BST: 20 hours before that Friday's 06:00 report.
+      addCampaign(db, { id: 'thu', name: 'Thursday send', sent: 240, bounced: 20, complained: 2, startedAt })
+    }
+
+    it('checks a Thursday send the next Friday, after it was too new to check at the first', async () => {
+      const db = emptyDb()
+      thursdaySend(db)
+
+      const first = await buildMarketingSection(makeContext(db))
+      expect(first.signals).toEqual([])
+      expect(first.headline).toBe('Thursday send (early figures): 220 delivered so far.')
+
+      const result = await buildMarketingSection(makeContext(db, NEXT_FRIDAY))
+      expect(keys(result)).toEqual(['marketing.bounce_high.thu', 'marketing.bounce_or_complaint.thu'])
+      expect(signal(result, 'marketing.bounce_high.thu')).toMatchObject({
+        rag: 'red',
+        kind: 'issue',
+        emailSafe: true,
+        text: `${LATE_TEXT}: bounce rate 8.3% (20 of 240 sent).`,
+        action: {
+          text: 'Check list quality before the next customer send: Thursday send (sent Thu 24 Sep) had a bounce rate 8.3% (20 of 240 sent)',
+          href: `${APP}/marketing/campaigns/thu`,
+          target: 'record',
+          impact: 'customer',
+        },
+      })
+      expect(signal(result, 'marketing.bounce_or_complaint.thu').text).toBe(`${LATE_TEXT}: 2 spam complaints.`)
+      expect(sectionStatusOf(result.signals)).toBe('red')
+      expect(result.headline).toBe('No campaigns this week and none scheduled. Also checked: Thursday send, first sent Thu 24 Sep, too new to check last week.')
+      // Not one of this week's campaigns: this week's figures stay at none.
+      expect(result.metrics[0]).toEqual({ label: 'Campaigns this week', value: '0' })
+      expect(result.lists.map((list) => list.title)).toEqual(['Thursday send (customer email, first sent Thu 24 Sep, too new to check last week)'])
+      expect(result.notes[0]).toBe('Thursday send was first sent on Thu 24 Sep, less than 24 hours before last week\'s report, so it is checked in this one. It is not counted in this week\'s figures.')
+      assertPrintable(result)
+
+      // A retried build later that Friday still checks it.
+      const retried = await buildMarketingSection(makeContext(db, new Date('2026-10-02T07:00:00.000Z')))
+      expect(keys(retried)).toContain('marketing.bounce_high.thu')
+    })
+
+    it('leaves a Thursday send before 06:00 to the Friday report that already checked it', async () => {
+      const db = emptyDb()
+      // Thu 24 Sep 05:30 BST: 24.5 hours old at that Friday's report, so checked there.
+      thursdaySend(db, '2026-09-24T04:30:00.000Z')
+      expect(keys(await buildMarketingSection(makeContext(db)))).toContain('marketing.bounce_high.thu')
+
+      const result = await buildMarketingSection(makeContext(db, NEXT_FRIDAY))
+      expect(result.signals).toEqual([])
+      expect(result.headline).toBe('No campaigns this week and none scheduled.')
+    })
+
+    it('keeps this week\'s figures to this week and judges the late send against its own baseline', async () => {
+      const db = emptyDb()
+      thursdaySend(db)
+      addCampaign(db, { id: 'tue', name: 'Tuesday send', sent: 100, clickers: 4, startedAt: '2026-09-29T10:00:00.000Z' })
+      const result = await buildMarketingSection(makeContext(db, NEXT_FRIDAY))
+      expect(result.headline).toBe('Tuesday send: 100 delivered, click rate 4.0% (4-week customer average 0.0%). Also checked: Thursday send, first sent Thu 24 Sep, too new to check last week.')
+      expect(result.metrics.slice(0, 2)).toEqual([
+        { label: 'Campaigns this week', value: '1', comparison: '1 customer' },
+        { label: 'Delivered', value: '100', comparison: 'of 100 sent' },
+      ])
+      expect(result.lists.map((list) => list.title)).toEqual([
+        'Tuesday send (customer email, first sent Tue 29 Sep)',
+        'Thursday send (customer email, first sent Thu 24 Sep, too new to check last week)',
+      ])
+      // The late send is never its own baseline: nothing else was sent before it.
+      expect(result.lists[1].items.find((item) => item.text.startsWith('Click rate'))?.text)
+        .toBe('Click rate 0.0% (0 people clicked). Customer average: 2 weeks none to compare, 4 weeks none to compare, 13 weeks not enough history yet.')
+    })
+
+    it('counts several late sends in the headline and note', async () => {
+      const db = emptyDb()
+      thursdaySend(db)
+      addCampaign(db, { id: 'thu-2', name: 'Evening send', sent: 240, startedAt: '2026-09-24T19:00:00.000Z' })
+      const result = await buildMarketingSection(makeContext(db, NEXT_FRIDAY))
+      expect(result.headline).toBe('No campaigns this week and none scheduled. Also checked: 2 campaigns first sent late last week, too new to check then.')
+      expect(result.notes[0]).toBe('2 campaigns were first sent less than 24 hours before last week\'s report, so they are checked in this one. They are not counted in this week\'s figures.')
+      expect(result.lists).toHaveLength(2)
+      assertPrintable(result)
+    })
+
+    it('finds last week\'s report on the London clock across the October clock change', async () => {
+      const db = emptyDb()
+      // Thu 22 Oct 06:30 BST, 23.5 hours before the Fri 23 Oct 06:00 BST report.
+      addCampaign(db, { id: 'thu', name: 'Thursday send', sent: 240, bounced: 20, startedAt: '2026-10-22T05:30:00.000Z' })
+      expect((await buildMarketingSection(makeContext(db, new Date('2026-10-23T05:00:00.000Z')))).signals).toEqual([])
+      // Fri 30 Oct 06:00 GMT: a week of elapsed time back would be 07:00 BST and miss it.
+      const result = await buildMarketingSection(makeContext(db, new Date('2026-10-30T06:00:00.000Z')))
+      expect(keys(result)).toEqual(['marketing.bounce_high.thu'])
+    })
+  })
+
   it('keeps one primary action per campaign when several rules fire', async () => {
     const db = emptyDb()
     addHistory(db, 'd', { unsubscribes: 1 })

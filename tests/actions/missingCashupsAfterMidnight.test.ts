@@ -77,3 +77,16 @@ describe('an ordinary night', () => {
     expect(await missingAt('2026-09-11T23:30:00Z', 2)).toEqual(['2026-09-10', '2026-09-11'])
   })
 })
+
+describe('a voided cash-up', () => {
+  it('keeps its day off the list, because a voided day can never be entered again', async () => {
+    // One cash-up per site and date, voided or not: listing the day would leave it on the
+    // banner for a year with nothing anyone can do about it.
+    seed()
+    state.db.tables.cashup_sessions.push(
+      { site_id: SITE_ID, session_date: '2026-09-09', voided_at: '2026-09-10T09:00:00Z', status: 'locked' },
+      { site_id: SITE_ID, session_date: '2026-09-10', voided_at: null, status: 'draft' },
+    )
+    expect(await missingAt('2026-09-11T23:30:00Z', 3)).toEqual(['2026-09-11'])
+  })
+})

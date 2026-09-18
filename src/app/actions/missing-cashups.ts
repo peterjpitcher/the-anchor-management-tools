@@ -22,7 +22,8 @@ export async function getMissingCashupDatesAction(siteId: string, daysBack = 365
   try {
     // Trading days come from special hours over the published weekly hours, resolved for the
     // whole range in a handful of queries (src/lib/cashing-up/trading-days.ts). Do NOT switch
-    // this to a per-date RPC. Voided cash-ups do not count as entered.
+    // this to a per-date RPC. Any cash-up counts as entered, voided or not: a voided day
+    // cannot be entered again, so it must not sit in the missing list.
     const dates = await findMissingCashupDates(supabase, { siteId, from: fromIso, to: yesterdayIso, now });
     return { success: true, dates };
   } catch (error: unknown) {

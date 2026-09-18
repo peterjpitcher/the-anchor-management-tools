@@ -24,6 +24,11 @@ import type {
 // hours over the published weekly hours (src/lib/cashing-up/trading-days.ts), so a closed day
 // never expects a cash-up.
 //
+// A voided cash-up is not entered, but its day is never "missing" either: the app keeps one
+// cash-up per site and date, voided or not (the unique index covers voided rows and the save
+// refuses a voided session), so nobody can enter that day again. It reads "voided, not
+// re-entered" with no action, and its takings count as unknown, so its week is not compared.
+//
 // Completeness comes first. A missing day is never read as £0, and a genuinely zero day shows
 // as £0.00. Cash-ups are routinely entered days late, so a trading day only counts as missing
 // once it is more than CASHING_UP.entryGraceDays old (its date is on or before today minus
@@ -67,6 +72,7 @@ interface SessionRow {
   site_id: string
   session_date: string
   status: string
+  voided_at: string | null
   created_at: string | null
   total_counted_amount: number | string | null
   total_variance_amount: number | string | null
@@ -90,6 +96,8 @@ interface SiteData {
   entered: Map<string, EnteredDay>
   /** Dates with a draft only. */
   drafts: Set<string>
+  /** Dates whose only cash-up was voided: not entered, and cannot be entered again. */
+  voided: Set<string>
   /** First live cash-up ever for the site, any status. */
   firstDate: string | null
 }
@@ -123,7 +131,7 @@ interface ComparedWeek {
   lastComplete: boolean
 }
 
-const SESSION_COLUMNS = 'id, site_id, session_date, status, created_at, total_counted_amount, total_variance_amount, cashup_payment_breakdowns(payment_type_code, counted_amount, variance_amount)'
+const SESSION_COLUMNS = 'id, site_id, session_date, status, voided_at, created_at, total_counted_amount, total_variance_amount, cashup_payment_breakdowns(payment_type_code, counted_amount, variance_amount)'
 
 function toAmount(value: number | string | null | undefined): number | null {
   if (value === null || value === undefined || value === '') return null
@@ -220,12 +228,12 @@ function shortChange(comparison: Comparison): string {
   }
 }
 
+/** Every cash-up in the range, voided ones included so a voided day is never called missing. */
 async function readSessions(ctx: SectionContext, start: string, end: string, label: string): Promise<SessionRow[]> {
   return fetchAllRows<SessionRow>(
     (from, to) => ctx.db
       .from('cashup_sessions')
       .select(SESSION_COLUMNS)
-      .is('voided_at', null)
       .gte('session_date', start)
       .lte('session_date', end)
       .order('id')
@@ -257,16 +265,20 @@ async function readFirstDate(ctx: SectionContext, siteId: string): Promise<strin
 function siteData(site: SiteRow, rows: SessionRow[], firstDate: string | null): SiteData {
   const entered = new Map<string, EnteredDay>()
   const draftDates: string[] = []
+  const voidedDates: string[] = []
   for (const row of rows) {
     if (row.site_id !== site.id) continue
     const date = String(row.session_date).slice(0, 10)
-    if (isEnteredStatus(row.status)) entered.set(date, toEnteredDay(row))
+    if (row.voided_at) voidedDates.push(date)
+    else if (isEnteredStatus(row.status)) entered.set(date, toEnteredDay(row))
     else if (row.status === 'draft') draftDates.push(date)
   }
-  // One live cash-up per site and date (unique index), so a draft never shares a date with
-  // an entered cash-up; the filter keeps that true even if the index changes.
+  // One cash-up per site and date (unique index, voided rows included), so a draft or a
+  // voided cash-up never shares a date with an entered one; the filters keep that true even
+  // if the index changes and a voided day can one day be entered again.
   const drafts = new Set(draftDates.filter((date) => !entered.has(date)))
-  return { site, entered, drafts, firstDate }
+  const voided = new Set(voidedDates.filter((date) => !entered.has(date) && !drafts.has(date)))
+  return { site, entered, drafts, voided, firstDate }
 }
 
 function analyseSite(ctx: SectionContext, data: SiteData, trading: Map<string, TradingDay>, multiSite: boolean): SitePart {
@@ -298,17 +310,25 @@ function analyseSite(ctx: SectionContext, data: SiteData, trading: Map<string, T
   // usual entry window: "not entered yet", never missing.
   const graceBoundary = addDays(today, -(CASHING_UP.entryGraceDays + 1))
   const isPending = (date: string): boolean => date > graceBoundary
+  const isVoided = (date: string): boolean => data.voided.has(date)
+  /** No cash-up that counts and none voided: missing, or not entered yet. */
+  const notEntered = (date: string): boolean => !data.entered.has(date) && !isVoided(date)
   const weekDates = datesIn(thisWeek)
   const weekTrading = weekDates.filter(isExpected)
   const weekEnteredTrading = weekTrading.filter((date) => data.entered.has(date))
-  const weekMissing = weekTrading.filter((date) => !data.entered.has(date) && !isPending(date))
-  const weekPending = weekTrading.filter((date) => !data.entered.has(date) && isPending(date))
+  const weekMissing = weekTrading.filter((date) => notEntered(date) && !isPending(date))
+  const weekPending = weekTrading.filter((date) => notEntered(date) && isPending(date))
+  const weekVoided = weekTrading.filter(isVoided)
   const weekClosed = weekDates.filter((date) => date >= expectFrom && !isTrading(date) && !data.entered.has(date))
 
+  // A voided day can never be entered again, so it is skipped here rather than listed as
+  // missing with an action nobody can complete.
   const missingStart = addDays(graceBoundary, 1 - CASHING_UP.missingLookbackDays)
-  const missingAll = missingCashupDates(datesIn(dateRange(missingStart, graceBoundary)), trading, new Set(data.entered.keys()))
+  const missingAll = missingCashupDates(datesIn(dateRange(missingStart, graceBoundary)), trading, new Set(data.entered.keys()), data.voided)
     .filter((date) => date >= expectFrom)
   const missingEarlier = missingAll.filter((date) => date < thisWeek.start)
+  const voidedEarlier = datesIn(dateRange(missingStart, graceBoundary))
+    .filter((date) => date < thisWeek.start && isExpected(date) && isVoided(date))
 
   // ---- Takings this week -----------------------------------------------------------------
   const weekEntered = weekDates.map(enteredDay).filter((day): day is EnteredDay => Boolean(day))
@@ -339,14 +359,18 @@ function analyseSite(ctx: SectionContext, data: SiteData, trading: Map<string, T
    * sits after the noun: " this week", " across this week and last week".
    */
   const incompleteReasons = (dates: string[], where: string): string[] => {
-    const gaps = dates.filter((date) => !data.entered.has(date))
+    const gaps = dates.filter(notEntered)
     const missing = gaps.filter((date) => !isPending(date)).length
     const pending = gaps.length - missing
+    const voided = dates.filter(isVoided).length
     const unreadable = dates.filter((date) => data.entered.has(date) && enteredDay(date)?.takings === null).length
     const reasons: string[] = []
     if (gaps.length > 0) {
       const state = missing > 0 && pending > 0 ? 'missing or not entered yet' : missing > 0 ? 'missing' : 'not entered yet'
       reasons.push(`${plural(gaps.length, 'trading day')}${where} ${gaps.length === 1 ? 'is' : 'are'} ${state}`)
+    }
+    if (voided > 0) {
+      reasons.push(`${plural(voided, 'trading day')}${where} ${voided === 1 ? 'was' : 'were'} voided and not re-entered`)
     }
     if (unreadable > 0) {
       reasons.push(`${plural(unreadable, 'entered day')}${where} ${unreadable === 1 ? 'has' : 'have'} amounts that cannot be read`)
@@ -383,8 +407,8 @@ function analyseSite(ctx: SectionContext, data: SiteData, trading: Map<string, T
     if (short.length > 0) {
       return { phrase, amountLabel, total: null, shortfall: `${joinWithAnd(short)} ${shortOf(short.length === 1 ? 'has' : 'have')}`, comparison: null }
     }
-    const rounded = roundPence(total)
-    return { phrase, amountLabel, total: rounded, shortfall: null, comparison: compare(compared.takings, rounded, FLOORS.weeklyTakings, CASHING_UP.weeklyChange) }
+    const usualWeek = roundPence(total)
+    return { phrase, amountLabel, total: usualWeek, shortfall: null, comparison: compare(compared.takings, usualWeek, FLOORS.weeklyTakings, CASHING_UP.weeklyChange) }
   }
 
   const baseline4 = weekdayBaseline(
@@ -409,8 +433,8 @@ function analyseSite(ctx: SectionContext, data: SiteData, trading: Map<string, T
     if (short.length > 0) {
       return { phrase, amountLabel, total: null, shortfall: `${joinWithAnd(short)} ${short.length === 1 ? 'has' : 'have'} no cash-up 52 weeks earlier`, comparison: null }
     }
-    const rounded = roundPence(total)
-    return { phrase, amountLabel, total: rounded, shortfall: null, comparison: compare(compared.takings, rounded, FLOORS.weeklyTakings, CASHING_UP.weeklyChange) }
+    const yearAgoWeek = roundPence(total)
+    return { phrase, amountLabel, total: yearAgoWeek, shortfall: null, comparison: compare(compared.takings, yearAgoWeek, FLOORS.weeklyTakings, CASHING_UP.weeklyChange) }
   })()
 
   // ---- Day anomalies (may show even when the week is incomplete) --------------------------
@@ -595,6 +619,7 @@ function analyseSite(ctx: SectionContext, data: SiteData, trading: Map<string, T
     const parts: string[] = []
     if (weekMissing.length > 0) parts.push(`missing ${namedDates(weekMissing)}`)
     if (weekPending.length > 0) parts.push(`${namedDates(weekPending)} not entered yet`)
+    if (weekVoided.length > 0) parts.push(`${namedDates(weekVoided)} voided, not re-entered`)
     return parts.length ? parts.join('; ') : 'none missing'
   })()
 
@@ -655,6 +680,7 @@ function analyseSite(ctx: SectionContext, data: SiteData, trading: Map<string, T
     }
     if (date < expectFrom) return { text: `${label}: before cashing up started.` }
     if (!isTrading(date)) return { text: `${label}: closed, no cash-up expected.` }
+    if (isVoided(date)) return { text: `${label}: voided, not re-entered.`, href }
     const draft = data.drafts.has(date) ? ' (a draft was started but not submitted)' : ''
     if (isPending(date)) return { text: `${label}: not entered yet${draft}.`, href }
     return { text: `${label}: missing${draft}.`, href, rag: redMissing ? 'red' : 'amber' }
@@ -709,6 +735,11 @@ function analyseSite(ctx: SectionContext, data: SiteData, trading: Map<string, T
   if (draftDates.length > 0) {
     notes.push(`${prefix}${namedDates(draftDates)} ${draftDates.length === 1 ? 'has a draft cash-up' : 'have draft cash-ups'} that ${draftDates.length === 1 ? 'was' : 'were'} never submitted, so ${draftDates.length === 1 ? 'it counts' : 'they count'} as not entered.`)
   }
+  const voidedDates = [...voidedEarlier, ...weekVoided]
+  if (voidedDates.length > 0) {
+    const one = voidedDates.length === 1
+    notes.push(`${prefix}${namedDates(voidedDates)} ${one ? 'has a voided cash-up' : 'have voided cash-ups'} that ${one ? 'was' : 'were'} not re-entered, so ${one ? 'its takings are' : 'their takings are'} not known. A voided day cannot be entered again, so ${one ? 'it is' : 'they are'} not counted as missing.`)
+  }
   if (weekClosed.length > 0) {
     notes.push(`${prefix}No cash-up expected on ${namedDates(weekClosed)}: the venue was closed.`)
   }
@@ -732,6 +763,7 @@ function analyseSite(ctx: SectionContext, data: SiteData, trading: Map<string, T
       gaps.push(weekMissing.length <= 3 ? `missing ${joinWithAnd(weekMissing.map(formatDayDate))}` : `${weekMissing.length} missing`)
     }
     if (weekPending.length > 0) gaps.push(`${namedDates(weekPending)} not entered yet`)
+    if (weekVoided.length > 0) gaps.push(`${namedDates(weekVoided)} voided, not re-entered`)
     parts.push(`${weekEnteredTrading.length} of ${plural(weekTrading.length, 'trading day')} entered${gaps.length ? `; ${gaps.join('; ')}` : ''}.`)
   }
   const weekCompared = weekComparison && baseline13.total !== null ? describeChange(weekComparison, 'the usual week') : null
@@ -783,7 +815,7 @@ export async function buildCashingUpSection(ctx: SectionContext): Promise<Sectio
   // is, so a site that has stopped cashing up still shows its gaps. The extra week read for
   // last week's baselines does not count.
   const activeIds = new Set(windowRows
-    .filter((row) => String(row.session_date).slice(0, 10) >= readStart)
+    .filter((row) => !row.voided_at && String(row.session_date).slice(0, 10) >= readStart)
     .map((row) => row.site_id))
   const reported = sites
     .filter((site) => activeIds.size === 0 || activeIds.has(site.id))

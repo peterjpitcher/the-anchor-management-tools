@@ -403,7 +403,10 @@ export async function buildEventsSection(ctx: SectionContext): Promise<SectionBu
 
   const needsAttention = (eventId: string): boolean =>
     (signalsByEvent.get(eventId) ?? []).some((signal) => signal.kind === 'issue' && signal.rag !== 'green')
-  const attentionCount = [...listed, ...postponed].filter((row) => needsAttention(row.id)).length
+  // Listed events only (spec 5.1): a postponed event always needs a new date, so it is counted
+  // and named on its own rather than making an event that is on track read as a problem.
+  const attentionCount = listed.filter((row) => needsAttention(row.id)).length
+  const postponedText = `${plural(postponed.length, 'postponed event')} ${postponed.length === 1 ? 'needs' : 'need'} a new date`
 
   // Figures.
   const totalBooked = views.reduce((sum, view) => sum + view.booked, 0)
@@ -504,14 +507,14 @@ export async function buildEventsSection(ctx: SectionContext): Promise<SectionBu
   let headline: string
   if (views.length === 0) {
     headline = postponed.length > 0
-      ? `No hosted events in the next 14 days; ${plural(postponed.length, 'postponed event')} ${postponed.length === 1 ? 'needs' : 'need'} a new date.`
+      ? `No hosted events in the next 14 days; ${postponedText}.`
       : 'No hosted events in the next 14 days.'
   } else {
     const fillText = allHaveCapacity && capacityTotal > 0 ? ` (${pct(bookedWithCapacity / capacityTotal)} of capacity)` : ''
     const attentionText = attentionCount > 0
       ? ` ${formatCount(attentionCount)} ${attentionCount === 1 ? 'needs' : 'need'} attention.`
-      : ' All on track.'
-    headline = `${plural(views.length, 'event')} in the next 14 days, ${plural(totalBooked, 'seat')} booked${fillText}.${attentionText}`
+      : postponed.length > 0 ? '' : ' All on track.'
+    headline = `${plural(views.length, 'event')} in the next 14 days, ${plural(totalBooked, 'seat')} booked${fillText}.${attentionText}${postponed.length > 0 ? ` ${postponedText}.` : ''}`
   }
 
   return { headline, metrics, lists, signals, notes, upcoming }

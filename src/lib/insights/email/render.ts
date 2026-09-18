@@ -1,7 +1,8 @@
+import { STAFF } from '@/lib/brand/palette'
 import { EMAIL_BUDGET } from '../thresholds'
 import { formatDateWithYear, formatDayDate, formatLondonClock, formatWeekday } from '../format'
 import { scoreSignal } from '../signals'
-import type { InsightSection, InsightSignal, InsightsReport, Rag, RankedAction, SectionStatus } from '../types'
+import type { InsightSection, InsightSignal, InsightsReport, RankedAction, SectionStatus } from '../types'
 
 /**
  * The Friday manager email (spec 7). Exception-first: the summary, every section's status
@@ -10,7 +11,8 @@ import type { InsightSection, InsightSignal, InsightsReport, Rag, RankedAction, 
  *
  * Built to print: white everywhere (no background colour on any element), dark text, real
  * <ul>/<ol> lists that Outlook keeps, and a word beside every status emoji so the status
- * survives a black-and-white printer.
+ * survives a black-and-white printer. Colours come from the brand palette, which mirrors the
+ * app's tokens (the text colour is --color-text, the same as the Insights page).
  */
 
 export interface InsightsEmail {
@@ -28,11 +30,15 @@ const STATUS_LABEL: Record<SectionStatus, string> = {
   not_checked: '⚪ Not checked',
 }
 
-const RAG_MARK: Record<Rag, string> = { red: '🔴', amber: '🟠', green: '🟢' }
 const MAX_MEMBERS = 8
-const TEXT = '#111111'
-const MUTED = '#444444'
-const RULE = '#999999'
+const TEXT = STAFF.text
+const MUTED = STAFF.textMuted
+const RULE = STAFF.borderStrong
+
+/** The status word as well as the emoji on every exception row: a win reads OK whatever its rag. */
+function rowStatus(signal: InsightSignal): string {
+  return STATUS_LABEL[signal.kind === 'win' ? 'green' : signal.rag]
+}
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -166,7 +172,7 @@ function renderHtml(report: InsightsReport, appOrigin: string, budget: number): 
     const rows = chosen.get(sectionIndex) ?? []
     rowsShown += rows.length
     if (rows.length > 0) {
-      out.push(list(rows.map((row) => `${RAG_MARK[row.signal.kind === 'win' ? 'green' : row.signal.rag]} ${escapeHtml(clean(row.text))}${anchor(row.href, 'Open')}`)))
+      out.push(list(rows.map((row) => `${escapeHtml(rowStatus(row.signal))}: ${escapeHtml(clean(row.text))}${anchor(row.href, 'Open')}`)))
     }
     const candidates = sectionCandidates(section)
     const hidden = candidates.length - rows.length
@@ -245,7 +251,7 @@ function renderText(report: InsightsReport, appOrigin: string, budget: number): 
     }
     const rows = chosen.get(sectionIndex) ?? []
     for (const row of rows) {
-      lines.push(`- ${RAG_MARK[row.signal.kind === 'win' ? 'green' : row.signal.rag]} ${withLink(clean(row.text), row.href)}`)
+      lines.push(`- ${rowStatus(row.signal)}: ${withLink(clean(row.text), row.href)}`)
     }
     const hidden = sectionCandidates(section).length - rows.length
     if (hidden > 0) lines.push(`${hidden} more on the Insights page.`)
