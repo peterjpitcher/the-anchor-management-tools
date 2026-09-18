@@ -902,9 +902,6 @@
   "src/app/privacy/page.tsx": {
     "px-text-size": 6
   },
-  "src/components/charts/BarChart.tsx": {
-    "hex-colour": 9
-  },
   "src/components/features/catering/CateringManager.tsx": {
     "raw-palette": 5
   },
@@ -1164,8 +1161,7 @@
     "raw-palette": 16
   },
   "src/ds/composites/Chart.tsx": {
-    "raw-palette": 2,
-    "hex-colour": 2
+    "raw-palette": 2
   },
   "src/ds/composites/DataTable.tsx": {
     "raw-palette": 27,
@@ -1193,10 +1189,6 @@
   },
   "src/ds/primitives/Accordion.tsx": {
     "raw-palette": 17
-  },
-  "src/ds/primitives/Avatar.tsx": {
-    "hex-colour": 6,
-    "px-text-size": 1
   },
   "src/ds/primitives/Button.tsx": {
     "px-text-size": 2
@@ -1230,9 +1222,6 @@
   },
   "src/ds/primitives/Textarea.tsx": {
     "px-text-size": 2
-  },
-  "src/ds/primitives/Toast.tsx": {
-    "hex-colour": 12
   },
   "src/ds/shell/MobileChrome.tsx": {
     "raw-palette": 1,
