@@ -8,8 +8,10 @@
  * - STAFF: anything from Orange Jelly or for staff: invoices, receipts, quotes, statements,
  *   contracts, staff emails, rota and hours PDFs. Brand green buttons (owner decision, 18 Sep 2026).
  * - GUEST: anything a guest or customer receives about The Anchor: booking, event, table and
- *   voucher emails and guest-facing sheets. The Anchor green and the guest gold primary button
+ *   voucher emails, and the voucher card. The Anchor green and the guest gold primary button
  *   (owner decision, 18 Sep 2026), exactly as the guest pages draw it.
+ * - Black-ink print sheets (the table and event booking sheets, even the reserved card that sits
+ *   on the table) use the STAFF greys, because their small print stays darker on paper.
  */
 
 export const STAFF = {

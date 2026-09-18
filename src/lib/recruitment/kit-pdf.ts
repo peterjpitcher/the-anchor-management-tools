@@ -1,3 +1,5 @@
+import { STAFF } from '@/lib/brand/palette'
+
 /**
  * Shared Puppeteer options for the recruitment printables.
  *
@@ -33,7 +35,7 @@ export function recruitmentKitPdfOptions() {
     // Chrome renders these templates in an isolated document with no page styles,
     // so every rule has to be inline and the font size stated explicitly.
     footerTemplate: `
-      <div style="width:100%;padding:0 16mm;font-family:Arial,Helvetica,sans-serif;font-size:8px;color:#6b7280;display:flex;justify-content:space-between;align-items:center;">
+      <div style="width:100%;padding:0 16mm;font-family:Arial,Helvetica,sans-serif;font-size:8px;color:${STAFF.textMuted};display:flex;justify-content:space-between;align-items:center;">
         <span>The Anchor, Stanwell Moor Village, a village pub since 1751</span>
         <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
       </div>

@@ -301,17 +301,11 @@
   "src/lib/employee-starter-template.ts": {
     "hex-colour": 26
   },
-  "src/lib/event-booking-sheet-template.ts": {
-    "hex-colour": 6
-  },
   "src/lib/events/artwork/composite.ts": {
     "hex-colour": 2
   },
   "src/lib/events/artwork/geometry.ts": {
     "hex-colour": 7
-  },
-  "src/lib/events/guest-list-pdf.ts": {
-    "hex-colour": 10
   },
   "src/lib/export/qr-pack.ts": {
     "hex-colour": 2
@@ -321,9 +315,6 @@
   },
   "src/lib/maintenance/photo-normalise.ts": {
     "hex-colour": 1
-  },
-  "src/lib/menu/allergen-report.ts": {
-    "hex-colour": 24
   },
   "src/lib/mileage/report/pdf.ts": {
     "hex-colour": 1
@@ -346,32 +337,11 @@
   "src/lib/pnl/report-template.ts": {
     "hex-colour": 32
   },
-  "src/lib/private-bookings/event-sheet.ts": {
-    "hex-colour": 18
-  },
   "src/lib/quote-template-compact.ts": {
     "hex-colour": 28
   },
   "src/lib/receipts/export/claim-summary-pdf.ts": {
     "hex-colour": 14
-  },
-  "src/lib/recruitment/interview-kit-template.ts": {
-    "hex-colour": 20
-  },
-  "src/lib/recruitment/kit-pdf.ts": {
-    "hex-colour": 1
-  },
-  "src/lib/recruitment/trial-brief-template.ts": {
-    "hex-colour": 13
-  },
-  "src/lib/short-links/channels.ts": {
-    "hex-colour": 41
-  },
-  "src/lib/table-booking-sheet-template.ts": {
-    "hex-colour": 6
-  },
-  "src/lib/voucher-card-template.ts": {
-    "hex-colour": 9
   },
   "src/lib/worker-agreement-template.ts": {
     "hex-colour": 23

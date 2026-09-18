@@ -6,6 +6,7 @@ import {
   getMenuPurchaseDepartmentLabel,
   type MenuPurchaseDepartment,
 } from '@/lib/menu/purchase-departments'
+import { STAFF } from '@/lib/brand/palette'
 
 const INGREDIENT_ALLERGEN_COLUMNS = [
   { key: 'celery', label: 'Celery' },
@@ -124,6 +125,11 @@ const ALLERGEN_HEADER_CELLS = INGREDIENT_ALLERGEN_COLUMNS.map((column) => (
   `<th class="allergen-heading"><span>${escapeHtml(column.label)}</span></th>`
 )).join('')
 
+// An allergen data check for staff (supplier, SKU, active status), not a menu handed to guests,
+// so it takes the STAFF greys. The tick grid is ruled in STAFF.textSoft because the border
+// tokens are too pale to rule a printed matrix.
+const GRID_RULE = STAFF.textSoft
+
 const REPORT_STYLES = `
   * { box-sizing: border-box; }
 
@@ -134,11 +140,11 @@ const REPORT_STYLES = `
 
   body {
     margin: 0;
-    color: #111827;
+    color: ${STAFF.text};
     font-family: Arial, Helvetica, sans-serif;
     font-size: 8px;
     line-height: 1.25;
-    background: #ffffff;
+    background: ${STAFF.surface};
   }
 
   .report {
@@ -151,7 +157,7 @@ const REPORT_STYLES = `
     gap: 16px;
     align-items: flex-start;
     margin-bottom: 8px;
-    border-bottom: 1px solid #111827;
+    border-bottom: 1px solid ${STAFF.text};
     padding-bottom: 6px;
   }
 
@@ -163,7 +169,7 @@ const REPORT_STYLES = `
 
   .subtitle {
     margin-top: 4px;
-    color: #4b5563;
+    color: ${STAFF.textMuted};
     font-size: 9px;
   }
 
@@ -172,13 +178,13 @@ const REPORT_STYLES = `
     grid-template-columns: auto auto;
     gap: 3px 8px;
     min-width: 190px;
-    border: 1px solid #d1d5db;
+    border: 1px solid ${STAFF.borderStrong};
     padding: 6px 8px;
     font-size: 8px;
   }
 
   .summary dt {
-    color: #4b5563;
+    color: ${STAFF.textMuted};
     font-weight: 700;
   }
 
@@ -209,14 +215,14 @@ const REPORT_STYLES = `
 
   th,
   td {
-    border: 1px solid #6b7280;
+    border: 1px solid ${GRID_RULE};
     padding: 3px 4px;
     vertical-align: middle;
   }
 
   th {
-    background: #f3f4f6;
-    color: #111827;
+    background: ${STAFF.surfaceHover};
+    color: ${STAFF.text};
     font-weight: 700;
     text-align: left;
   }
@@ -241,16 +247,16 @@ const REPORT_STYLES = `
   table.dish-report .allergen-col { width: 4%; }
 
   .category-row td {
-    background: #d1d5db;
-    color: #111827;
+    background: ${STAFF.borderStrong};
+    color: ${STAFF.text};
     font-weight: 700;
     font-size: 9px;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     text-align: left;
     padding: 4px 6px;
-    border-top: 2px solid #111827;
-    border-bottom: 1px solid #111827;
+    border-top: 2px solid ${STAFF.text};
+    border-bottom: 1px solid ${STAFF.text};
   }
 
   table.dish-report tbody tr:nth-child(even) td {
@@ -258,7 +264,7 @@ const REPORT_STYLES = `
   }
 
   table.dish-report tbody tr:nth-child(even) .tick-cell.included {
-    background: #e5e7eb;
+    background: ${STAFF.border};
   }
 
   .allergen-heading {
@@ -289,7 +295,7 @@ const REPORT_STYLES = `
 
   .ingredient-brand,
   .muted {
-    color: #6b7280;
+    color: ${STAFF.textMuted};
   }
 
   .supplier-cell,
@@ -312,36 +318,36 @@ const REPORT_STYLES = `
   }
 
   .tick-cell.included {
-    color: #000000;
-    background: #e5e7eb;
+    color: ${STAFF.textStrong};
+    background: ${STAFF.border};
   }
 
   .group-row th {
-    background: #d1d5db;
+    background: ${STAFF.borderStrong};
     text-align: center;
     font-size: 9px;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    border-bottom: 2px solid #111827;
+    border-bottom: 2px solid ${STAFF.text};
   }
 
   .group-blank {
-    background: #ffffff !important;
+    background: ${STAFF.surface} !important;
     border-color: transparent !important;
-    border-bottom: 1px solid #6b7280 !important;
+    border-bottom: 1px solid ${GRID_RULE} !important;
   }
 
   tbody tr:nth-child(even) td {
-    background: #f3f4f6;
+    background: ${STAFF.surfaceHover};
   }
 
   tbody tr:nth-child(even) .tick-cell.included {
-    background: #cbd5e1;
+    background: ${STAFF.borderStrong};
   }
 
   .footer-note {
     margin-top: 6px;
-    color: #4b5563;
+    color: ${STAFF.textMuted};
     font-size: 7px;
   }
 `
