@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -390,7 +391,7 @@ async function ensureBooking(eventId: string, customerId: string): Promise<
     seats: 1,
     source: 'walk-in',
     bookingMode: EventBookingService.normalizeBookingMode(eventRow.booking_mode),
-    appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+    appBaseUrl: getAppUrl(),
     shouldSendSms: false,
     supabaseClient: admin,
     logTag: 'event check-in booking',

@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
@@ -173,7 +174,7 @@ export async function createParkingBooking(formData: FormData) {
     let paymentWarning: string | undefined
     if (data.send_payment_link) {
       try {
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const appUrl = getAppUrl()
         const { approveUrl } = await createParkingPaymentOrder(booking, {
           returnUrl: parkingPaymentReturnUrl(appUrl, booking.id),
           cancelUrl: parkingGuestUrl(appUrl, booking.id, 'cancelled'),
@@ -799,8 +800,7 @@ export async function generateParkingPaymentLink(bookingId: string) {
       booking.unpaid_day_before_sms_sent = false
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL
-      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+    const appUrl = getAppUrl()
 
     const { approveUrl } = await createParkingPaymentOrder(booking as ParkingBooking, {
       returnUrl: parkingPaymentReturnUrl(appUrl, booking.id),

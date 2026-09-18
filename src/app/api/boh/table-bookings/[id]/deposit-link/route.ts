@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { createGuestToken } from '@/lib/guest/tokens'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -51,8 +52,7 @@ export async function GET(
     expiresAt: holdExpiry.toISOString(),
   })
 
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '')
-  const url = `${baseUrl}/g/${rawToken}/table-payment`
+  const url = `${getAppUrl()}/g/${rawToken}/table-payment`
 
   return NextResponse.json({ url })
 }

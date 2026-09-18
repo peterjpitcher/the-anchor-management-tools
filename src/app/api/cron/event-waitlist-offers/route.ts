@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { createNextWaitlistOffer, sendWaitlistOfferSms } from '@/lib/events/waitlist-offers'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createAdminClient()
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const appBaseUrl = getAppUrl()
 
   try {
     const result = {

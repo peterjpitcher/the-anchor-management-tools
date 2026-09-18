@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getAppUrl } from '@/lib/env'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { refundPayPalPayment } from '@/lib/paypal'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -128,7 +129,7 @@ function parseIsoDate(value: string | undefined): Date | null {
 }
 
 function resolveBaseUrl(appBaseUrl?: string): string {
-  return (appBaseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '')
+  return (appBaseUrl || getAppUrl()).replace(/\/+$/, '')
 }
 
 function computeManageTokenExpiry(eventStartIso?: string | null): string {

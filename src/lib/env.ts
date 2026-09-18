@@ -39,7 +39,6 @@ const envSchema = z.object({
   
   // Webhook configuration
   WEBHOOK_BASE_URL: z.string().url().optional(),
-  VERCEL_URL: z.string().optional(),
   NEXT_PUBLIC_SITE_URL: z.string().url().optional(),
   SKIP_TWILIO_SIGNATURE_VALIDATION: z.string().optional(),
 });
@@ -73,12 +72,23 @@ function validateEnv(): Env {
 // Export validated environment variables
 export const env = validateEnv();
 
-// Webhook configuration with smart defaults
-const WEBHOOK_BASE_URL = 
-  env.WEBHOOK_BASE_URL || 
+/**
+ * The app's own base URL (NEXT_PUBLIC_APP_URL, validated above) without a trailing slash, for
+ * building absolute links such as `${getAppUrl()}/g/<token>/manage-booking`.
+ *
+ * There is deliberately no fallback. A missing or malformed value fails validation when this
+ * module loads, and so fails the build, rather than sending a guest a localhost link.
+ */
+export function getAppUrl(): string {
+  return env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '');
+}
+
+// Webhook callbacks default to the app's own URL, which is required, so there is no further
+// fallback.
+const WEBHOOK_BASE_URL =
+  env.WEBHOOK_BASE_URL ||
   env.NEXT_PUBLIC_SITE_URL ||
-  env.NEXT_PUBLIC_APP_URL ||
-  (env.VERCEL_URL ? `https://${env.VERCEL_URL}` : 'http://localhost:3000');
+  env.NEXT_PUBLIC_APP_URL;
 
 // Twilio webhook endpoints
 export const TWILIO_STATUS_CALLBACK = `${WEBHOOK_BASE_URL}/api/webhooks/twilio`;
