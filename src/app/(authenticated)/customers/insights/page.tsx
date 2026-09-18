@@ -38,11 +38,6 @@ function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`
 }
 
-function formatSignedPercent(value: number): string {
-  const prefix = value > 0 ? '+' : ''
-  return `${prefix}${value.toFixed(1)}%`
-}
-
 function formatDate(value: string | null): string {
   if (!value) return 'N/A'
 
@@ -200,8 +195,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                 <Stat
                   label="New Customers"
                   value={formatNumber(snapshot.kpis.new_customers)}
-                  change={formatSignedPercent(snapshot.kpis.new_customer_growth_percent)}
-                  changeType={snapshot.kpis.new_customer_growth_percent >= 0 ? 'increase' : 'decrease'}
+                  delta={snapshot.kpis.new_customer_growth_percent}
                   icon={<UserPlusIcon className="h-5 w-5" />}
                   variant="bordered"
                 />
