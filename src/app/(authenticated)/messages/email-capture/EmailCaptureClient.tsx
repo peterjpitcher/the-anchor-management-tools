@@ -135,13 +135,13 @@ export default function EmailCaptureClient() {
 
             {preview.sampleMessages.length > 0 ? (
               <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm font-medium text-text">
                   Exactly what they will receive
                 </p>
                 {preview.sampleMessages.map((message, index) => (
                   <pre
                     key={index}
-                    className="whitespace-pre-wrap rounded-md bg-gray-50 p-3 text-sm text-gray-800"
+                    className="whitespace-pre-wrap rounded-md bg-surface-2 p-3 text-sm text-text"
                   >
                     {message}
                   </pre>

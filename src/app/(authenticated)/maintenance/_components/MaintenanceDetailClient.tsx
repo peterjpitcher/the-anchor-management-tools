@@ -416,7 +416,7 @@ export function MaintenanceDetailClient({
             </div>
           </div>
 
-          <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2 lg:grid-cols-4">
+          <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 text-ui sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <dt className="text-text-muted">Reported on</dt>
               <dd className="text-text">{formatMaintenanceDate(baseline.reportedOn)}</dd>

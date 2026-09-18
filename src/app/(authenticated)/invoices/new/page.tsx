@@ -414,7 +414,7 @@ export default function NewInvoicePage() {
                   </div>
 
                   <div className="mt-3 pt-3 border-t flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Line Total:</span>
+                    <span className="text-sm text-text-muted">Line Total:</span>
                     <span className="font-semibold">£{lineTotal.toFixed(2)}</span>
                   </div>
                   </div>
@@ -459,7 +459,7 @@ export default function NewInvoicePage() {
               </FormGroup>
             </div>
 
-            <div className="bg-gray-50 rounded-lg p-4">
+            <div className="bg-surface-2 rounded-lg p-4">
               <h3 className="font-semibold mb-3">Summary</h3>
               <div className="space-y-2">
                 <div className="flex justify-between">
@@ -489,7 +489,7 @@ export default function NewInvoicePage() {
           </div>
         </Card>
 
-        <div className="sticky bottom-0 -mx-6 border-t bg-white px-6 py-4 sm:relative sm:mx-0 sm:border-0 sm:px-0 sm:py-0">
+        <div className="sticky bottom-0 -mx-6 border-t bg-surface px-6 py-4 sm:relative sm:mx-0 sm:border-0 sm:px-0 sm:py-0">
           <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
             <Button
               type="button"
@@ -529,11 +529,11 @@ export default function NewInvoicePage() {
                     addFromCatalog(item)
                     setIsCatalogModalOpen(false)
                   }}
-                  className="w-full text-left rounded-md border border-gray-200 p-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full text-left rounded-md border border-border p-3 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <div className="font-medium text-gray-900">{item.name}</div>
+                  <div className="font-medium text-text">{item.name}</div>
                   {item.description && (
-                    <div className="text-sm text-gray-600 mt-0.5">{item.description}</div>
+                    <div className="text-sm text-text-muted mt-0.5">{item.description}</div>
                   )}
                   <div className="text-xs text-gray-500 mt-2">
                     £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%

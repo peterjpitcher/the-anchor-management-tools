@@ -108,7 +108,7 @@ function RateHistory({
   const current = rates.find(r => r.effective_from <= today) ?? null;
 
   return (
-    <div className="mt-3 border-t border-gray-100 pt-3">
+    <div className="mt-3 border-t border-border pt-3">
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Rate History</p>
         {canManage && (
@@ -130,7 +130,7 @@ function RateHistory({
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-xs text-gray-400 border-b border-gray-100">
+            <tr className="text-xs text-gray-400 border-b border-border">
               <th scope="col" className="text-left pb-1 font-medium">Rate</th>
               <th scope="col" className="text-left pb-1 font-medium">Effective from</th>
               <th scope="col" className="text-left pb-1 font-medium">Status</th>
@@ -140,7 +140,7 @@ function RateHistory({
           <tbody>
             {rates.map(r => (
               <tr key={r.id} className="border-b border-gray-50">
-                <td className="py-1.5 font-medium text-gray-900">
+                <td className="py-1.5 font-medium text-text">
                   {editingRateId === r.id ? (
                     <Input
                       type="number"
@@ -151,7 +151,7 @@ function RateHistory({
                     />
                   ) : formatRate(r.hourly_rate)}
                 </td>
-                <td className="py-1.5 text-gray-600">
+                <td className="py-1.5 text-text-muted">
                   {editingRateId === r.id ? (
                     <Input
                       type="date"
@@ -195,9 +195,9 @@ function RateHistory({
       )}
 
       {showForm && canManage && (
-        <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
-          <p className="text-xs font-medium text-gray-600">Add new effective-dated rate</p>
-          {error && <p className="text-xs text-red-600">{error}</p>}
+        <div className="mt-3 p-3 bg-surface-2 rounded-lg border border-border space-y-3">
+          <p className="text-xs font-medium text-text-muted">Add new effective-dated rate</p>
+          {error && <p className="text-xs text-danger">{error}</p>}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FormGroup label="Hourly rate (£)" htmlFor={`rate-${bandId}`}>
               <Input
@@ -285,11 +285,11 @@ function BandCard({
   };
 
   return (
-    <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+    <div className="border border-border rounded-lg bg-surface overflow-hidden">
       <button
         type="button"
         onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-surface-hover transition-colors"
       >
         <div className="flex items-center gap-3">
           {expanded
@@ -297,7 +297,7 @@ function BandCard({
             : <ChevronRightIcon className="h-4 w-4 text-gray-400" />
           }
           <div>
-            <p className="font-medium text-gray-900">{band.label}</p>
+            <p className="font-medium text-text">{band.label}</p>
             <p className="text-xs text-gray-500">
               Age {band.min_age}{band.max_age != null ? `–${band.max_age}` : '+'}
             </p>
@@ -316,10 +316,10 @@ function BandCard({
       {expanded && (
         <div className="px-4 pb-4">
           {canManage && (
-            <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <div className="mb-3 rounded-lg border border-border bg-surface-2 p-3">
               {editingBand ? (
                 <div className="space-y-3">
-                  {editError && <p className="text-xs text-red-600">{editError}</p>}
+                  {editError && <p className="text-xs text-danger">{editError}</p>}
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
                     <Input label="Label" value={editLabel} onChange={e => setEditLabel(e.target.value)} />
                     <Input label="Min age" type="number" min="0" max="100" value={editMinAge} onChange={e => setEditMinAge(e.target.value)} />
@@ -429,7 +429,7 @@ export default function PayBandsManager({ canManage, initialBands, initialRates 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-text-muted">
           Define age bands aligned to national/living wage tiers. Add effective-dated rates as wages change each year.
           Rates are append-only — historical rates are preserved for payroll accuracy.
         </p>
@@ -446,7 +446,7 @@ export default function PayBandsManager({ canManage, initialBands, initialRates 
       </div>
 
       {showNewBandForm && canManage && (
-        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
+        <div className="p-4 bg-surface-2 rounded-lg border border-border space-y-4">
           <p className="text-sm font-medium text-gray-700">New age band</p>
           {formError && <Alert variant="error">{formError}</Alert>}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">

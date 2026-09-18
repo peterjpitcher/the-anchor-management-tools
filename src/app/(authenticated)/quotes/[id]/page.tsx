@@ -258,7 +258,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
       <PageLayout {...layoutProps}>
         <Card>
           <div className="py-8 text-center">
-            <p className="mb-4 text-red-600">Quote not found</p>
+            <p className="mb-4 text-danger">Quote not found</p>
             <Button variant="secondary" onClick={() => router.push('/quotes')}>
               Back to Quotes
             </Button>
@@ -417,30 +417,30 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
             <Card>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               <div>
-                <h3 className="font-medium text-xs sm:text-sm text-gray-600 mb-1">From</h3>
+                <h3 className="font-medium text-xs sm:text-sm text-text-muted mb-1">From</h3>
                 <p className="font-medium text-sm sm:text-base">Orange Jelly Limited</p>
-                <p className="text-xs sm:text-sm text-gray-600">The Anchor, Horton Road</p>
-                <p className="text-xs sm:text-sm text-gray-600">Stanwell Moor Village, Surrey</p>
-                <p className="text-xs sm:text-sm text-gray-600">TW19 6AQ</p>
-                <p className="text-xs sm:text-sm text-gray-600">VAT: GB315203647</p>
+                <p className="text-xs sm:text-sm text-text-muted">The Anchor, Horton Road</p>
+                <p className="text-xs sm:text-sm text-text-muted">Stanwell Moor Village, Surrey</p>
+                <p className="text-xs sm:text-sm text-text-muted">TW19 6AQ</p>
+                <p className="text-xs sm:text-sm text-text-muted">VAT: GB315203647</p>
               </div>
 
               <div>
-                <h3 className="font-medium text-xs sm:text-sm text-gray-600 mb-1">To</h3>
+                <h3 className="font-medium text-xs sm:text-sm text-text-muted mb-1">To</h3>
                 {quote.vendor ? (
                   <>
                     <p className="font-medium text-sm sm:text-base">{quote.vendor.name}</p>
                     {quote.vendor.contact_name && (
-                      <p className="text-xs sm:text-sm text-gray-600">{quote.vendor.contact_name}</p>
+                      <p className="text-xs sm:text-sm text-text-muted">{quote.vendor.contact_name}</p>
                     )}
                     {quote.vendor.email && (
-                      <p className="text-xs sm:text-sm text-gray-600 break-all">{quote.vendor.email}</p>
+                      <p className="text-xs sm:text-sm text-text-muted break-all">{quote.vendor.email}</p>
                     )}
                     {quote.vendor.phone && (
-                      <p className="text-xs sm:text-sm text-gray-600">{quote.vendor.phone}</p>
+                      <p className="text-xs sm:text-sm text-text-muted">{quote.vendor.phone}</p>
                     )}
                     {quote.vendor.address && (
-                      <p className="text-xs sm:text-sm text-gray-600 whitespace-pre-line">{quote.vendor.address}</p>
+                      <p className="text-xs sm:text-sm text-text-muted whitespace-pre-line">{quote.vendor.address}</p>
                     )}
                   </>
                 ) : (
@@ -451,13 +451,13 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
 
             <div className="grid grid-cols-2 gap-4 sm:gap-6 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t">
               <div>
-                <p className="text-xs sm:text-sm text-gray-600">Quote Date</p>
+                <p className="text-xs sm:text-sm text-text-muted">Quote Date</p>
                 <p className="font-medium text-sm sm:text-base">
                   {new Date(quote.quote_date).toLocaleDateString('en-GB')}
                 </p>
               </div>
               <div>
-                <p className="text-xs sm:text-sm text-gray-600">Valid Until</p>
+                <p className="text-xs sm:text-sm text-text-muted">Valid Until</p>
                 <p className="font-medium text-sm sm:text-base">
                   {new Date(quote.valid_until).toLocaleDateString('en-GB')}
                 </p>
@@ -543,15 +543,15 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               <Card>
               {quote.notes && (
                 <div className="mb-4">
-                  <h3 className="font-medium text-xs sm:text-sm text-gray-600 mb-1">Quote Notes</h3>
+                  <h3 className="font-medium text-xs sm:text-sm text-text-muted mb-1">Quote Notes</h3>
                   <p className="text-xs sm:text-sm whitespace-pre-wrap">{quote.notes}</p>
                 </div>
               )}
               
               {quote.internal_notes && (
                 <div>
-                  <h3 className="font-medium text-xs sm:text-sm text-gray-600 mb-1">Internal Notes</h3>
-                  <p className="text-xs sm:text-sm whitespace-pre-wrap bg-yellow-50 p-2 sm:p-3 rounded-md">
+                  <h3 className="font-medium text-xs sm:text-sm text-text-muted mb-1">Internal Notes</h3>
+                  <p className="text-xs sm:text-sm whitespace-pre-wrap bg-warning-soft p-2 sm:p-3 rounded-md">
                     {quote.internal_notes}
                   </p>
                 </div>
@@ -566,12 +566,12 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
             <Card>
             <div className="space-y-4">
               <div>
-                <p className="text-xs sm:text-sm text-gray-600">Total Amount</p>
+                <p className="text-xs sm:text-sm text-text-muted">Total Amount</p>
                 <p className="text-xl sm:text-2xl font-bold">{formatCurrency(quote.total_amount)}</p>
               </div>
               
               <div>
-                <p className="text-xs sm:text-sm text-gray-600">Status</p>
+                <p className="text-xs sm:text-sm text-text-muted">Status</p>
                 <Badge variant={getStatusVariant(quote.status)}>
                   {getStatusIcon(quote.status)}
                   {quote.status.charAt(0).toUpperCase() + quote.status.slice(1).replace('_', ' ')}
@@ -580,7 +580,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               
               {quote.converted_to_invoice_id && (
                 <div>
-                  <p className="text-xs sm:text-sm text-gray-600">Converted to Invoice</p>
+                  <p className="text-xs sm:text-sm text-text-muted">Converted to Invoice</p>
                   <p className="text-xs sm:text-sm font-medium text-green-600">
                     {quote.converted_invoice?.invoice_number}
                   </p>

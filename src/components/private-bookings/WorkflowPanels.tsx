@@ -211,7 +211,7 @@ export function WorkflowStatusPanel({
           <dl className="space-y-2">
             {rows.map((row) => (
               <div key={row.label} className="flex items-center justify-between gap-3">
-                <dt className="text-sm text-gray-600">{row.label}</dt>
+                <dt className="text-sm text-text-muted">{row.label}</dt>
                 <dd>
                   <StatusBadge variant={row.variant}>{row.text}</StatusBadge>
                 </dd>
@@ -295,7 +295,7 @@ export function RecordLockControl({
       <Card>
         {isLocked ? (
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-text-muted">
               This record is locked ({booking.locked_reason || 'no reason recorded'}).
             </p>
             <Button type="button" variant="secondary" onClick={handleUnlock} loading={busy} disabled={busy}>
@@ -418,7 +418,7 @@ export function WaiverRiskPanel({
                       type="file"
                       accept="application/pdf,image/jpeg,image/png,image/webp,image/heic"
                       onChange={(e) => setWaiverFile(e.target.files?.[0] ?? null)}
-                      className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-100"
+                      className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-surface-hover"
                     />
                   </FormGroup>
                   <div className="flex flex-wrap items-center gap-2">
@@ -724,7 +724,7 @@ export function SuppliersPanel({
           <p className="text-sm text-gray-500">Loading suppliers…</p>
         ) : suppliers.length === 0 ? (
           <EmptyState
-            icon={<TruckIcon className="h-12 w-12 text-gray-300" />}
+            icon={<TruckIcon className="h-12 w-12 text-text-subtle" />}
             title="No suppliers yet"
             description={canEdit ? 'Add each supplier attending the event (SOP §20).' : 'Suppliers will appear here once added.'}
           />
@@ -735,7 +735,7 @@ export function SuppliersPanel({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium text-gray-900">{supplier.name}</p>
+                      <p className="text-sm font-medium text-text">{supplier.name}</p>
                       <StatusBadge variant={SUPPLIER_ROW_VARIANT[supplier.status]}>{humanise(supplier.status)}</StatusBadge>
                     </div>
                     <div className="mt-1 space-y-0.5 text-xs text-gray-500">
@@ -764,7 +764,7 @@ export function SuppliersPanel({
                         setEditing(supplier)
                         setModalOpen(true)
                       }}
-                      className="shrink-0 text-gray-400 hover:text-gray-600"
+                      className="shrink-0 text-gray-400 hover:text-text-muted"
                       aria-label={`Edit supplier ${supplier.name}`}
                     >
                       <PencilIcon className="h-4 w-4" />
@@ -937,7 +937,7 @@ export function DeductionsPanel({
           <p className="text-sm text-gray-500">Loading deductions…</p>
         ) : deductions.length === 0 ? (
           <EmptyState
-            icon={<BanknotesIcon className="h-12 w-12 text-gray-300" />}
+            icon={<BanknotesIcon className="h-12 w-12 text-text-subtle" />}
             title="No deductions proposed"
             description="Damage or extra-cost deductions from the deposit will appear here."
           />
@@ -952,8 +952,8 @@ export function DeductionsPanel({
                 <li key={deduction.id} className="rounded-lg border border-border p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900">{formatCurrency(deduction.amount)}</p>
-                      <p className="mt-0.5 text-sm text-gray-600 whitespace-pre-wrap">{deduction.reason}</p>
+                      <p className="text-sm font-medium text-text">{formatCurrency(deduction.amount)}</p>
+                      <p className="mt-0.5 text-sm text-text-muted whitespace-pre-wrap">{deduction.reason}</p>
                       {deduction.customer_discussion_note && (
                         <p className="mt-1 text-xs text-gray-500">
                           Discussion: {deduction.customer_discussion_note}
@@ -1099,7 +1099,7 @@ function ComplaintRow({
     <li className="rounded-lg border border-border p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm text-gray-900 whitespace-pre-wrap">{complaint.summary}</p>
+          <p className="text-sm text-text whitespace-pre-wrap">{complaint.summary}</p>
           <p className="mt-1 text-xs text-gray-500">
             {complaint.channel ? `${humanise(complaint.channel)} · ` : ''}
             Received {formatDateTime12Hour(complaint.received_at)}
@@ -1191,7 +1191,7 @@ export function ComplaintsPanel({
           <p className="text-sm text-gray-500">Loading complaints…</p>
         ) : complaints.length === 0 ? (
           <EmptyState
-            icon={<ChatBubbleBottomCenterTextIcon className="h-12 w-12 text-gray-300" />}
+            icon={<ChatBubbleBottomCenterTextIcon className="h-12 w-12 text-text-subtle" />}
             title="No complaints logged"
             description="Any complaint about this booking will appear here."
           />

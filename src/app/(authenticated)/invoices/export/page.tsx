@@ -181,7 +181,7 @@ export default function InvoiceExportPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium">
-                  Start Date <span className="text-red-500">*</span>
+                  Start Date <span className="text-danger">*</span>
                 </label>
                 <Input
                   type="date"
@@ -193,7 +193,7 @@ export default function InvoiceExportPage() {
 
               <div>
                 <label className="mb-1 block text-sm font-medium">
-                  End Date <span className="text-red-500">*</span>
+                  End Date <span className="text-danger">*</span>
                 </label>
                 <Input
                   type="date"
@@ -217,8 +217,8 @@ export default function InvoiceExportPage() {
           </div>
 
           <div className="mt-6 rounded-lg bg-blue-50 p-4">
-            <h3 className="mb-2 font-medium text-blue-900">What&apos;s included:</h3>
-            <ul className="space-y-1 text-sm text-blue-800">
+            <h3 className="mb-2 font-medium text-info-fg">What&apos;s included:</h3>
+            <ul className="space-y-1 text-sm text-info-fg">
               <li>• Individual PDF for each invoice</li>
               <li>• Invoice summary CSV file</li>
               <li>• Organized by invoice number</li>

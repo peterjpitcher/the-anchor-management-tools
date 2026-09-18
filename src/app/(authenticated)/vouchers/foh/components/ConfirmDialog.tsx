@@ -55,9 +55,9 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="foh-voucher-confirm-title"
-        className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-xl"
+        className="relative w-full max-w-md rounded-xl bg-surface p-5 shadow-lg"
       >
-        <h2 id="foh-voucher-confirm-title" className="text-xl font-bold text-gray-900">
+        <h2 id="foh-voucher-confirm-title" className="text-xl font-bold text-text">
           {title}
         </h2>
         <div className="mt-3 text-base text-gray-700">{children}</div>
@@ -67,7 +67,7 @@ export function ConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className="min-h-[56px] w-full rounded-lg bg-sidebar px-4 py-3 text-lg font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className="min-h-14 w-full rounded-lg bg-sidebar px-4 py-3 text-lg font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? 'Working...' : confirmLabel}
           </button>
@@ -75,7 +75,7 @@ export function ConfirmDialog({
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="min-h-[44px] w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className="min-h-touch w-full rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-gray-700 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>

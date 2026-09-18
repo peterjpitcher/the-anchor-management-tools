@@ -168,7 +168,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
   return (
     <Card padding="lg" className={className}>
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-gray-900">Event Checklist</h2>
+        <h2 className="text-lg font-semibold text-text">Event Checklist</h2>
         <p className="mt-1 text-sm text-gray-500">Track prep tasks for {eventName}</p>
       </div>
 
@@ -177,13 +177,13 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
           <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
         </div>
       ) : error ? (
-        <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">
+        <div className="rounded-md bg-danger-soft p-4 text-sm text-red-700">
           {error}
         </div>
       ) : (
         <div className="space-y-6">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Outstanding Tasks</h3>
+            <h3 className="text-sm font-semibold text-text uppercase tracking-wide">Outstanding Tasks</h3>
             <div className="mt-3 space-y-3">
               {outstandingItems.length === 0 ? (
                 <EmptyState
@@ -197,14 +197,14 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
                 outstandingItems.map((item) => {
                   const isPending = pendingTaskKeys.has(`${eventId}:${item.key}`)
                   const dueColor = item.status === 'overdue'
-                    ? 'text-red-600'
+                    ? 'text-danger'
                     : item.status === 'due_today'
-                      ? 'text-yellow-600'
+                      ? 'text-warning'
                       : 'text-gray-500'
                   return (
                     <div
                       key={item.key}
-                      className="flex items-start justify-between rounded-lg border border-gray-200 px-4 py-3"
+                      className="flex items-start justify-between rounded-lg border border-border px-4 py-3"
                     >
                       <div className="flex flex-1 gap-3">
                         <Checkbox
@@ -216,7 +216,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
                         />
                         <div className="flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-medium text-gray-900">{item.label}</span>
+                            <span className="font-medium text-text">{item.label}</span>
                             {!item.required && <Badge variant="secondary" size="sm">Optional</Badge>}
                             <Badge variant="secondary" size="sm">{item.channel}</Badge>
                           </div>
@@ -233,7 +233,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Completed Tasks</h3>
+            <h3 className="text-sm font-semibold text-text uppercase tracking-wide">Completed Tasks</h3>
             <div className="mt-3 space-y-2">
               {completedItems.length === 0 ? (
                 <p className="text-sm text-gray-500">No tasks completed yet.</p>
@@ -241,9 +241,9 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
                 completedItems.map((item) => (
                   <div
                     key={item.key}
-                    className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-2 text-sm"
+                    className="flex items-center justify-between rounded-lg bg-surface-2 px-4 py-2 text-sm"
                   >
-                    <div className="flex flex-wrap items-center gap-2 text-gray-600">
+                    <div className="flex flex-wrap items-center gap-2 text-text-muted">
                       <span>{item.label}</span>
                       {!item.required && <Badge variant="secondary" size="sm">Optional</Badge>}
                       <Badge variant="secondary" size="sm">{item.channel}</Badge>

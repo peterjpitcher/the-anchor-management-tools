@@ -70,9 +70,9 @@ export function VoucherCard({ item, mode, onViewReplacement, children }: Voucher
   const reason = blockedReason(item, mode)
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-border bg-surface p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="font-mono text-xl font-bold text-gray-900">{item.number}</span>
+        <span className="font-mono text-xl font-bold text-text">{item.number}</span>
         <span
           className={cn(
             'inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold',
@@ -83,12 +83,12 @@ export function VoucherCard({ item, mode, onViewReplacement, children }: Voucher
         </span>
       </div>
 
-      <h3 className="mt-3 text-2xl font-extrabold leading-tight text-gray-900">{item.typeTitle}</h3>
+      <h3 className="mt-3 text-2xl font-extrabold leading-tight text-text">{item.typeTitle}</h3>
       {/* Entitlement wording comes from our own printed-batch snapshot in the
           database (seeded by migration), never from user input. */}
       {item.entitlementHtml && (
         <div
-          className="mt-1 text-lg leading-snug text-gray-800"
+          className="mt-1 text-lg leading-snug text-text"
           dangerouslySetInnerHTML={{ __html: item.entitlementHtml }}
         />
       )}
@@ -97,19 +97,19 @@ export function VoucherCard({ item, mode, onViewReplacement, children }: Voucher
         {item.valuePence !== null && (
           <div className="flex justify-between gap-3 sm:block">
             <dt className="text-gray-500">Value</dt>
-            <dd className="font-medium text-gray-900">{formatPounds(item.valuePence)}</dd>
+            <dd className="font-medium text-text">{formatPounds(item.valuePence)}</dd>
           </div>
         )}
         {item.wonAtLabel && (
           <div className="flex justify-between gap-3 sm:block">
             <dt className="text-gray-500">Won at</dt>
-            <dd className="font-medium text-gray-900">{item.wonAtLabel}</dd>
+            <dd className="font-medium text-text">{item.wonAtLabel}</dd>
           </div>
         )}
         {item.status === 'issued' && item.ageLabel && (
           <div className="flex justify-between gap-3 sm:block">
             <dt className="text-gray-500">Handed out</dt>
-            <dd className="font-medium text-gray-900">
+            <dd className="font-medium text-text">
               {item.ageLabel} ago{item.issuedByName ? ` by ${item.issuedByName}` : ''}
             </dd>
           </div>
@@ -117,25 +117,25 @@ export function VoucherCard({ item, mode, onViewReplacement, children }: Voucher
         {item.expiryDate && (
           <div className="flex justify-between gap-3 sm:block">
             <dt className="text-gray-500">Expiry</dt>
-            <dd className="font-medium text-gray-900">{formatIsoDateLong(item.expiryDate)}</dd>
+            <dd className="font-medium text-text">{formatIsoDateLong(item.expiryDate)}</dd>
           </div>
         )}
         {item.customer && (
           <div className="flex justify-between gap-3 sm:block">
             <dt className="text-gray-500">Customer</dt>
-            <dd className="font-medium text-gray-900">{item.customer.name}</dd>
+            <dd className="font-medium text-text">{item.customer.name}</dd>
           </div>
         )}
       </dl>
 
       {actionable && mode === 'redeem' && item.alcohol && (
-        <p className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-base font-medium text-blue-900">
+        <p className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-base font-medium text-info-fg">
           Includes alcohol: check the guest is 18 or over before serving.
         </p>
       )}
 
       {actionable && item.expiringSoon && item.expiresInDays !== null && (
-        <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-base font-medium text-amber-900">
+        <p className="mt-3 rounded-md border border-amber-300 bg-warning-soft px-3 py-2 text-base font-medium text-warning-fg">
           {item.expiresInDays === 0
             ? 'Expires today.'
             : `Expires in ${item.expiresInDays} ${item.expiresInDays === 1 ? 'day' : 'days'}.`}
@@ -143,13 +143,13 @@ export function VoucherCard({ item, mode, onViewReplacement, children }: Voucher
       )}
 
       {reason && (
-        <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2">
-          <p className="text-base font-medium text-red-900">{reason}</p>
+        <div className="mt-3 rounded-md border border-red-200 bg-danger-soft px-3 py-2">
+          <p className="text-base font-medium text-danger-fg">{reason}</p>
           {item.status === 'replaced' && item.replacementNumber && onViewReplacement && (
             <button
               type="button"
               onClick={() => onViewReplacement(item.replacementNumber as string)}
-              className="mt-2 min-h-[44px] rounded-md border border-red-300 bg-white px-4 py-2 text-base font-semibold text-red-900 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1"
+              className="mt-2 min-h-touch rounded-md border border-red-300 bg-surface px-4 py-2 text-base font-semibold text-danger-fg hover:bg-danger-soft focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1"
             >
               View {item.replacementNumber}
             </button>

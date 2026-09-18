@@ -30,7 +30,7 @@ export function EmployeeHeaderActions({ primary, secondary }: EmployeeHeaderActi
               onClick={() => setOpen((v) => !v)}
               aria-expanded={open}
               aria-haspopup="menu"
-              className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700"
+              className="inline-flex items-center gap-1 rounded-md border border-border-strong bg-surface px-3 py-2 text-sm font-medium text-gray-700"
             >
               More
               <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M5.5 7.5 10 12l4.5-4.5" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>
@@ -40,7 +40,7 @@ export function EmployeeHeaderActions({ primary, secondary }: EmployeeHeaderActi
                 <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden="true" />
                 <div
                   role="menu"
-                  className="absolute right-0 top-full z-40 mt-1 flex w-56 max-w-[calc(100vw-1.5rem)] flex-col gap-1 rounded-md border border-gray-200 bg-white p-2 shadow-lg"
+                  className="absolute right-0 top-full z-40 mt-1 flex w-56 max-w-[calc(100vw-1.5rem)] flex-col gap-1 rounded-md border border-border bg-surface p-2 shadow-lg"
                   onClick={() => setOpen(false)}
                 >
                   {secondary.filter(Boolean).map((action, i) => (

@@ -127,7 +127,7 @@ export function FohScheduleClient({
         bookingId: data.bookingId,
         bookingLabel: data.bookingLabel,
         widthPx: rect?.width ?? 280,
-        statusClassName: data.statusClassName ?? 'border-gray-300 bg-gray-200/90 text-gray-800',
+        statusClassName: data.statusClassName ?? 'border-border-strong bg-border/90 text-text',
       })
     }
   }

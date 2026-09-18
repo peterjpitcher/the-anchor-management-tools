@@ -31,11 +31,11 @@ export default function PaySummaryCard({ current }: PaySummaryCardProps): React.
   const hasPay = period.plannedPay !== null || period.actualPay !== null || period.holidayPay !== null;
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div className="bg-surface rounded-lg border border-border overflow-hidden">
       {/* Period Navigator */}
-      <div className="bg-gray-50 border-b border-gray-100 px-4 py-2 flex items-center justify-between">
+      <div className="bg-surface-2 border-b border-border px-4 py-2 flex items-center justify-between">
         <span className="text-sm font-medium text-gray-700">{period.periodLabel}</span>
-        <a href="#pay-disclaimer" className="touch-target flex items-center justify-center p-1 text-gray-400 hover:text-gray-600" title="Pay disclaimer">
+        <a href="#pay-disclaimer" className="touch-target flex items-center justify-center p-1 text-gray-400 hover:text-text-muted" title="Pay disclaimer">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
             <path d="M8 7V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -45,48 +45,48 @@ export default function PaySummaryCard({ current }: PaySummaryCardProps): React.
       </div>
 
       {/* Summary Grid */}
-      <div className="divide-y divide-gray-50">
+      <div className="divide-y divide-border">
         <div className="px-4 py-1.5 flex justify-between">
-          <span className="text-sm text-gray-600">Planned Hours</span>
-          <span className="text-sm font-semibold text-gray-900">{fmtHours(period.plannedHours)}</span>
+          <span className="text-sm text-text-muted">Planned Hours</span>
+          <span className="text-sm font-semibold text-text">{fmtHours(period.plannedHours)}</span>
         </div>
 
         <div className="px-4 py-1.5 flex justify-between">
-          <span className="text-sm text-gray-600">Actual Hours</span>
-          <span className="text-sm font-semibold text-gray-900">{fmtHours(period.actualHours)}</span>
+          <span className="text-sm text-text-muted">Actual Hours</span>
+          <span className="text-sm font-semibold text-text">{fmtHours(period.actualHours)}</span>
         </div>
 
         {period.plannedPay !== null && (
           <div className="px-4 py-1.5 flex justify-between">
-            <span className="text-sm text-gray-600">Planned Pay</span>
-            <span className="text-sm font-semibold text-gray-900">{fmtPay(period.plannedPay)}</span>
+            <span className="text-sm text-text-muted">Planned Pay</span>
+            <span className="text-sm font-semibold text-text">{fmtPay(period.plannedPay)}</span>
           </div>
         )}
 
         {period.actualPay !== null && (
           <div className="px-4 py-1.5 flex justify-between">
-            <span className="text-sm text-gray-600">Actual Pay</span>
-            <span className="text-sm font-semibold text-gray-900">{fmtPay(period.actualPay)}</span>
+            <span className="text-sm text-text-muted">Actual Pay</span>
+            <span className="text-sm font-semibold text-text">{fmtPay(period.actualPay)}</span>
           </div>
         )}
 
         {period.premiumUpliftPay !== null && (
           <div className="px-4 py-1.5 flex justify-between">
-            <span className="text-sm text-gray-600">incl. premium uplift</span>
-            <span className="text-sm font-semibold text-amber-700">{fmtPay(period.premiumUpliftPay)}</span>
+            <span className="text-sm text-text-muted">incl. premium uplift</span>
+            <span className="text-sm font-semibold text-warning-fg">{fmtPay(period.premiumUpliftPay)}</span>
           </div>
         )}
 
         {period.holidayPay !== null && (
           <div className="px-4 py-1.5 flex justify-between">
-            <span className="text-sm text-gray-600">Holiday Pay Earned</span>
+            <span className="text-sm text-text-muted">Holiday Pay Earned</span>
             <span className="text-sm font-semibold text-green-700">{fmtPay(period.holidayPay)}</span>
           </div>
         )}
 
         {!hasPay && (
           <div className="px-4 py-1.5">
-            <p className="text-xs text-amber-600">Hourly rate not configured — speak to your manager</p>
+            <p className="text-xs text-warning">Hourly rate not configured — speak to your manager</p>
           </div>
         )}
       </div>

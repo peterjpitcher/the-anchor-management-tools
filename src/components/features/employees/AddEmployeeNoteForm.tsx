@@ -55,17 +55,17 @@ export default function AddEmployeeNoteForm({ employeeId }: AddEmployeeNoteFormP
           fullWidth
         />
         {state?.errors?.note_text && (
-          <p className="mt-1 text-sm text-red-600">{state.errors.note_text}</p>
+          <p className="mt-1 text-sm text-danger">{state.errors.note_text}</p>
         )}
       </div>
 
       <input type="hidden" name="employee_id" value={employeeId} />
 
       {state?.errors?.general && (
-        <p className="mt-2 text-sm text-red-600">{state.errors.general}</p>
+        <p className="mt-2 text-sm text-danger">{state.errors.general}</p>
       )}
       {state?.type === 'error' && state.message && !state.errors && (
-        <p className="mt-2 text-sm text-red-600">{state.message}</p>
+        <p className="mt-2 text-sm text-danger">{state.message}</p>
       )}
 
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

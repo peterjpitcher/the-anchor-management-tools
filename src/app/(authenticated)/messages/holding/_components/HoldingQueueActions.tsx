@@ -72,7 +72,7 @@ export function HoldingQueueActions({
   return (
     <div className="mt-3 space-y-2">
       <div className="max-w-xl">
-        <p className="mb-1 text-[13px] font-medium text-text">Customer</p>
+        <p className="mb-1 text-ui font-medium text-text">Customer</p>
         <CustomerSearchInput
           onCustomerSelect={setSelectedCustomer}
           selectedCustomerId={selectedCustomer?.id ?? null}

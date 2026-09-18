@@ -88,16 +88,16 @@ export function SpecialHoursClientWrapper({
               ) : initialSpecialHours.length === 0 ? (
                   <p className="p-4 text-center text-gray-500">No special hours configured.</p>
               ) : (
-                  <div className="divide-y divide-gray-200">
+                  <div className="divide-y divide-border">
                       {initialSpecialHours.map((exception) => (
                           <div key={exception.id} className="flex items-center justify-between p-4">
                               <div className="flex-1">
-                                  <p className="font-medium text-gray-900">
+                                  <p className="font-medium text-text">
                                       {format(new Date(exception.date + 'T00:00:00'), 'EEEE, d MMMM yyyy')}
                                   </p>
-                                  <p className="mt-1 text-sm text-gray-600">
+                                  <p className="mt-1 text-sm text-text-muted">
                                       {exception.is_closed ? (
-                                          <span className="text-red-600">Closed all day</span>
+                                          <span className="text-danger">Closed all day</span>
                                       ) : (
                                           <>
                                               <span>Open: {exception.opens || 'N/A'} - {exception.closes || 'N/A'}</span>

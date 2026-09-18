@@ -104,7 +104,7 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close calendar feed popover"
-                className="p-1 text-text-subtle hover:text-text-muted rounded shrink-0 ml-2"
+                className="p-1 text-text-subtle hover:text-text-muted rounded-sm shrink-0 ml-2"
               >
                 <XMarkIcon className="h-4 w-4" />
               </button>

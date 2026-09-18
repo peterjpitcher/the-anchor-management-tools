@@ -334,13 +334,13 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                 }
               />
             ) : (
-              <div className="divide-y divide-gray-200">
+              <div className="divide-y divide-border">
                 {templates.map((template) => (
                   <div key={template.id} className="px-4 py-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="font-medium text-gray-900">{template.name}</h3>
+                          <h3 className="font-medium text-text">{template.name}</h3>
                           <Badge variant={template.is_active ? 'success' : 'warning'} size="sm">
                             {template.is_active ? 'Active' : 'Inactive'}
                           </Badge>
@@ -350,7 +350,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                             </Badge>
                           )}
                         </div>
-                        <p className="mt-1 text-sm text-gray-600">
+                        <p className="mt-1 text-sm text-text-muted">
                           {TEMPLATE_TYPES[template.template_type] || template.template_type}
                         </p>
                         {template.description && (
@@ -531,7 +531,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
 
             <Section title="Preview">
               <Card>
-                <pre className="whitespace-pre-wrap rounded-md bg-gray-100 p-3 text-sm">
+                <pre className="whitespace-pre-wrap rounded-md bg-surface-hover p-3 text-sm">
                   {preview || 'Start typing to see preview...'}
                 </pre>
               </Card>

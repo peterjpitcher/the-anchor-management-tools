@@ -368,7 +368,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === 'space' 
                   ? 'border-blue-500 bg-blue-50 text-blue-700' 
-                  : 'border-gray-200 hover:border-gray-300'
+                  : 'border-border hover:border-border-strong'
               }`}
             >
               <MapPinIcon className="h-6 w-6 mb-1" />
@@ -380,7 +380,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === 'catering' 
                   ? 'border-blue-500 bg-blue-50 text-blue-700' 
-                  : 'border-gray-200 hover:border-gray-300'
+                  : 'border-border hover:border-border-strong'
               }`}
             >
               <SparklesIcon className="h-6 w-6 mb-1" />
@@ -392,7 +392,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === 'vendor' 
                   ? 'border-blue-500 bg-blue-50 text-blue-700' 
-                  : 'border-gray-200 hover:border-gray-300'
+                  : 'border-border hover:border-border-strong'
               }`}
             >
               <UserGroupIcon className="h-6 w-6 mb-1" />
@@ -404,7 +404,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === 'other' 
                   ? 'border-blue-500 bg-blue-50 text-blue-700' 
-                  : 'border-gray-200 hover:border-gray-300'
+                  : 'border-border hover:border-border-strong'
               }`}
             >
               <ClipboardDocumentListIcon className="h-6 w-6 mb-1" />
@@ -562,10 +562,10 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
 
         {/* Total Preview */}
         {(customPrice || selectedItem) && (
-          <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="bg-surface-2 p-4 rounded-lg">
             <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Total:</span>
-              <span className="text-lg font-semibold text-gray-900">
+              <span className="text-sm text-text-muted">Total:</span>
+              <span className="text-lg font-semibold text-text">
                 {formatMoney(calculateTotal())}
               </span>
             </div>
@@ -652,7 +652,7 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Item
           </label>
-          <p className="text-sm text-gray-900">{item.description}</p>
+          <p className="text-sm text-text">{item.description}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -861,14 +861,14 @@ export default function ItemsPage() {
         ) : (
           <div className="space-y-4">
             {items.map((item) => (
-              <div key={item.id} className="border border-gray-200 rounded-lg p-4">
+              <div key={item.id} className="border border-border rounded-lg p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-3">
                     <div className="flex-shrink-0 text-gray-400">
                       {getItemIcon(item.item_type)}
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-text">
                         {item.description}
                       </p>
                       <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
@@ -889,7 +889,7 @@ export default function ItemsPage() {
                     </div>
                   </div>
                   <div className="flex items-center space-x-4">
-                    <span className="text-lg font-semibold text-gray-900">
+                    <span className="text-lg font-semibold text-text">
                       {formatMoney(item.line_total)}
                     </span>
                     <div className="flex items-center space-x-2">
@@ -901,7 +901,7 @@ export default function ItemsPage() {
                       </button>
                       <button type="button"
                         onClick={() => setDeletingItemId(item.id)}
-                        className="text-red-400 hover:text-red-500"
+                        className="text-red-400 hover:text-danger"
                       >
                         <TrashIcon className="h-5 w-5" />
                       </button>
@@ -914,20 +914,20 @@ export default function ItemsPage() {
             {/* Total */}
             <div className="border-t pt-4 space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-lg font-medium text-gray-900">Total (ex VAT)</span>
-                <span className="text-2xl font-bold text-gray-900">
+                <span className="text-lg font-medium text-text">Total (ex VAT)</span>
+                <span className="text-2xl font-bold text-text">
                   {formatMoney(calculateSubtotal())}
                 </span>
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-gray-500">VAT</span>
-                <span className="font-medium text-gray-900">
+                <span className="font-medium text-text">
                   {formatMoney(bookingMoney.vatAmount)}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-base font-medium text-gray-900">Total inc. VAT</span>
-                <span className="text-lg font-semibold text-gray-900">
+                <span className="text-base font-medium text-text">Total inc. VAT</span>
+                <span className="text-lg font-semibold text-text">
                   {formatMoney(bookingMoney.grossTotal)}
                 </span>
               </div>

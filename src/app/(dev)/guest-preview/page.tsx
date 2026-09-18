@@ -92,12 +92,12 @@ export default function GuestPreviewPage(): React.JSX.Element {
 
       <Group title="Cards">
         <GuestCard variant="accent">
-          <p className="text-[14px] leading-[1.6]">
+          <p className="text-sm leading-[1.6]">
             Accent card. Exactly one per page, on the thing the page exists to do.
           </p>
         </GuestCard>
         <GuestCard>
-          <p className="text-[14px] leading-[1.6]">Plain card. Everything else.</p>
+          <p className="text-sm leading-[1.6]">Plain card. Everything else.</p>
         </GuestCard>
       </Group>
 
@@ -241,7 +241,7 @@ export default function GuestPreviewPage(): React.JSX.Element {
             </GuestField>
 
             <fieldset className="rounded-guest-field border border-guest-border bg-guest-sunk px-[14px] py-3">
-              <legend className="text-[13px] font-semibold">Add-ons</legend>
+              <legend className="text-ui font-semibold">Add-ons</legend>
               <label className={GUEST_CHOICE_ROW_CLASS}>
                 <input type="checkbox" name="preview-addon" value="cheese" />
                 Cheese board
@@ -270,8 +270,8 @@ export default function GuestPreviewPage(): React.JSX.Element {
                   <Icon aria-hidden="true" className="h-[15px] w-[15px] text-anchor-green" />
                 </span>
                 <span className="flex flex-col">
-                  <span className="text-[13px] font-semibold">{title}</span>
-                  <span className="text-[12px] text-guest-text-muted">{sub}</span>
+                  <span className="text-ui font-semibold">{title}</span>
+                  <span className="text-xs text-guest-text-muted">{sub}</span>
                 </span>
               </div>
             ))}

@@ -213,7 +213,7 @@ export function BusinessHoursManager({
         data={reorderedHours}
         getRowKey={(h) => h.day_of_week}
         columns={[
-          { key: 'day', header: 'Day', cell: (h: any) => <span className="text-sm font-medium text-gray-900">{DAY_NAMES[h.day_of_week]}</span> },
+          { key: 'day', header: 'Day', cell: (h: any) => <span className="text-sm font-medium text-text">{DAY_NAMES[h.day_of_week]}</span> },
           { key: 'closed', header: 'Closed', cell: (h: any) => (
             <Checkbox
               checked={h.is_closed}
@@ -276,7 +276,7 @@ export function BusinessHoursManager({
                 fullWidth
                 placeholder="-"
               />
-            ) : <span className="text-gray-300 text-center block">-</span>
+            ) : <span className="text-text-subtle text-center block">-</span>
           ) },
           { key: 'slcloses', header: 'Sun Lunch End', cell: (h: any) => (
              h.day_of_week === 0 ? (
@@ -288,13 +288,13 @@ export function BusinessHoursManager({
                 fullWidth
                 placeholder="-"
               />
-            ) : <span className="text-gray-300 text-center block">-</span>
+            ) : <span className="text-text-subtle text-center block">-</span>
           ) },
         ]}
         renderMobileCard={(h: any) => (
           <Card variant="bordered" padding="sm">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-900">{DAY_NAMES[h.day_of_week]}</h3>
+              <h3 className="text-sm font-medium text-text">{DAY_NAMES[h.day_of_week]}</h3>
               <Checkbox
                 label="Closed"
                 checked={h.is_closed}
@@ -312,7 +312,7 @@ export function BusinessHoursManager({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-600 mb-1">Opens</label>
+                <label className="block text-xs text-text-muted mb-1">Opens</label>
                 <Input
                   type="time"
                   value={h.opens || ''}
@@ -322,7 +322,7 @@ export function BusinessHoursManager({
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-600 mb-1">Closes</label>
+                <label className="block text-xs text-text-muted mb-1">Closes</label>
                 <Input
                   type="time"
                   value={h.closes || ''}
@@ -332,7 +332,7 @@ export function BusinessHoursManager({
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-600 mb-1">Kitchen Opens</label>
+                <label className="block text-xs text-text-muted mb-1">Kitchen Opens</label>
                 <Input
                   type="time"
                   value={h.kitchen_opens || ''}
@@ -342,7 +342,7 @@ export function BusinessHoursManager({
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-600 mb-1">Kitchen Closes</label>
+                <label className="block text-xs text-text-muted mb-1">Kitchen Closes</label>
                 <Input
                   type="time"
                   value={h.kitchen_closes || ''}

@@ -320,7 +320,7 @@ export default function TimeclockManager({
                 type="checkbox"
                 checked={showApproved}
                 onChange={e => setShowApproved(e.target.checked)}
-                className="rounded border-border-strong text-info-fg focus:ring-border-focus"
+                className="rounded-sm border-border-strong text-info-fg focus:ring-border-focus"
               />
               Show approved ({approvedCount})
             </label>
@@ -457,7 +457,7 @@ export default function TimeclockManager({
                                   type="time"
                                   value={editIn}
                                   onChange={e => setEditIn(e.target.value)}
-                                  className="border border-border-strong rounded px-1.5 py-0.5 text-xs w-24"
+                                  className="border border-border-strong rounded-sm px-1.5 py-0.5 text-xs w-24"
                                 />
                                 {s.planned_start && (
                                   <button
@@ -473,7 +473,7 @@ export default function TimeclockManager({
                               <>
                                 <span className="text-text-strong">{formatTime12Hour(s.clock_in_local)}</span>
                                 {s.planned_start && (
-                                  <div className="text-[10px] text-text-subtle tabular-nums">
+                                  <div className="text-2xs text-text-subtle tabular-nums">
                                     planned {formatTime12Hour(s.planned_start)}
                                   </div>
                                 )}
@@ -489,7 +489,7 @@ export default function TimeclockManager({
                                   type="time"
                                   value={editOut}
                                   onChange={e => setEditOut(e.target.value)}
-                                  className="border border-border-strong rounded px-1.5 py-0.5 text-xs w-24"
+                                  className="border border-border-strong rounded-sm px-1.5 py-0.5 text-xs w-24"
                                 />
                                 {s.planned_end && s.clock_out_local && (
                                   <button
@@ -507,7 +507,7 @@ export default function TimeclockManager({
                                   {s.clock_out_local ? formatTime12Hour(s.clock_out_local) : 'Still in'}
                                 </span>
                                 {s.planned_end && (
-                                  <div className="text-[10px] text-text-subtle tabular-nums">
+                                  <div className="text-2xs text-text-subtle tabular-nums">
                                     planned {formatTime12Hour(s.planned_end)}
                                   </div>
                                 )}
@@ -523,12 +523,12 @@ export default function TimeclockManager({
                           <td className="px-3 py-2 align-top">
                             {isEditing ? (
                               <div className="space-y-1.5">
-                                <label className="block text-[10px] font-medium text-text-muted uppercase tracking-wide">Premium rate</label>
+                                <label className="block text-2xs font-medium text-text-muted uppercase tracking-wide">Premium rate</label>
                                 {(() => {
                                   const inherited = inheritedShiftPremiumLabel(s);
                                   if (!inherited) return null;
                                   return (
-                                    <p className="text-[10px] text-text-muted">
+                                    <p className="text-2xs text-text-muted">
                                       Inherited from shift: <span className="font-medium text-text">{inherited}</span>
                                     </p>
                                   );
@@ -536,7 +536,7 @@ export default function TimeclockManager({
                                 <select
                                   value={editPremium}
                                   onChange={e => setEditPremium(e.target.value as PremiumChoice)}
-                                  className="w-full border border-border-strong rounded px-1.5 py-0.5 text-xs bg-surface text-text-strong"
+                                  className="w-full border border-border-strong rounded-sm px-1.5 py-0.5 text-xs bg-surface text-text-strong"
                                 >
                                   <option value="none">
                                     {inheritedShiftPremiumLabel(s) ? 'None (inherit from shift)' : 'None (standard)'}
@@ -556,7 +556,7 @@ export default function TimeclockManager({
                                       value={editCustomRate}
                                       onChange={e => setEditCustomRate(e.target.value)}
                                       placeholder="0.00"
-                                      className="w-20 border border-border-strong rounded px-1.5 py-0.5 text-xs"
+                                      className="w-20 border border-border-strong rounded-sm px-1.5 py-0.5 text-xs"
                                     />
                                     <span className="text-xs text-text-subtle">/hr</span>
                                   </div>
@@ -567,21 +567,21 @@ export default function TimeclockManager({
                                       type="time"
                                       value={editPremiumFrom}
                                       onChange={e => setEditPremiumFrom(e.target.value)}
-                                      className="w-20 border border-border-strong rounded px-1 py-0.5 text-xs"
+                                      className="w-20 border border-border-strong rounded-sm px-1 py-0.5 text-xs"
                                       aria-label="Premium from"
                                     />
-                                    <span className="text-[10px] text-text-subtle">to</span>
+                                    <span className="text-2xs text-text-subtle">to</span>
                                     <input
                                       type="time"
                                       value={editPremiumTo}
                                       onChange={e => setEditPremiumTo(e.target.value)}
-                                      className="w-20 border border-border-strong rounded px-1 py-0.5 text-xs"
+                                      className="w-20 border border-border-strong rounded-sm px-1 py-0.5 text-xs"
                                       aria-label="Premium to"
                                     />
                                   </div>
                                 )}
                                 {editPremium !== 'none' && !editPremiumFrom && !editPremiumTo && (
-                                  <p className="text-[10px] text-text-subtle">Applies to the whole session</p>
+                                  <p className="text-2xs text-text-subtle">Applies to the whole session</p>
                                 )}
                               </div>
                             ) : (
@@ -626,13 +626,13 @@ export default function TimeclockManager({
                                 value={editNotes}
                                 onChange={e => setEditNotes(e.target.value)}
                                 placeholder="Add a note…"
-                                className="w-full border border-border-strong rounded px-1.5 py-0.5 text-xs text-text placeholder:text-text-subtle"
+                                className="w-full border border-border-strong rounded-sm px-1.5 py-0.5 text-xs text-text placeholder:text-text-subtle"
                               />
                             ) : (
                               <span className="text-xs text-text-muted italic">{s.notes ?? ''}</span>
                             )}
                             {s.manager_note && (
-                              <p className="text-[10px] text-text-subtle mt-0.5">
+                              <p className="text-2xs text-text-subtle mt-0.5">
                                 <span className="not-italic font-medium">Imported: </span>{s.manager_note}
                               </p>
                             )}
@@ -646,7 +646,7 @@ export default function TimeclockManager({
                                   type="button"
                                   onClick={() => saveEdit(s)}
                                   disabled={savePending}
-                                  className="p-1 rounded text-success-fg hover:bg-success-soft"
+                                  className="p-1 rounded-sm text-success-fg hover:bg-success-soft"
                                   title="Save"
                                 >
                                   <CheckIcon className="h-4 w-4" />
@@ -654,7 +654,7 @@ export default function TimeclockManager({
                                 <button
                                   type="button"
                                   onClick={cancelEdit}
-                                  className="p-1 rounded text-text-subtle hover:bg-surface-hover"
+                                  className="p-1 rounded-sm text-text-subtle hover:bg-surface-hover"
                                   title="Cancel"
                                 >
                                   <XMarkIcon className="h-4 w-4" />
@@ -665,7 +665,7 @@ export default function TimeclockManager({
                                 <button
                                   type="button"
                                   onClick={() => startEdit(s)}
-                                  className="p-1 rounded text-text-subtle hover:text-text-muted hover:bg-surface-hover"
+                                  className="p-1 rounded-sm text-text-subtle hover:text-text-muted hover:bg-surface-hover"
                                   title="Edit"
                                 >
                                   <PencilSquareIcon className="h-4 w-4" />
@@ -675,7 +675,7 @@ export default function TimeclockManager({
                                     type="button"
                                     onClick={() => handleApprove(s.id)}
                                     disabled={approvingId === s.id}
-                                    className="p-1 rounded text-text-subtle hover:text-success-fg hover:bg-success-soft disabled:opacity-50"
+                                    className="p-1 rounded-sm text-text-subtle hover:text-success-fg hover:bg-success-soft disabled:opacity-50"
                                     title="Approve"
                                   >
                                     <CheckCircleIcon className="h-4 w-4" />
@@ -684,7 +684,7 @@ export default function TimeclockManager({
                                 <button
                                   type="button"
                                   onClick={() => setDeletingId(s.id)}
-                                  className="p-1 rounded text-text-subtle hover:text-danger-fg hover:bg-danger-soft"
+                                  className="p-1 rounded-sm text-text-subtle hover:text-danger-fg hover:bg-danger-soft"
                                   title="Delete"
                                 >
                                   <TrashIcon className="h-4 w-4" />

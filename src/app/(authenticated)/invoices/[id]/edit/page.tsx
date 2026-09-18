@@ -470,7 +470,7 @@ export default function EditInvoicePage() {
                 <span>£{invoiceTotals.subtotalBeforeInvoiceDiscount.toFixed(2)}</span>
               </div>
               {invoiceTotals.invoiceDiscountAmount > 0 && (
-                <div className="flex justify-between text-red-600">
+                <div className="flex justify-between text-danger">
                   <span>Invoice Discount ({invoiceDiscountPercentage}%)</span>
                   <span>-£{invoiceTotals.invoiceDiscountAmount.toFixed(2)}</span>
                 </div>

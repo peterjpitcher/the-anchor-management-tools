@@ -422,7 +422,7 @@ export function DishGpAnalysisTab({
   return (
     <div className="space-y-6">
       {missingCostItems.length > 0 && (
-        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div role="alert" className="rounded-lg border border-amber-200 bg-warning-soft px-4 py-3 text-sm text-warning-fg">
           <span className="font-semibold">Cost data incomplete.</span>{' '}
           Missing costs: {missingCostItems.join(', ')}. GP percentages and target prices are unreliable until these items are priced.
         </div>
@@ -430,7 +430,7 @@ export function DishGpAnalysisTab({
 
       {/* Section 1: Combinations */}
       {!hasCombinations ? (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-info-fg">
           No option groups configured — all ingredients are fixed. GP analysis only applies when
           option groups create multiple possible combinations.
         </div>
@@ -447,7 +447,7 @@ export function DishGpAnalysisTab({
           Upgrade Impact
         </h3>
         {!upgradeAnalysis.hasUpgrades ? (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-info-fg">
             No upgrades configured.
           </div>
         ) : (
@@ -458,7 +458,7 @@ export function DishGpAnalysisTab({
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     <th scope="col" className="px-3 py-2">Upgrade</th>
                     <th scope="col" className="px-3 py-2">Group</th>
                     <th scope="col" className="px-3 py-2 text-right">Extra Charge</th>
@@ -466,29 +466,29 @@ export function DishGpAnalysisTab({
                     <th scope="col" className="px-3 py-2 text-right">GP%</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-border">
                   {upgradeAnalysis.upgradeRows.map((row, idx) => (
                     <tr key={idx}>
-                      <td className="px-3 py-2 text-gray-900">{row.name}</td>
-                      <td className="px-3 py-2 text-gray-600">{row.groupName || '\u2014'}</td>
-                      <td className="px-3 py-2 text-right font-medium text-gray-900">
+                      <td className="px-3 py-2 text-text">{row.name}</td>
+                      <td className="px-3 py-2 text-text-muted">{row.groupName || '\u2014'}</td>
+                      <td className="px-3 py-2 text-right font-medium text-text">
                         +£{row.extraCharge.toFixed(2)}
                       </td>
-                      <td className="px-3 py-2 text-right font-medium text-gray-900">
+                      <td className="px-3 py-2 text-right font-medium text-text">
                         £{row.ingredientCost.toFixed(2)}
                       </td>
-                      <td className="px-3 py-2 text-right font-medium text-gray-900">
+                      <td className="px-3 py-2 text-right font-medium text-text">
                         {(row.gpPct * 100).toFixed(1)}%
                       </td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t border-gray-300 bg-gray-50 font-semibold">
-                    <td className="px-3 py-2 text-gray-900" colSpan={4}>
+                  <tr className="border-t border-border-strong bg-surface-2 font-semibold">
+                    <td className="px-3 py-2 text-text" colSpan={4}>
                       With all upgrades
                     </td>
-                    <td className="px-3 py-2 text-right text-gray-900">
+                    <td className="px-3 py-2 text-right text-text">
                       {(upgradeAnalysis.allUpgradeGpPct * 100).toFixed(1)}%
                     </td>
                   </tr>
@@ -505,18 +505,18 @@ export function DishGpAnalysisTab({
           Allergen Summary
         </h3>
         {!allergenAnalysis ? (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-info-fg">
             Save the dish first to see allergen analysis.
           </div>
         ) : !allergenAnalysis.hasAllergens ? (
-          <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          <div className="rounded-lg border border-green-200 bg-success-soft p-4 text-sm text-green-800">
             No allergens identified.
           </div>
         ) : (
           <div className="space-y-3">
             {/* Modifiability summary */}
             {allergenAnalysis.modifiableFor.length > 0 && (
-              <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-success-soft px-4 py-3 text-sm text-green-800">
                 <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
                 <span>
                   This dish can be modified for: <span className="font-semibold">{allergenAnalysis.modifiableFor.join(', ')}</span>
@@ -524,7 +524,7 @@ export function DishGpAnalysisTab({
               </div>
             )}
             {allergenAnalysis.notModifiable.length > 0 && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-warning-soft px-4 py-3 text-sm text-warning-fg">
                 <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
                 <span>
                   Cannot be modified for:{' '}
@@ -532,7 +532,7 @@ export function DishGpAnalysisTab({
                     <span key={m.allergen}>
                       {i > 0 ? ', ' : ''}
                       <span className="font-semibold">{m.allergen}-free</span>{' '}
-                      <span className="text-amber-700">({m.reason})</span>
+                      <span className="text-warning-fg">({m.reason})</span>
                     </span>
                   ))}
                 </span>
@@ -543,16 +543,16 @@ export function DishGpAnalysisTab({
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     <th scope="col" className="px-3 py-2">Allergen</th>
                     <th scope="col" className="px-3 py-2">Components</th>
                     <th scope="col" className="px-3 py-2">Removable?</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-border">
                   {allergenAnalysis.entries.map((entry) => (
-                    <tr key={entry.allergen} className={entry.removable ? '' : 'bg-amber-50'}>
-                      <td className="px-3 py-2 font-medium text-gray-900 capitalize">
+                    <tr key={entry.allergen} className={entry.removable ? '' : 'bg-warning-soft'}>
+                      <td className="px-3 py-2 font-medium text-text capitalize">
                         {entry.allergen}
                       </td>
                       <td className="px-3 py-2 text-gray-700">
@@ -606,7 +606,7 @@ function CombinationsSection({
   return (
     <div className="space-y-4">
       {/* Summary */}
-      <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+      <div className="rounded-lg border border-border bg-surface-2 px-4 py-3">
         <p className="text-sm text-gray-700">
           <span className="font-semibold">{totalCombinations}</span> combination{totalCombinations !== 1 ? 's' : ''}
           {' '}across {groupNames.length} option group{groupNames.length !== 1 ? 's' : ''}
@@ -615,8 +615,8 @@ function CombinationsSection({
         <p className="mt-1 text-sm">
           {belowCount > 0 ? (
             <>
-              <span className="font-semibold text-red-600">{belowCount}</span>{' '}
-              <span className="text-red-600">below target</span>
+              <span className="font-semibold text-danger">{belowCount}</span>{' '}
+              <span className="text-danger">below target</span>
             </>
           ) : null}
           {belowCount > 0 && okCount > 0 ? ', ' : null}
@@ -631,7 +631,7 @@ function CombinationsSection({
 
       {/* Explosion warning */}
       {trimmed && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-warning-soft px-4 py-3 text-sm text-warning-fg">
           <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
           <span>
             {totalCombinations} combinations detected — showing worst {EDGE_COUNT} and best {EDGE_COUNT} only.
@@ -643,7 +643,7 @@ function CombinationsSection({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+            <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-gray-500">
               <th scope="col" className="px-3 py-2">Combination</th>
               <th scope="col" className="px-3 py-2 text-right">Portion Cost</th>
               <th scope="col" className="px-3 py-2 text-right">GP%</th>
@@ -651,22 +651,22 @@ function CombinationsSection({
               <th scope="col" className="px-3 py-2 text-right">Target Price</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {results.map((row, idx) => (
               <tr
                 key={idx}
-                className={row.belowTarget ? 'bg-red-50' : ''}
+                className={row.belowTarget ? 'bg-danger-soft' : ''}
               >
-                <td className="px-3 py-2 text-gray-900">{row.label}</td>
-                <td className="px-3 py-2 text-right font-medium text-gray-900">
+                <td className="px-3 py-2 text-text">{row.label}</td>
+                <td className="px-3 py-2 text-right font-medium text-text">
                   £{row.portionCost.toFixed(2)}
                 </td>
-                <td className="px-3 py-2 text-right font-medium text-gray-900">
+                <td className="px-3 py-2 text-right font-medium text-text">
                   {(row.gpPct * 100).toFixed(1)}%
                 </td>
                 <td className="px-3 py-2">
                   {row.belowTarget ? (
-                    <span className="inline-flex items-center gap-1 text-red-600">
+                    <span className="inline-flex items-center gap-1 text-danger">
                       <ExclamationTriangleIcon className="h-4 w-4" />
                       Below target
                     </span>
@@ -677,7 +677,7 @@ function CombinationsSection({
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-right text-gray-600">
+                <td className="px-3 py-2 text-right text-text-muted">
                   {row.targetPrice !== null
                     ? `Sell at £${row.targetPrice.toFixed(2)} for ${Math.round(targetGpPct * 100)}% GP`
                     : '\u2014'}

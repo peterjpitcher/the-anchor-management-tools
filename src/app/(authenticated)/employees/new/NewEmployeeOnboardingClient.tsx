@@ -617,7 +617,7 @@ export default function NewEmployeeOnboardingClient() {
 
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
             <div className="space-y-4">
-              <h3 className="text-base font-medium text-gray-900">Primary Contact</h3>
+              <h3 className="text-base font-medium text-text">Primary Contact</h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormGroup label="Name">
                   <Input value={state.emergency_contacts.primary.name} onChange={(e) => updateContact('primary', 'name', e.target.value)} />
@@ -644,7 +644,7 @@ export default function NewEmployeeOnboardingClient() {
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-base font-medium text-gray-900">Secondary Contact</h3>
+              <h3 className="text-base font-medium text-text">Secondary Contact</h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormGroup label="Name">
                   <Input
@@ -745,7 +745,7 @@ export default function NewEmployeeOnboardingClient() {
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-base font-medium text-gray-900">Health Questionnaire</h3>
+            <h3 className="text-base font-medium text-text">Health Questionnaire</h3>
 
             <FormGroup label="Do you have any allergies?">
               <RadioGroup
@@ -791,7 +791,7 @@ export default function NewEmployeeOnboardingClient() {
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-base font-medium text-gray-900">Medical Conditions (tick if applicable)</h3>
+            <h3 className="text-base font-medium text-text">Medical Conditions (tick if applicable)</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Checkbox checked={state.health.has_diabetes} onChange={(checked) => updateHealth('has_diabetes', checked)} label="Diabetes" />
               <Checkbox checked={state.health.has_epilepsy} onChange={(checked) => updateHealth('has_epilepsy', checked)} label="Epilepsy / Fits / Blackouts" />
@@ -803,7 +803,7 @@ export default function NewEmployeeOnboardingClient() {
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-base font-medium text-gray-900">Disability</h3>
+            <h3 className="text-base font-medium text-text">Disability</h3>
             <Checkbox
               checked={state.health.is_registered_disabled}
               onChange={(checked) => updateHealth('is_registered_disabled', checked)}
@@ -951,10 +951,10 @@ export default function NewEmployeeOnboardingClient() {
           </Alert>
 
           <div className="space-y-4">
-            <h3 className="text-base font-medium text-gray-900">Key Points (Quick Reference)</h3>
+            <h3 className="text-base font-medium text-text">Key Points (Quick Reference)</h3>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <div className="rounded-lg border border-gray-200 p-4">
-                <p className="text-sm font-medium text-gray-900 mb-2">Zero Tolerance</p>
+              <div className="rounded-lg border border-border p-4">
+                <p className="text-sm font-medium text-text mb-2">Zero Tolerance</p>
                 <ul className="text-sm text-gray-700 list-disc pl-5 space-y-1">
                   <li>Theft (immediate dismissal)</li>
                   <li>Drugs/alcohol on duty (immediate dismissal)</li>
@@ -963,8 +963,8 @@ export default function NewEmployeeOnboardingClient() {
                   <li>No ID, no sale (under 25 check)</li>
                 </ul>
               </div>
-              <div className="rounded-lg border border-gray-200 p-4">
-                <p className="text-sm font-medium text-gray-900 mb-2">Daily Essentials</p>
+              <div className="rounded-lg border border-border p-4">
+                <p className="text-sm font-medium text-text mb-2">Daily Essentials</p>
                 <ul className="text-sm text-gray-700 list-disc pl-5 space-y-1">
                   <li>Arrive 15 minutes early</li>
                   <li>Clock in/out every shift</li>
@@ -973,8 +973,8 @@ export default function NewEmployeeOnboardingClient() {
                   <li>Report cash errors immediately</li>
                 </ul>
               </div>
-              <div className="rounded-lg border border-gray-200 p-4">
-                <p className="text-sm font-medium text-gray-900 mb-2">Critical Procedures</p>
+              <div className="rounded-lg border border-border p-4">
+                <p className="text-sm font-medium text-text mb-2">Critical Procedures</p>
                 <ul className="text-sm text-gray-700 list-disc pl-5 space-y-1">
                   <li>No discounts/refunds/tabs without approval</li>
                   <li>Use correct measures (no free-pouring)</li>
@@ -986,7 +986,7 @@ export default function NewEmployeeOnboardingClient() {
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-base font-medium text-gray-900">Employee Agreement</h3>
+            <h3 className="text-base font-medium text-text">Employee Agreement</h3>
             <Checkbox
               checked={state.onboarding.employee_agreement_accepted}
               onChange={(checked) => updateOnboarding('employee_agreement_accepted', checked)}
@@ -995,7 +995,7 @@ export default function NewEmployeeOnboardingClient() {
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-base font-medium text-gray-900">Office Use Checklist</h3>
+            <h3 className="text-base font-medium text-text">Office Use Checklist</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Checkbox
                 checked={state.onboarding.private_whatsapp_added}

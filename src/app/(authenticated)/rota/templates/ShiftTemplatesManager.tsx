@@ -223,7 +223,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
             />
             <span className="min-w-0">
               <span className="block text-xs font-medium text-text-strong">Automatic</span>
-              <span className="block truncate text-[10px] text-text-subtle">
+              <span className="block truncate text-2xs text-text-subtle">
                 {getShiftColourLabel(automaticColour) ?? 'No rule'}
               </span>
             </span>
@@ -365,17 +365,17 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
           </p>
           <div className="flex flex-wrap gap-1.5 mt-1">
             {current.day_of_week !== null && current.day_of_week !== undefined && (
-              <span className="text-[10px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-medium">
+              <span className="text-2xs bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-sm font-medium">
                 {DAYS[current.day_of_week]}
               </span>
             )}
             {assignedEmp && (
-              <span className="text-[10px] bg-surface-hover text-text-muted px-1.5 py-0.5 rounded font-medium">
+              <span className="text-2xs bg-surface-hover text-text-muted px-1.5 py-0.5 rounded-sm font-medium">
                 {empName(assignedEmp)}
               </span>
             )}
             {!assignedEmp && current.day_of_week !== null && (
-              <span className="text-[10px] bg-warning-soft text-warning-fg px-1.5 py-0.5 rounded font-medium">
+              <span className="text-2xs bg-warning-soft text-warning-fg px-1.5 py-0.5 rounded-sm font-medium">
                 Open shift
               </span>
             )}
@@ -389,7 +389,7 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="p-1 text-text-subtle hover:text-text rounded"
+              className="p-1 text-text-subtle hover:text-text rounded-sm"
               title="Edit template"
             >
               <PencilIcon className="h-4 w-4" />
@@ -398,7 +398,7 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
               type="button"
               onClick={handleDeactivate}
               disabled={deactivating}
-              className="p-1 text-text-subtle hover:text-danger-fg rounded disabled:opacity-50"
+              className="p-1 text-text-subtle hover:text-danger-fg rounded-sm disabled:opacity-50"
               title="Deactivate template"
             >
               <TrashIcon className="h-4 w-4" />

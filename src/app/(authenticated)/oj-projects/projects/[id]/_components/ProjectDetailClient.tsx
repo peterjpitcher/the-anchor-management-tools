@@ -271,7 +271,7 @@ export function ProjectDetailClient({
               <Empty title="No entries" description="No entries recorded yet." />
             ) : (
               <>
-                <div className="divide-y divide-border px-[var(--spacing-pad-card)] py-3 md:hidden">
+                <div className="divide-y divide-border px-pad-card py-3 md:hidden">
                   {entries.map((entry) => {
                     const amount = entry.entry_type === 'time'
                       ? (Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot || 0)

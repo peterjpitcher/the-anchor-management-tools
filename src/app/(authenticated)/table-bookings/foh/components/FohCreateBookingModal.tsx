@@ -175,7 +175,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
       size="lg"
     >
       <form onSubmit={onSubmit} className="space-y-4">
-        <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <div className="rounded-md border border-border bg-surface-2 p-3">
           <label className="flex flex-col text-xs font-medium text-gray-700">
             Find existing customer
             <input
@@ -188,7 +188,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 }
               }}
               placeholder="Search by name or phone"
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             />
           </label>
 
@@ -203,15 +203,15 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
           )}
 
           {!selectedCustomer && customerResults.length > 0 && (
-            <div className="mt-2 max-h-56 overflow-auto rounded-md border border-gray-200 bg-white">
+            <div className="mt-2 max-h-56 overflow-auto rounded-md border border-border bg-surface">
               {customerResults.map((customer) => (
                 <button
                   key={customer.id}
                   type="button"
                   onClick={() => onSelectCustomer(customer)}
-                  className="flex w-full items-start justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50 last:border-b-0"
+                  className="flex w-full items-start justify-between gap-3 border-b border-border px-3 py-2 text-left text-sm hover:bg-surface-hover last:border-b-0"
                 >
-                  <span className="font-medium text-gray-900">{customer.full_name}</span>
+                  <span className="font-medium text-text">{customer.full_name}</span>
                   <span className="text-xs text-gray-500">{customer.display_phone || 'No phone'}</span>
                 </button>
               ))}
@@ -219,7 +219,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
           )}
 
           {selectedCustomer && (
-            <div className="mt-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
+            <div className="mt-2 rounded-md border border-green-200 bg-success-soft px-3 py-2 text-sm text-green-900">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-medium">Using customer: {selectedCustomer.full_name}</p>
@@ -228,7 +228,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 <button
                   type="button"
                   onClick={onClearCustomer}
-                  className="rounded border border-green-300 px-2 py-1 text-xs font-medium text-green-800 hover:bg-green-100"
+                  className="rounded-sm border border-green-300 px-2 py-1 text-xs font-medium text-green-800 hover:bg-success-soft"
                 >
                   Clear
                 </button>
@@ -247,7 +247,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               max={createMode === 'walk_in' ? getLondonDateIso() : undefined}
               value={createForm.booking_date}
               onChange={(event) => onSetCreateForm((current) => ({ ...current, booking_date: event.target.value }))}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             />
           </label>
 
@@ -259,7 +259,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 required
                 value={createForm.time}
                 onChange={(event) => onSetCreateForm((current) => ({ ...current, time: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
               />
             </label>
           )}
@@ -273,7 +273,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               required
               value={createForm.party_size}
               onChange={(event) => onSetCreateForm((current) => ({ ...current, party_size: event.target.value }))}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             />
           </label>
 
@@ -285,7 +285,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 required={createMode !== 'management'}
                 value={createForm.first_name}
                 onChange={(event) => onSetCreateForm((current) => ({ ...current, first_name: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
               />
             </label>
           )}
@@ -297,7 +297,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 type="text"
                 value={createForm.last_name}
                 onChange={(event) => onSetCreateForm((current) => ({ ...current, last_name: event.target.value }))}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
               />
             </label>
           )}
@@ -311,7 +311,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 value={createForm.phone}
                 onChange={(event) => onSetCreateForm((current) => ({ ...current, phone: event.target.value }))}
                 placeholder="+1 415 555 2671 or local format"
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
               />
             </label>
           )}
@@ -324,7 +324,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 value={createForm.email}
                 onChange={(event) => onSetCreateForm((current) => ({ ...current, email: event.target.value }))}
                 placeholder="name@example.com"
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
               />
             </label>
           )}
@@ -350,7 +350,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                       : ''
                 }))
               }}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             >
               <option value="food">Food</option>
               <option value="drinks">Drinks</option>
@@ -358,7 +358,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               {eventOptions.length > 0 && <option value="event">Event</option>}
             </select>
             {createForm.purpose === 'christmas' && (
-              <p className="mt-1 text-xs text-gray-600">
+              <p className="mt-1 text-xs text-text-muted">
                 Christmas bookings need {CHRISTMAS_MIN_PARTY_SIZE} guests or more,
                 at least {CHRISTMAS_MIN_NOTICE_HOURS} hours notice, and always take a
                 deposit of {formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person.
@@ -381,7 +381,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                     }
                     onSetCreateForm((current) => ({ ...current, event_id: event.target.value, seating_preference: 'seated' }))
                   }}
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 >
                   <option value="">
                     {loadingEventOptions ? 'Loading events...' : eventOptions.length === 0 ? 'No events found' : 'Select an event'}
@@ -399,8 +399,8 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               </label>
 
               {selectedEventOption && (
-                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700 md:col-span-2">
-                  <p className="font-medium text-gray-900">{selectedEventOption.name}</p>
+                <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-gray-700 md:col-span-2">
+                  <p className="font-medium text-text">{selectedEventOption.name}</p>
                   <p className="mt-1">
                     {formatEventOptionDateTime(selectedEventOption)} · {formatEventPaymentMode(selectedEventOption.payment_mode)}
                     {selectedEventOption.price_per_seat != null ? ` · ${formatGbp(selectedEventOption.price_per_seat)} per seat` : ''}
@@ -417,8 +417,8 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               )}
 
               {selectedEventOption?.booking_mode === 'communal' && (
-                <div className="rounded-md border border-gray-200 bg-white px-3 py-2 md:col-span-2">
-                  <p className="text-xs font-medium text-gray-800">Ticket type</p>
+                <div className="rounded-md border border-border bg-surface px-3 py-2 md:col-span-2">
+                  <p className="text-xs font-medium text-text">Ticket type</p>
                   <div className="mt-2 flex flex-wrap gap-4">
                     <label className="flex items-center gap-2 text-xs text-gray-700">
                       <input
@@ -460,14 +460,14 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 value={createForm.customer_name}
                 onChange={(event) => onSetCreateForm((current) => ({ ...current, customer_name: event.target.value }))}
                 placeholder="Jane Smith"
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
               />
             </label>
           )}
 
           {createMode !== 'walk_in' && createMode !== 'management' && createForm.purpose !== 'event' && (
             <div className="space-y-2 md:col-span-2">
-              <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+              <div className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2">
                 <input
                   id="is-venue-event"
                   type="checkbox"
@@ -479,7 +479,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                       waive_deposit: e.target.checked ? false : prev.waive_deposit
                     }))
                   }
-                  className="h-4 w-4 rounded border-gray-300 text-sidebar focus:ring-sidebar"
+                  className="h-4 w-4 rounded-sm border-border-strong text-sidebar focus:ring-sidebar"
                 />
                 <label htmlFor="is-venue-event" className="cursor-pointer text-xs font-medium text-gray-700">
                   Pub Event (remove deposit for {LARGE_GROUP_DEPOSIT_THRESHOLD}+ group)
@@ -490,8 +490,8 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   Christmas travels as a purpose and already works; asking twice
                   would give staff two controls for one decision. */}
               {seasonalPeriod && (
-                <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
-                  <p className="text-xs font-semibold text-gray-900">{seasonalPeriod.name}</p>
+                <div className="rounded-md border border-amber-300 bg-warning-soft p-3">
+                  <p className="text-xs font-semibold text-text">{seasonalPeriod.name}</p>
                   {seasonalPeriod.bookable ? (
                     <>
                       <p className="mt-1 text-xs text-gray-700">{seasonalPeriod.guest_question}</p>
@@ -503,7 +503,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                           className={`min-h-11 flex-1 rounded-md border px-3 py-2 text-xs font-semibold ${
                             seasonalAnswer === true
                               ? 'border-green-600 bg-green-600 text-white'
-                              : 'border-gray-300 bg-white text-gray-700'
+                              : 'border-border-strong bg-surface text-gray-700'
                           }`}
                         >
                           Yes
@@ -515,14 +515,14 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                           className={`min-h-11 flex-1 rounded-md border px-3 py-2 text-xs font-semibold ${
                             seasonalAnswer === false
                               ? 'border-green-600 bg-green-600 text-white'
-                              : 'border-gray-300 bg-white text-gray-700'
+                              : 'border-border-strong bg-surface text-gray-700'
                           }`}
                         >
                           No
                         </button>
                       </div>
                       {seasonalAnswer === null && (
-                        <p className="mt-2 text-xs text-gray-600">
+                        <p className="mt-2 text-xs text-text-muted">
                           Please answer before creating the booking.
                         </p>
                       )}
@@ -537,7 +537,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               )}
 
               {formRequiresDeposit && canWaiveDeposit && (
-                <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                <div className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2">
                   <input
                     id="waive-deposit"
                     type="checkbox"
@@ -548,7 +548,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                         waive_deposit: e.target.checked
                       }))
                     }
-                    className="h-4 w-4 rounded border-gray-300 text-sidebar focus:ring-sidebar"
+                    className="h-4 w-4 rounded-sm border-border-strong text-sidebar focus:ring-sidebar"
                   />
                   <label htmlFor="waive-deposit" className="cursor-pointer text-xs font-medium text-gray-700">
                     Waive deposit for this booking
@@ -557,8 +557,8 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               )}
 
               {formRequiresDeposit && !createForm.waive_deposit && (
-                <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-                  <p className="text-xs font-medium text-gray-800">Table deposit</p>
+                <div className="rounded-md border border-border bg-surface-2 p-3">
+                  <p className="text-xs font-medium text-text">Table deposit</p>
                   <div className="mt-2 flex flex-wrap gap-4">
                     <label className="flex items-center gap-2 text-xs text-gray-700">
                       <input
@@ -585,7 +585,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                       <span>Cash taken and put in till</span>
                     </label>
                   </div>
-                  <p className="mt-2 text-xs text-gray-600">
+                  <p className="mt-2 text-xs text-text-muted">
                     Deposit amount: {formatGbp(formDepositAmount)} ({formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person).
                   </p>
                 </div>
@@ -596,7 +596,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
 
           {canEdit && createMode === 'booking' && createForm.purpose !== 'event' && (
             <div className="md:col-span-2">
-              <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+              <div className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2">
                 <input
                   id="bypass-kitchen-pacing"
                   type="checkbox"
@@ -607,7 +607,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                       bypass_pacing: e.target.checked
                     }))
                   }
-                  className="h-4 w-4 rounded border-gray-300 text-sidebar focus:ring-sidebar"
+                  className="h-4 w-4 rounded-sm border-border-strong text-sidebar focus:ring-sidebar"
                 />
                 <label htmlFor="bypass-kitchen-pacing" className="cursor-pointer text-xs font-medium text-gray-700">
                   Override kitchen pacing (this window is at capacity)
@@ -621,13 +621,13 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
         </div>
 
         {createMode === 'walk_in' && walkInTargetTable && (
-          <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
+          <div className="rounded-md border border-green-200 bg-success-soft px-3 py-2 text-xs text-green-900">
             Walk-in will be moved to <span className="font-semibold">{walkInTargetTable.name}</span> after creation.
           </div>
         )}
 
         {eventOptions.length > 0 && createForm.purpose !== 'event' && (
-          <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-info-fg">
             Booking for an upcoming event?{' '}
             <button
               type="button"
@@ -641,7 +641,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 }))
                 onSetTableEventPromptAcknowledgedEventId(null)
               }}
-              className="font-semibold underline hover:text-blue-900"
+              className="font-semibold underline hover:text-info-fg"
             >
               Select event
             </button>
@@ -656,13 +656,13 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
               onChange={(event) => onSetCreateForm((current) => ({ ...current, notes: event.target.value }))}
               rows={2}
               maxLength={500}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             />
           </label>
         )}
 
         {createMode !== 'walk_in' && createForm.purpose !== 'event' && overlappingEventForTable && tableEventPromptAcknowledgedEventId !== overlappingEventForTable.id && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <div className="rounded-md border border-amber-200 bg-warning-soft px-3 py-2 text-xs text-warning-fg">
             <p className="font-semibold">Confirm: this booking overlaps {overlappingEventForTable.name}.</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <button
@@ -677,7 +677,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   onSetTableEventPromptAcknowledgedEventId(null)
                   onSetErrorMessage(null)
                 }}
-                className="rounded border border-amber-400 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                className="rounded-sm border border-amber-400 bg-surface px-2.5 py-1 text-xs font-medium text-warning-fg hover:bg-amber-100"
               >
                 Yes, book for event
               </button>
@@ -687,7 +687,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   onSetTableEventPromptAcknowledgedEventId(overlappingEventForTable.id)
                   onSetErrorMessage(null)
                 }}
-                className="rounded border border-amber-300 bg-transparent px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100/60"
+                className="rounded-sm border border-amber-300 bg-transparent px-2.5 py-1 text-xs font-medium text-warning-fg hover:bg-amber-100/60"
               >
                 No, keep table booking
               </button>
@@ -696,12 +696,12 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
         )}
 
         {errorMessage && open && (
-          <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <div role="alert" className="rounded-md border border-red-200 bg-danger-soft px-3 py-2 text-sm text-danger-fg">
             {errorMessage}
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
           <p className="text-xs text-gray-500">
             {createMode === 'walk_in'
               ? 'Walk-ins require covers. Guest name and phone are optional.'
@@ -715,7 +715,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-gray-700 hover:bg-surface-hover"
             >
               Cancel
             </button>

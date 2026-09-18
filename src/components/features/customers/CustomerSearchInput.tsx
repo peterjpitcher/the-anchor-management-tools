@@ -176,7 +176,7 @@ export default function CustomerSearchInput({
       <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           {isSearching ? (
-            <div className="animate-spin h-5 w-5 border-2 border-gray-300 border-t-blue-600 rounded-full" />
+            <div className="animate-spin h-5 w-5 border-2 border-border-strong border-t-blue-600 rounded-full" />
           ) : selectedCustomer ? (
             <CheckIcon className="h-5 w-5 text-green-500" />
           ) : (
@@ -187,7 +187,7 @@ export default function CustomerSearchInput({
           type="text"
           value={searchTerm}
           onChange={(e) => handleSearchChange(e.target.value)}
-          className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base min-h-[44px]"
+          className="block w-full pl-10 pr-10 py-3 border border-border-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-border-focus text-base min-h-touch"
           placeholder={placeholder}
           autoComplete="off"
           autoCorrect="off"
@@ -197,9 +197,9 @@ export default function CustomerSearchInput({
           <button
             type="button"
             onClick={clearSelection}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center min-w-[44px] justify-center"
+            className="absolute inset-y-0 right-0 pr-3 flex items-center min-w-touch justify-center"
           >
-            <span className="text-gray-400 hover:text-gray-600 text-sm">Clear</span>
+            <span className="text-gray-400 hover:text-text-muted text-sm">Clear</span>
           </button>
         )}
       </div>
@@ -209,17 +209,17 @@ export default function CustomerSearchInput({
         <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="flex items-start justify-between">
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-gray-900 text-sm sm:text-base">
+              <p className="font-medium text-text text-sm sm:text-base">
                 {[selectedCustomer.first_name, selectedCustomer.last_name ?? ''].filter(Boolean).join(' ')}
               </p>
               {selectedCustomer.mobile_number && (
-                <p className="text-xs sm:text-sm text-gray-600 flex items-center mt-1">
+                <p className="text-xs sm:text-sm text-text-muted flex items-center mt-1">
                   <PhoneIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1 flex-shrink-0" />
                   <span className="truncate">{selectedCustomer.mobile_number}</span>
                 </p>
               )}
               {selectedCustomer.email && (
-                <p className="text-xs sm:text-sm text-gray-600 truncate">{selectedCustomer.email}</p>
+                <p className="text-xs sm:text-sm text-text-muted truncate">{selectedCustomer.email}</p>
               )}
             </div>
           </div>
@@ -228,18 +228,18 @@ export default function CustomerSearchInput({
 
       {/* Search Results Dropdown */}
       {showDropdown && searchResults.length > 0 && !selectedCustomer && (
-        <div className="absolute z-50 mt-1 w-full bg-white shadow-lg rounded-md border border-gray-200 max-h-60 sm:max-h-80 overflow-auto">
+        <div className="absolute z-50 mt-1 w-full bg-surface shadow-lg rounded-md border border-border max-h-60 sm:max-h-80 overflow-auto">
           {searchResults.map((customer) => (
             <button
               key={customer.id}
               type="button"
               onClick={() => handleCustomerSelect(customer)}
-              className="w-full text-left px-4 py-3 sm:py-2 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none border-b border-gray-100 last:border-b-0 min-h-[50px] sm:min-h-0"
+              className="w-full text-left px-4 py-3 sm:py-2 hover:bg-surface-hover focus:bg-surface-2 focus:outline-none border-b border-border last:border-b-0 min-h-[50px] sm:min-h-0"
             >
               <div className="flex items-center">
                 <UserIcon className="h-5 w-5 text-gray-400 mr-3 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="text-sm sm:text-base font-medium text-gray-900">
+                  <p className="text-sm sm:text-base font-medium text-text">
                     {[customer.first_name, customer.last_name ?? ''].filter(Boolean).join(' ')}
                   </p>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs sm:text-sm text-gray-500 mt-0.5">
@@ -267,7 +267,7 @@ export default function CustomerSearchInput({
 
       {/* No Results Message */}
       {showDropdown && searchResults.length === 0 && searchTerm.trim().length >= 2 && !isSearching && (
-        <div className="absolute z-50 mt-1 w-full bg-white shadow-lg rounded-md border border-gray-200 p-4">
+        <div className="absolute z-50 mt-1 w-full bg-surface shadow-lg rounded-md border border-border p-4">
           <p className="text-sm text-gray-500 text-center">
             {searchError ? 'Customer search failed. Please try again.' : 'No customers found'}
           </p>

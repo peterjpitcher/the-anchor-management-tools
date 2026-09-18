@@ -311,7 +311,7 @@ export function TripForm({
     >
       <div className="space-y-5">
         {error && (
-          <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+          <div className="rounded-md bg-danger-soft p-3 text-sm text-red-700">{error}</div>
         )}
 
         {isLockedShape && (
@@ -373,8 +373,8 @@ export function TripForm({
         <div>
           <h4 className="text-sm font-medium text-gray-700 mb-3">Route</h4>
 
-          <div className="flex items-center gap-2 mb-3 text-sm text-gray-600">
-            <span className="inline-flex items-center justify-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+          <div className="flex items-center gap-2 mb-3 text-sm text-text-muted">
+            <span className="inline-flex items-center justify-center rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-green-700">
               Start
             </span>
             <span className="font-medium">{homeBase?.name ?? 'The Anchor'}</span>
@@ -436,7 +436,7 @@ export function TripForm({
                     </p>
                   )}
                   {stopErrors.has(index) && (
-                    <p className="mt-1 ml-6 text-xs text-red-600">{stopErrors.get(index)}</p>
+                    <p className="mt-1 ml-6 text-xs text-danger">{stopErrors.get(index)}</p>
                   )}
                 </div>
               )
@@ -456,10 +456,10 @@ export function TripForm({
             </div>
             <div className="flex items-center gap-2">
               <ArrowRightIcon className="h-4 w-4 shrink-0 text-gray-400" />
-              <span className="inline-flex items-center justify-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+              <span className="inline-flex items-center justify-center rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-green-700">
                 Return
               </span>
-              <span className="text-sm font-medium text-gray-600">{homeBase?.name ?? 'The Anchor'}</span>
+              <span className="text-sm font-medium text-text-muted">{homeBase?.name ?? 'The Anchor'}</span>
               <Input
                 className="w-28 shrink-0 ml-auto"
                 value={returnMiles}
@@ -480,20 +480,20 @@ export function TripForm({
               </p>
             )}
             {returnMilesError && (
-              <p className="mt-1 ml-6 text-xs text-red-600">{returnMilesError}</p>
+              <p className="mt-1 ml-6 text-xs text-danger">{returnMilesError}</p>
             )}
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+        <div className="rounded-lg border border-border bg-surface-2 p-4">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium text-gray-700">Total Miles</span>
-            <span className="text-lg font-semibold text-gray-900">
+            <span className="text-lg font-semibold text-text">
               {totalMiles > 0 ? totalMiles.toFixed(1) : '0.0'}
             </span>
           </div>
           {totalMiles > 0 && (
-            <div className="mt-2 space-y-1 text-sm text-gray-600">
+            <div className="mt-2 space-y-1 text-sm text-text-muted">
               {crossesThreshold ? (
                 <>
                   <div>
@@ -504,10 +504,10 @@ export function TripForm({
                     {rateSplit.milesAtReducedRate.toFixed(1)} mi @ {'\u00A3'}{REDUCED_RATE.toFixed(2)} ={' '}
                     {'\u00A3'}{(rateSplit.milesAtReducedRate * REDUCED_RATE).toFixed(2)}
                   </div>
-                  <div className="border-t border-gray-300 pt-1 font-medium text-gray-900">
+                  <div className="border-t border-border-strong pt-1 font-medium text-text">
                     Amount Due: {'\u00A3'}{rateSplit.amountDue.toFixed(2)}
                   </div>
-                  <div className="text-xs text-amber-600">
+                  <div className="text-xs text-warning">
                     This trip crosses the {THRESHOLD_MILES.toLocaleString()}-mile threshold
                   </div>
                 </>

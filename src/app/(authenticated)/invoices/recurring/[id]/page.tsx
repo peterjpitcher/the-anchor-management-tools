@@ -394,7 +394,7 @@ export default function RecurringInvoiceDetailPage() {
                 key: 'description',
                 header: 'Description',
                 cell: (item: any) => (
-                  <span className="text-sm text-gray-900">{item.description}</span>
+                  <span className="text-sm text-text">{item.description}</span>
                 ),
               },
               {
@@ -402,7 +402,7 @@ export default function RecurringInvoiceDetailPage() {
                 header: 'Qty',
                 align: 'right',
                 cell: (item: any) => (
-                  <span className="text-sm text-gray-900">{item.quantity}</span>
+                  <span className="text-sm text-text">{item.quantity}</span>
                 ),
               },
               {
@@ -410,7 +410,7 @@ export default function RecurringInvoiceDetailPage() {
                 header: 'Unit Price',
                 align: 'right',
                 cell: (item: any) => (
-                  <span className="text-sm text-gray-900">£{item.unit_price.toFixed(2)}</span>
+                  <span className="text-sm text-text">£{item.unit_price.toFixed(2)}</span>
                 ),
               },
               {
@@ -418,7 +418,7 @@ export default function RecurringInvoiceDetailPage() {
                 header: 'Discount',
                 align: 'right',
                 cell: (item: any) => (
-                  <span className="text-sm text-gray-900">{item.discount_percentage > 0 ? `${item.discount_percentage}%` : '-'}</span>
+                  <span className="text-sm text-text">{item.discount_percentage > 0 ? `${item.discount_percentage}%` : '-'}</span>
                 ),
               },
               {
@@ -426,7 +426,7 @@ export default function RecurringInvoiceDetailPage() {
                 header: 'VAT',
                 align: 'right',
                 cell: (item: any) => (
-                  <span className="text-sm text-gray-900">{item.vat_rate}%</span>
+                  <span className="text-sm text-text">{item.vat_rate}%</span>
                 ),
               },
               {
@@ -439,7 +439,7 @@ export default function RecurringInvoiceDetailPage() {
                   const lineAfterDiscount = lineSubtotal - lineDiscount
                   const lineVat = lineAfterDiscount * (item.vat_rate / 100)
                   const lineTotal = lineAfterDiscount + lineVat
-                  return <span className="text-sm font-medium text-gray-900">£{lineTotal.toFixed(2)}</span>
+                  return <span className="text-sm font-medium text-text">£{lineTotal.toFixed(2)}</span>
                 },
               },
             ]}
@@ -475,13 +475,13 @@ export default function RecurringInvoiceDetailPage() {
             {recurringInvoice.notes && (
               <div className="mb-4">
                 <div className="mb-1 text-sm text-gray-500">Customer Notes</div>
-                <div className="whitespace-pre-wrap text-gray-900">{recurringInvoice.notes}</div>
+                <div className="whitespace-pre-wrap text-text">{recurringInvoice.notes}</div>
               </div>
             )}
             {recurringInvoice.internal_notes && (
               <div>
                 <div className="mb-1 text-sm text-gray-500">Internal Notes</div>
-                <div className="whitespace-pre-wrap text-gray-900">{recurringInvoice.internal_notes}</div>
+                <div className="whitespace-pre-wrap text-text">{recurringInvoice.internal_notes}</div>
               </div>
             )}
           </Card>
@@ -503,7 +503,7 @@ export default function RecurringInvoiceDetailPage() {
           <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <dt className="text-sm text-gray-500">Last generated invoice</dt>
-              <dd className="text-base font-medium text-gray-900">
+              <dd className="text-base font-medium text-text">
                 {recurringInvoice.last_invoice
                   ? `${recurringInvoice.last_invoice.invoice_number} (${recurringInvoice.last_invoice.status})`
                   : 'Not yet generated'}
@@ -511,7 +511,7 @@ export default function RecurringInvoiceDetailPage() {
             </div>
             <div>
               <dt className="text-sm text-gray-500">Generated on</dt>
-              <dd className="text-base font-medium text-gray-900">
+              <dd className="text-base font-medium text-text">
                 {recurringInvoice.last_invoice
                   ? new Date(recurringInvoice.last_invoice.invoice_date).toLocaleDateString('en-GB')
                   : 'Not yet generated'}

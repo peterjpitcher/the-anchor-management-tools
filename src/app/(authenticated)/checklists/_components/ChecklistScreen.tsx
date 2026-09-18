@@ -284,19 +284,19 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
       {allTasks.length > 0 && (
         <>
           <dl className="grid grid-cols-3 gap-2 sm:gap-3">
-            <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
-              <dd className="text-3xl font-extrabold text-gray-900">{toDoCount}</dd>
-              <dt className="mt-1 text-sm font-medium text-gray-600">To do</dt>
+            <div className="min-w-0 rounded-xl border border-border bg-surface p-3 text-center">
+              <dd className="text-3xl font-extrabold text-text">{toDoCount}</dd>
+              <dt className="mt-1 text-sm font-medium text-text-muted">To do</dt>
             </div>
-            <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
-              <dd className="text-3xl font-extrabold text-gray-900">{doneCount}</dd>
-              <dt className="mt-1 text-sm font-medium text-gray-600">Done</dt>
+            <div className="min-w-0 rounded-xl border border-border bg-surface p-3 text-center">
+              <dd className="text-3xl font-extrabold text-text">{doneCount}</dd>
+              <dt className="mt-1 text-sm font-medium text-text-muted">Done</dt>
             </div>
             {/* Deliberately not labelled "Total": this counts what is showing, and more
                 tasks arrive later in the day. It read "Total 28" on a 50 task day. */}
-            <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
-              <dd className="text-3xl font-extrabold text-gray-900">{allTasks.length}</dd>
-              <dt className="mt-1 text-sm font-medium text-gray-600">Showing</dt>
+            <div className="min-w-0 rounded-xl border border-border bg-surface p-3 text-center">
+              <dd className="text-3xl font-extrabold text-text">{allTasks.length}</dd>
+              <dt className="mt-1 text-sm font-medium text-text-muted">Showing</dt>
             </div>
           </dl>
           {/* Suppressed when everything is ticked, because the all-done alert below says
@@ -327,7 +327,7 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
       )}
 
       {groups.length > 0 && (
-        <div className="sticky top-0 z-20 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm">
+        <div className="sticky top-0 z-20 rounded-xl border border-border bg-surface px-3 py-2 shadow-sm">
           <AttributionPicker
             identity={identity}
             candidates={candidates}
@@ -345,7 +345,7 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
                 type="button"
                 onClick={() => setShowDone((v) => !v)}
                 aria-pressed={showDone}
-                className="min-h-[44px] rounded-md px-3 py-2 text-sm font-medium text-primary hover:bg-surface-2"
+                className="min-h-touch rounded-md px-3 py-2 text-sm font-medium text-primary hover:bg-surface-2"
               >
                 {showDone ? 'Hide done' : `Show done (${doneCount})`}
               </button>

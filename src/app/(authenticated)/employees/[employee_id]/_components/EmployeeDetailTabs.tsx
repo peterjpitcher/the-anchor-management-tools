@@ -31,7 +31,7 @@ export function EmployeeDetailTabs({ tabs }: EmployeeDetailTabsProps) {
           id="employee-tab-select"
           value={active}
           onChange={(e) => setActive(e.target.value)}
-          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900"
+          className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm font-medium text-text"
         >
           {tabs.map((t) => (
             <option key={t.key} value={t.key}>{t.label}</option>
@@ -40,7 +40,7 @@ export function EmployeeDetailTabs({ tabs }: EmployeeDetailTabsProps) {
       </div>
 
       {/* Desktop: underline strip */}
-      <div role="tablist" className="mb-4 hidden items-center gap-1 overflow-x-auto border-b border-gray-200 md:flex">
+      <div role="tablist" className="mb-4 hidden items-center gap-1 overflow-x-auto border-b border-border md:flex">
         {tabs.map((t) => {
           const isActive = t.key === activeTab?.key
           return (
@@ -51,8 +51,8 @@ export function EmployeeDetailTabs({ tabs }: EmployeeDetailTabsProps) {
               aria-selected={isActive}
               onClick={() => setActive(t.key)}
               className={cn(
-                'relative whitespace-nowrap px-4 py-2.5 text-[13px] font-medium transition-colors',
-                isActive ? 'text-green-700' : 'text-gray-500 hover:text-gray-900',
+                'relative whitespace-nowrap px-4 py-2.5 text-ui font-medium transition-colors',
+                isActive ? 'text-green-700' : 'text-gray-500 hover:text-text',
               )}
             >
               {t.label}

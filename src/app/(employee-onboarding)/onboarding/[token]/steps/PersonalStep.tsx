@@ -93,7 +93,7 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
   const field = (id: keyof PersonalData, label: string, type = 'text', required = false) => (
     <div>
       <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
-        {label}{required && <span className="text-red-500 ml-1">*</span>}
+        {label}{required && <span className="text-danger ml-1">*</span>}
       </label>
       <input
         id={id}
@@ -101,7 +101,7 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
         value={data[id]}
         onChange={(e) => setData({ ...data, [id]: e.target.value })}
         required={required}
-        className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+        className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
       />
     </div>
   );
@@ -130,11 +130,11 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
           className={`block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
             preferredNameWarning
               ? 'border-amber-500 focus:border-amber-500 focus:ring-amber-500'
-              : 'border-gray-300 focus:border-green-500 focus:ring-green-500'
+              : 'border-border-strong focus:border-border-focus focus:ring-green-500'
           }`}
         />
         {preferredNameWarning && (
-          <p className="mt-1 text-sm text-amber-700" role="status">
+          <p className="mt-1 text-sm text-warning-fg" role="status">
             {preferredNameWarning}
           </p>
         )}
@@ -151,14 +151,14 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
           value={data.address}
           onChange={(e) => setData({ ...data, address: e.target.value })}
           rows={3}
-          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+          className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
         />
       </div>
       {field('post_code', 'Post Code')}
       {field('phone_number', 'Phone Number', 'tel')}
       {field('mobile_number', 'Mobile Number', 'tel')}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       <button
         type="submit"

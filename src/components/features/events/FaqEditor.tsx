@@ -53,14 +53,14 @@ export function FaqEditor({ faqs, onChange, onModified }: FaqEditorProps) {
     <div className="space-y-4">
       {/* Header row */}
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-900">
+        <span className="text-sm font-medium text-text">
           FAQs{faqs.length > 0 ? ` (${faqs.length})` : ''}
         </span>
         <button
           type="button"
           onClick={handleAdd}
           disabled={faqs.length >= MAX_FAQS}
-          className="text-sm font-medium text-indigo-600 hover:text-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+          className="text-sm font-medium text-indigo-600 hover:text-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           + Add FAQ
         </button>
@@ -78,7 +78,7 @@ export function FaqEditor({ faqs, onChange, onModified }: FaqEditorProps) {
         {faqs.map((faq, index) => (
           <div
             key={index}
-            className="rounded-lg border border-gray-200 bg-white p-4 space-y-3"
+            className="rounded-lg border border-border bg-surface p-4 space-y-3"
           >
             <div className="flex items-start justify-between gap-3">
               <span className="text-xs font-medium text-gray-500 mt-0.5 shrink-0">
@@ -106,7 +106,7 @@ export function FaqEditor({ faqs, onChange, onModified }: FaqEditorProps) {
                 type="button"
                 onClick={() => handleRemove(index)}
                 aria-label={`Remove FAQ ${index + 1}`}
-                className="shrink-0 text-sm font-medium text-red-600 hover:text-red-500"
+                className="shrink-0 text-sm font-medium text-danger hover:text-danger"
               >
                 Remove
               </button>

@@ -26,8 +26,8 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
     <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
       <div className="fixed inset-0 bg-gray-500/75" onClick={onClose} />
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative w-full max-w-md rounded-lg bg-white shadow-xl p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-1">Invite Employee</h2>
+        <div className="relative w-full max-w-md rounded-lg bg-surface shadow-lg p-6">
+          <h2 className="text-lg font-semibold text-text mb-1">Invite Employee</h2>
           <p className="text-sm text-gray-500 mb-6">
             Enter the employee&apos;s email address. They will receive an invite to create their account and complete their profile.
           </p>
@@ -43,7 +43,7 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
                 type="email"
                 required
                 autoFocus
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+                className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
                 placeholder="employee@example.com"
               />
             </div>
@@ -56,7 +56,7 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
                 id="invite-job-title"
                 name="job_title"
                 type="text"
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+                className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
                 placeholder="e.g. Bar Staff"
               />
             </div>
@@ -70,7 +70,7 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
                 name="employment_start_date"
                 type="date"
                 required
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+                className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
               />
               <p className="mt-1 text-xs text-gray-500">
                 Set now so their length of service is right from day one. Completing onboarding
@@ -79,14 +79,14 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
             </div>
 
             {state?.type === 'error' && (
-              <p className="text-sm text-red-600">{state.message}</p>
+              <p className="text-sm text-danger">{state.message}</p>
             )}
 
             <div className="flex gap-3 justify-end mt-6">
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-md px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                className="rounded-md px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-surface-hover"
               >
                 Cancel
               </button>

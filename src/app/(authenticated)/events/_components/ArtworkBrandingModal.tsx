@@ -783,7 +783,7 @@ export function ArtworkBrandingModal({
                             the preview as a guide and makes it unscannable, so
                             nobody points a phone at a screen and books from a
                             draft. */}
-                        <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-text/75 px-1 py-0.5 text-center text-[10px] font-medium leading-tight text-surface">
+                        <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-text/75 px-1 py-0.5 text-center text-2xs font-medium leading-tight text-surface">
                           Guide only
                         </span>
                       </span>
@@ -911,7 +911,7 @@ export function ArtworkBrandingModal({
                     Booking QR code
                   </h2>
 
-                  <label className="flex min-h-[44px] items-center gap-2 text-sm text-text">
+                  <label className="flex min-h-touch items-center gap-2 text-sm text-text">
                     <input
                       type="checkbox"
                       checked={qrOn}

@@ -66,7 +66,7 @@ type FohTimelineProps = {
 function BookingBadges({ booking, className }: { booking: FohBooking; className?: string }) {
   const highChairs = booking.high_chair_count ?? 0
   if (!booking.is_outside_seating && highChairs <= 0) return null
-  const pill = 'inline-flex items-center rounded-pill border px-1 py-0 text-[9px] font-medium leading-none'
+  const pill = 'inline-flex items-center rounded-pill border px-1 py-0 text-2xs font-medium leading-none'
   return (
     <span className={cn('flex flex-wrap items-center gap-1 leading-none', className)}>
       {booking.is_outside_seating ? (
@@ -108,47 +108,47 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
 
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
   const panelSurfaceClass = isManagerKioskStyle
-    ? 'rounded-xl border border-green-200 bg-white shadow-sm'
-    : 'rounded-lg border border-gray-200 bg-white'
+    ? 'rounded-xl border border-green-200 bg-surface shadow-sm'
+    : 'rounded-lg border border-border bg-surface'
   const swimlaneCardClass = cn(panelSurfaceClass, isManagerKioskStyle ? 'p-2' : 'p-4')
   const swimlaneHeaderRowClass = cn(
     'flex items-center justify-between',
     isManagerKioskStyle ? 'mb-2' : 'mb-3'
   )
   const tableHeaderCellClass = cn(
-    'font-semibold uppercase tracking-wide text-gray-600',
-    isManagerKioskStyle ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'
+    'font-semibold uppercase tracking-wide text-text-muted',
+    isManagerKioskStyle ? 'px-2 py-1.5 text-2xs' : 'px-3 py-2 text-xs'
   )
   // No horizontal padding. The drag snap measures this element and converts a pointer offset
   // into a time, but the lane tracks below it have no padding, so any here made the header a
   // few pixels wider than the lanes and skewed every snapped time by that difference.
   const timelineHeaderTrackClass = 'relative h-10'
   const laneMetaCellClass = cn(
-    'space-y-1 bg-white',
+    'space-y-1 bg-surface',
     isManagerKioskStyle ? 'px-2 py-1.5' : 'px-3 py-2'
   )
   const laneTimelineClass = cn(
-    'relative overflow-hidden bg-gray-50/60',
+    'relative overflow-hidden bg-surface-2/60',
     isManagerKioskStyle ? 'h-12 pt-1' : 'h-14',
     canEdit && 'cursor-pointer hover:bg-sidebar/5'
   )
   const laneEmptyClass = cn(
     'absolute inset-0 flex items-center text-gray-400',
-    isManagerKioskStyle ? 'px-2 text-[10px]' : 'px-3 text-xs'
+    isManagerKioskStyle ? 'px-2 text-2xs' : 'px-3 text-xs'
   )
   const bookingBlockBaseClass = isManagerKioskStyle
-    ? 'absolute top-0.5 h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-[9px] shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
-    : 'absolute top-1 h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[10px] shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
+    ? 'absolute top-0.5 h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-2xs shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
+    : 'absolute top-1 h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-2xs shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
   const bookingOverlayBaseClass = isManagerKioskStyle
-    ? 'h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-[9px]'
-    : 'h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[10px]'
+    ? 'h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-2xs'
+    : 'h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-2xs'
   const timelineTickLabelClass = cn(
     'absolute -translate-x-1/2 font-medium text-gray-500',
-    isManagerKioskStyle ? 'top-0.5 text-[9px]' : 'pt-0.5 text-[10px]'
+    isManagerKioskStyle ? 'top-0.5 text-2xs' : 'pt-0.5 text-2xs'
   )
   const nowLineLabelClass = cn(
-    'absolute left-0 -translate-x-1/2 rounded bg-red-600 text-white font-semibold',
-    isManagerKioskStyle ? 'top-0.5 px-1 py-px text-[8px]' : 'top-0.5 px-1.5 py-px text-[9px]'
+    'absolute left-0 -translate-x-1/2 rounded-sm bg-red-600 text-white font-semibold',
+    isManagerKioskStyle ? 'top-0.5 px-1 py-px text-2xs' : 'top-0.5 px-1.5 py-px text-2xs'
   )
 
   const timelineDuration = Math.max(1, timeline.endMin - timeline.startMin)
@@ -156,8 +156,8 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
   return (
     <div className={cn(swimlaneCardClass, 'relative')}>
       <div className={swimlaneHeaderRowClass}>
-        <h3 className="text-sm font-semibold text-gray-900">Table availability swimlanes</h3>
-        <p className={cn('text-gray-500', isManagerKioskStyle ? 'text-[10px]' : 'text-xs')}>
+        <h3 className="text-sm font-semibold text-text">Table availability swimlanes</h3>
+        <p className={cn('text-gray-500', isManagerKioskStyle ? 'text-2xs' : 'text-xs')}>
           {schedule?.service_window?.source === 'closed' ? (
             'Closed all day'
           ) : (
@@ -170,8 +170,8 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
       </div>
 
       {loading && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-white/70">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-sidebar" />
+        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-surface/70">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-sidebar" />
         </div>
       )}
 
@@ -182,15 +182,15 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
         onDragEnd={onDragEnd}
       >
         <div className="overflow-x-auto">
-          <div className="min-w-[980px] border border-gray-200">
-            <div className="grid grid-cols-[220px_1fr] border-b border-gray-200 bg-gray-50">
-              <div className={cn(tableHeaderCellClass, 'sticky left-0 z-10 bg-gray-50')}>Table</div>
+          <div className="min-w-[980px] border border-border">
+            <div className="grid grid-cols-[220px_1fr] border-b border-border bg-surface-2">
+              <div className={cn(tableHeaderCellClass, 'sticky left-0 z-10 bg-surface-2')}>Table</div>
               <div ref={timelineRef} className={timelineHeaderTrackClass}>
                 {timeline.ticks.map((minute) => {
                   const left = ((minute - timeline.startMin) / timelineDuration) * 100
                   return (
                     <div key={`tick-header-${minute}`} className="absolute inset-y-0" style={{ left: `${left}%` }}>
-                      <div className="h-full border-l border-gray-200" />
+                      <div className="h-full border-l border-border" />
                       <span className={timelineTickLabelClass}>
                         {formatLaneMinuteLabel(minute)}
                       </span>
@@ -232,7 +232,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
             className={cn(
               bookingOverlayBaseClass,
               activeDragData.statusClassName,
-              'fixed z-[9999] pointer-events-none select-none opacity-95 shadow-xl ring-2 ring-white/70'
+              'fixed z-[9999] pointer-events-none select-none opacity-95 shadow-lg ring-2 ring-white/70'
             )}
             style={{
               left: pointerPosition.x,
@@ -301,7 +301,7 @@ const LaneRow = React.memo(function LaneRow(props: {
         const left = ((minute - timeline.startMin) / timelineDuration) * 100
         return (
           <div key={`tick-${lane.table_id}-${minute}`} className="absolute inset-y-0" style={{ left: `${left}%` }}>
-            <div className="h-full border-l border-gray-200" />
+            <div className="h-full border-l border-border" />
           </div>
         )
       })}
@@ -379,14 +379,14 @@ const LaneRow = React.memo(function LaneRow(props: {
   )
 
   return (
-    <div className="grid grid-cols-[220px_1fr] border-b border-gray-200 last:border-b-0">
+    <div className="grid grid-cols-[220px_1fr] border-b border-border last:border-b-0">
       <div className={cn(laneMetaCellClass, 'sticky left-0 z-10')}>
         <div>
-          <p className="text-xs font-semibold text-gray-900">
+          <p className="text-xs font-semibold text-text">
             {lane.table_name}
             {lane.table_number ? <span className="ml-1 text-xs text-gray-500">({lane.table_number})</span> : null}
           </p>
-          <p className="text-[11px] text-gray-500">
+          <p className="text-meta text-gray-500">
             Capacity {lane.capacity || '-'}
             {lane.area ? ` · ${lane.area}` : ''}
             {lane.is_bookable === false ? ' · not bookable' : ''}

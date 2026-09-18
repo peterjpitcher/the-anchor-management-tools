@@ -25,10 +25,10 @@ export default function RoleForm({ action, initialData }: RoleFormProps) {
   }, [state, router]);
 
   return (
-    <form action={formAction} className="space-y-6 bg-white shadow px-4 py-5 sm:rounded-lg sm:p-6">
+    <form action={formAction} className="space-y-6 bg-surface shadow-sm px-4 py-5 sm:rounded-lg sm:p-6">
       {state?.error && (
-        <div className="rounded-md bg-red-50 p-4">
-          <p className="text-sm text-red-800">{state.error}</p>
+        <div className="rounded-md bg-danger-soft p-4">
+          <p className="text-sm text-danger-fg">{state.error}</p>
         </div>
       )}
 
@@ -47,7 +47,7 @@ export default function RoleForm({ action, initialData }: RoleFormProps) {
             id="name"
             required
             defaultValue={initialData?.name}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+            className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm"
             placeholder="e.g., Event Manager"
           />
         </div>
@@ -66,7 +66,7 @@ export default function RoleForm({ action, initialData }: RoleFormProps) {
             id="description"
             rows={3}
             defaultValue={initialData?.description}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+            className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm"
             placeholder="Describe the purpose and responsibilities of this role"
           />
         </div>
@@ -75,7 +75,7 @@ export default function RoleForm({ action, initialData }: RoleFormProps) {
       <div className="flex justify-end space-x-3">
         <Link
           href="/roles"
-          className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+          className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
         >
           Cancel
         </Link>

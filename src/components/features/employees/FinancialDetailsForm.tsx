@@ -95,7 +95,7 @@ export default function FinancialDetailsForm({ employeeId, financialDetails, onS
                 />
               )}
               {state?.errors?.[field.name] && (
-                <p className="mt-2 text-sm text-red-600">{state.errors[field.name]}</p>
+                <p className="mt-2 text-sm text-danger">{state.errors[field.name]}</p>
               )}
             </div>
           </div>
@@ -106,7 +106,7 @@ export default function FinancialDetailsForm({ employeeId, financialDetails, onS
         <SubmitButton />
       </div>
       {state?.type === 'error' && !state.errors && (
-        <p className="mt-2 text-sm text-red-600">{state.message}</p>
+        <p className="mt-2 text-sm text-danger">{state.message}</p>
       )}
     </form>
   );

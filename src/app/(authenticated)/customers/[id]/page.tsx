@@ -1071,7 +1071,7 @@ export default function CustomerViewPage() {
       sortFn: (a: UnifiedCustomerBookingRow, b: UnifiedCustomerBookingRow) => a.booking_timestamp - b.booking_timestamp,
       cell: (booking: UnifiedCustomerBookingRow) => (
         <div className="space-y-1">
-          <p className="text-sm font-medium text-gray-900">{booking.booking_display}</p>
+          <p className="text-sm font-medium text-text">{booking.booking_display}</p>
           <p className="text-xs text-gray-500">{booking.reference ? `Ref ${booking.reference}` : 'No reference'}</p>
         </div>
       )
@@ -1082,7 +1082,7 @@ export default function CustomerViewPage() {
       sortable: true,
       sortFn: (a: UnifiedCustomerBookingRow, b: UnifiedCustomerBookingRow) => a.source_label.localeCompare(b.source_label),
       cell: (booking: UnifiedCustomerBookingRow) => (
-        <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+        <span className="rounded-md bg-surface-hover px-2 py-0.5 text-xs font-medium text-gray-700">
           {booking.source_label}
         </span>
       )
@@ -1094,7 +1094,7 @@ export default function CustomerViewPage() {
       sortFn: (a: UnifiedCustomerBookingRow, b: UnifiedCustomerBookingRow) => a.title.localeCompare(b.title),
       cell: (booking: UnifiedCustomerBookingRow) => (
         <div className="space-y-1">
-          <p className="text-sm font-medium text-gray-900">{booking.title}</p>
+          <p className="text-sm font-medium text-text">{booking.title}</p>
           <p className="text-xs text-gray-500">{booking.summary}</p>
         </div>
       )
@@ -1108,10 +1108,10 @@ export default function CustomerViewPage() {
         const isProblem = /(cancel|no show|expired|failed|rejected)/i.test(booking.status)
         const isHealthy = /(booked|confirmed|completed|active|paid)/i.test(booking.status)
         const statusClass = isProblem
-          ? 'border-red-200 bg-red-50 text-red-700'
+          ? 'border-red-200 bg-danger-soft text-red-700'
           : isHealthy
-            ? 'border-green-200 bg-green-50 text-green-700'
-            : 'border-gray-200 bg-gray-50 text-gray-700'
+            ? 'border-green-200 bg-success-soft text-green-700'
+            : 'border-border bg-surface-2 text-gray-700'
 
         return (
           <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${statusClass}`}>
@@ -1245,7 +1245,7 @@ export default function CustomerViewPage() {
               write a "come to the quiz on Friday" message to somebody who had unsubscribed,
               and nothing on screen would stop or even mention it.
             */}
-            <p className="rounded-md bg-gray-50 p-3 text-sm text-gray-600">
+            <p className="rounded-md bg-surface-2 p-3 text-sm text-text-muted">
               Service messages only. Use this for something to do with this customer, a
               booking, a payment or a reply. Anything promotional goes out as a marketing
               campaign, which carries the unsubscribe link.
@@ -1256,7 +1256,7 @@ export default function CustomerViewPage() {
             )}
 
             {emailBlock && (
-              <div className="space-y-2 rounded-md border border-gray-200 p-3 text-sm">
+              <div className="space-y-2 rounded-md border border-border p-3 text-sm">
                 <p className="text-gray-700">
                   Marketing email:{' '}
                   <span className="font-medium">
@@ -1282,7 +1282,7 @@ export default function CustomerViewPage() {
                   to stop. So it says it plainly and leaves the decision with the person.
                 */}
                 {(!emailBlock.marketingOptIn || emailBlock.marketingOptedOutAt) && (
-                  <p className="text-amber-700">
+                  <p className="text-warning-fg">
                     This customer has not opted in to marketing email. Keep this message about
                     their booking or their enquiry.
                   </p>
@@ -1382,7 +1382,7 @@ export default function CustomerViewPage() {
                   <div className="flex items-center space-x-3">
                     <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-400" />
                     <span
-                      className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-green-600' : 'text-red-600'}`}
+                      className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-green-600' : 'text-danger'}`}
                     >
                       SMS {customer.sms_opt_in !== false ? 'Active' : 'Inactive'}
                     </span>
@@ -1402,7 +1402,7 @@ export default function CustomerViewPage() {
                   <div className="flex items-center space-x-3">
                     <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-400" />
                     <span
-                      className={`text-sm font-medium ${customer.whatsapp_opt_in === true ? 'text-green-600' : 'text-red-600'}`}
+                      className={`text-sm font-medium ${customer.whatsapp_opt_in === true ? 'text-green-600' : 'text-danger'}`}
                     >
                       WhatsApp {customer.whatsapp_opt_in === true ? 'Active' : 'Inactive'}
                     </span>
@@ -1489,7 +1489,7 @@ export default function CustomerViewPage() {
                     <CardTitle>Booking Snapshot</CardTitle>
                     <CardDescription>Quick totals across all booking types.</CardDescription>
                   </div>
-                  <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600">
+                  <span className="rounded-md bg-surface-hover px-2 py-1 text-xs text-text-muted">
                     {bookingInsights.totalBookings}
                   </span>
                 </div>
@@ -1545,19 +1545,19 @@ export default function CustomerViewPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Total Messages</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.totalMessages || 0}</dd>
+                    <dd className="mt-1 text-sm text-text">{smsStats.stats?.totalMessages || 0}</dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Delivered</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.deliveredMessages || 0}</dd>
+                    <dd className="mt-1 text-sm text-text">{smsStats.stats?.deliveredMessages || 0}</dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Failed</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.failedMessages || 0}</dd>
+                    <dd className="mt-1 text-sm text-text">{smsStats.stats?.failedMessages || 0}</dd>
                   </div>
                   <div>
                     <dt className="text-sm font-medium text-gray-500">Delivery Rate</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{smsStats.stats?.deliveryRate || 0}%</dd>
+                    <dd className="mt-1 text-sm text-text">{smsStats.stats?.deliveryRate || 0}%</dd>
                   </div>
                 </div>
               )}
@@ -1603,21 +1603,21 @@ export default function CustomerViewPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Status</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{customer.whatsapp_status || 'unknown'}</dd>
+                  <dd className="mt-1 text-sm text-text">{customer.whatsapp_status || 'unknown'}</dd>
                 </div>
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Failed</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{customer.whatsapp_delivery_failures || 0}</dd>
+                  <dd className="mt-1 text-sm text-text">{customer.whatsapp_delivery_failures || 0}</dd>
                 </div>
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Last success</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
+                  <dd className="mt-1 text-sm text-text">
                     {customer.last_successful_whatsapp_at ? formatLondonDateTime(customer.last_successful_whatsapp_at) : 'Never'}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Last inbound</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
+                  <dd className="mt-1 text-sm text-text">
                     {customer.last_whatsapp_inbound_at ? formatLondonDateTime(customer.last_whatsapp_inbound_at) : 'Never'}
                   </dd>
                 </div>
@@ -1650,16 +1650,16 @@ export default function CustomerViewPage() {
                 ) : (
                   <div className="space-y-3">
                     {consentAudit.slice(0, 8).map((row) => (
-                      <div key={row.id} className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm">
+                      <div key={row.id} className="rounded-md border border-border bg-surface-2 p-3 text-sm">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-medium text-gray-900">
+                          <span className="font-medium text-text">
                             {formatLabel(row.channel)} {formatLabel(row.purpose)}
                           </span>
-                          <span className="rounded-md bg-white px-2 py-1 text-xs text-gray-700">
+                          <span className="rounded-md bg-surface px-2 py-1 text-xs text-gray-700">
                             {formatLabel(row.status)}
                           </span>
                         </div>
-                        <p className="mt-1 text-xs text-gray-600">
+                        <p className="mt-1 text-xs text-text-muted">
                           {row.captured_at ? formatLondonDateTime(row.captured_at) : 'Unknown time'} by {formatLabel(row.source)}
                         </p>
                         <p className="mt-1 text-xs text-gray-500">
@@ -1685,43 +1685,43 @@ export default function CustomerViewPage() {
           }
         >
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <div className="rounded-md border border-border bg-surface-2 p-3">
               <p className="text-xs text-gray-500">Total bookings</p>
-              <p className="mt-1 text-xl font-semibold text-gray-900">{bookingInsights.totalBookings}</p>
+              <p className="mt-1 text-xl font-semibold text-text">{bookingInsights.totalBookings}</p>
             </div>
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <div className="rounded-md border border-border bg-surface-2 p-3">
               <p className="text-xs text-gray-500">Upcoming bookings</p>
-              <p className="mt-1 text-xl font-semibold text-gray-900">{bookingInsights.upcomingCount}</p>
+              <p className="mt-1 text-xl font-semibold text-text">{bookingInsights.upcomingCount}</p>
             </div>
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <div className="rounded-md border border-border bg-surface-2 p-3">
               <p className="text-xs text-gray-500">Average party size</p>
-              <p className="mt-1 text-xl font-semibold text-gray-900">
+              <p className="mt-1 text-xl font-semibold text-text">
                 {bookingInsights.averagePartySize != null ? bookingInsights.averagePartySize.toFixed(1) : 'N/A'}
               </p>
             </div>
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <div className="rounded-md border border-border bg-surface-2 p-3">
               <p className="text-xs text-gray-500">Private booking value</p>
-              <p className="mt-1 text-xl font-semibold text-gray-900">
+              <p className="mt-1 text-xl font-semibold text-text">
                 {bookingInsights.totalPrivateValue > 0 ? formatCurrency(bookingInsights.totalPrivateValue) : 'N/A'}
               </p>
             </div>
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <div className="rounded-md border border-border bg-surface-2 p-3">
               <p className="text-xs text-gray-500">Event seats booked</p>
-              <p className="mt-1 text-xl font-semibold text-gray-900">{bookingInsights.totalEventSeats}</p>
+              <p className="mt-1 text-xl font-semibold text-text">{bookingInsights.totalEventSeats}</p>
             </div>
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <div className="rounded-md border border-border bg-surface-2 p-3">
               <p className="text-xs text-gray-500">Reminder-only events</p>
-              <p className="mt-1 text-xl font-semibold text-gray-900">{bookingInsights.reminderOnlyEvents}</p>
+              <p className="mt-1 text-xl font-semibold text-text">{bookingInsights.reminderOnlyEvents}</p>
             </div>
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <div className="rounded-md border border-border bg-surface-2 p-3">
               <p className="text-xs text-gray-500">First booking</p>
-              <p className="mt-1 text-xl font-semibold text-gray-900">
+              <p className="mt-1 text-xl font-semibold text-text">
                 {formatDateForMetric(bookingInsights.firstBooking?.booking_datetime)}
               </p>
             </div>
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+            <div className="rounded-md border border-border bg-surface-2 p-3">
               <p className="text-xs text-gray-500">Most recent booking</p>
-              <p className="mt-1 text-xl font-semibold text-gray-900">
+              <p className="mt-1 text-xl font-semibold text-text">
                 {formatDateForMetric(bookingInsights.latestBooking?.booking_datetime)}
               </p>
             </div>
@@ -1729,7 +1729,7 @@ export default function CustomerViewPage() {
 
           <div className="mt-6 grid gap-6 lg:grid-cols-3">
             <div>
-              <h4 className="text-sm font-semibold text-gray-900">Behavior Signals</h4>
+              <h4 className="text-sm font-semibold text-text">Behavior Signals</h4>
               <div className="mt-3 space-y-2 text-sm text-gray-700">
                 <p>
                   Favorite category:{' '}
@@ -1771,18 +1771,18 @@ export default function CustomerViewPage() {
             </div>
 
             <div>
-              <h4 className="text-sm font-semibold text-gray-900">Event Category Preferences</h4>
+              <h4 className="text-sm font-semibold text-text">Event Category Preferences</h4>
               {topCategoryPreferences.length === 0 ? (
                 <p className="mt-3 text-sm text-gray-500">No event attendance preferences available yet.</p>
               ) : (
                 <div className="mt-3 space-y-3">
                   {topCategoryPreferences.map((preference) => (
                     <div key={preference.category_id}>
-                      <div className="mb-1 flex items-center justify-between text-xs text-gray-600">
+                      <div className="mb-1 flex items-center justify-between text-xs text-text-muted">
                         <span>{preference.category_name}</span>
                         <span>{preference.times_attended}</span>
                       </div>
-                      <div className="h-2 rounded-full bg-gray-200">
+                      <div className="h-2 rounded-full bg-border">
                         <div
                           className="h-2 rounded-full bg-green-500"
                           style={{
@@ -1797,7 +1797,7 @@ export default function CustomerViewPage() {
             </div>
 
             <div>
-              <h4 className="text-sm font-semibold text-gray-900">Booking Status Mix</h4>
+              <h4 className="text-sm font-semibold text-text">Booking Status Mix</h4>
               {bookingInsights.statusMix.length === 0 ? (
                 <p className="mt-3 text-sm text-gray-500">No booking statuses available yet.</p>
               ) : (
@@ -1823,7 +1823,7 @@ export default function CustomerViewPage() {
                   Filter and sort every booking tied to this customer to understand what they attend most.
                 </CardDescription>
               </div>
-              <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600">
+              <span className="rounded-md bg-surface-hover px-2 py-1 text-xs text-text-muted">
                 {filteredBookings.length} of {unifiedBookings.length}
               </span>
             </div>

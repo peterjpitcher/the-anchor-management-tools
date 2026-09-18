@@ -75,7 +75,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
             onChange={(e) => { setFirstName(e.target.value); setNameError(null) }}
           />
           {nameError && (
-            <p className="mt-2 text-sm text-red-600">{nameError}</p>
+            <p className="mt-2 text-sm text-danger">{nameError}</p>
           )}
         </div>
 
@@ -118,7 +118,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
             Enter an international number (e.g. +1...) or a local number (defaults to +44)
           </p>
           {phoneError && (
-            <p className="mt-2 text-sm text-red-600">{phoneError}</p>
+            <p className="mt-2 text-sm text-danger">{phoneError}</p>
           )}
         </div>
 

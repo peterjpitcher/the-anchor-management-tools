@@ -15,7 +15,7 @@ export function VenueSpaceDeleteButton({ spaceName, spaceId, deleteAction }: Ven
       <button
         type="submit"
         aria-label={`Delete ${spaceName}`}
-        className="text-red-600 hover:text-red-700 transition-colors"
+        className="text-danger hover:text-red-700 transition-colors"
         onClick={(e) => {
           if (!confirm(`Are you sure you want to delete "${spaceName}"? This action cannot be undone.`)) {
             e.preventDefault()

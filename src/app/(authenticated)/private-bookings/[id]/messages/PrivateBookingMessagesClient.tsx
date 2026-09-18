@@ -361,14 +361,14 @@ export default function PrivateBookingMessagesClient({
                         className={`border rounded-lg p-4 text-left transition-colors ${
                           selectedTemplate === template.id
                             ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300'
+                            : 'border-border hover:border-border-strong'
                         }`}
                       >
-                        <h3 className="font-medium text-gray-900 flex items-center gap-2">
+                        <h3 className="font-medium text-text flex items-center gap-2">
                           <DevicePhoneMobileIcon className="h-5 w-5 text-blue-500" />
                           {template.name}
                         </h3>
-                        <p className="mt-1 text-sm text-gray-600">{template.message}</p>
+                        <p className="mt-1 text-sm text-text-muted">{template.message}</p>
                       </button>
                     ))}
                   </div>
@@ -463,7 +463,7 @@ export default function PrivateBookingMessagesClient({
                 </div>
               ) : sentMessages.length === 0 ? (
                 <div className="text-center py-12">
-                  <ChatBubbleLeftRightIcon className="mx-auto h-12 w-12 text-gray-300" />
+                  <ChatBubbleLeftRightIcon className="mx-auto h-12 w-12 text-text-subtle" />
                   <p className="mt-3 text-sm text-gray-500">
                     No messages have been sent for this booking yet.
                   </p>
@@ -476,8 +476,8 @@ export default function PrivateBookingMessagesClient({
                       const messageKey = message.id ?? message.twilio_sid ?? `${message.booking_id}-${message.created_at}`
 
                       return (
-                        <div key={messageKey} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                          <div className="flex items-center justify-between text-sm text-gray-600">
+                        <div key={messageKey} className="border border-border rounded-lg p-4 bg-surface-2">
+                          <div className="flex items-center justify-between text-sm text-text-muted">
                             <span className="flex items-center gap-2">
                               <ClockIcon className="h-4 w-4" />
                               Sent {formatDateTime12Hour(message.sent_at ?? message.created_at ?? '')}
@@ -486,7 +486,7 @@ export default function PrivateBookingMessagesClient({
                               {message.trigger_type?.replace(/_/g, ' ') || 'Manual message'}
                             </Badge>
                           </div>
-                          <p className="mt-3 text-sm text-gray-800 whitespace-pre-wrap">
+                          <p className="mt-3 text-sm text-text whitespace-pre-wrap">
                             {message.message_body}
                           </p>
                         </div>
@@ -504,7 +504,7 @@ export default function PrivateBookingMessagesClient({
               <div className="space-y-3">
                 <div>
                   <h3 className="text-sm font-medium text-gray-500">Customer</h3>
-                  <p className="text-sm text-gray-900">
+                  <p className="text-sm text-text">
                     {booking.customer_full_name || booking.customer_name}
                   </p>
                   {booking.contact_phone && (
@@ -516,7 +516,7 @@ export default function PrivateBookingMessagesClient({
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-gray-500">Event Details</h3>
-                  <p className="text-sm text-gray-900">
+                  <p className="text-sm text-text">
                     {booking.event_type || 'Private event'}{' '}
                     {booking.event_date ? `on ${formatDateFull(booking.event_date)}` : ''}
                   </p>
@@ -527,7 +527,7 @@ export default function PrivateBookingMessagesClient({
                 {booking.guest_count && (
                   <div>
                     <h3 className="text-sm font-medium text-gray-500">Guest Count</h3>
-                    <p className="text-sm text-gray-900">{booking.guest_count} guests</p>
+                    <p className="text-sm text-text">{booking.guest_count} guests</p>
                   </div>
                 )}
               </div>
@@ -536,24 +536,24 @@ export default function PrivateBookingMessagesClient({
 
           <Section title="SMS Delivery Status">
             <Card className="space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
                 <CheckCircleIcon className="h-5 w-5 text-green-600" />
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Delivered</p>
+                  <p className="text-sm font-medium text-text">Delivered</p>
                   <p className="text-xs text-gray-500">Messages confirmed by Twilio.</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <ExclamationCircleIcon className="h-5 w-5 text-yellow-600" />
+              <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
+                <ExclamationCircleIcon className="h-5 w-5 text-warning" />
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Queued</p>
+                  <p className="text-sm font-medium text-text">Queued</p>
                   <p className="text-xs text-gray-500">Awaiting automatic send.</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <XCircleIcon className="h-5 w-5 text-red-600" />
+              <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
+                <XCircleIcon className="h-5 w-5 text-danger" />
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Failed</p>
+                  <p className="text-sm font-medium text-text">Failed</p>
                   <p className="text-xs text-gray-500">Requires manual attention.</p>
                 </div>
               </div>

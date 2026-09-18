@@ -213,7 +213,7 @@ export function ExpenseForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="rounded-md bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+        <div className="rounded-md bg-danger-soft p-4 text-sm text-red-700  ">
           {error}
         </div>
       )}
@@ -221,8 +221,8 @@ export function ExpenseForm({
       {/* Date + Company */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label htmlFor="expense_date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Date <span className="text-red-500">*</span>
+          <label htmlFor="expense_date" className="block text-sm font-medium text-gray-700 ">
+            Date <span className="text-danger">*</span>
           </label>
           <input
             id="expense_date"
@@ -230,12 +230,12 @@ export function ExpenseForm({
             required
             value={expenseDate}
             onChange={(e) => setExpenseDate(e.target.value)}
-            className="mt-1 block min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 sm:min-h-0"
+            className="mt-1 block min-h-touch w-full rounded-md border border-border-strong px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:ring-1 focus:ring-blue-500 sm:min-h-0"
           />
         </div>
         <div>
-          <label htmlFor="company_ref" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Company / Ref <span className="text-red-500">*</span>
+          <label htmlFor="company_ref" className="block text-sm font-medium text-gray-700 ">
+            Company / Ref <span className="text-danger">*</span>
           </label>
           <input
             id="company_ref"
@@ -245,15 +245,15 @@ export function ExpenseForm({
             value={companyRef}
             onChange={(e) => setCompanyRef(e.target.value)}
             placeholder="e.g. Costco, B&Q"
-            className="mt-1 block min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 sm:min-h-0"
+            className="mt-1 block min-h-touch w-full rounded-md border border-border-strong px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:ring-1 focus:ring-blue-500 sm:min-h-0"
           />
         </div>
       </div>
 
       {/* Justification */}
       <div>
-        <label htmlFor="justification" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Justification <span className="text-red-500">*</span>
+        <label htmlFor="justification" className="block text-sm font-medium text-gray-700 ">
+          Justification <span className="text-danger">*</span>
         </label>
         <input
           id="justification"
@@ -263,15 +263,15 @@ export function ExpenseForm({
           value={justification}
           onChange={(e) => setJustification(e.target.value)}
           placeholder="Why was this expense incurred?"
-          className="mt-1 block min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 sm:min-h-0"
+          className="mt-1 block min-h-touch w-full rounded-md border border-border-strong px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:ring-1 focus:ring-blue-500 sm:min-h-0"
         />
       </div>
 
       {/* Amount + VAT */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
-          <label htmlFor="amount" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Amount (£) <span className="text-red-500">*</span>
+          <label htmlFor="amount" className="block text-sm font-medium text-gray-700 ">
+            Amount (£) <span className="text-danger">*</span>
           </label>
           <input
             id="amount"
@@ -282,11 +282,11 @@ export function ExpenseForm({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
-            className="mt-1 block min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 sm:min-h-0"
+            className="mt-1 block min-h-touch w-full rounded-md border border-border-strong px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:ring-1 focus:ring-blue-500 sm:min-h-0"
           />
         </div>
         <div className="flex items-end pb-2">
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 ">
             <input
               type="checkbox"
               checked={vatApplicable}
@@ -294,14 +294,14 @@ export function ExpenseForm({
                 setVatApplicable(e.target.checked)
                 if (!e.target.checked) setVatAmount('0')
               }}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="h-4 w-4 rounded-sm border-border-strong text-blue-600 focus:ring-blue-500"
             />
             VAT Applicable
           </label>
         </div>
         {vatApplicable && (
           <div>
-            <label htmlFor="vat_amount" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="vat_amount" className="block text-sm font-medium text-gray-700 ">
               VAT Amount (£)
             </label>
             <input
@@ -312,7 +312,7 @@ export function ExpenseForm({
               value={vatAmount}
               onChange={(e) => setVatAmount(e.target.value)}
               placeholder="0.00"
-              className="mt-1 block min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 sm:min-h-0"
+              className="mt-1 block min-h-touch w-full rounded-md border border-border-strong px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:ring-1 focus:ring-blue-500 sm:min-h-0"
             />
           </div>
         )}
@@ -320,7 +320,7 @@ export function ExpenseForm({
 
       {/* Notes */}
       <div>
-        <label htmlFor="notes" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label htmlFor="notes" className="block text-sm font-medium text-gray-700 ">
           Notes
         </label>
         <textarea
@@ -330,13 +330,13 @@ export function ExpenseForm({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Optional notes..."
-          className="mt-1 block min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 sm:min-h-0"
+          className="mt-1 block min-h-touch w-full rounded-md border border-border-strong px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:ring-1 focus:ring-blue-500 sm:min-h-0"
         />
       </div>
 
       {/* Receipt upload */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
           Receipt Images
         </label>
 
@@ -346,16 +346,16 @@ export function ExpenseForm({
             {existingFiles.map((file) => (
               <div
                 key={file.id}
-                className="group relative flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800"
+                className="group relative flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm  "
               >
                 {file.mime_type.startsWith('image/') && file.signed_url ? (
                   <img
                     src={file.signed_url}
                     alt={file.file_name}
-                    className="h-10 w-10 rounded object-cover"
+                    className="h-10 w-10 rounded-sm object-cover"
                   />
                 ) : (
-                  <span className="flex h-10 w-10 items-center justify-center rounded bg-gray-200 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-sm bg-border text-xs font-medium text-gray-500  ">
                     PDF
                   </span>
                 )}
@@ -365,7 +365,7 @@ export function ExpenseForm({
                     type="button"
                     disabled={deletingFileId === file.id}
                     onClick={() => handleDeleteExistingFile(file.id)}
-                    className="ml-1 text-red-500 hover:text-red-700 disabled:opacity-50"
+                    className="ml-1 text-danger hover:text-red-700 disabled:opacity-50"
                     aria-label={`Delete ${file.file_name}`}
                   >
                     {deletingFileId === file.id ? '...' : '\u00d7'}
@@ -384,8 +384,8 @@ export function ExpenseForm({
           onClick={() => fileInputRef.current?.click()}
           className={`cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
             isDragging
-              ? 'border-blue-400 bg-blue-50 dark:border-blue-500 dark:bg-blue-900/20'
-              : 'border-gray-300 hover:border-gray-400 dark:border-gray-600 dark:hover:border-gray-500'
+              ? 'border-blue-400 bg-blue-50  '
+              : 'border-border-strong hover:border-gray-400  '
           }`}
           role="button"
           tabIndex={0}
@@ -396,10 +396,10 @@ export function ExpenseForm({
             }
           }}
         >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-gray-500 ">
             Drag and drop receipt images here, or click to browse
           </p>
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+          <p className="mt-1 text-xs text-gray-400 ">
             JPEG, PNG, WebP, HEIC, PDF — max {MAX_FILE_SIZE_MB}MB each
           </p>
           <input
@@ -423,13 +423,13 @@ export function ExpenseForm({
             {pendingFiles.map((file, idx) => (
               <div
                 key={`${file.name}-${idx}`}
-                className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 text-sm dark:bg-gray-800"
+                className="flex items-center justify-between rounded-md bg-surface-2 px-3 py-2 text-sm "
               >
                 <span className="truncate">{file.name}</span>
                 <button
                   type="button"
                   onClick={() => removePendingFile(idx)}
-                  className="ml-2 text-red-500 hover:text-red-700"
+                  className="ml-2 text-danger hover:text-red-700"
                   aria-label={`Remove ${file.name}`}
                 >
                   {'\u00d7'}
@@ -440,17 +440,17 @@ export function ExpenseForm({
         )}
 
         {fileError && (
-          <p className="mt-2 text-sm text-red-600 dark:text-red-400">{fileError}</p>
+          <p className="mt-2 text-sm text-danger ">{fileError}</p>
         )}
       </div>
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+      <div className="flex items-center justify-end gap-3 border-t border-border pt-4 ">
         <button
           type="button"
           onClick={onCancel}
           disabled={isLoading}
-          className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+          className="rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-gray-700 hover:bg-surface-hover disabled:opacity-50   "
         >
           Cancel
         </button>

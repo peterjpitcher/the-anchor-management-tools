@@ -168,11 +168,11 @@ export function EmailQuoteModal({ quote, isOpen, onClose, onSuccess }: EmailQuot
           />
         </FormGroup>
 
-        <div className="bg-gray-50 rounded-lg p-4">
-          <p className="text-sm text-gray-600">
+        <div className="bg-surface-2 rounded-lg p-4">
+          <p className="text-sm text-text-muted">
             <strong>Attachment:</strong> Quote {quote.quote_number} (PDF format)
           </p>
-          <p className="text-sm text-gray-600 mt-1">
+          <p className="text-sm text-text-muted mt-1">
             The quote will be attached as a PDF file for professional presentation and easy printing.
           </p>
         </div>

@@ -112,7 +112,7 @@ export function PortalMenu({ trigger, entries, width = 224, maxHeight = 420, dis
           {entries.map((entry) => {
             if (entry.type === 'section') {
               return (
-                <div key={entry.key} className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                <div key={entry.key} className="px-3 pb-1 pt-2 text-2xs font-semibold uppercase tracking-wider text-text-muted">
                   {entry.label}
                 </div>
               )

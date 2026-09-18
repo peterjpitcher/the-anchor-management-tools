@@ -159,7 +159,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
       <Card padding="lg" className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 className="text-lg font-semibold text-text">
               {format(currentMonth, 'MMMM yyyy')}
             </h3>
           </div>
@@ -193,7 +193,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
             at md+ it reverts to full-width with no scroll. */}
         <div className="overflow-x-auto">
         <div className="min-w-[640px] space-y-4 md:min-w-0">
-        <div className="grid grid-cols-7 gap-2 text-sm font-medium text-gray-600">
+        <div className="grid grid-cols-7 gap-2 text-sm font-medium text-text-muted">
           {WEEKDAY_LABELS.map((label) => (
             <div key={label} className="text-center uppercase tracking-wide">
               {label}
@@ -202,7 +202,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
         </div>
 
         {loading ? (
-          <div className="py-10 text-center text-sm text-gray-600">
+          <div className="py-10 text-center text-sm text-text-muted">
             Loading calendar…
           </div>
         ) : (
@@ -216,16 +216,16 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
               const enablingOverride = day.overrides.find((override) => override.is_enabled === true)
               const classNames = [
                 'min-h-[88px] rounded-lg border px-2 py-2 text-left transition relative',
-                day.inCurrentMonth ? 'border-gray-200' : 'border-gray-100 bg-gray-50 text-gray-400',
+                day.inCurrentMonth ? 'border-border' : 'border-border bg-surface-2 text-gray-400',
                 day.isToday ? 'ring-2 ring-primary ring-offset-2' : '',
-                canManage ? 'hover:border-primary hover:shadow-md cursor-pointer' : 'cursor-default',
+                canManage ? 'hover:border-primary hover:shadow-default cursor-pointer' : 'cursor-default',
               ]
 
               if (hasSpecial) {
                 if (isClosed) {
-                  classNames.push('bg-red-50 border-red-200')
+                  classNames.push('bg-danger-soft border-red-200')
                 } else if (kitchenClosed) {
-                  classNames.push('bg-amber-50 border-amber-200')
+                  classNames.push('bg-warning-soft border-amber-200')
                 } else {
                   classNames.push('bg-blue-50 border-blue-200')
                 }
@@ -250,9 +250,9 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
                   
                   {/* Status Badges */}
                   <div className="space-y-1 text-xs">
-                     {isClosed && <span className="inline-block px-1.5 py-0.5 rounded bg-red-100 text-red-800 font-medium">Closed</span>}
-                     {!isClosed && kitchenClosed && <span className="inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">Kitchen Closed</span>}
-                     {!isClosed && hasSpecial && !kitchenClosed && <span className="inline-block px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">Modified</span>}
+                     {isClosed && <span className="inline-block px-1.5 py-0.5 rounded-sm bg-danger-soft text-danger-fg font-medium">Closed</span>}
+                     {!isClosed && kitchenClosed && <span className="inline-block px-1.5 py-0.5 rounded-sm bg-amber-100 text-warning-fg font-medium">Kitchen Closed</span>}
+                     {!isClosed && hasSpecial && !kitchenClosed && <span className="inline-block px-1.5 py-0.5 rounded-sm bg-blue-100 text-info-fg font-medium">Modified</span>}
                   </div>
 
                   {hasSpecial && (

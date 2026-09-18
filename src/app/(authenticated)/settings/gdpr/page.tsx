@@ -118,7 +118,7 @@ export default function GDPRSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <TrashIcon className="h-5 w-5 mr-2 text-red-500" />
+              <TrashIcon className="h-5 w-5 mr-2 text-danger" />
               Delete Your Data
             </CardTitle>
             <CardDescription className="mt-2 max-w-xl">

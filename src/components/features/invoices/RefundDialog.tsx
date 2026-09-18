@@ -185,26 +185,26 @@ export function RefundDialog({
     >
       <div className="space-y-5">
         {/* Amount summary */}
-        <div className="rounded-lg bg-gray-50 p-4 space-y-2">
+        <div className="rounded-lg bg-surface-2 p-4 space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Original amount</span>
-            <span className="font-medium text-gray-900">{formatCurrency(originalAmount)}</span>
+            <span className="text-text-muted">Original amount</span>
+            <span className="font-medium text-text">{formatCurrency(originalAmount)}</span>
           </div>
           {totalRefunded > 0 && (
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Already refunded</span>
+              <span className="text-text-muted">Already refunded</span>
               <span className="font-medium text-green-700">-{formatCurrency(totalRefunded)}</span>
             </div>
           )}
           {totalPending > 0 && (
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Pending refunds</span>
-              <span className="font-medium text-amber-700">-{formatCurrency(totalPending)}</span>
+              <span className="text-text-muted">Pending refunds</span>
+              <span className="font-medium text-warning-fg">-{formatCurrency(totalPending)}</span>
             </div>
           )}
-          <div className="border-t border-gray-200 pt-2 flex justify-between text-sm">
-            <span className="font-medium text-gray-900">Refundable balance</span>
-            <span className="font-semibold text-gray-900">{formatCurrency(remaining)}</span>
+          <div className="border-t border-border pt-2 flex justify-between text-sm">
+            <span className="font-medium text-text">Refundable balance</span>
+            <span className="font-semibold text-text">{formatCurrency(remaining)}</span>
           </div>
         </div>
 
@@ -227,8 +227,8 @@ export function RefundDialog({
                     key={option.value}
                     className={`p-3 rounded-lg border transition-colors ${
                       method === option.value
-                        ? 'border-green-500 bg-green-50'
-                        : 'border-gray-200 hover:bg-gray-50'
+                        ? 'border-green-500 bg-success-soft'
+                        : 'border-border hover:bg-surface-hover'
                     } ${option.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                   >
                     <Radio
@@ -271,7 +271,7 @@ export function RefundDialog({
                 step="0.01"
               />
               {amount && !isValidAmount && (
-                <p className="mt-1 text-sm text-red-600">
+                <p className="mt-1 text-sm text-danger">
                   Enter an amount between £0.01 and {formatCurrency(remaining)}
                 </p>
               )}
@@ -324,7 +324,7 @@ export function RefundDialog({
                         placeholder="For example: kitchen closed at short notice, so the deposit is being returned."
                       />
                       {overrideReason.trim().length === 0 && (
-                        <p className="mt-1 text-sm text-red-600">
+                        <p className="mt-1 text-sm text-danger">
                           A reason is required before the override can be used.
                         </p>
                       )}

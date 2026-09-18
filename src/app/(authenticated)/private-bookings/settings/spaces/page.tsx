@@ -304,7 +304,7 @@ export default async function VenueSpacesPage({
       <Card>
         <Section 
           title="Existing Spaces"
-          icon={<MapPinIcon className="h-5 w-5 text-gray-600" />}
+          icon={<MapPinIcon className="h-5 w-5 text-text-muted" />}
           description={`${spaces?.length || 0} space${spaces?.length !== 1 ? 's' : ''}`}
         >
           {spaces?.length === 0 ? (
@@ -313,16 +313,16 @@ export default async function VenueSpacesPage({
               description="Add your first space using the form above."
             />
           ) : (
-            <div className="space-y-4 md:space-y-0 md:divide-y md:divide-gray-200">
+            <div className="space-y-4 md:space-y-0 md:divide-y md:divide-border">
               {spaces?.map((space) => (
                 <div
                   key={space.id}
-                  className="rounded-xl border border-gray-200 p-4 md:rounded-none md:border-0 md:p-0 md:py-6 md:first:pt-0 md:last:pb-0"
+                  className="rounded-xl border border-border p-4 md:rounded-none md:border-0 md:p-0 md:py-6 md:first:pt-0 md:last:pb-0"
                 >
                   {/* Mobile-only summary header so each space reads as a distinct card */}
                   <div className="md:hidden mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <h4 className="truncate text-base font-medium text-gray-900">{space.name}</h4>
+                      <h4 className="truncate text-base font-medium text-text">{space.name}</h4>
                       <p className="mt-0.5 text-xs text-gray-500">
                         Seated {space.capacity_seated} · Standing {space.capacity_standing ?? space.capacity_seated} · £{space.rate_per_hour}/hr
                       </p>

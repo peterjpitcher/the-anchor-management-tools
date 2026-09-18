@@ -228,14 +228,14 @@ export default function NewPrivateBookingPage() {
           >
             <div className="space-y-4">
               <div>
-                <label className="inline-flex min-h-[44px] md:min-h-0 items-center gap-2 text-sm font-medium text-gray-700">
+                <label className="inline-flex min-h-touch md:min-h-0 items-center gap-2 text-sm font-medium text-gray-700">
                   <input
                     type="checkbox"
                     id="date_tbd"
                     name="date_tbd_toggle"
                     checked={dateTbd}
                     onChange={(event) => setDateTbd(event.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    className="h-4 w-4 rounded-sm border-border-strong text-blue-600 focus:ring-blue-500"
                   />
                   <span>Event date/time to be confirmed</span>
                 </label>

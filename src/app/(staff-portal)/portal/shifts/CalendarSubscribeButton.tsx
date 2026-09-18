@@ -20,11 +20,11 @@ export default function CalendarSubscribeButton({ feedUrl }: { feedUrl: string }
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3">
+    <div className="rounded-lg border border-border bg-surface p-3">
       <div className="mb-2 flex items-start gap-2">
         <CalendarDaysIcon className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
         <div>
-          <p className="text-xs font-semibold text-gray-900">Sync shifts to your calendar</p>
+          <p className="text-xs font-semibold text-text">Sync shifts to your calendar</p>
           <p className="text-xs text-gray-500">
             Pending and accepted shifts are included. Google Calendar can take several hours to update.
           </p>
@@ -42,14 +42,14 @@ export default function CalendarSubscribeButton({ feedUrl }: { feedUrl: string }
           href={googleUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="touch-target inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          className="touch-target inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-surface-hover transition-colors"
         >
           Google Calendar
         </a>
         <button
           type="button"
           onClick={handleCopy}
-          className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-surface-hover transition-colors"
         >
           {copied ? (
             <><CheckIcon className="h-3.5 w-3.5 text-green-600" /><span className="text-green-600">Copied!</span></>

@@ -96,15 +96,15 @@ export function ExpenseFileViewer({
       aria-modal="true"
       aria-label="Receipt file viewer"
     >
-      <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col rounded-lg bg-white shadow-xl dark:bg-gray-900 sm:w-auto">
+      <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col rounded-lg bg-surface shadow-lg sm:w-auto">
         {/* Header */}
-        <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3 ">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="truncate text-sm font-medium text-gray-700 dark:text-gray-300">
+            <span className="truncate text-sm font-medium text-gray-700 ">
               {currentFile.file_name}
             </span>
             {files.length > 1 && (
-              <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
+              <span className="shrink-0 text-xs text-gray-500 ">
                 {currentIndex + 1} of {files.length}
               </span>
             )}
@@ -115,7 +115,7 @@ export function ExpenseFileViewer({
                 type="button"
                 onClick={handleDelete}
                 disabled={deleting}
-                className="rounded px-2 py-1 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                className="rounded-sm px-2 py-1 text-sm text-danger hover:bg-danger-soft disabled:opacity-50  "
               >
                 {deleting ? 'Deleting...' : 'Delete'}
               </button>
@@ -125,7 +125,7 @@ export function ExpenseFileViewer({
                 href={currentFile.signed_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded px-2 py-1 text-sm text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                className="rounded-sm px-2 py-1 text-sm text-blue-600 hover:bg-blue-50  "
               >
                 Open
               </a>
@@ -133,7 +133,7 @@ export function ExpenseFileViewer({
             <button
               type="button"
               onClick={onClose}
-              className="rounded px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+              className="rounded-sm px-2 py-1 text-sm text-gray-500 hover:bg-surface-hover  "
               aria-label="Close viewer"
             >
               {'\u00d7'}
@@ -143,7 +143,7 @@ export function ExpenseFileViewer({
 
         {/* Error */}
         {deleteError && (
-          <div className="bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+          <div className="bg-danger-soft px-4 py-2 text-sm text-red-700  ">
             {deleteError}
           </div>
         )}
@@ -154,18 +154,18 @@ export function ExpenseFileViewer({
             <img
               src={currentFile.signed_url}
               alt={currentFile.file_name}
-              className="mx-auto max-h-[70vh] max-w-full rounded object-contain"
+              className="mx-auto max-h-[70vh] max-w-full rounded-sm object-contain"
             />
           )}
           {isPdf && currentFile.signed_url && (
             <iframe
               src={currentFile.signed_url}
               title={currentFile.file_name}
-              className="h-[70vh] w-full rounded border-0"
+              className="h-[70vh] w-full rounded-sm border-0"
             />
           )}
           {!currentFile.signed_url && (
-            <p className="text-center text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-center text-sm text-gray-500 ">
               Unable to load file preview. The signed URL may have expired.
             </p>
           )}
@@ -173,12 +173,12 @@ export function ExpenseFileViewer({
 
         {/* Navigation arrows */}
         {files.length > 1 && (
-          <div className="flex items-center justify-center gap-4 border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+          <div className="flex items-center justify-center gap-4 border-t border-border px-4 py-3 ">
             <button
               type="button"
               onClick={() => setCurrentIndex((i) => i - 1)}
               disabled={currentIndex === 0}
-              className="rounded px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 disabled:opacity-30 dark:text-gray-400 dark:hover:bg-gray-800"
+              className="rounded-sm px-3 py-1 text-sm text-text-muted hover:bg-surface-hover disabled:opacity-50  "
               aria-label="Previous file"
             >
               Previous
@@ -187,7 +187,7 @@ export function ExpenseFileViewer({
               type="button"
               onClick={() => setCurrentIndex((i) => i + 1)}
               disabled={currentIndex === files.length - 1}
-              className="rounded px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 disabled:opacity-30 dark:text-gray-400 dark:hover:bg-gray-800"
+              className="rounded-sm px-3 py-1 text-sm text-text-muted hover:bg-surface-hover disabled:opacity-50  "
               aria-label="Next file"
             >
               Next

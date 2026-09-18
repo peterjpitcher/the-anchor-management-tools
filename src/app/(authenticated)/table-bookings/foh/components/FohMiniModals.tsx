@@ -37,7 +37,7 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-gray-700 hover:bg-surface-hover"
           >
             Cancel
           </button>
@@ -61,7 +61,7 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
           max={50}
           value={partySizeEditValue}
           onChange={(e) => onPartySizeChange(e.target.value)}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
           autoFocus
         />
       </label>
@@ -100,7 +100,7 @@ export const FohWalkoutModal = React.memo(function FohWalkoutModal(props: FohWal
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-gray-700 hover:bg-surface-hover"
           >
             Cancel
           </button>
@@ -125,7 +125,7 @@ export const FohWalkoutModal = React.memo(function FohWalkoutModal(props: FohWal
             step={0.01}
             value={walkoutAmountValue}
             onChange={(e) => onAmountChange(e.target.value)}
-            className="w-full rounded-md border border-gray-300 py-2 pl-7 pr-3 text-sm"
+            className="w-full rounded-md border border-border-strong py-2 pl-7 pr-3 text-sm"
             placeholder="0.00"
             autoFocus
           />
