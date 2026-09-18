@@ -69,7 +69,7 @@ export default function AddEmployeeNoteForm({ employeeId }: AddEmployeeNoteFormP
       )}
 
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-text-muted">
           Notes are permanently recorded with a timestamp.
         </span>
         <SubmitNoteButton />

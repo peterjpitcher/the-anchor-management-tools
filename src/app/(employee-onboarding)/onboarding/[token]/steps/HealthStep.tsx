@@ -98,7 +98,7 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
 
   const textField = (id: keyof HealthData, label: string, type = 'text') => (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label htmlFor={id} className="block text-sm font-medium text-text mb-1">{label}</label>
       <input
         id={id}
         type={type}
@@ -121,13 +121,13 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
         onChange={(event) => setData({ ...data, [id]: event.target.checked })}
         className="mt-0.5 h-4 w-4 rounded-sm border-border-strong text-green-600 focus:ring-green-500"
       />
-      <span className="text-sm text-gray-700">{label}</span>
+      <span className="text-sm text-text">{label}</span>
     </label>
   );
 
   const textareaField = (id: keyof HealthData, label: string) => (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label htmlFor={id} className="block text-sm font-medium text-text mb-1">{label}</label>
       <textarea
         id={id}
         value={data[id] as string}

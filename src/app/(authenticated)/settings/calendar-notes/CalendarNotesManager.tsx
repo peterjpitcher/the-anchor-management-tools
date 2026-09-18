@@ -334,7 +334,7 @@ export default function CalendarNotesManager({
           <p className="mt-1 text-sm text-text-muted">
             Generate important dates between two dates, including major holidays and hospitality-relevant observances.
           </p>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-text-muted">
             Uses your OpenAI key from Settings.
           </p>
 
@@ -390,7 +390,7 @@ export default function CalendarNotesManager({
         </div>
 
         {notes.length === 0 ? (
-          <div className="px-4 py-10 text-center text-sm text-gray-500">
+          <div className="px-4 py-10 text-center text-sm text-text-muted">
             No calendar notes yet.
           </div>
         ) : (
@@ -398,17 +398,17 @@ export default function CalendarNotesManager({
             <table className="min-w-full divide-y divide-border">
               <thead className="bg-surface-2">
                 <tr>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Dates</th>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Title</th>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Source</th>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Notes</th>
-                  <th scope="col" className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
+                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Dates</th>
+                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Title</th>
+                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Source</th>
+                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Notes</th>
+                  <th scope="col" className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-text-muted">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-surface">
                 {notes.map((note) => (
                   <tr key={note.id} className="hover:bg-surface-hover">
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{describeDateRange(note)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-text">{describeDateRange(note)}</td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span

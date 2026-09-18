@@ -81,7 +81,7 @@ export function FaqEditor({ faqs, onChange, onModified }: FaqEditorProps) {
             className="rounded-lg border border-border bg-surface p-4 space-y-3"
           >
             <div className="flex items-start justify-between gap-3">
-              <span className="text-xs font-medium text-gray-500 mt-0.5 shrink-0">
+              <span className="text-xs font-medium text-text-muted mt-0.5 shrink-0">
                 Q{index + 1}
               </span>
               <div className="flex-1 space-y-2">

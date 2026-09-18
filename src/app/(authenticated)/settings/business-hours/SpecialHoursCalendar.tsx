@@ -258,19 +258,19 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
                   {hasSpecial && (
                     <div className="mt-2 space-y-1 text-xs leading-snug">
                       {!isClosed && day.special?.opens && (
-                        <p className="text-gray-700">
+                        <p className="text-text">
                           {day.special.opens?.slice(0, 5)} – {day.special.closes?.slice(0, 5) || 'Closed'}
                         </p>
                       )}
                       {day.special?.note && (
-                        <p className="text-gray-500 line-clamp-2 italic">{day.special.note}</p>
+                        <p className="text-text-muted line-clamp-2 italic">{day.special.note}</p>
                       )}
                     </div>
                   )}
                   {day.overrides.length > 0 && (
                     <div className="mt-2 space-y-1 text-xs leading-snug opacity-75">
                        {/* Legacy override display */}
-                       <p className="text-xs text-gray-500 font-medium">Legacy Override Active</p>
+                       <p className="text-xs text-text-muted font-medium">Legacy Override Active</p>
                     </div>
                   )}
                 </button>

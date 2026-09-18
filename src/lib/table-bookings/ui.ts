@@ -160,7 +160,7 @@ export function getTableBookingStatusBadgeClasses(state: string | null | undefin
     case 'no_show':
       return 'bg-danger-soft text-red-700 border-red-200';
     case 'cancelled':
-      return 'bg-surface-hover text-gray-500 border-border';
+      return 'bg-surface-hover text-text-muted border-border';
     case 'visited_waiting_for_review':
     case 'review_clicked':
       return 'bg-purple-100 text-purple-900 border-purple-200';
@@ -184,7 +184,7 @@ export function getTableBookingStatusBlockClasses(state: string | null | undefin
     case 'no_show':
       return 'border-red-300 bg-red-200/90 text-danger-fg';
     case 'cancelled':
-      return 'border-border-strong bg-border/90 text-gray-700';
+      return 'border-border-strong bg-border/90 text-text';
     case 'completed':
       return 'border-blue-300 bg-blue-200/90 text-info-fg';
     case 'visited_waiting_for_review':
@@ -289,7 +289,7 @@ export function getTableBookingDepositBadgeClasses(kind: TableBookingDepositStat
     case 'waived':
       return 'border-border-strong bg-surface-2 text-text-muted';
     default:
-      return 'border-border bg-surface-2 text-gray-500';
+      return 'border-border bg-surface-2 text-text-muted';
   }
 }
 

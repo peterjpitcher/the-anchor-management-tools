@@ -312,12 +312,12 @@ export function SeasonalPeriods() {
                           <Badge tone={status.tone}>{status.label}</Badge>
                           <Badge tone="neutral">{PERIOD_KIND_LABELS[period.periodKind]}</Badge>
                         </div>
-                        <p className="mt-1 text-sm text-gray-700">
+                        <p className="mt-1 text-sm text-text">
                           {period.startsOn} to {period.endsOn} &middot;{' '}
                           {describeDeposit(period.depositBasis, period.depositAmount)}
                           {period.requiresPreorder ? ' · pre-order required' : ''}
                         </p>
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-text-muted">
                           Code {period.code} &middot; {period.bookingCount} booking
                           {period.bookingCount === 1 ? '' : 's'} taken
                           {period.minPartySize !== null || period.maxPartySize !== null
@@ -363,7 +363,7 @@ export function SeasonalPeriods() {
                     )}
 
                     {period.bookingCount > 0 && (
-                      <p className="mt-3 text-xs text-gray-500">
+                      <p className="mt-3 text-xs text-text-muted">
                         Editing this period does not change the {period.bookingCount} booking
                         {period.bookingCount === 1 ? '' : 's'} already taken. Each one keeps the deposit and
                         the terms it was made under.
@@ -391,11 +391,11 @@ export function SeasonalPeriods() {
                               >
                                 <div className="min-w-0">
                                   <span className="font-medium text-text">{item.name}</span>{' '}
-                                  <span className="text-xs uppercase text-gray-500">
+                                  <span className="text-xs uppercase text-text-muted">
                                     {MENU_COURSE_LABELS[item.course]}
                                   </span>
                                   {item.priceGbp !== null && (
-                                    <span className="text-gray-700"> &middot; {formatGbp(item.priceGbp)}</span>
+                                    <span className="text-text"> &middot; {formatGbp(item.priceGbp)}</span>
                                   )}
                                   {item.description && (
                                     <p className="text-xs text-text-muted">{item.description}</p>
@@ -475,7 +475,7 @@ export function SeasonalPeriods() {
                               />
                             </div>
                             {menuCourseRequiresPrice(menuDraft.course) && (
-                              <div className="sm:col-span-2 rounded-md border border-border bg-surface-2 p-3 text-xs text-gray-700">
+                              <div className="sm:col-span-2 rounded-md border border-border bg-surface-2 p-3 text-xs text-text">
                                 <p className="font-medium text-text">
                                   An add-on sits alongside the courses, not inside them.
                                 </p>
@@ -591,7 +591,7 @@ export function SeasonalPeriods() {
               <label htmlFor="booking_period_deposits_enabled" className="text-sm font-medium text-text">
                 Collect seasonal deposits
               </label>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-text-muted">
                 Off means a deposit is still worked out and shown to staff, but no money is asked for. The
                 deposit for a party of {LARGE_GROUP_DEPOSIT_THRESHOLD} or more is unaffected.
               </p>
@@ -694,10 +694,10 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
           {draft.id ? (
             <div>
               <span className="block text-ui font-medium text-text">Kind and code</span>
-              <p className="mt-1 text-sm text-gray-700">
+              <p className="mt-1 text-sm text-text">
                 {PERIOD_KIND_LABELS[draft.period_kind]} &middot; {draft.code}
               </p>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-text-muted">
                 Fixed after creation. Rules and bookings already refer to them, so renaming the period is
                 safe but changing these would not be.
               </p>
@@ -802,7 +802,7 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
               <label htmlFor="requires_preorder" className="text-sm font-medium text-text">
                 Guests must choose their food when they book
               </label>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-text-muted">
                 The period cannot go live until at least one dish is on its menu, and guests are told the
                 menu is not ready rather than being shown an empty list.
               </p>
@@ -822,14 +822,14 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
         {preview && (
           <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm">
             <p className="font-medium text-text">What guests would pay</p>
-            <ul className="mt-1 space-y-1 text-gray-700">
+            <ul className="mt-1 space-y-1 text-text">
               {preview.map((line) => (
                 <li key={line.partySize}>
                   A party of {line.partySize} pays {line.text}.
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-xs text-gray-500">
+            <p className="mt-2 text-xs text-text-muted">
               Where the deposit for parties of {LARGE_GROUP_DEPOSIT_THRESHOLD} or more is larger, that one
               applies instead. The two are never added together.
             </p>

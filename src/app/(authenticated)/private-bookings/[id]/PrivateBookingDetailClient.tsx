@@ -336,7 +336,7 @@ function PaymentModal({
             <>
               <input type="hidden" name="amount" value={customAmount} />
               <p className="text-lg font-semibold">£{Number(customAmount).toFixed(2)}</p>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-text-muted">
                 Deposit amount is fixed and cannot be changed.
               </p>
             </>
@@ -355,7 +355,7 @@ function PaymentModal({
                 <p className="mt-1 text-xs text-danger">{amountError}</p>
               )}
               {maxAmount !== undefined && (
-                <p className="mt-2 text-xs text-gray-500">
+                <p className="mt-2 text-xs text-text-muted">
                   Remaining balance: £{maxAmount.toFixed(2)}. You may record a partial payment.
                 </p>
               )}
@@ -446,7 +446,7 @@ function SortableBookingItem({
         {canEdit && (
           <button
             type="button"
-            className="mt-1 text-text-subtle hover:text-gray-500 cursor-grab active:cursor-grabbing"
+            className="mt-1 text-text-subtle hover:text-text-muted cursor-grab active:cursor-grabbing"
             aria-label="Reorder booking item"
             {...attributes}
             {...listeners}
@@ -461,7 +461,7 @@ function SortableBookingItem({
           <p className="text-sm font-medium text-text">
             {item.description}
           </p>
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
             <span>Qty: {item.quantity}</span>
             <span>{formatMoney(item.unit_price)} each</span>
             {!!item.discount_value && item.discount_value > 0 && (
@@ -481,7 +481,7 @@ function SortableBookingItem({
             )}
           </div>
           {item.notes && (
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-text-muted">
               {item.notes}
             </p>
           )}
@@ -495,7 +495,7 @@ function SortableBookingItem({
           <>
             <button
               onClick={() => onEdit(item)}
-              className="text-gray-400 hover:text-gray-500"
+              className="text-gray-400 hover:text-text-muted"
               title="Edit item"
               type="button"
             >
@@ -752,7 +752,7 @@ function StatusModal({
         {availableStatuses.length > 0 ? (
           <>
             <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-700">Change to:</p>
+              <p className="text-sm font-medium text-text">Change to:</p>
               {availableStatuses.map((status) => {
                 const StatusIcon = statusConfig[status].icon;
                 return (
@@ -775,7 +775,7 @@ function StatusModal({
                         {statusConfig[status].label}
                       </p>
                       {status === "confirmed" && (
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-text-muted">
                           Customer will receive confirmation SMS
                         </p>
                       )}
@@ -842,7 +842,7 @@ function StatusModal({
                           disabled={isSubmitting}
                         />
                       </FormGroup>
-                      <p className="text-xs text-gray-500 sm:col-span-2">
+                      <p className="text-xs text-text-muted sm:col-span-2">
                         A phone call on its own is not a written cancellation — ask the customer to confirm in writing where you can.
                       </p>
                     </div>
@@ -948,7 +948,7 @@ function StatusModal({
           </>
         ) : (
           <div className="text-center py-4">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-text-muted">
               No status changes available for completed bookings.
             </p>
             <Button onClick={onClose} variant="secondary" className="mt-4">
@@ -1332,7 +1332,7 @@ function AddItemModal({
 
         {/* Discount */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-text">
             Discount (optional)
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2574,7 +2574,7 @@ export default function PrivateBookingDetailClient({
             <Card>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Event Date
                   </label>
                   {isDateTbd ? (
@@ -2589,7 +2589,7 @@ export default function PrivateBookingDetailClient({
                         {formatDateFull(booking.event_date)}
                       </div>
                       {booking.setup_date && (
-                        <p className="mt-1 text-sm text-gray-500">
+                        <p className="mt-1 text-sm text-text-muted">
                           Setup: {formatDateFull(booking.setup_date)}
                         </p>
                       )}
@@ -2598,7 +2598,7 @@ export default function PrivateBookingDetailClient({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Time
                   </label>
                   {isDateTbd ? (
@@ -2614,7 +2614,7 @@ export default function PrivateBookingDetailClient({
                         {formatEndTime(booking)}
                       </div>
                       {booking.setup_time && (
-                        <p className="mt-1 text-sm text-gray-500">
+                        <p className="mt-1 text-sm text-text-muted">
                           Setup: {formatTime12Hour(booking.setup_time || null)}
                         </p>
                       )}
@@ -2623,7 +2623,7 @@ export default function PrivateBookingDetailClient({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Guest Count
                   </label>
                   <div className="mt-1 flex items-center text-sm text-text">
@@ -2633,7 +2633,7 @@ export default function PrivateBookingDetailClient({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Event Type
                   </label>
                   <div className="mt-1 flex items-center text-sm text-text">
@@ -2643,7 +2643,7 @@ export default function PrivateBookingDetailClient({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Contact Phone
                   </label>
                   <div className="mt-1 flex items-center text-sm">
@@ -2656,13 +2656,13 @@ export default function PrivateBookingDetailClient({
                         {booking.contact_phone}
                       </a>
                     ) : (
-                      <span className="text-gray-500">Not provided</span>
+                      <span className="text-text-muted">Not provided</span>
                     )}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Contact Email
                   </label>
                   <div className="mt-1 flex items-center text-sm">
@@ -2675,7 +2675,7 @@ export default function PrivateBookingDetailClient({
                         {booking.contact_email}
                       </a>
                     ) : (
-                      <span className="text-gray-500">Not provided</span>
+                      <span className="text-text-muted">Not provided</span>
                     )}
                   </div>
                   {canEdit &&
@@ -2698,7 +2698,7 @@ export default function PrivateBookingDetailClient({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Booking Source
                   </label>
                   <div className="mt-1 flex items-center text-sm text-text">
@@ -2727,7 +2727,7 @@ export default function PrivateBookingDetailClient({
               canEdit ? (
                 <div className="flex items-center gap-3">
                   {isReordering && (
-                    <span className="text-xs text-gray-500">Saving order…</span>
+                    <span className="text-xs text-text-muted">Saving order…</span>
                   )}
                   <Button onClick={() => setShowAddItemModal(true)} size="sm">
                     <PlusIcon className="h-4 w-4 mr-1" />
@@ -2790,7 +2790,7 @@ export default function PrivateBookingDetailClient({
                 <div className="space-y-4">
                   {booking.customer_requests && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-1">
+                      <h3 className="text-sm font-medium text-text mb-1">
                         Customer Requests
                       </h3>
                       <p className="text-sm text-text-muted whitespace-pre-wrap">
@@ -2800,7 +2800,7 @@ export default function PrivateBookingDetailClient({
                   )}
                   {booking.special_requirements && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-1">
+                      <h3 className="text-sm font-medium text-text mb-1">
                         Special Requirements
                       </h3>
                       <p className="text-sm text-text-muted whitespace-pre-wrap">
@@ -2810,7 +2810,7 @@ export default function PrivateBookingDetailClient({
                   )}
                   {booking.accessibility_needs && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-1">
+                      <h3 className="text-sm font-medium text-text mb-1">
                         Accessibility Needs
                       </h3>
                       <p className="text-sm text-text-muted whitespace-pre-wrap">
@@ -2820,7 +2820,7 @@ export default function PrivateBookingDetailClient({
                   )}
                   {internalNotesForDisplay && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-1">
+                      <h3 className="text-sm font-medium text-text mb-1">
                         Internal Notes
                       </h3>
                       <p className="text-sm text-text-muted whitespace-pre-wrap">
@@ -2830,7 +2830,7 @@ export default function PrivateBookingDetailClient({
                   )}
                   {booking.contract_note && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-1">
+                      <h3 className="text-sm font-medium text-text mb-1">
                         Contract Note
                       </h3>
                       <p className="text-sm text-text-muted whitespace-pre-wrap">
@@ -2883,7 +2883,7 @@ export default function PrivateBookingDetailClient({
                     maxLength={NOTE_MAX_LENGTH}
                     placeholder="Capture quick updates, decisions, or follow-ups for the team."
                   />
-                  <div className="flex items-center justify-between text-xs text-gray-500">
+                  <div className="flex items-center justify-between text-xs text-text-muted">
                     <span>
                       {noteText.length}/{NOTE_MAX_LENGTH} characters
                     </span>
@@ -2918,7 +2918,7 @@ export default function PrivateBookingDetailClient({
               <div className="space-y-3">
                 {/* Always show original price and discounts */}
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">
+                  <span className="text-text-muted">
                     Original Price (before discounts)
                   </span>
                   <span className="font-medium text-text">
@@ -2939,7 +2939,7 @@ export default function PrivateBookingDetailClient({
                 )}
 
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Subtotal</span>
+                  <span className="text-text-muted">Subtotal</span>
                   <span className="font-medium text-text">
                     {items.length > 0 ? formatMoney(calculateSubtotal()) : formatMoney(0)}
                   </span>
@@ -2956,7 +2956,7 @@ export default function PrivateBookingDetailClient({
                           : `£${booking.discount_amount}`}
                         )
                         {booking.discount_reason && (
-                          <span className="block text-xs text-gray-500 font-normal mt-1">
+                          <span className="block text-xs text-text-muted font-normal mt-1">
                             {booking.discount_reason}
                           </span>
                         )}
@@ -2985,13 +2985,13 @@ export default function PrivateBookingDetailClient({
 
                 <div className="pt-3 border-t space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Event price (ex VAT)</span>
+                    <span className="text-text-muted">Event price (ex VAT)</span>
                     <span className="font-medium text-text">
                       {formatMoney(bookingMoney.discountedNet)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">VAT</span>
+                    <span className="text-text-muted">VAT</span>
                     <span className="font-medium text-text">
                       {formatMoney(bookingMoney.vatAmount)}
                     </span>
@@ -3014,10 +3014,10 @@ export default function PrivateBookingDetailClient({
                   </p>
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-700">
+                      <p className="text-sm font-medium text-text">
                         {depositAppliedToInvoice ? "Applied towards event price" : "Security Deposit"}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-text-muted">
                         {!depositRequired
                           ? "No deposit required"
                           : booking.deposit_paid_date
@@ -3233,14 +3233,14 @@ export default function PrivateBookingDetailClient({
                     <>
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-700">
+                          <p className="text-sm font-medium text-text">
                             Balance Due
                           </p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-text-muted">
                             For booking items only
                           </p>
                           {booking.balance_due_date && (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-text-muted">
                               Due by {formatDateFull(booking.balance_due_date)}
                             </p>
                           )}
@@ -3251,7 +3251,7 @@ export default function PrivateBookingDetailClient({
                           ) : (
                             <>
                               {totalPaid > 0 && remaining > 0 && (
-                                <p className="text-xs text-gray-500 mb-0.5">
+                                <p className="text-xs text-text-muted mb-0.5">
                                   {formatMoney(totalPaid)} of {formatMoney(bookingTotal)} paid
                                 </p>
                               )}
@@ -3289,7 +3289,7 @@ export default function PrivateBookingDetailClient({
                             <span className="text-sm text-green-600 font-medium">
                               ✓ Fully Paid
                             </span>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-text-muted">
                               {formatDateFull(booking.final_payment_date)}
                             </span>
                           </div>
@@ -3309,7 +3309,7 @@ export default function PrivateBookingDetailClient({
                 {canSendSms && (
                   <Link
                     href={`/private-bookings/${bookingId}/messages`}
-                    className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-surface-2 rounded-lg hover:bg-surface-hover"
+                    className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover"
                   >
                     <div className="flex items-center">
                       <ChatBubbleLeftRightIcon className="h-5 w-5 mr-3 text-purple-600" />
@@ -3323,7 +3323,7 @@ export default function PrivateBookingDetailClient({
                   type="button"
                   onClick={handleDownloadContract}
                   disabled={downloadingContract}
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
                     <DocumentIcon className="h-5 w-5 mr-3 text-blue-600" />
@@ -3336,7 +3336,7 @@ export default function PrivateBookingDetailClient({
                   href={`/api/private-bookings/event-sheet?bookingId=${bookingId}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-surface-2 rounded-lg hover:bg-surface-hover"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover"
                 >
                   <div className="flex items-center">
                     <ClipboardDocumentListIcon className="h-5 w-5 mr-3 text-blue-600" />
@@ -3349,7 +3349,7 @@ export default function PrivateBookingDetailClient({
                   type="button"
                   onClick={handleSendContract}
                   disabled={sendingContract || !booking.contact_email}
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
                     <DocumentIcon className="h-5 w-5 mr-3 text-green-600" />
@@ -3358,7 +3358,7 @@ export default function PrivateBookingDetailClient({
                   <ChevronRightIcon className="h-4 w-4 text-gray-400" />
                 </button>
                 {booking.contract_sent_at ? (
-                  <p className="text-xs text-gray-500 px-1">
+                  <p className="text-xs text-text-muted px-1">
                     Contract sent {formatDateFull(booking.contract_sent_at)}
                     {booking.contract_sent_to ? ` to ${booking.contract_sent_to}` : ''}
                   </p>
@@ -3391,12 +3391,12 @@ export default function PrivateBookingDetailClient({
                   if (alreadyInvoiced) {
                     return (
                       <div className="rounded-lg bg-surface-2 px-4 py-3">
-                        <p className="text-sm font-medium text-gray-700">
+                        <p className="text-sm font-medium text-text">
                           {booking.invoice_sent_at
                             ? `Invoice sent ${formatDateFull(booking.invoice_sent_at)}`
                             : 'Invoice created but not yet sent'}
                         </p>
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-text-muted">
                           {booking.invoice_deposit_treatment === 'deducted'
                             ? 'Deposit applied to the invoice.'
                             : 'Deposit held separately.'}
@@ -3440,7 +3440,7 @@ export default function PrivateBookingDetailClient({
                         type="button"
                         onClick={handleOpenInvoiceModal}
                         disabled={Boolean(blockedReason)}
-                        className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <div className="flex items-center">
                           <DocumentIcon className="h-5 w-5 mr-3 text-green-600" />
@@ -3464,7 +3464,7 @@ export default function PrivateBookingDetailClient({
             <Card>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500">
+                  <label className="block text-xs font-medium text-text-muted">
                     Booking ID
                   </label>
                   <p className="mt-1 text-sm text-text font-mono">
@@ -3472,7 +3472,7 @@ export default function PrivateBookingDetailClient({
                   </p>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500">
+                  <label className="block text-xs font-medium text-text-muted">
                     Created
                   </label>
                   <p className="mt-1 text-sm text-text">
@@ -3480,7 +3480,7 @@ export default function PrivateBookingDetailClient({
                   </p>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500">
+                  <label className="block text-xs font-medium text-text-muted">
                     Last Updated
                   </label>
                   <p className="mt-1 text-sm text-text">
@@ -3489,7 +3489,7 @@ export default function PrivateBookingDetailClient({
                 </div>
                 {booking.contract_version > 0 && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-500">
+                    <label className="block text-xs font-medium text-text-muted">
                       Contract Version
                     </label>
                     <p className="mt-1 text-sm text-text">
@@ -3529,7 +3529,7 @@ export default function PrivateBookingDetailClient({
                         <p className="text-sm font-medium text-text">
                           {getAuditActor(entry)}
                         </p>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-text-muted">
                           {formatDateTime12Hour(entry.performed_at)}
                         </span>
                       </div>
@@ -3537,7 +3537,7 @@ export default function PrivateBookingDetailClient({
                         {formatAuditAction(entry.action)}
                       </p>
                       {details && (
-                        <p className="text-sm text-gray-500 whitespace-pre-wrap">
+                        <p className="text-sm text-text-muted whitespace-pre-wrap">
                           {details}
                         </p>
                       )}
@@ -3678,12 +3678,12 @@ export default function PrivateBookingDetailClient({
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-text">
             The invoice is voided and unlinked from this booking. The customer
             is not emailed, so tell them yourself that the old invoice no longer
             stands.
           </p>
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-text">
             The deposit stays on the booking and is applied again to the
             replacement invoice. Change the items first, then use{' '}
             <span className="font-medium">Generate and send invoice</span>.

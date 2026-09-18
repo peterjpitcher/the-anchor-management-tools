@@ -371,7 +371,7 @@ export default function BulkMessagesClient({
         <Card
           header={
             <div className="flex items-center gap-2">
-              <FunnelIcon className="h-5 w-5 text-gray-500" />
+              <FunnelIcon className="h-5 w-5 text-text-muted" />
               <h3 className="text-lg font-medium text-text">Filters</h3>
             </div>
           }
@@ -379,7 +379,7 @@ export default function BulkMessagesClient({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {/* Event filter */}
             <div>
-              <label htmlFor="filter-event" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filter-event" className="block text-sm font-medium text-text mb-1">
                 Event
               </label>
               <Select
@@ -399,7 +399,7 @@ export default function BulkMessagesClient({
 
             {/* Booking status filter */}
             <div>
-              <label htmlFor="filter-booking-status" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filter-booking-status" className="block text-sm font-medium text-text mb-1">
                 Booking Status
               </label>
               <Select
@@ -416,7 +416,7 @@ export default function BulkMessagesClient({
 
             {/* SMS Opt-in filter */}
             <div>
-              <label htmlFor="filter-sms-optin" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filter-sms-optin" className="block text-sm font-medium text-text mb-1">
                 SMS Opt-in
               </label>
               <Select
@@ -431,7 +431,7 @@ export default function BulkMessagesClient({
 
             {/* Category filter */}
             <div>
-              <label htmlFor="filter-category" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filter-category" className="block text-sm font-medium text-text mb-1">
                 Category
               </label>
               <Select
@@ -451,7 +451,7 @@ export default function BulkMessagesClient({
 
             {/* Date range filters */}
             <div>
-              <label htmlFor="filter-created-after" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filter-created-after" className="block text-sm font-medium text-text mb-1">
                 Created After
               </label>
               <Input
@@ -463,7 +463,7 @@ export default function BulkMessagesClient({
             </div>
 
             <div>
-              <label htmlFor="filter-created-before" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="filter-created-before" className="block text-sm font-medium text-text mb-1">
                 Created Before
               </label>
               <Input
@@ -477,7 +477,7 @@ export default function BulkMessagesClient({
 
           {/* Search */}
           <div className="mt-4">
-            <label htmlFor="filter-search" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="filter-search" className="block text-sm font-medium text-text mb-1">
               Search
             </label>
             <Input
@@ -542,14 +542,14 @@ export default function BulkMessagesClient({
         <Card
           header={
             <div className="flex items-center gap-2">
-              <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-500" />
+              <ChatBubbleLeftRightIcon className="h-5 w-5 text-text-muted" />
               <h3 className="text-lg font-medium text-text">Compose Message</h3>
             </div>
           }
         >
           {/* Personalisation variables */}
           <div className="mb-3">
-            <span className="text-sm text-gray-500 mr-2">Insert variable:</span>
+            <span className="text-sm text-text-muted mr-2">Insert variable:</span>
             <div className="inline-flex gap-2 flex-wrap">
               <Button
                 variant="secondary"
@@ -581,7 +581,7 @@ export default function BulkMessagesClient({
           />
 
           {/* Character / segment counter */}
-          <div className="mt-2 flex items-center justify-between text-sm text-gray-500">
+          <div className="mt-2 flex items-center justify-between text-sm text-text-muted">
             <div className="flex items-center gap-3">
               <span>
                 {smsInfo.chars} characters
@@ -600,7 +600,7 @@ export default function BulkMessagesClient({
           {/* Preview */}
           {trimmedMessage && previewRecipient && (
             <div className="mt-4 rounded-md bg-surface-2 p-3 border border-border">
-              <p className="text-xs font-medium text-gray-500 mb-1">
+              <p className="text-xs font-medium text-text-muted mb-1">
                 Preview (for {previewRecipient.first_name} {previewRecipient.last_name}):
               </p>
               <p className="text-sm text-text whitespace-pre-wrap">{previewMessage}</p>
@@ -609,7 +609,7 @@ export default function BulkMessagesClient({
 
           {/* Send controls */}
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-text-muted">
               {selectedKeys.size > 0
                 ? `${selectedKeys.size} recipient${selectedKeys.size !== 1 ? 's' : ''} selected`
                 : 'Select recipients above to send'}

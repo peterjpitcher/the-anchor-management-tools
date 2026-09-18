@@ -8,7 +8,7 @@ interface EmployeeNotesListProps {
 
 export default function EmployeeNotesList({ notes }: EmployeeNotesListProps) {
   if (!notes || notes.length === 0) {
-    return <p className="text-sm text-gray-500">No notes recorded for this employee yet.</p>
+    return <p className="text-sm text-text-muted">No notes recorded for this employee yet.</p>
   }
 
   return (
@@ -27,13 +27,13 @@ export default function EmployeeNotesList({ notes }: EmployeeNotesListProps) {
                   </span>
                 </div>
                 <div className="min-w-0 flex-1 pt-0.5 sm:pt-1.5">
-                  <div className="text-xs sm:text-sm text-gray-500">
+                  <div className="text-xs sm:text-sm text-text-muted">
                     <span className="font-medium text-text">{note.author_name}</span>
-                    <span className="block sm:inline sm:ml-2 text-gray-500">
+                    <span className="block sm:inline sm:ml-2 text-text-muted">
                       {formatDate(note.created_at)}
                     </span>
                   </div>
-                  <p className="mt-1 sm:mt-0.5 text-xs sm:text-sm text-gray-700 whitespace-pre-wrap break-words">
+                  <p className="mt-1 sm:mt-0.5 text-xs sm:text-sm text-text whitespace-pre-wrap break-words">
                     {note.note_text}
                   </p>
                 </div>

@@ -273,7 +273,7 @@ export default function RightToWorkTab({
       )}
 
       {!canEdit && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-text-muted">
           You do not have permission to update right to work information.
         </p>
       )}
@@ -282,7 +282,7 @@ export default function RightToWorkTab({
         <input type="hidden" name="employee_id" value={employeeId} />
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="check_method" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="check_method" className="block text-sm font-medium text-text sm:col-span-1">
             Check Method
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -302,7 +302,7 @@ export default function RightToWorkTab({
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_type" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="document_type" className="block text-sm font-medium text-text sm:col-span-1">
             Document Type <span className="text-danger">*</span>
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -327,7 +327,7 @@ export default function RightToWorkTab({
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="verification_date" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="verification_date" className="block text-sm font-medium text-text sm:col-span-1">
             Verification Date <span className="text-danger">*</span>
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -344,7 +344,7 @@ export default function RightToWorkTab({
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_reference" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="document_reference" className="block text-sm font-medium text-text sm:col-span-1">
             Document Reference
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -360,7 +360,7 @@ export default function RightToWorkTab({
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_expiry_date" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="document_expiry_date" className="block text-sm font-medium text-text sm:col-span-1">
             Expiry Date
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -376,7 +376,7 @@ export default function RightToWorkTab({
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="follow_up_date" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="follow_up_date" className="block text-sm font-medium text-text sm:col-span-1">
             Follow-up Date
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -392,7 +392,7 @@ export default function RightToWorkTab({
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_details" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="document_details" className="block text-sm font-medium text-text sm:col-span-1">
             Additional Details
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -408,11 +408,11 @@ export default function RightToWorkTab({
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_photo" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="document_photo" className="block text-sm font-medium text-text sm:col-span-1">
             Document Photo
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0 space-y-3">
-            <label className="flex items-center justify-between rounded-md border border-dashed border-border-strong px-4 py-3 text-sm text-gray-500">
+            <label className="flex items-center justify-between rounded-md border border-dashed border-border-strong px-4 py-3 text-sm text-text-muted">
               <div className="flex items-center space-x-3">
                 <Upload className="h-5 w-5 text-gray-400" />
                 <span>{selectedFileName ?? 'Upload scan or photo (PDF/JPG/PNG)'}</span>

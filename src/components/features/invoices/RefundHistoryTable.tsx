@@ -69,7 +69,7 @@ export function RefundHistoryTable({ sourceType, sourceId }: RefundHistoryTableP
     return (
       <div className="flex items-center justify-center py-4">
         <Spinner size="sm" />
-        <span className="ml-2 text-sm text-gray-500">Loading refund history...</span>
+        <span className="ml-2 text-sm text-text-muted">Loading refund history...</span>
       </div>
     )
   }
@@ -99,12 +99,12 @@ export function RefundHistoryTable({ sourceType, sourceId }: RefundHistoryTableP
         <table className="min-w-full divide-y divide-border">
           <thead className="bg-surface-2">
             <tr>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Date</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Amount</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Method</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Reason</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Reference</th>
+              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-text-muted">Date</th>
+              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-text-muted">Amount</th>
+              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-text-muted">Method</th>
+              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-text-muted">Status</th>
+              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-text-muted">Reason</th>
+              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-text-muted">Reference</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border bg-surface">
@@ -113,7 +113,7 @@ export function RefundHistoryTable({ sourceType, sourceId }: RefundHistoryTableP
                 key={refund.id}
                 className={refund.status === 'failed' ? 'opacity-50' : undefined}
               >
-                <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-700">
+                <td className="whitespace-nowrap px-3 py-2 text-sm text-text">
                   {formatDateInLondon(refund.created_at, {
                     day: 'numeric',
                     month: 'short',
@@ -125,7 +125,7 @@ export function RefundHistoryTable({ sourceType, sourceId }: RefundHistoryTableP
                 <td className="whitespace-nowrap px-3 py-2 text-sm font-medium text-text">
                   {formatCurrency(Number(refund.amount))}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-700">
+                <td className="whitespace-nowrap px-3 py-2 text-sm text-text">
                   {methodLabel[refund.refund_method] ?? refund.refund_method}
                 </td>
                 <td className="whitespace-nowrap px-3 py-2">
@@ -135,7 +135,7 @@ export function RefundHistoryTable({ sourceType, sourceId }: RefundHistoryTableP
                     {refund.status}
                   </Badge>
                 </td>
-                <td className="px-3 py-2 text-sm text-gray-500 max-w-[200px] truncate" title={refund.reason ?? undefined}>
+                <td className="px-3 py-2 text-sm text-text-muted max-w-[200px] truncate" title={refund.reason ?? undefined}>
                   {refund.reason || '—'}
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-400">

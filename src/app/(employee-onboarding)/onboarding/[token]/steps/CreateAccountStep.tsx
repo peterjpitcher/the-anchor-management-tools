@@ -66,7 +66,7 @@ export default function CreateAccountStep({
       </div>
 
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="password" className="block text-sm font-medium text-text mb-1">
           Password
         </label>
         <input
@@ -82,7 +82,7 @@ export default function CreateAccountStep({
       </div>
 
       <div>
-        <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="confirm-password" className="block text-sm font-medium text-text mb-1">
           Confirm Password
         </label>
         <input

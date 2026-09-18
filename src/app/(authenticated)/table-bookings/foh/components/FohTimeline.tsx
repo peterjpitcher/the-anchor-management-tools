@@ -143,7 +143,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
     ? 'h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-2xs'
     : 'h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-2xs'
   const timelineTickLabelClass = cn(
-    'absolute -translate-x-1/2 font-medium text-gray-500',
+    'absolute -translate-x-1/2 font-medium text-text-muted',
     isManagerKioskStyle ? 'top-0.5 text-2xs' : 'pt-0.5 text-2xs'
   )
   const nowLineLabelClass = cn(
@@ -157,7 +157,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
     <div className={cn(swimlaneCardClass, 'relative')}>
       <div className={swimlaneHeaderRowClass}>
         <h3 className="text-sm font-semibold text-text">Table availability swimlanes</h3>
-        <p className={cn('text-gray-500', isManagerKioskStyle ? 'text-2xs' : 'text-xs')}>
+        <p className={cn('text-text-muted', isManagerKioskStyle ? 'text-2xs' : 'text-xs')}>
           {schedule?.service_window?.source === 'closed' ? (
             'Closed all day'
           ) : (
@@ -384,9 +384,9 @@ const LaneRow = React.memo(function LaneRow(props: {
         <div>
           <p className="text-xs font-semibold text-text">
             {lane.table_name}
-            {lane.table_number ? <span className="ml-1 text-xs text-gray-500">({lane.table_number})</span> : null}
+            {lane.table_number ? <span className="ml-1 text-xs text-text-muted">({lane.table_number})</span> : null}
           </p>
-          <p className="text-meta text-gray-500">
+          <p className="text-meta text-text-muted">
             Capacity {lane.capacity || '-'}
             {lane.area ? ` · ${lane.area}` : ''}
             {lane.is_bookable === false ? ' · not bookable' : ''}

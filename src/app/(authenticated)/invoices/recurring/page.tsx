@@ -245,7 +245,7 @@ export default function RecurringInvoicesPage() {
                   <div>
                     <div className="text-sm font-medium text-text">{r.vendor?.name || 'Unknown Vendor'}</div>
                     {r.vendor?.contact_name && (
-                      <div className="text-sm text-gray-500">{r.vendor.contact_name}</div>
+                      <div className="text-sm text-text-muted">{r.vendor.contact_name}</div>
                     )}
                   </div>
                 )
@@ -261,7 +261,7 @@ export default function RecurringInvoicesPage() {
                 cell: (r) => (
                   <div>
                     <div className="text-sm text-text">{getNextInvoiceLabel(r.next_invoice_date)}</div>
-                    <div className="text-xs text-gray-500">{formatDateInLondon(r.next_invoice_date)}</div>
+                    <div className="text-xs text-text-muted">{formatDateInLondon(r.next_invoice_date)}</div>
                   </div>
                 )
               },
@@ -362,7 +362,7 @@ export default function RecurringInvoicesPage() {
                     <div className="min-w-0">
                       <div className="font-medium text-text">{r.vendor?.name || 'Unknown Vendor'}</div>
                       {r.vendor?.contact_name && (
-                        <div className="text-sm text-gray-500">{r.vendor.contact_name}</div>
+                        <div className="text-sm text-text-muted">{r.vendor.contact_name}</div>
                       )}
                     </div>
                     {r.is_active ? (
@@ -377,18 +377,18 @@ export default function RecurringInvoicesPage() {
                   </div>
                   <dl className="grid gap-2 text-sm">
                     <div className="flex items-center justify-between gap-4">
-                      <dt className="text-gray-500">Frequency</dt>
+                      <dt className="text-text-muted">Frequency</dt>
                       <dd className="text-text">{getFrequencyLabel(r.frequency)}</dd>
                     </div>
                     <div className="flex items-start justify-between gap-4">
-                      <dt className="text-gray-500">Next Invoice</dt>
+                      <dt className="text-text-muted">Next Invoice</dt>
                       <dd className="text-right text-text">
                         <div>{getNextInvoiceLabel(r.next_invoice_date)}</div>
-                        <div className="text-xs text-gray-500">{formatDateInLondon(r.next_invoice_date)}</div>
+                        <div className="text-xs text-text-muted">{formatDateInLondon(r.next_invoice_date)}</div>
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-4">
-                      <dt className="text-gray-500">Reference</dt>
+                      <dt className="text-text-muted">Reference</dt>
                       <dd className="min-w-0 break-words text-right text-text">{r.reference || '-'}</dd>
                     </div>
                   </dl>

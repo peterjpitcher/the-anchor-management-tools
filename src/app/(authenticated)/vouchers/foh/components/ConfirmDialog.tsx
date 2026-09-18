@@ -60,7 +60,7 @@ export function ConfirmDialog({
         <h2 id="foh-voucher-confirm-title" className="text-xl font-bold text-text">
           {title}
         </h2>
-        <div className="mt-3 text-base text-gray-700">{children}</div>
+        <div className="mt-3 text-base text-text">{children}</div>
         <div className="mt-5 flex flex-col gap-2">
           <button
             ref={confirmRef}
@@ -75,7 +75,7 @@ export function ConfirmDialog({
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="min-h-touch w-full rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-gray-700 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-touch w-full rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>

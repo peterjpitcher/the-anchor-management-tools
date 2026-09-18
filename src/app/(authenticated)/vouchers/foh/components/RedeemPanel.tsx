@@ -190,7 +190,7 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
                 {undoBusy ? 'Undoing...' : `Undo (${undoSecondsLeft}s left)`}
               </button>
             ) : (
-              <p className="flex min-h-14 flex-1 items-center rounded-lg border border-border-strong bg-surface px-4 text-base text-gray-700">
+              <p className="flex min-h-14 flex-1 items-center rounded-lg border border-border-strong bg-surface px-4 text-base text-text">
                 Undo window closed. Ask a manager if this was a mistake.
               </p>
             )}
@@ -255,7 +255,7 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
               )}
 
               {!canEdit && (
-                <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-base text-gray-700">
+                <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-base text-text">
                   You have view-only access. Ask a manager to mark this voucher as used.
                 </p>
               )}

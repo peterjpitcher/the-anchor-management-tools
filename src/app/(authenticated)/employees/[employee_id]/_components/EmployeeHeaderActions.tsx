@@ -30,7 +30,7 @@ export function EmployeeHeaderActions({ primary, secondary }: EmployeeHeaderActi
               onClick={() => setOpen((v) => !v)}
               aria-expanded={open}
               aria-haspopup="menu"
-              className="inline-flex items-center gap-1 rounded-md border border-border-strong bg-surface px-3 py-2 text-sm font-medium text-gray-700"
+              className="inline-flex items-center gap-1 rounded-md border border-border-strong bg-surface px-3 py-2 text-sm font-medium text-text"
             >
               More
               <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M5.5 7.5 10 12l4.5-4.5" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>

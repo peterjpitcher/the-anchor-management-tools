@@ -424,7 +424,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
               }`}
             >
               <p className="text-sm font-medium text-text">{config.label}</p>
-              <p className="mt-0.5 text-xs text-gray-500">{config.helpText}</p>
+              <p className="mt-0.5 text-xs text-text-muted">{config.helpText}</p>
 
               {/* Fixed-height well so every tile lines up, with the preview inside
                   it at the variant's true shape. Seeing that a story is tall and a
@@ -474,7 +474,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                   </div>
                 )}
                 {tile.uploading && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-surface/80 text-xs font-medium text-gray-700">
+                  <div className="absolute inset-0 flex items-center justify-center bg-surface/80 text-xs font-medium text-text">
                     Uploading...
                   </div>
                 )}
@@ -497,12 +497,12 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                   <span className="text-blue-700">Uploads when you save</span>
                 )}
                 {!tile.error && !tile.queued && state && !state.owned && state.url && (
-                  <span className="text-gray-500">
+                  <span className="text-text-muted">
                     From category{state.categoryName ? `: ${state.categoryName}` : ''}
                   </span>
                 )}
                 {!tile.error && !tile.queued && state?.owned && state.sizeBytes && (
-                  <span className="text-gray-500">{formatBytes(state.sizeBytes)}</span>
+                  <span className="text-text-muted">{formatBytes(state.sizeBytes)}</span>
                 )}
               </div>
 
@@ -511,7 +511,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
               <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
                 <label
                   htmlFor={inputId}
-                  className="inline-flex min-h-touch cursor-pointer items-center rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-gray-700 hover:bg-surface-hover"
+                  className="inline-flex min-h-touch cursor-pointer items-center rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-text hover:bg-surface-hover"
                 >
                   {previewUrl ? 'Replace' : 'Add'}
                   <span className="sr-only"> {config.label}</span>
@@ -535,7 +535,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                   <a
                     href={buildEventImageDownloadUrl(state.url, state.fileName)}
                     download={state.fileName ?? undefined}
-                    className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-md border border-border-strong bg-surface px-2 text-gray-700 hover:bg-surface-hover"
+                    className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-md border border-border-strong bg-surface px-2 text-text hover:bg-surface-hover"
                   >
                     <ArrowDownTrayIcon className="h-4 w-4" aria-hidden="true" />
                     <span className="sr-only">Download {config.label}</span>
@@ -567,7 +567,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                         ? 'A PDF cannot be branded here. Upload the poster as an image instead.'
                         : 'Upload a file for this size first.'
                   }
-                  className="inline-flex min-h-touch items-center rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-gray-700 hover:bg-surface-hover disabled:opacity-50"
+                  className="inline-flex min-h-touch items-center rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-50"
                 >
                   Branding
                   <span className="sr-only"> for {config.label}</span>
@@ -590,7 +590,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                         ? 'Three to an A4 sheet. Print at actual size (100%), then cut as needed.'
                         : 'Brand the table talker first. Only branded artwork is printed.'
                     }
-                    className="inline-flex min-h-touch items-center rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-gray-700 hover:bg-surface-hover disabled:opacity-50"
+                    className="inline-flex min-h-touch items-center rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-50"
                   >
                     {sheetBusy ? 'Preparing...' : 'Print sheet'}
                   </button>
@@ -607,7 +607,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                       {MIN_PRINT_WIDTH_PX} px wide.
                     </span>
                   ) : (
-                    <span className="text-gray-500">
+                    <span className="text-text-muted">
                       {talkerDpi !== null ? `Prints at about ${Math.round(talkerDpi)} dpi. ` : ''}
                       {canPrintSheet
                         ? 'Print the sheet at 100%, then cut as needed.'
@@ -625,7 +625,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
           until save, which the notice at the top of the panel says, and running
           both lines at once contradicted itself on screen. */}
       {eventId && (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-text-muted">
           Images upload as soon as you choose them, and are not undone by Cancel.
         </p>
       )}
@@ -705,14 +705,14 @@ function VariantPromptBox() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-text">Prompt for the other sizes</p>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-text-muted">
             Made the square already? Copy this into your image tool with it attached.
           </p>
         </div>
         <button
           type="button"
           onClick={copy}
-          className="inline-flex min-h-touch shrink-0 items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-gray-700 hover:bg-surface-hover"
+          className="inline-flex min-h-touch shrink-0 items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 text-sm font-medium text-text hover:bg-surface-hover"
         >
           {copied ? (
             <CheckIcon className="h-4 w-4 text-green-600" aria-hidden="true" />
@@ -735,8 +735,8 @@ function VariantPromptBox() {
 function PanelHeading() {
   return (
     <div>
-      <p className="text-sm font-medium text-gray-700 sm:text-base">Event artwork</p>
-      <p className="text-sm text-gray-500">
+      <p className="text-sm font-medium text-text sm:text-base">Event artwork</p>
+      <p className="text-sm text-text-muted">
         Drag a file onto a tile, or click it to browse. The square, landscape and
         social images appear on the website. The story, A4 poster and table talker
         are kept here for you to download.

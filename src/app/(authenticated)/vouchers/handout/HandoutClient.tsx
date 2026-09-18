@@ -301,7 +301,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
       <Card title="Session context" subtitle="Applies to every card until you change it">
         <div className="space-y-4">
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">Won at</div>
+            <div className="text-sm font-medium text-text mb-2">Won at</div>
             <div className="flex flex-wrap gap-2">
               {context.events.map((event) => (
                 <button
@@ -311,7 +311,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                   className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
                     eventId === event.id
                       ? 'border-green-600 bg-success-soft text-green-800 font-medium'
-                      : 'border-border-strong text-gray-700 hover:border-gray-400'
+                      : 'border-border-strong text-text hover:border-gray-400'
                   }`}
                 >
                   {event.name}
@@ -319,7 +319,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                 </button>
               ))}
               {context.events.length === 0 && (
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-text-muted">
                   No events today. Use the free-text label below.
                 </span>
               )}
@@ -347,7 +347,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
           />
 
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">Expiry (required)</div>
+            <div className="text-sm font-medium text-text mb-2">Expiry (required)</div>
             <div className="flex flex-wrap items-center gap-2">
               {presetDates.map((preset) => (
                 <button
@@ -357,7 +357,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                   className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
                     expiryDate === preset.date
                       ? 'border-green-600 bg-success-soft text-green-800 font-medium'
-                      : 'border-border-strong text-gray-700 hover:border-gray-400'
+                      : 'border-border-strong text-text hover:border-gray-400'
                   }`}
                 >
                   +{preset.days} days
@@ -436,7 +436,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
             matches.length === 0 &&
             !searching &&
             normaliseVoucherNumberInput(numberInput).length >= LOOKUP_MIN_CHARS && (
-              <p className="text-sm text-gray-500" aria-live="polite">
+              <p className="text-sm text-text-muted" aria-live="polite">
                 No cards in stock match that number. Only printed, un-issued cards can be handed
                 out.
               </p>
@@ -457,7 +457,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
               </div>
 
               <div>
-                <div className="text-sm font-medium text-gray-700 mb-2">
+                <div className="text-sm font-medium text-text mb-2">
                   Customer (optional, for SMS reminders)
                 </div>
                 {customer ? (
@@ -478,7 +478,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                             onClick={() =>
                               setCustomer({ id: booker.customerId, name: booker.name })
                             }
-                            className="rounded-full border border-border-strong px-3 py-1.5 text-sm text-gray-700 hover:border-gray-400"
+                            className="rounded-full border border-border-strong px-3 py-1.5 text-sm text-text hover:border-gray-400"
                           >
                             {booker.name} · booked · {booker.seats}{' '}
                             {booker.seats === 1 ? 'seat' : 'seats'}
@@ -507,7 +507,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                               className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-surface-hover"
                             >
                               <span className="text-text">{hit.name}</span>
-                              <span className="text-sm text-gray-500">{hit.mobile ?? ''}</span>
+                              <span className="text-sm text-text-muted">{hit.mobile ?? ''}</span>
                             </button>
                           </li>
                         ))}

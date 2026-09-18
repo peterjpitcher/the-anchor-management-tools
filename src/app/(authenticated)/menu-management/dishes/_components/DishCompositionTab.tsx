@@ -597,7 +597,7 @@ function CostBreakdownFooter({
               </div>
               {Array.from(allUpgradeGroups.entries()).map(([name, g]) => (
                 <div key={`ug-${name}`} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-text">
                     {name} (+£{g.maxPrice.toFixed(2)})
                   </span>
                   <span className="text-sm font-medium">cost £{g.maxCost.toFixed(2)}</span>
@@ -605,7 +605,7 @@ function CostBreakdownFooter({
               ))}
               {allUngroupedUpgrades.map((u, i) => (
                 <div key={`uu-${i}`} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-text">
                     {u.name} (+£{u.price.toFixed(2)})
                   </span>
                   <span className="text-sm font-medium">cost £{u.cost.toFixed(2)}</span>
@@ -645,7 +645,7 @@ function CostBreakdownFooter({
 function Row({ label, value }: { label: string; value: number }): React.ReactElement {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm text-gray-700">{label}</span>
+      <span className="text-sm text-text">{label}</span>
       <span className="text-sm font-medium">£{value.toFixed(2)}</span>
     </div>
   );

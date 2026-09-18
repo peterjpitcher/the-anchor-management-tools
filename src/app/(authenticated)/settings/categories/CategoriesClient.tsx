@@ -149,7 +149,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
       backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
       <div className="space-y-6">
-        <p className="text-sm text-gray-700">
+        <p className="text-sm text-text">
           Manage categories for employee attachment files.
         </p>
 
@@ -251,11 +251,11 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="font-medium">{category.category_name}</p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-text-muted">
                             Updated {new Date(category.updated_at).toLocaleString('en-GB')}
                           </p>
                           {!canManage && (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-text-muted">
                               Email on upload: {category.email_on_upload ? 'On' : 'Off'}
                             </p>
                           )}

@@ -227,7 +227,7 @@ function SectionCard({
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold text-text">{title}</h2>
-          {description && <p className="mt-0.5 text-xs text-gray-500">{description}</p>}
+          {description && <p className="mt-0.5 text-xs text-text-muted">{description}</p>}
         </div>
         {action}
       </div>
@@ -239,7 +239,7 @@ function SectionCard({
 function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</dt>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-text-muted">{label}</dt>
       <dd className="mt-1 text-sm text-text">{value || '-'}</dd>
     </div>
   )
@@ -940,7 +940,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             </div>
             <div>
               <p className="text-xl font-semibold text-text">{guestName}</p>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-muted">
                 {formatBookingDate(booking.booking_date)}
                 {booking.booking_time ? ` at ${booking.booking_time.slice(0, 5)}` : ''}
                 {booking.party_size != null ? ` · ${booking.party_size} covers` : ''}
@@ -950,19 +950,19 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[520px]">
             <div className="rounded-md bg-surface-2 px-3 py-2">
-              <p className="text-xs text-gray-500">Covers</p>
+              <p className="text-xs text-text-muted">Covers</p>
               <p className="text-lg font-semibold text-text">{booking.party_size ?? '-'}</p>
             </div>
             <div className="rounded-md bg-surface-2 px-3 py-2">
-              <p className="text-xs text-gray-500">Tables</p>
+              <p className="text-xs text-text-muted">Tables</p>
               <p className="text-lg font-semibold text-text">{booking.is_outside_seating ? 'Outside' : assignedTables.length || '-'}</p>
             </div>
             <div className="rounded-md bg-surface-2 px-3 py-2">
-              <p className="text-xs text-gray-500">Capacity</p>
+              <p className="text-xs text-text-muted">Capacity</p>
               <p className="text-lg font-semibold text-text">{booking.is_outside_seating ? 'Outside' : assignedCapacity || '-'}</p>
             </div>
             <div className="rounded-md bg-surface-2 px-3 py-2">
-              <p className="text-xs text-gray-500">Audit</p>
+              <p className="text-xs text-text-muted">Audit</p>
               <p className="text-lg font-semibold text-text">{auditTrail.length}</p>
             </div>
           </div>
@@ -1005,13 +1005,13 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               <dl className="space-y-4">
                 {notes.map((note) => (
                   <div key={note.label}>
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{note.label}</dt>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-text-muted">{note.label}</dt>
                     <dd className="mt-1 whitespace-pre-wrap text-sm text-text">{note.value}</dd>
                   </div>
                 ))}
               </dl>
             ) : (
-              <p className="text-sm text-gray-500">No notes, dietary requirements, allergies, or internal notes recorded.</p>
+              <p className="text-sm text-text-muted">No notes, dietary requirements, allergies, or internal notes recorded.</p>
             )}
           </SectionCard>
 
@@ -1033,19 +1033,19 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 <table className="min-w-full divide-y divide-border text-sm">
                   <thead>
                     <tr>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
                         Item
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
                         Qty
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
                         Guest
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
                         Requests
                       </th>
-                      <th scope="col" className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <th scope="col" className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-text-muted">
                         Price
                       </th>
                     </tr>
@@ -1055,12 +1055,12 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                       <tr key={item.id}>
                         <td className="px-3 py-2 font-medium text-text">
                           {item.menu_dish?.name || item.custom_item_name || 'Unnamed item'}
-                          {item.item_type ? <span className="ml-2 text-xs text-gray-500">{formatLabel(item.item_type)}</span> : null}
+                          {item.item_type ? <span className="ml-2 text-xs text-text-muted">{formatLabel(item.item_type)}</span> : null}
                         </td>
-                        <td className="px-3 py-2 text-gray-700">{item.quantity}</td>
-                        <td className="px-3 py-2 text-gray-700">{item.guest_name || '-'}</td>
-                        <td className="px-3 py-2 text-gray-700">{item.special_requests || '-'}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">
+                        <td className="px-3 py-2 text-text">{item.quantity}</td>
+                        <td className="px-3 py-2 text-text">{item.guest_name || '-'}</td>
+                        <td className="px-3 py-2 text-text">{item.special_requests || '-'}</td>
+                        <td className="px-3 py-2 text-right text-text">
                           {item.price_at_booking != null ? formatGbp(Number(item.price_at_booking) * Number(item.quantity || 1)) : '-'}
                         </td>
                       </tr>
@@ -1069,7 +1069,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-gray-500">No saved pre-order items.</p>
+              <p className="text-sm text-text-muted">No saved pre-order items.</p>
             )}
           </SectionCard>
 
@@ -1078,13 +1078,13 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {lifecycleEvents.map((event) => (
                   <li key={`${event.label}-${event.at}`} className="rounded-md border border-border bg-surface-2 px-3 py-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{event.label}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{event.label}</p>
                     <p className="mt-1 text-sm text-text">{formatLondonDateTime(event.at)}</p>
                   </li>
                 ))}
               </ol>
             ) : (
-              <p className="text-sm text-gray-500">No lifecycle timestamps recorded yet.</p>
+              <p className="text-sm text-text-muted">No lifecycle timestamps recorded yet.</p>
             )}
           </SectionCard>
         </div>
@@ -1162,7 +1162,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     opposite ends: move it deliberately, then stop anything else moving it. */}
                 {!booking.is_outside_seating && (
                   <div className="space-y-2 border-t border-border pt-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                       Pin to this table
                     </p>
                     <div className="flex items-center justify-between gap-3">
@@ -1184,7 +1184,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 )}
 
                 <div className="space-y-2 border-t border-border pt-4">
-                  <label htmlFor="move-table-select" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <label htmlFor="move-table-select" className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                     Move table
                   </label>
                   <div className="flex flex-col gap-2 sm:flex-row xl:flex-col 2xl:flex-row">
@@ -1247,7 +1247,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               </dl>
 
               {booking.paypal_deposit_capture_id && (
-                <p className="break-all text-xs text-gray-500">Capture ID: {booking.paypal_deposit_capture_id}</p>
+                <p className="break-all text-xs text-text-muted">Capture ID: {booking.paypal_deposit_capture_id}</p>
               )}
 
               {refundTotals.totalRefunded > 0 && (
@@ -1319,7 +1319,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   placeholder="Type message..."
                 />
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">{smsBody.length}/{emailChosen ? 2000 : 640}</p>
+                  <p className="text-xs text-text-muted">{smsBody.length}/{emailChosen ? 2000 : 640}</p>
                   <Button
                     size="sm"
                     variant="secondary"
@@ -1332,7 +1332,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-gray-500">You do not have permission to send SMS messages.</p>
+              <p className="text-sm text-text-muted">You do not have permission to send SMS messages.</p>
             )}
           </SectionCard>
 
@@ -1346,7 +1346,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-gray-500">No operational flags for this booking.</p>
+              <p className="text-sm text-text-muted">No operational flags for this booking.</p>
             )}
           </SectionCard>
 
@@ -1385,7 +1385,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
 
       <SectionCard title="Audit Trail" description="Every recorded booking audit event, newest first.">
         {auditTrail.length === 0 ? (
-          <p className="text-sm text-gray-500">No audit events have been recorded for this booking yet.</p>
+          <p className="text-sm text-text-muted">No audit events have been recorded for this booking yet.</p>
         ) : (
           <ol className="divide-y divide-border">
             {auditTrail.map((entry) => {
@@ -1394,7 +1394,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 <li key={entry.id} className="grid grid-cols-1 gap-3 py-4 lg:grid-cols-[220px_minmax(0,1fr)_180px]">
                   <div>
                     <p className="text-sm font-medium text-text">{formatLondonDateTime(entry.created_at)}</p>
-                    <p className="mt-0.5 text-xs text-gray-500">{getAuditActor(entry)}</p>
+                    <p className="mt-0.5 text-xs text-text-muted">{getAuditActor(entry)}</p>
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-text">{formatAuditEvent(entry.event)}</p>
@@ -1627,7 +1627,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       >
         <div className="space-y-4">
           <div>
-            <label htmlFor="party-size-input" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="party-size-input" className="block text-sm font-medium text-text">
               New party size
             </label>
             <input
@@ -1674,7 +1674,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               </select>
             </div>
           )}
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-text">
             <input
               type="checkbox"
               checked={partySizeEditSendSms}

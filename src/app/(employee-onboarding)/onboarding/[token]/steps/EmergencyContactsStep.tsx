@@ -94,7 +94,7 @@ export default function EmergencyContactsStep({ token, initialData, onSuccess }:
       </h3>
       {(['name', 'relationship', 'phone_number', 'mobile_number', 'address'] as (keyof ContactData)[]).map((field) => (
         <div key={field}>
-          <label className="block text-sm font-medium text-gray-700 mb-1 capitalize">
+          <label className="block text-sm font-medium text-text mb-1 capitalize">
             {field.replace(/_/g, ' ')}
             {field === 'name' && required && <span className="text-danger ml-1">*</span>}
           </label>

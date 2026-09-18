@@ -180,7 +180,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
             </div>
             <button type="button"
               onClick={() => setCurrentDate(new Date())}
-              className="px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 bg-surface border border-border-strong rounded-lg hover:bg-surface-hover transition-colors"
+              className="px-3 sm:px-4 py-2 text-sm font-medium text-text bg-surface border border-border-strong rounded-lg hover:bg-surface-hover transition-colors"
             >
               Today
             </button>
@@ -203,7 +203,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
 
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Status</label>
+            <label className="mb-1 block text-sm font-medium text-text">Status</label>
             <Select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as BookingStatus | 'all')}
@@ -216,7 +216,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
             </Select>
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Date range</label>
+            <label className="mb-1 block text-sm font-medium text-text">Date range</label>
             <Select
               value={timeFilter}
               onChange={(event) => setTimeFilter(event.target.value as 'all' | 'upcoming' | 'past')}
@@ -240,14 +240,14 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
           {/* Days of Week Header */}
           <div className="hidden sm:grid grid-cols-7 bg-surface-2 border-b border-border">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-              <div key={day} className="px-2 py-3 text-center text-sm font-medium text-gray-700">
+              <div key={day} className="px-2 py-3 text-center text-sm font-medium text-text">
                 {day}
               </div>
             ))}
           </div>
           <div className="grid sm:hidden grid-cols-7 bg-surface-2 border-b border-border">
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-              <div key={index} className="py-2 text-center text-xs font-medium text-gray-700">
+              <div key={index} className="py-2 text-center text-xs font-medium text-text">
                 {day}
               </div>
             ))}
@@ -288,7 +288,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                     </Link>
                   ))}
                   {bookingsByDate[getDateString(day)]?.length > (isMobile ? 1 : 3) && (
-                    <div className="text-xs text-gray-500 px-1 sm:px-2">
+                    <div className="text-xs text-text-muted px-1 sm:px-2">
                       +{bookingsByDate[getDateString(day)].length - (isMobile ? 1 : 3)} more
                     </div>
                   )}
@@ -303,7 +303,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
         /* Agenda View - Mobile Only */
         <div className="divide-y divide-border">
           {monthBookings.length === 0 ? (
-            <div className="px-4 py-8 text-center text-gray-500">
+            <div className="px-4 py-8 text-center text-text-muted">
               No bookings for this month
             </div>
           ) : (
@@ -331,7 +331,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                       {booking.event_type && (
                         <p className="text-sm text-text-muted mt-0.5">{booking.event_type}</p>
                       )}
-                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                      <div className="flex items-center gap-4 mt-2 text-sm text-text-muted">
                         <span>
                           {bookingDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
                         </span>

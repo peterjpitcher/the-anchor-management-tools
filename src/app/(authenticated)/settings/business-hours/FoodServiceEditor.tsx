@@ -65,7 +65,7 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span className="text-sm font-medium text-text">{DAY_NAMES[day.day_of_week]}</span>
-                <span className="ml-2 text-xs text-gray-500">
+                <span className="ml-2 text-xs text-text-muted">
                   kitchen {toClock(day.kitchen_opens) || '?'} to {toClock(day.kitchen_closes) || '?'}
                 </span>
               </div>
@@ -98,7 +98,7 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
             )}
 
             {services.length === 0 ? (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-muted">
                 No services set, so food is bookable across the whole kitchen window.
               </p>
             ) : (
@@ -132,7 +132,7 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
                             update(day, next)
                           }}
                         />
-                        <span className="text-sm text-gray-500">to</span>
+                        <span className="text-sm text-text-muted">to</span>
                         <Input
                           type="time"
                           aria-label={`${DAY_NAMES[day.day_of_week]} service ${index + 1} end`}

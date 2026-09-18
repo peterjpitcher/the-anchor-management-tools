@@ -171,7 +171,7 @@ export default function RolePermissionsModal({
       )}
       
       {(role.is_system || !canManage) && (
-        <p className="mt-4 text-sm text-gray-500 text-center">
+        <p className="mt-4 text-sm text-text-muted text-center">
           {role.is_system
             ? 'System roles cannot be modified.'
             : 'You do not have permission to change role permissions.'}

@@ -46,7 +46,7 @@ export function EmployeeAuditTrail({
 
   if (!canViewAudit) {
     return (
-      <div className="text-center py-8 text-gray-500">
+      <div className="text-center py-8 text-text-muted">
         You do not have permission to view audit history.
       </div>
     )
@@ -54,7 +54,7 @@ export function EmployeeAuditTrail({
 
   if (timelineEntries.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
+      <div className="text-center py-8 text-text-muted">
         No audit history available{employeeName ? ` for ${employeeName}` : ''}.
       </div>
     )
@@ -330,10 +330,10 @@ export function EmployeeAuditTrail({
                                 <p className="min-w-0 break-words text-sm font-medium text-text">
                                   {log!.user_email ?? 'System'} {getActionLabel(log!)}
                                 </p>
-                                <p className="flex-shrink-0 whitespace-nowrap text-xs text-gray-500">{formatDateTime(log!.created_at)}</p>
+                                <p className="flex-shrink-0 whitespace-nowrap text-xs text-text-muted">{formatDateTime(log!.created_at)}</p>
                               </div>
                               {formatDetails(log!) && (
-                                <p className="text-sm text-gray-500 break-words">{formatDetails(log!)}</p>
+                                <p className="text-sm text-text-muted break-words">{formatDetails(log!)}</p>
                               )}
                             </>
                           ) : (
@@ -342,7 +342,7 @@ export function EmployeeAuditTrail({
                                 <p className="min-w-0 break-words text-sm font-medium text-text">
                                   {note!.author_name} added a note
                                 </p>
-                                <p className="flex-shrink-0 whitespace-nowrap text-xs text-gray-500">{formatDateTime(note!.created_at)}</p>
+                                <p className="flex-shrink-0 whitespace-nowrap text-xs text-text-muted">{formatDateTime(note!.created_at)}</p>
                               </div>
                               <p className="text-sm text-text-muted whitespace-pre-wrap break-words">
                                 {note!.note_text}

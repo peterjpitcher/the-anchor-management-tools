@@ -98,7 +98,7 @@ export function CollectionForm({
           min="0"
           value={netTake}
           onChange={(e) => setNetTake(e.target.value)}
-          icon={<span className="text-gray-500">£</span>}
+          icon={<span className="text-text-muted">£</span>}
           placeholder="0.00"
           required
           disabled={disabled}
@@ -121,7 +121,7 @@ export function CollectionForm({
           min="0"
           value={vatOnSupplier}
           onChange={(e) => setVatOnSupplier(e.target.value)}
-          icon={<span className="text-gray-500">£</span>}
+          icon={<span className="text-text-muted">£</span>}
           placeholder="0.00"
           required
           disabled={disabled}

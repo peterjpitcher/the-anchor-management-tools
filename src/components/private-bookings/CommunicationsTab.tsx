@@ -122,7 +122,7 @@ export function CommunicationsTab({
                       </Badge>
                     </div>
                     <time
-                      className="text-xs text-gray-500"
+                      className="text-xs text-text-muted"
                       dateTime={row.created_at}
                     >
                       {formatDateTime12Hour(row.created_at)}
@@ -134,7 +134,7 @@ export function CommunicationsTab({
                     </p>
                   )}
                   {row.twilio_sid && row.status === 'sent' && (
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-text-muted">
                       Twilio SID: <code className="font-mono">{row.twilio_sid}</code>
                     </p>
                   )}
@@ -170,11 +170,11 @@ export function CommunicationsTab({
                         {statusLabel(email.status)}
                       </Badge>
                     </div>
-                    <time className="text-xs text-gray-500" dateTime={email.created_at}>
+                    <time className="text-xs text-text-muted" dateTime={email.created_at}>
                       {formatDateTime12Hour(email.created_at)}
                     </time>
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-text-muted">
                     {email.comm_type ?? 'email'}
                     {email.to_address ? ` to ${email.to_address}` : ''}
                   </p>
@@ -228,7 +228,7 @@ export function CommunicationsTab({
                           <Badge variant="info" size="sm">Eligible</Badge>
                         )}
                       </div>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-text-muted">
                         {item.expected_fire_at
                           ? `Fires around ${item.expected_fire_at}`
                           : 'Will not fire'}

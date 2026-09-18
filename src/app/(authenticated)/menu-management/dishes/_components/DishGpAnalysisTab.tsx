@@ -443,7 +443,7 @@ export function DishGpAnalysisTab({
 
       {/* Section 2: Upgrade Impact */}
       <div>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-text-muted">
           Upgrade Impact
         </h3>
         {!upgradeAnalysis.hasUpgrades ? (
@@ -452,13 +452,13 @@ export function DishGpAnalysisTab({
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-text">
               Base GP%: <span className="font-semibold">{(upgradeAnalysis.baseGpPct * 100).toFixed(1)}%</span>
             </p>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-text-muted">
                     <th scope="col" className="px-3 py-2">Upgrade</th>
                     <th scope="col" className="px-3 py-2">Group</th>
                     <th scope="col" className="px-3 py-2 text-right">Extra Charge</th>
@@ -501,7 +501,7 @@ export function DishGpAnalysisTab({
 
       {/* Section 3: Allergen Summary */}
       <div>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-text-muted">
           Allergen Summary
         </h3>
         {!allergenAnalysis ? (
@@ -543,7 +543,7 @@ export function DishGpAnalysisTab({
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-text-muted">
                     <th scope="col" className="px-3 py-2">Allergen</th>
                     <th scope="col" className="px-3 py-2">Components</th>
                     <th scope="col" className="px-3 py-2">Removable?</th>
@@ -555,16 +555,16 @@ export function DishGpAnalysisTab({
                       <td className="px-3 py-2 font-medium text-text capitalize">
                         {entry.allergen}
                       </td>
-                      <td className="px-3 py-2 text-gray-700">
+                      <td className="px-3 py-2 text-text">
                         {entry.components.map((c, i) => (
                           <span key={i}>
                             {i > 0 ? ', ' : ''}
                             {c.name}{' '}
-                            <span className="text-gray-500">({c.inclusionType})</span>
+                            <span className="text-text-muted">({c.inclusionType})</span>
                           </span>
                         ))}
                       </td>
-                      <td className="px-3 py-2 text-gray-700">
+                      <td className="px-3 py-2 text-text">
                         {entry.removalNote || (entry.removable ? 'Yes' : 'No')}
                       </td>
                     </tr>
@@ -607,7 +607,7 @@ function CombinationsSection({
     <div className="space-y-4">
       {/* Summary */}
       <div className="rounded-lg border border-border bg-surface-2 px-4 py-3">
-        <p className="text-sm text-gray-700">
+        <p className="text-sm text-text">
           <span className="font-semibold">{totalCombinations}</span> combination{totalCombinations !== 1 ? 's' : ''}
           {' '}across {groupNames.length} option group{groupNames.length !== 1 ? 's' : ''}
           {' '}&middot; Fixed cost: <span className="font-semibold">£{fixedCost.toFixed(2)}</span>
@@ -643,7 +643,7 @@ function CombinationsSection({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+            <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-text-muted">
               <th scope="col" className="px-3 py-2">Combination</th>
               <th scope="col" className="px-3 py-2 text-right">Portion Cost</th>
               <th scope="col" className="px-3 py-2 text-right">GP%</th>

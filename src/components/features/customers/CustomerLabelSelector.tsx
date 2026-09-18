@@ -112,7 +112,7 @@ export function CustomerLabelSelector({
     return (
       <div className="flex items-center space-x-2">
         <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-        <span className="text-sm text-gray-500">Loading labels...</span>
+        <span className="text-sm text-text-muted">Loading labels...</span>
       </div>
     )
   }

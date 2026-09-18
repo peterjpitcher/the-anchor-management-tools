@@ -118,13 +118,13 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
               {selectedBookingVisualLabel}
             </span>
           </div>
-          <p className="mt-1 text-sm text-gray-700">
+          <p className="mt-1 text-sm text-text">
             {selectedBooking.guest_name ? `${selectedBooking.guest_name} · ` : ''}
             {selectedBooking.is_private_block
               ? formatBookingWindow(selectedBooking.start_datetime, selectedBooking.end_datetime, selectedBooking.booking_time)
               : `${formatBookingWindow(selectedBooking.start_datetime, selectedBooking.end_datetime, selectedBooking.booking_time)} · ${selectedBooking.party_size || 1} people`}
           </p>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-text-muted">
             {selectedBooking.booking_type || 'regular'} · {selectedBooking.booking_purpose || 'food'}
             {selectedBooking.event_seating_type ? ` · ${selectedBooking.event_seating_type}` : ''}
             {selectedBooking.assignment_count && selectedBooking.assignment_count > 1 ? ` · joined ${selectedBooking.assignment_count} tables` : ''}
@@ -138,7 +138,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             </div>
           )}
           {(selectedBookingSeatedTime || selectedBookingLeftTime || selectedBookingNoShowTime) && (
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-text-muted">
               {selectedBookingSeatedTime ? `Seated ${selectedBookingSeatedTime}` : null}
               {selectedBookingLeftTime ? `${selectedBookingSeatedTime ? ' · ' : ''}Left ${selectedBookingLeftTime}` : null}
               {selectedBookingNoShowTime
@@ -199,7 +199,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-gray-700 hover:bg-surface-hover"
+            className="rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-text hover:bg-surface-hover"
           >
             Close
           </button>
@@ -255,7 +255,7 @@ function GuestRequirements({ booking }: { booking: FohBooking }) {
         <dl className="mt-2 space-y-1.5">
           {rows.map((row) => (
             <div key={row.label} className="flex gap-2 text-sm">
-              <dt className="w-24 shrink-0 text-gray-500">{row.label}</dt>
+              <dt className="w-24 shrink-0 text-text-muted">{row.label}</dt>
               <dd className="min-w-0 flex-1 text-text">{row.value}</dd>
             </div>
           ))}
@@ -329,7 +329,7 @@ function BookingActions(props: {
               if (ok) onClose()
             })()
           }}
-          className="min-h-touch rounded-md border border-border-strong px-2 py-2 text-xs font-medium text-gray-700 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-touch rounded-md border border-border-strong px-2 py-2 text-xs font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {bookingActionInFlight === 'seated' ? 'Marking...' : 'Mark seated'}
         </button>
@@ -346,7 +346,7 @@ function BookingActions(props: {
               if (ok) onClose()
             })()
           }}
-          className="min-h-touch rounded-md border border-border-strong px-2 py-2 text-xs font-medium text-gray-700 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-touch rounded-md border border-border-strong px-2 py-2 text-xs font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {bookingActionInFlight === 'left' ? 'Marking...' : 'Mark left'}
         </button>
@@ -372,7 +372,7 @@ function BookingActions(props: {
             const currentSize = Math.max(1, Number(selectedBooking.party_size || 1))
             onOpenPartySizeEdit(selectedBooking.id, currentSize)
           }}
-          className="min-h-touch rounded-md border border-border-strong px-2 py-2 text-xs font-medium text-gray-700 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-touch rounded-md border border-border-strong px-2 py-2 text-xs font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {bookingActionInFlight === 'party_size' ? 'Saving...' : 'Edit party size'}
         </button>
@@ -387,7 +387,7 @@ function BookingActions(props: {
             if (timeChangeBlocker) return
             onOpenChangeTime(selectedBooking.id)
           }}
-          className="min-h-touch rounded-md border border-border-strong px-2 py-2 text-xs font-medium text-gray-700 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-touch rounded-md border border-border-strong px-2 py-2 text-xs font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {bookingActionInFlight === 'change_time' ? 'Changing...' : 'Change time'}
         </button>
@@ -430,7 +430,7 @@ function BookingActions(props: {
               type="button"
               disabled={Boolean(bookingActionInFlight)}
               onClick={() => onSetShowNoShowConfirmation(false)}
-              className="rounded-md border border-border-strong bg-surface px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md border border-border-strong bg-surface px-2.5 py-1 text-xs font-medium text-text hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               Go back
             </button>
@@ -466,7 +466,7 @@ function BookingActions(props: {
               type="button"
               disabled={Boolean(bookingActionInFlight)}
               onClick={() => onSetShowCancelBookingConfirmation(false)}
-              className="rounded-md border border-border-strong bg-surface px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md border border-border-strong bg-surface px-2.5 py-1 text-xs font-medium text-text hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               Keep booking
             </button>
@@ -501,20 +501,20 @@ function BookingActions(props: {
           the rest off the bottom of the screen. The frequent actions stay reachable without
           scrolling; moving a table is worth a scroll. */}
       {selectedBookingIsOutside ? (
-        <p className="text-xs text-gray-500">Outside booking, so there is no table to move.</p>
+        <p className="text-xs text-text-muted">Outside booking, so there is no table to move.</p>
       ) : (
         <div className="rounded-md border border-border p-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
             <p className="text-sm font-semibold text-text">Move to another table</p>
             {currentTableName ? (
-              <p className="text-xs text-gray-500">Currently on {currentTableName}</p>
+              <p className="text-xs text-text-muted">Currently on {currentTableName}</p>
             ) : null}
           </div>
 
           {loadingSelectedMoveOptions ? (
-            <p className="mt-2 text-xs text-gray-500">Loading available tables...</p>
+            <p className="mt-2 text-xs text-text-muted">Loading available tables...</p>
           ) : selectedMoveOptions.length === 0 ? (
-            <p className="mt-2 text-xs text-gray-500">No other table is free for this time.</p>
+            <p className="mt-2 text-xs text-text-muted">No other table is free for this time.</p>
           ) : (
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
               {selectedMoveOptions.map((table) => {
@@ -552,7 +552,7 @@ function BookingActions(props: {
                       {moving ? 'Moving...' : table.name}
                     </span>
                     {!moving && table.capacity ? (
-                      <span className="mt-0.5 text-xs text-gray-500">Seats {table.capacity}</span>
+                      <span className="mt-0.5 text-xs text-text-muted">Seats {table.capacity}</span>
                     ) : null}
                   </button>
                 )

@@ -556,7 +556,7 @@ export function IngredientDrawer({
                       <div className="text-sm">
                         <div className="font-medium text-text">
                           {suggestion.field}:{' '}
-                          <span className="text-gray-500 line-through">
+                          <span className="text-text-muted line-through">
                             {formatValue(
                               (formState as Record<string, unknown>)[suggestion.field]
                             )}

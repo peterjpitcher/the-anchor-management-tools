@@ -44,7 +44,7 @@ export default async function MyLeavePage() {
     return (
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-text">My Holiday</h2>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-text-muted">
           Your account is not linked to an employee profile. Please contact your manager.
         </p>
       </div>
@@ -103,7 +103,7 @@ export default async function MyLeavePage() {
         </p>
       ) : (
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-gray-700">Your requests</h3>
+          <h3 className="text-sm font-medium text-text">Your requests</h3>
           {requests.map((req: LeaveRequest) => {
             const days = daysBetween(req.start_date, req.end_date);
             return (
@@ -114,11 +114,11 @@ export default async function MyLeavePage() {
                       {formatDate(req.start_date)}
                       {req.start_date !== req.end_date && ` – ${formatDate(req.end_date)}`}
                     </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
+                    <p className="text-xs text-text-muted mt-0.5">
                       {days} day{days !== 1 ? 's' : ''}
                     </p>
                     {req.note && (
-                      <p className="text-xs text-gray-500 italic mt-0.5">&ldquo;{req.note}&rdquo;</p>
+                      <p className="text-xs text-text-muted italic mt-0.5">&ldquo;{req.note}&rdquo;</p>
                     )}
                   </div>
                   <Badge variant={STATUS_BADGE[req.status] ?? 'default'} size="sm">

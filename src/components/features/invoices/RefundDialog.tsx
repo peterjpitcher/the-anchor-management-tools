@@ -218,7 +218,7 @@ export function RefundDialog({
           <>
             {/* Refund method */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-text mb-2">
                 Refund method
               </label>
               <div className="space-y-2">
@@ -248,7 +248,7 @@ export function RefundDialog({
             {/* Amount input */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label htmlFor="refund-amount" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="refund-amount" className="block text-sm font-medium text-text">
                   Refund amount
                 </label>
                 {parsedAmount !== remaining && (
@@ -279,7 +279,7 @@ export function RefundDialog({
 
             {/* Reason */}
             <div>
-              <label htmlFor="refund-reason" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="refund-reason" className="block text-sm font-medium text-text mb-1">
                 Reason <span className="text-gray-400 font-normal">(internal only)</span>
               </label>
               <Textarea
@@ -312,7 +312,7 @@ export function RefundDialog({
                     <div>
                       <label
                         htmlFor="refund-override-reason"
-                        className="block text-sm font-medium text-gray-700 mb-1"
+                        className="block text-sm font-medium text-text mb-1"
                       >
                         Why are you overriding the refund terms?
                       </label>

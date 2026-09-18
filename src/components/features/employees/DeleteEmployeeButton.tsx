@@ -62,7 +62,7 @@ export default function DeleteEmployeeButton({ employeeId, employeeName }: Delet
                       Delete Employee
                     </h3>
                     <div className="mt-2">
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-text-muted">
                         Are you sure you want to delete {employeeName}? This action cannot be undone.
                         All associated data (like notes and attachments if configured with CASCADE delete) might also be removed.
                       </p>

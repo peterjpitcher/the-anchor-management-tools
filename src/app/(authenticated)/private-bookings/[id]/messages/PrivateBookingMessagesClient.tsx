@@ -420,7 +420,7 @@ export default function PrivateBookingMessagesClient({
                     placeholder="Type your message here..."
                     disabled={!canSendSms}
                   />
-                  <p className="mt-2 text-xs text-gray-500">
+                  <p className="mt-2 text-xs text-text-muted">
                     {emailChosen
                       ? "Sent by email from The Anchor, with the venue's address, phone number and email added at the end."
                       : 'Messages are sent via the venue SMS number. Reply instructions are added automatically.'}
@@ -464,7 +464,7 @@ export default function PrivateBookingMessagesClient({
               ) : sentMessages.length === 0 ? (
                 <div className="text-center py-12">
                   <ChatBubbleLeftRightIcon className="mx-auto h-12 w-12 text-text-subtle" />
-                  <p className="mt-3 text-sm text-gray-500">
+                  <p className="mt-3 text-sm text-text-muted">
                     No messages have been sent for this booking yet.
                   </p>
                 </div>
@@ -503,30 +503,30 @@ export default function PrivateBookingMessagesClient({
             <Card>
               <div className="space-y-3">
                 <div>
-                  <h3 className="text-sm font-medium text-gray-500">Customer</h3>
+                  <h3 className="text-sm font-medium text-text-muted">Customer</h3>
                   <p className="text-sm text-text">
                     {booking.customer_full_name || booking.customer_name}
                   </p>
                   {booking.contact_phone && (
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <p className="text-xs text-text-muted flex items-center gap-1">
                       <DevicePhoneMobileIcon className="h-4 w-4" />
                       {booking.contact_phone}
                     </p>
                   )}
                 </div>
                 <div>
-                  <h3 className="text-sm font-medium text-gray-500">Event Details</h3>
+                  <h3 className="text-sm font-medium text-text-muted">Event Details</h3>
                   <p className="text-sm text-text">
                     {booking.event_type || 'Private event'}{' '}
                     {booking.event_date ? `on ${formatDateFull(booking.event_date)}` : ''}
                   </p>
                   {booking.start_time && (
-                    <p className="text-xs text-gray-500">Starts at {formatTime12Hour(booking.start_time)}</p>
+                    <p className="text-xs text-text-muted">Starts at {formatTime12Hour(booking.start_time)}</p>
                   )}
                 </div>
                 {booking.guest_count && (
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500">Guest Count</h3>
+                    <h3 className="text-sm font-medium text-text-muted">Guest Count</h3>
                     <p className="text-sm text-text">{booking.guest_count} guests</p>
                   </div>
                 )}
@@ -540,21 +540,21 @@ export default function PrivateBookingMessagesClient({
                 <CheckCircleIcon className="h-5 w-5 text-green-600" />
                 <div>
                   <p className="text-sm font-medium text-text">Delivered</p>
-                  <p className="text-xs text-gray-500">Messages confirmed by Twilio.</p>
+                  <p className="text-xs text-text-muted">Messages confirmed by Twilio.</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
                 <ExclamationCircleIcon className="h-5 w-5 text-warning" />
                 <div>
                   <p className="text-sm font-medium text-text">Queued</p>
-                  <p className="text-xs text-gray-500">Awaiting automatic send.</p>
+                  <p className="text-xs text-text-muted">Awaiting automatic send.</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
                 <XCircleIcon className="h-5 w-5 text-danger" />
                 <div>
                   <p className="text-sm font-medium text-text">Failed</p>
-                  <p className="text-xs text-gray-500">Requires manual attention.</p>
+                  <p className="text-xs text-text-muted">Requires manual attention.</p>
                 </div>
               </div>
             </Card>

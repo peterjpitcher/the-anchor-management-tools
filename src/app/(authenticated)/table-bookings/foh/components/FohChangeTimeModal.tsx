@@ -94,7 +94,7 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="min-h-touch rounded-md border border-border-strong bg-surface px-4 text-sm font-medium text-gray-700 hover:bg-surface-hover disabled:opacity-50"
+            className="min-h-touch rounded-md border border-border-strong bg-surface px-4 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-50"
           >
             Cancel
           </button>
@@ -118,7 +118,7 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
       <div className="space-y-4">
         <div className="rounded-md border border-border bg-surface-2 p-3">
           <p className="text-sm font-semibold text-text">{bookingLabel}</p>
-          <p className="mt-0.5 text-sm text-gray-700">
+          <p className="mt-0.5 text-sm text-text">
             Currently booked for <strong>{currentTime}</strong>
           </p>
         </div>
@@ -132,7 +132,7 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
         </p>
 
         {options.length === 0 ? (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-text-muted">
             No other time is available for this booking today.
           </p>
         ) : (
@@ -168,7 +168,7 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
                       <span className="text-sm font-semibold leading-tight">
                         {step > 0 ? `+${step}` : step}
                       </span>
-                      <span className="mt-0.5 text-xs text-gray-500">
+                      <span className="mt-0.5 text-xs text-text-muted">
                         {option ? option.time : '--:--'}
                       </span>
                     </button>

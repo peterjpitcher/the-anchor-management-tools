@@ -167,7 +167,7 @@ export default function DeleteBookingButton({
           </ModalActions>
         }
       >
-        <div className="space-y-3 text-sm text-gray-700">
+        <div className="space-y-3 text-sm text-text">
           <p>
             You are about to permanently delete the booking for{' '}
             <strong>{bookingName}</strong>. This cannot be undone.
@@ -189,7 +189,7 @@ export default function DeleteBookingButton({
               className="block text-sm font-medium text-text"
             >
               {hasEventDate ? 'To confirm, type the event date' : 'To confirm, type the booking id'}
-              <span className="ml-1 font-mono text-gray-500">({confirmLabel})</span>
+              <span className="ml-1 font-mono text-text-muted">({confirmLabel})</span>
               {humanReadableDate ? (
                 <span className="ml-1 text-gray-400">— {humanReadableDate}</span>
               ) : null}

@@ -93,7 +93,7 @@ export function NumberSearch({
                     </span>
                     <span className="block truncate text-sm text-text-muted">{item.typeTitle}</span>
                   </span>
-                  <span className="shrink-0 text-sm font-medium text-gray-700">
+                  <span className="shrink-0 text-sm font-medium text-text">
                     {statusLabel(item.status)}
                   </span>
                 </button>

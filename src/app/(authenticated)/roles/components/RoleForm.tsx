@@ -37,7 +37,7 @@ export default function RoleForm({ action, initialData }: RoleFormProps) {
       )}
 
       <div>
-        <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="name" className="block text-sm font-medium text-text">
           Role Name
         </label>
         <div className="mt-1">
@@ -51,13 +51,13 @@ export default function RoleForm({ action, initialData }: RoleFormProps) {
             placeholder="e.g., Event Manager"
           />
         </div>
-        <p className="mt-2 text-sm text-gray-500">
+        <p className="mt-2 text-sm text-text-muted">
           Choose a descriptive name for this role
         </p>
       </div>
 
       <div>
-        <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="description" className="block text-sm font-medium text-text">
           Description
         </label>
         <div className="mt-1">
@@ -75,7 +75,7 @@ export default function RoleForm({ action, initialData }: RoleFormProps) {
       <div className="flex justify-end space-x-3">
         <Link
           href="/roles"
-          className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+          className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text shadow-sm hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
         >
           Cancel
         </Link>

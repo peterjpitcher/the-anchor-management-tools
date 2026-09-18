@@ -206,7 +206,7 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
             <p className="mt-1 text-sm text-text-muted">
               {clockedInIds.has(pinTarget.employee_id) ? 'Clock out' : 'Clock in'}
             </p>
-            <label htmlFor="timeclock-pin" className="mt-5 block text-sm font-medium text-gray-700">
+            <label htmlFor="timeclock-pin" className="mt-5 block text-sm font-medium text-text">
               PIN
             </label>
             <input
@@ -224,7 +224,7 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
             <div className="mt-6 flex gap-3">
               <button
                 type="button"
-                className="flex-1 rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-gray-700"
+                className="flex-1 rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-text"
                 onClick={() => { setPinTarget(null); setPin('') }}
                 disabled={isPending}
               >

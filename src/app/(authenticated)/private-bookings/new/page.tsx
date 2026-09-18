@@ -145,14 +145,14 @@ export default function NewPrivateBookingPage() {
             <div className="space-y-4">
               {/* Customer Search */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-text mb-1">
                   Search Existing Customer
                 </label>
                 <CustomerSearchInput
                   onCustomerSelect={setSelectedCustomer}
                   placeholder="Search by name or phone number..."
                 />
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="mt-1 text-sm text-text-muted">
                   Select an existing customer, or enter a phone number below to create a new one
                 </p>
               </div>
@@ -228,7 +228,7 @@ export default function NewPrivateBookingPage() {
           >
             <div className="space-y-4">
               <div>
-                <label className="inline-flex min-h-touch md:min-h-0 items-center gap-2 text-sm font-medium text-gray-700">
+                <label className="inline-flex min-h-touch md:min-h-0 items-center gap-2 text-sm font-medium text-text">
                   <input
                     type="checkbox"
                     id="date_tbd"
@@ -239,7 +239,7 @@ export default function NewPrivateBookingPage() {
                   />
                   <span>Event date/time to be confirmed</span>
                 </label>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-text-muted">
                   We’ll keep this booking in draft until you add the event details.
                 </p>
               </div>

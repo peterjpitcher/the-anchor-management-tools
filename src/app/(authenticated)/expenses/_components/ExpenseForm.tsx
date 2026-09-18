@@ -221,7 +221,7 @@ export function ExpenseForm({
       {/* Date + Company */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label htmlFor="expense_date" className="block text-sm font-medium text-gray-700 ">
+          <label htmlFor="expense_date" className="block text-sm font-medium text-text ">
             Date <span className="text-danger">*</span>
           </label>
           <input
@@ -234,7 +234,7 @@ export function ExpenseForm({
           />
         </div>
         <div>
-          <label htmlFor="company_ref" className="block text-sm font-medium text-gray-700 ">
+          <label htmlFor="company_ref" className="block text-sm font-medium text-text ">
             Company / Ref <span className="text-danger">*</span>
           </label>
           <input
@@ -252,7 +252,7 @@ export function ExpenseForm({
 
       {/* Justification */}
       <div>
-        <label htmlFor="justification" className="block text-sm font-medium text-gray-700 ">
+        <label htmlFor="justification" className="block text-sm font-medium text-text ">
           Justification <span className="text-danger">*</span>
         </label>
         <input
@@ -270,7 +270,7 @@ export function ExpenseForm({
       {/* Amount + VAT */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
-          <label htmlFor="amount" className="block text-sm font-medium text-gray-700 ">
+          <label htmlFor="amount" className="block text-sm font-medium text-text ">
             Amount (£) <span className="text-danger">*</span>
           </label>
           <input
@@ -286,7 +286,7 @@ export function ExpenseForm({
           />
         </div>
         <div className="flex items-end pb-2">
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 ">
+          <label className="flex items-center gap-2 text-sm font-medium text-text ">
             <input
               type="checkbox"
               checked={vatApplicable}
@@ -301,7 +301,7 @@ export function ExpenseForm({
         </div>
         {vatApplicable && (
           <div>
-            <label htmlFor="vat_amount" className="block text-sm font-medium text-gray-700 ">
+            <label htmlFor="vat_amount" className="block text-sm font-medium text-text ">
               VAT Amount (£)
             </label>
             <input
@@ -320,7 +320,7 @@ export function ExpenseForm({
 
       {/* Notes */}
       <div>
-        <label htmlFor="notes" className="block text-sm font-medium text-gray-700 ">
+        <label htmlFor="notes" className="block text-sm font-medium text-text ">
           Notes
         </label>
         <textarea
@@ -336,7 +336,7 @@ export function ExpenseForm({
 
       {/* Receipt upload */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-text mb-2">
           Receipt Images
         </label>
 
@@ -355,7 +355,7 @@ export function ExpenseForm({
                     className="h-10 w-10 rounded-sm object-cover"
                   />
                 ) : (
-                  <span className="flex h-10 w-10 items-center justify-center rounded-sm bg-border text-xs font-medium text-gray-500  ">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-sm bg-border text-xs font-medium text-text-muted  ">
                     PDF
                   </span>
                 )}
@@ -396,7 +396,7 @@ export function ExpenseForm({
             }
           }}
         >
-          <p className="text-sm text-gray-500 ">
+          <p className="text-sm text-text-muted ">
             Drag and drop receipt images here, or click to browse
           </p>
           <p className="mt-1 text-xs text-gray-400 ">
@@ -450,7 +450,7 @@ export function ExpenseForm({
           type="button"
           onClick={onCancel}
           disabled={isLoading}
-          className="rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-gray-700 hover:bg-surface-hover disabled:opacity-50   "
+          className="rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-50   "
         >
           Cancel
         </button>

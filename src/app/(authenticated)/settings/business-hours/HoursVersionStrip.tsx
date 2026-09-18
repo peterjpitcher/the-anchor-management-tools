@@ -127,12 +127,12 @@ export function HoursVersionStrip({
         className={`min-h-touch rounded-md border px-3 py-2 text-sm font-medium ${
           isSelected
             ? 'border-sidebar bg-sidebar text-white'
-            : 'border-border-strong bg-surface text-gray-700 hover:bg-surface-hover'
+            : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
         }`}
       >
         {name}
         {version.status === 'draft' && (
-          <span className={`ml-2 text-xs ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>Draft</span>
+          <span className={`ml-2 text-xs ${isSelected ? 'text-white/80' : 'text-text-muted'}`}>Draft</span>
         )}
       </button>
     )

@@ -67,7 +67,7 @@ export default function EditEmergencyContactModal({
           <input type="hidden" name="employee_id" value={contact.employee_id} />
           {formFields.map((field) => (
             <div key={field.name}>
-              <label htmlFor={`edit-${field.name}`} className="block text-sm font-medium text-gray-700">
+              <label htmlFor={`edit-${field.name}`} className="block text-sm font-medium text-text">
                 {field.label} {field.required && <span className="text-danger">*</span>}
               </label>
               <div className="mt-1">
@@ -115,7 +115,7 @@ export default function EditEmergencyContactModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md border border-border-strong bg-surface py-2 px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-surface-hover"
+              className="rounded-md border border-border-strong bg-surface py-2 px-4 text-sm font-medium text-text shadow-sm hover:bg-surface-hover"
             >
               Cancel
             </button>

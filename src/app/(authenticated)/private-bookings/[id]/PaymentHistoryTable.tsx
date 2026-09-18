@@ -146,7 +146,7 @@ export default function PaymentHistoryTable({
         </div>
       </div>
 
-      <p className="text-xs font-medium text-gray-500 mb-2">Payment history</p>
+      <p className="text-xs font-medium text-text-muted mb-2">Payment history</p>
 
       {error && (
         <p className="text-xs text-danger mb-2">{error}</p>
@@ -186,7 +186,7 @@ export default function PaymentHistoryTable({
                     <div className="flex-1">
                       {/* PayPal deposit: read-only; non-PayPal deposit or balance: select without PayPal */}
                       {isPayPalDeposit ? (
-                        <span className="flex items-center h-full text-xs text-gray-700 px-2">PayPal</span>
+                        <span className="flex items-center h-full text-xs text-text px-2">PayPal</span>
                       ) : (
                         <Select
                           value={editValues.method}

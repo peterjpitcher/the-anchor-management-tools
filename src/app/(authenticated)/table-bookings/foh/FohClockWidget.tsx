@@ -108,7 +108,7 @@ export default function FohClockWidget({ employees, initialSessions }: FohClockW
             <button
               type="button"
               onClick={() => setShowClockInModal(false)}
-              className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-gray-700 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400"
+              className="rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400"
             >
               Cancel
             </button>
@@ -125,10 +125,10 @@ export default function FohClockWidget({ employees, initialSessions }: FohClockW
       >
         <div className="space-y-4">
           {availableEmployees.length === 0 ? (
-            <p className="text-sm text-gray-500">All staff are already clocked in.</p>
+            <p className="text-sm text-text-muted">All staff are already clocked in.</p>
           ) : (
             <div>
-              <label htmlFor="foh-clock-in-employee" className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label htmlFor="foh-clock-in-employee" className="block text-sm font-medium text-text mb-1.5">
                 Who&apos;s clocking in?
               </label>
               <select

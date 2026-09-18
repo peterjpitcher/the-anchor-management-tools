@@ -358,7 +358,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Item Type Selection */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-text mb-2">
             Item Type
           </label>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -528,7 +528,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
 
         {/* Discount */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-text">
             Discount (optional)
           </label>
           <div className="grid grid-cols-2 gap-4">
@@ -649,7 +649,7 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-text mb-1">
             Item
           </label>
           <p className="text-sm text-text">{item.description}</p>
@@ -679,7 +679,7 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-text">
             Discount
           </label>
           <div className="grid grid-cols-2 gap-4">
@@ -871,7 +871,7 @@ export default function ItemsPage() {
                       <p className="text-sm font-medium text-text">
                         {item.description}
                       </p>
-                      <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
+                      <div className="mt-1 flex items-center space-x-4 text-sm text-text-muted">
                         <span>Qty: {item.quantity}</span>
                         <span>{formatMoney(item.unit_price)} each</span>
                         {/* Compare against 0 explicitly: a bare `item.discount_value &&`
@@ -884,7 +884,7 @@ export default function ItemsPage() {
                         )}
                       </div>
                       {item.notes && (
-                        <p className="mt-1 text-sm text-gray-500">{item.notes}</p>
+                        <p className="mt-1 text-sm text-text-muted">{item.notes}</p>
                       )}
                     </div>
                   </div>
@@ -895,7 +895,7 @@ export default function ItemsPage() {
                     <div className="flex items-center space-x-2">
                       <button type="button"
                         onClick={() => setEditingItem(item)}
-                        className="text-gray-400 hover:text-gray-500"
+                        className="text-gray-400 hover:text-text-muted"
                       >
                         <PencilIcon className="h-5 w-5" />
                       </button>
@@ -920,7 +920,7 @@ export default function ItemsPage() {
                 </span>
               </div>
               <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-500">VAT</span>
+                <span className="text-text-muted">VAT</span>
                 <span className="font-medium text-text">
                   {formatMoney(bookingMoney.vatAmount)}
                 </span>

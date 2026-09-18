@@ -143,7 +143,7 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
             onBarClick={handleBarClick}
           />
         ) : (
-          <p className="text-gray-500 text-center py-12">No expense data available.</p>
+          <p className="text-text-muted text-center py-12">No expense data available.</p>
         )}
       </Card>
 
@@ -160,7 +160,7 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
                     currentColumn={companySort.column}
                     currentDirection={companySort.direction}
                     onSort={toggleCompanySort}
-                    className="text-left py-2 pr-4 font-medium text-gray-500"
+                    className="text-left py-2 pr-4 font-medium text-text-muted"
                   />
                   <SortableHeader
                     label="Total"
@@ -168,7 +168,7 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
                     currentColumn={companySort.column}
                     currentDirection={companySort.direction}
                     onSort={toggleCompanySort}
-                    className="text-right py-2 px-4 font-medium text-gray-500"
+                    className="text-right py-2 px-4 font-medium text-text-muted"
                   />
                   <SortableHeader
                     label="VAT"
@@ -176,7 +176,7 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
                     currentColumn={companySort.column}
                     currentDirection={companySort.direction}
                     onSort={toggleCompanySort}
-                    className="text-right py-2 px-4 font-medium text-gray-500"
+                    className="text-right py-2 px-4 font-medium text-text-muted"
                   />
                   <SortableHeader
                     label="Count"
@@ -184,7 +184,7 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
                     currentColumn={companySort.column}
                     currentDirection={companySort.direction}
                     onSort={toggleCompanySort}
-                    className="text-right py-2 pl-4 font-medium text-gray-500"
+                    className="text-right py-2 pl-4 font-medium text-text-muted"
                   />
                 </tr>
               </thead>

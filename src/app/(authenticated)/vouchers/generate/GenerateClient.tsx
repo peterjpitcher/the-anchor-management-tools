@@ -200,7 +200,7 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
                 >
                   <div className="min-w-0">
                     <div className="font-medium text-text">{type.displayTitle}</div>
-                    <div className="text-sm text-gray-500">In stock: {type.inStock}</div>
+                    <div className="text-sm text-text-muted">In stock: {type.inStock}</div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -262,7 +262,7 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm font-medium text-gray-700" aria-live="polite">
+          <div className="text-sm font-medium text-text" aria-live="polite">
             {total} vouchers · {total} A4 sheets · {total * PDF_PAGES_PER_CARD} PDF pages
           </div>
           <Button
@@ -286,7 +286,7 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
             <Spinner size="md" />
             <div>
               <div className="font-medium text-text">Rendering the print PDF</div>
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-text-muted">
                 This can take a minute for larger batches. If you close this page the batch is
                 safe: come back via the overview to download or retry.
               </div>
@@ -367,12 +367,12 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
           <ul className="space-y-1">
             {(progress?.countsByType ?? []).map((row) => (
               <li key={row.typeId} className="flex justify-between text-sm">
-                <span className="text-gray-700">{row.displayTitle}</span>
+                <span className="text-text">{row.displayTitle}</span>
                 <span className="font-medium text-text">{row.count}</span>
               </li>
             ))}
           </ul>
-          <div className="border-t border-border pt-3 text-sm text-gray-700">
+          <div className="border-t border-border pt-3 text-sm text-text">
             Numbers{' '}
             <span className="font-mono font-medium text-text">
               {progress?.firstNumber ?? '?'}
@@ -404,7 +404,7 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
       </Card>
 
       <Card title="Print instructions">
-        <blockquote className="border-l-4 border-border-strong pl-4 text-sm text-gray-700">
+        <blockquote className="border-l-4 border-border-strong pl-4 text-sm text-text">
           A4 landscape · print <strong>double sided, flip on short edge</strong> · 100% scale, no
           &quot;fit to page&quot; · fold each sheet down the middle. Pages come in pairs: odd pages
           are the outside (back cover + front cover), even pages are the inside spread.

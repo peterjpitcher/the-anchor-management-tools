@@ -145,7 +145,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
             onBarClick={handleBarClick}
           />
         ) : (
-          <p className="text-gray-500 text-center py-12">No mileage data available.</p>
+          <p className="text-text-muted text-center py-12">No mileage data available.</p>
         )}
       </Card>
 
@@ -162,7 +162,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
                     currentColumn={destinationSort.column}
                     currentDirection={destinationSort.direction}
                     onSort={toggleDestinationSort}
-                    className="text-left py-2 pr-4 font-medium text-gray-500"
+                    className="text-left py-2 pr-4 font-medium text-text-muted"
                   />
                   <SortableHeader
                     label="Miles"
@@ -170,7 +170,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
                     currentColumn={destinationSort.column}
                     currentDirection={destinationSort.direction}
                     onSort={toggleDestinationSort}
-                    className="text-right py-2 px-4 font-medium text-gray-500"
+                    className="text-right py-2 px-4 font-medium text-text-muted"
                   />
                   <SortableHeader
                     label="Amount Due"
@@ -178,7 +178,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
                     currentColumn={destinationSort.column}
                     currentDirection={destinationSort.direction}
                     onSort={toggleDestinationSort}
-                    className="text-right py-2 px-4 font-medium text-gray-500"
+                    className="text-right py-2 px-4 font-medium text-text-muted"
                   />
                   <SortableHeader
                     label="Trips"
@@ -186,7 +186,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
                     currentColumn={destinationSort.column}
                     currentDirection={destinationSort.direction}
                     onSort={toggleDestinationSort}
-                    className="text-right py-2 pl-4 font-medium text-gray-500"
+                    className="text-right py-2 pl-4 font-medium text-text-muted"
                   />
                 </tr>
               </thead>

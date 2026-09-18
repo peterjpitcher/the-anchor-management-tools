@@ -25,7 +25,7 @@ export default function CalendarSubscribeButton({ feedUrl }: { feedUrl: string }
         <CalendarDaysIcon className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
         <div>
           <p className="text-xs font-semibold text-text">Sync shifts to your calendar</p>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-text-muted">
             Pending and accepted shifts are included. Google Calendar can take several hours to update.
           </p>
         </div>
@@ -42,14 +42,14 @@ export default function CalendarSubscribeButton({ feedUrl }: { feedUrl: string }
           href={googleUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="touch-target inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-surface-hover transition-colors"
+          className="touch-target inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text hover:bg-surface-hover transition-colors"
         >
           Google Calendar
         </a>
         <button
           type="button"
           onClick={handleCopy}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-surface-hover transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text hover:bg-surface-hover transition-colors"
         >
           {copied ? (
             <><CheckIcon className="h-3.5 w-3.5 text-green-600" /><span className="text-green-600">Copied!</span></>

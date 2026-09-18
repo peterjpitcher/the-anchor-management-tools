@@ -61,7 +61,7 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
           {Icon && <Icon className="h-5 w-5 text-gray-400" />}
           <div className="text-left">
             <h3 className="text-lg font-medium leading-6 text-text">{title}</h3>
-            {description && <p className="mt-1 text-sm text-gray-500">{description}</p>}
+            {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
           </div>
         </div>
         {isOpen ? (
@@ -241,7 +241,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 maxLength={MAX_NAME_LENGTH}
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">{name.length}/{MAX_NAME_LENGTH} characters</p>
+              <p className="mt-1 text-xs text-text-muted">{name.length}/{MAX_NAME_LENGTH} characters</p>
             </div>
           </div>
 
@@ -274,7 +274,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 maxLength={MAX_DESCRIPTION_LENGTH}
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">{description.length}/{MAX_DESCRIPTION_LENGTH} characters</p>
+              <p className="mt-1 text-xs text-text-muted">{description.length}/{MAX_DESCRIPTION_LENGTH} characters</p>
             </div>
           </div>
 
@@ -338,7 +338,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 <label htmlFor="is_active" className="font-medium text-text">
                   Active
                 </label>
-                <p className="text-gray-500">This category will be available when creating events</p>
+                <p className="text-text-muted">This category will be available when creating events</p>
               </div>
             </div>
           </div>
@@ -355,7 +355,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
               </div>
               <div>
                 <p className="font-medium text-text">{name || 'Category Name'}</p>
-                <p className="text-sm text-gray-500">{description || 'Category description'}</p>
+                <p className="text-sm text-text-muted">{description || 'Category description'}</p>
               </div>
             </div>
           </div>
@@ -559,7 +559,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
               <label htmlFor="default-promo-sms" className="text-sm font-medium text-text">
                 Default promotional SMS
               </label>
-              <p className="text-xs text-gray-500">New events in this category will inherit this setting</p>
+              <p className="text-xs text-text-muted">New events in this category will inherit this setting</p>
             </div>
             <button
               id="default-promo-sms"
@@ -578,7 +578,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
               <label htmlFor="default-bookings" className="text-sm font-medium text-text">
                 Default accept bookings
               </label>
-              <p className="text-xs text-gray-500">New events in this category will inherit this setting</p>
+              <p className="text-xs text-text-muted">New events in this category will inherit this setting</p>
             </div>
             <button
               id="default-bookings"
@@ -691,7 +691,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 placeholder="SEO page title"
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">{metaTitle.length}/{MAX_META_TITLE_LENGTH} characters</p>
+              <p className="mt-1 text-xs text-text-muted">{metaTitle.length}/{MAX_META_TITLE_LENGTH} characters</p>
             </div>
           </div>
 
@@ -709,7 +709,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 placeholder="SEO page description"
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">{metaDescription.length}/{MAX_META_DESCRIPTION_LENGTH} characters</p>
+              <p className="mt-1 text-xs text-text-muted">{metaDescription.length}/{MAX_META_DESCRIPTION_LENGTH} characters</p>
             </div>
           </div>
 
@@ -727,7 +727,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 placeholder="Brief description for listings"
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">{shortDescription.length}/{MAX_SHORT_DESCRIPTION_LENGTH} characters</p>
+              <p className="mt-1 text-xs text-text-muted">{shortDescription.length}/{MAX_SHORT_DESCRIPTION_LENGTH} characters</p>
             </div>
           </div>
 
@@ -760,7 +760,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 placeholder="Great prizes, Fun atmosphere, Weekly event"
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">Separate multiple highlights with commas</p>
+              <p className="mt-1 text-xs text-text-muted">Separate multiple highlights with commas</p>
             </div>
           </div>
 
@@ -777,7 +777,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 placeholder="quiz, trivia, pub quiz, entertainment"
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">Separate keywords with commas for better SEO</p>
+              <p className="mt-1 text-xs text-text-muted">Separate keywords with commas for better SEO</p>
             </div>
           </div>
 
@@ -807,7 +807,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 placeholder="e.g., Live music at The Anchor pub"
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">Default alt text for event images in this category</p>
+              <p className="mt-1 text-xs text-text-muted">Default alt text for event images in this category</p>
             </div>
           </div>
 
@@ -825,7 +825,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 placeholder="e.g., Tickets are non-refundable but may be transferred to another person."
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">Default cancellation policy shown on event pages</p>
+              <p className="mt-1 text-xs text-text-muted">Default cancellation policy shown on event pages</p>
             </div>
           </div>
 
@@ -843,7 +843,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 placeholder="e.g., Venue is wheelchair accessible. Hearing loop available."
                 fullWidth
               />
-              <p className="mt-1 text-xs text-gray-500">Default accessibility information for events in this category</p>
+              <p className="mt-1 text-xs text-text-muted">Default accessibility information for events in this category</p>
             </div>
           </div>
 

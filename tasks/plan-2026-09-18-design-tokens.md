@@ -34,7 +34,7 @@
 | PR-05 | DS primitives and compat wrappers | [x] | see git log | dpl_CejQqkQ4AzSSTVYByBuXwiHPjDHL (with PR-06), live 18 Sep 15:18 |
 | PR-06 | DS composites and app shell | [x] | ff51e13c (tip) | dpl_CejQqkQ4AzSSTVYByBuXwiHPjDHL, live 18 Sep 15:18 |
 | PR-07 | Codemod step A (value-equal swaps) | [x] | see git log | pending ship |
-| PR-08 | Codemod step B (secondary greys darken) | [ ] | | |
+| PR-08 | Codemod step B (secondary greys darken) | [x] | see git log | pending ship (with PR-07) |
 | PR-09 | Area: guest pages, sign-in, recruitment booking, invoice portal | [ ] | | |
 | PR-10 | Area: FOH, BOH, table bookings, vouchers, timeclock, kiosk, parking | [ ] | | |
 | PR-11 | Area: employee onboarding and staff portal | [ ] | | |
@@ -620,8 +620,8 @@ Acceptance: the guard baseline for every file in `src/ds/primitives/` and `src/d
 
 ## PR-08: Codemod step B (secondary greys darken, D3)
 
-- [ ] `--write --step=b` with exactly two mappings: `text-gray-500` to `text-text-muted` (658 uses), `text-gray-700` to `text-text` (352 uses). Same exclusions as PR-07.
-- [ ] P-VISUAL on three dense screens (a table, a form, a detail page); baseline update; P-GATES; P-COMMIT `refactor(styles): move secondary text to the token greys` (body: owner decision D3, text becomes slightly darker and more readable); P-SHIP.
+- [x] `--write --step=b` with exactly two mappings: `text-gray-500` to `text-text-muted` (658 uses), `text-gray-700` to `text-text` (352 uses). Same exclusions as PR-07.
+- [x] P-VISUAL on three dense screens (a table, a form, a detail page); baseline update; P-GATES; P-COMMIT `refactor(styles): move secondary text to the token greys` (body: owner decision D3, text becomes slightly darker and more readable); P-SHIP.
 
 ## Area passes: shared method for PR-09 to PR-15
 
@@ -798,3 +798,4 @@ export const GUEST = {
 - 2026-09-18: PR-05 done by a 4-agent workflow plus a reviewer (5 fixes). Added --shadow-ring-inset because accordion items, tab strips and table headers clip the outer ring. Native radios keep the browser outline (Safari may not draw a box-shadow on them). Parked: SortableHeader renders a button directly in a tr with no th (ExpensesClient, expenses and mileage insights), pre-existing invalid markup.
 - 2026-09-18: PR-06 harness: PageLayout and PageHeader titles both at 28px left, 24px, on the warm background (phones 16px both; PageLayout was 32px). DataTable matches Table (12px uppercase muted headers on surface-2, 13px cells). Card now honours padding (none/sm/md/lg) and variant (secondary/ghost). FOH manager kiosk uses headerVariant=dark (bg-brand-700) instead of !important overrides on gray class names. deposit-waiver.test.ts timed out once at 5s under load average 142 from other sessions; passes alone and in clean reruns.
 - 2026-09-18: PR-07 codemod step A: 3,221 swaps in 276 files. Guard totals after: raw-palette 2041 (was 4599), px-text-size 103 (405), bare-rounded 20 (207), off-scale-shadow 2 (45), dark-variant 0 (62), legacy-hsl 0, 820 variant 0. All 91 distinct introduced classes compile; no swap outside class strings. Codemod skips guest pages and their tests (tests/components/guest-routes, tests/components/guest).
+- 2026-09-18: PR-08 step B: text-gray-500 x626 to text-text-muted, text-gray-700 x336 to text-text, 158 files. raw-palette now 1079.

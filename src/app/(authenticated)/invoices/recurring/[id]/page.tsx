@@ -306,7 +306,7 @@ export default function RecurringInvoiceDetailPage() {
         <Card title="Template Information">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div>
-              <div className="text-sm text-gray-500">Status</div>
+              <div className="text-sm text-text-muted">Status</div>
               <div className="mt-1">
                 <Badge variant={recurringInvoice.is_active ? 'success' : 'default'} size="sm">
                   {recurringInvoice.is_active ? 'Active' : 'Inactive'}
@@ -315,12 +315,12 @@ export default function RecurringInvoiceDetailPage() {
             </div>
 
             <div>
-              <div className="text-sm text-gray-500">Vendor</div>
+              <div className="text-sm text-text-muted">Vendor</div>
               <div className="mt-1 font-medium">{recurringInvoice.vendor?.name || 'Unknown'}</div>
             </div>
 
             <div>
-              <div className="text-sm text-gray-500">Frequency</div>
+              <div className="text-sm text-text-muted">Frequency</div>
               <div className="mt-1 flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-gray-400" />
                 <span className="capitalize">{recurringInvoice.frequency}</span>
@@ -328,7 +328,7 @@ export default function RecurringInvoiceDetailPage() {
             </div>
 
             <div>
-              <div className="text-sm text-gray-500">Payment Terms</div>
+              <div className="text-sm text-text-muted">Payment Terms</div>
               <div className="mt-1 flex items-center gap-2">
                 <Clock className="h-4 w-4 text-gray-400" />
                 <span>{recurringInvoice.days_before_due} days</span>
@@ -336,12 +336,12 @@ export default function RecurringInvoiceDetailPage() {
             </div>
 
             <div>
-              <div className="text-sm text-gray-500">Start Date</div>
+              <div className="text-sm text-text-muted">Start Date</div>
               <div className="mt-1">{formatDateInLondon(recurringInvoice.start_date)}</div>
             </div>
 
             <div>
-              <div className="text-sm text-gray-500">End Date</div>
+              <div className="text-sm text-text-muted">End Date</div>
               <div className="mt-1">
                 {recurringInvoice.end_date
                   ? formatDateInLondon(recurringInvoice.end_date)
@@ -351,13 +351,13 @@ export default function RecurringInvoiceDetailPage() {
 
             {recurringInvoice.reference && (
               <div>
-                <div className="text-sm text-gray-500">Reference</div>
+                <div className="text-sm text-text-muted">Reference</div>
                 <div className="mt-1">{recurringInvoice.reference}</div>
               </div>
             )}
 
             <div>
-              <div className="text-sm text-gray-500">Next Invoice Date</div>
+              <div className="text-sm text-text-muted">Next Invoice Date</div>
               <div className="mt-1 font-medium">
                 {nextInvoiceDate
                   ? formatDateInLondon(nextInvoiceDate)
@@ -367,7 +367,7 @@ export default function RecurringInvoiceDetailPage() {
 
             {recurringInvoice.last_invoice && (
               <div>
-                <div className="text-sm text-gray-500">Last Generated</div>
+                <div className="text-sm text-text-muted">Last Generated</div>
                 <div className="mt-1">
                   {formatDateInLondon(recurringInvoice.last_invoice.invoice_date)}
                 </div>
@@ -375,7 +375,7 @@ export default function RecurringInvoiceDetailPage() {
             )}
 
             <div>
-              <div className="text-sm text-gray-500">Last Invoice</div>
+              <div className="text-sm text-text-muted">Last Invoice</div>
               <div className="mt-1">
                 {recurringInvoice.last_invoice
                   ? `${recurringInvoice.last_invoice.invoice_number} (${recurringInvoice.last_invoice.status})`
@@ -474,13 +474,13 @@ export default function RecurringInvoiceDetailPage() {
           <Card title="Notes">
             {recurringInvoice.notes && (
               <div className="mb-4">
-                <div className="mb-1 text-sm text-gray-500">Customer Notes</div>
+                <div className="mb-1 text-sm text-text-muted">Customer Notes</div>
                 <div className="whitespace-pre-wrap text-text">{recurringInvoice.notes}</div>
               </div>
             )}
             {recurringInvoice.internal_notes && (
               <div>
-                <div className="mb-1 text-sm text-gray-500">Internal Notes</div>
+                <div className="mb-1 text-sm text-text-muted">Internal Notes</div>
                 <div className="whitespace-pre-wrap text-text">{recurringInvoice.internal_notes}</div>
               </div>
             )}
@@ -489,7 +489,7 @@ export default function RecurringInvoiceDetailPage() {
 
         <Card title="Last invoice generated">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-gray-500">Track the latest invoice produced by this schedule.</p>
+            <p className="text-sm text-text-muted">Track the latest invoice produced by this schedule.</p>
             <Button
               variant="secondary"
               onClick={() => router.push(`/invoices/recurring/${recurringInvoice.id}/edit`)}
@@ -502,7 +502,7 @@ export default function RecurringInvoiceDetailPage() {
 
           <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <dt className="text-sm text-gray-500">Last generated invoice</dt>
+              <dt className="text-sm text-text-muted">Last generated invoice</dt>
               <dd className="text-base font-medium text-text">
                 {recurringInvoice.last_invoice
                   ? `${recurringInvoice.last_invoice.invoice_number} (${recurringInvoice.last_invoice.status})`
@@ -510,7 +510,7 @@ export default function RecurringInvoiceDetailPage() {
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-gray-500">Generated on</dt>
+              <dt className="text-sm text-text-muted">Generated on</dt>
               <dd className="text-base font-medium text-text">
                 {recurringInvoice.last_invoice
                   ? new Date(recurringInvoice.last_invoice.invoice_date).toLocaleDateString('en-GB')

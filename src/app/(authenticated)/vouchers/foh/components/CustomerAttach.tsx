@@ -115,7 +115,7 @@ export function CustomerAttach({
             <button
               type="button"
               onClick={() => onChange(null)}
-              className="min-h-touch rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-gray-700 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1"
+              className="min-h-touch rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1"
             >
               Remove
             </button>
@@ -123,7 +123,7 @@ export function CustomerAttach({
         </div>
         <div aria-live="polite">
           {statusMessage && (
-            <p role="status" className="mt-2 text-sm font-medium text-gray-700">
+            <p role="status" className="mt-2 text-sm font-medium text-text">
               {statusMessage}
             </p>
           )}
@@ -149,7 +149,7 @@ export function CustomerAttach({
               className="min-h-touch rounded-full border border-border-strong bg-surface px-4 py-2 text-base text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {booker.name}
-              <span className="ml-1 text-sm text-gray-500">
+              <span className="ml-1 text-sm text-text-muted">
                 (booked, {booker.seats} {booker.seats === 1 ? 'seat' : 'seats'})
               </span>
             </button>
@@ -189,7 +189,7 @@ export function CustomerAttach({
           </ul>
         )}
         {statusMessage && (
-          <p role="status" className="mt-2 text-sm font-medium text-gray-700">
+          <p role="status" className="mt-2 text-sm font-medium text-text">
             {statusMessage}
           </p>
         )}
@@ -200,7 +200,7 @@ export function CustomerAttach({
           type="button"
           disabled={disabled}
           onClick={() => setShowQuickAdd(true)}
-          className="mt-2 min-h-touch rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-gray-700 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-2 min-h-touch rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Add a new customer
         </button>
@@ -249,7 +249,7 @@ export function CustomerAttach({
               />
             </div>
           </div>
-          <p className="mt-2 text-sm text-gray-700">
+          <p className="mt-2 text-sm text-text">
             Adding someone here signs them up for updates from The Anchor, so please say so out loud.
             We will remind them about the voucher by email, or by text if they have no email address.
           </p>
@@ -269,7 +269,7 @@ export function CustomerAttach({
                 setStatusMessage(null)
               }}
               disabled={busy}
-              className="min-h-touch rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-gray-700 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-touch rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Cancel
             </button>

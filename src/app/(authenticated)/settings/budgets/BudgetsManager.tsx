@@ -118,16 +118,16 @@ function BudgetRow({
           {targets ? (
             <dl className="grid grid-cols-3 gap-4 text-sm">
               <div>
-                <dt className="text-xs text-gray-500">Annual</dt>
+                <dt className="text-xs text-text-muted">Annual</dt>
                 <dd className="font-semibold text-text">{targets.annual.toFixed(0)}h</dd>
               </div>
               <div>
-                <dt className="text-xs text-gray-500">Monthly target</dt>
-                <dd className="font-medium text-gray-700">{targets.monthly.toFixed(1)}h</dd>
+                <dt className="text-xs text-text-muted">Monthly target</dt>
+                <dd className="font-medium text-text">{targets.monthly.toFixed(1)}h</dd>
               </div>
               <div>
-                <dt className="text-xs text-gray-500">Weekly target</dt>
-                <dd className="font-medium text-gray-700">{targets.weekly.toFixed(1)}h</dd>
+                <dt className="text-xs text-text-muted">Weekly target</dt>
+                <dd className="font-medium text-text">{targets.weekly.toFixed(1)}h</dd>
               </div>
             </dl>
           ) : (
@@ -217,7 +217,7 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
               className={`px-3 py-1 rounded-sm text-sm font-medium transition-colors ${
                 y === year
                   ? 'bg-green-700 text-white'
-                  : 'bg-surface-hover text-gray-700 hover:bg-border'
+                  : 'bg-surface-hover text-text hover:bg-border'
               }`}
             >
               {y}
@@ -252,7 +252,7 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
           <button
             type="button"
             onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
+            className="flex items-center gap-1.5 text-sm text-text-muted hover:text-text"
           >
             <PlusIcon className="h-4 w-4" />
             Add department
@@ -261,7 +261,7 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
       )}
 
       <div className="bg-surface-2 rounded-lg p-4">
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-text-muted">
           Monthly target = annual ÷ 12. Weekly target = annual ÷ 52.
           These hour targets are used in the rota budget bar and the labour dashboard.
           Only hourly staff count toward scheduled hours — salaried staff are excluded.

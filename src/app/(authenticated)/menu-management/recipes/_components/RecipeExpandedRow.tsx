@@ -68,7 +68,7 @@ export function RecipeExpandedRow({ recipe }: RecipeExpandedRowProps): React.Rea
   const hasUsage = recipe.usage.length > 0;
 
   if (!hasIngredients && !hasUsage) {
-    return <p className="text-sm text-gray-500">No ingredients or dishes linked to this recipe yet.</p>;
+    return <p className="text-sm text-text-muted">No ingredients or dishes linked to this recipe yet.</p>;
   }
 
   return (
@@ -80,10 +80,10 @@ export function RecipeExpandedRow({ recipe }: RecipeExpandedRowProps): React.Rea
             {recipe.ingredients.map((ingredient) => (
               <div key={ingredient.ingredient_id} className="rounded-lg border border-border bg-surface p-3 shadow-sm">
                 <div className="font-medium text-text">{ingredient.ingredient_name}</div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-text-muted">
                   Qty {ingredient.quantity} {ingredient.unit || ingredient.default_unit || ''}
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-text-muted">
                   Cost:{' '}
                   {ingredient.cost_override != null
                     ? `Override £${Number(ingredient.cost_override).toFixed(2)}`
@@ -92,7 +92,7 @@ export function RecipeExpandedRow({ recipe }: RecipeExpandedRowProps): React.Rea
                       : 'n/a'}
                 </div>
                 {ingredient.notes && (
-                  <div className="mt-1 text-xs text-gray-500">Notes: {ingredient.notes}</div>
+                  <div className="mt-1 text-xs text-text-muted">Notes: {ingredient.notes}</div>
                 )}
               </div>
             ))}
@@ -108,7 +108,7 @@ export function RecipeExpandedRow({ recipe }: RecipeExpandedRowProps): React.Rea
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="font-medium text-text">{usageRow.dish_name}</div>
-                    <div className="text-xs text-gray-500">Qty per dish: {usageRow.quantity}</div>
+                    <div className="text-xs text-text-muted">Qty per dish: {usageRow.quantity}</div>
                   </div>
                   <Badge variant={usageRow.dish_is_active ? 'success' : 'neutral'}>
                     {usageRow.dish_is_active ? 'Active' : 'Inactive'}

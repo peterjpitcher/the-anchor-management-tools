@@ -75,7 +75,7 @@ function DeleteContactButton({
                   </div>
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
                     <h3 className="text-base font-semibold leading-6 text-text">Delete contact</h3>
-                    <p className="mt-2 text-sm text-gray-500">
+                    <p className="mt-2 text-sm text-text-muted">
                       Remove <strong>{contact.name}</strong> as an emergency contact? This cannot be undone.
                     </p>
                   </div>
@@ -146,7 +146,7 @@ export default function EmergencyContactsTab({
       )}
 
       {contacts.length === 0 ? (
-        <p className="text-sm text-gray-500">No emergency contacts found.</p>
+        <p className="text-sm text-text-muted">No emergency contacts found.</p>
       ) : (
         <ul className="divide-y divide-border">
           {contacts.map((contact) => (
@@ -167,12 +167,12 @@ export default function EmergencyContactsTab({
                       </span>
                     )}
                     {contact.relationship && (
-                      <p className="text-sm text-gray-500">{contact.relationship}</p>
+                      <p className="text-sm text-text-muted">{contact.relationship}</p>
                     )}
                   </div>
-                  {contact.phone_number && <p className="text-sm text-gray-500">Telephone: {contact.phone_number}</p>}
-                  {contact.mobile_number && <p className="text-sm text-gray-500">Mobile: {contact.mobile_number}</p>}
-                  {contact.address && <p className="text-sm text-gray-500">{contact.address}</p>}
+                  {contact.phone_number && <p className="text-sm text-text-muted">Telephone: {contact.phone_number}</p>}
+                  {contact.mobile_number && <p className="text-sm text-text-muted">Mobile: {contact.mobile_number}</p>}
+                  {contact.address && <p className="text-sm text-text-muted">{contact.address}</p>}
                 </div>
 
                 {canEdit && (

@@ -52,7 +52,7 @@ export function EmployeeDetailTabs({ tabs }: EmployeeDetailTabsProps) {
               onClick={() => setActive(t.key)}
               className={cn(
                 'relative whitespace-nowrap px-4 py-2.5 text-ui font-medium transition-colors',
-                isActive ? 'text-green-700' : 'text-gray-500 hover:text-text',
+                isActive ? 'text-green-700' : 'text-text-muted hover:text-text',
               )}
             >
               {t.label}

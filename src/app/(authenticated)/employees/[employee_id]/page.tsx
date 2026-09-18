@@ -173,7 +173,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
               key={index}
               className={`py-3 flex flex-col sm:grid sm:grid-cols-4 sm:gap-4 ${field.isFullWidth ? 'sm:grid-cols-1' : ''}`}
             >
-              <dt className="text-sm font-medium text-gray-500 mb-1 sm:mb-0">{field.label}</dt>
+              <dt className="text-sm font-medium text-text-muted mb-1 sm:mb-0">{field.label}</dt>
               <dd className={`text-sm text-text ${field.isFullWidth ? '' : 'sm:col-span-3'}`}>
                 {field.isBadge ? (
                   <Badge variant={statusBadgeVariant(employee.status)}>
@@ -359,12 +359,12 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
             <Card>
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <div>
-                  <p className="text-sm text-gray-500">Employment</p>
+                  <p className="text-sm text-text-muted">Employment</p>
                   <p className="text-xl font-semibold text-text">
                     {employee.status}{employee.employment_start_date ? ` • Started ${formatDate(employee.employment_start_date)}` : ''}
                   </p>
                   {employee.employment_start_date && (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-text-muted">
                       {calculateLengthOfService(employee.employment_start_date)}
                     </p>
                   )}
@@ -434,7 +434,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                   canDelete={permissions.canDeleteDocuments}
                 />
               ) : (
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-text-muted">
                   Document visibility requires `employees:view_documents`.
                 </div>
               )}

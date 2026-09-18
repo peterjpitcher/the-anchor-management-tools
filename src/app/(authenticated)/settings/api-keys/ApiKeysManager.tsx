@@ -80,7 +80,7 @@ function KeyForm({
       className="space-y-4"
     >
       <div>
-        <label htmlFor="key-name" className="block text-sm font-medium text-gray-700">Name *</label>
+        <label htmlFor="key-name" className="block text-sm font-medium text-text">Name *</label>
         <Input
           type="text"
           id="key-name"
@@ -93,7 +93,7 @@ function KeyForm({
       </div>
 
       <div>
-        <label htmlFor="key-description" className="block text-sm font-medium text-gray-700">Description</label>
+        <label htmlFor="key-description" className="block text-sm font-medium text-text">Description</label>
         <Input
           type="text"
           id="key-description"
@@ -105,7 +105,7 @@ function KeyForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Permissions</label>
+        <label className="block text-sm font-medium text-text mb-2">Permissions</label>
         <div className="space-y-2">
           {PERMISSION_OPTIONS.map(option => (
             <Checkbox
@@ -119,7 +119,7 @@ function KeyForm({
       </div>
 
       <div>
-        <label htmlFor="key-rate-limit" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="key-rate-limit" className="block text-sm font-medium text-text">
           Rate Limit (requests per hour)
         </label>
         <Input
@@ -271,7 +271,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
       {canManage && editingKey && (
         <Card variant="default" padding="md">
           <h3 className="text-lg font-semibold mb-1">Edit API Key</h3>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-sm text-text-muted mb-4">
             The key value itself cannot be changed. Only the name, description, permissions and rate limit can be updated.
           </p>
           <KeyForm
@@ -321,14 +321,14 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
             { key: 'name', header: 'Name', cell: (k: ApiKey) => (
               <div>
                 <div className="text-sm font-medium text-text">{k.name}</div>
-                {k.description && <div className="text-sm text-gray-500">{k.description}</div>}
+                {k.description && <div className="text-sm text-text-muted">{k.description}</div>}
               </div>
             ) },
             { key: 'permissions', header: 'Permissions', cell: (k: ApiKey) => (
               <div className="text-sm text-text">{k.permissions.includes('*') ? 'All permissions' : k.permissions.join(', ')}</div>
             ) },
             { key: 'rate', header: 'Rate Limit', align: 'right', cell: (k: ApiKey) => <span className="text-sm text-text">{k.rate_limit}/hour</span> },
-            { key: 'last', header: 'Last Used', cell: (k: ApiKey) => <span className="text-sm text-gray-500">{k.last_used_at ? format(new Date(k.last_used_at), 'MMM d, yyyy HH:mm') : 'Never'}</span> },
+            { key: 'last', header: 'Last Used', cell: (k: ApiKey) => <span className="text-sm text-text-muted">{k.last_used_at ? format(new Date(k.last_used_at), 'MMM d, yyyy HH:mm') : 'Never'}</span> },
             { key: 'status', header: 'Status', cell: (k: ApiKey) => <Badge variant={k.is_active ? 'success' : 'error'}>{k.is_active ? 'Active' : 'Inactive'}</Badge> },
             ...(canManage ? [{
               key: 'actions',

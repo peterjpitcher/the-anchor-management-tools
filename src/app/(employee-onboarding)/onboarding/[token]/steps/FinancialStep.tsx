@@ -86,7 +86,7 @@ export default function FinancialStep({ token, initialData, onSuccess }: Financi
     inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']
   ) => (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label htmlFor={id} className="block text-sm font-medium text-text mb-1">{label}</label>
       <input
         id={id}
         type={type}

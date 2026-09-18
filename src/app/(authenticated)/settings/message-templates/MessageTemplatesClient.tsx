@@ -354,7 +354,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                           {TEMPLATE_TYPES[template.template_type] || template.template_type}
                         </p>
                         {template.description && (
-                          <p className="mt-1 text-sm text-gray-500">{template.description}</p>
+                          <p className="mt-1 text-sm text-text-muted">{template.description}</p>
                         )}
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -395,7 +395,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                       </div>
                     </div>
 
-                    <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-500">
+                    <div className="mt-3 flex flex-wrap gap-3 text-xs text-text-muted">
                       <span>Variables: {template.variables.join(', ') || 'None'}</span>
                       <span>
                         Segments: {template.estimated_segments ?? Math.ceil(template.content.length / 160)}
