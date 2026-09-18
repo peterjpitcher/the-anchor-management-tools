@@ -1,0 +1,312 @@
+[
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Authenticated users can delete CVs",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "(bucket_id = 'hiring-docs'::text)",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Authenticated users can delete recruitment CVs",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((bucket_id = 'recruitment-cvs'::text) AND user_has_permission(auth.uid(), 'recruitment'::text, 'delete'::text))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Authenticated users can select CVs",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(bucket_id = 'hiring-docs'::text)",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Authenticated users can update CVs",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(bucket_id = 'hiring-docs'::text)",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Authenticated users can upload CVs",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(bucket_id = 'hiring-docs'::text)"
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Authenticated users can upload event images",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((bucket_id = 'event-images'::text) AND (EXISTS ( SELECT 1\n   FROM (user_roles ur\n     JOIN roles r ON ((ur.role_id = r.id)))\n  WHERE ((ur.user_id = auth.uid()) AND (r.name = ANY (ARRAY['super_admin'::text, 'manager'::text, 'staff'::text]))))))"
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Authenticated users can upload recruitment CVs",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((bucket_id = 'recruitment-cvs'::text) AND user_has_permission(auth.uid(), 'recruitment'::text, 'create'::text))"
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Authenticated users can view recruitment CVs",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((bucket_id = 'recruitment-cvs'::text) AND user_has_permission(auth.uid(), 'recruitment'::text, 'view'::text))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Users can delete event images",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((bucket_id = 'event-images'::text) AND (EXISTS ( SELECT 1\n   FROM (user_roles ur\n     JOIN roles r ON ((ur.role_id = r.id)))\n  WHERE ((ur.user_id = auth.uid()) AND (r.name = ANY (ARRAY['super_admin'::text, 'manager'::text, 'staff'::text]))))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Users can delete their own avatar",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((bucket_id = 'avatars'::text) AND ((auth.uid())::text = (storage.foldername(name))[1]))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Users can update their event images",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "((bucket_id = 'event-images'::text) AND (EXISTS ( SELECT 1\n   FROM (user_roles ur\n     JOIN roles r ON ((ur.role_id = r.id)))\n  WHERE ((ur.user_id = auth.uid()) AND (r.name = ANY (ARRAY['super_admin'::text, 'manager'::text, 'staff'::text]))))))",
+    "with_check": "((bucket_id = 'event-images'::text) AND (EXISTS ( SELECT 1\n   FROM (user_roles ur\n     JOIN roles r ON ((ur.role_id = r.id)))\n  WHERE ((ur.user_id = auth.uid()) AND (r.name = ANY (ARRAY['super_admin'::text, 'manager'::text, 'staff'::text]))))))"
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Users can update their own avatar",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "((bucket_id = 'avatars'::text) AND ((auth.uid())::text = (storage.foldername(name))[1]))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "Users can upload their own avatar",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((bucket_id = 'avatars'::text) AND ((auth.uid())::text = (storage.foldername(name))[1]))"
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "avatars_authenticated_delete_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((bucket_id = 'avatars'::text) AND (name ~ (('^avatars/'::text || (auth.uid())::text) || '\\.(jpg|png|webp)$'::text)))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "avatars_authenticated_update_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "((bucket_id = 'avatars'::text) AND (name ~ (('^avatars/'::text || (auth.uid())::text) || '\\.(jpg|png|webp)$'::text)))",
+    "with_check": "((bucket_id = 'avatars'::text) AND (name ~ (('^avatars/'::text || (auth.uid())::text) || '\\.(jpg|png|webp)$'::text)))"
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "avatars_authenticated_upload_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((bucket_id = 'avatars'::text) AND (name ~ (('^avatars/'::text || (auth.uid())::text) || '\\.(jpg|png|webp)$'::text)))"
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "avatars_public_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(bucket_id = 'avatars'::text)",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "employee_attachments_storage_delete",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((bucket_id = 'employee-attachments'::text) AND user_has_permission(auth.uid(), 'employees'::text, 'delete_documents'::text))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "employee_attachments_storage_insert",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((bucket_id = 'employee-attachments'::text) AND user_has_permission(auth.uid(), 'employees'::text, 'upload_documents'::text))"
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "employee_attachments_storage_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((bucket_id = 'employee-attachments'::text) AND user_has_permission(auth.uid(), 'employees'::text, 'view_documents'::text))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "expense_receipts_permission_delete",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((bucket_id = 'expense-receipts'::text) AND user_has_permission(auth.uid(), 'expenses'::text, 'manage'::text))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "expense_receipts_permission_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((bucket_id = 'expense-receipts'::text) AND (user_has_permission(auth.uid(), 'expenses'::text, 'view'::text) OR user_has_permission(auth.uid(), 'expenses'::text, 'manage'::text)))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "expense_receipts_permission_upload",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((bucket_id = 'expense-receipts'::text) AND user_has_permission(auth.uid(), 'expenses'::text, 'manage'::text))"
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "maintenance_photos_super_admin_storage_delete",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((bucket_id = 'maintenance-photos'::text) AND is_super_admin(auth.uid()))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "maintenance_photos_super_admin_storage_insert",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((bucket_id = 'maintenance-photos'::text) AND is_super_admin(auth.uid()))"
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "maintenance_photos_super_admin_storage_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((bucket_id = 'maintenance-photos'::text) AND is_super_admin(auth.uid()))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "super_admin_delete_expense_receipts",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((bucket_id = 'expense-receipts'::text) AND is_super_admin(auth.uid()))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "super_admin_select_expense_receipts",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((bucket_id = 'expense-receipts'::text) AND is_super_admin(auth.uid()))",
+    "with_check": null
+  },
+  {
+    "schemaname": "storage",
+    "tablename": "objects",
+    "policyname": "super_admin_upload_expense_receipts",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((bucket_id = 'expense-receipts'::text) AND is_super_admin(auth.uid()))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "private_booking_documents",
+    "policyname": "Users can manage documents with permission",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "( SELECT user_has_permission(auth.uid(), 'private_bookings'::text, 'generate_contracts'::text) AS user_has_permission)",
+    "with_check": "( SELECT user_has_permission(auth.uid(), 'private_bookings'::text, 'generate_contracts'::text) AS user_has_permission)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "private_booking_documents",
+    "policyname": "Users can view documents with booking view permission",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(EXISTS ( SELECT 1\n   FROM private_bookings pb\n  WHERE ((pb.id = private_booking_documents.booking_id) AND ( SELECT user_has_permission(auth.uid(), 'private_bookings'::text, 'view'::text) AS user_has_permission))))",
+    "with_check": null
+  }
+]

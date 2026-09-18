@@ -1,0 +1,97 @@
+[
+  {
+    "kind": "view",
+    "name": "private_booking_sms_reminders",
+    "definition": " SELECT pb.id AS booking_id,\n    pb.customer_first_name,\n    pb.contact_phone,\n    pb.event_date,\n    pb.start_time,\n    pb.guest_count,\n    pb.balance_due_date,\n    pb.deposit_paid_date,\n    pb.final_payment_date,\n    pb.status,\n        CASE\n            WHEN ((pb.event_date - '14 days'::interval) > now()) THEN (pb.event_date - '14 days'::interval)\n            ELSE NULL::timestamp without time zone\n        END AS reminder_14d_due,\n        CASE\n            WHEN ((pb.balance_due_date IS NOT NULL) AND (pb.final_payment_date IS NULL) AND ((pb.balance_due_date - '3 days'::interval) > now())) THEN (pb.balance_due_date - '3 days'::interval)\n            ELSE NULL::timestamp without time zone\n        END AS balance_reminder_due,\n        CASE\n            WHEN ((pb.event_date - '1 day'::interval) > now()) THEN (pb.event_date - '1 day'::interval)\n            ELSE NULL::timestamp without time zone\n        END AS reminder_1d_due,\n    calculate_private_booking_balance(pb.id) AS balance_amount\n   FROM private_bookings pb\n  WHERE ((pb.status = ANY (ARRAY['tentative'::text, 'confirmed'::text])) AND (pb.contact_phone IS NOT NULL) AND (pb.event_date > now()));"
+  },
+  {
+    "kind": "view",
+    "name": "private_booking_summary",
+    "definition": " SELECT pb.id,\n    pb.customer_id,\n    pb.customer_name,\n    pb.contact_phone,\n    pb.contact_email,\n    pb.event_date,\n    pb.start_time,\n    pb.setup_time,\n    pb.end_time,\n    pb.guest_count,\n    pb.event_type,\n    pb.status,\n    pb.deposit_amount,\n    pb.deposit_paid_date,\n    pb.deposit_payment_method,\n    pb.total_amount,\n    pb.balance_due_date,\n    pb.final_payment_date,\n    pb.final_payment_method,\n    pb.calendar_event_id,\n    pb.contract_version,\n    pb.internal_notes,\n    pb.customer_requests,\n    pb.created_by,\n    pb.created_at,\n    pb.updated_at,\n    c.first_name,\n    c.last_name,\n    COALESCE(( SELECT sum(private_booking_items.line_total) AS sum\n           FROM private_booking_items\n          WHERE (private_booking_items.booking_id = pb.id)), (0)::numeric) AS calculated_total,\n        CASE\n            WHEN (pb.deposit_paid_date IS NOT NULL) THEN 'Paid'::text\n            WHEN (pb.status = 'confirmed'::text) THEN 'Required'::text\n            ELSE 'Not Required'::text\n        END AS deposit_status,\n    (pb.event_date - CURRENT_DATE) AS days_until_event\n   FROM (private_bookings pb\n     LEFT JOIN customers c ON ((pb.customer_id = c.id)));"
+  },
+  {
+    "kind": "view",
+    "name": "private_bookings_with_details",
+    "definition": " SELECT pb.id,\n    pb.customer_id,\n    pb.customer_name,\n    pb.contact_phone,\n    pb.contact_email,\n    pb.event_date,\n    pb.start_time,\n    pb.setup_time,\n    pb.end_time,\n    pb.end_time_next_day,\n    pb.guest_count,\n    pb.event_type,\n    pb.status,\n    pb.deposit_amount,\n    pb.deposit_paid_date,\n    pb.deposit_payment_method,\n    pb.total_amount,\n    pb.balance_due_date,\n    pb.final_payment_date,\n    pb.final_payment_method,\n    pb.calendar_event_id,\n    pb.contract_version,\n    pb.internal_notes,\n    pb.customer_requests,\n    pb.created_by,\n    pb.created_at,\n    pb.updated_at,\n    pb.setup_date,\n    pb.discount_type,\n    pb.discount_amount,\n    pb.discount_reason,\n    pb.customer_first_name,\n    pb.customer_last_name,\n    pb.customer_full_name,\n    pb.date_tbd,\n    c.mobile_number AS customer_mobile,\n    get_booking_discounted_total(pb.id) AS calculated_total,\n        CASE\n            WHEN (pb.deposit_paid_date IS NOT NULL) THEN 'Paid'::text\n            WHEN (COALESCE(pb.deposit_amount, (0)::numeric) <= (0)::numeric) THEN 'Not Required'::text\n            WHEN (pb.status = 'confirmed'::text) THEN 'Required'::text\n            ELSE 'Not Required'::text\n        END AS deposit_status,\n    (pb.event_date - CURRENT_DATE) AS days_until_event,\n    pb.contract_note,\n    pb.hold_expiry,\n    get_private_booking_settlement_total(pb.id) AS total_balance_paid,\n    calculate_private_booking_balance(pb.id) AS balance_remaining,\n        CASE\n            WHEN (calculate_private_booking_balance(pb.id) <= (0)::numeric) THEN 'Fully Paid'::text\n            WHEN (get_private_booking_settlement_total(pb.id) > (0)::numeric) THEN 'Partially Paid'::text\n            ELSE 'Unpaid'::text\n        END AS payment_status,\n    get_booking_vat_amount(pb.id) AS vat_amount,\n    get_booking_gross_total(pb.id) AS gross_total\n   FROM (private_bookings pb\n     LEFT JOIN customers c ON ((pb.customer_id = c.id)));"
+  },
+  {
+    "kind": "function",
+    "name": "create_credit_note_atomic",
+    "definition": "CREATE OR REPLACE FUNCTION public.create_credit_note_atomic(p_invoice_id uuid, p_amount_ex_vat numeric, p_reason text, p_created_by uuid)\n RETURNS TABLE(id uuid, credit_note_number text, amount_inc_vat numeric)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nDECLARE\n  v_invoice public.invoices%ROWTYPE;\n  v_reason text := btrim(coalesce(p_reason, ''));\n  v_year integer := extract(year from timezone('Europe/London', now()))::integer;\n  v_next_seq integer := 1;\n  v_last_number text;\n  v_vat_rate numeric;\n  v_amount_inc_vat numeric;\n  v_credit_note public.credit_notes%ROWTYPE;\nBEGIN\n  IF auth.uid() IS NULL OR NOT public.user_has_permission(auth.uid(), 'invoices', 'create') THEN\n    RAISE EXCEPTION 'permission_denied';\n  END IF;\n\n  IF p_created_by IS NULL OR p_created_by <> auth.uid() THEN\n    RAISE EXCEPTION 'permission_denied';\n  END IF;\n\n  IF p_invoice_id IS NULL OR v_reason = '' THEN\n    RAISE EXCEPTION 'invoice_id_and_reason_required';\n  END IF;\n\n  IF p_amount_ex_vat IS NULL OR p_amount_ex_vat <= 0 THEN\n    RAISE EXCEPTION 'credit_note_amount_must_be_positive';\n  END IF;\n\n  SELECT *\n    INTO v_invoice\n    FROM public.invoices\n   WHERE invoices.id = p_invoice_id\n     AND invoices.deleted_at IS NULL\n   FOR UPDATE;\n\n  IF NOT FOUND THEN\n    RAISE EXCEPTION 'invoice_not_found';\n  END IF;\n\n  v_vat_rate := CASE\n    WHEN coalesce(v_invoice.subtotal_amount, 0) > 0\n      THEN round((coalesce(v_invoice.vat_amount, 0) / v_invoice.subtotal_amount) * 10000) / 100\n    ELSE 20\n  END;\n  v_amount_inc_vat := round((p_amount_ex_vat * (1 + v_vat_rate / 100)) * 100) / 100;\n\n  PERFORM pg_advisory_xact_lock(hashtext('credit_notes:' || v_year::text));\n\n  SELECT cn.credit_note_number\n    INTO v_last_number\n    FROM public.credit_notes cn\n   WHERE cn.credit_note_number ILIKE ('CN-' || v_year::text || '-%')\n   ORDER BY cn.credit_note_number DESC\n   LIMIT 1;\n\n  IF v_last_number IS NOT NULL THEN\n    v_next_seq := coalesce(substring(v_last_number from '^CN-[0-9]{4}-([0-9]+)$')::integer, 0) + 1;\n  END IF;\n\n  INSERT INTO public.credit_notes (\n    credit_note_number,\n    invoice_id,\n    vendor_id,\n    amount_ex_vat,\n    vat_rate,\n    amount_inc_vat,\n    reason,\n    status,\n    created_by\n  )\n  VALUES (\n    'CN-' || v_year::text || '-' || lpad(v_next_seq::text, 3, '0'),\n    v_invoice.id,\n    v_invoice.vendor_id,\n    p_amount_ex_vat,\n    v_vat_rate,\n    v_amount_inc_vat,\n    v_reason,\n    'issued',\n    p_created_by\n  )\n  RETURNING * INTO v_credit_note;\n\n  RETURN QUERY SELECT\n    v_credit_note.id,\n    v_credit_note.credit_note_number,\n    v_credit_note.amount_inc_vat;\nEND;\n$function$\n"
+  },
+  {
+    "kind": "constraint",
+    "name": "credit_notes_created_by_fkey",
+    "definition": "FOREIGN KEY (created_by) REFERENCES auth.users(id)"
+  },
+  {
+    "kind": "constraint",
+    "name": "credit_notes_credit_note_number_key",
+    "definition": "UNIQUE (credit_note_number)"
+  },
+  {
+    "kind": "constraint",
+    "name": "credit_notes_invoice_id_fkey",
+    "definition": "FOREIGN KEY (invoice_id) REFERENCES invoices(id)"
+  },
+  {
+    "kind": "constraint",
+    "name": "credit_notes_pkey",
+    "definition": "PRIMARY KEY (id)"
+  },
+  {
+    "kind": "constraint",
+    "name": "credit_notes_status_check",
+    "definition": "CHECK ((status = ANY (ARRAY['draft'::text, 'issued'::text, 'void'::text])))"
+  },
+  {
+    "kind": "constraint",
+    "name": "credit_notes_vendor_id_fkey",
+    "definition": "FOREIGN KEY (vendor_id) REFERENCES invoice_vendors(id)"
+  },
+  {
+    "kind": "constraint",
+    "name": "payment_refunds_amount_check",
+    "definition": "CHECK ((amount > (0)::numeric))"
+  },
+  {
+    "kind": "constraint",
+    "name": "payment_refunds_initiated_by_fkey",
+    "definition": "FOREIGN KEY (initiated_by) REFERENCES auth.users(id)"
+  },
+  {
+    "kind": "constraint",
+    "name": "payment_refunds_initiated_by_type_check",
+    "definition": "CHECK ((initiated_by_type = ANY (ARRAY['staff'::text, 'system'::text])))"
+  },
+  {
+    "kind": "constraint",
+    "name": "payment_refunds_notification_status_check",
+    "definition": "CHECK ((notification_status = ANY (ARRAY['email_sent'::text, 'sms_sent'::text, 'skipped'::text, 'failed'::text])))"
+  },
+  {
+    "kind": "constraint",
+    "name": "payment_refunds_paypal_status_check",
+    "definition": "CHECK ((paypal_status = ANY (ARRAY['PENDING'::text, 'COMPLETED'::text, 'FAILED'::text, 'CANCELLED'::text])))"
+  },
+  {
+    "kind": "constraint",
+    "name": "payment_refunds_pkey",
+    "definition": "PRIMARY KEY (id)"
+  },
+  {
+    "kind": "constraint",
+    "name": "payment_refunds_refund_method_check",
+    "definition": "CHECK ((refund_method = ANY (ARRAY['paypal'::text, 'cash'::text, 'bank_transfer'::text, 'other'::text])))"
+  },
+  {
+    "kind": "constraint",
+    "name": "payment_refunds_source_type_check",
+    "definition": "CHECK ((source_type = ANY (ARRAY['private_booking'::text, 'table_booking'::text, 'parking'::text])))"
+  },
+  {
+    "kind": "constraint",
+    "name": "payment_refunds_status_check",
+    "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'completed'::text, 'failed'::text])))"
+  }
+]
