@@ -26,14 +26,14 @@ export default function AuthenticatedError({
   if (isChunkError) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
-        <h2 className="text-xl font-semibold">Page update available</h2>
-        <p className="text-gray-600">
+        <h2 className="text-xl font-semibold text-text-strong">Page update available</h2>
+        <p className="text-text-muted">
           A new version of this page has been deployed. Please reload to continue.
         </p>
         <button
           type="button"
           onClick={retryPendingNavigation}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          className="px-4 py-2 bg-primary text-primary-fg rounded-md hover:bg-primary-hover focus-visible:outline-hidden focus-visible:shadow-ring"
         >
           Reload page
         </button>
@@ -43,7 +43,7 @@ export default function AuthenticatedError({
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
-      <h2 className="text-xl font-semibold">Something went wrong</h2>
+      <h2 className="text-xl font-semibold text-text-strong">Something went wrong</h2>
       <p className="text-text-muted">
         An error occurred while loading this page. Please try again.
       </p>
@@ -55,7 +55,7 @@ export default function AuthenticatedError({
       <button
         type="button"
         onClick={reset}
-        className="px-4 py-2 bg-primary text-primary-fg rounded-md hover:bg-primary/90"
+        className="px-4 py-2 bg-primary text-primary-fg rounded-md hover:bg-primary-hover focus-visible:outline-hidden focus-visible:shadow-ring"
       >
         Try again
       </button>

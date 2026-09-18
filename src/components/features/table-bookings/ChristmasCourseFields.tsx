@@ -37,7 +37,7 @@ export function ChristmasCourseFields({ bookingId, partySize, onChange }: Christ
     <p className="text-sm">Guests on one course have nothing to pre-order. Two or three courses need food choices by the pre-order deadline.</p>
     {next.map((count, index) => <label key={index} className="flex items-center gap-3 text-sm">
       Guest {index + 1}
-      <select value={count} className="rounded-md border border-gray-300 p-2"
+      <select value={count} className="rounded-md border border-border-strong p-2"
         onChange={event => setCounts(next.map((value, seat) => seat === index ? Number(event.target.value) : value))}>
         <option value={0}>Choose courses</option><option value={1}>1 course</option><option value={2}>2 courses</option><option value={3}>3 courses</option>
       </select>

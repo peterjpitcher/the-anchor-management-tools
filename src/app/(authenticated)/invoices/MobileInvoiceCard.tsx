@@ -53,19 +53,19 @@ export function MobileInvoiceCard({
 
   return (
     <Card 
-      className={`p-4 transition-shadow hover:shadow-md ${onClick ? 'cursor-pointer' : ''}`}
+      className={`p-4 transition-shadow hover:shadow-default ${onClick ? 'cursor-pointer' : ''}`}
       onClick={() => onClick?.(invoice)}
     >
       <div className="mb-3 flex items-start justify-between">
         <div className="flex-1">
-          <div className="font-semibold text-gray-900">
+          <div className="font-semibold text-text">
             {invoice.invoice_number}
           </div>
-          <div className="mt-1 text-sm text-gray-600">
+          <div className="mt-1 text-sm text-text-muted">
             {invoice.vendor?.name || 'No vendor'}
           </div>
           {invoice.reference && (
-            <div className="mt-1 text-xs text-gray-500">
+            <div className="mt-1 text-xs text-text-muted">
               Ref: {invoice.reference}
             </div>
           )}
@@ -81,7 +81,7 @@ export function MobileInvoiceCard({
               event.stopPropagation()
               onDownload?.(invoice)
             }}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-text focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -94,14 +94,14 @@ export function MobileInvoiceCard({
 
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
-          <span className="text-gray-500">Invoice Date:</span>
+          <span className="text-text-muted">Invoice Date:</span>
           <span className="font-medium">
             {new Date(invoice.invoice_date).toLocaleDateString('en-GB')}
           </span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500">Due Date:</span>
-          <span className={`font-medium ${isOverdue ? 'text-red-600' : ''}`}>
+          <span className="text-text-muted">Due Date:</span>
+          <span className={`font-medium ${isOverdue ? 'text-danger' : ''}`}>
             {new Date(invoice.due_date).toLocaleDateString('en-GB')}
           </span>
         </div>
@@ -109,18 +109,18 @@ export function MobileInvoiceCard({
 
       <div className="mt-3 flex items-center justify-between border-t pt-3">
         <div>
-          <div className="text-xs text-gray-500">Total Amount</div>
+          <div className="text-xs text-text-muted">Total Amount</div>
           <div className="text-lg font-semibold">
             {formatCurrency(invoice.total_amount)}
           </div>
         </div>
         <div className="text-right">
-          <div className="text-xs text-gray-500">Balance</div>
+          <div className="text-xs text-text-muted">Balance</div>
           {isPaid ? (
             <div className="font-semibold text-green-600">Paid</div>
           ) : (
             <div
-              className={`font-semibold ${isOverdue ? 'text-red-600' : ''}`}
+              className={`font-semibold ${isOverdue ? 'text-danger' : ''}`}
             >
               {formatCurrency(invoice.total_amount - invoice.paid_amount)}
             </div>

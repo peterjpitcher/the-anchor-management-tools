@@ -109,12 +109,12 @@ export function CommunicationsTab({
               description="Once a message is queued or sent, it will appear here."
             />
           ) : (
-            <ul className="divide-y divide-gray-200" aria-label="SMS message history">
+            <ul className="divide-y divide-border" aria-label="SMS message history">
               {history.map((row) => (
                 <li key={row.id} className="py-4 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900">
+                      <span className="text-sm font-medium text-text">
                         {row.trigger_type ?? row.template_key ?? 'Manual'}
                       </span>
                       <Badge variant={statusVariant(row.status)} size="sm">
@@ -122,19 +122,19 @@ export function CommunicationsTab({
                       </Badge>
                     </div>
                     <time
-                      className="text-xs text-gray-500"
+                      className="text-xs text-text-muted"
                       dateTime={row.created_at}
                     >
                       {formatDateTime12Hour(row.created_at)}
                     </time>
                   </div>
                   {row.message_body && (
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-text">
                       {row.message_body}
                     </p>
                   )}
                   {row.twilio_sid && row.status === 'sent' && (
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-text-muted">
                       Twilio SID: <code className="font-mono">{row.twilio_sid}</code>
                     </p>
                   )}
@@ -160,21 +160,21 @@ export function CommunicationsTab({
               description="Emails about this booking will appear here."
             />
           ) : (
-            <ul className="divide-y divide-gray-200" aria-label="Email history">
+            <ul className="divide-y divide-border" aria-label="Email history">
               {emails.map((email) => (
                 <li key={email.id} className="py-4 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900">{email.subject || '(no subject)'}</span>
+                      <span className="text-sm font-medium text-text">{email.subject || '(no subject)'}</span>
                       <Badge variant={emailStatusVariant(email.status)} size="sm">
                         {statusLabel(email.status)}
                       </Badge>
                     </div>
-                    <time className="text-xs text-gray-500" dateTime={email.created_at}>
+                    <time className="text-xs text-text-muted" dateTime={email.created_at}>
                       {formatDateTime12Hour(email.created_at)}
                     </time>
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-text-muted">
                     {email.comm_type ?? 'email'}
                     {email.to_address ? ` to ${email.to_address}` : ''}
                   </p>
@@ -209,7 +209,7 @@ export function CommunicationsTab({
               }
             />
           ) : (
-            <ul className="divide-y divide-gray-200" aria-label="Scheduled SMS reminders">
+            <ul className="divide-y divide-border" aria-label="Scheduled SMS reminders">
               {scheduled.map((item) => {
                 const suppressed = Boolean(item.suppression_reason)
                 return (
@@ -219,7 +219,7 @@ export function CommunicationsTab({
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900">
+                        <span className="text-sm font-medium text-text">
                           {item.trigger_type}
                         </span>
                         {suppressed ? (
@@ -228,13 +228,13 @@ export function CommunicationsTab({
                           <Badge variant="info" size="sm">Eligible</Badge>
                         )}
                       </div>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-text-muted">
                         {item.expected_fire_at
                           ? `Fires around ${item.expected_fire_at}`
                           : 'Will not fire'}
                       </span>
                     </div>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-text">
                       {item.preview_body}
                     </p>
                     {item.suppression_reason && (

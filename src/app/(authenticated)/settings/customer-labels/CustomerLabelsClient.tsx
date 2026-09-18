@@ -287,9 +287,9 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
                       <CustomerLabelIcon icon={label.icon} className="h-4 w-4" />
                     </span>
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{label.name}</p>
+                      <p className="text-sm font-medium text-text">{label.name}</p>
                       {label.description && (
-                        <p className="text-xs text-gray-500">{label.description}</p>
+                        <p className="text-xs text-text-muted">{label.description}</p>
                       )}
                     </div>
                   </div>

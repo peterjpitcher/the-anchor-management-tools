@@ -118,9 +118,9 @@ export default async function VouchersOverviewPage() {
           {tiles.map((tile) => (
             <Link key={tile.label} href={tile.href} className="block">
               <Card className="h-full hover:border-gray-400 transition-colors">
-                <div className="text-sm text-gray-500">{tile.label}</div>
-                <div className="mt-1 text-3xl font-semibold text-gray-900">{tile.value}</div>
-                <div className="mt-1 text-xs text-gray-500">{tile.hint}</div>
+                <div className="text-sm text-text-muted">{tile.label}</div>
+                <div className="mt-1 text-3xl font-semibold text-text">{tile.value}</div>
+                <div className="mt-1 text-xs text-text-muted">{tile.hint}</div>
               </Card>
             </Link>
           ))}
@@ -173,7 +173,7 @@ export default async function VouchersOverviewPage() {
                 {summary.stock.map((row) => (
                   <TableRow key={row.typeId}>
                     <TableCell>
-                      <span className="font-medium text-gray-900">{row.displayTitle}</span>
+                      <span className="font-medium text-text">{row.displayTitle}</span>
                       {row.lowStock && (
                         <span className="ml-2 align-middle">
                           <Badge tone="warning">Low stock</Badge>
@@ -224,7 +224,7 @@ export default async function VouchersOverviewPage() {
                 ))}
                 <TableRow>
                   <TableCell>
-                    <span className="font-semibold text-gray-900">Total</span>
+                    <span className="font-semibold text-text">Total</span>
                   </TableCell>
                   <TableCell align="right">
                     <span className="font-semibold">{summary.totals.inStock}</span>
@@ -254,9 +254,9 @@ export default async function VouchersOverviewPage() {
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             {summary.ageBuckets.map((bucket) => (
               <Link key={bucket.bucket} href={ageBucketHref(bucket.bucket)} className="block">
-                <div className="rounded-lg border border-gray-200 p-4 hover:border-gray-400 transition-colors">
-                  <div className="text-sm text-gray-500">{AGE_BUCKET_LABELS[bucket.bucket]}</div>
-                  <div className="mt-1 text-2xl font-semibold text-gray-900">{bucket.count}</div>
+                <div className="rounded-lg border border-border p-4 hover:border-gray-400 transition-colors">
+                  <div className="text-sm text-text-muted">{AGE_BUCKET_LABELS[bucket.bucket]}</div>
+                  <div className="mt-1 text-2xl font-semibold text-text">{bucket.count}</div>
                 </div>
               </Link>
             ))}
@@ -264,9 +264,9 @@ export default async function VouchersOverviewPage() {
               href={ledgerHref({ status: 'issued', expiringWithinDays: 14 })}
               className="block"
             >
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 hover:border-amber-500 transition-colors">
-                <div className="text-sm text-amber-800">Expiring within 14 days</div>
-                <div className="mt-1 text-2xl font-semibold text-amber-900">
+              <div className="rounded-lg border border-amber-300 bg-warning-soft p-4 hover:border-amber-500 transition-colors">
+                <div className="text-sm text-warning-fg">Expiring within 14 days</div>
+                <div className="mt-1 text-2xl font-semibold text-warning-fg">
                   {summary.expiringSoon}
                 </div>
               </div>

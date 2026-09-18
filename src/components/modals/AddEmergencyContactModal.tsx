@@ -54,23 +54,23 @@ export default function AddEmergencyContactModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity">
-      <div className="relative w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
+      <div className="relative w-full max-w-lg rounded-lg bg-surface p-6 shadow-lg">
         <button type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+          className="absolute top-4 right-4 text-gray-400 hover:text-text-muted"
         >
           <span className="sr-only">Close</span>
           &times;
         </button>
-        <h3 className="text-lg font-medium leading-6 text-gray-900">
+        <h3 className="text-lg font-medium leading-6 text-text">
           Add New Emergency Contact
         </h3>
         <form action={formAction} className="mt-6 space-y-6">
           <input type="hidden" name="employee_id" value={employeeId} />
           {formFields.map((field) => (
             <div key={field.name}>
-              <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">
-                {field.label} {field.required && <span className="text-red-500">*</span>}
+              <label htmlFor={field.name} className="block text-sm font-medium text-text">
+                {field.label} {field.required && <span className="text-danger">*</span>}
               </label>
               <div className="mt-1">
                 {field.type === 'textarea' ? (
@@ -78,13 +78,13 @@ export default function AddEmergencyContactModal({
                     id={field.name}
                     name={field.name}
                     rows={3}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    className="block w-full rounded-md border-border-strong shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                   />
                 ) : field.type === 'select' ? (
                   <select
                     id={field.name}
                     name={field.name}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    className="block w-full rounded-md border-border-strong shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                     defaultValue="Other"
                   >
                     {field.options?.map(option => (
@@ -97,25 +97,25 @@ export default function AddEmergencyContactModal({
                     name={field.name}
                     id={field.name}
                     required={field.required}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    className="block w-full rounded-md border-border-strong shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                   />
                 )}
               </div>
               {state?.errors?.[field.name] && (
-                <p className="mt-2 text-sm text-red-600">{state.errors[field.name]}</p>
+                <p className="mt-2 text-sm text-danger">{state.errors[field.name]}</p>
               )}
             </div>
           ))}
 
           {state?.type === 'error' && !state.errors && (
-            <p className="text-sm text-red-600">{state.message}</p>
+            <p className="text-sm text-danger">{state.message}</p>
           )}
 
           <div className="pt-4 flex justify-end space-x-3">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md border border-gray-300 bg-white py-2 px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+              className="rounded-md border border-border-strong bg-surface py-2 px-4 text-sm font-medium text-text shadow-sm hover:bg-surface-hover"
             >
               Cancel
             </button>

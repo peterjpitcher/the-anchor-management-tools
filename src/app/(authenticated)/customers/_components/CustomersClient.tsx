@@ -542,7 +542,7 @@ export default function CustomersClient({
                       <div className="flex items-center gap-2.5">
                         <Avatar name={`${customer.first_name} ${customer.last_name || ''}`} size="md" />
                         <div>
-                          <Link href={`/customers/${customer.id}`} className="text-[13px] font-semibold text-text-strong hover:text-primary">
+                          <Link href={`/customers/${customer.id}`} className="text-ui font-semibold text-text-strong hover:text-primary">
                             <CustomerName customer={customer} />
                           </Link>
                           {unreadCounts[customer.id] > 0 && (
@@ -574,7 +574,7 @@ export default function CustomersClient({
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="text-[11px] text-text-muted">
+                      <div className="text-meta text-text-muted">
                         {customer.mobile_number || '--'}
                         {customer.email && <div>{customer.email}</div>}
                       </div>

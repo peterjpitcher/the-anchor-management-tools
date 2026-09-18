@@ -29,7 +29,7 @@ export function DroppableLaneTimeline({
   return (
     <div
       ref={setNodeRef}
-      className={cn(className, isOver && 'ring-2 ring-inset ring-[hsl(var(--primary)/0.3)] bg-white/10')}
+      className={cn(className, isOver && 'ring-2 ring-inset ring-primary/30 bg-surface/10')}
       role={canEdit ? 'button' : undefined}
       tabIndex={canEdit ? 0 : undefined}
       onClick={onLaneClick}

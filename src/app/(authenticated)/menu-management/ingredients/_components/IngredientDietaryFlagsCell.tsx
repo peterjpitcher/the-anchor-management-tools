@@ -88,7 +88,7 @@ export function IngredientDietaryFlagsCell({
         ))}
       </div>
     ) : (
-      <span className="text-sm text-gray-500">&mdash;</span>
+      <span className="text-sm text-text-muted">&mdash;</span>
     );
   }
 

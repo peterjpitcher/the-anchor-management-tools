@@ -477,9 +477,9 @@ export function ProjectsOverview({
           )}
         />
         {historyOpen && (
-          <div id="oj-projects-work-history" className="flex flex-col gap-3 p-[var(--spacing-pad-card)]">
+          <div id="oj-projects-work-history" className="flex flex-col gap-3 p-pad-card">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[13px] font-medium text-text">Period</span>
+              <span className="text-ui font-medium text-text">Period</span>
               <Segmented
                 options={WORK_HISTORY_RANGES.map((range) => ({ id: String(range.days), label: range.label }))}
                 value={String(workHistoryDays)}
@@ -526,7 +526,7 @@ export function ProjectsOverview({
           <Empty title="No active projects" description="No projects are currently active." />
         ) : (
           <>
-            <div className="divide-y divide-border px-[var(--spacing-pad-card)] py-3 md:hidden">
+            <div className="divide-y divide-border px-pad-card py-3 md:hidden">
               {activeProjects.map((project) => {
                 const budgetHours = Number(project.budget_hours || 0)
                 const usedHours = Number(project.total_hours_used || 0)
@@ -654,7 +654,7 @@ export function ProjectsOverview({
           />
         ) : (
           <>
-            <div className="divide-y divide-border px-[var(--spacing-pad-card)] py-3 md:hidden">
+            <div className="divide-y divide-border px-pad-card py-3 md:hidden">
               {entries.map((entry) => {
                 const typeTone = entry.entry_type === 'time' ? 'info' : entry.entry_type === 'mileage' ? 'warning' : 'neutral'
                 const valueDisplay = entry.entry_type === 'time'

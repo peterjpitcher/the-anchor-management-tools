@@ -168,31 +168,31 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
         <Card>
           <div className="space-y-3">
             <div className="flex justify-between">
-              <span className="text-gray-600">Quote Number:</span>
+              <span className="text-text-muted">Quote Number:</span>
               <span className="font-medium">{quote.quote_number}</span>
             </div>
             
             <div className="flex justify-between">
-              <span className="text-gray-600">Vendor:</span>
+              <span className="text-text-muted">Vendor:</span>
               <span className="font-medium">{quote.vendor?.name || '-'}</span>
             </div>
             
             <div className="flex justify-between">
-              <span className="text-gray-600">Quote Date:</span>
+              <span className="text-text-muted">Quote Date:</span>
               <span className="font-medium">
                 {new Date(quote.quote_date).toLocaleDateString('en-GB')}
               </span>
             </div>
             
             <div className="flex justify-between">
-              <span className="text-gray-600">Valid Until:</span>
+              <span className="text-text-muted">Valid Until:</span>
               <span className="font-medium">
                 {new Date(quote.valid_until).toLocaleDateString('en-GB')}
               </span>
             </div>
             
             <div className="flex justify-between">
-              <span className="text-gray-600">Total Amount:</span>
+              <span className="text-text-muted">Total Amount:</span>
               <span className="font-bold text-lg">{formatCurrency(quote.total_amount)}</span>
             </div>
           </div>

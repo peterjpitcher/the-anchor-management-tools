@@ -100,7 +100,7 @@ export function RecipeIngredientRow({
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+    <div className="rounded-lg border border-border bg-surface p-3 shadow-sm">
       {/* Compact row: ingredient, quantity, unit, expand/remove */}
       <div className="flex flex-wrap items-end gap-2">
         <FormGroup label="Ingredient" required className="min-w-0 flex-1">
@@ -147,7 +147,7 @@ export function RecipeIngredientRow({
           <button
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="rounded-sm p-1.5 text-gray-400 hover:bg-surface-hover hover:text-text-muted"
             aria-label={expanded ? 'Collapse advanced fields' : 'Expand advanced fields'}
           >
             {expanded ? (
@@ -161,7 +161,7 @@ export function RecipeIngredientRow({
             type="button"
             onClick={() => onRemove(index)}
             disabled={!canRemove}
-            className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30"
+            className="rounded-sm p-1.5 text-gray-400 hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Remove ingredient"
           >
             <TrashIcon className="h-4 w-4" />
@@ -171,7 +171,7 @@ export function RecipeIngredientRow({
 
       {/* Expanded: advanced fields */}
       {expanded && (
-        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3 sm:grid-cols-4">
           <FormGroup label="Yield %">
             <Input
               type="number"

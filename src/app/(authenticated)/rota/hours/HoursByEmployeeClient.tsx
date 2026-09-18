@@ -232,7 +232,7 @@ function HoursTooltip({
           </div>
           <div className="mt-1 space-y-1">
             {holidayDetails.map(item => (
-              <p key={item.employeeId} className="text-[11px] leading-snug text-text-muted">
+              <p key={item.employeeId} className="text-meta leading-snug text-text-muted">
                 <span className="font-medium text-text">{item.name}</span>: {formatDateRange(item.dates)}
               </p>
             ))}
@@ -250,7 +250,7 @@ function HoursTooltip({
           </div>
           <div className="mt-1 space-y-1">
             {sickDetails.map(item => (
-              <p key={item.employeeId} className="text-[11px] leading-snug text-text-muted">
+              <p key={item.employeeId} className="text-meta leading-snug text-text-muted">
                 <span className="font-medium text-text">{item.name}</span>: {formatSickEntries(item.entries)}
               </p>
             ))}
@@ -317,7 +317,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
 
   return (
     <div className="flex flex-col">
-      <span className="mb-1 text-[13px] font-medium text-text">Employees</span>
+      <span className="mb-1 text-ui font-medium text-text">Employees</span>
       <Popover className="relative">
         {({ open }) => (
           <>
@@ -325,7 +325,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
               type="button"
               disabled={employees.length === 0}
               className={cn(
-                'flex min-h-[var(--spacing-input-h)] w-full items-center justify-between gap-3 rounded-default border border-border bg-surface px-3 py-2 text-left',
+                'flex min-h-input-h w-full items-center justify-between gap-3 rounded-default border border-border bg-surface px-3 py-2 text-left',
                 'outline-none transition-[border-color,box-shadow] duration-[120ms]',
                 'hover:bg-surface-hover focus-visible:border-border-focus focus-visible:shadow-ring',
                 employees.length === 0 && 'cursor-not-allowed bg-surface-2 opacity-50'
@@ -334,7 +334,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
               <span className="flex min-w-0 items-center gap-2">
                 <Users className="h-4 w-4 shrink-0 text-text-subtle" aria-hidden="true" />
                 <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-semibold text-text-strong">
+                  <span className="block truncate text-ui font-semibold text-text-strong">
                     {selectedSummary}
                   </span>
                   <span className="block truncate text-xs text-text-muted">{selectedHint}</span>
@@ -419,7 +419,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
                             <Check className="h-3.5 w-3.5" />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] font-medium text-text">{employee.name}</span>
+                            <span className="block truncate text-ui font-medium text-text">{employee.name}</span>
                             <span className="block truncate text-xs text-text-muted">
                               {employee.role || 'No role'} · {formatHours(employee.totalHours)} · {formatHolidayDays(employee.holidayDays)} holiday · Couldn&apos;t Work: {formatSickDays(employee.sickDays)}
                             </span>
@@ -561,7 +561,7 @@ export default function HoursByEmployeeClient({
                 download
                 aria-disabled={series.length === 0}
                 className={cn(
-                  'inline-flex h-[var(--spacing-btn-h)] items-center justify-center gap-1.5 rounded-[8px] border border-border-strong bg-surface px-3 text-[13px] font-semibold text-text no-underline',
+                  'inline-flex h-btn-h items-center justify-center gap-1.5 rounded-default border border-border-strong bg-surface px-3 text-ui font-semibold text-text no-underline',
                   'transition-[background,border-color,color,transform,box-shadow] duration-[120ms] hover:bg-surface-hover focus-visible:outline-none focus-visible:shadow-ring active:translate-y-[0.5px]',
                   series.length === 0 && 'pointer-events-none opacity-50'
                 )}
@@ -710,7 +710,7 @@ export default function HoursByEmployeeClient({
                       </span>
                       <span className="shrink-0 text-right">
                         <span className="block font-semibold text-text-strong">{formatHours(item.totalHours)}</span>
-                        <span className="block text-[11px] text-text-muted">
+                        <span className="block text-meta text-text-muted">
                           {formatHolidayDays(holidayDaysByEmployee.get(item.employeeId) ?? 0)} holiday
                           {' · '}Couldn&apos;t Work: {formatSickDays(sickDaysByEmployee.get(item.employeeId) ?? 0)}
                         </span>

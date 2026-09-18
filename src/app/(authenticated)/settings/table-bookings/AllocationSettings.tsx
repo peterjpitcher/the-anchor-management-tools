@@ -129,7 +129,7 @@ export function AllocationSettings() {
   }
 
   if (loading) {
-    return <Section title="Table allocation"><p className="text-sm text-gray-600">Loading…</p></Section>
+    return <Section title="Table allocation"><p className="text-sm text-text-muted">Loading…</p></Section>
   }
 
   const paceRegular = Number(valueFor('kitchen_pace_covers_regular', String(numberOf(bag, 'kitchen_pace_covers_regular', 25))))
@@ -142,7 +142,7 @@ export function AllocationSettings() {
 
   const numberField = (key: string, label: string, fallback: number, hint?: string) => (
     <div>
-      <label htmlFor={key} className="block text-sm font-medium text-gray-900">{label}</label>
+      <label htmlFor={key} className="block text-sm font-medium text-text">{label}</label>
       <Input
         id={key}
         type="number"
@@ -150,7 +150,7 @@ export function AllocationSettings() {
         onChange={(e) => set(key, e.target.value)}
         className="mt-1"
       />
-      {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-text-muted">{hint}</p>}
     </div>
   )
 
@@ -164,8 +164,8 @@ export function AllocationSettings() {
         className="mt-1 h-4 w-4"
       />
       <div>
-        <label htmlFor={key} className="text-sm font-medium text-gray-900">{label}</label>
-        {hint && <p className="text-xs text-gray-500">{hint}</p>}
+        <label htmlFor={key} className="text-sm font-medium text-text">{label}</label>
+        {hint && <p className="text-xs text-text-muted">{hint}</p>}
       </div>
     </div>
   )
@@ -222,9 +222,9 @@ export function AllocationSettings() {
 
           {/* The two numbers on their own are easy to confuse. Showing the result they
               produce is the difference between a setting and a guess. */}
-          <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm">
-            <p className="font-medium text-gray-900">Bookable online per window</p>
-            <p className="mt-1 text-gray-700">
+          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm">
+            <p className="font-medium text-text">Bookable online per window</p>
+            <p className="mt-1 text-text">
               Weekdays: <strong>{Math.max(0, paceRegular - reserveRegular)}</strong> covers.{' '}
               Sundays: <strong>{Math.max(0, paceSunday - reserveSunday)}</strong> covers.
             </p>
@@ -256,10 +256,10 @@ export function AllocationSettings() {
             {numberField('outside_table_count', 'Number of outside tables', 5)}
             {numberField('outside_table_capacity', 'Seats per outside table', 8)}
           </div>
-          <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm text-text">
             <strong>{outsideCount * outsideCapacity}</strong> outside seats in total.
           </div>
-          <p className="mt-3 text-xs text-gray-500">
+          <p className="mt-3 text-xs text-text-muted">
             Reducing the seats per table is refused here, because bookings already taken were
             costed at the old size and reducing it would quietly oversell the garden. Ask for the
             re-costing step when you are ready to change it.
@@ -325,7 +325,7 @@ export function AllocationSettings() {
           <div className="space-y-4">
             {PUBLIC_REASONS.map((reason) => (
               <div key={reason.key}>
-                <label htmlFor={`booking_message_${reason.key}`} className="block text-sm font-medium text-gray-900">
+                <label htmlFor={`booking_message_${reason.key}`} className="block text-sm font-medium text-text">
                   {reason.label}
                 </label>
                 <textarea
@@ -334,10 +334,10 @@ export function AllocationSettings() {
                   maxLength={200}
                   value={String(valueFor(`booking_message_${reason.key}`, textOf(bag, `booking_message_${reason.key}`)))}
                   onChange={(e) => set(`booking_message_${reason.key}`, e.target.value)}
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 />
                 {'hint' in reason && reason.hint && (
-                  <p className="mt-1 text-xs text-gray-500">{reason.hint}</p>
+                  <p className="mt-1 text-xs text-text-muted">{reason.hint}</p>
                 )}
               </div>
             ))}

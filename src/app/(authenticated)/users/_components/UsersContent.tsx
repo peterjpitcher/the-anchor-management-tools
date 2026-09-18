@@ -124,10 +124,10 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
                     <div className="flex items-center gap-3">
                       <Avatar name={user.email || 'User'} size="sm" />
                       <div className="min-w-0">
-                        <p className="text-[13px] font-medium text-text-strong truncate">
+                        <p className="text-ui font-medium text-text-strong truncate">
                           {user.email}
                         </p>
-                        <p className="text-[11px] text-text-muted truncate">
+                        <p className="text-meta text-text-muted truncate">
                           {user.id}
                         </p>
                       </div>
@@ -147,12 +147,12 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="text-[13px] text-text-muted">
+                    <span className="text-ui text-text-muted">
                       {format(new Date(user.created_at), 'MMM d, yyyy')}
                     </span>
                   </TableCell>
                   <TableCell>
-                    <span className="text-[13px] text-text-muted">
+                    <span className="text-ui text-text-muted">
                       {user.last_sign_in_at
                         ? format(new Date(user.last_sign_in_at), 'MMM d, yyyy h:mm a')
                         : 'Never'}

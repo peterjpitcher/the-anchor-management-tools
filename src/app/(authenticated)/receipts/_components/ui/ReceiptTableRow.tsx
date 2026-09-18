@@ -44,7 +44,7 @@ export function SourceBadge({ sourceType }: { sourceType: ReceiptTransaction['so
     ? 'bg-info-soft text-info-fg border-border'
     : 'bg-surface-2 text-text-muted border-border'
   return (
-    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${className}`}>
+    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-2xs font-medium ${className}`}>
       {isAmex ? 'Amex' : 'Bank'}
     </span>
   )
@@ -61,7 +61,7 @@ function ClassificationBadge({ source }: { source?: ReceiptClassificationSource 
     rule: 'bg-purple-50 text-purple-700 border-purple-100',
   }
   return (
-    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${colors[source] ?? 'bg-surface-2 text-text-muted'}`}>
+    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-2xs font-medium ${colors[source] ?? 'bg-surface-2 text-text-muted'}`}>
       {labels[source] ?? source}
     </span>
   )
@@ -391,11 +391,11 @@ export function ReceiptTableRow({
         {transaction.files.map(f => (
           <div key={f.id} className="flex items-center gap-2 mb-1">
             <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-primary hover:underline text-xs truncate max-w-[100px]">{f.file_name || 'View'}</button>
-            <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-danger text-xs px-1 hover:bg-danger-soft rounded" disabled={isPending}>×</button>
+            <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-danger text-xs px-1 hover:bg-danger-soft rounded-sm" disabled={isPending}>×</button>
           </div>
         ))}
         {transaction.files.length > 0 && (
-          <p className="mt-1 text-[10px] text-text-subtle">Links expire after 5 min. Refresh if a link stops working.</p>
+          <p className="mt-1 text-2xs text-text-subtle">Links expire after 5 min. Refresh if a link stops working.</p>
         )}
         <ConfirmDialog
           open={Boolean(deleteFileId)}
@@ -428,7 +428,7 @@ export function ReceiptTableRow({
           <div className="space-y-1 group">
             {transaction.notes ? (
               <>
-                <p className="text-[11px] text-text-muted uppercase">{transaction.notes.split(' — ')[0]}</p>
+                <p className="text-meta text-text-muted uppercase">{transaction.notes.split(' — ')[0]}</p>
                 <p className="text-sm text-text break-words">{transaction.notes.split(' — ').slice(1).join(' — ') || transaction.notes}</p>
               </>
             ) : (

@@ -173,12 +173,12 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <span className="font-mono text-2xl font-semibold text-gray-900">
+              <span className="font-mono text-2xl font-semibold text-text">
                 {voucher.voucherNumber}
               </span>
               <VoucherStatusBadge status={status} />
             </div>
-            <div className="mt-1 text-gray-700">{type?.displayTitle ?? voucher.typeId}</div>
+            <div className="mt-1 text-text">{type?.displayTitle ?? voucher.typeId}</div>
             <div className="mt-2 flex flex-wrap gap-2">
               {type?.alcohol && <Badge tone="warning">18+ alcohol</Badge>}
               {type?.requiresBooking && <Badge tone="info">Booking required</Badge>}
@@ -190,17 +190,17 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
           <dl className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
             {detail.ageLabel && (
               <>
-                <dt className="text-gray-500">Age</dt>
-                <dd className="text-gray-900">{detail.ageLabel}</dd>
+                <dt className="text-text-muted">Age</dt>
+                <dd className="text-text">{detail.ageLabel}</dd>
               </>
             )}
             {voucher.expiryDate && (
               <>
-                <dt className="text-gray-500">Expiry</dt>
-                <dd className="text-gray-900">{formatDateFull(voucher.expiryDate)}</dd>
+                <dt className="text-text-muted">Expiry</dt>
+                <dd className="text-text">{formatDateFull(voucher.expiryDate)}</dd>
               </>
             )}
-            <dt className="text-gray-500">Terms</dt>
+            <dt className="text-text-muted">Terms</dt>
             <dd>
               <Link href="/vouchers/types" className="underline underline-offset-2">
                 {voucher.termsVersion}
@@ -309,7 +309,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             )}
           </div>
           {status === 'expired' && (
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-text-muted">
               {sweepPending
                 ? 'This card is past its expiry date. The nightly tidy-up has not caught up yet, so lists may still show it as active. '
                 : ''}
@@ -325,16 +325,16 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         <Card title="Hand-out">
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
             <div>
-              <dt className="text-gray-500">Handed out</dt>
-              <dd className="text-gray-900">{formatDateTime12Hour(voucher.issuedAt)}</dd>
+              <dt className="text-text-muted">Handed out</dt>
+              <dd className="text-text">{formatDateTime12Hour(voucher.issuedAt)}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">By</dt>
-              <dd className="text-gray-900">{voucher.issuedByName ?? 'Unknown'}</dd>
+              <dt className="text-text-muted">By</dt>
+              <dd className="text-text">{voucher.issuedByName ?? 'Unknown'}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Won at</dt>
-              <dd className="text-gray-900">
+              <dt className="text-text-muted">Won at</dt>
+              <dd className="text-text">
                 {voucher.wonAtLabel ?? ''}
                 {detail.eventName && detail.eventName !== voucher.wonAtLabel
                   ? ` (${detail.eventName})`
@@ -342,8 +342,8 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
               </dd>
             </div>
             <div>
-              <dt className="text-gray-500">Expiry written on the card</dt>
-              <dd className="text-gray-900">
+              <dt className="text-text-muted">Expiry written on the card</dt>
+              <dd className="text-text">
                 {voucher.expiryDate ? formatDateFull(voucher.expiryDate) : 'Missing'}
               </dd>
             </div>
@@ -362,12 +362,12 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
               <div>
                 <Link
                   href={`/customers/${detail.customer.id}`}
-                  className="font-medium text-gray-900 underline-offset-2 hover:underline"
+                  className="font-medium text-text underline-offset-2 hover:underline"
                 >
                   {detail.customer.name}
                 </Link>
                 {detail.customer.mobile && (
-                  <span className="ml-2 text-sm text-gray-500">{detail.customer.mobile}</span>
+                  <span className="ml-2 text-sm text-text-muted">{detail.customer.mobile}</span>
                 )}
               </div>
               {canAttachCustomer && (
@@ -383,7 +383,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-500">No customer assigned.</span>
+              <span className="text-sm text-text-muted">No customer assigned.</span>
               {canAttachCustomer && (
                 <Button variant="secondary" size="sm" onClick={() => openDialog('assign')}>
                   Assign customer
@@ -394,17 +394,17 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
 
           {detail.reminders.length > 0 && (
             <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">Reminders</div>
+              <div className="text-sm font-medium text-text mb-2">Reminders</div>
               <ul className="space-y-1 text-sm">
                 {detail.reminders.map((reminder) => (
                   <li key={reminder.id} className="flex flex-wrap items-center gap-2">
                     <Badge tone={REMINDER_STATUS_TONES[reminder.status]}>
                       {reminder.status}
                     </Badge>
-                    <span className="text-gray-900">
+                    <span className="text-text">
                       {REMINDER_KIND_LABELS[reminder.reminderKind]}
                     </span>
-                    <span className="text-gray-500">
+                    <span className="text-text-muted">
                       due{' '}
                       {formatDateInLondon(reminder.scheduledFor, {
                         day: 'numeric',
@@ -433,23 +433,23 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         <Card title="Redemption">
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
             <div>
-              <dt className="text-gray-500">Redeemed</dt>
-              <dd className="text-gray-900">{formatDateTime12Hour(voucher.redeemedAt)}</dd>
+              <dt className="text-text-muted">Redeemed</dt>
+              <dd className="text-text">{formatDateTime12Hour(voucher.redeemedAt)}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">By</dt>
-              <dd className="text-gray-900">{voucher.redeemedByName ?? 'Unknown'}</dd>
+              <dt className="text-text-muted">By</dt>
+              <dd className="text-text">{voucher.redeemedByName ?? 'Unknown'}</dd>
             </div>
             {voucher.transactionRef && (
               <div>
-                <dt className="text-gray-500">Transaction ref</dt>
-                <dd className="text-gray-900">{voucher.transactionRef}</dd>
+                <dt className="text-text-muted">Transaction ref</dt>
+                <dd className="text-text">{voucher.transactionRef}</dd>
               </div>
             )}
             {voucher.bookingRef && (
               <div>
-                <dt className="text-gray-500">Booking ref</dt>
-                <dd className="text-gray-900">{voucher.bookingRef}</dd>
+                <dt className="text-text-muted">Booking ref</dt>
+                <dd className="text-text">{voucher.bookingRef}</dd>
               </div>
             )}
           </dl>
@@ -460,7 +460,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
       {detail.entitlementHtml && (
         <Card title="What the card entitles" subtitle="From the definition printed on this card">
           <div
-            className="prose prose-sm max-w-none text-gray-700"
+            className="prose prose-sm max-w-none text-text"
             dangerouslySetInnerHTML={{ __html: detail.entitlementHtml }}
           />
         </Card>
@@ -473,17 +473,17 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             <li key={event.id} className="flex gap-3">
               <div className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-gray-400" />
               <div>
-                <div className="text-sm font-medium text-gray-900">
+                <div className="text-sm font-medium text-text">
                   {VOUCHER_EVENT_ACTION_LABELS[event.action]}
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-text-muted">
                   {formatDateTime12Hour(event.at)} · {event.actorName} · {event.source}
                 </div>
               </div>
             </li>
           ))}
           {detail.events.length === 0 && (
-            <li className="text-sm text-gray-500">No events recorded.</li>
+            <li className="text-sm text-text-muted">No events recorded.</li>
           )}
         </ul>
       </Card>
@@ -581,7 +581,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             This voucher expired{' '}
             {voucher.expiryDate ? `on ${formatDateFull(voucher.expiryDate)}` : ''}. A manager
             override is recorded in the timeline.
@@ -649,7 +649,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             The voucher goes back to issued and its redemption details are cleared. The timeline
             keeps the full history.
           </p>
@@ -694,7 +694,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             Cancelling is permanent: no reinstatement and no reprint afterwards.
           </p>
           <Textarea
@@ -739,7 +739,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             Pick a printed stock card of the same type. It takes over this voucher&apos;s
             customer, event and expiry. Nothing new is printed and this card becomes terminal.
           </p>
@@ -858,7 +858,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             autoComplete="off"
           />
           {customerHits.length > 0 && (
-            <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+            <ul className="divide-y divide-border rounded-lg border border-border">
               {customerHits.map((hit) => (
                 <li key={hit.id}>
                   <button
@@ -874,16 +874,16 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                         `Voucher assigned to ${hit.name}`
                       )
                     }
-                    className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50"
+                    className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-surface-hover"
                   >
-                    <span className="text-gray-900">{hit.name}</span>
-                    <span className="text-sm text-gray-500">{hit.mobile ?? ''}</span>
+                    <span className="text-text">{hit.name}</span>
+                    <span className="text-sm text-text-muted">{hit.mobile ?? ''}</span>
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-text-muted">
             Reassigning retargets pending reminders. Reminder milestones already sent are never
             repeated for this voucher.
           </p>

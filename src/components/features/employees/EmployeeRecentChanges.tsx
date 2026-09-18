@@ -79,17 +79,17 @@ export function EmployeeRecentChanges({ employeeId }: EmployeeRecentChangesProps
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-6">
-        <span className="text-sm text-gray-500">Loading recent changes…</span>
+        <span className="text-sm text-text-muted">Loading recent changes…</span>
       </div>
     )
   }
 
   if (error) {
-    return <p className="text-sm text-gray-500">{error}</p>
+    return <p className="text-sm text-text-muted">{error}</p>
   }
 
   if (changes.length === 0) {
-    return <p className="text-sm text-gray-500">No recent changes recorded.</p>
+    return <p className="text-sm text-text-muted">No recent changes recorded.</p>
   }
 
   return (
@@ -98,13 +98,13 @@ export function EmployeeRecentChanges({ employeeId }: EmployeeRecentChangesProps
         <div key={`${change.change_date}-${index}`} className="text-sm">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-gray-900">{change.summary || 'Employee record updated'}</p>
-              <p className="text-gray-500 text-xs mt-1">
+              <p className="text-text">{change.summary || 'Employee record updated'}</p>
+              <p className="text-text-muted text-xs mt-1">
                 by {change.changed_by || 'System'} • {formatDateTime(change.change_date)}
               </p>
             </div>
           </div>
-          {index < changes.length - 1 && <div className="border-t border-gray-100 mt-3" />}
+          {index < changes.length - 1 && <div className="border-t border-border mt-3" />}
         </div>
       ))}
     </div>

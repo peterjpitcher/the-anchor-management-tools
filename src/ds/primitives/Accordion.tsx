@@ -83,31 +83,31 @@ export function Accordion({
 
   const variantClasses = {
     default: {
-      container: 'border border-gray-200 divide-y divide-gray-200 rounded-lg overflow-hidden',
+      container: 'border border-border divide-y divide-border rounded-lg overflow-hidden',
       item: '',
-      header: 'bg-white hover:bg-gray-50',
-      activeHeader: 'bg-gray-50',
-      content: 'bg-white border-t border-gray-200',
+      header: 'bg-surface hover:bg-surface-hover',
+      activeHeader: 'bg-surface-2',
+      content: 'bg-surface border-t border-border',
     },
     bordered: {
       container: 'space-y-3',
-      item: 'border border-gray-200 rounded-lg overflow-hidden',
-      header: 'bg-white hover:bg-gray-50',
-      activeHeader: 'bg-gray-50',
-      content: 'bg-white border-t border-gray-200',
+      item: 'border border-border rounded-lg overflow-hidden',
+      header: 'bg-surface hover:bg-surface-hover',
+      activeHeader: 'bg-surface-2',
+      content: 'bg-surface border-t border-border',
     },
     separated: {
       container: 'space-y-3',
-      item: 'border border-gray-200 rounded-lg shadow-sm overflow-hidden',
-      header: 'bg-white hover:bg-gray-50',
-      activeHeader: 'bg-gray-50',
-      content: 'bg-gray-50 border-t border-gray-200',
+      item: 'border border-border rounded-lg shadow-sm overflow-hidden',
+      header: 'bg-surface hover:bg-surface-hover',
+      activeHeader: 'bg-surface-2',
+      content: 'bg-surface-2 border-t border-border',
     },
     ghost: {
       container: 'space-y-1',
       item: '',
-      header: 'hover:bg-gray-100 rounded-lg',
-      activeHeader: 'bg-gray-100',
+      header: 'hover:bg-surface-hover rounded-lg',
+      activeHeader: 'bg-surface-hover',
       content: '',
     },
   }
@@ -139,7 +139,8 @@ export function Accordion({
                 aria-controls={`accordion-panel-${item.key}`}
                 className={cn(
                   'w-full flex items-center justify-between transition-colors',
-                  'focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-inset',
+                  // Inset ring: the item's overflow-hidden would clip an outer one (A8).
+                  'focus-visible:outline-hidden focus-visible:shadow-ring-inset',
                   currentSize.header,
                   currentVariant.header,
                   isExpanded && currentVariant.activeHeader,

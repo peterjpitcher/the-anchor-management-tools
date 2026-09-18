@@ -249,7 +249,7 @@ export default function ShiftDetailModal({
     <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
       <div
-        className="bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        className="bg-surface rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -261,7 +261,7 @@ export default function ShiftDetailModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-text-subtle hover:text-text-muted rounded"
+            className="p-1 text-text-subtle hover:text-text-muted rounded-sm"
           >
             <XMarkIcon className="h-5 w-5" />
           </button>
@@ -486,7 +486,7 @@ export default function ShiftDetailModal({
                   type="checkbox"
                   checked={overnight}
                   onChange={e => setOvernight(e.target.checked)}
-                  className="rounded border-border-strong text-info-fg"
+                  className="rounded-sm border-border-strong text-info-fg"
                 />
                 <label htmlFor="sd-overnight" className="text-text">Overnight shift</label>
               </div>

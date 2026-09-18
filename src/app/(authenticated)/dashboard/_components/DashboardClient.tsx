@@ -200,7 +200,7 @@ export default function DashboardClient({
         <Card>
           <CardHeader title={todayTitle} />
           <CardBody className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-3 text-[13px]">
+            <div className="flex items-center justify-between gap-3 text-ui">
               <span className="text-text-muted">On rota</span>
               {todayMeta.onRota.length > 0 ? (
                 <AvatarStack names={todayMeta.onRota} max={4} size="sm" />
@@ -208,11 +208,11 @@ export default function DashboardClient({
                 <span className="text-text-subtle">--</span>
               )}
             </div>
-            <div className="flex items-center justify-between gap-3 text-[13px]">
+            <div className="flex items-center justify-between gap-3 text-ui">
               <span className="text-text-muted">Table bookings</span>
               <span className="font-semibold text-text-strong tabular-nums">{todayMeta.bookings}</span>
             </div>
-            <div className="flex items-center justify-between gap-3 text-[13px]">
+            <div className="flex items-center justify-between gap-3 text-ui">
               <span className="text-text-muted">Covers</span>
               <span className="font-semibold text-text-strong tabular-nums">{todayMeta.covers}</span>
             </div>
@@ -233,12 +233,12 @@ export default function DashboardClient({
                       <Link
                         key={item.id}
                         href={item.href}
-                        className="flex min-w-0 items-start gap-2 rounded-md text-[13px] hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                        className="flex min-w-0 items-start gap-2 rounded-md text-ui hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                       >
                         {content}
                       </Link>
                     ) : (
-                      <div key={item.id} className="flex min-w-0 items-start gap-2 text-[13px]">
+                      <div key={item.id} className="flex min-w-0 items-start gap-2 text-ui">
                         {content}
                       </div>
                     )
@@ -248,7 +248,7 @@ export default function DashboardClient({
             )}
 
             <div className="h-px bg-border my-1" />
-            <Link href="/events" className="text-[13px] text-primary font-medium hover:underline">
+            <Link href="/events" className="text-ui text-primary font-medium hover:underline">
               View daily brief &rarr;
             </Link>
           </CardBody>
@@ -270,7 +270,7 @@ export default function DashboardClient({
             {upcomingEvents.length === 0 ? (
               <Empty title="No upcoming events" className="py-8" />
             ) : (
-              <div className="px-[var(--spacing-pad-card)]">
+              <div className="px-pad-card">
                 {upcomingEvents.map((e) => (
                   <Link
                     key={e.id}
@@ -278,11 +278,11 @@ export default function DashboardClient({
                     className="grid grid-cols-[auto_1fr_auto] sm:grid-cols-[auto_1fr_auto_auto] items-center gap-3.5 py-2.5 border-t border-border first:border-t-0"
                   >
                     <div className="w-11 text-center rounded-lg bg-primary-soft text-primary-soft-fg py-1.5 flex-shrink-0">
-                      <div className="text-[10px] font-bold tracking-wider uppercase">{e.dateLabel}</div>
+                      <div className="text-2xs font-bold tracking-wider uppercase">{e.dateLabel}</div>
                       <div className="text-base font-bold leading-tight">{e.dayNumber}</div>
                     </div>
                     <div className="min-w-0">
-                      <div className="text-[13px] font-semibold text-text-strong truncate">{e.title}</div>
+                      <div className="text-ui font-semibold text-text-strong truncate">{e.title}</div>
                       <div className="text-xs text-text-muted mt-0.5 truncate">{e.time} &middot; {e.host}</div>
                     </div>
                     <div className="hidden sm:flex items-center gap-2 min-w-[140px] justify-end">
@@ -310,17 +310,17 @@ export default function DashboardClient({
                 <div key={a.id} className="flex items-start gap-2.5">
                   <Avatar name={a.actor} size="sm" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px]">
+                    <div className="text-ui">
                       <span className="font-semibold text-text-strong">{a.actor}</span>{' '}
                       <span className="text-text-muted">{a.action}</span>
                     </div>
-                    <div className="text-[11px] text-text-muted mt-0.5">{a.time}</div>
+                    <div className="text-meta text-text-muted mt-0.5">{a.time}</div>
                   </div>
                 </div>
               ))
             )}
             <div className="h-px bg-border" />
-            <Link href="/settings/audit-logs" className="text-[13px] text-primary font-medium hover:underline">
+            <Link href="/settings/audit-logs" className="text-ui text-primary font-medium hover:underline">
               View audit log &rarr;
             </Link>
           </CardBody>
@@ -343,19 +343,19 @@ export default function DashboardClient({
           )}
           <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-border md:grid-cols-4">
             <div>
-              <div className="text-[11px] text-text-muted">Average daily</div>
+              <div className="text-meta text-text-muted">Average daily</div>
               <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.avgDaily}</div>
             </div>
             <div>
-              <div className="text-[11px] text-text-muted">Completed through</div>
+              <div className="text-meta text-text-muted">Completed through</div>
               <div className="text-base font-semibold text-text-strong tabular-nums">{revenueSummary.completedThrough}</div>
             </div>
             <div>
-              <div className="text-[11px] text-text-muted">Week vs last</div>
+              <div className="text-meta text-text-muted">Week vs last</div>
               <div className={`text-base font-semibold tabular-nums ${revenueSummary.vsLastWeek.startsWith('-') ? 'text-danger' : revenueSummary.vsLastWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.vsLastWeek}</div>
             </div>
             <div>
-              <div className="text-[11px] text-text-muted">Last year same week</div>
+              <div className="text-meta text-text-muted">Last year same week</div>
               <div className={`text-base font-semibold tabular-nums ${revenueSummary.lastYearSameWeek.startsWith('-') ? 'text-danger' : revenueSummary.lastYearSameWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.lastYearSameWeek}</div>
             </div>
           </div>

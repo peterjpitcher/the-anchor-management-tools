@@ -112,7 +112,7 @@ export function ScheduleCalendar({
 
             {/* Legend — hidden on mobile to keep the schedule compact */}
             {!isMobile && legendKinds && legendKinds.length > 0 && (
-                <div className="flex items-center gap-3 text-[11px] text-text-muted">
+                <div className="flex items-center gap-3 text-meta text-text-muted">
                     {legendKinds.map((k) => (
                         <span key={k} className="flex items-center gap-1">
                             <span

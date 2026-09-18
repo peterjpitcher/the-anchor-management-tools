@@ -145,7 +145,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
             onBarClick={handleBarClick}
           />
         ) : (
-          <p className="text-gray-500 text-center py-12">No mileage data available.</p>
+          <p className="text-text-muted text-center py-12">No mileage data available.</p>
         )}
       </Card>
 
@@ -155,14 +155,14 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200">
+                <tr className="border-b border-border">
                   <SortableHeader
                     label="Destination"
                     column="destination"
                     currentColumn={destinationSort.column}
                     currentDirection={destinationSort.direction}
                     onSort={toggleDestinationSort}
-                    className="text-left py-2 pr-4 font-medium text-gray-500"
+                    className="text-left py-2 pr-4 font-medium text-text-muted"
                   />
                   <SortableHeader
                     label="Miles"
@@ -170,7 +170,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
                     currentColumn={destinationSort.column}
                     currentDirection={destinationSort.direction}
                     onSort={toggleDestinationSort}
-                    className="text-right py-2 px-4 font-medium text-gray-500"
+                    className="text-right py-2 px-4 font-medium text-text-muted"
                   />
                   <SortableHeader
                     label="Amount Due"
@@ -178,7 +178,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
                     currentColumn={destinationSort.column}
                     currentDirection={destinationSort.direction}
                     onSort={toggleDestinationSort}
-                    className="text-right py-2 px-4 font-medium text-gray-500"
+                    className="text-right py-2 px-4 font-medium text-text-muted"
                   />
                   <SortableHeader
                     label="Trips"
@@ -186,13 +186,13 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
                     currentColumn={destinationSort.column}
                     currentDirection={destinationSort.direction}
                     onSort={toggleDestinationSort}
-                    className="text-right py-2 pl-4 font-medium text-gray-500"
+                    className="text-right py-2 pl-4 font-medium text-text-muted"
                   />
                 </tr>
               </thead>
               <tbody>
                 {sortedByDestination.map((dest) => (
-                  <tr key={dest.destinationName} className="border-b border-gray-100">
+                  <tr key={dest.destinationName} className="border-b border-border">
                     <td className="py-2 pr-4">{dest.destinationName}</td>
                     <td className="text-right py-2 px-4">{dest.totalMiles.toLocaleString('en-GB', { maximumFractionDigits: 1 })}</td>
                     <td className="text-right py-2 px-4">{formatCurrency(dest.amountDue)}</td>

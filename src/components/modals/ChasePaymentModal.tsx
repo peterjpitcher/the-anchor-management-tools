@@ -168,7 +168,7 @@ P.S. I've attached a copy of the invoice for your reference.`
         <div className="flex items-center gap-3 pb-4 border-b">
           <Clock className="h-6 w-6 text-orange-600" />
           <div>
-            <p className="text-sm text-gray-600">Invoice is {daysOverdue} {daysOverdue === 1 ? 'day' : 'days'} overdue</p>
+            <p className="text-sm text-text-muted">Invoice is {daysOverdue} {daysOverdue === 1 ? 'day' : 'days'} overdue</p>
           </div>
         </div>
 
@@ -193,7 +193,7 @@ P.S. I've attached a copy of the invoice for your reference.`
             onChange={(e) => setToEmails(e.target.value)}
             placeholder="primary.contact@example.com"
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-text-muted mt-1">
             Primary recipient. Usually the vendor&apos;s primary contact.
           </p>
         </div>
@@ -206,7 +206,7 @@ P.S. I've attached a copy of the invoice for your reference.`
             onChange={(e) => setCcEmails(e.target.value)}
             placeholder="accounts@example.com, ops@example.com"
           />
-          <p className="text-xs text-gray-500 mt-1">Separate multiple emails with commas or semicolons.</p>
+          <p className="text-xs text-text-muted mt-1">Separate multiple emails with commas or semicolons.</p>
         </div>
 
         <div>

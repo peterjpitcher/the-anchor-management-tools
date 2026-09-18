@@ -113,8 +113,8 @@ export function AppShell({
           className={cn(
             'flex-1 overflow-auto bg-bg print:overflow-visible print:bg-surface print:!p-0',
             showSidebar && !fohMode
-              ? 'p-[12px_16px_24px] shell:p-[22px_28px_40px]'
-              : 'p-[12px_16px_40px] shell:p-[22px_28px_40px]',
+              ? 'px-4 pt-3 pb-6 shell:px-shell-pad-x shell:pt-shell-pad-top shell:pb-shell-pad-bottom'
+              : 'px-4 pt-3 pb-10 shell:px-shell-pad-x shell:pt-shell-pad-top shell:pb-shell-pad-bottom',
           )}
         >
           {children}

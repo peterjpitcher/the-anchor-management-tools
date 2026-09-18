@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * TabNav — backward-compatible wrapper
+ * TabNav: backward-compatible wrapper
  * @deprecated Use ds/Tabs instead
  */
 
@@ -21,6 +21,7 @@ export interface TabItem {
   disabled?: boolean
   icon?: ReactNode
   badge?: string | number
+  /** Omitted or 'default' shows the DS Tabs count pill; any other value shows a Badge in that tone. */
   badgeVariant?: 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info'
 }
 
@@ -29,40 +30,19 @@ export interface TabNavProps {
   activeKey?: string
   onChange?: (key: string) => void
   size?: 'sm' | 'md' | 'lg'
+  /** @deprecated Every variant renders the DS Tabs look (one in-page tab style). Accepted for backward compatibility. */
   variant?: 'underline' | 'pills' | 'bordered'
   fullWidth?: boolean
   className?: string
   'aria-label'?: string
 }
 
+// The look is DS Tabs (src/ds/composites/Tabs.tsx): md matches it exactly, sm and lg keep
+// TabNav's smaller and larger text and padding. The flex gap spaces the icon, label and count.
 const sizeClasses = {
-  sm: { tab: 'px-3 py-1.5 text-xs', icon: 'h-4 w-4', badge: 'ml-1.5', gap: 'gap-1.5' },
-  md: { tab: 'px-4 py-2 text-sm', icon: 'h-5 w-5', badge: 'ml-2', gap: 'gap-2' },
-  lg: { tab: 'px-6 py-3 text-base', icon: 'h-6 w-6', badge: 'ml-2', gap: 'gap-2' },
-}
-
-const variantClasses = {
-  underline: {
-    container: 'border-b border-gray-200',
-    list: '-mb-px',
-    tab: 'border-b-2 border-transparent hover:text-gray-700 hover:border-gray-300',
-    activeTab: 'text-green-600 border-green-600',
-    disabledTab: 'text-gray-400',
-  },
-  pills: {
-    container: '',
-    list: 'gap-2',
-    tab: 'rounded-md hover:bg-gray-100',
-    activeTab: 'bg-green-100 text-green-700',
-    disabledTab: 'text-gray-400',
-  },
-  bordered: {
-    container: 'border-b border-gray-200',
-    list: '-mb-px gap-4',
-    tab: 'border border-transparent rounded-t-lg hover:border-gray-300',
-    activeTab: 'bg-white border-gray-200 border-b-white',
-    disabledTab: 'text-gray-400',
-  },
+  sm: { tab: 'px-3 py-1.5 text-xs', icon: 'h-4 w-4', gap: 'gap-1.5' },
+  md: { tab: 'px-4 py-2.5 text-ui', icon: 'h-5 w-5', gap: 'gap-2' },
+  lg: { tab: 'px-6 py-3 text-base', icon: 'h-6 w-6', gap: 'gap-2' },
 }
 
 export function TabNav({
@@ -70,7 +50,7 @@ export function TabNav({
   activeKey,
   onChange,
   size = 'md',
-  variant = 'underline',
+  variant: _variant,
   fullWidth = false,
   className,
   'aria-label': ariaLabel = 'Tabs',
@@ -102,31 +82,40 @@ export function TabNav({
     const isActive = tab.active ?? currentActiveKey === tab.key
     const isDisabled = tab.disabled
     return cn(
-      'inline-flex items-center font-medium whitespace-nowrap transition-colors duration-200',
-      'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500',
+      'relative inline-flex items-center font-medium whitespace-nowrap transition-colors duration-200',
+      // Inset ring, as DS Tabs: the scrolling strip would clip an outer one (A8).
+      'focus-visible:outline-hidden focus-visible:shadow-ring-inset',
       sizeClasses[size].tab,
       sizeClasses[size].gap,
-      variantClasses[variant].tab,
-      isActive && variantClasses[variant].activeTab,
-      isDisabled && variantClasses[variant].disabledTab,
-      isDisabled && 'cursor-not-allowed opacity-50',
-      !isDisabled && !isActive && 'text-gray-500',
+      isActive && 'text-primary',
+      isDisabled && 'cursor-not-allowed opacity-50 text-text-soft',
+      !isDisabled && !isActive && 'text-text-muted hover:text-text',
       fullWidth && 'flex-1 justify-center',
     )
   }
 
-  const renderTabContent = (tab: TabItem) => (
+  const renderTabContent = (tab: TabItem, isActive: boolean) => (
     <>
       {tab.icon && <span className={sizeClasses[size].icon}>{tab.icon}</span>}
       <span>
         <span className="sm:hidden">{tab.mobileLabel || tab.label}</span>
         <span className="hidden sm:inline">{tab.label}</span>
       </span>
-      {tab.badge !== undefined && (
-        <Badge variant={tab.badgeVariant || 'default'} className={sizeClasses[size].badge}>
-          {tab.badge}
-        </Badge>
-      )}
+      {tab.badge !== undefined &&
+        (tab.badgeVariant && tab.badgeVariant !== 'default' ? (
+          <Badge variant={tab.badgeVariant}>{tab.badge}</Badge>
+        ) : (
+          <span
+            className={cn(
+              'inline-flex min-w-5 items-center justify-center rounded-pill px-1.5 text-xs',
+              isActive ? 'bg-primary-soft text-primary-soft-fg' : 'bg-surface-2 text-text-muted',
+            )}
+          >
+            {tab.badge}
+          </span>
+        ))}
+      {/* Active indicator: 2px bottom bar, as DS Tabs */}
+      {isActive && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-pill bg-primary" />}
     </>
   )
 
@@ -142,7 +131,7 @@ export function TabNav({
           className={tabClasses}
           aria-current={isActive ? 'page' : undefined}
         >
-          {renderTabContent(tab)}
+          {renderTabContent(tab, isActive)}
         </Link>
       )
     }
@@ -161,24 +150,15 @@ export function TabNav({
         className={tabClasses}
         aria-current={isActive ? 'page' : undefined}
       >
-        {renderTabContent(tab)}
+        {renderTabContent(tab, isActive)}
       </button>
     )
   }
 
   return (
-    <div className={cn(variantClasses[variant].container, className)}>
-      <div
-        ref={scrollContainerRef}
-        className={cn(
-          'overflow-x-auto scrollbar-hide',
-          variant === 'pills' && '-m-1 p-1',
-        )}
-      >
-        <nav
-          className={cn('flex', variantClasses[variant].list, fullWidth && 'w-full')}
-          aria-label={ariaLabel}
-        >
+    <div className={cn('border-b border-border', className)}>
+      <div ref={scrollContainerRef} className="overflow-x-auto scrollbar-hide">
+        <nav className={cn('flex', fullWidth && 'w-full')} aria-label={ariaLabel}>
           {tabs.map((tab) => (
             <React.Fragment key={tab.key}>{renderTab(tab)}</React.Fragment>
           ))}

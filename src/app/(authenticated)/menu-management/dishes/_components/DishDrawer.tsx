@@ -596,17 +596,17 @@ export function DishDrawer({
         )}
 
         {/* Live header summary: cost / price / GP */}
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-          <span className="text-sm text-gray-600">
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface-2 px-4 py-3">
+          <span className="text-sm text-text-muted">
             Cost: <span className="font-semibold">£{computedPortionCost.toFixed(2)}</span>
           </span>
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-text-muted">
             Price: <span className="font-semibold">£{sellingPrice.toFixed(2)}</span>
           </span>
-          <span className={`text-sm font-semibold ${gpBelowTarget ? 'text-red-600' : 'text-gray-900'}`}>
+          <span className={`text-sm font-semibold ${gpBelowTarget ? 'text-danger' : 'text-text'}`}>
             GP: {gpDisplayPct}
             {gpBelowTarget && (
-              <ExclamationTriangleIcon className="ml-1 inline h-4 w-4 text-red-500" />
+              <ExclamationTriangleIcon className="ml-1 inline h-4 w-4 text-danger" />
             )}
           </span>
 
@@ -625,7 +625,7 @@ export function DishDrawer({
 
             {isEditing && (
               allergenVerified ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800" title={allergenVerifiedAt ? `Verified ${new Date(allergenVerifiedAt).toLocaleDateString('en-GB')}` : undefined}>
+                <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-green-800" title={allergenVerifiedAt ? `Verified ${new Date(allergenVerifiedAt).toLocaleDateString('en-GB')}` : undefined}>
                   <CheckCircleIcon className="h-3.5 w-3.5" />
                   Allergens Verified
                 </span>
@@ -634,7 +634,7 @@ export function DishDrawer({
                   type="button"
                   onClick={() => void handleVerifyAllergens()}
                   disabled={verifying}
-                  className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-200 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-warning-fg hover:bg-amber-200 disabled:opacity-50"
                 >
                   <ExclamationTriangleIcon className="h-3.5 w-3.5" />
                   {verifying ? 'Verifying...' : 'Verify Allergens'}

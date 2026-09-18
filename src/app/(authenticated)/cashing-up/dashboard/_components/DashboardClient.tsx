@@ -288,7 +288,7 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
                           {formatPerformancePercent(row.targetPerformancePercent)}
                         </Badge>
                         {row.accruedTarget > 0 && (
-                          <span className="text-[11px] text-text-muted font-mono">
+                          <span className="text-meta text-text-muted font-mono">
                             £{fmt(row.accruedTakings)} / £{fmt(row.accruedTarget)}
                           </span>
                         )}

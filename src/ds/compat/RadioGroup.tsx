@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * RadioGroup — backward-compatible wrapper
+ * RadioGroup: backward-compatible wrapper
  * @deprecated Use ds/Radio components instead
  */
 
@@ -30,6 +30,11 @@ export interface RadioGroupProps {
   legend?: string
   legendSrOnly?: boolean
 }
+
+// Native radio in the brand colour with the DS control focus pattern. rounded-full keeps
+// the focus halo round, matching the circle the browser draws.
+const radioInputClass =
+  'mt-0.5 rounded-full accent-primary focus-visible:shadow-ring'
 
 export const RadioGroup = forwardRef<HTMLFieldSetElement, RadioGroupProps>(
   (
@@ -62,7 +67,12 @@ export const RadioGroup = forwardRef<HTMLFieldSetElement, RadioGroupProps>(
     return (
       <fieldset ref={ref} className={cn(className)} aria-invalid={error || undefined}>
         {legend && (
-          <legend className={cn('text-sm font-medium text-gray-700 mb-3', legendSrOnly && 'sr-only')}>
+          <legend
+            className={cn(
+              'block text-xs font-medium uppercase tracking-wider text-text-muted mb-3',
+              legendSrOnly && 'sr-only',
+            )}
+          >
             {legend}
           </legend>
         )}
@@ -87,10 +97,10 @@ export const RadioGroup = forwardRef<HTMLFieldSetElement, RadioGroupProps>(
                     sc.pad,
                     sc.gap,
                     isChecked
-                      ? 'border-green-600 bg-green-50 ring-1 ring-green-600'
-                      : 'border-gray-200 hover:border-gray-300',
+                      ? 'border-primary bg-primary-soft ring-1 ring-primary'
+                      : 'border-border hover:border-border-strong',
                     isDisabled && 'opacity-50 cursor-not-allowed',
-                    error && !isChecked && 'border-red-300',
+                    error && !isChecked && 'border-danger',
                   )}
                 >
                   <input
@@ -101,13 +111,13 @@ export const RadioGroup = forwardRef<HTMLFieldSetElement, RadioGroupProps>(
                     checked={isChecked}
                     disabled={isDisabled}
                     onChange={() => onChange?.(opt.value)}
-                    className={cn(sc.radio, 'mt-0.5 accent-green-600')}
+                    className={cn(sc.radio, radioInputClass)}
                   />
                   <div className="flex-1 min-w-0">
                     {opt.icon && <span className="mb-1 block">{opt.icon}</span>}
-                    <span className={cn(sc.label, 'font-medium text-gray-900')}>{opt.label}</span>
+                    <span className={cn(sc.label, 'font-medium text-text')}>{opt.label}</span>
                     {opt.description && (
-                      <span className={cn(sc.desc, 'text-gray-500 block mt-0.5')}>{opt.description}</span>
+                      <span className={cn(sc.desc, 'text-text-muted block mt-0.5')}>{opt.description}</span>
                     )}
                   </div>
                 </label>
@@ -132,12 +142,12 @@ export const RadioGroup = forwardRef<HTMLFieldSetElement, RadioGroupProps>(
                   checked={isChecked}
                   disabled={isDisabled}
                   onChange={() => onChange?.(opt.value)}
-                  className={cn(sc.radio, 'mt-0.5 accent-green-600')}
+                  className={cn(sc.radio, radioInputClass)}
                 />
                 <div className="flex-1 min-w-0">
-                  <span className={cn(sc.label, 'text-gray-900')}>{opt.label}</span>
+                  <span className={cn(sc.label, 'text-text')}>{opt.label}</span>
                   {opt.description && (
-                    <span className={cn(sc.desc, 'text-gray-500 block mt-0.5')}>{opt.description}</span>
+                    <span className={cn(sc.desc, 'text-text-muted block mt-0.5')}>{opt.description}</span>
                   )}
                 </div>
               </label>

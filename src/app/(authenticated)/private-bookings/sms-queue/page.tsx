@@ -171,7 +171,7 @@ export default async function SmsQueuePage() {
       {/* Pending Messages */}
       <Section 
         title="Pending Approval"
-        icon={<ClockIcon className="h-6 w-6 text-amber-600" />}
+        icon={<ClockIcon className="h-6 w-6 text-warning" />}
         description={`${pendingSms.length} message${pendingSms.length !== 1 ? 's' : ''}`}
       >
         {pendingSms.length === 0 ? (
@@ -198,13 +198,13 @@ export default async function SmsQueuePage() {
                       )}
                     </div>
                     
-                    <h3 className="text-lg font-medium text-gray-900 mb-1">
+                    <h3 className="text-lg font-medium text-text mb-1">
                       {sms.booking?.customer_first_name && sms.booking?.customer_last_name 
                         ? `${sms.booking.customer_first_name} ${sms.booking.customer_last_name}`
                         : sms.booking?.customer_name || 'Unknown Customer'}
                     </h3>
                     
-                    <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                    <div className="flex items-center gap-4 text-sm text-text-muted mb-3">
                       <span className="flex items-center gap-1">
                         <PhoneIcon className="h-4 w-4" />
                         {sms.recipient_phone}
@@ -217,11 +217,11 @@ export default async function SmsQueuePage() {
                       )}
                     </div>
                     
-                    <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{sms.message_body}</p>
+                    <div className="bg-surface-2 rounded-lg p-4 mb-4">
+                      <p className="text-sm text-text whitespace-pre-wrap">{sms.message_body}</p>
                     </div>
                     
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-text-muted">
                       Created {formatDateTime12Hour(sms.created_at)}
                     </p>
                   </div>
@@ -276,26 +276,26 @@ export default async function SmsQueuePage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <Badge variant="success">Approved</Badge>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-text-muted">
                         by {sms.approved_by} at {formatDateTime12Hour(sms.approved_at)}
                       </span>
                     </div>
                     
-                    <h3 className="text-lg font-medium text-gray-900 mb-1">
+                    <h3 className="text-lg font-medium text-text mb-1">
                       {sms.booking?.customer_first_name && sms.booking?.customer_last_name 
                         ? `${sms.booking.customer_first_name} ${sms.booking.customer_last_name}`
                         : sms.booking?.customer_name || 'Unknown Customer'}
                     </h3>
                     
-                    <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                    <div className="flex items-center gap-4 text-sm text-text-muted mb-3">
                       <span className="flex items-center gap-1">
                         <PhoneIcon className="h-4 w-4" />
                         {sms.recipient_phone}
                       </span>
                     </div>
                     
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{sms.message_body}</p>
+                    <div className="bg-surface-2 rounded-lg p-4">
+                      <p className="text-sm text-text whitespace-pre-wrap">{sms.message_body}</p>
                     </div>
                   </div>
                 </div>
@@ -324,7 +324,7 @@ export default async function SmsQueuePage() {
       {cancelledSms.length > 0 && (
         <Section 
           title="Cancelled Messages"
-          icon={<XMarkIcon className="h-6 w-6 text-red-600" />}
+          icon={<XMarkIcon className="h-6 w-6 text-danger" />}
           description={`${cancelledSms.length} message${cancelledSms.length !== 1 ? 's' : ''}`}
         >
           <div className="space-y-4">
@@ -346,7 +346,7 @@ export default async function SmsQueuePage() {
                         )}
                       </div>
                       
-                      <h3 className="text-lg font-medium text-gray-900 mb-1">
+                      <h3 className="text-lg font-medium text-text mb-1">
                         {sms.booking?.customer_first_name && sms.booking?.customer_last_name 
                           ? `${sms.booking.customer_first_name} ${sms.booking.customer_last_name}`
                           : sms.booking?.customer_name || 'Unknown Customer'}
@@ -358,11 +358,11 @@ export default async function SmsQueuePage() {
                         </Alert>
                       )}
                       
-                      <div className="bg-gray-50 rounded-lg p-4 line-through">
-                        <p className="text-sm text-gray-500 whitespace-pre-wrap">{sms.message_body}</p>
+                      <div className="bg-surface-2 rounded-lg p-4 line-through">
+                        <p className="text-sm text-text-muted whitespace-pre-wrap">{sms.message_body}</p>
                       </div>
                       
-                      <p className="text-xs text-gray-500 mt-2">
+                      <p className="text-xs text-text-muted mt-2">
                         Cancelled {metadata.cancelled_at ? formatDateTime12Hour(metadata.cancelled_at as string) : 'recently'}
                       </p>
                     </div>

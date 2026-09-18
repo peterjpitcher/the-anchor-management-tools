@@ -449,7 +449,7 @@ export default function EditRecurringInvoicePage() {
                       </FormGroup>
 
                       <div className="md:col-span-2 text-right pt-6">
-                        <div className="text-sm text-gray-600">
+                        <div className="text-sm text-text-muted">
                           Subtotal: £{((item.quantity * item.unit_price) * (1 - item.discount_percentage / 100)).toFixed(2)}
                         </div>
                       </div>

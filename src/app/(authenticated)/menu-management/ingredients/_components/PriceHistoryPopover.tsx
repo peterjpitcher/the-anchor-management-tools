@@ -61,7 +61,7 @@ export function PriceHistoryPopover({
       onOpenChange={handleOpenChange}
     >
       <PopoverHeader>
-        <h4 className="text-sm font-semibold text-gray-900">
+        <h4 className="text-sm font-semibold text-text">
           Price history &ndash; {ingredientName}
         </h4>
       </PopoverHeader>
@@ -71,16 +71,16 @@ export function PriceHistoryPopover({
             <Spinner size="sm" showLabel label="Loading prices..." />
           </div>
         ) : prices.length === 0 ? (
-          <p className="text-sm text-gray-500">No price history recorded yet.</p>
+          <p className="text-sm text-text-muted">No price history recorded yet.</p>
         ) : (
           <div className="space-y-3">
             {prices.map((entry) => (
-              <div key={entry.id} className="border border-gray-200 rounded-lg p-3">
+              <div key={entry.id} className="border border-border rounded-lg p-3">
                 <div className="flex items-center justify-between">
                   <div className="font-medium text-sm">
                     £{entry.pack_cost.toFixed(2)} per pack
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-text-muted">
                     Effective {new Date(entry.effective_from).toLocaleDateString()}
                   </div>
                 </div>
@@ -91,7 +91,7 @@ export function PriceHistoryPopover({
                   </div>
                 )}
                 {entry.notes && (
-                  <div className="text-sm text-gray-600 mt-1">{entry.notes}</div>
+                  <div className="text-sm text-text-muted mt-1">{entry.notes}</div>
                 )}
               </div>
             ))}

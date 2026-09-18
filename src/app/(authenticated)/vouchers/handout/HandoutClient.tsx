@@ -301,7 +301,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
       <Card title="Session context" subtitle="Applies to every card until you change it">
         <div className="space-y-4">
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">Won at</div>
+            <div className="text-sm font-medium text-text mb-2">Won at</div>
             <div className="flex flex-wrap gap-2">
               {context.events.map((event) => (
                 <button
@@ -310,8 +310,8 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                   onClick={() => setEventId(eventId === event.id ? null : event.id)}
                   className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
                     eventId === event.id
-                      ? 'border-green-600 bg-green-50 text-green-800 font-medium'
-                      : 'border-gray-300 text-gray-700 hover:border-gray-400'
+                      ? 'border-green-600 bg-success-soft text-green-800 font-medium'
+                      : 'border-border-strong text-text hover:border-gray-400'
                   }`}
                 >
                   {event.name}
@@ -319,7 +319,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                 </button>
               ))}
               {context.events.length === 0 && (
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-text-muted">
                   No events today. Use the free-text label below.
                 </span>
               )}
@@ -347,7 +347,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
           />
 
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">Expiry (required)</div>
+            <div className="text-sm font-medium text-text mb-2">Expiry (required)</div>
             <div className="flex flex-wrap items-center gap-2">
               {presetDates.map((preset) => (
                 <button
@@ -356,8 +356,8 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                   onClick={() => setExpiryDate(preset.date)}
                   className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
                     expiryDate === preset.date
-                      ? 'border-green-600 bg-green-50 text-green-800 font-medium'
-                      : 'border-gray-300 text-gray-700 hover:border-gray-400'
+                      ? 'border-green-600 bg-success-soft text-green-800 font-medium'
+                      : 'border-border-strong text-text hover:border-gray-400'
                   }`}
                 >
                   +{preset.days} days
@@ -374,7 +374,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
               </div>
             </div>
             {expiryLong && (
-              <div className="mt-3 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-green-900 font-medium">
+              <div className="mt-3 rounded-lg bg-success-soft border border-green-200 px-4 py-3 text-green-900 font-medium">
                 Write this date on every card: {expiryLong}
               </div>
             )}
@@ -415,18 +415,18 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
           </div>
 
           {!selected && matches.length > 0 && (
-            <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+            <ul className="divide-y divide-border rounded-lg border border-border">
               {matches.map((match) => (
                 <li key={match.voucherNumber}>
                   <button
                     type="button"
                     onClick={() => pickVoucher(match)}
-                    className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-gray-50"
+                    className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-surface-hover"
                   >
-                    <span className="font-mono font-medium text-gray-900">
+                    <span className="font-mono font-medium text-text">
                       {match.voucherNumber}
                     </span>
-                    <span className="text-sm text-gray-600">{match.typeTitle}</span>
+                    <span className="text-sm text-text-muted">{match.typeTitle}</span>
                   </button>
                 </li>
               ))}
@@ -436,7 +436,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
             matches.length === 0 &&
             !searching &&
             normaliseVoucherNumberInput(numberInput).length >= LOOKUP_MIN_CHARS && (
-              <p className="text-sm text-gray-500" aria-live="polite">
+              <p className="text-sm text-text-muted" aria-live="polite">
                 No cards in stock match that number. Only printed, un-issued cards can be handed
                 out.
               </p>
@@ -444,20 +444,20 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
 
           {selected && (
             <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 px-4 py-3">
+              <div className="rounded-lg border border-border px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="font-mono text-lg font-semibold text-gray-900">
+                    <div className="font-mono text-lg font-semibold text-text">
                       {selected.voucherNumber}
                     </div>
-                    <div className="text-sm text-gray-600">{selected.typeTitle}</div>
+                    <div className="text-sm text-text-muted">{selected.typeTitle}</div>
                   </div>
                   <Badge tone="neutral">In stock</Badge>
                 </div>
               </div>
 
               <div>
-                <div className="text-sm font-medium text-gray-700 mb-2">
+                <div className="text-sm font-medium text-text mb-2">
                   Customer (optional, for SMS reminders)
                 </div>
                 {customer ? (
@@ -478,7 +478,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                             onClick={() =>
                               setCustomer({ id: booker.customerId, name: booker.name })
                             }
-                            className="rounded-full border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:border-gray-400"
+                            className="rounded-full border border-border-strong px-3 py-1.5 text-sm text-text hover:border-gray-400"
                           >
                             {booker.name} · booked · {booker.seats}{' '}
                             {booker.seats === 1 ? 'seat' : 'seats'}
@@ -494,7 +494,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                       autoComplete="off"
                     />
                     {customerHits.length > 0 && (
-                      <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+                      <ul className="divide-y divide-border rounded-lg border border-border">
                         {customerHits.map((hit) => (
                           <li key={hit.id}>
                             <button
@@ -504,10 +504,10 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                                 setCustomerQuery('')
                                 setCustomerHits([])
                               }}
-                              className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50"
+                              className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-surface-hover"
                             >
-                              <span className="text-gray-900">{hit.name}</span>
-                              <span className="text-sm text-gray-500">{hit.mobile ?? ''}</span>
+                              <span className="text-text">{hit.name}</span>
+                              <span className="text-sm text-text-muted">{hit.mobile ?? ''}</span>
                             </button>
                           </li>
                         ))}
@@ -523,8 +523,8 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                       </button>
                     )}
                     {quickAddOpen && (
-                      <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                        <p className="text-sm text-gray-600">
+                      <div className="space-y-2 rounded-lg border border-border bg-surface-2 p-3">
+                        <p className="text-sm text-text-muted">
                           Adding someone here signs them up for updates from The Anchor, so please say so.
                         </p>
                         <Input
@@ -585,7 +585,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                 Confirm hand-out
               </Button>
               {!contextReady && (
-                <p className="text-sm text-amber-700">
+                <p className="text-sm text-warning-fg">
                   Set the staff member, expiry date and where it was won before confirming.
                 </p>
               )}
@@ -594,9 +594,9 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
         </div>
       </Card>
 
-      <div className="flex items-center justify-between text-sm text-gray-600">
+      <div className="flex items-center justify-between text-sm text-text-muted">
         <span aria-live="polite">
-          Handed out this session: <span className="font-semibold text-gray-900">{counter}</span>
+          Handed out this session: <span className="font-semibold text-text">{counter}</span>
         </span>
         <Link href="/vouchers/all" className="underline underline-offset-2">
           View the ledger

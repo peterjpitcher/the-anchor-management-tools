@@ -92,7 +92,7 @@ export function WinBackCampaign() {
   const canSend = trimmedMessage.length > 0 && !isOverLimit && !isSending && !isPreviewing
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white">
+    <div className="rounded-lg border border-border bg-surface">
       {/* Header — always visible */}
       <button
         type="button"
@@ -102,30 +102,30 @@ export function WinBackCampaign() {
       >
         <div className="flex items-center gap-2">
           <MegaphoneIcon className="h-5 w-5 text-blue-600" aria-hidden="true" />
-          <span className="text-sm font-semibold text-gray-900">Win-Back Campaign</span>
+          <span className="text-sm font-semibold text-text">Win-Back Campaign</span>
           {lastResult !== null && (
-            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+            <span className="rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-green-700">
               Last sent: {lastResult.sent}/{lastResult.count}
             </span>
           )}
         </div>
         {open ? (
-          <ChevronUpIcon className="h-4 w-4 text-gray-500" aria-hidden="true" />
+          <ChevronUpIcon className="h-4 w-4 text-text-muted" aria-hidden="true" />
         ) : (
-          <ChevronDownIcon className="h-4 w-4 text-gray-500" aria-hidden="true" />
+          <ChevronDownIcon className="h-4 w-4 text-text-muted" aria-hidden="true" />
         )}
       </button>
 
       {/* Collapsible body */}
       {open && (
-        <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-4">
-          <p className="text-sm text-gray-600">
+        <div className="border-t border-border px-4 pb-4 pt-3 space-y-4">
+          <p className="text-sm text-text-muted">
             Send a targeted SMS to opted-in customers who haven&apos;t booked in a while.
           </p>
 
           {/* Inactivity threshold */}
           <div className="max-w-xs">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text mb-1">
               Customers inactive for
             </label>
             <Select
@@ -138,11 +138,11 @@ export function WinBackCampaign() {
           {/* Message composer */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-text">
                 SMS message
               </label>
               <span
-                className={`text-xs ${isOverLimit ? 'text-red-600 font-semibold' : 'text-gray-500'}`}
+                className={`text-xs ${isOverLimit ? 'text-danger font-semibold' : 'text-text-muted'}`}
               >
                 {charCount}/{MAX_CHARS}
               </span>
@@ -155,12 +155,12 @@ export function WinBackCampaign() {
               className={`w-full rounded-md border px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                 isOverLimit
                   ? 'border-red-400 focus:ring-red-400'
-                  : 'border-gray-300'
+                  : 'border-border-strong'
               }`}
               placeholder="Type your SMS message here…"
             />
             {isOverLimit && (
-              <p className="mt-1 text-xs text-red-600">
+              <p className="mt-1 text-xs text-danger">
                 Message must be 160 characters or fewer.
               </p>
             )}
@@ -168,7 +168,7 @@ export function WinBackCampaign() {
 
           {/* Preview result */}
           {previewCount !== null && (
-            <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-info-fg">
               This campaign will send to{' '}
               <strong>{previewCount} customer{previewCount === 1 ? '' : 's'}</strong>{' '}
               inactive for {inactiveMonths}+ months.

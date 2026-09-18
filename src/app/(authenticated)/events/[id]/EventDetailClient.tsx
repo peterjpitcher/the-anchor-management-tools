@@ -723,7 +723,7 @@ export default function EventDetailClient({
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-amber-700">
+                <p className="text-sm text-warning-fg">
                   This booking is paid ({formatCurrency(cancelRefundInfo.amountPaid)}). Only a manager can
                   cancel a paid booking, so the refund can be decided.
                 </p>
@@ -1200,11 +1200,8 @@ function AttendeesTab({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Stat cards — min-[1280px] instead of xl: works around a Tailwind v4
-          cascade bug where a named md/lg/xl grid-cols variant overrides the
-          base grid-cols-2 below its breakpoint, collapsing the grid to one
-          column on mobile. */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 min-[1280px]:grid-cols-6">
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Total Seats Booked</p>
           <p className="mt-1 text-2xl font-semibold text-text-strong">{totalSeats}</p>
@@ -1643,7 +1640,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     <button
       type="button"
       onClick={() => copyToClipboard(text, label)}
-      className="inline-flex items-center justify-center rounded p-0.5 text-text-muted hover:text-text transition-colors"
+      className="inline-flex items-center justify-center rounded-sm p-0.5 text-text-muted hover:text-text transition-colors"
       aria-label={`Copy ${label}`}
     >
       <Icon name="copy" size={14} />

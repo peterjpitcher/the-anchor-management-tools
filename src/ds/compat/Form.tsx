@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Form / FormSection / FormActions — backward-compatible wrappers
+ * Form / FormSection / FormActions: backward-compatible wrappers
  * @deprecated Use standard <form> + ds/ components instead
  */
 
@@ -146,8 +146,8 @@ export function FormSection({
     <div className={cn('space-y-4', className)}>
       {(title || description) && (
         <div>
-          {title && <h3 className="text-lg font-semibold leading-6 text-gray-900">{title}</h3>}
-          {description && <p className="mt-1 text-sm text-gray-500">{description}</p>}
+          {title && <h3 className="text-lg font-semibold leading-6 text-text-strong">{title}</h3>}
+          {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
         </div>
       )}
       <div className="space-y-4">{children}</div>

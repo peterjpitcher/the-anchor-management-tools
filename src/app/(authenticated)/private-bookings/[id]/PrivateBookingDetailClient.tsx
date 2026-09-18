@@ -105,7 +105,6 @@ import {
 import { RefundDialog } from '@/components/features/invoices/RefundDialog'
 import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
 import {
-  WorkflowStatusPanel,
   RecordLockBanner,
   RecordLockControl,
   WaiverRiskPanel,
@@ -337,7 +336,7 @@ function PaymentModal({
             <>
               <input type="hidden" name="amount" value={customAmount} />
               <p className="text-lg font-semibold">£{Number(customAmount).toFixed(2)}</p>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-text-muted">
                 Deposit amount is fixed and cannot be changed.
               </p>
             </>
@@ -353,10 +352,10 @@ function PaymentModal({
                 required
               />
               {amountError && (
-                <p className="mt-1 text-xs text-red-600">{amountError}</p>
+                <p className="mt-1 text-xs text-danger">{amountError}</p>
               )}
               {maxAmount !== undefined && (
-                <p className="mt-2 text-xs text-gray-500">
+                <p className="mt-2 text-xs text-text-muted">
                   Remaining balance: £{maxAmount.toFixed(2)}. You may record a partial payment.
                 </p>
               )}
@@ -384,7 +383,7 @@ function PaymentModal({
                   className="mr-3 h-5 w-5"
                 />
                 <method.icon className="h-5 w-5 mr-2 text-gray-400" />
-                <span className="text-sm text-gray-900">{method.label}</span>
+                <span className="text-sm text-text">{method.label}</span>
               </label>
             ))}
           </div>
@@ -440,14 +439,14 @@ function SortableBookingItem({
       ref={setNodeRef}
       style={style}
       className={`flex items-start justify-between border-b pb-4 last:border-0 ${
-        isDragging ? 'bg-white shadow-md rounded-md' : ''
+        isDragging ? 'bg-surface shadow-default rounded-md' : ''
       }`}
     >
       <div className="flex items-start space-x-3 flex-1">
         {canEdit && (
           <button
             type="button"
-            className="mt-1 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing"
+            className="mt-1 text-text-subtle hover:text-text-muted cursor-grab active:cursor-grabbing"
             aria-label="Reorder booking item"
             {...attributes}
             {...listeners}
@@ -459,10 +458,10 @@ function SortableBookingItem({
           {getItemIcon(item.item_type)}
         </div>
         <div className="flex-1">
-          <p className="text-sm font-medium text-gray-900">
+          <p className="text-sm font-medium text-text">
             {item.description}
           </p>
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
             <span>Qty: {item.quantity}</span>
             <span>{formatMoney(item.unit_price)} each</span>
             {!!item.discount_value && item.discount_value > 0 && (
@@ -482,21 +481,21 @@ function SortableBookingItem({
             )}
           </div>
           {item.notes && (
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-text-muted">
               {item.notes}
             </p>
           )}
         </div>
       </div>
       <div className="flex items-center space-x-2">
-        <span className="text-base font-semibold text-gray-900">
+        <span className="text-base font-semibold text-text">
           {formatMoney(item.line_total)}
         </span>
         {canEdit && (
           <>
             <button
               onClick={() => onEdit(item)}
-              className="text-gray-400 hover:text-gray-500"
+              className="text-gray-400 hover:text-text-muted"
               title="Edit item"
               type="button"
             >
@@ -504,7 +503,7 @@ function SortableBookingItem({
             </button>
             <button
               onClick={() => onDelete(item.id)}
-              className="text-red-400 hover:text-red-500"
+              className="text-red-400 hover:text-danger"
               title="Delete item"
               type="button"
             >
@@ -742,7 +741,7 @@ function StatusModal({
     <Modal open={isOpen} onClose={onClose} title="Change Booking Status" mobileFullscreen>
       <div className="space-y-4">
         <div>
-          <p className="text-sm text-gray-600">Current status:</p>
+          <p className="text-sm text-text-muted">Current status:</p>
           <div className="flex items-center mt-1">
             <Badge variant={statusConfig[currentStatus].variant}>
               {statusConfig[currentStatus].label}
@@ -753,13 +752,13 @@ function StatusModal({
         {availableStatuses.length > 0 ? (
           <>
             <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-700">Change to:</p>
+              <p className="text-sm font-medium text-text">Change to:</p>
               {availableStatuses.map((status) => {
                 const StatusIcon = statusConfig[status].icon;
                 return (
                   <label
                     key={status}
-                    className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50"
+                    className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-surface-hover"
                   >
                     <input
                       type="radio"
@@ -772,11 +771,11 @@ function StatusModal({
                     />
                     <StatusIcon className="h-5 w-5 mr-2 text-gray-400" />
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-text">
                         {statusConfig[status].label}
                       </p>
                       {status === "confirmed" && (
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-text-muted">
                           Customer will receive confirmation SMS
                         </p>
                       )}
@@ -787,8 +786,8 @@ function StatusModal({
             </div>
 
             {showCancelPreview && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
-                <p className="text-sm font-medium text-red-900">
+              <div className="rounded-lg border border-red-200 bg-danger-soft p-4 space-y-3">
+                <p className="text-sm font-medium text-danger-fg">
                   Cancel this booking?
                 </p>
 
@@ -809,7 +808,7 @@ function StatusModal({
                         </Badge>
                       </div>
                     )}
-                    <div className="grid grid-cols-1 gap-3 rounded border border-gray-200 bg-white p-3 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3 rounded-sm border border-border bg-surface p-3 sm:grid-cols-2">
                       <FormGroup label="How was the cancellation received?">
                         <Select
                           value={cancelChannel}
@@ -843,12 +842,12 @@ function StatusModal({
                           disabled={isSubmitting}
                         />
                       </FormGroup>
-                      <p className="text-xs text-gray-500 sm:col-span-2">
+                      <p className="text-xs text-text-muted sm:col-span-2">
                         A phone call on its own is not a written cancellation — ask the customer to confirm in writing where you can.
                       </p>
                     </div>
                     {cancelPreview.outcome === 'gm_review_required' && (
-                      <div className="space-y-3 rounded border border-amber-200 bg-amber-50 p-3">
+                      <div className="space-y-3 rounded-sm border border-amber-200 bg-warning-soft p-3">
                         <FormGroup
                           label="Deposit to retain (£)"
                           help={`Manager decision — up to ${formatCurrency(cancelPreview.max_retainable)} of the paid deposit. Retaining anything requires manager permission.`}
@@ -878,7 +877,7 @@ function StatusModal({
                       </div>
                     )}
                     {cancelPreview.refund_amount > 0 && (
-                      <p className="text-sm text-gray-800">
+                      <p className="text-sm text-text">
                         Refund:{' '}
                         <strong>
                           {formatCurrency(cancelPreview.refund_amount)}
@@ -887,7 +886,7 @@ function StatusModal({
                       </p>
                     )}
                     {cancelPreview.retained_amount > 0 && (
-                      <p className="text-sm text-gray-800">
+                      <p className="text-sm text-text">
                         Retained:{' '}
                         <strong>
                           {formatCurrency(cancelPreview.retained_amount)}
@@ -896,10 +895,10 @@ function StatusModal({
                     )}
                     {cancelPreview.preview_body && (
                       <div>
-                        <p className="text-xs font-medium text-gray-600 mb-1">
+                        <p className="text-xs font-medium text-text-muted mb-1">
                           Customer will receive:
                         </p>
-                        <pre className="whitespace-pre-wrap rounded border border-gray-200 bg-white p-3 text-sm text-gray-900">
+                        <pre className="whitespace-pre-wrap rounded-sm border border-border bg-surface p-3 text-sm text-text">
                           {cancelPreview.preview_body}
                         </pre>
                       </div>
@@ -911,22 +910,22 @@ function StatusModal({
 
             {showCompletePreview && (
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
-                <p className="text-sm font-medium text-blue-900">
+                <p className="text-sm font-medium text-info-fg">
                   Mark this booking as complete?
                 </p>
                 {previewLoading ? (
                   <p className="text-sm text-blue-700">Loading preview...</p>
                 ) : completePreview ? (
                   <div>
-                    <p className="text-xs font-medium text-gray-600 mb-1">
+                    <p className="text-xs font-medium text-text-muted mb-1">
                       Customer will receive:
                     </p>
-                    <pre className="whitespace-pre-wrap rounded border border-gray-200 bg-white p-3 text-sm text-gray-900">
+                    <pre className="whitespace-pre-wrap rounded-sm border border-border bg-surface p-3 text-sm text-text">
                       {completePreview}
                     </pre>
                   </div>
                 ) : null}
-                <p className="text-xs text-gray-600">
+                <p className="text-xs text-text-muted">
                   A separate decision email about Google reviews will be sent
                   to the manager the following morning.
                 </p>
@@ -949,7 +948,7 @@ function StatusModal({
           </>
         ) : (
           <div className="text-center py-4">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-text-muted">
               No status changes available for completed bookings.
             </p>
             <Button onClick={onClose} variant="secondary" className="mt-4">
@@ -1149,7 +1148,7 @@ function AddItemModal({
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === "space"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <MapPinIcon className="h-6 w-6 mb-1" />
@@ -1161,7 +1160,7 @@ function AddItemModal({
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === "catering"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <SparklesIcon className="h-6 w-6 mb-1" />
@@ -1173,7 +1172,7 @@ function AddItemModal({
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === "vendor"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <UserGroupIcon className="h-6 w-6 mb-1" />
@@ -1185,7 +1184,7 @@ function AddItemModal({
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === "electricity"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <BoltIcon className="h-6 w-6 mb-1" />
@@ -1197,7 +1196,7 @@ function AddItemModal({
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === "other"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <ClipboardDocumentListIcon className="h-6 w-6 mb-1" />
@@ -1333,7 +1332,7 @@ function AddItemModal({
 
         {/* Discount */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-text">
             Discount (optional)
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1447,7 +1446,7 @@ function DiscountModal({
               className={`p-3 rounded-lg border-2 transition-colors ${
                 discountType === "percent"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <PercentBadgeIcon className="h-6 w-6 mx-auto mb-1" />
@@ -1459,7 +1458,7 @@ function DiscountModal({
               className={`p-3 rounded-lg border-2 transition-colors ${
                 discountType === "fixed"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <CurrencyPoundIcon className="h-6 w-6 mx-auto mb-1" />
@@ -1494,13 +1493,13 @@ function DiscountModal({
 
         {/* Preview */}
         {discountAmount && (
-          <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="bg-surface-2 p-4 rounded-lg">
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600">Current Total:</span>
+                <span className="text-text-muted">Current Total:</span>
                 <span className="font-medium">{formatMoney(currentTotal)}</span>
               </div>
-              <div className="flex justify-between text-red-600">
+              <div className="flex justify-between text-danger">
                 <span>Discount:</span>
                 <span className="font-medium">
                   -{formatMoney(calculateDiscount())}
@@ -1616,7 +1615,7 @@ function EditItemModal({
     <Modal open={isOpen} onClose={onClose} title="Edit Item" mobileFullscreen>
       <Form onSubmit={handleSubmit} className="space-y-4">
         <FormGroup label="Description">
-          <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded">
+          <p className="text-sm text-text bg-surface-2 px-3 py-2 rounded-sm">
             {item.description}
           </p>
         </FormGroup>
@@ -1679,10 +1678,10 @@ function EditItemModal({
           />
         </FormGroup>
 
-        <div className="bg-gray-50 p-3 rounded-lg">
+        <div className="bg-surface-2 p-3 rounded-lg">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Line Total:</span>
-            <span className="font-semibold text-gray-900">
+            <span className="text-text-muted">Line Total:</span>
+            <span className="font-semibold text-text">
               {formatMoney(calculateLineTotal())}
             </span>
           </div>
@@ -2575,22 +2574,22 @@ export default function PrivateBookingDetailClient({
             <Card>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Event Date
                   </label>
                   {isDateTbd ? (
-                    <div className="mt-1 flex items-center text-sm font-medium text-amber-600">
+                    <div className="mt-1 flex items-center text-sm font-medium text-warning">
                       <CalendarDaysIcon className="h-5 w-5 text-amber-500 mr-2" />
                       <span>To be confirmed</span>
                     </div>
                   ) : (
                     <>
-                      <div className="mt-1 flex items-center text-sm text-gray-900">
+                      <div className="mt-1 flex items-center text-sm text-text">
                         <CalendarDaysIcon className="h-5 w-5 text-gray-400 mr-2" />
                         {formatDateFull(booking.event_date)}
                       </div>
                       {booking.setup_date && (
-                        <p className="mt-1 text-sm text-gray-500">
+                        <p className="mt-1 text-sm text-text-muted">
                           Setup: {formatDateFull(booking.setup_date)}
                         </p>
                       )}
@@ -2599,23 +2598,23 @@ export default function PrivateBookingDetailClient({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Time
                   </label>
                   {isDateTbd ? (
-                    <div className="mt-1 flex items-center text-sm font-medium text-amber-600">
+                    <div className="mt-1 flex items-center text-sm font-medium text-warning">
                       <ClockIcon className="h-5 w-5 text-amber-500 mr-2" />
                       <span>To be confirmed</span>
                     </div>
                   ) : (
                     <>
-                      <div className="mt-1 flex items-center text-sm text-gray-900">
+                      <div className="mt-1 flex items-center text-sm text-text">
                         <ClockIcon className="h-5 w-5 text-gray-400 mr-2" />
                         {formatTime12Hour(booking.start_time)} -{' '}
                         {formatEndTime(booking)}
                       </div>
                       {booking.setup_time && (
-                        <p className="mt-1 text-sm text-gray-500">
+                        <p className="mt-1 text-sm text-text-muted">
                           Setup: {formatTime12Hour(booking.setup_time || null)}
                         </p>
                       )}
@@ -2624,27 +2623,27 @@ export default function PrivateBookingDetailClient({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Guest Count
                   </label>
-                  <div className="mt-1 flex items-center text-sm text-gray-900">
+                  <div className="mt-1 flex items-center text-sm text-text">
                     <UserGroupIcon className="h-5 w-5 text-gray-400 mr-2" />
                     {booking.guest_count ?? "TBC"} guests
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Event Type
                   </label>
-                  <div className="mt-1 flex items-center text-sm text-gray-900">
+                  <div className="mt-1 flex items-center text-sm text-text">
                     <SparklesIcon className="h-5 w-5 text-gray-400 mr-2" />
                     {booking.event_type || "Private Event"}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Contact Phone
                   </label>
                   <div className="mt-1 flex items-center text-sm">
@@ -2657,13 +2656,13 @@ export default function PrivateBookingDetailClient({
                         {booking.contact_phone}
                       </a>
                     ) : (
-                      <span className="text-gray-500">Not provided</span>
+                      <span className="text-text-muted">Not provided</span>
                     )}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Contact Email
                   </label>
                   <div className="mt-1 flex items-center text-sm">
@@ -2676,7 +2675,7 @@ export default function PrivateBookingDetailClient({
                         {booking.contact_email}
                       </a>
                     ) : (
-                      <span className="text-gray-500">Not provided</span>
+                      <span className="text-text-muted">Not provided</span>
                     )}
                   </div>
                   {canEdit &&
@@ -2699,10 +2698,10 @@ export default function PrivateBookingDetailClient({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">
+                  <label className="block text-sm font-medium text-text-muted">
                     Booking Source
                   </label>
-                  <div className="mt-1 flex items-center text-sm text-gray-900">
+                  <div className="mt-1 flex items-center text-sm text-text">
                     <BuildingOfficeIcon className="h-5 w-5 text-gray-400 mr-2" />
                     {booking.source || "Direct"}
                   </div>
@@ -2720,76 +2719,6 @@ export default function PrivateBookingDetailClient({
             </Card>
           </Section>
 
-          {canEdit && (
-            <Section id="quick-update" title="Quick Booking Update">
-              <Card>
-                <Form onSubmit={handleNoteSubmit} className="space-y-4">
-                  <Textarea
-                    value={noteText}
-                    onChange={(event) => setNoteText(event.target.value)}
-                    rows={4}
-                    maxLength={NOTE_MAX_LENGTH}
-                    placeholder="Capture quick updates, decisions, or follow-ups for the team."
-                  />
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>
-                      {noteText.length}/{NOTE_MAX_LENGTH} characters
-                    </span>
-                    <Button
-                      type="submit"
-                      size="sm"
-                      loading={addingNote}
-                      disabled={addingNote || noteText.trim().length === 0}
-                    >
-                      Save Note
-                    </Button>
-                  </div>
-                </Form>
-              </Card>
-            </Section>
-          )}
-
-          <Section id="audit-trail" title="Audit Trail">
-            <Card>
-              {auditTrail.length === 0 ? (
-                <EmptyState
-                  icon={<ClockIcon className="h-12 w-12 text-gray-300" />}
-                  title="No history yet"
-                  description="Updates and actions for this booking will appear here."
-                />
-              ) : (
-                <ul className="space-y-6">
-                  {auditTrail.map((entry) => {
-                    const details = getAuditDetails(entry)
-                    return (
-                      <li key={entry.id} className="relative pl-5">
-                        <span className="absolute left-0 top-2 h-2 w-2 rounded-full bg-blue-500" />
-                        <div className="flex flex-col gap-1">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-sm font-medium text-gray-900">
-                              {getAuditActor(entry)}
-                            </p>
-                            <span className="text-xs text-gray-500">
-                              {formatDateTime12Hour(entry.performed_at)}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600">
-                            {formatAuditAction(entry.action)}
-                          </p>
-                          {details && (
-                            <p className="text-sm text-gray-500 whitespace-pre-wrap">
-                              {details}
-                            </p>
-                          )}
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </Card>
-          </Section>
-
           {/* Booking Items Card */}
           <Section
             id="booking-items"
@@ -2798,7 +2727,7 @@ export default function PrivateBookingDetailClient({
               canEdit ? (
                 <div className="flex items-center gap-3">
                   {isReordering && (
-                    <span className="text-xs text-gray-500">Saving order…</span>
+                    <span className="text-xs text-text-muted">Saving order…</span>
                   )}
                   <Button onClick={() => setShowAddItemModal(true)} size="sm">
                     <PlusIcon className="h-4 w-4 mr-1" />
@@ -2861,50 +2790,50 @@ export default function PrivateBookingDetailClient({
                 <div className="space-y-4">
                   {booking.customer_requests && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-1">
+                      <h3 className="text-sm font-medium text-text mb-1">
                         Customer Requests
                       </h3>
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                      <p className="text-sm text-text-muted whitespace-pre-wrap">
                         {booking.customer_requests}
                       </p>
                     </div>
                   )}
                   {booking.special_requirements && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-1">
+                      <h3 className="text-sm font-medium text-text mb-1">
                         Special Requirements
                       </h3>
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                      <p className="text-sm text-text-muted whitespace-pre-wrap">
                         {booking.special_requirements}
                       </p>
                     </div>
                   )}
                   {booking.accessibility_needs && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-1">
+                      <h3 className="text-sm font-medium text-text mb-1">
                         Accessibility Needs
                       </h3>
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                      <p className="text-sm text-text-muted whitespace-pre-wrap">
                         {booking.accessibility_needs}
                       </p>
                     </div>
                   )}
                   {internalNotesForDisplay && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-1">
+                      <h3 className="text-sm font-medium text-text mb-1">
                         Internal Notes
                       </h3>
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                      <p className="text-sm text-text-muted whitespace-pre-wrap">
                         {internalNotesForDisplay}
                       </p>
                     </div>
                   )}
                   {booking.contract_note && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-1">
+                      <h3 className="text-sm font-medium text-text mb-1">
                         Contract Note
                       </h3>
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                      <p className="text-sm text-text-muted whitespace-pre-wrap">
                         {booking.contract_note}
                       </p>
                     </div>
@@ -2943,7 +2872,34 @@ export default function PrivateBookingDetailClient({
 
         {/* Sidebar - Right 1/3 */}
         <div className="space-y-6">
-          <WorkflowStatusPanel booking={booking} />
+          {canEdit && (
+            <Section id="quick-update" title="Quick Booking Update">
+              <Card>
+                <Form onSubmit={handleNoteSubmit} className="space-y-4">
+                  <Textarea
+                    value={noteText}
+                    onChange={(event) => setNoteText(event.target.value)}
+                    rows={4}
+                    maxLength={NOTE_MAX_LENGTH}
+                    placeholder="Capture quick updates, decisions, or follow-ups for the team."
+                  />
+                  <div className="flex items-center justify-between text-xs text-text-muted">
+                    <span>
+                      {noteText.length}/{NOTE_MAX_LENGTH} characters
+                    </span>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      loading={addingNote}
+                      disabled={addingNote || noteText.trim().length === 0}
+                    >
+                      Save Note
+                    </Button>
+                  </div>
+                </Form>
+              </Card>
+            </Section>
+          )}
           {/* Financial Summary Card */}
           <Section
             title="Financial Summary"
@@ -2962,10 +2918,10 @@ export default function PrivateBookingDetailClient({
               <div className="space-y-3">
                 {/* Always show original price and discounts */}
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">
+                  <span className="text-text-muted">
                     Original Price (before discounts)
                   </span>
-                  <span className="font-medium text-gray-900">
+                  <span className="font-medium text-text">
                     {items.length > 0
                       ? formatMoney(calculateOriginalTotal())
                       : formatMoney(0)}
@@ -2983,8 +2939,8 @@ export default function PrivateBookingDetailClient({
                 )}
 
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Subtotal</span>
-                  <span className="font-medium text-gray-900">
+                  <span className="text-text-muted">Subtotal</span>
+                  <span className="font-medium text-text">
                     {items.length > 0 ? formatMoney(calculateSubtotal()) : formatMoney(0)}
                   </span>
                 </div>
@@ -3000,7 +2956,7 @@ export default function PrivateBookingDetailClient({
                           : `£${booking.discount_amount}`}
                         )
                         {booking.discount_reason && (
-                          <span className="block text-xs text-gray-500 font-normal mt-1">
+                          <span className="block text-xs text-text-muted font-normal mt-1">
                             {booking.discount_reason}
                           </span>
                         )}
@@ -3015,7 +2971,7 @@ export default function PrivateBookingDetailClient({
                 {/* Show total savings if any discounts */}
                 {(calculateItemDiscounts() > 0 ||
                   (booking.discount_amount && booking.discount_amount > 0)) && (
-                  <div className="bg-green-50 p-2 rounded-lg">
+                  <div className="bg-success-soft p-2 rounded-lg">
                     <div className="flex justify-between text-sm">
                       <span className="font-medium text-green-800">
                         Total Savings
@@ -3029,22 +2985,22 @@ export default function PrivateBookingDetailClient({
 
                 <div className="pt-3 border-t space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Event price (ex VAT)</span>
-                    <span className="font-medium text-gray-900">
+                    <span className="text-text-muted">Event price (ex VAT)</span>
+                    <span className="font-medium text-text">
                       {formatMoney(bookingMoney.discountedNet)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">VAT</span>
-                    <span className="font-medium text-gray-900">
+                    <span className="text-text-muted">VAT</span>
+                    <span className="font-medium text-text">
                       {formatMoney(bookingMoney.vatAmount)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-base font-medium text-gray-900">
+                    <span className="text-base font-medium text-text">
                       Event total inc. VAT
                     </span>
-                    <span className="text-xl font-bold text-gray-900">
+                    <span className="text-xl font-bold text-text">
                       {formatMoney(bookingMoney.grossTotal)}
                     </span>
                   </div>
@@ -3053,15 +3009,15 @@ export default function PrivateBookingDetailClient({
 
               <div className="space-y-3 pt-3 border-t">
                 <div className="bg-blue-50 p-3 rounded-lg">
-                  <p className="text-xs font-medium text-blue-900 mb-2">
+                  <p className="text-xs font-medium text-info-fg mb-2">
                     {depositAppliedToInvoice ? "Deposit applied to invoice" : "Refundable Deposit"}
                   </p>
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-700">
+                      <p className="text-sm font-medium text-text">
                         {depositAppliedToInvoice ? "Applied towards event price" : "Security Deposit"}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-text-muted">
                         {!depositRequired
                           ? "No deposit required"
                           : booking.deposit_paid_date
@@ -3110,7 +3066,7 @@ export default function PrivateBookingDetailClient({
                         </div>
                         {showDepositReductionReason && (
                           <div className="text-left">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                            <label className="block text-xs font-medium text-text-muted mb-1">
                               Reason for reduced deposit (GM discretion)
                             </label>
                             <Textarea
@@ -3145,7 +3101,7 @@ export default function PrivateBookingDetailClient({
                       </div>
                     ) : (
                       <div className="flex items-center gap-1 justify-end">
-                        <p className="text-sm font-medium text-gray-900">
+                        <p className="text-sm font-medium text-text">
                           {depositAppliedToInvoice ? formatMoney(appliedDepositAmount) : depositRequired ? formatMoney(depositAmount) : "No deposit"}
                         </p>
                         {!booking.deposit_paid_date && canManageDeposits && (
@@ -3157,7 +3113,7 @@ export default function PrivateBookingDetailClient({
                               setDepositWaiveConfirmed(false);
                               setEditingDeposit(true);
                             }}
-                            className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
+                            className="text-gray-400 hover:text-text-muted focus:outline-none focus:ring-1 focus:ring-gray-400 rounded-sm"
                             aria-label="Edit deposit amount"
                           >
                             <PencilIcon className="h-3.5 w-3.5" />
@@ -3216,7 +3172,7 @@ export default function PrivateBookingDetailClient({
                     </div>
                   </div>
                   {depositRequired && (
-                    <p className="text-xs text-gray-600 mt-2">
+                    <p className="text-xs text-text-muted mt-2">
                       {depositAppliedToInvoice ? "This deposit has been applied to the invoice. Any refund needs an invoice review." : "Returned after event (subject to terms)"}
                     </p>
                   )}
@@ -3256,10 +3212,10 @@ export default function PrivateBookingDetailClient({
 
                 {/* Only a separately held deposit is additional to the event price. */}
                 <div className="flex justify-between text-sm pt-3 border-t">
-                  <span className="font-medium text-gray-900">
+                  <span className="font-medium text-text">
                     Total to pay before event
                   </span>
-                  <span className="font-semibold text-gray-900">
+                  <span className="font-semibold text-text">
                     {formatMoney(
                       bookingMoney.grossTotal + (depositRequired && !depositAppliedToInvoice ? depositAmount : 0),
                     )}
@@ -3277,29 +3233,29 @@ export default function PrivateBookingDetailClient({
                     <>
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-700">
+                          <p className="text-sm font-medium text-text">
                             Balance Due
                           </p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-text-muted">
                             For booking items only
                           </p>
                           {booking.balance_due_date && (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-text-muted">
                               Due by {formatDateFull(booking.balance_due_date)}
                             </p>
                           )}
                         </div>
                         <div className="text-right">
                           {isDateTbd ? (
-                            <p className="text-sm font-medium text-gray-900">To be confirmed</p>
+                            <p className="text-sm font-medium text-text">To be confirmed</p>
                           ) : (
                             <>
                               {totalPaid > 0 && remaining > 0 && (
-                                <p className="text-xs text-gray-500 mb-0.5">
+                                <p className="text-xs text-text-muted mb-0.5">
                                   {formatMoney(totalPaid)} of {formatMoney(bookingTotal)} paid
                                 </p>
                               )}
-                              <p className="text-sm font-medium text-gray-900">
+                              <p className="text-sm font-medium text-text">
                                 {formatMoney(remaining)}
                               </p>
                             </>
@@ -3333,7 +3289,7 @@ export default function PrivateBookingDetailClient({
                             <span className="text-sm text-green-600 font-medium">
                               ✓ Fully Paid
                             </span>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-text-muted">
                               {formatDateFull(booking.final_payment_date)}
                             </span>
                           </div>
@@ -3353,7 +3309,7 @@ export default function PrivateBookingDetailClient({
                 {canSendSms && (
                   <Link
                     href={`/private-bookings/${bookingId}/messages`}
-                    className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100"
+                    className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover"
                   >
                     <div className="flex items-center">
                       <ChatBubbleLeftRightIcon className="h-5 w-5 mr-3 text-purple-600" />
@@ -3367,7 +3323,7 @@ export default function PrivateBookingDetailClient({
                   type="button"
                   onClick={handleDownloadContract}
                   disabled={downloadingContract}
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
                     <DocumentIcon className="h-5 w-5 mr-3 text-blue-600" />
@@ -3380,7 +3336,7 @@ export default function PrivateBookingDetailClient({
                   href={`/api/private-bookings/event-sheet?bookingId=${bookingId}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover"
                 >
                   <div className="flex items-center">
                     <ClipboardDocumentListIcon className="h-5 w-5 mr-3 text-blue-600" />
@@ -3393,7 +3349,7 @@ export default function PrivateBookingDetailClient({
                   type="button"
                   onClick={handleSendContract}
                   disabled={sendingContract || !booking.contact_email}
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
                     <DocumentIcon className="h-5 w-5 mr-3 text-green-600" />
@@ -3402,12 +3358,12 @@ export default function PrivateBookingDetailClient({
                   <ChevronRightIcon className="h-4 w-4 text-gray-400" />
                 </button>
                 {booking.contract_sent_at ? (
-                  <p className="text-xs text-gray-500 px-1">
+                  <p className="text-xs text-text-muted px-1">
                     Contract sent {formatDateFull(booking.contract_sent_at)}
                     {booking.contract_sent_to ? ` to ${booking.contract_sent_to}` : ''}
                   </p>
                 ) : (
-                  <p className="text-xs text-amber-600 px-1">
+                  <p className="text-xs text-warning px-1">
                     Contract not yet sent — terms must reach the customer before the deposit is paid.
                   </p>
                 )}
@@ -3434,13 +3390,13 @@ export default function PrivateBookingDetailClient({
 
                   if (alreadyInvoiced) {
                     return (
-                      <div className="rounded-lg bg-gray-50 px-4 py-3">
-                        <p className="text-sm font-medium text-gray-700">
+                      <div className="rounded-lg bg-surface-2 px-4 py-3">
+                        <p className="text-sm font-medium text-text">
                           {booking.invoice_sent_at
                             ? `Invoice sent ${formatDateFull(booking.invoice_sent_at)}`
                             : 'Invoice created but not yet sent'}
                         </p>
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-text-muted">
                           {booking.invoice_deposit_treatment === 'deducted'
                             ? 'Deposit applied to the invoice.'
                             : 'Deposit held separately.'}
@@ -3484,7 +3440,7 @@ export default function PrivateBookingDetailClient({
                         type="button"
                         onClick={handleOpenInvoiceModal}
                         disabled={Boolean(blockedReason)}
-                        className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <div className="flex items-center">
                           <DocumentIcon className="h-5 w-5 mr-3 text-green-600" />
@@ -3493,7 +3449,7 @@ export default function PrivateBookingDetailClient({
                         <ChevronRightIcon className="h-4 w-4 text-gray-400" />
                       </button>
                       {blockedReason && (
-                        <p className="mt-1 px-1 text-xs text-amber-600">{blockedReason}</p>
+                        <p className="mt-1 px-1 text-xs text-warning">{blockedReason}</p>
                       )}
                     </div>
                   );
@@ -3508,35 +3464,35 @@ export default function PrivateBookingDetailClient({
             <Card>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500">
+                  <label className="block text-xs font-medium text-text-muted">
                     Booking ID
                   </label>
-                  <p className="mt-1 text-sm text-gray-900 font-mono">
+                  <p className="mt-1 text-sm text-text font-mono">
                     {booking.id.slice(0, 8)}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500">
+                  <label className="block text-xs font-medium text-text-muted">
                     Created
                   </label>
-                  <p className="mt-1 text-sm text-gray-900">
+                  <p className="mt-1 text-sm text-text">
                     {formatDateFull(booking.created_at)}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500">
+                  <label className="block text-xs font-medium text-text-muted">
                     Last Updated
                   </label>
-                  <p className="mt-1 text-sm text-gray-900">
+                  <p className="mt-1 text-sm text-text">
                     {formatDateFull(booking.updated_at)}
                   </p>
                 </div>
                 {booking.contract_version > 0 && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-500">
+                    <label className="block text-xs font-medium text-text-muted">
                       Contract Version
                     </label>
-                    <p className="mt-1 text-sm text-gray-900">
+                    <p className="mt-1 text-sm text-text">
                       v{booking.contract_version}
                     </p>
                   </div>
@@ -3552,6 +3508,47 @@ export default function PrivateBookingDetailClient({
           />
         </div>
       </div>
+
+      <Section id="audit-trail" title="Audit Trail" className="mt-8">
+        <Card>
+          {auditTrail.length === 0 ? (
+            <EmptyState
+              icon={<ClockIcon className="h-12 w-12 text-text-subtle" />}
+              title="No history yet"
+              description="Updates and actions for this booking will appear here."
+            />
+          ) : (
+            <ul className="space-y-6">
+              {auditTrail.map((entry) => {
+                const details = getAuditDetails(entry)
+                return (
+                  <li key={entry.id} className="relative pl-5">
+                    <span className="absolute left-0 top-2 h-2 w-2 rounded-full bg-blue-500" />
+                    <div className="flex flex-col gap-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-text">
+                          {getAuditActor(entry)}
+                        </p>
+                        <span className="text-xs text-text-muted">
+                          {formatDateTime12Hour(entry.performed_at)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-text-muted">
+                        {formatAuditAction(entry.action)}
+                      </p>
+                      {details && (
+                        <p className="text-sm text-text-muted whitespace-pre-wrap">
+                          {details}
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </Card>
+      </Section>
 
       {/* Delete Confirmation */}
       <ConfirmDialog
@@ -3681,12 +3678,12 @@ export default function PrivateBookingDetailClient({
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-text">
             The invoice is voided and unlinked from this booking. The customer
             is not emailed, so tell them yourself that the old invoice no longer
             stands.
           </p>
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-text">
             The deposit stays on the booking and is applied again to the
             replacement invoice. Change the items first, then use{' '}
             <span className="font-medium">Generate and send invoice</span>.

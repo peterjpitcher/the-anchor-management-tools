@@ -62,10 +62,6 @@ export default async function TableBookingsFohPage() {
   // work the floor, so the dashboard is a dead end for them. The nav items above
   // are the only exits this screen offers.
   const useManagerKioskStyle = authResult.data.user?.email?.toLowerCase() === MANAGER_IPAD_EMAIL
-  const pageClassName = useManagerKioskStyle ? '!bg-sidebar' : undefined
-  const headerClassName = useManagerKioskStyle
-    ? '!bg-sidebar !border-green-700 [&_h1]:!text-white [&_.text-gray-900]:!text-white [&_.text-gray-500]:!text-green-100 [&_button]:!text-white [&_button]:hover:!text-white [&_button]:hover:!bg-green-700'
-    : undefined
   const contentClassName = useManagerKioskStyle ? '!px-2 sm:!px-3 lg:!px-4 !pt-1' : undefined
   const subtitle = useManagerKioskStyle ? undefined : 'Live swimlane view for table bookings and floor actions'
 
@@ -120,8 +116,7 @@ export default async function TableBookingsFohPage() {
       title="Front of House Schedule"
       subtitle={subtitle}
       navItems={navItems}
-      className={pageClassName}
-      headerClassName={headerClassName}
+      headerVariant={useManagerKioskStyle ? 'dark' : 'default'}
       contentClassName={contentClassName}
       headerActions={headerActions}
       showHeaderActionsOnMobile={useManagerKioskStyle}

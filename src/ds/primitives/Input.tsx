@@ -12,7 +12,7 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   leftIcon?: React.ReactNode
   /** @deprecated Accepted for backward compatibility */
   leftElement?: React.ReactNode
-  /** @deprecated Accepted for backward compatibility */
+  /** Shown inside the field at its right edge, such as a unit (%). It does not take clicks. */
   rightElement?: React.ReactNode
   /** @deprecated Inputs are always full-width. Accepted for backward compatibility. */
   fullWidth?: boolean
@@ -38,7 +38,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="flex flex-col">
         {label && (
-          <label htmlFor={id} className="text-[13px] font-medium text-text mb-1">
+          <label htmlFor={id} className="block text-xs font-medium uppercase tracking-wider text-text-muted mb-1">
             {label}
           </label>
         )}
@@ -54,12 +54,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={id}
             className={cn(
-              'h-[var(--spacing-input-h)] px-3 text-[13px] bg-surface border border-border rounded-default w-full',
-              'outline-none transition-[border-color,box-shadow] duration-[120ms]',
+              'h-input-h px-3 text-ui bg-surface border border-border rounded-default w-full',
+              'outline-hidden transition-[border-color,box-shadow] duration-[120ms]',
               'focus:border-border-focus focus:shadow-ring',
               'placeholder:text-text-subtle',
               resolvedIcon && 'pl-9',
-              error && 'border-danger focus:border-danger focus:shadow-[0_0_0_3px_rgba(220,38,38,0.15)]',
+              rightElement && 'pr-9',
+              error && 'border-danger focus:border-danger focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-danger)_20%,transparent)]',
               disabled && 'opacity-50 cursor-not-allowed bg-surface-2',
               className
             )}
@@ -69,6 +70,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             onWheel={rest.type === 'number' || onWheel ? handleWheel : undefined}
             {...rest}
           />
+
+          {rightElement && (
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-ui text-text-muted">
+              {rightElement}
+            </span>
+          )}
         </div>
 
         {error && (
@@ -77,7 +84,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           </p>
         )}
         {!error && hint && (
-          <p id={hintId} className="text-text-subtle text-xs mt-1">
+          <p id={hintId} className="text-text-soft text-xs mt-1">
             {hint}
           </p>
         )}

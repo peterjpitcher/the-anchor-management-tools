@@ -55,7 +55,7 @@ export function CalendarEntryTooltip({ content, text, children, className }: Cal
                 <span
                     id={id}
                     role="tooltip"
-                    className="pointer-events-none absolute left-0 top-full z-30 mt-1 w-max max-w-[16rem] rounded-md border border-gray-300 bg-white p-2 text-left shadow-lg"
+                    className="pointer-events-none absolute left-0 top-full z-30 mt-1 w-max max-w-[16rem] rounded-md border border-border-strong bg-surface p-2 text-left shadow-lg"
                 >
                     {content}
                 </span>

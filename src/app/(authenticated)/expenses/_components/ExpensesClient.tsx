@@ -382,8 +382,8 @@ export function ExpensesClient({
                     return (
                       <div key={row.supplier}>
                         <div className="mb-1 flex items-center justify-between gap-3">
-                          <span className="truncate text-[12px] font-medium text-text">{row.supplier}</span>
-                          <span className="shrink-0 text-[11px] tabular-nums text-text-muted">
+                          <span className="truncate text-xs font-medium text-text">{row.supplier}</span>
+                          <span className="shrink-0 text-meta tabular-nums text-text-muted">
                             {formatCurrency(row.amount)}
                           </span>
                         </div>

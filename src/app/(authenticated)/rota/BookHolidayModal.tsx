@@ -65,7 +65,7 @@ export default function BookHolidayModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
       <div
-        className="bg-surface rounded-xl shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto"
+        className="bg-surface rounded-xl shadow-lg w-full max-w-sm max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between p-5 border-b border-border">
@@ -73,7 +73,7 @@ export default function BookHolidayModal({
             <p className="text-sm text-text-muted">Book holiday</p>
             <p className="text-lg font-semibold text-text-strong mt-0.5">{employeeName}</p>
           </div>
-          <button type="button" onClick={onClose} className="p-1 text-text-subtle hover:text-text-muted rounded">
+          <button type="button" onClick={onClose} className="p-1 text-text-subtle hover:text-text-muted rounded-sm">
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>

@@ -18,7 +18,7 @@ export default function OpenShiftRequestButton({ shiftId, alreadyRequested }: Pr
 
   if (alreadyRequested) {
     return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-warning-fg">
         Requested
       </span>
     );
@@ -43,7 +43,7 @@ export default function OpenShiftRequestButton({ shiftId, alreadyRequested }: Pr
       <button
         type="button"
         onClick={() => setRequesting(true)}
-        className="rounded-md border border-amber-200 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-50"
+        className="rounded-md border border-amber-200 bg-surface px-3 py-1.5 text-xs font-medium text-warning-fg hover:bg-warning-soft"
       >
         Request shift
       </button>
@@ -51,11 +51,11 @@ export default function OpenShiftRequestButton({ shiftId, alreadyRequested }: Pr
   }
 
   return (
-    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-      <p className="mb-2 text-xs font-medium text-amber-900">
+    <div className="mt-2 rounded-lg border border-amber-200 bg-warning-soft p-3">
+      <p className="mb-2 text-xs font-medium text-warning-fg">
         Confirm you want to ask to work this shift.
       </p>
-      <label htmlFor={`open-shift-note-${shiftId}`} className="text-xs font-medium text-amber-900">
+      <label htmlFor={`open-shift-note-${shiftId}`} className="text-xs font-medium text-warning-fg">
         Note for manager (optional)
       </label>
       <textarea
@@ -64,7 +64,7 @@ export default function OpenShiftRequestButton({ shiftId, alreadyRequested }: Pr
         onChange={event => setNote(event.target.value)}
         maxLength={500}
         rows={3}
-        className="mt-1 w-full rounded-md border border-amber-100 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-amber-300"
+        className="mt-1 w-full rounded-md border border-amber-100 bg-surface px-2 py-1.5 text-xs text-text outline-none focus:border-amber-300"
       />
       <div className="mt-2 flex flex-wrap gap-2">
         <button
@@ -79,7 +79,7 @@ export default function OpenShiftRequestButton({ shiftId, alreadyRequested }: Pr
           type="button"
           onClick={() => { setRequesting(false); setNote(''); }}
           disabled={isPending}
-          className="rounded-md border border-amber-100 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+          className="rounded-md border border-amber-100 bg-surface px-3 py-1.5 text-xs font-medium text-warning-fg hover:bg-warning-soft disabled:opacity-50"
         >
           Cancel
         </button>

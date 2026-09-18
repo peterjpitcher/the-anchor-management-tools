@@ -1,5 +1,5 @@
 /**
- * SortableHeader — backward-compatible wrapper for sortable table headers
+ * SortableHeader: backward-compatible wrapper for sortable table headers
  * @deprecated Use ds/DataTable column.sortable instead
  */
 
@@ -38,8 +38,10 @@ export function SortableHeader({
       onClick={() => onSort?.(resolvedKey)}
       className={cn(
         'inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wider',
-        'text-gray-500 hover:text-gray-700 transition-colors',
-        isActive && 'text-gray-900',
+        'text-text-muted hover:text-text transition-colors',
+        // Inset ring, as DataTable headers: a scrolling table would clip an outer one (A8).
+        'focus-visible:outline-hidden focus-visible:shadow-ring-inset',
+        isActive && 'text-text',
         className,
       )}
     >

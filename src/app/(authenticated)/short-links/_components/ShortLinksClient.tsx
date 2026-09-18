@@ -137,7 +137,7 @@ function CompactStat({
   return (
     <div className="rounded-lg border border-border bg-surface px-3 py-2 shadow-sm">
       <div className="flex min-h-8 items-center justify-between gap-3">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-text-muted">{label}</span>
+        <span className="text-meta font-medium uppercase tracking-wider text-text-muted">{label}</span>
         <span
           className={
             numericValue
@@ -153,16 +153,16 @@ function CompactStat({
         <div
           className={
             trend.tone === 'success'
-              ? 'mt-0.5 text-[11px] leading-none text-success-fg'
+              ? 'mt-0.5 text-meta leading-none text-success-fg'
               : trend.tone === 'danger'
-                ? 'mt-0.5 text-[11px] leading-none text-danger-fg'
-                : 'mt-0.5 text-[11px] leading-none text-text-subtle'
+                ? 'mt-0.5 text-meta leading-none text-danger-fg'
+                : 'mt-0.5 text-meta leading-none text-text-subtle'
           }
         >
           {trend.text}
         </div>
       )}
-      {hint && <div className="mt-0.5 text-[11px] leading-none text-text-subtle">{hint}</div>}
+      {hint && <div className="mt-0.5 text-meta leading-none text-text-subtle">{hint}</div>}
     </div>
   )
 }
@@ -343,7 +343,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                     <div className="min-w-0 flex-1 space-y-1">
                       <button
                         type="button"
-                        className="inline-flex min-h-[34px] max-w-full items-center gap-1.5 rounded bg-surface-2 px-2 text-left font-mono text-xs hover:bg-surface-hover"
+                        className="inline-flex min-h-[34px] max-w-full items-center gap-1.5 rounded-sm bg-surface-2 px-2 text-left font-mono text-xs hover:bg-surface-hover"
                         onClick={() => handleCopyLink(link)}
                         title="Copy short URL"
                       >
@@ -430,7 +430,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                         )}
                         <button
                           type="button"
-                          className="inline-flex min-h-[34px] min-w-0 flex-shrink-0 items-center gap-1.5 rounded bg-surface-2 px-2 text-left font-mono text-xs hover:bg-surface-hover"
+                          className="inline-flex min-h-[34px] min-w-0 flex-shrink-0 items-center gap-1.5 rounded-sm bg-surface-2 px-2 text-left font-mono text-xs hover:bg-surface-hover"
                           onClick={() => handleCopyLink(link)}
                           title="Click to copy short URL"
                         >

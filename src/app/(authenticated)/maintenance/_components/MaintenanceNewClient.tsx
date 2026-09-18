@@ -298,7 +298,7 @@ export function MaintenanceNewClient({ areas }: MaintenanceNewClientProps): Reac
         </CardBody>
       </Card>
 
-      <p className="text-[13px] text-text-muted">
+      <p className="text-ui text-text-muted">
         Save this first, then add photos on the item itself. That way a photo that
         will not upload can never lose what you have written.
       </p>

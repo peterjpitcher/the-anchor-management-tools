@@ -133,7 +133,7 @@ function LeaveRequestRow({
                 type="button"
                 onClick={e => { e.stopPropagation(); setConfirmDecision('approved'); }}
                 disabled={isPending}
-                className="p-1 text-success-fg hover:text-success-fg hover:bg-success-soft rounded"
+                className="p-1 text-success-fg hover:text-success-fg hover:bg-success-soft rounded-sm"
                 title="Approve"
                 aria-label={`Approve ${empName} holiday request`}
               >
@@ -143,7 +143,7 @@ function LeaveRequestRow({
                 type="button"
                 onClick={e => { e.stopPropagation(); setConfirmDecision('declined'); }}
                 disabled={isPending}
-                className="p-1 text-danger-fg hover:text-danger-fg hover:bg-danger-soft rounded"
+                className="p-1 text-danger-fg hover:text-danger-fg hover:bg-danger-soft rounded-sm"
                 title="Decline"
                 aria-label={`Decline ${empName} holiday request`}
               >
@@ -156,7 +156,7 @@ function LeaveRequestRow({
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); setExpanded(true); setIsEditing(true); }}
-                className="p-1 text-text-muted hover:text-text-strong hover:bg-surface-hover rounded"
+                className="p-1 text-text-muted hover:text-text-strong hover:bg-surface-hover rounded-sm"
                 title="Edit dates"
                 aria-label={`Edit ${empName} holiday request`}
               >
@@ -165,7 +165,7 @@ function LeaveRequestRow({
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
-                className="p-1 text-danger-fg hover:text-danger-fg hover:bg-danger-soft rounded"
+                className="p-1 text-danger-fg hover:text-danger-fg hover:bg-danger-soft rounded-sm"
                 title="Delete request"
                 aria-label={`Delete ${empName} holiday request`}
               >
@@ -384,7 +384,7 @@ export default function LeaveManagerClient({
           >
             {f.charAt(0).toUpperCase() + f.slice(1)}
             {f === 'pending' && pendingCount > 0 && (
-              <span className="ml-1 bg-warning text-warning-fg rounded-full px-1 text-[10px]">
+              <span className="ml-1 bg-warning text-warning-fg rounded-full px-1 text-2xs">
                 {pendingCount}
               </span>
             )}

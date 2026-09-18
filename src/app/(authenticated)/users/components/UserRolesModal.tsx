@@ -156,7 +156,7 @@ export default function UserRolesModal({
                 className="flex-1 cursor-pointer"
               >
                 <div className="flex items-center">
-                  <span className="text-sm font-medium text-gray-900">
+                  <span className="text-sm font-medium text-text">
                     {role.name}
                   </span>
                   {role.is_system && (
@@ -166,7 +166,7 @@ export default function UserRolesModal({
                   )}
                 </div>
                 {role.description && (
-                  <p className="text-sm text-gray-500 mt-0.5">{role.description}</p>
+                  <p className="text-sm text-text-muted mt-0.5">{role.description}</p>
                 )}
               </label>
             </div>

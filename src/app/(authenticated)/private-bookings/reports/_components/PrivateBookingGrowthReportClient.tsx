@@ -258,7 +258,7 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
                   type="button"
                   aria-pressed={granularity === option}
                   onClick={() => setGranularity(option)}
-                  className={`rounded px-2.5 py-1 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
+                  className={`rounded-sm px-2.5 py-1 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus ${
                     granularity === option ? 'bg-surface text-text-strong shadow-sm' : 'text-text-muted'
                   }`}
                 >
