@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
@@ -31,8 +33,8 @@ export const pullQuote = defineBlock<PullQuoteData>({
     body: 'We stood here before Heathrow existed. One warm aside, used sparingly.',
   },
   render: (data) =>
-    `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>
-<tr><td bgcolor="#f5e6d3" align="center" style="background-color:#f5e6d3;padding:34px 44px"><div style="font-family:'Clicker Script','Segoe Script','Brush Script MT',cursive;font-size:34px;line-height:42px;color:#8b6914;padding-bottom:8px">${escapeEmailText(data.script_line)}</div><div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:26px;color:#1a1a1a">${escapeEmailText(data.body)}</div></td></tr>
+    `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${GUEST.cream}"><tbody>
+<tr><td bgcolor="${GUEST.sand}" align="center" style="background-color:${GUEST.sand};padding:34px 44px"><div style="font-family:'Clicker Script','Segoe Script','Brush Script MT',cursive;font-size:34px;line-height:42px;color:${GUEST.accentText};padding-bottom:8px">${escapeEmailText(data.script_line)}</div><div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:26px;color:${GUEST.text}">${escapeEmailText(data.body)}</div></td></tr>
 </tbody></table>`,
   text: (data) =>
     `${data.script_line}\n${data.body}\n`,

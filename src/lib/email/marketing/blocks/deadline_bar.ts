@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText, escapeEmailUrl } from '../escape'
 import { defineBlock } from './types'
 
@@ -34,7 +36,7 @@ export const deadlineBar = defineBlock<DeadlineBarData>({
     link_url: 'https://www.the-anchor.pub/christmas-parties',
   },
   render: (data) =>
-    `<tr><td bgcolor="#8b6914" align="center" style="background-color:#8b6914;padding:15px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;line-height:22px;color:#ffffff">${escapeEmailText(data.text)} <a href="${escapeEmailUrl(data.link_url)}" style="color:#ffffff;text-decoration:underline">${escapeEmailText(data.link_label)}</a></td></tr>
+    `<tr><td bgcolor="${GUEST.goldDark}" align="center" style="background-color:${GUEST.goldDark};padding:15px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;line-height:22px;color:${GUEST.buttonText}">${escapeEmailText(data.text)} <a href="${escapeEmailUrl(data.link_url)}" style="color:${GUEST.buttonText};text-decoration:underline">${escapeEmailText(data.link_label)}</a></td></tr>
 `,
   text: (data) => `${data.text} ${data.link_label}: ${data.link_url}\n`,
 })

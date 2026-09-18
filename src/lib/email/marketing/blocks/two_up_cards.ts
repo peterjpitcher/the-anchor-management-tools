@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText, escapeEmailUrl } from '../escape'
 import { defineBlock, type EmailImage } from './types'
 
@@ -59,10 +61,10 @@ function cardCell(card: TwoUpCard): string[] {
   const src = card.image.src.trim() ? escapeEmailUrl(card.image.src) : PLACEHOLDER_SRC
 
   return [
-    `<td width="260" valign="top" class="stack" style="width:260px"><table role="presentation" width="260" cellpadding="0" cellspacing="0" border="0" class="stack" style="width:100%;max-width:260px;border-collapse:collapse;background-color:#ffffff;border:1px solid #e2dccf"><tbody>`,
+    `<td width="260" valign="top" class="stack" style="width:260px"><table role="presentation" width="260" cellpadding="0" cellspacing="0" border="0" class="stack" style="width:100%;max-width:260px;border-collapse:collapse;background-color:${GUEST.surface};border:1px solid ${GUEST.border}"><tbody>`,
     `<tr><td style="padding:0;font-size:0;line-height:0"><img src="${src}" width="${card.image.width}" height="${card.image.height}" alt="${escapeEmailText(card.image.alt)}" style="display:block;width:100%;max-width:100%;height:auto;border:0"></td></tr>`,
-    `<tr><td style="padding:18px 18px 0;font-family:${SERIF};font-size:21px;line-height:27px;color:#005131">${escapeEmailText(card.heading)}</td></tr>`,
-    `<tr><td style="padding:8px 18px 20px;font-family:${SANS};font-size:14px;line-height:22px;color:#6f6a61">${escapeEmailText(card.body)}</td></tr>`,
+    `<tr><td style="padding:18px 18px 0;font-family:${SERIF};font-size:21px;line-height:27px;color:${GUEST.green}">${escapeEmailText(card.heading)}</td></tr>`,
+    `<tr><td style="padding:8px 18px 20px;font-family:${SANS};font-size:14px;line-height:22px;color:${GUEST.textMuted}">${escapeEmailText(card.body)}</td></tr>`,
     `</tbody></table></td>`,
   ]
 }
@@ -95,8 +97,8 @@ export const twoUpCards = defineBlock<TwoUpCardsData>({
   },
   render: (data) => {
     const rows: string[] = [
-      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>`,
-      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
+      `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:${GUEST.cream}"><tbody>`,
+      `<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
       `<tr>`,
     ]
 

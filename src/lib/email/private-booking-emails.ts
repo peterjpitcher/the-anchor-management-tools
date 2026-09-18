@@ -1,5 +1,6 @@
 import { sendEmail } from './emailService';
 import { logger } from '@/lib/logger';
+import { GUEST } from '@/lib/brand/palette';
 import { bookingCalendarInviteSequence, generateBookingCalendarInvite } from './calendar-invite';
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils';
 import { getSmartFirstName } from '@/lib/sms/name-utils';
@@ -22,8 +23,8 @@ const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
 
 // Shared small-print footer (SOP §26/§27: privacy notice link + complaints
 // contact on customer communications).
-const EMAIL_FOOTER_HTML = `<p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
-  <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 4px 0 0 0;">How we use your data: <a href="${PRIVACY_NOTICE_URL}" style="color: #999999;">${PRIVACY_NOTICE_URL}</a><br>Questions or complaints: <a href="mailto:manager@the-anchor.pub" style="color: #999999;">manager@the-anchor.pub</a> or write to us at the address above.</p>`;
+const EMAIL_FOOTER_HTML = `<p style="font-family: ${FONT_FAMILY}; color: ${GUEST.textMuted}; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
+  <p style="font-family: ${FONT_FAMILY}; color: ${GUEST.textMuted}; font-size: 12px; margin: 4px 0 0 0;">How we use your data: <a href="${PRIVACY_NOTICE_URL}" style="color: ${GUEST.textMuted};">${PRIVACY_NOTICE_URL}</a><br>Questions or complaints: <a href="mailto:manager@the-anchor.pub" style="color: ${GUEST.textMuted};">manager@the-anchor.pub</a> or write to us at the address above.</p>`;
 
 /**
  * The wrapper every private booking email opens with.
@@ -31,7 +32,7 @@ const EMAIL_FOOTER_HTML = `<p style="font-family: ${FONT_FAMILY}; color: #999999
  * 16px of padding rather than 20, and no label column that refuses to wrap: five of these emails
  * measured 383 to 411px of content on a 375px phone, so the amounts sat off the right edge.
  */
-const EMAIL_CONTAINER_STYLE = `font-family: ${FONT_FAMILY}; max-width: 600px; margin: 0 auto; padding: 16px; color: #1a1a1a;`;
+const EMAIL_CONTAINER_STYLE = `font-family: ${FONT_FAMILY}; max-width: 600px; margin: 0 auto; padding: 16px; color: ${GUEST.text};`;
 
 /**
  * The one-line summary a mail client shows beside the subject. Hidden in the body, because without
@@ -111,8 +112,8 @@ function formatCurrency(amount: number): string {
 function row(label: string, value: string): string {
   return `
     <tr>
-      <td style="font-family: ${FONT_FAMILY}; padding: 8px 12px 8px 0; border-bottom: 1px solid #eeeeee; color: #666666; vertical-align: top;">${label}</td>
-      <td style="font-family: ${FONT_FAMILY}; padding: 8px 0; border-bottom: 1px solid #eeeeee; vertical-align: top; word-break: break-word;">${value}</td>
+      <td style="font-family: ${FONT_FAMILY}; padding: 8px 12px 8px 0; border-bottom: 1px solid ${GUEST.border}; color: ${GUEST.textMuted}; vertical-align: top;">${label}</td>
+      <td style="font-family: ${FONT_FAMILY}; padding: 8px 0; border-bottom: 1px solid ${GUEST.border}; vertical-align: top; word-break: break-word;">${value}</td>
     </tr>`;
 }
 
@@ -296,24 +297,24 @@ export async function sendBookingConfirmationEmail(booking: {
     const buttonHtml = paymentLink
       ? `
   <p style="font-family: ${FONT_FAMILY};">
-    <a href="${escapeHtml(paymentLink)}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 12px 24px; background-color: #1a1a1a; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold;">Open your booking and pay the deposit</a>
+    <a href="${escapeHtml(paymentLink)}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 12px 24px; background-color: ${GUEST.buttonBg}; color: ${GUEST.buttonText}; text-decoration: none; border-radius: 4px; font-weight: bold;">Open your booking and pay the deposit</a>
   </p>
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Or copy this link into your browser:<br><a href="${escapeHtml(paymentLink)}" style="color: #1a1a1a; word-break: break-all;">${escapeHtml(paymentLink)}</a></p>`
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">Or copy this link into your browser:<br><a href="${escapeHtml(paymentLink)}" style="color: ${GUEST.green}; word-break: break-all;">${escapeHtml(paymentLink)}</a></p>`
       : '';
 
     const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
   ${preheader(depositState === 'due' ? `Your date is held. ${depositAmount > 0 ? formatCurrency(depositAmount) : 'The'} deposit confirms it.` : `Your booking on ${dateFormatted} is confirmed.`)}
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">${heading}</h2>
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${heading}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(firstName)},</p>
   ${paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
   <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
     ${rowsHtml(rows)}
   </table>${buttonHtml}
-  ${notes.map((note) => `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">${escapeHtml(note)}</p>`).join('\n  ')}
+  ${notes.map((note) => `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">${escapeHtml(note)}</p>`).join('\n  ')}
   <p style="font-family: ${FONT_FAMILY};">If you have any questions, please get in touch.</p>
-  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
 
@@ -425,16 +426,16 @@ export async function sendDepositReceivedEmail(booking: {
     const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
   ${preheader(confirmed ? `Your deposit is in and your booking on ${dateFormatted} is confirmed.` : 'Your deposit is in. We will confirm your booking shortly.')}
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">${heading}</h2>
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${heading}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(firstName)},</p>
   ${paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
   <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
     ${rowsHtml(rows)}
   </table>
-  ${notes.map((note) => `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">${escapeHtml(note)}</p>`).join('\n  ')}
+  ${notes.map((note) => `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">${escapeHtml(note)}</p>`).join('\n  ')}
   <p style="font-family: ${FONT_FAMILY};">If you have any questions in the meantime, please get in touch.</p>
-  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
 
@@ -521,15 +522,15 @@ export async function sendBalancePaidEmail(booking: {
     const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
   ${preheader(`Your balance is paid in full for ${dateFormatted}.`)}
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">${heading}</h2>
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${heading}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(firstName)},</p>
   ${paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
   <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
     ${rowsHtml(rows)}
   </table>
-  ${notes.map((note) => `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">${escapeHtml(note)}</p>`).join('\n  ')}
-  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  ${notes.map((note) => `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">${escapeHtml(note)}</p>`).join('\n  ')}
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
 
@@ -614,11 +615,11 @@ export async function sendBookingCalendarInvite(booking: {
     const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
   ${preheader(`Add ${eventLabel} on ${dateFormatted} to your calendar.`)}
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">${heading}</h2>
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${heading}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(firstName)},</p>
   ${paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
 
@@ -709,29 +710,29 @@ export async function sendDepositPaymentLinkEmail(booking: {
 
     const freshLinkHtml = freshLinkUrl
       ? `
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">PayPal payment links usually expire 6 hours after this email is sent. If the PayPal button no longer works, open your secure booking page below and choose Pay deposit via PayPal.</p>
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">PayPal payment links usually expire 6 hours after this email is sent. If the PayPal button no longer works, open your secure booking page below and choose Pay deposit via PayPal.</p>
   <p style="font-family: ${FONT_FAMILY};">
-    <a href="${escapeHtml(freshLinkUrl)}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 12px 24px; background-color: #f3f4f6; color: #1f2937; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 16px;">Open your booking and pay</a>
+    <a href="${escapeHtml(freshLinkUrl)}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 12px 24px; background-color: ${GUEST.sunk}; color: ${GUEST.green}; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 16px;">Open your booking and pay</a>
   </p>
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Secure booking page:<br><a href="${escapeHtml(freshLinkUrl)}" style="font-family: ${FONT_FAMILY}; color: #0070ba; word-break: break-all;">${escapeHtml(freshLinkUrl)}</a></p>`
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">Secure booking page:<br><a href="${escapeHtml(freshLinkUrl)}" style="font-family: ${FONT_FAMILY}; color: ${GUEST.green}; word-break: break-all;">${escapeHtml(freshLinkUrl)}</a></p>`
       : `
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">PayPal payment links usually expire 6 hours after this email is sent. If the PayPal button no longer works, please contact us and we can send a fresh payment link.</p>`;
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">PayPal payment links usually expire 6 hours after this email is sent. If the PayPal button no longer works, please contact us and we can send a fresh payment link.</p>`;
 
     const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
   ${preheader(depositFormatted ? `Pay your ${depositFormatted} deposit to secure the date.` : 'Pay your deposit to secure the date.')}
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">${heading}</h2>
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${heading}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(firstName)},</p>
   ${paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
   <p style="font-family: ${FONT_FAMILY};">
-    <a href="${escapeHtml(paypalApproveUrl)}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 12px 24px; background-color: #0070ba; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 16px;">Pay deposit via PayPal</a>
+    <a href="${escapeHtml(paypalApproveUrl)}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 12px 24px; background-color: ${GUEST.buttonBg}; color: ${GUEST.buttonText}; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 16px;">Pay deposit via PayPal</a>
   </p>
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Or copy this link into your browser:<br><a href="${escapeHtml(paypalApproveUrl)}" style="font-family: ${FONT_FAMILY}; color: #0070ba; word-break: break-all;">${escapeHtml(paypalApproveUrl)}</a></p>
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">Or copy this link into your browser:<br><a href="${escapeHtml(paypalApproveUrl)}" style="font-family: ${FONT_FAMILY}; color: ${GUEST.green}; word-break: break-all;">${escapeHtml(paypalApproveUrl)}</a></p>
   ${freshLinkHtml}
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">${escapeHtml(DEPOSIT_TERMS_NOTE)}</p>
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">${escapeHtml(DEPOSIT_TERMS_NOTE)}</p>
   <p style="font-family: ${FONT_FAMILY};">If you have any questions about your booking, please get in touch.</p>
-  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
 
@@ -829,14 +830,14 @@ export async function sendDepositRefundEmail(booking: {
     const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
   ${preheader(`Your ${formatCurrency(totalRefunded)} deposit has been refunded.`)}
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">${heading}</h2>
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${heading}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(firstName)},</p>
   ${paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
   <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
     ${rowsHtml(rows)}
   </table>
-  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
 
@@ -926,14 +927,14 @@ export async function sendDepositPartRefundEmail(booking: {
     const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
   ${preheader(`${formatCurrency(booking.total_refunded)} of your deposit has been refunded.`)}
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">${heading}</h2>
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${heading}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(firstName)},</p>
   ${paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
   <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
     ${rowsHtml(rows)}
   </table>
-  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
 
@@ -1056,15 +1057,15 @@ export async function sendBookingCancelledEmail(booking: {
     const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
   ${preheader(`${forEvent} has been cancelled.`)}
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">${heading}</h2>
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${heading}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(firstName)},</p>
   ${paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
   <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
     ${rowsHtml(rows)}
   </table>
-  <p style="font-family: ${FONT_FAMILY};">If anything here doesn't look right, please call us on <a href="tel:+441753682707" style="color: #1a1a1a;">01753 682707</a> or email <a href="mailto:manager@the-anchor.pub" style="color: #1a1a1a;">manager@the-anchor.pub</a>.</p>
-  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  <p style="font-family: ${FONT_FAMILY};">If anything here doesn't look right, please call us on <a href="tel:+441753682707" style="color: ${GUEST.green};">01753 682707</a> or email <a href="mailto:manager@the-anchor.pub" style="color: ${GUEST.green};">manager@the-anchor.pub</a>.</p>
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
 
@@ -1150,11 +1151,11 @@ export async function sendContractEmailToCustomer(booking: {
   const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
   ${preheader(`The contract and terms for ${forEvent} are attached.`)}
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">${heading}</h2>
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${heading}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(firstName)},</p>
   ${paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
-  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
 
@@ -1233,15 +1234,15 @@ export async function sendPrivateBookingRefundSentEmail(booking: {
     const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
   ${preheader(`Your ${amount} refund has been sent.`)}
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">${heading}</h2>
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${heading}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(firstName)},</p>
   ${paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
   <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
     ${rowsHtml(rows)}
   </table>
-  <p style="font-family: ${FONT_FAMILY};">If it has not arrived by then, please call us on <a href="tel:+441753682707" style="color: #1a1a1a;">01753 682707</a> or email <a href="mailto:manager@the-anchor.pub" style="color: #1a1a1a;">manager@the-anchor.pub</a>.</p>
-  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  <p style="font-family: ${FONT_FAMILY};">If it has not arrived by then, please call us on <a href="tel:+441753682707" style="color: ${GUEST.green};">01753 682707</a> or email <a href="mailto:manager@the-anchor.pub" style="color: ${GUEST.green};">manager@the-anchor.pub</a>.</p>
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
 
@@ -1367,14 +1368,14 @@ function composeMessageEmail(spec: MessageEmailSpec): PrivateBookingEmailContent
     ...(spec.booking.guest_count ? ([['Guests', String(spec.booking.guest_count)]] as Array<[string, string]>) : []),
     ...(spec.rows ?? []),
   ];
-  const contactHtml = `Questions? Call us on <a href="tel:${VENUE_PHONE_TEL}" style="color: #1a1a1a;">${VENUE_PHONE_DISPLAY}</a> or email <a href="mailto:${VENUE_EMAIL}" style="color: #1a1a1a;">${VENUE_EMAIL}</a>.`;
+  const contactHtml = `Questions? Call us on <a href="tel:${VENUE_PHONE_TEL}" style="color: ${GUEST.green};">${VENUE_PHONE_DISPLAY}</a> or email <a href="mailto:${VENUE_EMAIL}" style="color: ${GUEST.green};">${VENUE_EMAIL}</a>.`;
   const contactText = `Questions? Call us on ${VENUE_PHONE_DISPLAY} or email ${VENUE_EMAIL}.`;
 
   const sections = spec.sections ?? [];
   const sectionsHtml = sections
     .map(
       (section) => `
-  <h3 style="font-family: ${FONT_FAMILY}; margin: 24px 0 0 0; font-size: 16px; color: #1a1a1a;">${escapeHtml(section.heading)}</h3>
+  <h3 style="font-family: ${FONT_FAMILY}; margin: 24px 0 0 0; font-size: 16px; color: ${GUEST.green};">${escapeHtml(section.heading)}</h3>
   <table style="width: 100%; border-collapse: collapse; margin: 8px 0 20px 0;">
     ${section.rows.map(([label, value]) => row(escapeHtml(label), escapeHtml(value))).join('')}
   </table>`
@@ -1384,24 +1385,24 @@ function composeMessageEmail(spec: MessageEmailSpec): PrivateBookingEmailContent
   const linkHtml = spec.link
     ? `
   <p style="font-family: ${FONT_FAMILY};">
-    <a href="${escapeHtml(spec.link.url)}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 12px 24px; background-color: #1a1a1a; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold;">${escapeHtml(spec.link.label)}</a>
+    <a href="${escapeHtml(spec.link.url)}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 12px 24px; background-color: ${GUEST.buttonBg}; color: ${GUEST.buttonText}; text-decoration: none; border-radius: 4px; font-weight: bold;">${escapeHtml(spec.link.label)}</a>
   </p>
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Or copy this link into your browser:<br><a href="${escapeHtml(spec.link.url)}" style="color: #1a1a1a; word-break: break-all;">${escapeHtml(spec.link.url)}</a></p>`
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">Or copy this link into your browser:<br><a href="${escapeHtml(spec.link.url)}" style="color: ${GUEST.green}; word-break: break-all;">${escapeHtml(spec.link.url)}</a></p>`
     : '';
 
   const html = `
 <div style="${EMAIL_CONTAINER_STYLE}">
   ${preheader(spec.preheader ?? spec.paragraphs[0] ?? spec.heading)}
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">${escapeHtml(spec.heading)}</h2>
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: ${GUEST.green};">${escapeHtml(spec.heading)}</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(name)},</p>
   ${spec.paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
   <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
     ${rows.map(([label, value]) => row(escapeHtml(label), escapeHtml(value))).join('')}
   </table>${sectionsHtml}${linkHtml}
-  ${(spec.notes ?? []).map((note) => `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">${escapeHtml(note)}</p>`).join('\n  ')}
+  ${(spec.notes ?? []).map((note) => `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: ${GUEST.textMuted};">${escapeHtml(note)}</p>`).join('\n  ')}
   <p style="font-family: ${FONT_FAMILY};">${contactHtml}</p>
-  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: ${GUEST.textMuted};">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid ${GUEST.border};">
   ${EMAIL_FOOTER_HTML}
 </div>`;
 

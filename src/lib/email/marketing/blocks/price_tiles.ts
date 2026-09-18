@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
@@ -40,18 +42,18 @@ export const priceTiles = defineBlock<PriceTilesData>({
       'Every adult gets a glass of prosecco, swappable for orange juice. Weekday and weekend prices differ, and pre-orders come to us 7 days before your date. Festive buffets are available for 30 guests or more.',
   },
   render: (data) => `
-<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:34px 32px 0">
+<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:34px 32px 0">
 <table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody><tr>
 ${data.tiles
   .map(
     (tile) =>
-      `<td width="170" valign="top" bgcolor="#ffffff" class="stack" style="width:170px;background-color:#ffffff;border-top:3px solid #a57626;border-right:1px solid #e2dccf;border-bottom:1px solid #e2dccf;border-left:1px solid #e2dccf;padding:18px 16px" align="center"><div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.14em;text-transform:uppercase;color:#8b6914">${escapeEmailText(tile.label)}</div><div style="font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:30px;line-height:38px;color:#005131;padding-top:6px">${escapeEmailText(tile.price)}</div><div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:#6f6a61">${escapeEmailText(tile.note)}</div></td>`,
+      `<td width="170" valign="top" bgcolor="${GUEST.surface}" class="stack" style="width:170px;background-color:${GUEST.surface};border-top:3px solid ${GUEST.gold};border-right:1px solid ${GUEST.border};border-bottom:1px solid ${GUEST.border};border-left:1px solid ${GUEST.border};padding:18px 16px" align="center"><div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.14em;text-transform:uppercase;color:${GUEST.accentText}">${escapeEmailText(tile.label)}</div><div style="font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:30px;line-height:38px;color:${GUEST.green};padding-top:6px">${escapeEmailText(tile.price)}</div><div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:${GUEST.textMuted}">${escapeEmailText(tile.note)}</div></td>`,
   )
   .join('\n<td width="13" style="width:13px;font-size:0;line-height:0">&nbsp;</td>\n')}
 </tr></tbody></table>
 </td></tr>
-<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:16px 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:23px;mso-line-height-rule:exactly;color:#6f6a61">${escapeEmailText(data.footnote)}</td></tr>
-<tr><td height="26" bgcolor="#faf8f3" style="height:26px;background-color:#faf8f3;font-size:0;line-height:0">&nbsp;</td></tr>
+<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:16px 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:23px;mso-line-height-rule:exactly;color:${GUEST.textMuted}">${escapeEmailText(data.footnote)}</td></tr>
+<tr><td height="26" bgcolor="${GUEST.cream}" style="height:26px;background-color:${GUEST.cream};font-size:0;line-height:0">&nbsp;</td></tr>
 `,
   text: (data) =>
     `${data.tiles.map((tile) => `${tile.label}: ${tile.price} ${tile.note}`).join('\n')}\n\n${data.footnote}\n`,

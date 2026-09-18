@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
@@ -42,13 +44,13 @@ export const hoursTable = defineBlock<HoursTableData>({
   },
   render: (data) =>
     `
-<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:28px 32px 0">
-<table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#005131"><tbody>
-<tr><td colspan="2" style="padding:18px 22px 6px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.18em;text-transform:uppercase;color:#c9a020">${escapeEmailText(data.heading)}</td></tr>
+<tr><td bgcolor="${GUEST.cream}" class="gutter" style="background-color:${GUEST.cream};padding:28px 32px 0">
+<table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:${GUEST.green}"><tbody>
+<tr><td colspan="2" style="padding:18px 22px 6px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.18em;text-transform:uppercase;color:${GUEST.goldBright}">${escapeEmailText(data.heading)}</td></tr>
 ${data.rows
   .map(
     (row) =>
-      `<tr><td width="140" valign="top" style="width:140px;padding:8px 0 8px 22px;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:22px;line-height:30px;color:#ffffff">${escapeEmailText(row.label)}</td><td valign="middle" align="right" style="padding:8px 22px 8px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:18px;font-weight:600;line-height:30px;color:#f0e6c6">${escapeEmailText(row.time)}</td></tr>`,
+      `<tr><td width="140" valign="top" style="width:140px;padding:8px 0 8px 22px;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:22px;line-height:30px;color:${GUEST.surface}">${escapeEmailText(row.label)}</td><td valign="middle" align="right" style="padding:8px 22px 8px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:18px;font-weight:600;line-height:30px;color:${GUEST.creamText}">${escapeEmailText(row.time)}</td></tr>`,
   )
   .join('\n')}
 <tr><td colspan="2" style="padding:12px 22px 20px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:22px;color:#7a8b7f;border-top:1px solid rgba(201,160,32,0.3)">${escapeEmailText(data.note)}</td></tr>

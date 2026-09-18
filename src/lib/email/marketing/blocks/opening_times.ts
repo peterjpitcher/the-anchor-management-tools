@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
@@ -66,16 +68,16 @@ const SANS = "'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif"
 const SERIF = "'DM Serif Display',Georgia,'Times New Roman',serif"
 const HAIRLINE = 'border-bottom:1px solid #efe9dd'
 /** `fact_strip`'s label type, to the character. */
-const LABEL = `font-family:${SANS};font-size:11px;font-weight:600;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:#8b6914`
+const LABEL = `font-family:${SANS};font-size:11px;font-weight:600;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:${GUEST.accentText}`
 /** The same caps in the muted grey, so the column headers sit under the gold kicker. */
-const COLUMN = `font-family:${SANS};font-size:11px;font-weight:600;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:#6f6a61`
+const COLUMN = `font-family:${SANS};font-size:11px;font-weight:600;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:${GUEST.textMuted}`
 /** `fact_strip`'s value type. */
-const VALUE = `font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a`
+const VALUE = `font-family:${SANS};font-size:15px;line-height:22px;color:${GUEST.text}`
 
 /** The kitchen cell: one time, or the two labelled services stacked in their own table. */
 function kitchenCell(row: OpeningTimesRow): string {
   if (typeof row.kitchen === 'string') {
-    const colour = row.kitchen_muted ? '#6f6a61' : '#1a1a1a'
+    const colour = row.kitchen_muted ? GUEST.textMuted : GUEST.text
     return `<div style="font-family:${SANS};font-size:15px;line-height:22px;color:${colour}">${escapeEmailText(row.kitchen)}</div>`
   }
 
@@ -91,11 +93,11 @@ function kitchenCell(row: OpeningTimesRow): string {
 
 function dayRow(row: OpeningTimesRow): string {
   const note = row.bar_note
-    ? `<div style="font-family:${SANS};font-size:12px;line-height:18px;color:#6f6a61">${escapeEmailText(row.bar_note)}</div>`
+    ? `<div style="font-family:${SANS};font-size:12px;line-height:18px;color:${GUEST.textMuted}">${escapeEmailText(row.bar_note)}</div>`
     : ''
 
   return (
-    `<tr><td width="150" valign="top" style="width:150px;padding:14px 0;${HAIRLINE};font-family:${SERIF};font-size:19px;line-height:25px;color:#005131">${escapeEmailText(row.day)}</td>` +
+    `<tr><td width="150" valign="top" style="width:150px;padding:14px 0;${HAIRLINE};font-family:${SERIF};font-size:19px;line-height:25px;color:${GUEST.green}">${escapeEmailText(row.day)}</td>` +
     `<td width="160" valign="top" style="width:160px;padding:14px 12px 14px 0;${HAIRLINE};${VALUE}">${escapeEmailText(row.bar)}${note}</td>` +
     `<td valign="top" style="padding:14px 0;${HAIRLINE}">${kitchenCell(row)}</td></tr>`
   )
@@ -123,7 +125,7 @@ export const openingTimes = defineBlock<OpeningTimesData>({
     note: 'Last orders are 30 minutes before the kitchen closes, and 15 minutes before the bar does.',
   },
   render: (data) => `
-<tr><td bgcolor="#ffffff" style="background-color:#ffffff;border-top:1px solid #e2dccf;border-bottom:1px solid #e2dccf;padding:8px 32px 12px">
+<tr><td bgcolor="${GUEST.surface}" style="background-color:${GUEST.surface};border-top:1px solid ${GUEST.border};border-bottom:1px solid ${GUEST.border};padding:8px 32px 12px">
 <table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>${
     data.heading
       ? `\n<tr><td colspan="3" style="padding:14px 0 0;${LABEL}">${escapeEmailText(data.heading)}</td></tr>`
@@ -131,7 +133,7 @@ export const openingTimes = defineBlock<OpeningTimesData>({
   }
 <tr><td width="150" valign="bottom" style="width:150px;padding:12px 0 6px;${HAIRLINE};${COLUMN}">Day</td><td width="160" valign="bottom" style="width:160px;padding:12px 12px 6px 0;${HAIRLINE};${COLUMN}">Bar</td><td valign="bottom" style="padding:12px 0 6px;${HAIRLINE};${COLUMN}">Kitchen</td></tr>
 ${data.rows.map(dayRow).join('\n')}
-<tr><td colspan="3" style="padding:14px 0 0;font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61">${escapeEmailText(data.note)}</td></tr>
+<tr><td colspan="3" style="padding:14px 0 0;font-family:${SANS};font-size:13px;line-height:20px;color:${GUEST.textMuted}">${escapeEmailText(data.note)}</td></tr>
 </tbody></table>
 </td></tr>
 `,

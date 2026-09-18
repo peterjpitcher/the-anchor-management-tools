@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GUEST } from '@/lib/brand/palette'
+
 import { escapeEmailText, escapeEmailUrl } from '../escape'
 import { defineBlock } from './types'
 
@@ -52,7 +54,7 @@ export const mastheadSeasonal = defineBlock<MastheadSeasonalData>({
     alt: 'The Anchor, Stanwell Moor Village, since 1751. Autumn leaves and berries around the wordmark.',
   },
   render: (data) =>
-    `<tr><td bgcolor="#005131" align="center" style="background-color:#005131;padding:0;font-size:0;line-height:0"><img src="${escapeEmailUrl(data.image_url)}" width="${IMAGE_WIDTH}" height="${IMAGE_HEIGHT}" alt="${escapeEmailText(data.alt)}" style="display:block;width:100%;max-width:${IMAGE_WIDTH}px;height:auto;border:0"></td></tr>
+    `<tr><td bgcolor="${GUEST.green}" align="center" style="background-color:${GUEST.green};padding:0;font-size:0;line-height:0"><img src="${escapeEmailUrl(data.image_url)}" width="${IMAGE_WIDTH}" height="${IMAGE_HEIGHT}" alt="${escapeEmailText(data.alt)}" style="display:block;width:100%;max-width:${IMAGE_WIDTH}px;height:auto;border:0"></td></tr>
 `,
   text: () => 'THE ANCHOR\nStanwell Moor Village, since 1751\n',
 })

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { STAFF } from '@/lib/brand/palette'
 import { hashGuestToken } from '@/lib/guest/tokens'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -47,7 +48,7 @@ function renderHtml(status: number, title: string, body: string): NextResponse {
     <title>${safeTitle}</title>
     <meta name="robots" content="noindex" />
   </head>
-  <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:2rem;max-width:560px;margin:0 auto;color:#111827;">
+  <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:2rem;max-width:560px;margin:0 auto;color:${STAFF.text};">
     <h1 style="font-size:1.5rem;margin:0 0 1rem 0;">${safeTitle}</h1>
     ${body}
   </body>
@@ -80,9 +81,9 @@ function renderConfirmationPage(params: {
 
   const body = `
     <p style="font-size:1rem;line-height:1.5;">You're about to mark <strong>${safeCustomer}</strong>'s event on <strong>${safeDate}</strong> as <strong>${escapeHtml(outcomeLabel)}</strong>.</p>
-    <p style="font-size:0.95rem;color:#4b5563;">Click Confirm to record this decision. Nothing is stored until you confirm.</p>
+    <p style="font-size:0.95rem;color:${STAFF.textMuted};">Click Confirm to record this decision. Nothing is stored until you confirm.</p>
     <form method="POST" action="${action}" style="margin-top:1.5rem;">
-      <button type="submit" style="padding:0.75rem 1.25rem;font-size:1rem;background:#2563eb;color:#fff;border:0;border-radius:6px;cursor:pointer;">Confirm</button>
+      <button type="submit" style="padding:0.75rem 1.25rem;font-size:1rem;background:${STAFF.primary};color:${STAFF.primaryFg};border:0;border-radius:6px;cursor:pointer;">Confirm</button>
     </form>
   `
 
@@ -314,7 +315,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   const body = `
     <p style="font-size:1rem;line-height:1.5;">Recorded outcome: <strong>${escapeHtml(humanizeOutcome(outcome))}</strong>.</p>
-    <p style="font-size:0.95rem;color:#4b5563;">Thanks — you can close this page.</p>
+    <p style="font-size:0.95rem;color:${STAFF.textMuted};">Thanks — you can close this page.</p>
   `
   return renderHtml(200, 'Outcome recorded', body)
 }
