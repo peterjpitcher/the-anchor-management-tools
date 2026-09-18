@@ -1,3 +1,4 @@
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
 import type { MessagingFlagKey } from '@/lib/messaging/flags'
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
 import { readStalePendingOutcomes, type StalePendingOutcome } from '@/lib/private-bookings/stale-outcomes'
@@ -42,7 +43,7 @@ const HOUR_MS = 60 * 60 * 1000
 const VIEW_COLUMNS = 'id, customer_name, customer_first_name, customer_last_name, status, event_date, start_time, end_time, date_tbd, hold_expiry, updated_at, guest_count, event_type, balance_due_date, balance_remaining, final_payment_date, internal_notes, deposit_amount, deposit_paid_date, contract_version'
 
 /** The view ignores deposit waivers and carries no invoice link or deposit confirmation, so they come from the table. */
-const TABLE_COLUMNS = 'id, deposit_waived, deposit_confirmed_at, invoice_id, invoice:invoices!private_bookings_invoice_id_fkey(id, invoice_number, status, due_date, total_amount, paid_amount, deleted_at)'
+const TABLE_COLUMNS = 'id, deposit_waived, deposit_confirmed_at, invoice_id, invoice:invoices!private_bookings_invoice_id_fkey(id, invoice_number, status, due_date, total_amount, paid_amount, deleted_at, credits:credit_notes(status, amount_inc_vat))'
 
 /**
  * The switch the rest of the app reads through isMessagingFlagOn (src/lib/messaging/flags.ts):
@@ -84,6 +85,7 @@ interface InvoiceRow {
   total_amount: number | string | null
   paid_amount: number | string | null
   deleted_at: string | null
+  credits?: { status: string; amount_inc_vat: number | string }[] | null
 }
 
 interface TableRow {
@@ -184,9 +186,9 @@ function linkedInvoice(row: InvoiceRow | null): LinkedInvoice | null {
   if (!row || row.deleted_at) return null
   if (row.status && (PRIVATE_HIRE.withdrawnInvoiceStatuses as readonly string[]).includes(row.status)) return null
   const total = toAmount(row.total_amount)
-  const paid = toAmount(row.paid_amount) ?? 0
   if (total === null) return null
-  const outstanding = row.status === 'paid' ? 0 : Math.max(0, roundPence(total - paid))
+  // The shared balance rule: issued credit notes reduce what is owed, never the invoice total.
+  const outstanding = row.status === 'paid' ? 0 : invoiceBalanceDue(row)
   const number = trimmed(row.invoice_number)
   return { id: row.id, name: number ? `invoice ${number}` : 'the invoice', dueDate: row.due_date ? row.due_date.slice(0, 10) : null, outstanding }
 }

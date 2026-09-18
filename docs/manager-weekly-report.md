@@ -62,7 +62,7 @@ The old-format finaliser in `delivery.ts` (leave reminder log, recruitment commu
 
 ## Cutover
 
-**Cutover timestamp: not yet released.** At release, record here the production deployment id, the time it went live (London) and the preflight output from before and after.
+**Cutover: released 18 September 2026** from branch `feat/weekly-insights`, merged to `main` that evening (London). The first insights report is Friday 25 September 2026 at 06:00. Preflight immediately before release: PASS (two old-format reports, 11 and 18 September, both sent and accepted; no queued items, held checklist rows or queued recruitment alerts; nothing recorded for 25 September). The production deployment id is recorded in the release notes for that commit.
 
 Release timing: deploy between Friday 09:30 (after that week's report has been accepted) and Thursday night, with the preflight showing no frozen unaccepted report. The first new report is then the next Friday at 06:00. If an old-format report is still owed, the new delivery finishes it first anyway.
 

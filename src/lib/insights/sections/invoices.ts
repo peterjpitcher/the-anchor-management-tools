@@ -1,3 +1,4 @@
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { formatDateWithYear, formatDayDate, formatMoney, plural } from '../format'
 import { mergeSignals } from '../signals'
@@ -40,6 +41,7 @@ interface InvoiceRow {
   paid_amount: number | string | null
   sent_at: string | null
   vendor: VendorEmbed | VendorEmbed[] | null
+  credits: { status: string; amount_inc_vat: number | string }[] | null
 }
 
 interface LinkRow {
@@ -126,7 +128,7 @@ async function readOpenInvoiceRows(ctx: SectionContext): Promise<InvoiceRow[]> {
   return fetchAllRows<InvoiceRow>(
     (from, to) => ctx.db
       .from('invoices')
-      .select('id, invoice_number, status, due_date, total_amount, paid_amount, sent_at, vendor:invoice_vendors(name)')
+      .select('id, invoice_number, status, due_date, total_amount, paid_amount, sent_at, vendor:invoice_vendors(name), credits:credit_notes(status, amount_inc_vat)')
       .is('deleted_at', null)
       .in('status', [...INVOICES.openStatuses])
       .order('id')
@@ -274,7 +276,8 @@ export async function buildInvoicesSection(ctx: SectionContext): Promise<Section
   const candidates = rows.flatMap((row) => {
     const total = toAmount(row.total_amount)
     if (total === null) return []
-    const outstanding = Math.round((total - (toAmount(row.paid_amount) ?? 0)) * 100) / 100
+    // The shared balance rule: issued credit notes reduce what is owed, never the invoice total.
+    const outstanding = invoiceBalanceDue(row)
     if (outstanding <= 0) return []
     const dueDate = String(row.due_date).slice(0, 10)
     return [{ row, outstanding, dueDate }]
