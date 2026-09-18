@@ -32,7 +32,7 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
 
   return (
     // z-45 for the same reason as the desktop rail: page chrome reaches z-40.
-    <header className="shell:hidden sticky top-0 z-[45] flex h-14 shrink-0 items-center gap-2.5 border-b border-sidebar-border bg-sidebar-bg px-3 text-sidebar-fg">
+    <header className="shell:hidden sticky top-0 z-[45] flex h-14 shrink-0 items-center gap-2.5 border-b border-sidebar-border bg-sidebar px-3 text-sidebar-fg">
       <button
         type="button"
         onClick={onMenuOpen}
@@ -69,7 +69,7 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
       >
         <Icon name="bell" size={20} />
         {unreadCount > 0 ? (
-          <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[9.5px] font-bold leading-none text-white shadow-[0_0_0_2px_var(--color-sidebar-bg)]">
+          <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[9.5px] font-bold leading-none text-white shadow-[0_0_0_2px_var(--color-sidebar)]">
             {badgeText(unreadCount)}
           </span>
         ) : null}
@@ -159,7 +159,7 @@ export function MobileDrawer({
   return (
     <Dialog open={open} onClose={onClose} className="relative z-50 shell:hidden">
       <DialogBackdrop className="fixed inset-0 bg-stone-950/50" />
-      <DialogPanel className="fixed inset-y-0 left-0 flex w-[min(84vw,320px)] flex-col bg-sidebar-bg text-sidebar-fg shadow-lg">
+      <DialogPanel className="fixed inset-y-0 left-0 flex w-[min(84vw,320px)] flex-col bg-sidebar text-sidebar-fg shadow-lg">
         <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-4">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="grid h-9 w-9 place-items-center rounded-[9px] border border-white/20 bg-white/15">

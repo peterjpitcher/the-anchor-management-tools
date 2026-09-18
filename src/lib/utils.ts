@@ -1,9 +1,31 @@
 import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
 import {
   formatPhoneForStorage as normalizePhoneForStorage,
   generatePhoneVariants as buildPhoneVariants
 } from '@/lib/phone';
+
+// tailwind-merge only knows Tailwind's default scale. Without this it reads custom tokens
+// such as shadow-ring or rounded-pill as colours, keeps two conflicting classes, and lets
+// whichever Tailwind emits last win: that is how every DS field in an error state showed
+// the green focus halo instead of the red one (audit, 18 Sep 2026). Keep these lists in
+// step with the @theme block in src/app/globals.css.
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: ['2xs', 'meta', 'ui'],
+      radius: ['default', 'pill', 'guest-field', 'guest-card'],
+      shadow: ['default', 'ring', 'guest-card', 'guest-gold', 'guest-focus'],
+      spacing: [
+        'cell-y', 'input-h', 'btn-h', 'btn-h-sm', 'btn-h-lg', 'sidebar-expanded', 'sidebar-collapsed',
+        'topbar', 'logo-row', 'pad-card', 'page-shell-pad-y', 'touch', 'shell-pad-top', 'shell-pad-x',
+        'shell-pad-bottom',
+      ],
+      ease: ['default'],
+      breakpoint: ['shell'],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

@@ -225,7 +225,7 @@ export function SidebarNav({ items, onNavigate }: SidebarNavProps) {
                       fades out as the real badge fades in. */}
                   {count ? (
                     <span
-                      className="ds-collapsed-dot absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-danger ring-2 ring-sidebar-bg"
+                      className="ds-collapsed-dot absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-danger ring-2 ring-sidebar"
                       aria-hidden="true"
                     />
                   ) : null}

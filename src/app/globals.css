@@ -1,11 +1,16 @@
 @import "tailwindcss";
 
 /* ================================================
-   DESIGN TOKENS — Single source of truth for all
+   DESIGN TOKENS: the single source of truth for all
    visual properties. Generates Tailwind utilities
-   automatically (e.g. bg-primary, text-text, etc.)
+   automatically (e.g. bg-primary, text-text, etc.).
+   `static` emits every token to :root even when no
+   utility uses it, so inline var() and the JS
+   accessors in src/ds/tokens never read an empty value.
+   Usage rules: docs/standards/UI_UX.md. The guard
+   tests/guards/design-tokens.test.ts stops raw values.
    ================================================ */
-@theme {
+@theme static {
   /* Brand palette */
   --color-brand-50: #ecfdf5;
   --color-brand-100: #d1fae5;
@@ -18,60 +23,133 @@
   --color-brand-800: #043927;
   --color-brand-900: #022c1a;
 
-  /* Semantic — light theme (v1 only) */
+  /* Semantic, light theme only (dark mode dropped 18 Sep 2026). Text on white must
+     reach 4.5:1: text, text-strong, text-muted (7.6:1) and text-soft (4.8:1) do.
+     text-subtle (2.5:1) is for placeholders, icons and decoration only. */
   --color-bg: #fafaf9;
   --color-surface: #ffffff;
   --color-surface-2: #fafaf9;
   --color-surface-hover: #f5f5f4;
   --color-border: #ececea;
   --color-border-strong: #d6d3d1;
-  --color-border-focus: #34d399;
+  --color-border-focus: var(--color-brand-600);
   --color-text: #1c1917;
   --color-text-strong: #0c0a09;
   --color-text-muted: #57534e;
+  --color-text-soft: #78716c;
   --color-text-subtle: #a8a29e;
 
-  /* Primary */
-  --color-primary: #006A4E;
-  --color-primary-hover: #064e3b;
-  --color-primary-soft: #ecfdf5;
-  --color-primary-soft-fg: #043927;
+  /* Primary: the one staff brand green for actions, active tabs and links */
+  --color-primary: var(--color-brand-600);
+  --color-primary-hover: var(--color-brand-700);
+  --color-primary-soft: var(--color-brand-50);
+  --color-primary-soft-fg: var(--color-brand-800);
   --color-primary-fg: #ffffff;
 
-  /* Sidebar */
-  --color-sidebar: #064e3b;
-  --color-sidebar-bg: #064e3b;
-  --color-sidebar-fg: #ffffff;
-  --color-sidebar-fg-muted: rgba(255, 255, 255, 0.72);
-  --color-sidebar-active-bg: rgba(255, 255, 255, 0.16);
-  --color-sidebar-hover-bg: rgba(255, 255, 255, 0.08);
-  --color-sidebar-border: rgba(255, 255, 255, 0.12);
+  /* On dark surfaces (sidebar, kiosk, FOH header) */
+  --color-on-dark: #ffffff;
+  --color-on-dark-muted: rgb(255 255 255 / 0.72);
+  --color-on-dark-subtle: rgb(255 255 255 / 0.4);
+  --color-on-dark-hover: rgb(255 255 255 / 0.08);
+  --color-on-dark-active: rgb(255 255 255 / 0.16);
+  --color-on-dark-border: rgb(255 255 255 / 0.12);
 
-  /* Status */
+  /* Sidebar: the app shell only. Buttons elsewhere use primary. */
+  --color-sidebar: #064e3b;
+  --color-sidebar-fg: var(--color-on-dark);
+  --color-sidebar-fg-muted: var(--color-on-dark-muted);
+  --color-sidebar-active-bg: var(--color-on-dark-active);
+  --color-sidebar-hover-bg: var(--color-on-dark-hover);
+  --color-sidebar-border: var(--color-on-dark-border);
+
+  /* Status. The base colour is for icons, dots, fills and borders; small text
+     uses the -fg shade (success 3.3:1, warning 3.2:1 and info 4.1:1 fail as text). */
   --color-success: #16a34a;
   --color-success-soft: #f0fdf4;
   --color-success-fg: #166534;
+  --color-success-border: #bbf7d0;
   --color-warning: #d97706;
   --color-warning-soft: #fffbeb;
   --color-warning-fg: #92400e;
+  --color-warning-border: #fde68a;
   --color-danger: #dc2626;
   --color-danger-soft: #fef2f2;
   --color-danger-fg: #991b1b;
+  --color-danger-border: #fecaca;
   --color-info: #0284c7;
   --color-info-soft: #f0f9ff;
   --color-info-fg: #075985;
+  --color-info-border: #bae6fd;
 
-  /* Typography */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Scrim behind modals, drawers and the mobile menu */
+  --color-overlay: rgb(12 10 9 / 0.5);
 
-  /* Density — compact default (v1 only) */
-  --spacing-row-h: 10px;
-  --spacing-row-h-lg: 36px;
+  /* Categories: static app categories (departments, dish groups, booking types).
+     Colours a user picks and stores (shift templates, calendar notes, labels) are
+     data, not tokens. */
+  --color-cat-1: #0284c7;
+  --color-cat-1-soft: #e0f2fe;
+  --color-cat-1-fg: #075985;
+  --color-cat-2: #4f46e5;
+  --color-cat-2-soft: #e0e7ff;
+  --color-cat-2-fg: #3730a3;
+  --color-cat-3: #7c3aed;
+  --color-cat-3-soft: #ede9fe;
+  --color-cat-3-fg: #5b21b6;
+  --color-cat-4: #db2777;
+  --color-cat-4-soft: #fce7f3;
+  --color-cat-4-fg: #9d174d;
+  --color-cat-5: #ea580c;
+  --color-cat-5-soft: #ffedd5;
+  --color-cat-5-fg: #9a3412;
+  --color-cat-6: #d97706;
+  --color-cat-6-soft: #fef3c7;
+  --color-cat-6-fg: #92400e;
+  --color-cat-7: #0d9488;
+  --color-cat-7-soft: #ccfbf1;
+  --color-cat-7-fg: #115e59;
+  --color-cat-8: #57534e;
+  --color-cat-8-soft: #f5f5f4;
+  --color-cat-8-fg: #292524;
+
+  /* Chart series, primary first */
+  --color-chart-1: var(--color-brand-600);
+  --color-chart-2: var(--color-cat-1);
+  --color-chart-3: var(--color-cat-6);
+  --color-chart-4: var(--color-cat-3);
+  --color-chart-5: var(--color-cat-4);
+  --color-chart-6: var(--color-cat-7);
+
+  /* Initials avatars: white text passes 4.5:1 on every one */
+  --color-avatar-1: #b91c1c;
+  --color-avatar-2: #c2410c;
+  --color-avatar-3: #a16207;
+  --color-avatar-4: #15803d;
+  --color-avatar-5: #1d4ed8;
+  --color-avatar-6: #6d28d9;
+
+  /* Typography. next/font sets --font-inter and --font-jetbrains on <html>, which is
+     :root, so these resolve and keep next/font's size-matched fallback. */
+  --font-sans: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: var(--font-jetbrains), 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Type sizes the app actually uses. Tailwind's own xs (12px), sm (14px) and
+     base (16px) stay; these fill the gaps. 10px is the floor (owner decision,
+     18 Sep 2026). */
+  --text-2xs: 10px;
+  --text-2xs--line-height: 14px;
+  --text-meta: 11px;
+  --text-meta--line-height: 16px;
+  --text-ui: 13px;
+  --text-ui--line-height: 18px;
+
+  /* Density: compact default, enlarged for touch by the mobile layer below */
+  --spacing-cell-y: 10px;
   --spacing-input-h: 31px;
   --spacing-btn-h: 31px;
   --spacing-btn-h-sm: 25px;
   --spacing-btn-h-lg: 36px;
+  --spacing-touch: 44px;
 
   /* Layout */
   --spacing-sidebar-expanded: 232px;
@@ -80,12 +158,17 @@
   --spacing-logo-row: 76px;
   --spacing-pad-card: 14px;
 
+  /* Padding on AppShell's <main> from the shell breakpoint up. */
+  --spacing-shell-pad-top: 22px;
+  --spacing-shell-pad-x: 28px;
+  --spacing-shell-pad-bottom: 40px;
+
   /* Total vertical padding on AppShell's <main>, so a full-height page can size
      itself as `calc(100dvh - var(--spacing-page-shell-pad-y))` instead of each
      one copying the number. Below the shell breakpoint <main> already has a
      definite height (it is flex-1 inside an h-[100dvh] shell), so pages use a
      plain h-full there and this only matters from 821px up. Keep in step with
-     the `shell:p-[22px_28px_40px]` on <main> in AppShell.tsx: 22 + 40. */
+     the shell-pad-top and shell-pad-bottom tokens above: 22 + 40. */
   --spacing-page-shell-pad-y: 62px;
 
   /* Shell breakpoint. The app chrome swaps between the mobile surfaces (topbar,
@@ -94,10 +177,13 @@
      820px). When the two disagreed, chrome on Tailwind's `md` (768px) and CSS
      on 820px, every viewport in the 768-820px band (iPad portrait included) got
      no navigation at all: the sidebar was hidden by the CSS layer and the
-     mobile surfaces were hidden by `md:`. Change both or neither. */
+     mobile surfaces were hidden by `md:`. Change both or neither. Use the
+     `shell:` and `max-shell:` variants, never `max-[820px]:`. */
   --breakpoint-shell: 821px;
 
-  /* Radii */
+  /* Radii. These REPLACE Tailwind's defaults: rounded-sm is 6px, rounded-md 10px,
+     rounded-lg 14px, rounded-xl 20px. Bare `rounded` (4px) and rounded-2xl (16px)
+     fall outside this ladder and the guard rejects them. */
   --radius-sm: 6px;
   --radius-default: 8px;
   --radius-md: 10px;
@@ -105,7 +191,8 @@
   --radius-xl: 20px;
   --radius-pill: 9999px;
 
-  /* Shadows */
+  /* Shadows. Bare `shadow`, shadow-md and shadow-xl are Tailwind's untinted
+     defaults and the guard rejects them. */
   --shadow-xs: 0 1px 0 rgba(15, 23, 42, 0.04);
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 1px rgba(15, 23, 42, 0.04);
   --shadow-default: 0 2px 4px -1px rgba(15, 23, 42, 0.06), 0 4px 10px -4px rgba(15, 23, 42, 0.08);
@@ -118,9 +205,10 @@
   /* ------------------------------------------------
      GUEST PAGES (The Anchor brand). Additive only.
      Namespaced so nothing above changes. Consumed
-     only by src/components/features/guest/*, which
-     render inside `.guest-theme`. Staff screens never
-     reference an `anchor-*` or `guest-*` utility.
+     by src/components/features/guest/* and every page
+     rendered inside GuestShell (`.guest-theme`). Staff
+     screens never reference an `anchor-*` or `guest-*`
+     utility.
      Source: docs/design/guest-pages-2026-08/HANDOFF.md
      ------------------------------------------------ */
 
