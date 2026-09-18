@@ -9,8 +9,12 @@ import {
 } from '@heroicons/react/24/outline'
 import type { BookingStatus } from '@/types/private-bookings'
 import { formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
-import { Select } from '@/ds'
-import { Button } from '@/ds'
+import { Badge, Button, Card, IconButton, Segmented, Select } from '@/ds'
+import {
+  privateBookingStatusBlockClasses,
+  privateBookingStatusLabel,
+  privateBookingStatusTone,
+} from '@/app/(authenticated)/private-bookings/_shared/status-ui'
 
 interface CalendarBooking {
   id: string
@@ -28,12 +32,8 @@ interface CalendarViewProps {
   bookings: CalendarBooking[]
 }
 
-const statusColors: Record<BookingStatus, string> = {
-  draft: 'bg-surface-hover text-text border-border-strong',
-  confirmed: 'bg-success-soft text-green-800 border-green-300',
-  completed: 'bg-blue-100 text-info-fg border-blue-300',
-  cancelled: 'bg-danger-soft text-danger-fg border-red-300'
-}
+// Tentative is left out: no live booking has it (checked 18 Sep 2026).
+const LEGEND_STATUSES = ['draft', 'confirmed', 'completed', 'cancelled'] as const
 
 export default function CalendarView({ bookings }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -151,60 +151,50 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
   }
 
   return (
-    <div className="bg-surface rounded-xl shadow-sm border border-border overflow-hidden">
+    <Card padding="none">
       {/* Calendar Header */}
       <div className="px-4 sm:px-6 py-4 border-b border-border">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-text">
+          <h2 className="text-xl font-semibold text-text-strong">
             {currentDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
           </h2>
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             {/* View Mode Toggle - Mobile Only */}
-            <div className="flex bg-surface-hover rounded-lg p-1 sm:hidden">
-              <button type="button"
-                onClick={() => setViewMode('calendar')}
-                className={`px-3 py-1 text-sm font-medium rounded-sm ${
-                  viewMode === 'calendar' ? 'bg-surface text-text shadow-sm' : 'text-text-muted'
-                }`}
-              >
-                Calendar
-              </button>
-              <button type="button"
-                onClick={() => setViewMode('agenda')}
-                className={`px-3 py-1 text-sm font-medium rounded-sm ${
-                  viewMode === 'agenda' ? 'bg-surface text-text shadow-sm' : 'text-text-muted'
-                }`}
-              >
-                Agenda
-              </button>
-            </div>
-            <button type="button"
-              onClick={() => setCurrentDate(new Date())}
-              className="px-3 sm:px-4 py-2 text-sm font-medium text-text bg-surface border border-border-strong rounded-lg hover:bg-surface-hover transition-colors"
-            >
+            <Segmented
+              className="sm:hidden"
+              options={[
+                { id: 'calendar', label: 'Calendar' },
+                { id: 'agenda', label: 'Agenda' },
+              ]}
+              value={viewMode}
+              onChange={(id) => setViewMode(id as 'calendar' | 'agenda')}
+            />
+            <Button type="button" variant="secondary" onClick={() => setCurrentDate(new Date())}>
               Today
-            </button>
-            <div className="flex">
-              <button type="button"
+            </Button>
+            <div className="flex gap-1">
+              <IconButton
+                type="button"
+                variant="secondary"
+                label="Previous month"
+                icon={<ChevronLeftIcon className="h-4 w-4" />}
                 onClick={() => navigateMonth('prev')}
-                className="p-2 text-text-muted hover:bg-surface-hover rounded-l-lg border border-r-0 border-border-strong transition-colors"
-              >
-                <ChevronLeftIcon className="h-5 w-5" />
-              </button>
-              <button type="button"
+              />
+              <IconButton
+                type="button"
+                variant="secondary"
+                label="Next month"
+                icon={<ChevronRightIcon className="h-4 w-4" />}
                 onClick={() => navigateMonth('next')}
-                className="p-2 text-text-muted hover:bg-surface-hover rounded-r-lg border border-border-strong transition-colors"
-              >
-                <ChevronRightIcon className="h-5 w-5" />
-              </button>
+              />
             </div>
           </div>
         </div>
 
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="mb-1 block text-sm font-medium text-text">Status</label>
             <Select
+              label="Status"
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as BookingStatus | 'all')}
             >
@@ -216,8 +206,8 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
             </Select>
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-text">Date range</label>
             <Select
+              label="Date range"
               value={timeFilter}
               onChange={(event) => setTimeFilter(event.target.value as 'all' | 'upcoming' | 'past')}
             >
@@ -259,13 +249,18 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
           <div
             key={index}
             className={`min-h-[80px] sm:min-h-[120px] p-1 sm:p-2 ${
-              day === null ? 'bg-surface-2' : 'bg-surface hover:bg-surface-hover'
-            } ${isToday(day || 0) ? 'bg-blue-50' : ''}`}
+              day === null
+                ? 'bg-surface-2'
+                : 'bg-surface hover:bg-surface-hover'
+            }`}
           >
             {day && (
               <>
-                <div className={`text-sm font-medium mb-1 ${
-                  isToday(day) ? 'text-blue-600' : 'text-text'
+                {/* Today is a filled date, not a filled cell, so it never hides a confirmed block. */}
+                <div className={`mb-1 text-sm font-medium ${
+                  isToday(day)
+                    ? 'inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-primary-fg'
+                    : 'text-text'
                 }`}>
                   {day}
                 </div>
@@ -276,8 +271,8 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                       key={booking.id}
                       href={`/private-bookings/${booking.id}`}
                       className={`block px-1 sm:px-2 py-0.5 sm:py-1 text-xs rounded-sm border ${
-                        statusColors[booking.status]
-                      } hover:opacity-80 transition-opacity`}
+                        privateBookingStatusBlockClasses(booking.status)
+                      } hover:opacity-80 transition-opacity focus-visible:outline-hidden focus-visible:shadow-ring`}
                     >
                       <div className="font-medium truncate hidden sm:block">{booking.customer_name}</div>
                       <div className="flex items-center gap-1 sm:mt-0.5">
@@ -315,16 +310,16 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                 <Link
                   key={booking.id}
                   href={`/private-bookings/${booking.id}`}
-                  className={`block px-4 py-4 hover:bg-surface-hover ${isToday ? 'bg-blue-50' : ''}`}
+                  className={`block px-4 py-4 hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset ${isToday ? 'bg-primary-soft' : ''}`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${statusColors[booking.status]}`}>
-                          {booking.status}
-                        </span>
+                        <Badge tone={privateBookingStatusTone(booking.status)} size="sm">
+                          {privateBookingStatusLabel(booking.status)}
+                        </Badge>
                         {isToday && (
-                          <span className="text-xs font-medium text-blue-600">Today</span>
+                          <span className="text-xs font-medium text-primary">Today</span>
                         )}
                       </div>
                       <h3 className="font-medium text-text">{booking.customer_name}</h3>
@@ -351,7 +346,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                         )}
                       </div>
                     </div>
-                    <ChevronRightIcon className="h-5 w-5 text-gray-400 flex-shrink-0 ml-2" />
+                    <ChevronRightIcon className="h-5 w-5 text-text-subtle flex-shrink-0 ml-2" />
                   </div>
                 </Link>
               )
@@ -364,29 +359,18 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
       {(viewMode === 'calendar' || !isMobile) && (
         <div className="px-4 sm:px-6 py-4 bg-surface-2 border-t border-border">
         <div className="flex flex-wrap gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-border border border-border-strong"></div>
-            <span className="text-text-muted">Draft</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-amber-200 border border-amber-300"></div>
-            <span className="text-text-muted">Tentative</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-green-200 border border-green-300"></div>
-            <span className="text-text-muted">Confirmed</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-blue-200 border border-blue-300"></div>
-            <span className="text-text-muted">Completed</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-red-200 border border-red-300"></div>
-            <span className="text-text-muted">Cancelled</span>
-          </div>
+          {LEGEND_STATUSES.map((status) => (
+            <div key={status} className="flex items-center gap-2">
+              {/* Same classes as the day-cell blocks, so the key matches what it explains. */}
+              <div className={`w-3 h-3 rounded-sm border ${privateBookingStatusBlockClasses(status)}`}></div>
+              <span className={status === 'cancelled' ? 'text-text-muted line-through' : 'text-text-muted'}>
+                {privateBookingStatusLabel(status)}
+              </span>
+            </div>
+          ))}
         </div>
         </div>
       )}
-    </div>
+    </Card>
   )
 }

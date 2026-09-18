@@ -88,7 +88,7 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
               value="true"
               checked={barTabRequired}
               onChange={(e) => setBarTabRequired(e.target.checked)}
-              className="h-4 w-4 rounded-sm border-border-strong text-primary focus:ring-primary"
+              className="h-4 w-4 accent-primary"
             />
             <span>Bar tab required</span>
           </label>
@@ -137,7 +137,7 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
               name="outside_food"
               value="true"
               defaultChecked={!!defaults?.outsideFood}
-              className="mt-0.5 h-4 w-4 rounded-sm border-border-strong text-primary focus:ring-primary"
+              className="mt-0.5 h-4 w-4 accent-primary"
             />
             <span>
               <span className="font-medium">Outside food</span>
@@ -151,7 +151,7 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
               name="high_power_equipment"
               value="true"
               defaultChecked={!!defaults?.highPowerEquipment}
-              className="mt-0.5 h-4 w-4 rounded-sm border-border-strong text-primary focus:ring-primary"
+              className="mt-0.5 h-4 w-4 accent-primary"
             />
             <span>
               <span className="font-medium">High-power / amplified equipment</span>
@@ -165,7 +165,7 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
               name="dogs_expected"
               value="true"
               defaultChecked={!!defaults?.dogsExpected}
-              className="mt-0.5 h-4 w-4 rounded-sm border-border-strong text-primary focus:ring-primary"
+              className="mt-0.5 h-4 w-4 accent-primary"
             />
             <span>
               <span className="font-medium">Dogs expected</span>

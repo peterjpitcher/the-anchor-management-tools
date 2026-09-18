@@ -8,6 +8,9 @@ vi.mock('@/app/actions/privateBookingActions', () => ({ editPrivateBookingPaymen
 vi.mock('@/ds', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
   Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props} />,
+  IconButton: ({ label, icon, size: _size, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { label?: string; icon?: React.ReactNode; size?: string }) => (
+    <button aria-label={label} {...props}>{icon}</button>
+  ),
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
   Select: (props: React.SelectHTMLAttributes<HTMLSelectElement>) => <select {...props} />,
   ConfirmDialog: () => null,

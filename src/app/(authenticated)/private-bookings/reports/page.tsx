@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { Button, PageHeader } from '@/ds'
+import { LinkButton, PageHeader } from '@/ds'
 import { getCurrentUserModuleActions, checkUserPermission } from '@/app/actions/rbac'
 import { loadPrivateBookingGrowthSnapshot } from '@/lib/analytics/private-booking-growth'
 import PrivateBookingGrowthReportClient from './_components/PrivateBookingGrowthReportClient'
@@ -34,9 +33,7 @@ export default async function PrivateBookingGrowthReportPage() {
         subtitle="Customer private events by the date they happened"
         className="mb-0"
         actions={
-          <Link href="/private-bookings">
-            <Button variant="secondary" size="sm">Back to bookings</Button>
-          </Link>
+          <LinkButton href="/private-bookings" variant="secondary" size="sm">Back to bookings</LinkButton>
         }
       />
       <PrivateBookingGrowthReportClient snapshot={snapshot} />

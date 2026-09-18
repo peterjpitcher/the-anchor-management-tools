@@ -4,7 +4,7 @@ import { DataTable } from '@/ds'
 import { CloudArrowUpIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import { Customer } from '@/types/database'
 import { toast } from '@/ds'
-import { Button } from '@/ds'
+import { Badge, Button } from '@/ds'
 import { formatPhoneForStorage } from '@/lib/utils'
 
 /** What the parent actually managed to do with the rows we handed it. */
@@ -270,11 +270,13 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
             Download Template
           </Button>
           {!isPreviewMode && (
+            // A label rather than a DS Button: clicking it opens the hidden file input. The
+            // classes are DS Button primary (md), so it matches the button beside it.
             <label
               htmlFor="csv-upload"
-              className="relative inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 cursor-pointer"
+              className="relative inline-flex h-btn-h max-shell:min-h-touch items-center justify-center gap-1.5 whitespace-nowrap rounded-default border border-primary bg-primary px-3 text-ui font-semibold text-primary-fg shadow-xs transition-[background,border-color] duration-[120ms] hover:border-primary-hover hover:bg-primary-hover cursor-pointer"
             >
-              <CloudArrowUpIcon className="w-5 h-5 mr-2" />
+              <CloudArrowUpIcon className="w-4 h-4" />
               <span>Upload CSV</span>
               <input
                 id="csv-upload"
@@ -297,7 +299,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
             </p>
           </div>
 
-          <div className="overflow-hidden shadow-sm ring-1 ring-black/5 md:rounded-lg mb-6">
+          <div className="mb-6">
             <DataTable<ParsedCustomer>
               data={parsedData}
               getRowKey={(row: ParsedCustomer) => parsedData.indexOf(row)}
@@ -309,11 +311,11 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
                 { key: 'mobile_number', header: 'Mobile Number', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.mobile_number}</span> },
                 { key: 'status', header: 'Status', cell: (c: ParsedCustomer) => (
                   c.isValid ? (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success-soft text-green-800">Valid</span>
+                    <Badge tone="success">Valid</Badge>
                   ) : c.isDuplicate ? (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-warning-fg" title={(c.errors||[]).join(', ')}>Duplicate</span>
+                    <Badge tone="warning" title={(c.errors||[]).join(', ')}>Duplicate</Badge>
                   ) : (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-danger-soft text-danger-fg" title={(c.errors||[]).join(', ')}>Invalid</span>
+                    <Badge tone="danger" title={(c.errors||[]).join(', ')}>Invalid</Badge>
                   )
                 ) },
               ]}
@@ -324,11 +326,11 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
                   {c.email && <div className="text-sm text-text-muted">{c.email}</div>}
                   <div className="mt-2">
                     {c.isValid ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success-soft text-green-800">Valid</span>
+                      <Badge tone="success">Valid</Badge>
                     ) : c.isDuplicate ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-warning-fg" title={(c.errors||[]).join(', ')}>Duplicate</span>
+                      <Badge tone="warning" title={(c.errors||[]).join(', ')}>Duplicate</Badge>
                     ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-danger-soft text-danger-fg" title={(c.errors||[]).join(', ')}>Invalid</span>
+                      <Badge tone="danger" title={(c.errors||[]).join(', ')}>Invalid</Badge>
                     )}
                   </div>
                 </div>

@@ -33,6 +33,7 @@ import {
   Stat,
   Badge,
   Button,
+  LinkButton,
   Avatar,
   Checkbox,
   SearchInput,
@@ -422,9 +423,7 @@ export default function CustomersClient({
           <div className="flex items-center gap-2">
             {/* Insights is the only way into the win-back campaign, and it needs
                 nothing more than customers.view, so it sits outside the manage gate. */}
-            <Link href="/customers/insights">
-              <Button variant="secondary" size="sm">Insights</Button>
-            </Link>
+            <LinkButton href="/customers/insights" variant="secondary" size="sm">Insights</LinkButton>
             {canManageCustomers && (
               <>
                 <Button variant="secondary" size="sm" onClick={openImportCustomers}>Import</Button>
@@ -566,7 +565,7 @@ export default function CustomersClient({
                             </Badge>
                           ))}
                           {customerPreferences[customer.id].length > 2 && (
-                            <span className="text-xs text-text-subtle">+{customerPreferences[customer.id].length - 2}</span>
+                            <span className="text-xs text-text-soft">+{customerPreferences[customer.id].length - 2}</span>
                           )}
                         </div>
                       ) : (
@@ -643,7 +642,7 @@ export default function CustomersClient({
                           </Badge>
                         ))}
                         {(customerPreferences[customer.id]?.length ?? 0) > 2 && (
-                          <span className="text-xs text-text-subtle">+{customerPreferences[customer.id].length - 2}</span>
+                          <span className="text-xs text-text-soft">+{customerPreferences[customer.id].length - 2}</span>
                         )}
                       </div>
                     ) : null}

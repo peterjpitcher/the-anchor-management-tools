@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { TrashIcon } from '@heroicons/react/24/outline'
 
-import { Button } from '@/ds'
+import { Button, IconButton } from '@/ds'
 import { Input } from '@/ds'
 import { Modal, ModalActions } from '@/ds'
 import { getBookingDeleteEligibility } from '@/app/actions/privateBookingActions'
@@ -116,25 +116,19 @@ export default function DeleteBookingButton({
 
   return (
     <>
-      <button
+      {/* One delete colour for every status: the label already says which booking it is. */}
+      <IconButton
         type="button"
-        className={`p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-          status === 'cancelled'
-            ? 'text-orange-600 hover:bg-orange-50 hover:text-orange-700'
-            : status && status !== 'draft'
-              ? 'text-red-700 hover:bg-danger-soft hover:text-danger-fg'
-              : 'text-danger hover:bg-danger-soft'
-        }`}
+        className="text-danger hover:bg-danger-soft hover:text-danger-fg"
         title={buttonTitle}
-        aria-label={buttonTitle}
+        label={buttonTitle}
         disabled={disabled}
         onClick={(e) => {
           e.stopPropagation()
           void handleOpen()
         }}
-      >
-        <TrashIcon className="h-5 w-5" />
-      </button>
+        icon={<TrashIcon className="h-5 w-5" />}
+      />
 
       <Modal
         open={modalOpen}
@@ -173,13 +167,13 @@ export default function DeleteBookingButton({
             <strong>{bookingName}</strong>. This cannot be undone.
           </p>
           {status === 'cancelled' ? (
-            <p className="text-orange-700">
+            <p className="text-warning-fg">
               This booking is cancelled. Deleting will permanently remove it and
               all associated items, messages, and documents.
             </p>
           ) : null}
           {eligibility && !eligibility.canDelete ? (
-            <p className="rounded-md bg-danger-soft px-3 py-2 text-red-700">
+            <p className="rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-danger-fg">
               {eligibility.reason ?? 'This booking has SMS activity and cannot be deleted.'}
             </p>
           ) : null}
@@ -191,7 +185,7 @@ export default function DeleteBookingButton({
               {hasEventDate ? 'To confirm, type the event date' : 'To confirm, type the booking id'}
               <span className="ml-1 font-mono text-text-muted">({confirmLabel})</span>
               {humanReadableDate ? (
-                <span className="ml-1 text-gray-400">— {humanReadableDate}</span>
+                <span className="ml-1 text-text-soft">— {humanReadableDate}</span>
               ) : null}
             </label>
             <Input
@@ -207,7 +201,7 @@ export default function DeleteBookingButton({
             />
           </div>
           {error ? (
-            <p className="rounded-md bg-danger-soft px-3 py-2 text-red-700">{error}</p>
+            <p className="rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-danger-fg">{error}</p>
           ) : null}
         </div>
       </Modal>

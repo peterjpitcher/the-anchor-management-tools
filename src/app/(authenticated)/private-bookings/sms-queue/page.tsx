@@ -191,7 +191,7 @@ export default async function SmsQueuePage() {
                       {sms.booking && (
                         <Link
                           href={`/private-bookings/${sms.booking.id}`}
-                          className="text-sm text-blue-600 hover:text-blue-700"
+                          className="text-sm text-primary hover:underline"
                         >
                           View Booking
                         </Link>
@@ -261,7 +261,7 @@ export default async function SmsQueuePage() {
       {/* Approved Messages */}
       <Section 
         title="Approved Messages"
-        icon={<CheckIcon className="h-6 w-6 text-green-600" />}
+        icon={<CheckIcon className="h-6 w-6 text-success" />}
         description={`${approvedSms.length} message${approvedSms.length !== 1 ? 's' : ''}`}
       >
         {approvedSms.length === 0 ? (
@@ -340,7 +340,7 @@ export default async function SmsQueuePage() {
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <Badge variant="error">Cancelled</Badge>
+                        <Badge tone="neutral">Cancelled</Badge>
                         {isDateChange && (
                           <Badge variant="warning">Date Changed</Badge>
                         )}

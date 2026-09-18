@@ -28,6 +28,7 @@ import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, typ
 import { PageLayout } from '@/ds'
 import { Card, CardBody, CardDescription, CardTitle } from '@/ds'
 import { Alert } from '@/ds'
+import { Badge } from '@/ds'
 import { Button } from '@/ds'
 import { SearchInput } from '@/ds'
 import { DataTable } from '@/ds'
@@ -39,6 +40,7 @@ import { MessageThread } from '@/components/features/messages/MessageThread'
 import { CustomerForm } from '@/components/features/customers/CustomerForm'
 import { CustomerLabelSelector } from '@/components/features/customers/CustomerLabelSelector'
 import { getTableBookingStatusBadgeClasses } from '@/lib/table-bookings/ui'
+import { privateBookingStatusTone } from '@/app/(authenticated)/private-bookings/_shared/status-ui'
 
 export const dynamic = 'force-dynamic'
 const CUSTOMER_DETAIL_SELECT = `
@@ -1083,9 +1085,7 @@ export default function CustomerViewPage() {
       sortable: true,
       sortFn: (a: UnifiedCustomerBookingRow, b: UnifiedCustomerBookingRow) => a.source_label.localeCompare(b.source_label),
       cell: (booking: UnifiedCustomerBookingRow) => (
-        <span className="rounded-md bg-surface-hover px-2 py-0.5 text-xs font-medium text-text">
-          {booking.source_label}
-        </span>
+        <Badge size="sm">{booking.source_label}</Badge>
       )
     },
     {
@@ -1106,17 +1106,28 @@ export default function CustomerViewPage() {
       sortable: true,
       sortFn: (a: UnifiedCustomerBookingRow, b: UnifiedCustomerBookingRow) => a.status.localeCompare(b.status),
       cell: (booking: UnifiedCustomerBookingRow) => {
-        // Status colours come from the booking status map (owner decision D4), so a status reads
-        // the same here as on FOH, BOH and the booking page. The label is the stored status
-        // title-cased ("No Show"); parking rows add the payment state ("Confirmed / Paid") and
-        // event rows say "Booked", so turn it back into a status key first.
+        // Status colours come from the booking status maps, so a status reads the same here as
+        // on the screens that own it: private bookings use the private booking map (the bookings
+        // list and calendar), everything else the table booking map (owner decision D4: FOH, BOH
+        // and the booking page). The label is the stored status title-cased ("No Show"); parking
+        // rows add the payment state ("Confirmed / Paid") and event rows say "Booked", so turn it
+        // back into a status key first.
         const statusKey = booking.status.split(' / ')[0].trim().toLowerCase().replace(/\s+/g, '_')
-        const statusClass = getTableBookingStatusBadgeClasses(statusKey === 'booked' ? 'confirmed' : statusKey)
 
+        if (booking.source === 'private') {
+          return (
+            <Badge size="sm" tone={privateBookingStatusTone(statusKey)}>
+              {booking.status}
+            </Badge>
+          )
+        }
+
+        // The table booking map returns Badge-matching class strings (it includes category
+        // tones Badge has no prop for), so they are applied over Badge's neutral colours.
         return (
-          <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${statusClass}`}>
+          <Badge size="sm" className={getTableBookingStatusBadgeClasses(statusKey === 'booked' ? 'confirmed' : statusKey)}>
             {booking.status}
-          </span>
+          </Badge>
         )
       }
     },
@@ -1290,7 +1301,7 @@ export default function CustomerViewPage() {
 
                 {(emailBlock.suppressed || emailBlock.deactivatedAt) && (
                   <div className="space-y-2">
-                    <p className="text-red-700">
+                    <p className="text-danger-fg">
                       Email to this address is blocked
                       {emailBlock.suppressionReason ? ` (${emailBlock.suppressionReason})` : ''}
                       {emailBlock.lastFailureReason ? `: ${emailBlock.lastFailureReason}` : '.'} It
@@ -1380,15 +1391,15 @@ export default function CustomerViewPage() {
               <CardBody>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-400" />
+                    <ChatBubbleLeftRightIcon className="h-5 w-5 text-text-subtle" />
                     <span
-                      className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-green-600' : 'text-danger'}`}
+                      className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-success-fg' : 'text-danger-fg'}`}
                     >
                       SMS {customer.sms_opt_in !== false ? 'Active' : 'Inactive'}
                     </span>
                   </div>
                   {customer.sms_delivery_failures && customer.sms_delivery_failures > 0 && (
-                    <span className="text-sm text-orange-600">
+                    <span className="text-sm text-warning-fg">
                       {customer.sms_delivery_failures} failed deliveries
                     </span>
                   )}
@@ -1400,15 +1411,15 @@ export default function CustomerViewPage() {
               <CardBody>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-400" />
+                    <ChatBubbleLeftRightIcon className="h-5 w-5 text-text-subtle" />
                     <span
-                      className={`text-sm font-medium ${customer.whatsapp_opt_in === true ? 'text-green-600' : 'text-danger'}`}
+                      className={`text-sm font-medium ${customer.whatsapp_opt_in === true ? 'text-success-fg' : 'text-danger-fg'}`}
                     >
                       WhatsApp {customer.whatsapp_opt_in === true ? 'Active' : 'Inactive'}
                     </span>
                   </div>
                   {customer.whatsapp_delivery_failures && customer.whatsapp_delivery_failures > 0 && (
-                    <span className="text-sm text-orange-600">
+                    <span className="text-sm text-warning-fg">
                       {customer.whatsapp_delivery_failures} failed deliveries
                     </span>
                   )}
@@ -1476,7 +1487,7 @@ export default function CustomerViewPage() {
                   </div>
                 ) : (
                   <p className="text-sm text-text whitespace-pre-wrap">
-                    {customer.internal_notes || <span className="text-gray-400 italic">No notes added</span>}
+                    {customer.internal_notes || <span className="text-text-soft italic">No notes added</span>}
                   </p>
                 )}
               </Card>
@@ -1489,9 +1500,7 @@ export default function CustomerViewPage() {
                     <CardTitle>Booking Snapshot</CardTitle>
                     <CardDescription>Quick totals across all booking types.</CardDescription>
                   </div>
-                  <span className="rounded-md bg-surface-hover px-2 py-1 text-xs text-text-muted">
-                    {bookingInsights.totalBookings}
-                  </span>
+                  <Badge size="sm">{bookingInsights.totalBookings}</Badge>
                 </div>
               }
             >
@@ -1566,7 +1575,7 @@ export default function CustomerViewPage() {
                 <Alert variant="error" title="Auto-deactivated" className="mt-4">
                   {customer.sms_deactivation_reason}
                   {customer.last_sms_failure_reason && (
-                    <p className="mt-1 text-sm text-red-700">
+                    <p className="mt-1 text-sm text-danger-fg">
                       Last error: {customer.last_sms_failure_reason}
                     </p>
                   )}
@@ -1623,7 +1632,7 @@ export default function CustomerViewPage() {
                 </div>
               </div>
               {customer.last_whatsapp_failure_reason && (
-                <p className="mt-4 text-sm text-orange-700">
+                <p className="mt-4 text-sm text-warning-fg">
                   Last failure: {customer.last_whatsapp_failure_reason}
                 </p>
               )}
@@ -1655,9 +1664,7 @@ export default function CustomerViewPage() {
                           <span className="font-medium text-text">
                             {formatLabel(row.channel)} {formatLabel(row.purpose)}
                           </span>
-                          <span className="rounded-md bg-surface px-2 py-1 text-xs text-text">
-                            {formatLabel(row.status)}
-                          </span>
+                          <Badge size="sm">{formatLabel(row.status)}</Badge>
                         </div>
                         <p className="mt-1 text-xs text-text-muted">
                           {row.captured_at ? formatLondonDateTime(row.captured_at) : 'Unknown time'} by {formatLabel(row.source)}
@@ -1782,9 +1789,9 @@ export default function CustomerViewPage() {
                         <span>{preference.category_name}</span>
                         <span>{preference.times_attended}</span>
                       </div>
-                      <div className="h-2 rounded-full bg-border">
+                      <div className="h-2 rounded-pill bg-border">
                         <div
-                          className="h-2 rounded-full bg-green-500"
+                          className="h-2 rounded-pill bg-chart-1"
                           style={{
                             width: `${Math.max((preference.times_attended / maxCategoryAttendance) * 100, 6)}%`
                           }}
@@ -1823,9 +1830,9 @@ export default function CustomerViewPage() {
                   Filter and sort every booking tied to this customer to understand what they attend most.
                 </CardDescription>
               </div>
-              <span className="rounded-md bg-surface-hover px-2 py-1 text-xs text-text-muted">
+              <Badge size="sm">
                 {filteredBookings.length} of {unifiedBookings.length}
-              </span>
+              </Badge>
             </div>
           }
         >
