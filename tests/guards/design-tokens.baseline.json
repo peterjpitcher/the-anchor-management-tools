@@ -111,29 +111,11 @@
   "src/app/actions/calendar-notes.ts": {
     "hex-colour": 1
   },
-  "src/app/actions/employee-birthdays.ts": {
-    "hex-colour": 15
-  },
   "src/app/actions/event-check-in.ts": {
     "hex-colour": 4
   },
   "src/app/actions/rota-day-info.ts": {
     "hex-colour": 1
-  },
-  "src/app/api/cron/event-checklist-reminders/route.ts": {
-    "hex-colour": 10
-  },
-  "src/app/api/cron/event-guest-engagement/route.ts": {
-    "hex-colour": 1
-  },
-  "src/app/api/cron/leave-approval-reminders/route.ts": {
-    "hex-colour": 4
-  },
-  "src/app/api/cron/rota-manager-alert/route.ts": {
-    "hex-colour": 19
-  },
-  "src/app/api/cron/rota-unfilled-urgent/route.ts": {
-    "hex-colour": 5
   },
   "src/app/api/employees/[employee_id]/starter-pack/route.ts": {
     "hex-colour": 1
@@ -152,9 +134,6 @@
   },
   "src/app/auth/confirm/route.ts": {
     "hex-colour": 5
-  },
-  "src/app/layout.tsx": {
-    "hex-colour": 1
   },
   "src/components/features/catering/CateringManager.tsx": {
     "raw-palette": 1
@@ -277,20 +256,11 @@
     "hex-colour": 2,
     "px-text-size": 4
   },
-  "src/lib/checklists/value-breach-email.ts": {
-    "hex-colour": 2
-  },
-  "src/lib/communications/monitoring.ts": {
-    "hex-colour": 3
-  },
   "src/lib/constants.ts": {
     "hex-colour": 6
   },
   "src/lib/contract-template.ts": {
     "hex-colour": 22
-  },
-  "src/lib/cron/alerting.ts": {
-    "hex-colour": 3
   },
   "src/lib/email/event-ticket-emails.ts": {
     "hex-colour": 6
@@ -442,9 +412,6 @@
   "src/lib/maintenance/photo-normalise.ts": {
     "hex-colour": 1
   },
-  "src/lib/manager-report/render.ts": {
-    "hex-colour": 10
-  },
   "src/lib/menu/allergen-report.ts": {
     "hex-colour": 24
   },
@@ -453,9 +420,6 @@
   },
   "src/lib/mileage/report/template.ts": {
     "hex-colour": 7
-  },
-  "src/lib/oj-projects/billing-alerts.ts": {
-    "hex-colour": 9
   },
   "src/lib/oj-statement.ts": {
     "hex-colour": 20
@@ -475,9 +439,6 @@
   "src/lib/private-bookings/event-sheet.ts": {
     "hex-colour": 18
   },
-  "src/lib/private-bookings/manager-notifications.ts": {
-    "hex-colour": 20
-  },
   "src/lib/quote-template-compact.ts": {
     "hex-colour": 28
   },
@@ -493,12 +454,6 @@
   "src/lib/recruitment/trial-brief-template.ts": {
     "hex-colour": 13
   },
-  "src/lib/refund-notifications.ts": {
-    "hex-colour": 1
-  },
-  "src/lib/rota/email-templates.ts": {
-    "hex-colour": 121
-  },
   "src/lib/short-links/channels.ts": {
     "hex-colour": 41
   },
@@ -511,13 +466,7 @@
   "src/lib/voucher-card-template.ts": {
     "hex-colour": 9
   },
-  "src/lib/vouchers/reminders.ts": {
-    "hex-colour": 1
-  },
   "src/lib/worker-agreement-template.ts": {
     "hex-colour": 23
-  },
-  "src/services/cashing-up.service.ts": {
-    "hex-colour": 6
   }
 }

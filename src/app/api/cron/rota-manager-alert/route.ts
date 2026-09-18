@@ -19,6 +19,7 @@ import {
 } from '@/lib/rota/week-readiness';
 import type { PublishedShiftSnapshot, RotaPublishShift } from '@/lib/rota/publish-status';
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils';
+import { STAFF } from '@/lib/brand/palette';
 
 // Prepare a fresh snapshot at 08:00 London on Friday, before the combined manager report.
 const TIMEZONE = 'Europe/London';
@@ -200,12 +201,12 @@ function readinessStateLabel(state: RotaWeekReadiness['state']): string {
 function moreLine(shown: number, total: number, noun: string): string {
   if (total <= shown) return '';
   const remaining = total - shown;
-  return `<p style="margin:6px 0 0;color:#666">and ${remaining} more ${plural(remaining, noun, `${noun}s`)}.</p>`;
+  return `<p style="margin:6px 0 0;color:${STAFF.textMuted}">and ${remaining} more ${plural(remaining, noun, `${noun}s`)}.</p>`;
 }
 
 function button(href: string, label: string, background: string): string {
   return `<p style="margin:12px 0 0">
-      <a href="${href}" style="background:${background};color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none">${escapeHtml(label)}</a>
+      <a href="${href}" style="background:${background};color:${STAFF.primaryFg};padding:10px 20px;border-radius:4px;text-decoration:none">${escapeHtml(label)}</a>
     </p>`;
 }
 
@@ -216,9 +217,9 @@ function unfilledShiftLine(shift: UnfilledShift): string {
     return `<li style="margin-bottom:6px">${base}</li>`;
   }
   const note = shift.rejectionNote
-    ? `<br><span style="color:#666;font-style:italic">${escapeHtml(shift.rejectionNote)}</span>`
+    ? `<br><span style="color:${STAFF.textMuted};font-style:italic">${escapeHtml(shift.rejectionNote)}</span>`
     : '';
-  return `<li style="margin-bottom:6px">${base}<br><span style="color:#b91c1c">Turned down by ${escapeHtml(shift.rejectedByName)}</span>${note}</li>`;
+  return `<li style="margin-bottom:6px">${base}<br><span style="color:${STAFF.danger}">Turned down by ${escapeHtml(shift.rejectedByName)}</span>${note}</li>`;
 }
 
 function pendingLeaveLine(leave: PendingLeave): string {
@@ -226,12 +227,12 @@ function pendingLeaveLine(leave: PendingLeave): string {
     ? formatDayLabel(leave.startDate)
     : `${formatDayLabel(leave.startDate)} to ${formatDayLabel(leave.endDate)}`;
   const asked = formatDateInLondon(leave.requestedAt, { day: 'numeric', month: 'short' });
-  return `<li style="margin-bottom:6px">${escapeHtml(leave.employeeName)}, ${escapeHtml(range)} <span style="color:#666">(asked ${escapeHtml(asked)})</span></li>`;
+  return `<li style="margin-bottom:6px">${escapeHtml(leave.employeeName)}, ${escapeHtml(range)} <span style="color:${STAFF.textMuted}">(asked ${escapeHtml(asked)})</span></li>`;
 }
 
 function weekReadinessLine(readiness: RotaWeekReadiness): string {
   const reasons = readiness.reasons.length
-    ? `<br><span style="color:#666">${escapeHtml(readiness.reasons.join(' '))}</span>`
+    ? `<br><span style="color:${STAFF.textMuted}">${escapeHtml(readiness.reasons.join(' '))}</span>`
     : '';
   return `<li style="margin-bottom:8px"><strong>Week of ${escapeHtml(formatWeekLabel(readiness.weekStart))}</strong>: ${escapeHtml(readinessStateLabel(readiness.state))}${reasons}</li>`;
 }
@@ -250,43 +251,43 @@ function buildRotaAlertEmailHtml(input: {
 }): string {
   const weekBlock = input.weeksNeedingAttention.length
     ? `
-      <h3 style="color:#b91c1c;margin-bottom:4px">${input.weeksNeedingAttention.length} ${plural(input.weeksNeedingAttention.length, 'week is', 'weeks are')} not ready for staff</h3>
-      <p style="margin-top:0;color:#666">Checked over the next ${HORIZON_WEEKS} weeks.</p>
+      <h3 style="color:${STAFF.danger};margin-bottom:4px">${input.weeksNeedingAttention.length} ${plural(input.weeksNeedingAttention.length, 'week is', 'weeks are')} not ready for staff</h3>
+      <p style="margin-top:0;color:${STAFF.textMuted}">Checked over the next ${HORIZON_WEEKS} weeks.</p>
       <ul style="padding-left:18px;margin:0">${input.weeksNeedingAttention.slice(0, MAX_DETAIL_ROWS).map(weekReadinessLine).join('')}</ul>
       ${moreLine(MAX_DETAIL_ROWS, input.weeksNeedingAttention.length, 'week')}
-      ${button(`${APP_URL}/rota`, 'Open the rota', '#b91c1c')}
+      ${button(`${APP_URL}/rota`, 'Open the rota', STAFF.danger)}
     `
     : '';
 
   const rejectedCount = input.unfilledShifts.filter(shift => shift.rejectedByName).length;
   const unfilledBlock = input.unfilledShifts.length
     ? `
-      <h3 style="color:#b91c1c;margin-bottom:4px">${input.unfilledShifts.length} ${plural(input.unfilledShifts.length, 'shift still needs', 'shifts still need')} somebody</h3>
-      <p style="margin-top:0;color:#666">${
+      <h3 style="color:${STAFF.danger};margin-bottom:4px">${input.unfilledShifts.length} ${plural(input.unfilledShifts.length, 'shift still needs', 'shifts still need')} somebody</h3>
+      <p style="margin-top:0;color:${STAFF.textMuted}">${
         rejectedCount > 0
           ? `${rejectedCount} of these ${plural(rejectedCount, 'was', 'were')} turned down by staff and ${plural(rejectedCount, 'has', 'have')} not been picked up.`
           : 'These are open shifts with nobody assigned.'
       }</p>
       <ul style="padding-left:18px;margin:0">${input.unfilledShifts.slice(0, MAX_DETAIL_ROWS).map(unfilledShiftLine).join('')}</ul>
       ${moreLine(MAX_DETAIL_ROWS, input.unfilledShifts.length, 'shift')}
-      ${button(`${APP_URL}/rota/reassign`, 'Reassign these shifts', '#b91c1c')}
+      ${button(`${APP_URL}/rota/reassign`, 'Reassign these shifts', STAFF.danger)}
     `
     : '';
 
   const leaveBlock = input.pendingLeave.length
     ? `
-      <h3 style="color:#92400e;margin-bottom:4px">${input.pendingLeave.length} holiday ${plural(input.pendingLeave.length, 'request is', 'requests are')} waiting for a decision</h3>
-      <p style="margin-top:0;color:#666">Soonest first. Full details are on the leave page.</p>
+      <h3 style="color:${STAFF.warningFg};margin-bottom:4px">${input.pendingLeave.length} holiday ${plural(input.pendingLeave.length, 'request is', 'requests are')} waiting for a decision</h3>
+      <p style="margin-top:0;color:${STAFF.textMuted}">Soonest first. Full details are on the leave page.</p>
       <ul style="padding-left:18px;margin:0">${input.pendingLeave.slice(0, MAX_DETAIL_ROWS).map(pendingLeaveLine).join('')}</ul>
       ${moreLine(MAX_DETAIL_ROWS, input.pendingLeave.length, 'request')}
-      ${button(`${APP_URL}/rota/leave`, 'Review holiday requests', '#92400e')}
+      ${button(`${APP_URL}/rota/leave`, 'Review holiday requests', STAFF.warningFg)}
     `
     : '';
 
   const failureBlock = input.failures.length
     ? `
-      <h3 style="color:#92400e;margin-bottom:4px">Some checks could not run</h3>
-      <p style="margin-top:0;color:#666">This email may be incomplete. Please check the rota directly.</p>
+      <h3 style="color:${STAFF.warningFg};margin-bottom:4px">Some checks could not run</h3>
+      <p style="margin-top:0;color:${STAFF.textMuted}">This email may be incomplete. Please check the rota directly.</p>
       <ul style="padding-left:18px;margin:0">${input.failures
         .map(failure => `<li style="margin-bottom:4px">${escapeHtml(failure.step)}: ${escapeHtml(failure.message)}</li>`)
         .join('')}</ul>
@@ -295,12 +296,12 @@ function buildRotaAlertEmailHtml(input: {
 
   return `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-      <h2 style="color:#b91c1c">Rota Action Required</h2>
+      <h2 style="color:${STAFF.danger}">Rota Action Required</h2>
       ${weekBlock}
       ${unfilledBlock}
       ${leaveBlock}
       ${failureBlock}
-      <p style="color:#aaa;font-size:12px">The Anchor Management Tools</p>
+      <p style="color:${STAFF.textMuted};font-size:12px">The Anchor Management Tools</p>
     </div>
   `;
 }

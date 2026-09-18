@@ -1,4 +1,5 @@
 import { formatDateInLondon, parseLondonDateTimeLocal } from '@/lib/dateUtils'
+import { STAFF } from '@/lib/brand/palette'
 import { MANAGER_REPORT_SECTIONS } from './types'
 import type { ManagerReportEntry, ManagerReportRenderInput, ManagerReportRendered, ManagerReportSection } from './types'
 
@@ -108,7 +109,7 @@ function clip(value: string, limit: number): string {
 }
 
 function page(title: string, contents: string): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)}</title></head><body style="margin:0;background:#f3f4f6;color:#1f2937;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5"><main style="max-width:680px;margin:24px auto;background:#fff;padding:28px 24px;border-radius:8px;overflow-wrap:anywhere">${contents}</main></body></html>`
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)}</title></head><body style="margin:0;background:${STAFF.surfaceHover};color:${STAFF.text};font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5"><main style="max-width:680px;margin:24px auto;background:${STAFF.surface};padding:28px 24px;border-radius:8px;overflow-wrap:anywhere">${contents}</main></body></html>`
 }
 
 /** Render stored notifications as escaped text; source HTML is never embedded. */
@@ -124,7 +125,7 @@ export function renderManagerReport(input: ManagerReportRenderInput): ManagerRep
   const subject = `The Anchor: Friday manager report, ${dateLabel(input.periodEnd)}`
   const totalLabel = `${input.entries.length} queued ${input.entries.length === 1 ? 'update' : 'updates'}`
   const introduction = 'Updates recorded during this period. Reminders and snapshots reflect their recorded date; check the management app for the current position.'
-  const header = `<p style="margin:0;color:#6b7280;font-size:12px;letter-spacing:1px">THE ANCHOR</p><h1 style="font-size:25px;margin:6px 0 12px">Friday manager report</h1><p>${escapeHtml(period)}<br><strong>${totalLabel}</strong></p><p style="color:#4b5563">${introduction}</p>`
+  const header = `<p style="margin:0;color:${STAFF.textMuted};font-size:12px;letter-spacing:1px">THE ANCHOR</p><h1 style="font-size:25px;margin:6px 0 12px">Friday manager report</h1><p>${escapeHtml(period)}<br><strong>${totalLabel}</strong></p><p style="color:${STAFF.textMuted}">${introduction}</p>`
   const html: string[] = [header]
   const full: string[] = [header, '<h2>Full details</h2>']
   const text: string[] = [subject, period, totalLabel, introduction]
@@ -138,8 +139,8 @@ export function renderManagerReport(input: ManagerReportRenderInput): ManagerRep
     const url = new URL(definition.path, appUrl.origin).href
     const unit = definition.snapshot ? 'snapshot' : 'update'
     const label = `${definition.title} (${entries.length} ${unit}${entries.length === 1 ? '' : 's'})`
-    const link = `<a href="${escapeHtml(url)}" style="color:#1d4ed8">Open ${escapeHtml(definition.title.toLowerCase())}</a>`
-    const heading = `<h2 style="font-size:19px;border-top:1px solid #e5e7eb;padding-top:18px;margin:24px 0 12px">${escapeHtml(label)}</h2>`
+    const link = `<a href="${escapeHtml(url)}" style="color:${STAFF.primary}">Open ${escapeHtml(definition.title.toLowerCase())}</a>`
+    const heading = `<h2 style="font-size:19px;border-top:1px solid ${STAFF.border};padding-top:18px;margin:24px 0 12px">${escapeHtml(label)}</h2>`
     html.push(heading)
     full.push(heading)
     text.push(`\n${label}`, url)
@@ -147,7 +148,7 @@ export function renderManagerReport(input: ManagerReportRenderInput): ManagerRep
       const empty = definition.snapshot
         ? 'No snapshot available for this report; check the management app.'
         : 'No queued updates in this period.'
-      html.push(`<p style="color:#6b7280">${empty}</p>`)
+      html.push(`<p style="color:${STAFF.textMuted}">${empty}</p>`)
       full.push(`<p>${empty}</p>`)
       text.push(empty)
     }
@@ -162,7 +163,7 @@ export function renderManagerReport(input: ManagerReportRenderInput): ManagerRep
       const fullBody = [metrics, body].filter(Boolean).join('\n\n')
       const inlineLimit = definition.inlineLimit ?? (definition.snapshot ? 900 : 420)
       const concise = clip([metrics, summarise(entry, body)].filter(Boolean).join('\n\n'), inlineLimit)
-      const item = (details: string, itemTitle: string): string => `<article style="margin:0 0 18px"><h3 style="font-size:15px;margin:0 0 3px">${escapeHtml(itemTitle)}</h3><p style="font-size:12px;color:#6b7280;margin:0 0 6px">${escapeHtml(recorded)}</p><p style="margin:0;white-space:pre-line">${escapeHtml(details || 'See the management app for details.')}</p></article>`
+      const item = (details: string, itemTitle: string): string => `<article style="margin:0 0 18px"><h3 style="font-size:15px;margin:0 0 3px">${escapeHtml(itemTitle)}</h3><p style="font-size:12px;color:${STAFF.textMuted};margin:0 0 6px">${escapeHtml(recorded)}</p><p style="margin:0;white-space:pre-line">${escapeHtml(details || 'See the management app for details.')}</p></article>`
       full.push(item(fullBody, title))
       const visibleTitle = clip(title, 150)
       const visibleHtml = item(concise, visibleTitle)
@@ -187,7 +188,7 @@ export function renderManagerReport(input: ManagerReportRenderInput): ManagerRep
   }
   if (needsAttachment) {
     const note = 'Some details are shortened above. The attached full report contains every queued update and its full text.'
-    html.splice(1, 0, `<p style="padding:12px;background:#f3f4f6">${note}</p>`)
+    html.splice(1, 0, `<p style="padding:12px;background:${STAFF.surfaceHover}">${note}</p>`)
     text.splice(4, 0, note)
   }
   return {

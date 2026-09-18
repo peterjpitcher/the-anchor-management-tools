@@ -11,6 +11,7 @@ import {
   type UnfilledShift,
 } from '@/lib/rota/unfilled-shifts';
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils';
+import { STAFF } from '@/lib/brand/palette';
 
 /**
  * Chases a shift with nobody on it inside the next week, every morning.
@@ -49,7 +50,7 @@ function shiftLine(todayIso: string, shift: UnfilledShift): string {
   const times = `${formatTime12Hour(shift.startTime)} to ${formatTime12Hour(shift.endTime)}`;
   const name = shift.templateName ? escapeHtml(shift.templateName) : escapeHtml(shift.department);
   const rejected = shift.rejectedByName
-    ? `<br><span style="color:#666;font-size:13px">turned down by ${escapeHtml(shift.rejectedByName)}` +
+    ? `<br><span style="color:${STAFF.textMuted};font-size:13px">turned down by ${escapeHtml(shift.rejectedByName)}` +
       (shift.rejectionNote ? `: ${escapeHtml(shift.rejectionNote)}` : '') +
       '</span>'
     : '';
@@ -68,12 +69,12 @@ function buildUrgentUnfilledEmailHtml(todayIso: string, shifts: UnfilledShift[])
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px">
       <h2 style="margin-bottom:4px">${shifts.length} unfilled ${shifts.length === 1 ? 'shift' : 'shifts'} in the next week</h2>
-      <p style="margin-top:0;color:#666">${escapeHtml(lead)}</p>
+      <p style="margin-top:0;color:${STAFF.textMuted}">${escapeHtml(lead)}</p>
       <ul style="padding-left:18px">${shifts.map(shift => shiftLine(todayIso, shift)).join('')}</ul>
       <p style="margin-top:20px">
-        <a href="${escapeHtml(href)}" style="background:#16a34a;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block">Fill these shifts</a>
+        <a href="${escapeHtml(href)}" style="background:${STAFF.primary};color:${STAFF.primaryFg};padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block">Fill these shifts</a>
       </p>
-      <p style="color:#888;font-size:12px">Sent every morning while a shift inside the next week is unfilled.</p>
+      <p style="color:${STAFF.textMuted};font-size:12px">Sent every morning while a shift inside the next week is unfilled.</p>
     </div>
   `;
 }

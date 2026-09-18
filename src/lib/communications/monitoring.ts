@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { escapeHtml, redactPii } from '@/lib/cron/alerting'
+import { STAFF } from '@/lib/brand/palette'
 import { sendEmail } from '@/lib/email/emailService'
 import { logger } from '@/lib/logger'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
@@ -58,13 +59,13 @@ async function sendHealthAlert(report: CommunicationHealthReport): Promise<boole
 
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:640px;">
-      <h2 style="color:#b45309;">Communications health alert</h2>
+      <h2 style="color:${STAFF.warningFg};">Communications health alert</h2>
       <p>One or more communications monitoring thresholds were breached.</p>
       <table style="border-collapse:collapse;width:100%;font-size:14px;">
         <thead><tr><th align="left">Metric</th><th align="left">Value</th><th align="left">Threshold</th></tr></thead>
         <tbody>${rows.join('')}</tbody>
       </table>
-      <pre style="background:#f9fafb;border:1px solid #e5e7eb;padding:12px;border-radius:4px;white-space:pre-wrap;font-size:12px;">${escapeHtml(redactPii(JSON.stringify(report.metrics, null, 2)))}</pre>
+      <pre style="background:${STAFF.surface2};border:1px solid ${STAFF.border};padding:12px;border-radius:4px;white-space:pre-wrap;font-size:12px;">${escapeHtml(redactPii(JSON.stringify(report.metrics, null, 2)))}</pre>
     </div>
   `.trim()
 

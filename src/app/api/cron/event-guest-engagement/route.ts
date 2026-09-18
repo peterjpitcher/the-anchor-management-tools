@@ -10,6 +10,7 @@ import { createEventManageToken } from '@/lib/events/manage-booking'
 import { createGuestToken } from '@/lib/guest/tokens'
 import { buildGuestReviewUrl } from '@/lib/guest/review-short-link'
 import { sendEmail } from '@/lib/email/emailService'
+import { GUEST } from '@/lib/brand/palette'
 import { sendCrossPromoForEvent, sendFollowUpForEvent, hasReachedDailyPromoLimit, resolveEventStart } from '@/lib/sms/cross-promo'
 import type { CrossPromoMode, FollowUpRecipient } from '@/lib/sms/cross-promo'
 import {
@@ -521,7 +522,7 @@ function buildTableReviewEmail(input: { firstName: string; redirectUrl: string }
   return {
     subject: 'Thanks for visiting The Anchor',
     html: [
-      '<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">',
+      `<div style="font-family:Arial,sans-serif;line-height:1.5;color:${GUEST.text}">`,
       `<p>Hi ${safeFirstName}, thanks for popping in.</p>`,
       `<p>If you have 30 seconds, a quick review means the world to us: <a href="${safeRedirectUrl}">leave a review</a>.</p>`,
       '<p>The Anchor</p>',

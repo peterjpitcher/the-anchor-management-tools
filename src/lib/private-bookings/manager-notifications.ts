@@ -4,6 +4,7 @@ import { queueManagerReportEmail } from '@/lib/manager-report/queue'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createGuestToken } from '@/lib/guest/tokens'
 import { logger } from '@/lib/logger'
+import { STAFF } from '@/lib/brand/palette'
 
 const LONDON_TIMEZONE = 'Europe/London'
 const DEFAULT_MANAGER_EMAIL = 'manager@the-anchor.pub'
@@ -240,17 +241,17 @@ export async function queueManagerPrivateBookingsWeeklyDigestEmail(
       ? event.triggerLabels
           .map(
             (label) =>
-              `<span style="display:inline-block;background:#f3f4f6;color:#374151;font-size:12px;padding:2px 8px;border-radius:4px;margin-right:4px;margin-top:4px;">${escapeHtml(label)}</span>`
+              `<span style="display:inline-block;background:${STAFF.surfaceHover};color:${STAFF.text};font-size:12px;padding:2px 8px;border-radius:4px;margin-right:4px;margin-top:4px;">${escapeHtml(label)}</span>`
           )
           .join('')
       : ''
 
     return [
-      '<div style="padding:10px 12px;margin-bottom:8px;background:#fafafa;border-radius:4px;">',
+      `<div style="padding:10px 12px;margin-bottom:8px;background:${STAFF.surface2};border-radius:4px;">`,
       `<div><strong>${escapeHtml(event.customerName)}</strong></div>`,
-      `<div style="font-size:14px;color:#4b5563;margin-top:2px;">${escapeHtml(formatEventMoment(event.eventDate, event.startTime))} · ${escapeHtml(`${event.guestCount ?? 0} guests`)} · ${escapeHtml(event.eventType?.trim() || 'Private event')}</div>`,
+      `<div style="font-size:14px;color:${STAFF.textMuted};margin-top:2px;">${escapeHtml(formatEventMoment(event.eventDate, event.startTime))} · ${escapeHtml(`${event.guestCount ?? 0} guests`)} · ${escapeHtml(event.eventType?.trim() || 'Private event')}</div>`,
       tagsHtml ? `<div style="margin-top:4px;">${tagsHtml}</div>` : '',
-      `<div style="margin-top:6px;"><a href="${escapeHtml(event.bookingUrl)}" style="color:#2563eb;font-size:13px;">View booking →</a></div>`,
+      `<div style="margin-top:6px;"><a href="${escapeHtml(event.bookingUrl)}" style="color:${STAFF.primary};font-size:13px;">View booking →</a></div>`,
       '</div>'
     ].join('')
   }
@@ -275,11 +276,11 @@ export async function queueManagerPrivateBookingsWeeklyDigestEmail(
     const linesHtml = tierEvents
       .map(
         (event) =>
-          `<div style="font-size:14px;padding:4px 0;color:#374151;">${escapeHtml(event.customerName)} · ${escapeHtml(formatEventMoment(event.eventDate, event.startTime))} · ${escapeHtml(`${event.guestCount ?? 0} guests`)} · ${escapeHtml(event.eventType?.trim() || 'Private event')}</div>`
+          `<div style="font-size:14px;padding:4px 0;color:${STAFF.text};">${escapeHtml(event.customerName)} · ${escapeHtml(formatEventMoment(event.eventDate, event.startTime))} · ${escapeHtml(`${event.guestCount ?? 0} guests`)} · ${escapeHtml(event.eventType?.trim() || 'Private event')}</div>`
       )
       .join('')
     return [
-      '<div style="border-left:4px solid #16a34a;padding-left:16px;margin-bottom:24px;">',
+      `<div style="border-left:4px solid ${STAFF.success};padding-left:16px;margin-bottom:24px;">`,
       `<h3 style="margin:0 0 8px 0;font-size:16px;">On Track (${tierEvents.length})</h3>`,
       linesHtml,
       '</div>'
@@ -288,11 +289,11 @@ export async function queueManagerPrivateBookingsWeeklyDigestEmail(
 
   const statsBarHtml = `<p style="font-size:16px;margin-bottom:16px;"><strong>${tier1.length}</strong> Action Required | <strong>${tier2.length}</strong> Needs Attention | <strong>${tier3.length}</strong> On Track</p>`
 
-  const quickLinkHtml = `<p style="margin-bottom:20px;"><a href="${escapeHtml(privateBookingsUrl)}" style="color:#2563eb;">Open Private Bookings →</a></p>`
+  const quickLinkHtml = `<p style="margin-bottom:20px;"><a href="${escapeHtml(privateBookingsUrl)}" style="color:${STAFF.primary};">Open Private Bookings →</a></p>`
 
   const pendingSmsHtml =
     input.pendingSmsCount > 0
-      ? `<div style="margin-top:16px;padding:12px;background:#fef3c7;border-radius:6px;"><strong>${input.pendingSmsCount}</strong> SMS pending approval · <a href="${escapeHtml(input.smsQueueUrl)}" style="color:#2563eb;">Review queue →</a></div>`
+      ? `<div style="margin-top:16px;padding:12px;background:${STAFF.warningSoft};border-radius:6px;"><strong>${input.pendingSmsCount}</strong> SMS pending approval · <a href="${escapeHtml(input.smsQueueUrl)}" style="color:${STAFF.primary};">Review queue →</a></div>`
       : ''
 
   const staleOutcomes = input.stalePendingOutcomes ?? []
@@ -301,22 +302,22 @@ export async function queueManagerPrivateBookingsWeeklyDigestEmail(
         const rowsHtml = staleOutcomes
           .map(
             (row) =>
-              `<div style="font-size:14px;padding:4px 0;color:#374151;">${escapeHtml(row.customerName)} · ${escapeHtml(formatDateOnly(row.eventDate))} · <strong>${row.daysSinceEmail} days</strong> since outcome email · <a href="${escapeHtml(row.bookingUrl)}" style="color:#2563eb;">View →</a></div>`
+              `<div style="font-size:14px;padding:4px 0;color:${STAFF.text};">${escapeHtml(row.customerName)} · ${escapeHtml(formatDateOnly(row.eventDate))} · <strong>${row.daysSinceEmail} days</strong> since outcome email · <a href="${escapeHtml(row.bookingUrl)}" style="color:${STAFF.primary};">View →</a></div>`
           )
           .join('')
-        return `<div style="margin-top:16px;padding:12px;background:#fee2e2;border-left:4px solid #dc2626;border-radius:6px;"><h3 style="margin:0 0 8px 0;font-size:16px;">Stale pending outcomes (${staleOutcomes.length})</h3><p style="font-size:13px;color:#6b7280;margin:0 0 8px 0;">Outcome email sent over 14 days ago but still marked pending. Please click one of the links in the original email.</p>${rowsHtml}</div>`
+        return `<div style="margin-top:16px;padding:12px;background:${STAFF.dangerSoft};border-left:4px solid ${STAFF.danger};border-radius:6px;"><h3 style="margin:0 0 8px 0;font-size:16px;">Stale pending outcomes (${staleOutcomes.length})</h3><p style="font-size:13px;color:${STAFF.textMuted};margin:0 0 8px 0;">Outcome email sent over 14 days ago but still marked pending. Please click one of the links in the original email.</p>${rowsHtml}</div>`
       })()
     : ''
 
-  const footerHtml = `<p style="margin-top:24px;font-size:12px;color:#9ca3af;">Included in the Friday manager report · <a href="${escapeHtml(privateBookingsUrl)}" style="color:#9ca3af;">Manage in Anchor Management Tools</a></p>`
+  const footerHtml = `<p style="margin-top:24px;font-size:12px;color:${STAFF.textMuted};">Included in the Friday manager report · <a href="${escapeHtml(privateBookingsUrl)}" style="color:${STAFF.textMuted};">Manage in Anchor Management Tools</a></p>`
 
   let bodyHtml: string
   if (events.length === 0) {
-    bodyHtml = '<p style="margin-top:16px;color:#6b7280;">All clear - no upcoming private events. Enjoy your week.</p>'
+    bodyHtml = `<p style="margin-top:16px;color:${STAFF.textMuted};">All clear - no upcoming private events. Enjoy your week.</p>`
   } else {
     bodyHtml = [
-      renderTierSectionHtml('Action Required', tier1, '#dc2626'),
-      renderTierSectionHtml('Needs Attention', tier2, '#d97706'),
+      renderTierSectionHtml('Action Required', tier1, STAFF.danger),
+      renderTierSectionHtml('Needs Attention', tier2, STAFF.warning),
       renderTier3SectionHtml(tier3)
     ].join('')
   }

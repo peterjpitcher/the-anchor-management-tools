@@ -4,6 +4,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { getTodayIsoDate, formatDate, formatDateFull } from '@/lib/dateUtils'
 import { getOutstandingTodos, EVENT_CHECKLIST_DEFINITIONS } from '@/lib/event-checklist'
 import { sendEmail } from '@/lib/email/emailService'
+import { STAFF } from '@/lib/brand/palette'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -142,11 +143,11 @@ export async function GET(request: Request) {
 
     const htmlBody = [`
       <h2 style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin-bottom: 16px;">Event checklist reminder</h2>
-      <p style="margin: 0 0 12px 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #374151;">
+      <p style="margin: 0 0 12px 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: ${STAFF.text};">
         ${overdueCount} overdue • ${dueTodayCount} due today • ${EVENT_CHECKLIST_DEFINITIONS.length} tasks per event
       </p>
-      <p style="margin: 0 0 16px 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #4b5563;">
-        View full checklist: <a href="${appUrl}/events/todo" style="color: #2563eb;">${appUrl}/events/todo</a>
+      <p style="margin: 0 0 16px 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: ${STAFF.textMuted};">
+        View full checklist: <a href="${appUrl}/events/todo" style="color: ${STAFF.primary};">${appUrl}/events/todo</a>
       </p>
     `]
 
@@ -155,23 +156,23 @@ export async function GET(request: Request) {
       .forEach(summary => {
         const eventDateFormatted = formatDateFull(summary.eventDate)
         const taskItems = summary.tasks.map(task => {
-          const badgeColor = task.status === 'overdue' ? '#dc2626' : '#d97706'
+          const badgeColor = task.status === 'overdue' ? STAFF.danger : STAFF.warningFg
           const badgeLabel = task.status === 'overdue' ? 'Overdue' : 'Due today'
           const dueCopy = task.status === 'overdue' ? 'since' : 'on'
           return `
             <li style="margin-bottom: 8px;">
               <span style="display: inline-block; min-width: 90px; font-weight: 600; color: ${badgeColor};">${badgeLabel}</span>
-              <span style="font-weight: 500; color: #111827;">${task.label}</span>
-              <span style="color: #6b7280;"> – due ${dueCopy} ${task.dueDateFormatted} (${task.channel})</span>
+              <span style="font-weight: 500; color: ${STAFF.text};">${task.label}</span>
+              <span style="color: ${STAFF.textMuted};"> – due ${dueCopy} ${task.dueDateFormatted} (${task.channel})</span>
             </li>
           `
         }).join('')
 
         htmlBody.push(`
           <div style="margin-bottom: 20px;">
-            <h3 style="margin: 0 0 4px 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111827;">${summary.eventName}</h3>
-            <p style="margin: 0 0 8px 0; color: #6b7280; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">Event ${eventDateFormatted}</p>
-            <ul style="margin: 0; padding-left: 18px; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #374151;">
+            <h3 style="margin: 0 0 4px 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: ${STAFF.text};">${summary.eventName}</h3>
+            <p style="margin: 0 0 8px 0; color: ${STAFF.textMuted}; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">Event ${eventDateFormatted}</p>
+            <ul style="margin: 0; padding-left: 18px; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: ${STAFF.text};">
               ${taskItems}
             </ul>
           </div>

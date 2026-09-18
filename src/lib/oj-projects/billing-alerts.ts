@@ -1,5 +1,6 @@
 import { sendEmail } from '@/lib/email/emailService'
 import { escapeHtml, redactPii } from '@/lib/cron/alerting'
+import { STAFF } from '@/lib/brand/palette'
 
 /**
  * Failure tier for billing alert categorisation.
@@ -90,10 +91,10 @@ export async function sendBillingRunAlert(results: BillingRunResults): Promise<v
     const tier = v.failure_tier || classifyFailureTier(v)
     const safeName = escapeHtml(redactPii(v.vendor_name || v.vendor_id))
     const safeTier = escapeHtml(tier)
-    const tierColor = tier === 'hard_failure' ? '#dc2626'
-      : tier === 'email_failure' ? '#ea580c'
-        : tier === 'soft_failure' ? '#d97706'
-          : '#6b7280'
+    const tierColor = tier === 'hard_failure' ? STAFF.danger
+      : tier === 'email_failure' ? STAFF.warningFg
+        : tier === 'soft_failure' ? STAFF.warningFg
+          : STAFF.textMuted
 
     return `<tr>
       <td style="padding:4px 8px;">${safeName}</td>
@@ -108,7 +109,7 @@ export async function sendBillingRunAlert(results: BillingRunResults): Promise<v
 
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:600px;">
-      <h2 style="color:#dc2626;">OJ Projects Billing Alert</h2>
+      <h2 style="color:${STAFF.danger};">OJ Projects Billing Alert</h2>
       <table style="border-collapse:collapse;width:100%;font-size:14px;">
         <tr><td style="padding:4px 8px;font-weight:bold;">Period</td><td style="padding:4px 8px;">${safePeriod}</td></tr>
         <tr><td style="padding:4px 8px;font-weight:bold;">Time</td><td style="padding:4px 8px;">${safeTimestamp}</td></tr>
@@ -117,21 +118,21 @@ export async function sendBillingRunAlert(results: BillingRunResults): Promise<v
         <tr><td style="padding:4px 8px;font-weight:bold;">Processed</td><td style="padding:4px 8px;">${results.processed}</td></tr>
         <tr><td style="padding:4px 8px;font-weight:bold;">Sent</td><td style="padding:4px 8px;">${results.sent}</td></tr>
         <tr><td style="padding:4px 8px;font-weight:bold;">Skipped</td><td style="padding:4px 8px;">${results.skipped}</td></tr>
-        <tr><td style="padding:4px 8px;font-weight:bold;">Failed</td><td style="padding:4px 8px;color:#dc2626;font-weight:bold;">${results.failed}</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:bold;">Failed</td><td style="padding:4px 8px;color:${STAFF.danger};font-weight:bold;">${results.failed}</td></tr>
       </table>
-      ${invoicedNobody ? `<p style="margin-top:16px;font-weight:bold;color:#dc2626;">
+      ${invoicedNobody ? `<p style="margin-top:16px;font-weight:bold;color:${STAFF.danger};">
         This run raised no invoices at all (failure type: zero_vendor_run). If work was
         logged for this period, billing has not happened and needs investigating.
       </p>` : ''}
       ${failedVendors.length > 0 ? `<h3 style="margin-top:16px;">Failed Vendors</h3>
       <table style="border-collapse:collapse;width:100%;font-size:13px;">
-        <tr style="background:#f9fafb;">
+        <tr style="background:${STAFF.surface2};">
           <th style="padding:4px 8px;text-align:left;font-weight:bold;">Vendor</th>
           <th style="padding:4px 8px;text-align:left;font-weight:bold;">Failure Type</th>
         </tr>
         ${vendorRows.join('\n        ')}
       </table>` : ''}
-      <p style="margin-top:16px;font-size:12px;color:#6b7280;">
+      <p style="margin-top:16px;font-size:12px;color:${STAFF.textMuted};">
         Check the billing runs table or Vercel logs for full details. No raw error messages are included in this alert for security.
       </p>
     </div>`.trim()
