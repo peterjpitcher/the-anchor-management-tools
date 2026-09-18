@@ -429,14 +429,8 @@
   "src/app/api/cron/event-guest-engagement/route.ts": {
     "hex-colour": 1
   },
-  "src/app/api/cron/leave-approval-reminders/route.ts": {
-    "hex-colour": 4
-  },
   "src/app/api/cron/oj-projects-billing/route.ts": {
     "bare-rounded": 1
-  },
-  "src/app/api/cron/rota-manager-alert/route.ts": {
-    "hex-colour": 19
   },
   "src/app/api/cron/rota-unfilled-urgent/route.ts": {
     "hex-colour": 5
@@ -713,9 +707,6 @@
     "hex-colour": 2,
     "px-text-size": 4
   },
-  "src/lib/checklists/value-breach-email.ts": {
-    "hex-colour": 2
-  },
   "src/lib/communications/monitoring.ts": {
     "hex-colour": 3
   },
@@ -879,9 +870,6 @@
   "src/lib/maintenance/photo-normalise.ts": {
     "hex-colour": 1
   },
-  "src/lib/manager-report/render.ts": {
-    "hex-colour": 10
-  },
   "src/lib/menu/allergen-report.ts": {
     "hex-colour": 24
   },
@@ -919,9 +907,6 @@
   "src/lib/private-bookings/event-sheet.ts": {
     "hex-colour": 18
   },
-  "src/lib/private-bookings/manager-notifications.ts": {
-    "hex-colour": 20
-  },
   "src/lib/quote-template-compact.ts": {
     "hex-colour": 28
   },
@@ -941,7 +926,7 @@
     "hex-colour": 1
   },
   "src/lib/rota/email-templates.ts": {
-    "hex-colour": 121
+    "hex-colour": 111
   },
   "src/lib/short-links/channels.ts": {
     "hex-colour": 41
