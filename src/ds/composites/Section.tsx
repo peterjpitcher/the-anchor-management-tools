@@ -29,8 +29,8 @@ const paddingClasses = {
 
 const variantClasses = {
   default: '',
-  gray: 'bg-gray-50',
-  bordered: 'border border-gray-200',
+  gray: 'bg-surface-2',
+  bordered: 'border border-border',
 }
 
 export const Section = forwardRef<HTMLElement, SectionProps>(
@@ -70,20 +70,20 @@ export const Section = forwardRef<HTMLElement, SectionProps>(
               collapsible && 'cursor-pointer select-none',
               (variant === 'gray' || variant === 'bordered') &&
                 children &&
-                'border-b border-gray-200',
+                'border-b border-border',
             )}
             onClick={collapsible ? () => setIsCollapsed(!isCollapsed) : undefined}
           >
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 {title && (
-                  <h3 className="text-lg font-medium leading-6 text-gray-900 flex items-center gap-2">
-                    {icon && <span className="text-gray-400">{icon}</span>}
+                  <h3 className="text-lg font-medium leading-6 text-text-strong flex items-center gap-2">
+                    {icon && <span className="text-text-subtle">{icon}</span>}
                     {title}
                     {collapsible && (
                       <svg
                         className={cn(
-                          'w-5 h-5 text-gray-400 transition-transform duration-200',
+                          'w-5 h-5 text-text-subtle transition-transform duration-200',
                           isCollapsed ? '-rotate-90' : 'rotate-0',
                         )}
                         fill="none"
@@ -99,7 +99,7 @@ export const Section = forwardRef<HTMLElement, SectionProps>(
                   </h3>
                 )}
                 {sectionDescription && (
-                  <p className={cn('text-sm text-gray-500', title && 'mt-1')}>
+                  <p className={cn('text-sm text-text-muted', title && 'mt-1')}>
                     {sectionDescription}
                   </p>
                 )}

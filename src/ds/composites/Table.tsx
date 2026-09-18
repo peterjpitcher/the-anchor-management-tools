@@ -164,7 +164,7 @@ export function TableCell({ children, className, align = 'left', colSpan }: Tabl
     <td
       colSpan={colSpan}
       className={cn(
-        'px-4 py-cell-y text-[13px] text-text whitespace-nowrap',
+        'px-4 py-cell-y text-ui text-text whitespace-nowrap',
         alignClass,
         className,
       )}

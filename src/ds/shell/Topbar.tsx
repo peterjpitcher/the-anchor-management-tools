@@ -48,7 +48,7 @@ export function Topbar({ onMenuOpen, fohMode = false, userName, onSignOut, isSig
       {onMenuOpen && (
         <button
           type="button"
-          className="shrink-0 p-1.5 -ml-1 mr-2 rounded-[var(--radius-default)] hover:bg-surface-hover transition-colors"
+          className="shrink-0 p-1.5 -ml-1 mr-2 rounded-default hover:bg-surface-hover transition-colors focus-visible:outline-hidden focus-visible:shadow-ring"
           onClick={onMenuOpen}
           aria-label="Open menu"
         >
@@ -71,7 +71,7 @@ export function Topbar({ onMenuOpen, fohMode = false, userName, onSignOut, isSig
             <button
               type="button"
               onClick={() => setAvatarOpen(!avatarOpen)}
-              className="rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+              className="rounded-full focus-visible:outline-hidden focus-visible:shadow-ring"
               aria-label="User menu"
               aria-expanded={avatarOpen}
               aria-haspopup="true"
@@ -80,7 +80,7 @@ export function Topbar({ onMenuOpen, fohMode = false, userName, onSignOut, isSig
             </button>
 
             {avatarOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-[var(--radius-default)] shadow-lg py-1 z-50">
+              <div className="absolute right-0 mt-2 w-48 bg-surface border border-border rounded-default shadow-lg py-1 z-50">
                 <div className="px-3 py-2 border-b border-border">
                   <p className="text-sm font-medium text-text truncate">{userName}</p>
                 </div>
