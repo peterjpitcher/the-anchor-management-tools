@@ -232,7 +232,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
               </CardBody>
             ) : (
               <>
-                <Table className="[--spacing-row-h:10px]">
+                <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Employee</TableHead>
