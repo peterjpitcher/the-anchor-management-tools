@@ -74,12 +74,12 @@ function StarRating({ rating }: { rating: number }) {
 
 function ContactCell({ item }: { item: ReviewFeedbackItem }) {
   if (!item.contactConsent) {
-    return <span className="text-xs text-text-subtle">No contact details</span>
+    return <span className="text-xs text-text-soft">No contact details</span>
   }
 
   const hasAny = item.customerName || item.customerEmail || item.customerPhone
   if (!hasAny) {
-    return <span className="text-xs text-text-subtle">No contact details</span>
+    return <span className="text-xs text-text-soft">No contact details</span>
   }
 
   return (
@@ -217,7 +217,7 @@ function FeedbackRow({ item, canManage, onUpdated }: RowProps) {
         {item.comments ? (
           <span className="text-ui [overflow-wrap:anywhere]">{item.comments}</span>
         ) : (
-          <span className="text-xs text-text-subtle">No comment</span>
+          <span className="text-xs text-text-soft">No comment</span>
         )}
       </TableCell>
       <TableCell className="py-2 align-top whitespace-normal">
@@ -243,7 +243,7 @@ function FeedbackCard({ item, canManage, onUpdated }: RowProps) {
       {item.comments ? (
         <p className="break-words text-ui text-text [overflow-wrap:anywhere]">{item.comments}</p>
       ) : (
-        <p className="text-xs text-text-subtle">No comment</p>
+        <p className="text-xs text-text-soft">No comment</p>
       )}
       <div>
         <p className="mb-1 text-meta font-medium uppercase tracking-wider text-text-muted">Contact</p>
@@ -369,7 +369,7 @@ export function FeedbackInboxClient({
             <span className="text-sm font-medium">
               {showResolved ? 'No feedback yet' : 'No open feedback'}
             </span>
-            <span className="text-xs text-text-subtle">
+            <span className="text-xs text-text-soft">
               {showResolved
                 ? 'Guest feedback submitted through the review funnel will appear here.'
                 : 'Resolved and dismissed items are hidden — use "Show resolved" to see them.'}

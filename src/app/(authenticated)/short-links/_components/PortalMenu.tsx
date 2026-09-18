@@ -123,7 +123,8 @@ export function PortalMenu({ trigger, entries, width = 224, maxHeight = 420, dis
                 key={entry.key}
                 type="button"
                 className={cn(
-                  'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-hover',
+                  // Inset ring: the menu scrolls, which would clip an outer one.
+                  'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset',
                   entry.danger ? 'text-danger' : 'text-text',
                   entry.disabled && 'opacity-50'
                 )}

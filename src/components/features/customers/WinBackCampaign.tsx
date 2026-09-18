@@ -15,7 +15,7 @@
 
 import { useState, useTransition } from 'react'
 import { MegaphoneIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline'
-import { Button } from '@/ds'
+import { Badge, Button, Textarea } from '@/ds'
 import { Select } from '@/ds'
 import { ConfirmDialog } from '@/ds'
 import { toast } from '@/ds'
@@ -97,16 +97,16 @@ export function WinBackCampaign() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
+        className="flex w-full items-center justify-between rounded-lg px-4 py-3 text-left focus-visible:outline-hidden focus-visible:shadow-ring-inset"
         aria-expanded={open}
       >
         <div className="flex items-center gap-2">
-          <MegaphoneIcon className="h-5 w-5 text-blue-600" aria-hidden="true" />
+          <MegaphoneIcon className="h-5 w-5 text-primary" aria-hidden="true" />
           <span className="text-sm font-semibold text-text">Win-Back Campaign</span>
           {lastResult !== null && (
-            <span className="rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-green-700">
+            <Badge tone="success" size="sm">
               Last sent: {lastResult.sent}/{lastResult.count}
-            </span>
+            </Badge>
           )}
         </div>
         {open ? (
@@ -138,7 +138,7 @@ export function WinBackCampaign() {
           {/* Message composer */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-text">
+              <label htmlFor="win-back-message" className="block text-sm font-medium text-text">
                 SMS message
               </label>
               <span
@@ -147,28 +147,21 @@ export function WinBackCampaign() {
                 {charCount}/{MAX_CHARS}
               </span>
             </div>
-            <textarea
+            {/* The DS error slot prints the same words, styles and position as the old line. */}
+            <Textarea
+              id="win-back-message"
               value={message}
               onChange={handleMessageChange}
               rows={4}
               maxLength={160}
-              className={`w-full rounded-md border px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                isOverLimit
-                  ? 'border-red-400 focus:ring-red-400'
-                  : 'border-border-strong'
-              }`}
+              error={isOverLimit ? 'Message must be 160 characters or fewer.' : undefined}
               placeholder="Type your SMS message here…"
             />
-            {isOverLimit && (
-              <p className="mt-1 text-xs text-danger">
-                Message must be 160 characters or fewer.
-              </p>
-            )}
           </div>
 
           {/* Preview result */}
           {previewCount !== null && (
-            <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-info-fg">
+            <div className="rounded-md border border-info-border bg-info-soft px-3 py-2 text-sm text-info-fg">
               This campaign will send to{' '}
               <strong>{previewCount} customer{previewCount === 1 ? '' : 's'}</strong>{' '}
               inactive for {inactiveMonths}+ months.

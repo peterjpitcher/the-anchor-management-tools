@@ -10,8 +10,7 @@ import type { Event } from '@/types/database'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { useState, useCallback } from 'react'
 import { resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
-
-type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
+import { eventStatusLabel, eventStatusTone } from '../_shared/status-ui'
 
 interface EventListViewProps {
   events: Event[]
@@ -22,22 +21,6 @@ interface EventListViewProps {
   onEditEvent: (event: Event) => void
   onPageChange: (page: number) => void
   onDeleteSelected: () => void
-}
-
-function getStatusTone(status: string | null | undefined): BadgeTone {
-  switch (status) {
-    case 'scheduled': return 'success'
-    case 'cancelled': return 'danger'
-    case 'postponed': return 'warning'
-    case 'rescheduled': return 'info'
-    case 'sold_out': return 'primary'
-    default: return 'neutral'
-  }
-}
-
-function formatStatusLabel(status: string | null | undefined): string {
-  if (!status) return 'Unknown'
-  return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 function formatEventPriceSummary(event: Event): string {
@@ -98,13 +81,14 @@ export function EventListView({
           <span className="text-sm font-medium text-text">
             {selectedIds.size} selected
           </span>
-          <button
+          <Button
             type="button"
+            variant="link"
             onClick={() => setConfirmDeleteOpen(true)}
-            className="text-sm font-medium text-danger hover:underline"
+            className="text-danger"
           >
             Delete Selected
-          </button>
+          </Button>
         </div>
       )}
 
@@ -180,8 +164,8 @@ export function EventListView({
                   </TableCell>
                   <TableCell align="right">{formatEventPriceSummary(event)}</TableCell>
                   <TableCell>
-                    <Badge tone={getStatusTone(event.event_status)} dot>
-                      {formatStatusLabel(event.event_status)}
+                    <Badge tone={eventStatusTone(event.event_status)} dot>
+                      {eventStatusLabel(event.event_status)}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -237,13 +221,13 @@ export function EventListView({
                   <button
                     type="button"
                     onClick={() => onEventClick(event)}
-                    className="min-w-0 flex-1 text-left"
+                    className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:shadow-ring"
                   >
                     <div className="font-medium text-text-strong">{event.name}</div>
                     <div className="text-xs text-text-muted">{event.id.slice(0, 8)}</div>
                   </button>
-                  <Badge tone={getStatusTone(event.event_status)} dot>
-                    {formatStatusLabel(event.event_status)}
+                  <Badge tone={eventStatusTone(event.event_status)} dot>
+                    {eventStatusLabel(event.event_status)}
                   </Badge>
                 </div>
 

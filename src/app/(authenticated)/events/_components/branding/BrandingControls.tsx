@@ -60,7 +60,7 @@ export function OptionButtons<T extends string>({
             // the global rule never has to stretch it.
             className={cn(
               'rounded-md border px-3 py-2 text-sm font-medium transition-colors',
-              'focus-visible:outline-none focus-visible:shadow-ring',
+              'focus-visible:outline-hidden focus-visible:shadow-ring',
               selected
                 ? 'border-primary bg-primary-soft text-primary-soft-fg'
                 : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
@@ -171,7 +171,7 @@ export function NumberField({
           if (Number.isNaN(next)) return
           onChange(next)
         }}
-        className="mt-1 w-full rounded-md border border-border-strong bg-surface px-2 py-2 text-sm text-text focus-visible:outline-none focus-visible:shadow-ring disabled:opacity-50"
+        className="mt-1 w-full rounded-default border border-border-strong bg-surface px-3 py-2 text-ui text-text outline-hidden focus:border-border-focus focus:shadow-ring disabled:opacity-50"
       />
     </div>
   )

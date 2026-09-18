@@ -139,11 +139,12 @@ export function InvoiceBookingModal({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-muted">
-                  <th className="py-2 pr-2">Item</th>
-                  <th className="py-2 px-2 text-right">Qty</th>
-                  <th className="py-2 px-2 text-right">Unit</th>
-                  <th className="py-2 pl-2 text-right">Amount</th>
+                {/* Same header look as the DS Table: small uppercase muted labels, medium weight. */}
+                <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-text-muted">
+                  <th className="py-2 pr-2 font-medium">Item</th>
+                  <th className="py-2 px-2 text-right font-medium">Qty</th>
+                  <th className="py-2 px-2 text-right font-medium">Unit</th>
+                  <th className="py-2 pl-2 text-right font-medium">Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -152,7 +153,7 @@ export function InvoiceBookingModal({
                     <td className="py-2 pr-2 text-text">
                       {line.description}
                       {line.discountPercentage > 0 && (
-                        <span className="ml-2 text-xs font-medium text-green-700">
+                        <span className="ml-2 text-xs font-medium text-success-fg">
                           {line.discountPercentage}% off
                         </span>
                       )}

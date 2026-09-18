@@ -8,6 +8,7 @@ import { formatDateInLondon } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
 import { toast } from '@/ds'
 import { Button } from '@/ds'
+import { IconButton } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { ConfirmDialog } from '@/ds'
@@ -153,7 +154,7 @@ export default function PaymentHistoryTable({
       )}
 
       {payments.length === 0 ? (
-        <p className="text-xs text-gray-400">No payments recorded yet.</p>
+        <p className="text-xs text-text-soft">No payments recorded yet.</p>
       ) : (
         <div className="space-y-2">
           {payments.map((entry) => {
@@ -248,32 +249,32 @@ export default function PaymentHistoryTable({
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{formatCurrency(entry.amount)}</span>
                   {entry.invoice_id && (
-                    <Link href={`/invoices/${entry.invoice_id}`} className="text-blue-600 underline">View invoice</Link>
+                    <Link href={`/invoices/${entry.invoice_id}`} className="rounded-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring">View invoice</Link>
                   )}
                   {canEditPayments && !entry.readonly && (
                     <div className="flex gap-1">
-                      <button
+                      <IconButton
                         type="button"
+                        size="sm"
                         onClick={() => startEdit(entry)}
-                        className="text-gray-400 hover:text-text-muted focus:outline-none focus:ring-1 focus:ring-gray-400 rounded-sm"
-                        aria-label={`Edit ${entry.type} payment`}
+                        className="text-text-muted"
+                        label={`Edit ${entry.type} payment`}
                         disabled={isLocked}
-                      >
-                        <PencilIcon className="h-3.5 w-3.5" />
-                      </button>
-                      <button
+                        icon={<PencilIcon className="h-3.5 w-3.5" />}
+                      />
+                      <IconButton
                         type="button"
+                        size="sm"
                         onClick={() => {
                           setConfirmDeleteId(entry.id)
                           setEditingId(null)
                           setError(null)
                         }}
-                        className="text-gray-400 hover:text-danger focus:outline-none focus:ring-1 focus:ring-red-400 rounded-sm"
-                        aria-label={`Delete ${entry.type} payment`}
+                        className="text-text-muted hover:text-danger"
+                        label={`Delete ${entry.type} payment`}
                         disabled={isLocked}
-                      >
-                        <TrashIcon className="h-3.5 w-3.5" />
-                      </button>
+                        icon={<TrashIcon className="h-3.5 w-3.5" />}
+                      />
                     </div>
                   )}
                 </div>

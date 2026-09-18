@@ -20,6 +20,7 @@ import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Stat, StatGroup } from '@/ds'
 import { Badge } from '@/ds'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ds'
 import { BarChart } from '@/components/charts/BarChart'
 import { WinBackCampaign } from '@/components/features/customers/WinBackCampaign'
 
@@ -63,10 +64,10 @@ function formatGeneratedAt(iso: string): string {
   }).format(new Date(iso))
 }
 
-function signalBadgeVariant(signal: StrategicSignal): 'success' | 'warning' | 'error' | 'info' {
+function signalBadgeTone(signal: StrategicSignal): 'success' | 'warning' | 'danger' | 'info' {
   if (signal.severity === 'positive') return 'success'
   if (signal.severity === 'watch') return 'warning'
-  if (signal.severity === 'risk') return 'error'
+  if (signal.severity === 'risk') return 'danger'
   return 'info'
 }
 
@@ -113,17 +114,19 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
     )
   }
 
+  // Chart tokens (the canvas BarChart resolves var() colours). Each booking type keeps a
+  // colour close to its old one: event sky, table brand green, private amber, parking violet.
   const bookingMixChartData = [
-    { label: 'Event', value: snapshot.booking_mix.by_type.event, color: '#2563EB' },
-    { label: 'Table', value: snapshot.booking_mix.by_type.table, color: '#059669' },
-    { label: 'Private', value: snapshot.booking_mix.by_type.private, color: '#F59E0B' },
-    { label: 'Parking', value: snapshot.booking_mix.by_type.parking, color: '#8B5CF6' }
+    { label: 'Event', value: snapshot.booking_mix.by_type.event, color: 'var(--color-chart-2)' },
+    { label: 'Table', value: snapshot.booking_mix.by_type.table, color: 'var(--color-chart-1)' },
+    { label: 'Private', value: snapshot.booking_mix.by_type.private, color: 'var(--color-chart-3)' },
+    { label: 'Parking', value: snapshot.booking_mix.by_type.parking, color: 'var(--color-chart-4)' }
   ]
 
   const categoryChartData = snapshot.top_interest_categories.slice(0, 8).map((segment) => ({
     label: segment.category_name,
     value: segment.customer_count,
-    color: '#0EA5E9'
+    color: 'var(--color-chart-1)'
   }))
 
   const hasMeaningfulData =
@@ -157,10 +160,11 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                   <Link
                     key={option.key}
                     href={`/customers/insights?window=${option.key}`}
-                    className={`rounded-md border px-3 py-1.5 text-xs font-medium transition ${
+                    aria-current={isActive ? 'true' : undefined}
+                    className={`rounded-md border px-3 py-1.5 text-xs font-medium transition focus-visible:outline-hidden focus-visible:shadow-ring ${
                       isActive
-                        ? 'border-blue-600 bg-blue-50 text-blue-700'
-                        : 'border-border-strong bg-surface text-text-muted hover:border-gray-400 hover:text-text'
+                        ? 'border-primary bg-primary-soft text-primary-soft-fg'
+                        : 'border-border-strong bg-surface text-text-muted hover:bg-surface-hover hover:text-text'
                     }`}
                   >
                     {option.label}
@@ -170,7 +174,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
             </div>
 
             {snapshot.data_warnings.length > 0 ? (
-              <div className="rounded-md border border-amber-200 bg-warning-soft px-3 py-2 text-sm text-warning-fg">
+              <div className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning-fg">
                 {snapshot.data_warnings.join(' ')}
               </div>
             ) : null}
@@ -190,7 +194,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                 <Stat
                   label="Total Customers"
                   value={formatNumber(snapshot.kpis.total_customers)}
-                  icon={<UsersIcon className="h-5 w-5 text-blue-500" />}
+                  icon={<UsersIcon className="h-5 w-5" />}
                   variant="bordered"
                 />
                 <Stat
@@ -198,20 +202,20 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                   value={formatNumber(snapshot.kpis.new_customers)}
                   change={formatSignedPercent(snapshot.kpis.new_customer_growth_percent)}
                   changeType={snapshot.kpis.new_customer_growth_percent >= 0 ? 'increase' : 'decrease'}
-                  icon={<UserPlusIcon className="h-5 w-5 text-emerald-500" />}
+                  icon={<UserPlusIcon className="h-5 w-5" />}
                   variant="bordered"
                 />
                 <Stat
                   label="Active Customers"
                   value={formatNumber(snapshot.kpis.active_customers)}
                   description={`${formatNumber(snapshot.kpis.repeat_active_customers)} repeat in-window`}
-                  icon={<UserGroupIcon className="h-5 w-5 text-indigo-500" />}
+                  icon={<UserGroupIcon className="h-5 w-5" />}
                   variant="bordered"
                 />
                 <Stat
                   label="Repeat Rate"
                   value={formatPercent(snapshot.kpis.repeat_rate_percent)}
-                  icon={<ArrowPathIcon className="h-5 w-5 text-cyan-500" />}
+                  icon={<ArrowPathIcon className="h-5 w-5" />}
                   variant="bordered"
                 />
               </StatGroup>
@@ -220,7 +224,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                 <Stat
                   label="Dormant Customers (90d+)"
                   value={formatNumber(snapshot.kpis.dormant_customers_90d)}
-                  icon={<UserMinusIcon className="h-5 w-5 text-amber-500" />}
+                  icon={<UserMinusIcon className="h-5 w-5 text-warning" />}
                   variant="bordered"
                 />
                 <Stat
@@ -314,7 +318,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                     <div key={signal.key} className="rounded-lg border border-border p-3">
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-medium text-text">{signal.title}</p>
-                        <Badge variant={signalBadgeVariant(signal)} size="sm">
+                        <Badge tone={signalBadgeTone(signal)} size="sm">
                           {signal.severity}
                         </Badge>
                       </div>
@@ -335,37 +339,37 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
               {snapshot.win_back_candidates.length === 0 ? (
                 <p className="mt-4 text-sm text-text-muted">No dormant high-value candidates detected in current scoring data.</p>
               ) : (
-                <div className="mt-4 hidden overflow-x-auto md:block">
-                  <table className="min-w-full divide-y divide-border text-sm">
-                    <thead className="bg-surface-2">
-                      <tr>
-                        <th scope="col" className="px-3 py-2 text-left font-medium text-text-muted">Customer</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium text-text-muted">Score</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium text-text-muted">90d</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium text-text-muted">365d</th>
-                        <th scope="col" className="px-3 py-2 text-left font-medium text-text-muted">Last booking</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border bg-surface">
+                <div className="mt-4 hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Customer</TableHead>
+                        <TableHead align="right">Score</TableHead>
+                        <TableHead align="right">90d</TableHead>
+                        <TableHead align="right">365d</TableHead>
+                        <TableHead>Last booking</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {snapshot.win_back_candidates.map((candidate) => (
-                        <tr key={candidate.customer_id}>
-                          <td className="px-3 py-2">
+                        <TableRow key={candidate.customer_id}>
+                          <TableCell>
                             <p className="font-medium text-text">{candidate.name}</p>
                             {candidate.mobile ? <p className="text-xs text-text-muted">{candidate.mobile}</p> : null}
-                          </td>
-                          <td className="px-3 py-2 text-right font-medium text-text">{formatNumber(candidate.total_score)}</td>
-                          <td className="px-3 py-2 text-right text-text">{formatNumber(candidate.bookings_last_90)}</td>
-                          <td className="px-3 py-2 text-right text-text">{formatNumber(candidate.bookings_last_365)}</td>
-                          <td className="px-3 py-2 text-text">
+                          </TableCell>
+                          <TableCell align="right" className="font-medium">{formatNumber(candidate.total_score)}</TableCell>
+                          <TableCell align="right">{formatNumber(candidate.bookings_last_90)}</TableCell>
+                          <TableCell align="right">{formatNumber(candidate.bookings_last_365)}</TableCell>
+                          <TableCell>
                             {formatDate(candidate.last_booking_date)}
                             {candidate.days_since_last_booking !== null ? (
                               <span className="ml-1 text-xs text-text-muted">({candidate.days_since_last_booking}d ago)</span>
                             ) : null}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               )}
 
@@ -378,9 +382,9 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                           <p className="font-medium text-text">{candidate.name}</p>
                           {candidate.mobile ? <p className="text-xs text-text-muted">{candidate.mobile}</p> : null}
                         </div>
-                        <span className="flex-shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-xs font-semibold text-text">
+                        <Badge size="sm" className="flex-shrink-0">
                           Score {formatNumber(candidate.total_score)}
-                        </span>
+                        </Badge>
                       </div>
                       <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
                         <div>

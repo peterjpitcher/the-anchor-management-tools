@@ -125,7 +125,7 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
             return (
                 <div className="py-12">
                     <EmptyState
-                        icon={<SparklesIcon className="h-12 w-12 text-gray-400" />}
+                        icon={<SparklesIcon className="h-12 w-12 text-text-subtle" />}
                         title={`No ${categoryLabel.toLowerCase()} packages yet`}
                         description="Get started by creating your first package."
                         action={

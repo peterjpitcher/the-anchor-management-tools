@@ -156,13 +156,13 @@ function CompactStat({
               ? 'mt-0.5 text-meta leading-none text-success-fg'
               : trend.tone === 'danger'
                 ? 'mt-0.5 text-meta leading-none text-danger-fg'
-                : 'mt-0.5 text-meta leading-none text-text-subtle'
+                : 'mt-0.5 text-meta leading-none text-text-soft'
           }
         >
           {trend.text}
         </div>
       )}
-      {hint && <div className="mt-0.5 text-meta leading-none text-text-subtle">{hint}</div>}
+      {hint && <div className="mt-0.5 text-meta leading-none text-text-soft">{hint}</div>}
     </div>
   )
 }
@@ -343,7 +343,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                     <div className="min-w-0 flex-1 space-y-1">
                       <button
                         type="button"
-                        className="inline-flex min-h-[34px] max-w-full items-center gap-1.5 rounded-sm bg-surface-2 px-2 text-left font-mono text-xs hover:bg-surface-hover"
+                        className="inline-flex min-h-[34px] max-w-full items-center gap-1.5 rounded-sm bg-surface-2 px-2 text-left font-mono text-xs hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
                         onClick={() => handleCopyLink(link)}
                         title="Copy short URL"
                       >
@@ -367,7 +367,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                   </div>
                   <button
                     type="button"
-                    className="flex min-h-[34px] w-full items-start gap-1.5 text-left text-xs text-text-muted hover:text-text"
+                    className="flex min-h-[34px] w-full items-start gap-1.5 rounded-sm text-left text-xs text-text-muted hover:text-text focus-visible:outline-hidden focus-visible:shadow-ring"
                     title="Copy destination URL"
                     onClick={() => handleCopyDestination(link.destination_url)}
                   >
@@ -381,7 +381,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                     {!link.isVariant && (link.variantCount ?? 0) > 0 && (
                       <button
                         type="button"
-                        className="inline-flex min-h-[34px] items-center"
+                        className="inline-flex min-h-[34px] items-center rounded-pill focus-visible:outline-hidden focus-visible:shadow-ring"
                         onClick={() => toggleExpanded(link.id)}
                       >
                         <Badge tone="neutral">
@@ -430,7 +430,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                         )}
                         <button
                           type="button"
-                          className="inline-flex min-h-[34px] min-w-0 flex-shrink-0 items-center gap-1.5 rounded-sm bg-surface-2 px-2 text-left font-mono text-xs hover:bg-surface-hover"
+                          className="inline-flex min-h-[34px] min-w-0 flex-shrink-0 items-center gap-1.5 rounded-sm bg-surface-2 px-2 text-left font-mono text-xs hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                           onClick={() => handleCopyLink(link)}
                           title="Click to copy short URL"
                         >
@@ -443,7 +443,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                           <>
                             {link.name && <span className="min-w-0 truncate text-xs text-text-muted">{link.name}</span>}
                             {(link.variantCount ?? 0) > 0 && (
-                              <button type="button" onClick={() => toggleExpanded(link.id)} className="flex-shrink-0">
+                              <button type="button" onClick={() => toggleExpanded(link.id)} className="flex-shrink-0 rounded-pill focus-visible:outline-hidden focus-visible:shadow-ring-inset">
                                 <Badge tone="neutral">{link.variantCount} variants</Badge>
                               </button>
                             )}
@@ -455,7 +455,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                   <TableCell className="min-w-0 py-2 align-middle">
                     <button
                       type="button"
-                      className="inline-flex min-h-[34px] max-w-full items-center gap-1.5 text-left text-xs text-text-muted hover:text-text"
+                      className="inline-flex min-h-[34px] max-w-full items-center gap-1.5 rounded-sm text-left text-xs text-text-muted hover:text-text focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                       title={`${link.destination_url}\nClick to copy destination URL`}
                       onClick={() => handleCopyDestination(link.destination_url)}
                     >

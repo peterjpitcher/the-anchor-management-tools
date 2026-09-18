@@ -870,14 +870,14 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
           {/* Generation phase feedback */}
           {aiLoading && generationPhase && (
             <div className="flex items-center gap-2 text-sm text-text-muted mb-3">
-              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-green-600" />
+              <Spinner size="sm" />
               <span>
                 {generationPhase === 'checking' && 'Checking event details...'}
                 {generationPhase === 'drafting' && 'Drafting SEO copy...'}
                 {elapsedSeconds >= 10 && ` (${elapsedSeconds}s)`}
               </span>
               {elapsedSeconds >= 30 && (
-                <span className="text-warning">Still working...</span>
+                <span className="text-warning-fg">Still working...</span>
               )}
             </div>
           )}
@@ -886,7 +886,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
           {preflightIssues.length > 0 && !aiLoading && (
             <div className="mb-3 space-y-1">
               {preflightIssues.map((issue, i) => (
-                <p key={i} className={`text-xs ${issue.type === 'error' ? 'text-danger' : 'text-warning'}`}>
+                <p key={i} className={`text-xs ${issue.type === 'error' ? 'text-danger' : 'text-warning-fg'}`}>
                   {issue.type === 'error' ? '✗ ' : '⚠ '}{issue.message}
                 </p>
               ))}

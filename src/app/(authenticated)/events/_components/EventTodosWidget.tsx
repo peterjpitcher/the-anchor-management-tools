@@ -66,7 +66,7 @@ export default function EventTodosWidget({
               You&apos;re all caught up — no outstanding todos.
             </p>
           ) : (
-            <ul className={cn('flex flex-col gap-1', isPending && 'opacity-60')}>
+            <ul className={cn('flex flex-col gap-1', isPending && 'opacity-50')}>
               {todos.map((item) => (
                 <li
                   key={`${item.eventId}:${item.key}`}
@@ -84,7 +84,7 @@ export default function EventTodosWidget({
                       />
                     </label>
                   )}
-                  <Link href={`/events/${item.eventId}`} className="group block min-w-0 flex-1">
+                  <Link href={`/events/${item.eventId}`} className="group block min-w-0 flex-1 rounded-sm focus-visible:outline-hidden focus-visible:shadow-ring-inset">
                     <span className="block truncate text-sm text-text group-hover:underline">
                       {item.label}
                     </span>
@@ -95,7 +95,7 @@ export default function EventTodosWidget({
                       <Badge tone={item.status === 'overdue' ? 'danger' : 'warning'}>
                         {formatRelativeDue(item.dueDate, todayIso)}
                       </Badge>
-                      <span className="text-xs text-text-subtle">{item.channel}</span>
+                      <span className="text-xs text-text-soft">{item.channel}</span>
                     </span>
                   </Link>
                 </li>

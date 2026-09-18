@@ -316,7 +316,7 @@ export default function BulkMessagesClient({
               })}
             </span>
           ) : (
-            <span className="text-gray-400 text-sm">Never</span>
+            <span className="text-text-soft text-sm">Never</span>
           ),
         sortable: true,
         sortFn: (a, b) => {
@@ -497,12 +497,12 @@ export default function BulkMessagesClient({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-medium text-text">Recipients</h3>
-                <Badge variant="info" size="sm">
+                <Badge tone="info" size="sm">
                   {loading ? '...' : `${recipients.length} of ${recipientTotal}`}
                 </Badge>
               </div>
               {selectedKeys.size > 0 && (
-                <Badge variant="success" size="sm">
+                <Badge tone="success" size="sm">
                   {selectedKeys.size} selected
                 </Badge>
               )}
@@ -590,7 +590,7 @@ export default function BulkMessagesClient({
                 {smsInfo.segments} SMS segment{smsInfo.segments !== 1 ? 's' : ''}
               </span>
               {smsInfo.isUnicode && (
-                <Badge variant="warning" size="sm">
+                <Badge tone="warning" size="sm">
                   Unicode
                 </Badge>
               )}
@@ -641,7 +641,7 @@ export default function BulkMessagesClient({
             <strong>{selectedKeys.size}</strong> recipient
             {selectedKeys.size !== 1 ? 's' : ''}?
             {quietHoursEval.inQuietHours && (
-              <span className="block mt-2 text-warning">
+              <span className="block mt-2 text-warning-fg">
                 Note: Messages will be queued until quiet hours end.
               </span>
             )}

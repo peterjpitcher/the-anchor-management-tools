@@ -82,7 +82,7 @@ export function EventTicketSettings({ event, canManage }: Props) {
               {discountType && <>
                 <Input label="Discount ends (London time)" type="datetime-local" value={endsAt} onChange={event => setEndsAt(event.target.value)} />
                 <p className="text-sm text-text-muted">Leave blank to keep the discount until bookings close. A guest who starts checkout before the deadline keeps that price until their payment hold expires.</p>
-                {expired && <p className="text-sm text-warning" role="status">This deadline has passed. New bookings pay the full ticket price.</p>}
+                {expired && <p className="text-sm text-warning-fg" role="status">This deadline has passed. New bookings pay the full ticket price.</p>}
               </>}
             </div>
           )}
