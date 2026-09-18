@@ -422,7 +422,7 @@ export function DishGpAnalysisTab({
   return (
     <div className="space-y-6">
       {missingCostItems.length > 0 && (
-        <div role="alert" className="rounded-lg border border-amber-200 bg-warning-soft px-4 py-3 text-sm text-warning-fg">
+        <div role="alert" className="rounded-lg border border-warning-border bg-warning-soft px-4 py-3 text-sm text-warning-fg">
           <span className="font-semibold">Cost data incomplete.</span>{' '}
           Missing costs: {missingCostItems.join(', ')}. GP percentages and target prices are unreliable until these items are priced.
         </div>
@@ -430,7 +430,7 @@ export function DishGpAnalysisTab({
 
       {/* Section 1: Combinations */}
       {!hasCombinations ? (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-info-fg">
+        <div className="rounded-lg border border-info-border bg-info-soft p-4 text-sm text-info-fg">
           No option groups configured — all ingredients are fixed. GP analysis only applies when
           option groups create multiple possible combinations.
         </div>
@@ -447,7 +447,7 @@ export function DishGpAnalysisTab({
           Upgrade Impact
         </h3>
         {!upgradeAnalysis.hasUpgrades ? (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-info-fg">
+          <div className="rounded-lg border border-info-border bg-info-soft p-4 text-sm text-info-fg">
             No upgrades configured.
           </div>
         ) : (
@@ -505,27 +505,27 @@ export function DishGpAnalysisTab({
           Allergen Summary
         </h3>
         {!allergenAnalysis ? (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-info-fg">
+          <div className="rounded-lg border border-info-border bg-info-soft p-4 text-sm text-info-fg">
             Save the dish first to see allergen analysis.
           </div>
         ) : !allergenAnalysis.hasAllergens ? (
-          <div className="rounded-lg border border-green-200 bg-success-soft p-4 text-sm text-green-800">
+          <div className="rounded-lg border border-success-border bg-success-soft p-4 text-sm text-success-fg">
             No allergens identified.
           </div>
         ) : (
           <div className="space-y-3">
             {/* Modifiability summary */}
             {allergenAnalysis.modifiableFor.length > 0 && (
-              <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-success-soft px-4 py-3 text-sm text-green-800">
-                <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+              <div className="flex items-start gap-2 rounded-lg border border-success-border bg-success-soft px-4 py-3 text-sm text-success-fg">
+                <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                 <span>
                   This dish can be modified for: <span className="font-semibold">{allergenAnalysis.modifiableFor.join(', ')}</span>
                 </span>
               </div>
             )}
             {allergenAnalysis.notModifiable.length > 0 && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-warning-soft px-4 py-3 text-sm text-warning-fg">
-                <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+              <div className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-soft px-4 py-3 text-sm text-warning-fg">
+                <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
                 <span>
                   Cannot be modified for:{' '}
                   {allergenAnalysis.notModifiable.map((m, i) => (
@@ -622,8 +622,8 @@ function CombinationsSection({
           {belowCount > 0 && okCount > 0 ? ', ' : null}
           {okCount > 0 ? (
             <>
-              <span className="font-semibold text-green-700">{okCount}</span>{' '}
-              <span className="text-green-700">OK</span>
+              <span className="font-semibold text-success-fg">{okCount}</span>{' '}
+              <span className="text-success-fg">OK</span>
             </>
           ) : null}
         </p>
@@ -631,8 +631,8 @@ function CombinationsSection({
 
       {/* Explosion warning */}
       {trimmed && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-warning-soft px-4 py-3 text-sm text-warning-fg">
-          <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+        <div className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-soft px-4 py-3 text-sm text-warning-fg">
+          <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
           <span>
             {totalCombinations} combinations detected — showing worst {EDGE_COUNT} and best {EDGE_COUNT} only.
           </span>
@@ -671,7 +671,7 @@ function CombinationsSection({
                       Below target
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-green-700">
+                    <span className="inline-flex items-center gap-1 text-success-fg">
                       <CheckCircleIcon className="h-4 w-4" />
                       OK
                     </span>

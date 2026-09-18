@@ -1,8 +1,7 @@
 'use client'
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Button } from '@/ds'
-import { Alert } from '@/ds'
+import { Alert, Badge, Button, Card, Checkbox, Input, Section } from '@/ds'
 
 type TableSetupRow = {
   id: string
@@ -714,11 +713,15 @@ export function TableSetupManager() {
   return (
     <div className="space-y-6">
       {statusMessage && (
-        <Alert variant="success" description={statusMessage} size="sm" closable onClose={() => setStatusMessage(null)} />
+        <Alert tone="success" size="sm" closable onClose={() => setStatusMessage(null)}>
+          {statusMessage}
+        </Alert>
       )}
 
       {errorMessage && (
-        <Alert variant="error" description={errorMessage} size="sm" closable onClose={() => setErrorMessage(null)} />
+        <Alert tone="danger" size="sm" closable onClose={() => setErrorMessage(null)}>
+          {errorMessage}
+        </Alert>
       )}
 
       <datalist id="table-area-options">
@@ -728,19 +731,17 @@ export function TableSetupManager() {
       </datalist>
 
       {/* Booking pacing */}
-      <div className="rounded-lg border border-border bg-surface p-4">
-        <h3 className="text-sm font-semibold text-text">Booking pacing</h3>
-        <p className="mt-1 text-xs text-text-muted">
-          Tune the soft customer-facing busy labels. These settings do not block bookings.
-        </p>
-
-        {loadingPacing ? (
-          <p className="mt-3 text-sm text-text-muted">Loading pacing settings...</p>
-        ) : (
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <label className="text-xs font-medium text-text">
-              Filling up threshold
-              <input
+      <Section
+        title="Booking pacing"
+        description="Tune the soft customer-facing busy labels. These settings do not block bookings."
+      >
+        <Card>
+          {loadingPacing ? (
+            <p className="text-sm text-text-muted">Loading pacing settings...</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-3">
+              <Input
+                label="Filling up threshold"
                 type="number"
                 min={1}
                 max={199}
@@ -751,13 +752,10 @@ export function TableSetupManager() {
                     filling_threshold_covers: event.target.value
                   }))
                 }
-                className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
               />
-            </label>
 
-            <label className="text-xs font-medium text-text">
-              Busy threshold
-              <input
+              <Input
+                label="Busy threshold"
                 type="number"
                 min={2}
                 max={200}
@@ -768,13 +766,10 @@ export function TableSetupManager() {
                     busy_threshold_covers: event.target.value
                   }))
                 }
-                className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
               />
-            </label>
 
-            <label className="text-xs font-medium text-text">
-              Window minutes
-              <input
+              <Input
+                label="Window minutes"
                 type="number"
                 min={30}
                 max={180}
@@ -786,54 +781,46 @@ export function TableSetupManager() {
                     window_minutes: event.target.value
                   }))
                 }
-                className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
               />
-            </label>
 
-            <div className="md:col-span-3">
-              <Button
-                onClick={() => { void savePacingSettings() }}
-                disabled={savingPacing}
-                loading={savingPacing}
-                size="sm"
-              >
-                Save pacing settings
-              </Button>
+              <div className="md:col-span-3">
+                <Button
+                  onClick={() => { void savePacingSettings() }}
+                  disabled={savingPacing}
+                  loading={savingPacing}
+                >
+                  Save pacing settings
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </Card>
+      </Section>
 
       {/* Kitchen pacing (cap) */}
-      <div className="rounded-lg border border-border bg-surface p-4">
-        <h3 className="text-sm font-semibold text-text">Kitchen pacing (cap)</h3>
-        <p className="mt-1 text-xs text-text-muted">
-          When on, online bookings that would push food covers over the cap in the window are declined
-          and asked to pick another time. Staff can override. Walk-ins bypass but use the reserve.
-        </p>
-
-        {loadingKitchenPacing ? (
-          <p className="mt-3 text-sm text-text-muted">Loading kitchen pacing settings...</p>
-        ) : (
-          <div className="mt-4 space-y-4">
-            <label className="flex items-center gap-2 text-xs font-medium text-text">
-              <input
-                type="checkbox"
+      <Section
+        title="Kitchen pacing (cap)"
+        description="When on, online bookings that would push food covers over the cap in the window are declined and asked to pick another time. Staff can override. Walk-ins bypass but use the reserve."
+      >
+        <Card>
+          {loadingKitchenPacing ? (
+            <p className="text-sm text-text-muted">Loading kitchen pacing settings...</p>
+          ) : (
+            <div className="space-y-4">
+              <Checkbox
+                label={`Kitchen pacing is ${kitchenPacingDraft.enabled ? 'on' : 'off'}`}
                 checked={kitchenPacingDraft.enabled}
-                onChange={(event) =>
+                onChange={(checked) =>
                   setKitchenPacingDraft((current) => ({
                     ...current,
-                    enabled: event.target.checked
+                    enabled: checked
                   }))
                 }
               />
-              <span>Kitchen pacing is {kitchenPacingDraft.enabled ? 'on' : 'off'}</span>
-            </label>
 
-            <div className="grid gap-3 md:grid-cols-3">
-              <label className="text-xs font-medium text-text">
-                Window minutes
-                <input
+              <div className="grid gap-4 md:grid-cols-3">
+                <Input
+                  label="Window minutes"
                   type="number"
                   min={10}
                   max={180}
@@ -845,13 +832,10 @@ export function TableSetupManager() {
                       window_minutes: event.target.value
                     }))
                   }
-                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 />
-              </label>
 
-              <label className="text-xs font-medium text-text">
-                Regular pace (covers)
-                <input
+                <Input
+                  label="Regular pace (covers)"
                   type="number"
                   min={1}
                   max={500}
@@ -862,13 +846,10 @@ export function TableSetupManager() {
                       pace_covers_regular: event.target.value
                     }))
                   }
-                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 />
-              </label>
 
-              <label className="text-xs font-medium text-text">
-                Sunday pace (covers)
-                <input
+                <Input
+                  label="Sunday pace (covers)"
                   type="number"
                   min={1}
                   max={500}
@@ -879,13 +860,10 @@ export function TableSetupManager() {
                       pace_covers_sunday: event.target.value
                     }))
                   }
-                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 />
-              </label>
 
-              <label className="text-xs font-medium text-text">
-                Regular walk-in reserve (covers)
-                <input
+                <Input
+                  label="Regular walk-in reserve (covers)"
                   type="number"
                   min={0}
                   max={500}
@@ -896,13 +874,10 @@ export function TableSetupManager() {
                       walk_in_reserve_regular: event.target.value
                     }))
                   }
-                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 />
-              </label>
 
-              <label className="text-xs font-medium text-text">
-                Sunday walk-in reserve (covers)
-                <input
+                <Input
+                  label="Sunday walk-in reserve (covers)"
                   type="number"
                   min={0}
                   max={500}
@@ -913,61 +888,58 @@ export function TableSetupManager() {
                       walk_in_reserve_sunday: event.target.value
                     }))
                   }
-                  className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                 />
-              </label>
-            </div>
+              </div>
 
-            <p className="text-xs text-text-muted">
-              Online ceiling per window (pace &minus; reserve):{' '}
-              <span className="font-medium text-text">{kitchenCeilingRegular}</span> regular ·{' '}
-              <span className="font-medium text-text">{kitchenCeilingSunday}</span> Sunday
-            </p>
+              <p className="text-xs text-text-muted">
+                Online ceiling per window (pace &minus; reserve):{' '}
+                <span className="font-medium text-text">{kitchenCeilingRegular}</span> regular ·{' '}
+                <span className="font-medium text-text">{kitchenCeilingSunday}</span> Sunday
+              </p>
 
-            <div>
-              <Button
-                onClick={() => { void saveKitchenPacing() }}
-                disabled={savingKitchenPacing}
-                loading={savingKitchenPacing}
-                size="sm"
-              >
-                Save kitchen pacing settings
-              </Button>
+              <div>
+                <Button
+                  onClick={() => { void saveKitchenPacing() }}
+                  disabled={savingKitchenPacing}
+                  loading={savingKitchenPacing}
+                >
+                  Save kitchen pacing settings
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </Card>
+      </Section>
 
       {/* Existing tables */}
-      <div className="rounded-lg border border-border bg-surface p-4">
-        <h3 className="text-sm font-semibold text-text">Existing tables</h3>
-        <p className="mt-1 text-xs text-text-muted">
-          Configure table name, number, capacity, bookable state and area for each table.
-        </p>
-        {changedTableIds.length > 0 && (
-          <p className="mt-1 text-xs font-medium text-warning-fg">
-            Unsaved table changes: {changedTableIds.length}
-          </p>
-        )}
+      <Section
+        title="Existing tables"
+        description="Configure table name, number, capacity, bookable state and area for each table."
+      >
+        <Card>
+          {changedTableIds.length > 0 && (
+            <p className="mb-3 text-xs font-medium text-warning-fg">
+              Unsaved table changes: {changedTableIds.length}
+            </p>
+          )}
 
-        {loading ? (
-          <p className="mt-3 text-sm text-text-muted">Loading table setup…</p>
-        ) : sortedTables.length === 0 ? (
-          <p className="mt-3 rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
-            No tables found. Add your first table below.
-          </p>
-        ) : (
-          <div className="mt-4 space-y-3">
-            {sortedTables.map((table) => {
-              const draft = drafts[table.id]
-              if (!draft) return null
+          {loading ? (
+            <p className="text-sm text-text-muted">Loading table setup…</p>
+          ) : sortedTables.length === 0 ? (
+            <p className="rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
+              No tables found. Add your first table below.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {sortedTables.map((table) => {
+                const draft = drafts[table.id]
+                if (!draft) return null
 
-              return (
-                <div key={table.id} className="rounded-md border border-border bg-surface-2 p-3">
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                    <label className="text-xs font-medium text-text">
-                      Name
-                      <input
+                return (
+                  <div key={table.id} className="rounded-md border border-border bg-surface-2 p-3">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                      <Input
+                        label="Name"
                         type="text"
                         value={draft.name}
                         onChange={(event) =>
@@ -976,13 +948,10 @@ export function TableSetupManager() {
                             [table.id]: { ...current[table.id], name: event.target.value }
                           }))
                         }
-                        className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                       />
-                    </label>
 
-                    <label className="text-xs font-medium text-text">
-                      Table number
-                      <input
+                      <Input
+                        label="Table number"
                         type="text"
                         value={draft.table_number}
                         onChange={(event) =>
@@ -991,13 +960,10 @@ export function TableSetupManager() {
                             [table.id]: { ...current[table.id], table_number: event.target.value }
                           }))
                         }
-                        className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                       />
-                    </label>
 
-                    <label className="text-xs font-medium text-text">
-                      Capacity
-                      <input
+                      <Input
+                        label="Capacity"
                         type="number"
                         min={1}
                         max={100}
@@ -1008,13 +974,10 @@ export function TableSetupManager() {
                             [table.id]: { ...current[table.id], capacity: event.target.value }
                           }))
                         }
-                        className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                       />
-                    </label>
 
-                    <label className="text-xs font-medium text-text">
-                      Area
-                      <input
+                      <Input
+                        label="Area"
                         type="text"
                         list="table-area-options"
                         value={draft.area}
@@ -1025,127 +988,108 @@ export function TableSetupManager() {
                           }))
                         }
                         placeholder="Main Bar"
-                        className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
                       />
-                    </label>
 
-                    <label className="flex items-end gap-2 text-xs font-medium text-text">
-                      <input
-                        type="checkbox"
-                        checked={draft.is_bookable}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [table.id]: { ...current[table.id], is_bookable: event.target.checked }
-                          }))
-                        }
-                      />
-                      <span>Bookable</span>
-                    </label>
+                      {/* Sits level with the fields beside it: bottom of the row, field height. */}
+                      <div className="flex items-end">
+                        <Checkbox
+                          label="Bookable"
+                          checked={draft.is_bookable}
+                          onChange={(checked) =>
+                            setDrafts((current) => ({
+                              ...current,
+                              [table.id]: { ...current[table.id], is_bookable: checked }
+                            }))
+                          }
+                          className="h-input-h items-center"
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )
-            })}
-            <div className="flex justify-end">
-              <Button
-                onClick={() => { void saveAllTableChanges() }}
-                disabled={savingTables || changedTableIds.length === 0}
-                loading={savingTables}
-                size="sm"
-              >
-                Save all table changes
-              </Button>
+                )
+              })}
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => { void saveAllTableChanges() }}
+                  disabled={savingTables || changedTableIds.length === 0}
+                  loading={savingTables}
+                >
+                  Save all table changes
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </Card>
+      </Section>
 
       {/* Add table */}
-      <div className="rounded-lg border border-border bg-surface p-4">
-        <h3 className="text-sm font-semibold text-text">Add table</h3>
-        <form onSubmit={createTable} className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <label className="text-xs font-medium text-text">
-            Name
-            <input
+      <Section title="Add table">
+        <Card>
+          <form onSubmit={createTable} className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <Input
+              label="Name"
               type="text"
               required
               value={newTable.name}
               onChange={(event) => setNewTable((c) => ({ ...c, name: event.target.value }))}
-              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             />
-          </label>
 
-          <label className="text-xs font-medium text-text">
-            Table number
-            <input
+            <Input
+              label="Table number"
               type="text"
               required
               value={newTable.table_number}
               onChange={(event) => setNewTable((c) => ({ ...c, table_number: event.target.value }))}
-              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             />
-          </label>
 
-          <label className="text-xs font-medium text-text">
-            Capacity
-            <input
+            <Input
+              label="Capacity"
               type="number"
               min={1}
               max={100}
               required
               value={newTable.capacity}
               onChange={(event) => setNewTable((c) => ({ ...c, capacity: event.target.value }))}
-              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             />
-          </label>
 
-          <label className="text-xs font-medium text-text">
-            Area
-            <input
+            <Input
+              label="Area"
               type="text"
               list="table-area-options"
               value={newTable.area}
               onChange={(event) => setNewTable((c) => ({ ...c, area: event.target.value }))}
               placeholder="Main Bar"
-              className="mt-1 w-full rounded-md border border-border-strong px-3 py-2 text-sm"
             />
-          </label>
 
-          <label className="flex items-end gap-2 text-xs font-medium text-text">
-            <input
-              type="checkbox"
-              checked={newTable.is_bookable}
-              onChange={(event) => setNewTable((c) => ({ ...c, is_bookable: event.target.checked }))}
-            />
-            <span>Bookable</span>
-          </label>
+            <div className="flex items-end">
+              <Checkbox
+                label="Bookable"
+                checked={newTable.is_bookable}
+                onChange={(checked) => setNewTable((c) => ({ ...c, is_bookable: checked }))}
+                className="h-input-h items-center"
+              />
+            </div>
 
-          <div className="md:col-span-2 xl:col-span-5">
-            <Button
-              type="submit"
-              disabled={creatingTable}
-              loading={creatingTable}
-              size="sm"
-            >
-              Create table
-            </Button>
-          </div>
-        </form>
-      </div>
+            <div className="md:col-span-2 xl:col-span-5">
+              <Button
+                type="submit"
+                disabled={creatingTable}
+                loading={creatingTable}
+              >
+                Create table
+              </Button>
+            </div>
+          </form>
+        </Card>
+      </Section>
 
       {/* Join groups */}
-      <div className="rounded-lg border border-border bg-surface p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="text-sm font-semibold text-text">Table join groups</h3>
-            <p className="mt-1 text-xs text-text-muted">
-              Tables in the same group can be booked together in any combination. The system
-              automatically generates all valid multi-table options from each group.
-            </p>
-          </div>
-          {!editingGroup && (
+      <Section
+        title="Table join groups"
+        description="Tables in the same group can be booked together in any combination. The system automatically generates all valid multi-table options from each group."
+        actions={
+          !editingGroup ? (
             <Button
-              size="sm"
               onClick={() => {
                 setEditingGroup({ id: null, name: '', table_ids: [] })
                 setErrorMessage(null)
@@ -1153,19 +1097,19 @@ export function TableSetupManager() {
             >
               + New group
             </Button>
-          )}
-        </div>
+          ) : undefined
+        }
+      >
+        <Card>
+          {/* Edit / create form */}
+          {editingGroup && (
+            <div className="mb-4 rounded-md border border-info-border bg-info-soft p-4">
+              <h4 className="mb-3 text-sm font-semibold text-info-fg">
+                {editingGroup.id ? 'Edit group' : 'New group'}
+              </h4>
 
-        {/* Edit / create form */}
-        {editingGroup && (
-          <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4">
-            <h4 className="mb-3 text-sm font-semibold text-info-fg">
-              {editingGroup.id ? 'Edit group' : 'New group'}
-            </h4>
-
-            <label className="block text-xs font-medium text-text">
-              Group name
-              <input
+              <Input
+                label="Group name"
                 type="text"
                 value={editingGroup.name}
                 onChange={(event) =>
@@ -1174,227 +1118,224 @@ export function TableSetupManager() {
                   )
                 }
                 placeholder="e.g. Dining Room"
-                className="mt-1 w-full max-w-xs rounded-md border border-border-strong px-3 py-2 text-sm"
+                className="max-w-xs"
               />
-            </label>
 
-            <p className="mt-3 text-xs font-medium text-text">Tables in this group</p>
-            {loading ? (
-              <p className="mt-2 text-xs text-text-muted">Loading tables…</p>
-            ) : (
-              <div className="mt-2 grid gap-2 sm:grid-cols-2 md:grid-cols-3">
-                {sortedTables.map((table) => {
-                  const checked = editingGroup.table_ids.includes(table.id)
-                  return (
-                    <label
-                      key={table.id}
-                      className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() =>
-                          setEditingGroup((current) => {
-                            if (!current) return null
-                            return {
-                              ...current,
-                              table_ids: checked
-                                ? current.table_ids.filter((id) => id !== table.id)
-                                : [...current.table_ids, table.id]
-                            }
-                          })
-                        }
-                      />
-                      <span>
-                        <span className="font-medium">{table.name || table.table_number}</span>
-                        {table.area && (
-                          <span className="ml-1 text-xs text-gray-400">({table.area})</span>
-                        )}
-                      </span>
-                    </label>
-                  )
-                })}
-              </div>
-            )}
-
-            <div className="mt-4 flex gap-2">
-              <Button
-                onClick={() => { void saveGroup() }}
-                disabled={savingGroup}
-                loading={savingGroup}
-                size="sm"
-              >
-                Save group
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setEditingGroup(null)
-                  setErrorMessage(null)
-                }}
-                disabled={savingGroup}
-                size="sm"
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Group list */}
-        {loadingGroups ? (
-          <p className="mt-4 text-sm text-text-muted">Loading join groups…</p>
-        ) : joinGroups.length === 0 && !editingGroup ? (
-          <p className="mt-4 rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
-            No join groups yet. Create one to allow tables to be booked together.
-          </p>
-        ) : (
-          <div className="mt-4 space-y-3">
-            {joinGroups.map((group) => {
-              const groupTables = sortedTables.filter((t) => group.table_ids.includes(t.id))
-              const pairCount = (group.table_ids.length * (group.table_ids.length - 1)) / 2
-              const isConfirmingDelete = confirmDeleteId === group.id
-
-              return (
-                <div
-                  key={group.id}
-                  className="rounded-md border border-border bg-surface-2 px-4 py-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-text">{group.name}</p>
-                      <p className="mt-0.5 text-xs text-text-muted">
-                        {groupTables.length > 0
-                          ? groupTables.map((t) => t.name || t.table_number).join(' · ')
-                          : 'No tables assigned'}
-                      </p>
-                      {group.table_ids.length >= 2 && (
-                        <p className="mt-0.5 text-xs text-gray-400">
-                          {group.table_ids.length} tables · {pairCount} pairs ·{' '}
-                          {2 ** group.table_ids.length - group.table_ids.length - 1} multi-table combinations
-                        </p>
-                      )}
-                    </div>
-
-                    {!isConfirmingDelete ? (
-                      <div className="flex shrink-0 gap-2">
-                        <Button
-                          variant="secondary"
-                          size="xs"
-                          onClick={() => {
-                            setEditingGroup({
-                              id: group.id,
-                              name: group.name,
-                              table_ids: [...group.table_ids]
-                            })
-                            setErrorMessage(null)
-                          }}
-                          disabled={!!editingGroup}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="xs"
-                          onClick={() => setConfirmDeleteId(group.id)}
-                          disabled={!!editingGroup}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex shrink-0 items-center gap-2">
-                        <span className="text-xs text-text-muted">Delete this group?</span>
-                        <Button
-                          variant="danger"
-                          size="xs"
-                          onClick={() => { void deleteGroup(group.id) }}
-                          disabled={deletingGroupId === group.id}
-                          loading={deletingGroupId === group.id}
-                        >
-                          Yes, delete
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="xs"
-                          onClick={() => setConfirmDeleteId(null)}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Private booking area mapping */}
-      <div className="rounded-lg border border-border bg-surface p-4">
-        <h3 className="text-sm font-semibold text-text">Private booking area mapping</h3>
-        <p className="mt-1 text-xs text-text-muted">
-          Map private-booking spaces to table areas. During a mapped private booking, those table areas are blocked from table allocation.
-        </p>
-
-        {loading ? (
-          <p className="mt-3 text-sm text-text-muted">Loading private-booking mappings…</p>
-        ) : sortedAreas.length === 0 ? (
-          <p className="mt-3 rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
-            Add at least one table area before mapping private-booking spaces.
-          </p>
-        ) : sortedVenueSpaces.length === 0 ? (
-          <p className="mt-3 rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
-            No private-booking spaces found.
-          </p>
-        ) : (
-          <div className="mt-3 space-y-3">
-            {sortedVenueSpaces.map((space) => (
-              <div key={space.id} className="rounded-md border border-border bg-surface-2 px-3 py-3">
-                <div className="mb-2 flex items-center gap-2">
-                  <p className="text-sm font-medium text-text">{space.name}</p>
-                  {!space.active && (
-                    <span className="rounded-md bg-border px-2 py-0.5 text-meta text-text">
-                      Inactive
-                    </span>
-                  )}
-                </div>
-                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                  {sortedAreas.map((area) => {
-                    const key = spaceAreaKey(space.id, area.id)
+              <p className="mt-3 text-xs font-medium uppercase tracking-wider text-text-muted">Tables in this group</p>
+              {loading ? (
+                <p className="mt-2 text-xs text-text-muted">Loading tables…</p>
+              ) : (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+                  {sortedTables.map((table) => {
+                    const checked = editingGroup.table_ids.includes(table.id)
                     return (
                       <label
-                        key={key}
-                        className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
+                        key={table.id}
+                        className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text"
                       >
                         <input
                           type="checkbox"
-                          checked={spaceAreaLinkKeys.has(key)}
-                          onChange={() => toggleSpaceAreaLink(space.id, area.id)}
+                          checked={checked}
+                          onChange={() =>
+                            setEditingGroup((current) => {
+                              if (!current) return null
+                              return {
+                                ...current,
+                                table_ids: checked
+                                  ? current.table_ids.filter((id) => id !== table.id)
+                                  : [...current.table_ids, table.id]
+                              }
+                            })
+                          }
                         />
-                        <span>{area.name}</span>
+                        <span>
+                          <span className="font-medium">{table.name || table.table_number}</span>
+                          {table.area && (
+                            <span className="ml-1 text-xs text-text-soft">({table.area})</span>
+                          )}
+                        </span>
                       </label>
                     )
                   })}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              )}
 
-        <div className="mt-4">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={savingSpaceAreaLinks || loading || sortedAreas.length === 0 || sortedVenueSpaces.length === 0}
-            onClick={() => { void saveSpaceAreaLinks() }}
-            loading={savingSpaceAreaLinks}
-          >
-            Save private-booking area mapping
-          </Button>
-        </div>
-      </div>
+              <div className="mt-4 flex gap-2">
+                <Button
+                  onClick={() => { void saveGroup() }}
+                  disabled={savingGroup}
+                  loading={savingGroup}
+                >
+                  Save group
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setEditingGroup(null)
+                    setErrorMessage(null)
+                  }}
+                  disabled={savingGroup}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Group list */}
+          {loadingGroups ? (
+            <p className="text-sm text-text-muted">Loading join groups…</p>
+          ) : joinGroups.length === 0 && !editingGroup ? (
+            <p className="rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
+              No join groups yet. Create one to allow tables to be booked together.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {joinGroups.map((group) => {
+                const groupTables = sortedTables.filter((t) => group.table_ids.includes(t.id))
+                const pairCount = (group.table_ids.length * (group.table_ids.length - 1)) / 2
+                const isConfirmingDelete = confirmDeleteId === group.id
+
+                return (
+                  <div
+                    key={group.id}
+                    className="rounded-md border border-border bg-surface-2 px-4 py-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-text">{group.name}</p>
+                        <p className="mt-0.5 text-xs text-text-muted">
+                          {groupTables.length > 0
+                            ? groupTables.map((t) => t.name || t.table_number).join(' · ')
+                            : 'No tables assigned'}
+                        </p>
+                        {group.table_ids.length >= 2 && (
+                          <p className="mt-0.5 text-xs text-text-soft">
+                            {group.table_ids.length} tables · {pairCount} pairs ·{' '}
+                            {2 ** group.table_ids.length - group.table_ids.length - 1} multi-table combinations
+                          </p>
+                        )}
+                      </div>
+
+                      {!isConfirmingDelete ? (
+                        <div className="flex shrink-0 gap-2">
+                          <Button
+                            variant="secondary"
+                            size="xs"
+                            onClick={() => {
+                              setEditingGroup({
+                                id: group.id,
+                                name: group.name,
+                                table_ids: [...group.table_ids]
+                              })
+                              setErrorMessage(null)
+                            }}
+                            disabled={!!editingGroup}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="xs"
+                            onClick={() => setConfirmDeleteId(group.id)}
+                            disabled={!!editingGroup}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="text-xs text-text-muted">Delete this group?</span>
+                          <Button
+                            variant="danger"
+                            size="xs"
+                            onClick={() => { void deleteGroup(group.id) }}
+                            disabled={deletingGroupId === group.id}
+                            loading={deletingGroupId === group.id}
+                          >
+                            Yes, delete
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="xs"
+                            onClick={() => setConfirmDeleteId(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </Card>
+      </Section>
+
+      {/* Private booking area mapping */}
+      <Section
+        title="Private booking area mapping"
+        description="Map private-booking spaces to table areas. During a mapped private booking, those table areas are blocked from table allocation."
+      >
+        <Card>
+          {loading ? (
+            <p className="text-sm text-text-muted">Loading private-booking mappings…</p>
+          ) : sortedAreas.length === 0 ? (
+            <p className="rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
+              Add at least one table area before mapping private-booking spaces.
+            </p>
+          ) : sortedVenueSpaces.length === 0 ? (
+            <p className="rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
+              No private-booking spaces found.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {sortedVenueSpaces.map((space) => (
+                <div key={space.id} className="rounded-md border border-border bg-surface-2 px-3 py-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <p className="text-sm font-medium text-text">{space.name}</p>
+                    {!space.active && (
+                      <Badge tone="neutral" size="sm">
+                        Inactive
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {sortedAreas.map((area) => {
+                      const key = spaceAreaKey(space.id, area.id)
+                      return (
+                        <label
+                          key={key}
+                          className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={spaceAreaLinkKeys.has(key)}
+                            onChange={() => toggleSpaceAreaLink(space.id, area.id)}
+                          />
+                          <span>{area.name}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-4">
+            <Button
+              variant="secondary"
+              disabled={savingSpaceAreaLinks || loading || sortedAreas.length === 0 || sortedVenueSpaces.length === 0}
+              onClick={() => { void saveSpaceAreaLinks() }}
+              loading={savingSpaceAreaLinks}
+            >
+              Save private-booking area mapping
+            </Button>
+          </div>
+        </Card>
+      </Section>
     </div>
   )
 }

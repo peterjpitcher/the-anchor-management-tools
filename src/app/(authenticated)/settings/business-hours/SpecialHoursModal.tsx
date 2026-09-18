@@ -424,8 +424,8 @@ export function SpecialHoursModal({
                 <h4 className="text-sm font-medium text-text mb-2">Venue Hours</h4>
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className="text-xs text-text-muted">Opens</label>
-                    <Input 
+                    <Input
+                      label="Opens"
                       type="time" 
                       value={opens} 
                       onChange={e => setOpens(e.target.value)} 
@@ -433,8 +433,8 @@ export function SpecialHoursModal({
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="text-xs text-text-muted">Closes</label>
-                    <Input 
+                    <Input
+                      label="Closes"
                       type="time" 
                       value={closes} 
                       onChange={e => setCloses(e.target.value)} 
@@ -448,8 +448,8 @@ export function SpecialHoursModal({
                 <h4 className="text-sm font-medium text-text mb-2">Kitchen Hours</h4>
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className="text-xs text-text-muted">Opens</label>
-                    <Input 
+                    <Input
+                      label="Opens"
                       type="time" 
                       value={kitchenOpens} 
                       onChange={e => setKitchenOpens(e.target.value)} 
@@ -457,8 +457,8 @@ export function SpecialHoursModal({
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="text-xs text-text-muted">Closes</label>
-                    <Input 
+                    <Input
+                      label="Closes"
                       type="time" 
                       value={kitchenCloses} 
                       onChange={e => setKitchenCloses(e.target.value)} 
@@ -472,12 +472,12 @@ export function SpecialHoursModal({
 
         {/* Sunday Lunch Hours (Only show if Sunday) */}
         {!isClosed && isSunday && (
-          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
-             <h4 className="text-sm font-medium text-orange-900 mb-2">Sunday Lunch Service</h4>
+          <div className="rounded-lg border border-cat-5/20 bg-cat-5-soft p-4">
+             <h4 className="text-sm font-medium text-cat-5-fg mb-2">Sunday Lunch Service</h4>
              <div className="flex gap-4 items-end">
                 <div className="flex-1">
-                  <label className="text-xs text-orange-700">Starts</label>
-                  <Input 
+                  <Input
+                    label="Starts"
                     type="time" 
                     value={sundayLunchOpens} 
                     onChange={e => handleLunchTimeChange('start', e.target.value)} 
@@ -485,8 +485,8 @@ export function SpecialHoursModal({
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="text-xs text-orange-700">Ends</label>
-                  <Input 
+                  <Input
+                    label="Ends"
                     type="time" 
                     value={sundayLunchCloses} 
                     onChange={e => handleLunchTimeChange('end', e.target.value)} 
@@ -494,7 +494,7 @@ export function SpecialHoursModal({
                   />
                 </div>
              </div>
-             <p className="text-xs text-orange-600 mt-2">
+             <p className="text-xs text-cat-5-fg mt-2">
                Controls the &quot;Sunday Lunch&quot; booking slot availability.
              </p>
           </div>
@@ -502,8 +502,8 @@ export function SpecialHoursModal({
 
         {/* Note */}
         <div>
-          <label className="block text-sm font-medium text-text mb-1">Reason / Note</label>
           <Input
+            label="Reason / Note"
             placeholder="e.g. Bank Holiday, Private Event"
             value={note}
             onChange={e => setNote(e.target.value)}

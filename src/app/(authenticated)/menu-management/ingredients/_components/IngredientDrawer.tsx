@@ -551,7 +551,7 @@ export function IngredientDrawer({
                   {reviewResult.suggestions.map((suggestion, idx) => (
                     <div
                       key={idx}
-                      className="flex items-start justify-between gap-4 bg-surface p-2 rounded-sm border border-blue-100"
+                      className="flex items-start justify-between gap-4 bg-surface p-2 rounded-sm border border-info-border"
                     >
                       <div className="text-sm">
                         <div className="font-medium text-text">
@@ -561,7 +561,7 @@ export function IngredientDrawer({
                               (formState as Record<string, unknown>)[suggestion.field]
                             )}
                           </span>{' '}
-                          <span className="text-blue-600">
+                          <span className="text-info-fg">
                             &rarr; {formatValue(suggestion.suggestedValue)}
                           </span>
                         </div>
@@ -815,7 +815,7 @@ export function IngredientDrawer({
                   ))}
                 </div>
                 {unknownAllergens.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-warning-soft px-2 py-1">
+                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning-border bg-warning-soft px-2 py-1">
                     <p className="text-xs text-warning-fg">
                       Additional tags already stored: {unknownAllergens.join(', ')}.
                     </p>
@@ -823,7 +823,7 @@ export function IngredientDrawer({
                       type="button"
                       size="xs"
                       variant="ghost"
-                      className="text-xs text-warning-fg hover:bg-amber-100"
+                      className="text-xs text-warning-fg hover:bg-warning/10"
                       onClick={clearUnknownAllergens}
                     >
                       Remove extras
@@ -849,7 +849,7 @@ export function IngredientDrawer({
                   ))}
                 </div>
                 {unknownDietaryFlags.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-warning-soft px-2 py-1">
+                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning-border bg-warning-soft px-2 py-1">
                     <p className="text-xs text-warning-fg">
                       Additional tags already stored: {unknownDietaryFlags.join(', ')}.
                     </p>
@@ -857,7 +857,7 @@ export function IngredientDrawer({
                       type="button"
                       size="xs"
                       variant="ghost"
-                      className="text-xs text-warning-fg hover:bg-amber-100"
+                      className="text-xs text-warning-fg hover:bg-warning/10"
                       onClick={clearUnknownDietaryFlags}
                     >
                       Remove extras

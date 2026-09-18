@@ -35,7 +35,10 @@ import { Alert } from '@/ds';
 import { ConfirmDialog } from '@/ds';
 import { BackButton } from '@/ds';
 import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
+// Colours staff pick and store on each label: data, not styling tokens. New labels start on the
+// first option, so the default can never drift from the list.
 const PRESET_COLORS = [
   { name: 'Green', value: '#10B981' },
   { name: 'Blue', value: '#3B82F6' },
@@ -80,7 +83,7 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    color: '#10B981',
+    color: PRESET_COLORS[0].value,
     icon: 'star',
     auto_apply_rules: {} as Record<string, unknown>,
   });
@@ -111,7 +114,7 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
     setFormData({
       name: '',
       description: '',
-      color: '#10B981',
+      color: PRESET_COLORS[0].value,
       icon: 'star',
       auto_apply_rules: {},
     });
@@ -276,7 +279,7 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {labels.map((label) => (
-            <Card key={label.id} variant="bordered" padding="sm">
+            <Card key={label.id} padding="sm">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center space-x-2">
@@ -347,9 +350,10 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
                   <button
                     key={color.value}
                     type="button"
-                    className={`h-9 rounded-md border ${
-                      formData.color === color.value ? 'ring-2 ring-offset-2 ring-blue-500' : ''
-                    }`}
+                    className={cn(
+                      'h-9 rounded-md border focus-visible:outline-hidden focus-visible:shadow-ring disabled:cursor-not-allowed disabled:opacity-50',
+                      formData.color === color.value && 'ring-2 ring-primary ring-offset-2',
+                    )}
                     style={{ backgroundColor: color.value }}
                     onClick={() => {
                       if (!canManageUI) {
@@ -374,9 +378,10 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
                     <button
                       key={icon.value}
                       type="button"
-                      className={`flex h-10 items-center justify-center gap-2 rounded-md border text-sm ${
-                        formData.icon === icon.value ? 'border-primary bg-primary-soft text-primary' : 'border-border'
-                      }`}
+                      className={cn(
+                        'flex h-10 items-center justify-center gap-2 rounded-md border text-sm focus-visible:outline-hidden focus-visible:shadow-ring disabled:cursor-not-allowed disabled:opacity-50',
+                        formData.icon === icon.value ? 'border-primary bg-primary-soft text-primary-soft-fg' : 'border-border',
+                      )}
                       onClick={() => {
                         if (!canManageUI) {
                           toast.error('You do not have permission to update customer labels.');

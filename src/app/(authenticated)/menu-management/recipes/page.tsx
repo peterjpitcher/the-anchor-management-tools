@@ -315,7 +315,7 @@ export default function MenuRecipesPage(): React.ReactElement {
               onToggled={() => void loadData()}
             />
           ) : (
-            <Badge variant={recipe.is_active ? 'success' : 'error'}>
+            <Badge tone={recipe.is_active ? 'success' : 'neutral'}>
               {recipe.is_active ? 'Active' : 'Inactive'}
             </Badge>
           );

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Badge, Button, Card, Input, Section, Select, Textarea } from '@/ds'
+import { Badge, Button, Card, Checkbox, Input, Section, Select, Textarea } from '@/ds'
 import {
   MENU_COURSES,
   MENU_COURSE_ADDON,
@@ -356,7 +356,7 @@ export function SeasonalPeriods() {
                     </div>
 
                     {period.requiresPreorder && !period.menuReady && (
-                      <p className="mt-3 rounded-md border border-amber-200 bg-warning-soft p-3 text-sm text-warning-fg">
+                      <p className="mt-3 rounded-md border border-warning-border bg-warning-soft p-3 text-sm text-warning-fg">
                         This period needs a pre-order and has no menu yet, so it cannot be booked. Add the
                         courses below, then switch it on.
                       </p>
@@ -578,25 +578,14 @@ export function SeasonalPeriods() {
         description="The kill switch for seasonal deposits. Leave it on unless something is going wrong with payments."
       >
         <Card>
-          <div className="flex items-start gap-3">
-            <input
-              id="booking_period_deposits_enabled"
-              type="checkbox"
-              checked={depositsEnabled}
-              disabled={busy}
-              onChange={(e) => void saveDepositSwitch(e.target.checked)}
-              className="mt-1 h-4 w-4"
-            />
-            <div>
-              <label htmlFor="booking_period_deposits_enabled" className="text-sm font-medium text-text">
-                Collect seasonal deposits
-              </label>
-              <p className="text-xs text-text-muted">
-                Off means a deposit is still worked out and shown to staff, but no money is asked for. The
-                deposit for a party of {LARGE_GROUP_DEPOSIT_THRESHOLD} or more is unaffected.
-              </p>
-            </div>
-          </div>
+          <Checkbox
+            id="booking_period_deposits_enabled"
+            label="Collect seasonal deposits"
+            description={`Off means a deposit is still worked out and shown to staff, but no money is asked for. The deposit for a party of ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more is unaffected.`}
+            checked={depositsEnabled}
+            disabled={busy}
+            onChange={(checked) => void saveDepositSwitch(checked)}
+          />
         </Card>
       </Section>
     </div>
@@ -693,7 +682,7 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
           <Input label="Name shown to guests" value={draft.name} onChange={(e) => set('name', e.target.value)} />
           {draft.id ? (
             <div>
-              <span className="block text-ui font-medium text-text">Kind and code</span>
+              <span className="block text-xs font-medium uppercase tracking-wider text-text-muted">Kind and code</span>
               <p className="mt-1 text-sm text-text">
                 {PERIOD_KIND_LABELS[draft.period_kind]} &middot; {draft.code}
               </p>
@@ -790,24 +779,14 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
             onChange={(e) => set('max_party_size', e.target.value)}
           />
 
-          <div className="sm:col-span-2 flex items-start gap-3">
-            <input
-              id="requires_preorder"
-              type="checkbox"
-              checked={draft.requires_preorder}
-              onChange={(e) => set('requires_preorder', e.target.checked)}
-              className="mt-1 h-4 w-4"
-            />
-            <div>
-              <label htmlFor="requires_preorder" className="text-sm font-medium text-text">
-                Guests must choose their food when they book
-              </label>
-              <p className="text-xs text-text-muted">
-                The period cannot go live until at least one dish is on its menu, and guests are told the
-                menu is not ready rather than being shown an empty list.
-              </p>
-            </div>
-          </div>
+          <Checkbox
+            id="requires_preorder"
+            label="Guests must choose their food when they book"
+            description="The period cannot go live until at least one dish is on its menu, and guests are told the menu is not ready rather than being shown an empty list."
+            checked={draft.requires_preorder}
+            onChange={(checked) => set('requires_preorder', checked)}
+            className="sm:col-span-2"
+          />
 
           {draft.requires_preorder && (
             <Input

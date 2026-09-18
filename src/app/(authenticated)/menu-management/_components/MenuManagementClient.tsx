@@ -415,7 +415,7 @@ export default function MenuManagementClient(): React.ReactElement {
                 <button
                   type="button"
                   onClick={() => { setSelectedMenu('all'); setGpStatusFilter('all') }}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${selectedMenu === 'all' ? 'bg-primary-soft text-primary-soft-fg' : 'text-text-muted hover:bg-surface-hover'}`}
+                  className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset ${selectedMenu === 'all' ? 'bg-primary-soft text-primary-soft-fg' : 'text-text-muted hover:bg-surface-hover'}`}
                 >
                   <span>All Menus</span>
                   <Badge tone="neutral">{dishes.filter((d) => d.is_active).length}</Badge>
@@ -428,7 +428,7 @@ export default function MenuManagementClient(): React.ReactElement {
                       key={menu.code}
                       type="button"
                       onClick={() => handleMenuBreakdownClick(menu.code)}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${isSelected ? 'bg-primary-soft text-primary-soft-fg' : 'text-text-muted hover:bg-surface-hover'}`}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset ${isSelected ? 'bg-primary-soft text-primary-soft-fg' : 'text-text-muted hover:bg-surface-hover'}`}
                     >
                       <span className="truncate">{menu.name}</span>
                       <div className="flex items-center gap-2">
@@ -445,8 +445,12 @@ export default function MenuManagementClient(): React.ReactElement {
           {/* Quick links */}
           <div className="space-y-2">
             {navigationCards.map((card) => (
-              <Link key={card.title} href={card.href} className="block">
-                <Card className="p-3 hover:bg-surface-hover transition-colors">
+              <Link
+                key={card.title}
+                href={card.href}
+                className="block rounded-lg focus-visible:outline-hidden focus-visible:shadow-ring"
+              >
+                <Card padding="sm" className="hover:bg-surface-hover transition-colors">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-text-strong">{card.title}</p>
@@ -517,7 +521,7 @@ export default function MenuManagementClient(): React.ReactElement {
                     const tone = gpColour(cat.avgGp, targetGpPct)
                     return (
                       <div key={cat.code}>
-                        <button type="button" onClick={() => toggleCategory(cat.code)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-hover transition-colors">
+                        <button type="button" onClick={() => toggleCategory(cat.code)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-hover transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset">
                           <div className="flex items-center gap-2">
                             <Icon name={isExpanded ? 'chevronDown' : 'chevronRight'} size={14} className="text-text-muted" />
                             <span className="text-sm font-medium text-text">{cat.name}</span>

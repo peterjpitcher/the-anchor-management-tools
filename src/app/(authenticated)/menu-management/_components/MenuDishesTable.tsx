@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useCallback, useState } from 'react';
-import { Card, Badge, Input } from '@/ds';
+import { Card, Badge, Button, Input } from '@/ds';
 import { Pagination } from '@/ds';
 import { ExclamationTriangleIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid';
 import { useTablePipeline } from './useTablePipeline';
@@ -349,7 +349,7 @@ export function MenuDishesTable({
       <th scope="col" className={className}>
         <button
           type="button"
-          className="inline-flex items-center gap-1 font-medium text-text-muted hover:text-text"
+          className="inline-flex items-center gap-1 rounded-sm text-xs font-medium uppercase tracking-wider text-text-muted hover:text-text focus-visible:outline-hidden focus-visible:shadow-ring-inset"
           onClick={() => pipeline.handleSort(sortKey)}
         >
           {label}
@@ -406,21 +406,20 @@ export function MenuDishesTable({
             placeholder="Search dishes..."
             value={pipeline.searchQuery}
             onChange={(e) => pipeline.setSearchQuery(e.target.value)}
-            icon={<MagnifyingGlassIcon className="h-4 w-4 text-gray-400" />}
+            icon={<MagnifyingGlassIcon className="h-4 w-4" />}
           />
         </div>
         {hasAnyOptionGroups && (
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="secondary"
             onClick={() => setShowAllCombinations((prev) => !prev)}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              showAllCombinations
-                ? 'bg-success-soft text-green-800 hover:bg-green-200'
-                : 'bg-surface-hover text-text-muted hover:bg-border'
-            }`}
+            // While every combination is showing, the toggle wears the selected (primary) look.
+            className={showAllCombinations ? 'border-primary bg-primary-soft text-primary-soft-fg hover:bg-primary-soft' : undefined}
           >
             {showAllCombinations ? 'Show worst case only' : 'Show all combinations'}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -434,13 +433,13 @@ export function MenuDishesTable({
 
       {/* Table */}
       {loadError ? (
-        <Card className="p-4">
+        <Card>
           <p className="text-sm text-danger">
             Unable to load GP% data right now. Please refresh the page or try again shortly.
           </p>
         </Card>
       ) : sorted.length === 0 && pipeline.totalItems === 0 ? (
-        <Card className="p-4">
+        <Card>
           <p className="text-sm text-text-muted">
             {filter === 'below-target'
               ? 'No dishes are below the GP target. Great work!'
@@ -452,18 +451,18 @@ export function MenuDishesTable({
           </p>
         </Card>
       ) : (
-        <Card className="p-0 overflow-hidden">
+        <Card padding="none">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border text-sm">
+            <table className="min-w-full divide-y divide-border text-ui">
               <thead className="bg-surface-2">
                 <tr>
                   <SortHeader label="Dish" sortKey="dishName" className="px-4 py-2 text-left" />
                   <SortHeader label="Price" sortKey="sellingPrice" className="px-4 py-2 text-left" />
                   <SortHeader label="Portion Cost" sortKey="portionCost" className="px-4 py-2 text-left" />
                   <SortHeader label="GP%" sortKey="gpPct" className="px-4 py-2 text-left" />
-                  <th scope="col" className="px-4 py-2 text-left font-medium text-text-muted">Target</th>
-                  <th scope="col" className="px-4 py-2 text-left font-medium text-text-muted">Active status</th>
-                  <th scope="col" className="px-4 py-2 text-left font-medium text-text-muted">Costing status</th>
+                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Target</th>
+                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Active status</th>
+                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Costing status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -487,13 +486,13 @@ export function MenuDishesTable({
                   return (
                     <tr
                       key={rowKey}
-                      className={belowTarget ? 'bg-danger-soft/60' : ''}
+                      className={belowTarget ? 'bg-danger-soft' : ''}
                     >
                       <td className="px-4 py-2">
                         {onDishClick ? (
                           <button
                             type="button"
-                            className="text-left font-medium text-green-700 hover:text-green-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded-sm"
+                            className="rounded-sm text-left font-medium text-primary hover:text-primary-hover hover:underline focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                             onClick={() => onDishClick(row.originalDish)}
                           >
                             {row.dishName}
@@ -502,7 +501,7 @@ export function MenuDishesTable({
                           <div className="font-medium text-text">{row.dishName}</div>
                         )}
                         {row.comboLabel && (
-                          <div className="text-xs text-indigo-600">{row.comboLabel}</div>
+                          <div className="text-xs text-cat-2-fg">{row.comboLabel}</div>
                         )}
                         {!row.comboLabel && row.assignments.length > 0 && (
                           <div className="text-xs text-text-muted">

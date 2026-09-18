@@ -128,7 +128,10 @@ export default function ImportMessagesClient({
         </Card>
 
         {result && (
-          <Card className="mt-6 space-y-4">
+          <Card className="mt-6">
+            {/* The spacing sits inside the Card's padded wrapper; on the Card itself it had
+                nothing to space, so the summary sat hard against the alert above it. */}
+            <div className="space-y-4">
             {'error' in result ? (
               <Alert
                 variant="error"
@@ -161,7 +164,7 @@ export default function ImportMessagesClient({
                   </p>
                   <p>
                     Successfully imported:{' '}
-                    <strong className="text-green-600">
+                    <strong className="text-success-fg">
                       {result.summary.imported}
                     </strong>
                   </p>
@@ -189,6 +192,7 @@ export default function ImportMessagesClient({
                 )}
               </>
             )}
+            </div>
           </Card>
         )}
 

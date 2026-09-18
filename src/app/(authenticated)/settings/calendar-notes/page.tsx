@@ -37,7 +37,7 @@ export default async function CalendarNotesSettingsPage() {
             : 'Create and manage manual notes.'
         }
       >
-        <Card className="p-6">
+        <Card>
           <CalendarNotesManager
             initialNotes={notesResult.data ?? []}
             initialError={notesResult.error ?? null}
