@@ -51,16 +51,16 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
   const [isOpen, setIsOpen] = useState(defaultOpen)
   
   return (
-    <div className="bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl overflow-hidden">
+    <div className="bg-surface shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl overflow-hidden">
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-6 sm:p-8 flex items-center justify-between hover:bg-gray-50 transition-colors"
+        className="w-full px-4 py-6 sm:p-8 flex items-center justify-between hover:bg-surface-hover transition-colors"
       >
         <div className="flex items-center space-x-3">
           {Icon && <Icon className="h-5 w-5 text-gray-400" />}
           <div className="text-left">
-            <h3 className="text-lg font-medium leading-6 text-gray-900">{title}</h3>
+            <h3 className="text-lg font-medium leading-6 text-text">{title}</h3>
             {description && <p className="mt-1 text-sm text-gray-500">{description}</p>}
           </div>
         </div>
@@ -71,7 +71,7 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
         )}
       </button>
       {isOpen && (
-        <div className="border-t border-gray-200 px-4 py-6 sm:p-8">
+        <div className="border-t border-border px-4 py-6 sm:p-8">
           {children}
         </div>
       )}
@@ -228,7 +228,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-4">
-            <label htmlFor="name" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="name" className="block text-sm font-medium leading-6 text-text">
               Category Name *
             </label>
             <div className="mt-2">
@@ -246,7 +246,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="sort_order" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="sort_order" className="block text-sm font-medium leading-6 text-text">
               Sort Order
             </label>
             <div className="mt-2">
@@ -262,7 +262,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="description" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="description" className="block text-sm font-medium leading-6 text-text">
               Description
             </label>
             <div className="mt-2">
@@ -280,7 +280,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
 
           {/* Appearance */}
           <div className="sm:col-span-3">
-            <label className="block text-sm font-medium leading-6 text-gray-900">
+            <label className="block text-sm font-medium leading-6 text-text">
               Color
             </label>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -300,7 +300,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-3">
-            <label className="block text-sm font-medium leading-6 text-gray-900">
+            <label className="block text-sm font-medium leading-6 text-text">
               Icon
             </label>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -314,7 +314,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                     className={`p-2 rounded-md border-2 ${
                       icon === iconOption.value 
                         ? 'border-indigo-600 bg-indigo-50' 
-                        : 'border-gray-300 hover:border-gray-400'
+                        : 'border-border-strong hover:border-gray-400'
                     }`}
                     title={iconOption.label}
                   >
@@ -335,7 +335,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 />
               </div>
               <div className="ml-3 text-sm leading-6">
-                <label htmlFor="is_active" className="font-medium text-gray-900">
+                <label htmlFor="is_active" className="font-medium text-text">
                   Active
                 </label>
                 <p className="text-gray-500">This category will be available when creating events</p>
@@ -345,8 +345,8 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
 
           {/* Preview */}
           <div className="col-span-full">
-            <h4 className="text-sm font-medium text-gray-900 mb-2">Preview</h4>
-            <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
+            <h4 className="text-sm font-medium text-text mb-2">Preview</h4>
+            <div className="flex items-center space-x-3 p-4 bg-surface-2 rounded-lg">
               <div 
                 className="p-2 rounded-lg"
                 style={{ backgroundColor: `${color}20` }}
@@ -354,7 +354,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 <IconComponent className="h-6 w-6" style={{ color }} />
               </div>
               <div>
-                <p className="font-medium text-gray-900">{name || 'Category Name'}</p>
+                <p className="font-medium text-text">{name || 'Category Name'}</p>
                 <p className="text-sm text-gray-500">{description || 'Category description'}</p>
               </div>
             </div>
@@ -371,11 +371,11 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
       >
         <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
           <div className="col-span-full">
-            <h4 className="text-sm font-medium text-gray-900 mb-4">Time</h4>
+            <h4 className="text-sm font-medium text-text mb-4">Time</h4>
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_start_time" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_start_time" className="block text-sm font-medium leading-6 text-text">
               Default Start Time
             </label>
             <div className="mt-2">
@@ -390,7 +390,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_end_time" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_end_time" className="block text-sm font-medium leading-6 text-text">
               Default End Time
             </label>
             <div className="mt-2">
@@ -405,7 +405,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_duration_minutes" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_duration_minutes" className="block text-sm font-medium leading-6 text-text">
               Duration (minutes)
             </label>
             <div className="mt-2">
@@ -423,7 +423,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_doors_time" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_doors_time" className="block text-sm font-medium leading-6 text-text">
               Doors Time
             </label>
             <div className="mt-2">
@@ -438,7 +438,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_last_entry_time" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_last_entry_time" className="block text-sm font-medium leading-6 text-text">
               Last Entry Time
             </label>
             <div className="mt-2">
@@ -453,11 +453,11 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="col-span-full">
-            <h4 className="text-sm font-medium text-gray-900 mb-4 mt-6">Pricing & Booking</h4>
+            <h4 className="text-sm font-medium text-text mb-4 mt-6">Pricing & Booking</h4>
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_price" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_price" className="block text-sm font-medium leading-6 text-text">
               Default Price (£)
             </label>
             <div className="mt-2">
@@ -480,7 +480,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_capacity" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_capacity" className="block text-sm font-medium leading-6 text-text">
               Default Capacity
             </label>
             <div className="mt-2">
@@ -498,7 +498,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_booking_mode" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_booking_mode" className="block text-sm font-medium leading-6 text-text">
               Seating / Booking
             </label>
             <div className="mt-2">
@@ -517,7 +517,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_payment_mode" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_payment_mode" className="block text-sm font-medium leading-6 text-text">
               Payment
             </label>
             <div className="mt-2">
@@ -539,7 +539,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="default_booking_url" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_booking_url" className="block text-sm font-medium leading-6 text-text">
               Default Booking URL
             </label>
             <div className="mt-2">
@@ -554,9 +554,9 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
             </div>
           </div>
 
-          <div className="col-span-full flex items-center justify-between pt-4 border-t border-gray-200">
+          <div className="col-span-full flex items-center justify-between pt-4 border-t border-border">
             <div>
-              <label htmlFor="default-promo-sms" className="text-sm font-medium text-gray-900">
+              <label htmlFor="default-promo-sms" className="text-sm font-medium text-text">
                 Default promotional SMS
               </label>
               <p className="text-xs text-gray-500">New events in this category will inherit this setting</p>
@@ -567,15 +567,15 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
               role="switch"
               aria-checked={defaultPromoSmsEnabled}
               onClick={() => setDefaultPromoSmsEnabled(!defaultPromoSmsEnabled)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${defaultPromoSmsEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${defaultPromoSmsEnabled ? 'bg-indigo-600' : 'bg-border'}`}
             >
-              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${defaultPromoSmsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow-sm ring-0 transition duration-200 ease-in-out ${defaultPromoSmsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
             </button>
           </div>
 
           <div className="col-span-full flex items-center justify-between">
             <div>
-              <label htmlFor="default-bookings" className="text-sm font-medium text-gray-900">
+              <label htmlFor="default-bookings" className="text-sm font-medium text-text">
                 Default accept bookings
               </label>
               <p className="text-xs text-gray-500">New events in this category will inherit this setting</p>
@@ -586,18 +586,18 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
               role="switch"
               aria-checked={defaultBookingsEnabled}
               onClick={() => setDefaultBookingsEnabled(!defaultBookingsEnabled)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${defaultBookingsEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${defaultBookingsEnabled ? 'bg-indigo-600' : 'bg-border'}`}
             >
-              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${defaultBookingsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow-sm ring-0 transition duration-200 ease-in-out ${defaultBookingsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
             </button>
           </div>
 
           <div className="col-span-full">
-            <h4 className="text-sm font-medium text-gray-900 mb-4 mt-6">Performers & Reminders</h4>
+            <h4 className="text-sm font-medium text-text mb-4 mt-6">Performers & Reminders</h4>
           </div>
 
           <div className="sm:col-span-3">
-            <label htmlFor="default_performer_name" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_performer_name" className="block text-sm font-medium leading-6 text-text">
               Default Performer Name
             </label>
             <div className="mt-2">
@@ -613,7 +613,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-3">
-            <label htmlFor="default_performer_type" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_performer_type" className="block text-sm font-medium leading-6 text-text">
               Default Performer Type
             </label>
             <div className="mt-2">
@@ -635,7 +635,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_reminder_hours" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="default_reminder_hours" className="block text-sm font-medium leading-6 text-text">
               Reminder Hours Before
             </label>
             <div className="mt-2">
@@ -662,7 +662,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
       >
         <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
           <div className="sm:col-span-3">
-            <label htmlFor="slug" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="slug" className="block text-sm font-medium leading-6 text-text">
               URL Slug
             </label>
             <div className="mt-2">
@@ -678,7 +678,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-3">
-            <label htmlFor="meta_title" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="meta_title" className="block text-sm font-medium leading-6 text-text">
               Meta Title
             </label>
             <div className="mt-2">
@@ -696,7 +696,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="meta_description" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="meta_description" className="block text-sm font-medium leading-6 text-text">
               Meta Description
             </label>
             <div className="mt-2">
@@ -714,7 +714,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="short_description" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="short_description" className="block text-sm font-medium leading-6 text-text">
               Short Description
             </label>
             <div className="mt-2">
@@ -732,7 +732,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="long_description" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="long_description" className="block text-sm font-medium leading-6 text-text">
               Long Description
             </label>
             <div className="mt-2">
@@ -748,7 +748,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="highlights" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="highlights" className="block text-sm font-medium leading-6 text-text">
               Highlights
             </label>
             <div className="mt-2">
@@ -765,7 +765,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="keywords" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="keywords" className="block text-sm font-medium leading-6 text-text">
               Keywords
             </label>
             <div className="mt-2">
@@ -795,7 +795,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
 
           {/* Image Alt Text Default */}
           <div className="col-span-full">
-            <label htmlFor="image_alt_text" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="image_alt_text" className="block text-sm font-medium leading-6 text-text">
               Image Alt Text Default
             </label>
             <div className="mt-2">
@@ -813,7 +813,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
 
           {/* Cancellation Policy Default */}
           <div className="col-span-full">
-            <label htmlFor="cancellation_policy" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="cancellation_policy" className="block text-sm font-medium leading-6 text-text">
               Cancellation Policy Default
             </label>
             <div className="mt-2">
@@ -831,7 +831,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
 
           {/* Accessibility Notes Default */}
           <div className="col-span-full">
-            <label htmlFor="accessibility_notes" className="block text-sm font-medium leading-6 text-gray-900">
+            <label htmlFor="accessibility_notes" className="block text-sm font-medium leading-6 text-text">
               Accessibility Notes Default
             </label>
             <div className="mt-2">

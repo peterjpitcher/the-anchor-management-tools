@@ -45,8 +45,8 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
   return (
     <div className="space-y-3 p-4">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900">Food service times</h3>
-        <p className="mt-1 text-sm text-gray-600">
+        <h3 className="text-sm font-semibold text-text">Food service times</h3>
+        <p className="mt-1 text-sm text-text-muted">
           When food can be booked, inside the kitchen hours above. Add a second service on a
           day that has a break in the middle. A time in a gap cannot be booked.
         </p>
@@ -64,7 +64,7 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
           <Card key={day.day_of_week} variant="bordered" padding="sm">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <span className="text-sm font-medium text-gray-900">{DAY_NAMES[day.day_of_week]}</span>
+                <span className="text-sm font-medium text-text">{DAY_NAMES[day.day_of_week]}</span>
                 <span className="ml-2 text-xs text-gray-500">
                   kitchen {toClock(day.kitchen_opens) || '?'} to {toClock(day.kitchen_closes) || '?'}
                 </span>
@@ -157,7 +157,7 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
                           </Button>
                         )}
                       </div>
-                      {problem && <p className="text-xs text-red-600">{problem.message}</p>}
+                      {problem && <p className="text-xs text-danger">{problem.message}</p>}
                     </div>
                   )
                 })}
@@ -165,7 +165,7 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
             )}
 
             {gaps.length > 0 && problems.length === 0 && (
-              <p className="mt-2 text-xs text-gray-600">
+              <p className="mt-2 text-xs text-text-muted">
                 Not bookable: {gaps.join(', ')}.
               </p>
             )}

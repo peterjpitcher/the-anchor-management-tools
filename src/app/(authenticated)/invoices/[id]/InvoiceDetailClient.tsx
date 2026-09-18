@@ -91,7 +91,7 @@ function PreviewSection({
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+        <h3 className="text-sm font-semibold text-text">{title}</h3>
         {typeof count === 'number' && (
           <span className="text-xs font-medium text-gray-500">{count}</span>
         )}
@@ -103,7 +103,7 @@ function PreviewSection({
 
 function EmptyPreviewMessage({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500">
+    <div className="rounded-md border border-dashed border-border bg-surface-2 px-3 py-4 text-sm text-gray-500">
       {children}
     </div>
   )
@@ -121,9 +121,9 @@ function EntryPreviewTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-md border border-gray-200">
-      <table className="min-w-full divide-y divide-gray-200 text-sm">
-        <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+    <div className="overflow-x-auto rounded-md border border-border">
+      <table className="min-w-full divide-y divide-border text-sm">
+        <thead className="bg-surface-2 text-xs uppercase text-gray-500">
           <tr>
             <th scope="col" className="px-3 py-2 text-left font-semibold">Date</th>
             <th scope="col" className="px-3 py-2 text-left font-semibold">Project</th>
@@ -135,18 +135,18 @@ function EntryPreviewTable({
             {showReason && <th scope="col" className="px-3 py-2 text-left font-semibold">Reason</th>}
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100 bg-white">
+        <tbody className="divide-y divide-border bg-surface">
           {entries.map((entry) => (
             <tr key={entry.id}>
               <td className="whitespace-nowrap px-3 py-2 text-gray-700">{formatPreviewDate(entry.entry_date)}</td>
               <td className="min-w-[180px] px-3 py-2">
-                <div className="font-medium text-gray-900">{entry.project_name}</div>
+                <div className="font-medium text-text">{entry.project_name}</div>
                 {entry.project_code && <div className="text-xs text-gray-500">{entry.project_code}</div>}
               </td>
               <td className="min-w-[220px] px-3 py-2 text-gray-700">{entry.description || '-'}</td>
               <td className="whitespace-nowrap px-3 py-2 text-gray-700">{entry.entry_type}</td>
               <td className="whitespace-nowrap px-3 py-2 text-right text-gray-700">{entry.quantity_label}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-gray-900">{formatMoney(entry.amount_ex_vat)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-text">{formatMoney(entry.amount_ex_vat)}</td>
               <td className="whitespace-nowrap px-3 py-2 text-gray-700">
                 {formatStatus(entry.status)}
                 {entry.invoice_number && <div className="text-xs text-gray-500">{entry.invoice_number}</div>}
@@ -172,9 +172,9 @@ function RecurringPreviewTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-md border border-gray-200">
-      <table className="min-w-full divide-y divide-gray-200 text-sm">
-        <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+    <div className="overflow-x-auto rounded-md border border-border">
+      <table className="min-w-full divide-y divide-border text-sm">
+        <thead className="bg-surface-2 text-xs uppercase text-gray-500">
           <tr>
             <th scope="col" className="px-3 py-2 text-left font-semibold">Description</th>
             <th scope="col" className="px-3 py-2 text-left font-semibold">Period</th>
@@ -184,15 +184,15 @@ function RecurringPreviewTable({
             {showReason && <th scope="col" className="px-3 py-2 text-left font-semibold">Reason</th>}
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100 bg-white">
+        <tbody className="divide-y divide-border bg-surface">
           {items.map((item) => (
             <tr key={item.id}>
-              <td className="min-w-[220px] px-3 py-2 font-medium text-gray-900">
+              <td className="min-w-[220px] px-3 py-2 font-medium text-text">
                 {item.description}
                 {item.is_virtual && <div className="text-xs text-gray-500">Will be created on reissue</div>}
               </td>
               <td className="whitespace-nowrap px-3 py-2 text-gray-700">{item.period_yyyymm}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-gray-900">{formatMoney(item.amount_ex_vat)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-text">{formatMoney(item.amount_ex_vat)}</td>
               <td className="whitespace-nowrap px-3 py-2 text-right text-gray-700">{item.vat_rate}%</td>
               <td className="whitespace-nowrap px-3 py-2 text-gray-700">
                 {formatStatus(item.status)}
@@ -209,9 +209,9 @@ function RecurringPreviewTable({
 
 function LineItemsPreviewTable({ lineItems }: { lineItems: InvoiceLineItemInput[] }) {
   return (
-    <div className="overflow-x-auto rounded-md border border-gray-200">
-      <table className="min-w-full divide-y divide-gray-200 text-sm">
-        <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+    <div className="overflow-x-auto rounded-md border border-border">
+      <table className="min-w-full divide-y divide-border text-sm">
+        <thead className="bg-surface-2 text-xs uppercase text-gray-500">
           <tr>
             <th scope="col" className="px-3 py-2 text-left font-semibold">Description</th>
             <th scope="col" className="px-3 py-2 text-right font-semibold">Qty</th>
@@ -219,10 +219,10 @@ function LineItemsPreviewTable({ lineItems }: { lineItems: InvoiceLineItemInput[
             <th scope="col" className="px-3 py-2 text-right font-semibold">VAT</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100 bg-white">
+        <tbody className="divide-y divide-border bg-surface">
           {lineItems.map((item, index) => (
             <tr key={`${item.description}-${index}`}>
-              <td className="min-w-[260px] px-3 py-2 font-medium text-gray-900">{item.description}</td>
+              <td className="min-w-[260px] px-3 py-2 font-medium text-text">{item.description}</td>
               <td className="whitespace-nowrap px-3 py-2 text-right text-gray-700">{item.quantity}</td>
               <td className="whitespace-nowrap px-3 py-2 text-right text-gray-700">{formatMoney(item.unit_price)}</td>
               <td className="whitespace-nowrap px-3 py-2 text-right text-gray-700">{item.vat_rate}%</td>
@@ -775,7 +775,7 @@ export default function InvoiceDetailClient({
             {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1).replace('_', ' ')}
           </Badge>
           {invoice.reference && (
-            <span className="text-sm sm:text-base text-gray-600">
+            <span className="text-sm sm:text-base text-text-muted">
               Reference: {invoice.reference}
             </span>
           )}
@@ -800,30 +800,30 @@ export default function InvoiceDetailClient({
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               <div>
-                <h3 className="font-medium text-sm text-gray-600 mb-1">From</h3>
+                <h3 className="font-medium text-sm text-text-muted mb-1">From</h3>
                 <p className="font-medium">Orange Jelly Limited</p>
-                <p className="text-sm text-gray-600">The Anchor, Horton Road</p>
-                <p className="text-sm text-gray-600">Stanwell Moor Village, Surrey</p>
-                <p className="text-sm text-gray-600">TW19 6AQ</p>
-                <p className="text-sm text-gray-600">VAT: GB315203647</p>
+                <p className="text-sm text-text-muted">The Anchor, Horton Road</p>
+                <p className="text-sm text-text-muted">Stanwell Moor Village, Surrey</p>
+                <p className="text-sm text-text-muted">TW19 6AQ</p>
+                <p className="text-sm text-text-muted">VAT: GB315203647</p>
               </div>
 
               <div>
-                <h3 className="font-medium text-sm text-gray-600 mb-1">To</h3>
+                <h3 className="font-medium text-sm text-text-muted mb-1">To</h3>
                 {invoice.vendor ? (
                   <>
                     <p className="font-medium">{invoice.vendor.name}</p>
                     {invoice.vendor.contact_name && (
-                      <p className="text-sm text-gray-600">{invoice.vendor.contact_name}</p>
+                      <p className="text-sm text-text-muted">{invoice.vendor.contact_name}</p>
                     )}
                     {invoice.vendor.email && (
-                      <p className="text-sm text-gray-600">{invoice.vendor.email}</p>
+                      <p className="text-sm text-text-muted">{invoice.vendor.email}</p>
                     )}
                     {invoice.vendor.phone && (
-                      <p className="text-sm text-gray-600">{invoice.vendor.phone}</p>
+                      <p className="text-sm text-text-muted">{invoice.vendor.phone}</p>
                     )}
                     {invoice.vendor.address && (
-                      <p className="text-sm text-gray-600 whitespace-pre-line">{invoice.vendor.address}</p>
+                      <p className="text-sm text-text-muted whitespace-pre-line">{invoice.vendor.address}</p>
                     )}
                   </>
                 ) : (
@@ -834,13 +834,13 @@ export default function InvoiceDetailClient({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 pt-6 border-t">
               <div>
-                <p className="text-sm text-gray-600">Invoice Date</p>
+                <p className="text-sm text-text-muted">Invoice Date</p>
                 <p className="font-medium">
                   {new Date(invoice.invoice_date).toLocaleDateString('en-GB')}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Due Date</p>
+                <p className="text-sm text-text-muted">Due Date</p>
                 <p className="font-medium">
                   {new Date(invoice.due_date).toLocaleDateString('en-GB')}
                 </p>
@@ -870,15 +870,15 @@ export default function InvoiceDetailClient({
                 const breakdown = lineTotals.get(it.id)
                 const lineTotal = breakdown ? breakdown.total : 0
                 return (
-                  <div className="border rounded-lg p-4 bg-gray-50">
+                  <div className="border rounded-lg p-4 bg-surface-2">
                     <div className="font-medium text-sm mb-3">{it.description}</div>
                     <div className="space-y-2 text-sm">
-                      <div className="flex justify-between"><span className="text-gray-600">Quantity:</span><span>{it.quantity}</span></div>
-                      <div className="flex justify-between"><span className="text-gray-600">Unit Price:</span><span>£{it.unit_price.toFixed(2)}</span></div>
+                      <div className="flex justify-between"><span className="text-text-muted">Quantity:</span><span>{it.quantity}</span></div>
+                      <div className="flex justify-between"><span className="text-text-muted">Unit Price:</span><span>£{it.unit_price.toFixed(2)}</span></div>
                       {it.discount_percentage > 0 && (
-                        <div className="flex justify-between"><span className="text-gray-600">Discount:</span><span className="text-green-600">-{it.discount_percentage}%</span></div>
+                        <div className="flex justify-between"><span className="text-text-muted">Discount:</span><span className="text-green-600">-{it.discount_percentage}%</span></div>
                       )}
-                      <div className="flex justify-between"><span className="text-gray-600">VAT:</span><span>{it.vat_rate}%</span></div>
+                      <div className="flex justify-between"><span className="text-text-muted">VAT:</span><span>{it.vat_rate}%</span></div>
                     </div>
                     <div className="mt-3 pt-3 border-t flex justify-between font-medium">
                       <span>Total:</span>
@@ -917,15 +917,15 @@ export default function InvoiceDetailClient({
               
               {invoice.notes && (
                 <div className="mb-4">
-                  <h3 className="font-medium text-sm text-gray-600 mb-1">Invoice Notes</h3>
+                  <h3 className="font-medium text-sm text-text-muted mb-1">Invoice Notes</h3>
                   <p className="text-sm whitespace-pre-wrap">{invoice.notes}</p>
                 </div>
               )}
               
               {invoice.internal_notes && (
                 <div>
-                  <h3 className="font-medium text-sm text-gray-600 mb-1">Internal Notes</h3>
-                  <p className="text-sm whitespace-pre-wrap bg-yellow-50 p-3 rounded-md">
+                  <h3 className="font-medium text-sm text-text-muted mb-1">Internal Notes</h3>
+                  <p className="text-sm whitespace-pre-wrap bg-warning-soft p-3 rounded-md">
                     {invoice.internal_notes}
                   </p>
                 </div>
@@ -940,18 +940,18 @@ export default function InvoiceDetailClient({
             
             <div className="space-y-3 sm:space-y-4">
               <div>
-                <p className="text-sm text-gray-600">Total Amount</p>
+                <p className="text-sm text-text-muted">Total Amount</p>
                 <p className="text-xl sm:text-2xl font-bold">£{invoice.total_amount.toFixed(2)}</p>
               </div>
               
               <div>
-                <p className="text-sm text-gray-600">Paid Amount</p>
+                <p className="text-sm text-text-muted">Paid Amount</p>
                 <p className="text-lg sm:text-xl font-semibold text-green-600">£{invoice.paid_amount.toFixed(2)}</p>
               </div>
               
               <div>
-                <p className="text-sm text-gray-600">Outstanding</p>
-                <p className="text-lg sm:text-xl font-semibold text-red-600">
+                <p className="text-sm text-text-muted">Outstanding</p>
+                <p className="text-lg sm:text-xl font-semibold text-danger">
                   £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
                 </p>
               </div>
@@ -983,7 +983,7 @@ export default function InvoiceDetailClient({
                     <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
                       <div className="flex-1">
                         <p className="font-medium">£{payment.amount.toFixed(2)}</p>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-text-muted">
                           {new Date(payment.payment_date).toLocaleDateString('en-GB')}
                         </p>
                         {payment.reference && (
@@ -1123,9 +1123,9 @@ export default function InvoiceDetailClient({
         )}
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             Currently due{' '}
-            <span className="font-medium text-gray-900">
+            <span className="font-medium text-text">
               {new Date(invoice.due_date).toLocaleDateString('en-GB')}
             </span>
             . Changing this does not email the customer, so tell them yourself
@@ -1147,7 +1147,7 @@ export default function InvoiceDetailClient({
             disabled={savingDueDate}
           />
           {invoice.status === 'overdue' && newDueDate >= new Date().toISOString().slice(0, 10) && (
-            <p className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <p className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-info-fg">
               This invoice is marked overdue. Giving more time will also stop the
               overdue chasers.
             </p>
@@ -1187,7 +1187,7 @@ export default function InvoiceDetailClient({
         )}
       >
         {reissueLoading && (
-          <div className="py-8 text-center text-sm text-gray-600">
+          <div className="py-8 text-center text-sm text-text-muted">
             Building OJ invoice reissue preview...
           </div>
         )}
@@ -1210,25 +1210,25 @@ export default function InvoiceDetailClient({
         {!reissueLoading && reissuePreview?.eligible && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+              <div className="rounded-md border border-border bg-surface-2 p-3">
                 <div className="text-xs font-semibold uppercase text-gray-500">Source</div>
-                <div className="mt-1 font-medium text-gray-900">{reissuePreview.sourceInvoice.invoice_number}</div>
-                <div className="text-xs text-gray-600">{formatStatus(reissuePreview.sourceInvoice.status)}</div>
+                <div className="mt-1 font-medium text-text">{reissuePreview.sourceInvoice.invoice_number}</div>
+                <div className="text-xs text-text-muted">{formatStatus(reissuePreview.sourceInvoice.status)}</div>
               </div>
-              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+              <div className="rounded-md border border-border bg-surface-2 p-3">
                 <div className="text-xs font-semibold uppercase text-gray-500">Client</div>
-                <div className="mt-1 font-medium text-gray-900">{reissuePreview.sourceInvoice.vendor_name || 'Unknown client'}</div>
-                <div className="text-xs text-gray-600">{reissuePreview.period.label}</div>
+                <div className="mt-1 font-medium text-text">{reissuePreview.sourceInvoice.vendor_name || 'Unknown client'}</div>
+                <div className="text-xs text-text-muted">{reissuePreview.period.label}</div>
               </div>
-              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+              <div className="rounded-md border border-border bg-surface-2 p-3">
                 <div className="text-xs font-semibold uppercase text-gray-500">Paid</div>
-                <div className="mt-1 font-medium text-gray-900">{formatMoney(reissuePreview.sourceInvoice.paid_amount)}</div>
-                <div className="text-xs text-gray-600">No email will be sent</div>
+                <div className="mt-1 font-medium text-text">{formatMoney(reissuePreview.sourceInvoice.paid_amount)}</div>
+                <div className="text-xs text-text-muted">No email will be sent</div>
               </div>
-              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+              <div className="rounded-md border border-border bg-surface-2 p-3">
                 <div className="text-xs font-semibold uppercase text-gray-500">Rebuilt Total</div>
-                <div className="mt-1 font-medium text-gray-900">{formatMoney(reissuePreview.totals.totalAmount)}</div>
-                <div className="text-xs text-gray-600">{reissuePreview.actionLabel}</div>
+                <div className="mt-1 font-medium text-text">{formatMoney(reissuePreview.totals.totalAmount)}</div>
+                <div className="text-xs text-text-muted">{reissuePreview.actionLabel}</div>
               </div>
             </div>
 
@@ -1268,22 +1268,22 @@ export default function InvoiceDetailClient({
 
             <PreviewSection title="Replacement Line Items" count={reissuePreview.lineItems.length}>
               <LineItemsPreviewTable lineItems={reissuePreview.lineItems} />
-              <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm">
+              <div className="mt-3 rounded-md border border-border bg-surface-2 p-3 text-sm">
                 <div className="flex justify-between gap-4">
-                  <span className="text-gray-600">Subtotal</span>
+                  <span className="text-text-muted">Subtotal</span>
                   <span className="font-medium">{formatMoney(reissuePreview.totals.subtotalBeforeInvoiceDiscount)}</span>
                 </div>
                 {reissuePreview.totals.invoiceDiscountAmount > 0 && (
                   <div className="flex justify-between gap-4">
-                    <span className="text-gray-600">Invoice discount</span>
+                    <span className="text-text-muted">Invoice discount</span>
                     <span className="font-medium">-{formatMoney(reissuePreview.totals.invoiceDiscountAmount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between gap-4">
-                  <span className="text-gray-600">VAT</span>
+                  <span className="text-text-muted">VAT</span>
                   <span className="font-medium">{formatMoney(reissuePreview.totals.vatAmount)}</span>
                 </div>
-                <div className="mt-2 flex justify-between gap-4 border-t border-gray-200 pt-2 text-base font-semibold">
+                <div className="mt-2 flex justify-between gap-4 border-t border-border pt-2 text-base font-semibold">
                   <span>Total</span>
                   <span>{formatMoney(reissuePreview.totals.totalAmount)}</span>
                 </div>

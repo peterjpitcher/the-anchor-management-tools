@@ -23,10 +23,10 @@ export interface ContactPanelProps {
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 py-2">
-      <dt className="flex-shrink-0 text-[11px] font-medium uppercase tracking-wider text-text-muted">
+      <dt className="flex-shrink-0 text-meta font-medium uppercase tracking-wider text-text-muted">
         {label}
       </dt>
-      <dd className="min-w-0 text-right text-[13px] text-text">{children}</dd>
+      <dd className="min-w-0 text-right text-ui text-text">{children}</dd>
     </div>
   )
 }

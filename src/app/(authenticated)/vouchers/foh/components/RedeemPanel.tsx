@@ -167,14 +167,14 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
 
       <div aria-live="polite">
         {outcome && (
-          <p role="status" className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-base text-blue-900">
+          <p role="status" className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-base text-info-fg">
             {outcome}
           </p>
         )}
       </div>
 
       {success && (
-        <div className="rounded-xl border border-green-300 bg-green-50 p-4">
+        <div className="rounded-xl border border-green-300 bg-success-soft p-4">
           <p className="text-xl font-bold text-green-900">Marked as used</p>
           <p className="mt-1 text-base text-green-900">
             <span className="font-mono font-semibold">{success.number}</span> - {success.typeTitle}
@@ -185,12 +185,12 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
                 type="button"
                 onClick={handleUndo}
                 disabled={undoBusy || !staffId}
-                className="min-h-[56px] flex-1 rounded-lg border-2 border-amber-500 bg-white px-4 py-3 text-lg font-semibold text-amber-900 hover:bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                className="min-h-14 flex-1 rounded-lg border-2 border-amber-500 bg-surface px-4 py-3 text-lg font-semibold text-warning-fg hover:bg-warning-soft focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {undoBusy ? 'Undoing...' : `Undo (${undoSecondsLeft}s left)`}
               </button>
             ) : (
-              <p className="flex min-h-[56px] flex-1 items-center rounded-lg border border-gray-300 bg-white px-4 text-base text-gray-700">
+              <p className="flex min-h-14 flex-1 items-center rounded-lg border border-border-strong bg-surface px-4 text-base text-gray-700">
                 Undo window closed. Ask a manager if this was a mistake.
               </p>
             )}
@@ -201,7 +201,7 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
                 setOutcome(null)
                 lookup.reset()
               }}
-              className="min-h-[56px] flex-1 rounded-lg bg-sidebar px-4 py-3 text-lg font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2"
+              className="min-h-14 flex-1 rounded-lg bg-sidebar px-4 py-3 text-lg font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2"
             >
               Next guest
             </button>
@@ -219,10 +219,10 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
           }}
         >
           {isActionable(selected, 'redeem') && (
-            <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
+            <div className="mt-4 space-y-3 border-t border-border pt-4">
               {showBookingRef && (
                 <div>
-                  <label htmlFor="foh-redeem-booking-ref" className="block text-sm font-medium text-gray-900">
+                  <label htmlFor="foh-redeem-booking-ref" className="block text-sm font-medium text-text">
                     Booking reference (optional)
                   </label>
                   <input
@@ -231,13 +231,13 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
                     autoComplete="off"
                     value={bookingRef}
                     onChange={(event) => setBookingRef(event.target.value)}
-                    className="mt-1 block h-12 w-full rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+                    className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
                   />
                 </div>
               )}
 
               <div>
-                <label htmlFor="foh-redeem-transaction-ref" className="block text-sm font-medium text-gray-900">
+                <label htmlFor="foh-redeem-transaction-ref" className="block text-sm font-medium text-text">
                   Till transaction reference (optional)
                 </label>
                 <input
@@ -246,7 +246,7 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
                   autoComplete="off"
                   value={transactionRef}
                   onChange={(event) => setTransactionRef(event.target.value)}
-                  className="mt-1 block h-12 w-full rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+                  className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
                 />
               </div>
 
@@ -255,12 +255,12 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
               )}
 
               {!canEdit && (
-                <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-base text-gray-700">
+                <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-base text-gray-700">
                   You have view-only access. Ask a manager to mark this voucher as used.
                 </p>
               )}
               {canEdit && !staffId && (
-                <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-base text-amber-900">
+                <p className="rounded-md border border-amber-300 bg-warning-soft px-3 py-2 text-base text-warning-fg">
                   Choose your name at the top before marking the voucher as used.
                 </p>
               )}
@@ -270,7 +270,7 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
                   type="button"
                   onClick={() => setConfirmOpen(true)}
                   disabled={!canMarkUsed}
-                  className="min-h-[56px] w-full rounded-lg bg-sidebar px-4 py-3 text-xl font-bold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="min-h-14 w-full rounded-lg bg-sidebar px-4 py-3 text-xl font-bold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Mark as used
                 </button>

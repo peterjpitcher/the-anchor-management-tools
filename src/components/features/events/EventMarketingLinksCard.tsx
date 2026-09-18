@@ -188,12 +188,12 @@ export function EventMarketingLinksCard({
     return (
       <div
         key={channel.key}
-        className="flex flex-col justify-between rounded-lg border border-gray-200 p-4"
+        className="flex flex-col justify-between rounded-lg border border-border p-4"
       >
         <div>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-gray-900">{channel.label}</p>
+              <p className="text-sm font-semibold text-text">{channel.label}</p>
               {channel.description && (
                 <p className="text-xs text-gray-500">{channel.description}</p>
               )}
@@ -206,10 +206,10 @@ export function EventMarketingLinksCard({
               <img
                 src={link.qrCode}
                 alt={`${link.label} QR`}
-                className="h-28 w-28 rounded-md border border-gray-200 bg-white object-contain p-2"
+                className="h-28 w-28 rounded-md border border-border bg-surface object-contain p-2"
               />
             ) : (
-              <div className="flex h-28 w-28 items-center justify-center rounded-md border border-dashed border-gray-300 text-xs text-gray-400">
+              <div className="flex h-28 w-28 items-center justify-center rounded-md border border-dashed border-border-strong text-xs text-gray-400">
                 QR unavailable
               </div>
             )}
@@ -238,7 +238,7 @@ export function EventMarketingLinksCard({
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="break-all font-mono text-xs text-gray-600">{link.destinationUrl}</span>
+            <span className="break-all font-mono text-xs text-text-muted">{link.destinationUrl}</span>
             <Button
               size="xs"
               variant="ghost"
@@ -266,7 +266,7 @@ export function EventMarketingLinksCard({
     <Card padding="lg" className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Marketing Links &amp; QR Codes</h2>
+          <h2 className="text-lg font-semibold text-text">Marketing Links &amp; QR Codes</h2>
           <p className="mt-1 text-sm text-gray-500">
             Tracked links and QR assets for event promotion.
           </p>
@@ -305,13 +305,13 @@ export function EventMarketingLinksCard({
           <Spinner className="text-gray-400" />
         </div>
       ) : error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="rounded-md border border-red-200 bg-danger-soft p-4 text-sm text-red-700">
           {error}
         </div>
       ) : (
         <div className="space-y-8">
           {missingCreatableChannels.length > 0 && (
-            <section className="rounded-lg border border-gray-200 bg-surface-hover/40 p-4">
+            <section className="rounded-lg border border-border bg-surface-hover/40 p-4">
               <div className="flex flex-wrap items-end gap-3">
                 <div className="min-w-60 flex-1">
                   <Select
@@ -362,7 +362,7 @@ export function EventMarketingLinksCard({
               </Badge>
             </div>
             {readyQrPlacementChannels.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-gray-300 bg-surface-hover/40 p-4 text-sm text-gray-500">
+              <p className="rounded-lg border border-dashed border-border-strong bg-surface-hover/40 p-4 text-sm text-gray-500">
                 No QR placement links created yet.
               </p>
             ) : (
@@ -377,10 +377,10 @@ export function EventMarketingLinksCard({
             <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">Digital channels</h3>
             <div className="space-y-3">
               {alwaysOnLinks.map((link) => (
-                <div key={link.id} className="rounded-lg border border-gray-200 p-4">
+                <div key={link.id} className="rounded-lg border border-border p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">{link.label}</p>
+                      <p className="text-sm font-semibold text-text">{link.label}</p>
                       {link.description && (
                         <p className="text-xs text-gray-500">{link.description}</p>
                       )}
@@ -401,7 +401,7 @@ export function EventMarketingLinksCard({
                   </div>
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs text-gray-600 break-all">{link.destinationUrl}</span>
+                    <span className="font-mono text-xs text-text-muted break-all">{link.destinationUrl}</span>
                     <Button
                       size="xs"
                       variant="ghost"
@@ -430,14 +430,14 @@ export function EventMarketingLinksCard({
             <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">Optional digital channels</h3>
             <div className="space-y-3">
               {onDemandDigitalLinks.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-gray-300 bg-surface-hover/40 p-4 text-sm text-gray-500">
+                <p className="rounded-lg border border-dashed border-border-strong bg-surface-hover/40 p-4 text-sm text-gray-500">
                   No optional digital links created yet.
                 </p>
               ) : onDemandDigitalLinks.map((link) => (
-                <div key={link.id} className="rounded-lg border border-gray-200 p-4">
+                <div key={link.id} className="rounded-lg border border-border p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">{link.label}</p>
+                      <p className="text-sm font-semibold text-text">{link.label}</p>
                       {link.description && (
                         <p className="text-xs text-gray-500">{link.description}</p>
                       )}
@@ -458,7 +458,7 @@ export function EventMarketingLinksCard({
                   </div>
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs text-gray-600 break-all">{link.destinationUrl}</span>
+                    <span className="font-mono text-xs text-text-muted break-all">{link.destinationUrl}</span>
                     <Button
                       size="xs"
                       variant="ghost"

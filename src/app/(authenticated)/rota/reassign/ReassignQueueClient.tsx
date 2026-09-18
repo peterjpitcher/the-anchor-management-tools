@@ -265,7 +265,7 @@ function OpenShiftCard({
           )}
           <Link
             href={rotaLink(shift.week_start, shift.shift_date, shift.shift_id)}
-            className="inline-flex min-h-[44px] items-center gap-1 px-2 text-sm font-medium text-primary hover:underline"
+            className="inline-flex min-h-touch items-center gap-1 px-2 text-sm font-medium text-primary hover:underline"
           >
             Open on rota
             <ArrowTopRightOnSquareIcon className="h-4 w-4" />
@@ -433,7 +433,7 @@ export default function ReassignQueueClient({
                           </Badge>
                           <Link
                             href={rotaLink(item.week_start, item.shift_date, item.shift_id)}
-                            className="inline-flex min-h-[44px] items-center px-2 text-sm font-medium text-primary hover:underline"
+                            className="inline-flex min-h-touch items-center px-2 text-sm font-medium text-primary hover:underline"
                           >
                             View
                           </Link>

@@ -199,8 +199,8 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <h3 className="text-base font-semibold text-gray-900">Where was it won?</h3>
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <h3 className="text-base font-semibold text-text">Where was it won?</h3>
         <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Event won at">
           {events.map((event) => (
             <button
@@ -209,21 +209,21 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
               onClick={() => setEventId(eventId === event.id ? null : event.id)}
               aria-pressed={eventId === event.id}
               className={cn(
-                'min-h-[44px] rounded-full border px-4 py-2 text-base font-medium focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1',
+                'min-h-touch rounded-full border px-4 py-2 text-base font-medium focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1',
                 eventId === event.id
                   ? 'border-sidebar bg-sidebar text-white'
-                  : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                  : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
               )}
             >
               {event.name}
             </button>
           ))}
           {eventsLoaded && events.length === 0 && (
-            <p className="text-base text-gray-600">No events today. Type where it was won below.</p>
+            <p className="text-base text-text-muted">No events today. Type where it was won below.</p>
           )}
         </div>
         <div className="mt-2">
-          <label htmlFor="foh-handout-label" className="block text-sm font-medium text-gray-900">
+          <label htmlFor="foh-handout-label" className="block text-sm font-medium text-text">
             Or type it (used when no event is picked)
           </label>
           <input
@@ -234,11 +234,11 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
             value={freeLabel}
             disabled={Boolean(eventId)}
             onChange={(event) => setFreeLabel(event.target.value)}
-            className="mt-1 block h-12 w-full rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 placeholder:text-gray-400 focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40 disabled:bg-gray-100 disabled:text-gray-500"
+            className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text placeholder:text-text-subtle focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40 disabled:bg-surface-hover disabled:text-gray-500"
           />
         </div>
 
-        <h3 className="mt-4 text-base font-semibold text-gray-900">Expiry date (required)</h3>
+        <h3 className="mt-4 text-base font-semibold text-text">Expiry date (required)</h3>
         <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Expiry date">
           {EXPIRY_PRESET_DAYS.map((days) => (
             <button
@@ -247,10 +247,10 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
               onClick={() => setExpiryMode(String(days) as ExpiryMode)}
               aria-pressed={expiryMode === String(days)}
               className={cn(
-                'min-h-[44px] rounded-full border px-4 py-2 text-base font-medium focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1',
+                'min-h-touch rounded-full border px-4 py-2 text-base font-medium focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1',
                 expiryMode === String(days)
                   ? 'border-sidebar bg-sidebar text-white'
-                  : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                  : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
               )}
             >
               +{days} days
@@ -261,10 +261,10 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
             onClick={() => setExpiryMode('custom')}
             aria-pressed={expiryMode === 'custom'}
             className={cn(
-              'min-h-[44px] rounded-full border px-4 py-2 text-base font-medium focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1',
+              'min-h-touch rounded-full border px-4 py-2 text-base font-medium focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1',
               expiryMode === 'custom'
                 ? 'border-sidebar bg-sidebar text-white'
-                : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                : 'border-border-strong bg-surface text-text hover:bg-surface-hover'
             )}
           >
             Custom
@@ -280,13 +280,13 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
                 min={todayIso}
                 value={customExpiry}
                 onChange={(event) => setCustomExpiry(event.target.value)}
-                className="h-12 rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+                className="h-12 rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
               />
             </div>
           )}
         </div>
         {expiryDate && expiryValid && (
-          <p className="mt-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-base font-semibold text-green-900">
+          <p className="mt-2 rounded-md border border-green-200 bg-success-soft px-3 py-2 text-base font-semibold text-green-900">
             Write this date on the card: {formatIsoDateLong(expiryDate)}
           </p>
         )}
@@ -307,21 +307,21 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
 
       <div aria-live="polite">
         {outcome && (
-          <p role="status" className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-base text-blue-900">
+          <p role="status" className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-base text-info-fg">
             {outcome}
           </p>
         )}
       </div>
 
       {success && (
-        <div className="rounded-xl border border-green-300 bg-green-50 p-4">
+        <div className="rounded-xl border border-green-300 bg-success-soft p-4">
           <p className="text-xl font-bold text-green-900">Handed out</p>
           <p className="mt-1 text-base text-green-900">
             <span className="font-mono font-semibold">{success.number}</span> - {success.typeTitle}
             {success.contextLabel ? ` (${success.contextLabel})` : ''}, expires{' '}
             {formatIsoDateLong(success.expiryDate)}.
           </p>
-          <p className="mt-2 rounded-md border border-green-400 bg-white px-3 py-2 text-base font-semibold text-green-900">
+          <p className="mt-2 rounded-md border border-green-400 bg-surface px-3 py-2 text-base font-semibold text-green-900">
             Write the expiry date, the event and your name on the card before you hand it over.
           </p>
           <button
@@ -331,7 +331,7 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
               setOutcome(null)
               lookup.reset()
             }}
-            className="mt-3 min-h-[56px] w-full rounded-lg bg-sidebar px-4 py-3 text-lg font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2"
+            className="mt-3 min-h-14 w-full rounded-lg bg-sidebar px-4 py-3 text-lg font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2"
           >
             Hand out another
           </button>
@@ -348,7 +348,7 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
           }}
         >
           {isActionable(selected, 'handout') && (
-            <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
+            <div className="mt-4 space-y-3 border-t border-border pt-4">
               <CustomerAttach
                 idPrefix="foh-handout"
                 value={customer}
@@ -357,22 +357,22 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
               />
 
               {!canEdit && (
-                <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-base text-gray-700">
+                <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-base text-gray-700">
                   You have view-only access. Ask a manager to hand out vouchers.
                 </p>
               )}
               {canEdit && !staffId && (
-                <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-base text-amber-900">
+                <p className="rounded-md border border-amber-300 bg-warning-soft px-3 py-2 text-base text-warning-fg">
                   Choose your name at the top before handing out.
                 </p>
               )}
               {canEdit && staffId && !contextValid && (
-                <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-base text-amber-900">
+                <p className="rounded-md border border-amber-300 bg-warning-soft px-3 py-2 text-base text-warning-fg">
                   Pick an event or type where the voucher was won.
                 </p>
               )}
               {canEdit && staffId && contextValid && !expiryValid && (
-                <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-base text-amber-900">
+                <p className="rounded-md border border-amber-300 bg-warning-soft px-3 py-2 text-base text-warning-fg">
                   Pick an expiry date (today or later) before handing out.
                 </p>
               )}
@@ -382,7 +382,7 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
                   type="button"
                   onClick={() => setConfirmOpen(true)}
                   disabled={!canHandOut}
-                  className="min-h-[56px] w-full rounded-lg bg-sidebar px-4 py-3 text-xl font-bold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="min-h-14 w-full rounded-lg bg-sidebar px-4 py-3 text-xl font-bold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Hand out this voucher
                 </button>

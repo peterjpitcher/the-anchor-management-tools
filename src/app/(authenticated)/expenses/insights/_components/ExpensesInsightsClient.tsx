@@ -153,7 +153,7 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200">
+                <tr className="border-b border-border">
                   <SortableHeader
                     label="Company"
                     column="company"
@@ -190,7 +190,7 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
               </thead>
               <tbody>
                 {sortedByCompany.map((company) => (
-                  <tr key={company.companyRef} className="border-b border-gray-100">
+                  <tr key={company.companyRef} className="border-b border-border">
                     <td className="py-2 pr-4">{company.companyRef}</td>
                     <td className="text-right py-2 px-4">{formatCurrency(company.totalAmount)}</td>
                     <td className="text-right py-2 px-4">{formatCurrency(company.totalVat)}</td>

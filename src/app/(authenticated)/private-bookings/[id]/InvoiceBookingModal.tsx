@@ -112,7 +112,7 @@ export function InvoiceBookingModal({
         </>
       }
     >
-      {loading && <p className="text-sm text-gray-600">Working out the figures…</p>}
+      {loading && <p className="text-sm text-text-muted">Working out the figures…</p>}
 
       {error && (
         <Alert variant="error" title="This booking cannot be invoiced">
@@ -122,8 +122,8 @@ export function InvoiceBookingModal({
 
       {preview && !loading && (
         <div className="space-y-5">
-          <p className="text-sm text-gray-600">
-            Going to <span className="font-medium text-gray-900">{preview.recipientEmail}</span>
+          <p className="text-sm text-text-muted">
+            Going to <span className="font-medium text-text">{preview.recipientEmail}</span>
           </p>
 
           {preview.warnings.length > 0 && (
@@ -139,7 +139,7 @@ export function InvoiceBookingModal({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
+                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-gray-500">
                   <th className="py-2 pr-2">Item</th>
                   <th className="py-2 px-2 text-right">Qty</th>
                   <th className="py-2 px-2 text-right">Unit</th>
@@ -148,8 +148,8 @@ export function InvoiceBookingModal({
               </thead>
               <tbody>
                 {preview.lines.map((line, index) => (
-                  <tr key={`${line.description}-${index}`} className="border-b border-gray-100">
-                    <td className="py-2 pr-2 text-gray-900">
+                  <tr key={`${line.description}-${index}`} className="border-b border-border">
+                    <td className="py-2 pr-2 text-text">
                       {line.description}
                       {line.discountPercentage > 0 && (
                         <span className="ml-2 text-xs font-medium text-green-700">
@@ -157,11 +157,11 @@ export function InvoiceBookingModal({
                         </span>
                       )}
                     </td>
-                    <td className="py-2 px-2 text-right text-gray-600">
+                    <td className="py-2 px-2 text-right text-text-muted">
                       {formatQuantity(line.quantity)}
                     </td>
-                    <td className="py-2 px-2 text-right text-gray-600">{money(line.unitPrice)}</td>
-                    <td className="py-2 pl-2 text-right text-gray-900">{money(line.lineTotal)}</td>
+                    <td className="py-2 px-2 text-right text-text-muted">{money(line.unitPrice)}</td>
+                    <td className="py-2 pl-2 text-right text-text">{money(line.lineTotal)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -170,22 +170,22 @@ export function InvoiceBookingModal({
 
           <dl className="space-y-1 text-sm">
             <div className="flex justify-between">
-              <dt className="text-gray-600">Subtotal (excl. VAT)</dt>
-              <dd className="text-gray-900">{money(preview.subtotal)}</dd>
+              <dt className="text-text-muted">Subtotal (excl. VAT)</dt>
+              <dd className="text-text">{money(preview.subtotal)}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-gray-600">VAT</dt>
-              <dd className="text-gray-900">{money(preview.vatAmount)}</dd>
+              <dt className="text-text-muted">VAT</dt>
+              <dd className="text-text">{money(preview.vatAmount)}</dd>
             </div>
             <div className="flex justify-between font-medium">
-              <dt className="text-gray-900">Invoice total</dt>
-              <dd className="text-gray-900">{money(preview.invoiceTotal)}</dd>
+              <dt className="text-text">Invoice total</dt>
+              <dd className="text-text">{money(preview.invoiceTotal)}</dd>
             </div>
           </dl>
 
           {askAboutDeposit && deposit ? (
-            <fieldset className="rounded-lg border border-gray-200 p-4">
-              <legend className="px-1 text-sm font-medium text-gray-900">
+            <fieldset className="rounded-lg border border-border p-4">
+              <legend className="px-1 text-sm font-medium text-text">
                 How should the {money(deposit.amount)} deposit be treated?
               </legend>
 
@@ -200,10 +200,10 @@ export function InvoiceBookingModal({
                     disabled={sending}
                   />
                   <span className="text-sm">
-                    <span className="font-medium text-gray-900">
+                    <span className="font-medium text-text">
                       Hold it separately (standard)
                     </span>
-                    <span className="block text-gray-600">
+                    <span className="block text-text-muted">
                       {preview.customerName.split(' ')[0]} pays{' '}
                       {money(preview.balanceHoldingDeposit)} now. Deposit refunded within 48
                       hours after the event.
@@ -221,10 +221,10 @@ export function InvoiceBookingModal({
                     disabled={sending || preview.depositWouldOverpay}
                   />
                   <span className="text-sm">
-                    <span className="font-medium text-gray-900">
+                    <span className="font-medium text-text">
                       Take it off this invoice (account customer)
                     </span>
-                    <span className="block text-gray-600">
+                    <span className="block text-text-muted">
                       {preview.depositWouldOverpay ? (
                         <>
                           Not possible here: the deposit and payments received are more than the
@@ -243,36 +243,36 @@ export function InvoiceBookingModal({
               </div>
             </fieldset>
           ) : (
-            <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
+            <p className="rounded-lg bg-surface-2 p-3 text-sm text-text-muted">
               {deposit?.waived
                 ? 'The deposit was waived on this booking, so there is nothing to apply.'
                 : 'No deposit has been paid on this booking.'}
             </p>
           )}
 
-          <dl className="space-y-1 border-t border-gray-200 pt-3 text-sm">
+          <dl className="space-y-1 border-t border-border pt-3 text-sm">
             {preview.paymentsReceived > 0 && (
               <div className="flex justify-between">
-                <dt className="text-gray-600">Payments already received</dt>
-                <dd className="text-gray-900">-{money(preview.paymentsReceived)}</dd>
+                <dt className="text-text-muted">Payments already received</dt>
+                <dd className="text-text">-{money(preview.paymentsReceived)}</dd>
               </div>
             )}
             {treatment === 'deducted' && askAboutDeposit && deposit && (
               <div className="flex justify-between">
-                <dt className="text-gray-600">Deposit applied</dt>
-                <dd className="text-gray-900">-{money(deposit.amount)}</dd>
+                <dt className="text-text-muted">Deposit applied</dt>
+                <dd className="text-text">-{money(deposit.amount)}</dd>
               </div>
             )}
             <div className="flex justify-between text-base font-semibold">
-              <dt className="text-gray-900">Balance due</dt>
-              <dd className="text-gray-900">{money(balanceDue)}</dd>
+              <dt className="text-text">Balance due</dt>
+              <dd className="text-text">{money(balanceDue)}</dd>
             </div>
           </dl>
 
           <div>
             <label
               htmlFor="invoice-reference"
-              className="block text-sm font-medium text-gray-900"
+              className="block text-sm font-medium text-text"
             >
               Their reference or PO number
             </label>

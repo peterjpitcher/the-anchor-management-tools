@@ -128,7 +128,7 @@ export default function AddNoteModal({ isOpen, onClose, defaultEmployeeId }: Add
               error={!!formState?.errors?.general}
             />
           )}
-          {formState?.errors?.general && <p className="mt-1 text-xs text-red-600">{formState.errors.general}</p>}
+          {formState?.errors?.general && <p className="mt-1 text-xs text-danger">{formState.errors.general}</p>}
         </div>
 
         <div>
@@ -145,7 +145,7 @@ export default function AddNoteModal({ isOpen, onClose, defaultEmployeeId }: Add
             disabled={isSubmitting}
             error={!!formState?.errors?.note_text}
           />
-          {formState?.errors?.note_text && <p className="mt-1 text-xs text-red-600">{formState.errors.note_text}</p>}
+          {formState?.errors?.note_text && <p className="mt-1 text-xs text-danger">{formState.errors.note_text}</p>}
         </div>
       </form>
     </Modal>

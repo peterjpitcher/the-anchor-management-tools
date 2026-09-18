@@ -168,7 +168,7 @@ P.S. I've attached a copy of the invoice for your reference.`
         <div className="flex items-center gap-3 pb-4 border-b">
           <Clock className="h-6 w-6 text-orange-600" />
           <div>
-            <p className="text-sm text-gray-600">Invoice is {daysOverdue} {daysOverdue === 1 ? 'day' : 'days'} overdue</p>
+            <p className="text-sm text-text-muted">Invoice is {daysOverdue} {daysOverdue === 1 ? 'day' : 'days'} overdue</p>
           </div>
         </div>
 

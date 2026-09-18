@@ -45,7 +45,7 @@ function PrimaryContactCell({ vendor }: { vendor: InvoiceVendor }) {
     return (
       <div className="text-sm">
         <div className="font-medium truncate">{primary.name || '(No name)'}</div>
-        <div className="text-gray-600 break-all">{primary.email}</div>
+        <div className="text-text-muted break-all">{primary.email}</div>
       </div>
     )
   }
@@ -53,7 +53,7 @@ function PrimaryContactCell({ vendor }: { vendor: InvoiceVendor }) {
   return (
     <div className="text-sm">
       <div className="font-medium truncate">{vendor.contact_name || '(No primary set)'}</div>
-      <div className="text-gray-600 break-all">{vendor.email || '-'}</div>
+      <div className="text-text-muted break-all">{vendor.email || '-'}</div>
     </div>
   )
 }
@@ -464,9 +464,9 @@ export default function VendorsPage() {
                   <div className="min-w-0">
                     <div className="font-medium">{v.name}</div>
                     {v.vat_number && (<div className="text-sm text-gray-500">VAT: {v.vat_number}</div>)}
-                    <div className="text-sm text-gray-600 break-all">{v.email || '-'}</div>
-                    {v.phone && (<div className="text-sm text-gray-600">{v.phone}</div>)}
-                    <div className="mt-1 text-sm text-gray-600">Terms: {v.payment_terms} days</div>
+                    <div className="text-sm text-text-muted break-all">{v.email || '-'}</div>
+                    {v.phone && (<div className="text-sm text-text-muted">{v.phone}</div>)}
+                    <div className="mt-1 text-sm text-text-muted">Terms: {v.payment_terms} days</div>
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <Button
@@ -641,12 +641,12 @@ export default function VendorsPage() {
           <Alert variant="error" description={error} className="mb-4" />)
         }
         {contactsLoading ? (
-          <div className="py-10 text-center text-gray-600">Loading contacts…</div>
+          <div className="py-10 text-center text-text-muted">Loading contacts…</div>
         ) : (
           <div className="space-y-6">
             <div className="border rounded-md divide-y">
               {contacts.length === 0 && (
-                <div className="p-4 text-sm text-gray-600">No contacts yet.</div>
+                <div className="p-4 text-sm text-text-muted">No contacts yet.</div>
               )}
               {contacts.map(c => (
                 <div key={c.id} className="p-4 flex items-center justify-between gap-4">
@@ -654,19 +654,19 @@ export default function VendorsPage() {
                     <div className="font-medium truncate">
                       {c.name || '(No name)'}
                       {c.is_primary && (
-                        <span className="ml-2 text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded">
+                        <span className="ml-2 text-xs text-green-700 bg-success-soft px-2 py-0.5 rounded-sm">
                           Primary
                         </span>
                       )}
                       {c.receive_invoice_copy && (
-                        <span className="ml-2 text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                        <span className="ml-2 text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded-sm">
                           Invoice CC
                         </span>
                       )}
                     </div>
                     <div className="text-sm text-gray-700 break-all">{c.email}</div>
                     {(c.phone || c.role) && (
-                      <div className="text-xs text-gray-600 mt-1">
+                      <div className="text-xs text-text-muted mt-1">
                         {c.role ? <span className="mr-3">Role: {c.role}</span> : null}
                         {c.phone ? <span>Phone: {c.phone}</span> : null}
                       </div>

@@ -155,7 +155,7 @@ export function CustomerLabelSelector({
         {canEdit && availableLabels.length > 0 && (
           <button type="button"
             onClick={() => setShowSelector(!showSelector)}
-            className="inline-flex items-center rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            className="inline-flex items-center rounded-full border border-border-strong px-3 py-1 text-xs font-medium text-text-muted hover:bg-surface-hover"
           >
             <TagIcon className="h-3 w-3 mr-1" />
             Add Label
@@ -166,14 +166,14 @@ export function CustomerLabelSelector({
       {/* Label Selector Dropdown */}
       {showSelector && canEdit && (
         <div className="relative">
-          <div className="absolute z-10 mt-1 w-64 rounded-md bg-white shadow-lg ring-1 ring-black/5">
+          <div className="absolute z-10 mt-1 w-64 rounded-md bg-surface shadow-lg ring-1 ring-black/5">
             <div className="py-1">
               {availableLabels.map((label) => (
                 <button type="button"
                   key={label.id}
                   onClick={() => handleAssignLabel(label.id)}
                   disabled={assigningLabel === label.id}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 disabled:opacity-50 flex items-center justify-between"
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-surface-hover disabled:opacity-50 flex items-center justify-between"
                 >
                   <div className="flex items-center">
                     <div

@@ -723,7 +723,7 @@ export default function EventDetailClient({
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-amber-700">
+                <p className="text-sm text-warning-fg">
                   This booking is paid ({formatCurrency(cancelRefundInfo.amountPaid)}). Only a manager can
                   cancel a paid booking, so the refund can be decided.
                 </p>
@@ -1640,7 +1640,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     <button
       type="button"
       onClick={() => copyToClipboard(text, label)}
-      className="inline-flex items-center justify-center rounded p-0.5 text-text-muted hover:text-text transition-colors"
+      className="inline-flex items-center justify-center rounded-sm p-0.5 text-text-muted hover:text-text transition-colors"
       aria-label={`Copy ${label}`}
     >
       <Icon name="copy" size={14} />

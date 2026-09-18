@@ -352,7 +352,7 @@ export function RecipeDrawer({
             </div>
             <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
               {/* Cost summary */}
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-text-muted">
                 <span className="font-medium">
                   £{computedTotalCost.toFixed(2)} total
                 </span>
@@ -426,7 +426,7 @@ export function RecipeDrawer({
             </FormGroup>
           </div>
 
-          <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
+          <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
             <Checkbox
               label="Recipe is active"
               checked={formState.is_active}

@@ -241,11 +241,11 @@ export default function CalendarNotesManager({
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         {canManage && (
-        <section className="rounded-lg border border-gray-200 p-4 sm:p-5">
-          <h3 className="text-base font-semibold text-gray-900">
+        <section className="rounded-lg border border-border p-4 sm:p-5">
+          <h3 className="text-base font-semibold text-text">
             {editingNoteId ? 'Edit calendar note' : 'Add manual calendar note'}
           </h3>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-text-muted">
             Add your own notes for holidays, campaigns, closures, and reminders.
           </p>
 
@@ -329,9 +329,9 @@ export default function CalendarNotesManager({
         )}
 
         {canGenerate && (
-        <section className="rounded-lg border border-gray-200 p-4 sm:p-5">
-          <h3 className="text-base font-semibold text-gray-900">Generate with AI</h3>
-          <p className="mt-1 text-sm text-gray-600">
+        <section className="rounded-lg border border-border p-4 sm:p-5">
+          <h3 className="text-base font-semibold text-text">Generate with AI</h3>
+          <p className="mt-1 text-sm text-text-muted">
             Generate important dates between two dates, including major holidays and hospitality-relevant observances.
           </p>
           <p className="mt-1 text-xs text-gray-500">
@@ -383,9 +383,9 @@ export default function CalendarNotesManager({
         )}
       </div>
 
-      <section className="rounded-lg border border-gray-200">
-        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-          <h3 className="text-sm font-semibold text-gray-900">Saved calendar notes</h3>
+      <section className="rounded-lg border border-border">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h3 className="text-sm font-semibold text-text">Saved calendar notes</h3>
           <Badge variant="secondary">{notes.length} total</Badge>
         </div>
 
@@ -395,8 +395,8 @@ export default function CalendarNotesManager({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-surface-2">
                 <tr>
                   <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Dates</th>
                   <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Title</th>
@@ -405,9 +405,9 @@ export default function CalendarNotesManager({
                   <th scope="col" className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
+              <tbody className="divide-y divide-border bg-surface">
                 {notes.map((note) => (
-                  <tr key={note.id} className="hover:bg-gray-50">
+                  <tr key={note.id} className="hover:bg-surface-hover">
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{describeDateRange(note)}</td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -415,7 +415,7 @@ export default function CalendarNotesManager({
                           className="inline-block h-2.5 w-2.5 rounded-full"
                           style={{ backgroundColor: normalizeColor(note.color) }}
                         />
-                        <span className="text-sm font-medium text-gray-900">{note.title}</span>
+                        <span className="text-sm font-medium text-text">{note.title}</span>
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
@@ -423,7 +423,7 @@ export default function CalendarNotesManager({
                         {note.source === 'ai' ? 'AI' : 'Manual'}
                       </Badge>
                     </td>
-                    <td className="max-w-sm px-4 py-3 text-sm text-gray-600">
+                    <td className="max-w-sm px-4 py-3 text-sm text-text-muted">
                       <span className="line-clamp-2">{note.notes || '—'}</span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">

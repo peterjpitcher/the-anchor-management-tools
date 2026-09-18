@@ -150,7 +150,7 @@ function SummaryCard({ label, value, tone }: { label: string; value: string | nu
       <div className="space-y-1.5">
         <p className="text-xs uppercase tracking-wide text-text-muted">{label}</p>
         <p className="text-2xl font-semibold text-text-strong">{value}</p>
-        <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-[11px] font-medium ${toneStyles[tone]}`}>
+        <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-meta font-medium ${toneStyles[tone]}`}>
           {tone === 'spend' ? 'Awaiting categorisation' : tone === 'income' ? 'Incoming balance' : 'Needs attention'}
         </span>
       </div>

@@ -31,9 +31,9 @@
 | PR-02 | Design-token guard test (ratchet) | [x] | 2a3e7976 | dpl_CkErfQyuuNaakVR5NKycj2yX41gc, live 18 Sep 12:12 |
 | PR-03 | Global CSS clean-up and legacy variables | [x] | 119bbd4d | dpl_DithYX9NAWfeJwHmfjfZUXpZivfC, live 18 Sep 12:25 |
 | PR-04 | Toasts, JS token accessors, charts, avatars | [x] | 87845543 | dpl_DKe52tLKAs7YikBe4RiZo5iQFN4d, live 18 Sep 13:13 |
-| PR-05 | DS primitives and compat wrappers | [x] | see git log | shipped with PR-06 |
-| PR-06 | DS composites and app shell | [x] | see git log | shipped with PR-05 |
-| PR-07 | Codemod step A (value-equal swaps) | [ ] | | |
+| PR-05 | DS primitives and compat wrappers | [x] | see git log | dpl_CejQqkQ4AzSSTVYByBuXwiHPjDHL (with PR-06), live 18 Sep 15:18 |
+| PR-06 | DS composites and app shell | [x] | ff51e13c (tip) | dpl_CejQqkQ4AzSSTVYByBuXwiHPjDHL, live 18 Sep 15:18 |
+| PR-07 | Codemod step A (value-equal swaps) | [x] | see git log | pending ship |
 | PR-08 | Codemod step B (secondary greys darken) | [ ] | | |
 | PR-09 | Area: guest pages, sign-in, recruitment booking, invoice portal | [ ] | | |
 | PR-10 | Area: FOH, BOH, table bookings, vouchers, timeclock, kiosk, parking | [ ] | | |
@@ -572,7 +572,7 @@ Acceptance: the guard baseline for every file in `src/ds/primitives/` and `src/d
 
 **Never touch:** `src/components/features/guest/**`, `src/app/g/**`, any other page rendered inside GuestShell (`src/app/booking-portal/**`, `src/app/parking/**`, `src/app/invoice-portal/**`, `src/app/privacy/**`, `src/app/(feedback)/**`, `src/app/legacy-link/**`), `src/app/(authenticated)/settings/design-system/**` (class names there are documentation), `src/app/api/**`, and every `src/lib/**` file except `src/lib/table-bookings/ui.ts` (`src/lib/cashing-up-pdf-template.ts` renders with the Tailwind CDN, which has no tokens).
 
-- [ ] **Step 1: Write the codemod** as a plain Node ESM script: dry run by default, `--write` to apply, `--step=a|b`. It matches a class only as a whole token, with any variant prefix (`hover:`, `md:`, `group-hover:`, `focus:` ...) preserved, and only inside string literals or template literal text (not identifiers). It prints per-file and per-mapping counts. Step A table (from `verify:canonical-mapping`, rows marked codemod-safe with visual change none or subtle, plus the approved noticeable ones):
+- [x] **Step 1: Write the codemod** as a plain Node ESM script: dry run by default, `--write` to apply, `--step=a|b`. It matches a class only as a whole token, with any variant prefix (`hover:`, `md:`, `group-hover:`, `focus:` ...) preserved, and only inside string literals or template literal text (not identifiers). It prints per-file and per-mapping counts. Step A table (from `verify:canonical-mapping`, rows marked codemod-safe with visual change none or subtle, plus the approved noticeable ones):
 
 | From | To |
 |---|---|
@@ -614,9 +614,9 @@ Acceptance: the guard baseline for every file in `src/ds/primitives/` and `src/d
 | `disabled:opacity-60`, `-40`, `-30`, `-70` | `disabled:opacity-50` (A9) |
 | any `dark:` class | deleted (D7) |
 
-- [ ] **Step 2:** Dry run; read the per-mapping totals against the audit's approximate uses; spot-read 20 random changed lines. Any class that appears in a non-class string (a label, a test fixture, docs) is excluded by path, not by special-casing.
-- [ ] **Step 3:** `--write --step=a`; P-GATES; `git diff --stat`; P-VISUAL on 4 or 5 high-traffic components (a raw-class-heavy FOH modal, the private booking detail header, an invoice detail block, TableSetupManager).
-- [ ] **Step 4:** Baseline update (expect roughly 2,600 fewer); commit script and changes separately: `chore(design-tokens): add token codemod` then `refactor(styles): swap value-equal raw classes for tokens`. P-SHIP.
+- [x] **Step 2:** Dry run; read the per-mapping totals against the audit's approximate uses; spot-read 20 random changed lines. Any class that appears in a non-class string (a label, a test fixture, docs) is excluded by path, not by special-casing.
+- [x] **Step 3:** `--write --step=a`; P-GATES; `git diff --stat`; P-VISUAL on 4 or 5 high-traffic components (a raw-class-heavy FOH modal, the private booking detail header, an invoice detail block, TableSetupManager).
+- [x] **Step 4:** Baseline update (expect roughly 2,600 fewer); commit script and changes separately: `chore(design-tokens): add token codemod` then `refactor(styles): swap value-equal raw classes for tokens`. P-SHIP.
 
 ## PR-08: Codemod step B (secondary greys darken, D3)
 
@@ -797,3 +797,4 @@ export const GUEST = {
 - 2026-09-18: PR-04 notes: resolveToken takes no fallback (a fallback would be hex in a component); canvas ignores an empty colour, and @theme static guarantees the tokens exist in the browser. Harness: direct react-hot-toast error toast now matches the DS error toast exactly; DS info toast is sky like Alert; avatars use avatar-1..6; the canvas bar paints rgb(0,106,78).
 - 2026-09-18: PR-05 done by a 4-agent workflow plus a reviewer (5 fixes). Added --shadow-ring-inset because accordion items, tab strips and table headers clip the outer ring. Native radios keep the browser outline (Safari may not draw a box-shadow on them). Parked: SortableHeader renders a button directly in a tr with no th (ExpensesClient, expenses and mileage insights), pre-existing invalid markup.
 - 2026-09-18: PR-06 harness: PageLayout and PageHeader titles both at 28px left, 24px, on the warm background (phones 16px both; PageLayout was 32px). DataTable matches Table (12px uppercase muted headers on surface-2, 13px cells). Card now honours padding (none/sm/md/lg) and variant (secondary/ghost). FOH manager kiosk uses headerVariant=dark (bg-brand-700) instead of !important overrides on gray class names. deposit-waiver.test.ts timed out once at 5s under load average 142 from other sessions; passes alone and in clean reruns.
+- 2026-09-18: PR-07 codemod step A: 3,221 swaps in 276 files. Guard totals after: raw-palette 2041 (was 4599), px-text-size 103 (405), bare-rounded 20 (207), off-scale-shadow 2 (45), dark-variant 0 (62), legacy-hsl 0, 820 variant 0. All 91 distinct introduced classes compile; no swap outside class strings. Codemod skips guest pages and their tests (tests/components/guest-routes, tests/components/guest).

@@ -390,10 +390,10 @@ export default function SeasonalPreorderSection({
   }
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 px-4 py-3">
+    <section className="rounded-lg border border-border bg-surface">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">
+          <h2 className="text-sm font-semibold text-text">
             Seasonal Pre-Order{order.periodName ? ` · ${order.periodName}` : ''}
           </h2>
           <p className="mt-0.5 text-xs text-gray-500">
@@ -422,11 +422,11 @@ export default function SeasonalPreorderSection({
         <p className="text-sm text-gray-700">{describePreorderGaps(completeness)}</p>
 
         {order.bookingAllergies.length > 0 && (
-          <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+          <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
               Allergies recorded on the booking
             </p>
-            <p className="mt-1 text-sm text-gray-900">{order.bookingAllergies.join(', ')}</p>
+            <p className="mt-1 text-sm text-text">{order.bookingAllergies.join(', ')}</p>
           </div>
         )}
 
@@ -483,7 +483,7 @@ export default function SeasonalPreorderSection({
               return (
                 <div
                   key={cover.id}
-                  className={`rounded-md border p-3 ${missingMain ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white'}`}
+                  className={`rounded-md border p-3 ${missingMain ? 'border-amber-300 bg-warning-soft' : 'border-border bg-surface'}`}
                 >
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -528,7 +528,7 @@ export default function SeasonalPreorderSection({
                   </div>
 
                   {addons && addons.rows.length > 0 && (
-                    <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                    <div className="mt-3 rounded-md border border-border bg-surface-2 px-3 py-2">
                       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                           Add-ons (extras, on top of the meal)
@@ -577,11 +577,11 @@ export default function SeasonalPreorderSection({
         )}
 
         {(addonOptions.length > 0 || bookingAddons.count > 0) && order.covers.length > 0 && (
-          <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+          <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
               Add-ons to put on the bill
             </p>
-            <p className="mt-1 text-sm font-semibold text-gray-900">
+            <p className="mt-1 text-sm font-semibold text-text">
               {bookingAddons.count === 0
                 ? 'Nothing ticked yet.'
                 : `${bookingAddons.count} add-on${bookingAddons.count === 1 ? '' : 's'} across ${bookingAddons.seatsWithAddons} seat${bookingAddons.seatsWithAddons === 1 ? '' : 's'}: ${
@@ -608,7 +608,7 @@ export default function SeasonalPreorderSection({
                 })}
               </ul>
             )}
-            <p className="mt-1 text-xs text-gray-600">{PREORDER_ADDON_STAFF_NOTE}</p>
+            <p className="mt-1 text-xs text-text-muted">{PREORDER_ADDON_STAFF_NOTE}</p>
           </div>
         )}
       </div>

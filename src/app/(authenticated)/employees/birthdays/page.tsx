@@ -136,16 +136,16 @@ export default async function EmployeeBirthdaysPage() {
           <div className="space-y-6">
             {sortedMonths.map(([monthName, { birthdays: monthBirthdays }]) => (
               <Card key={monthName}>
-                <div className="bg-gray-50 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 -m-6 mb-6">
-                  <h2 className="text-base sm:text-lg font-medium text-gray-900 flex flex-wrap items-center">
+                <div className="bg-surface-2 px-3 sm:px-4 py-2 sm:py-3 border-b border-border -m-6 mb-6">
+                  <h2 className="text-base sm:text-lg font-medium text-text flex flex-wrap items-center">
                     <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2 text-gray-400" />
                     <span>{monthName}</span>
                     <span className="ml-2 text-xs sm:text-sm text-gray-500">({monthBirthdays.length} birthday{monthBirthdays.length !== 1 ? 's' : ''})</span>
                   </h2>
                 </div>
-                <ul className="divide-y divide-gray-200">
+                <ul className="divide-y divide-border">
                   {monthBirthdays.map((birthday) => (
-                    <li key={birthday.employee_id} className="px-3 sm:px-4 py-3 sm:py-4 hover:bg-gray-50">
+                    <li key={birthday.employee_id} className="px-3 sm:px-4 py-3 sm:py-4 hover:bg-surface-hover">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
                         <div className="flex-1">
                           <div className="flex items-center">
@@ -163,7 +163,7 @@ export default async function EmployeeBirthdaysPage() {
                         </div>
                         <div className="flex sm:block items-center justify-between sm:text-right sm:ml-4">
                           <div className="flex items-center sm:justify-end space-x-1.5 sm:space-x-2">
-                            <span className="text-xs sm:text-sm font-medium text-gray-900">
+                            <span className="text-xs sm:text-sm font-medium text-text">
                               {format(new Date(birthday.date_of_birth), 'MMM d')}
                             </span>
                             <Badge

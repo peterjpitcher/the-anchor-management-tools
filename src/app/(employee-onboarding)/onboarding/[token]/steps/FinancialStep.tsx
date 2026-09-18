@@ -94,16 +94,16 @@ export default function FinancialStep({ token, initialData, onSuccess }: Financi
         value={data[id]}
         onChange={(e) => setData({ ...data, [id]: e.target.value })}
         className={`block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-500 ${
-          errors[id] ? 'border-red-300 focus:border-red-500' : 'border-gray-300 focus:border-green-500'
+          errors[id] ? 'border-red-300 focus:border-red-500' : 'border-border-strong focus:border-border-focus'
         }`}
       />
-      {errors[id] && <p className="mt-1 text-xs text-red-600">{errors[id]}</p>}
+      {errors[id] && <p className="mt-1 text-xs text-danger">{errors[id]}</p>}
     </div>
   );
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-text-muted">
         Your financial information is stored securely and used for payroll purposes only.
       </p>
 
@@ -112,7 +112,7 @@ export default function FinancialStep({ token, initialData, onSuccess }: Financi
       {field('payee_name', 'Payee Name (name on account)')}
       {field('branch_address', 'Branch Address')}
 
-      <hr className="border-gray-200" />
+      <hr className="border-border" />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {field('bank_sort_code', 'Sort Code', 'text', 'numeric')}
@@ -124,7 +124,7 @@ export default function FinancialStep({ token, initialData, onSuccess }: Financi
         {field('bank_account_number_confirm', 'Confirm Account Number', 'text', 'numeric')}
       </div>
 
-      {globalError && <p className="text-sm text-red-600">{globalError}</p>}
+      {globalError && <p className="text-sm text-danger">{globalError}</p>}
 
       <button
         type="submit"

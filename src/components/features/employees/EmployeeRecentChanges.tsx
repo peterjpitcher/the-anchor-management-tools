@@ -98,13 +98,13 @@ export function EmployeeRecentChanges({ employeeId }: EmployeeRecentChangesProps
         <div key={`${change.change_date}-${index}`} className="text-sm">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-gray-900">{change.summary || 'Employee record updated'}</p>
+              <p className="text-text">{change.summary || 'Employee record updated'}</p>
               <p className="text-gray-500 text-xs mt-1">
                 by {change.changed_by || 'System'} • {formatDateTime(change.change_date)}
               </p>
             </div>
           </div>
-          {index < changes.length - 1 && <div className="border-t border-gray-100 mt-3" />}
+          {index < changes.length - 1 && <div className="border-t border-border mt-3" />}
         </div>
       ))}
     </div>

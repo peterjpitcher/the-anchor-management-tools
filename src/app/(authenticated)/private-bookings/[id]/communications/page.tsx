@@ -80,7 +80,7 @@ export default async function PrivateBookingCommunicationsPage({ params }: PageP
         >
           <Link
             href="/private-bookings"
-            className="text-sm font-medium text-blue-700 hover:text-blue-900"
+            className="text-sm font-medium text-blue-700 hover:text-info-fg"
           >
             Back to private bookings
           </Link>

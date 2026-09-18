@@ -27,7 +27,7 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
             logo is a 400x180 image, so letting it size itself grew this row
             from 52px to 95px on expand and pushed the whole nav 43px down every
             time the pointer crossed the rail. */}
-        <div className="flex h-[var(--spacing-logo-row)] shrink-0 items-center justify-center px-3 pt-5 pb-3">
+        <div className="flex h-logo-row shrink-0 items-center justify-center px-3 pt-5 pb-3">
           <Anchor className="ds-logo-icon h-7 w-7 shrink-0 text-white" />
           <img
             src="/logo.png"

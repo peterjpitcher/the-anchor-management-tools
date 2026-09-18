@@ -57,8 +57,8 @@ function ConversationSkeleton() {
         <li key={index} className="flex items-start gap-3 px-3 py-3">
           <div className="h-8 w-8 flex-shrink-0 animate-pulse rounded-full bg-surface-hover" />
           <div className="min-w-0 flex-1 space-y-2 pt-0.5">
-            <div className="h-3 w-1/2 animate-pulse rounded bg-surface-hover" />
-            <div className="h-3 w-4/5 animate-pulse rounded bg-surface-hover" />
+            <div className="h-3 w-1/2 animate-pulse rounded-sm bg-surface-hover" />
+            <div className="h-3 w-4/5 animate-pulse rounded-sm bg-surface-hover" />
           </div>
         </li>
       ))}
@@ -135,7 +135,7 @@ export function ConversationList({
             aria-pressed={unreadOnly}
             onClick={() => onUnreadOnlyChange(!unreadOnly)}
             className={cn(
-              'inline-flex h-[var(--spacing-input-h)] flex-shrink-0 items-center gap-1.5 rounded-pill border px-3 text-xs font-medium transition-colors',
+              'inline-flex h-input-h flex-shrink-0 items-center gap-1.5 rounded-pill border px-3 text-xs font-medium transition-colors',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
               unreadOnly
                 ? 'border-primary bg-primary text-primary-fg'
@@ -146,8 +146,8 @@ export function ConversationList({
             {unreadCount > 0 && (
               <span
                 className={cn(
-                  'inline-flex h-4 min-w-4 items-center justify-center rounded-pill px-1 text-[10px] leading-none',
-                  unreadOnly ? 'bg-white/20 text-primary-fg' : 'bg-info-soft text-info-fg',
+                  'inline-flex h-4 min-w-4 items-center justify-center rounded-pill px-1 text-2xs leading-none',
+                  unreadOnly ? 'bg-surface/20 text-primary-fg' : 'bg-info-soft text-info-fg',
                 )}
               >
                 {formatUnreadCount(unreadCount, unreadIsCapped)}
@@ -247,7 +247,7 @@ export function ConversationList({
                         <span className="flex min-w-0 items-baseline justify-between gap-2">
                           <span
                             className={cn(
-                              'min-w-0 truncate text-[13px]',
+                              'min-w-0 truncate text-ui',
                               unread ? 'font-semibold text-text-strong' : 'font-medium text-text',
                             )}
                           >
@@ -255,7 +255,7 @@ export function ConversationList({
                           </span>
                           <span
                             aria-hidden="true"
-                            className="flex-shrink-0 whitespace-nowrap text-[11px] text-text-muted"
+                            className="flex-shrink-0 whitespace-nowrap text-meta text-text-muted"
                           >
                             {when}
                           </span>
@@ -276,7 +276,7 @@ export function ConversationList({
                           {unread && (
                             <span
                               aria-hidden="true"
-                              className="inline-flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-pill bg-info px-1 text-[10px] font-semibold leading-none text-white"
+                              className="inline-flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-pill bg-info px-1 text-2xs font-semibold leading-none text-white"
                             >
                               {conversation.unreadCount}
                             </span>
@@ -291,7 +291,7 @@ export function ConversationList({
 
             {/* The list is a capped page, not the whole history. Saying so stops
                 staff concluding a customer does not exist. */}
-            <p className="border-t border-border px-3 py-2 text-[11px] leading-snug text-text-subtle">
+            <p className="border-t border-border px-3 py-2 text-meta leading-snug text-text-subtle">
               {searchScope === 'server'
                 ? 'Showing customers matching your search, including older conversations.'
                 : 'Showing recent conversations. Search by name, phone or email to reach older ones.'}

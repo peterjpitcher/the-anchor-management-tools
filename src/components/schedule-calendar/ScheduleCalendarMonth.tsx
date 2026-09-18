@@ -100,14 +100,14 @@ export function ScheduleCalendarMonth({
     }, [firstDayOfWeek])
 
     return (
-        <div className="flex flex-col border border-gray-300 rounded-md overflow-hidden bg-white">
-            <div className="grid grid-cols-7 border-b border-gray-300 bg-gray-100">
+        <div className="flex flex-col border border-border-strong rounded-md overflow-hidden bg-surface">
+            <div className="grid grid-cols-7 border-b border-border-strong bg-surface-hover">
                 {weekDayNames.map((name, i) => (
                     <div
                         key={name}
                         className={cn(
                             'px-2 py-2 text-xs font-semibold text-gray-700 text-center',
-                            i > 0 && 'border-l border-gray-300'
+                            i > 0 && 'border-l border-border-strong'
                         )}
                     >
                         {name}
@@ -122,12 +122,12 @@ export function ScheduleCalendarMonth({
                         key={wi}
                         className={cn(
                             'grid grid-cols-7',
-                            wi > 0 && 'border-t border-gray-300'
+                            wi > 0 && 'border-t border-border-strong'
                         )}
                     >
                         {/* All-day band track */}
                         {bands.length > 0 && (
-                            <div className="col-span-7 bg-white px-1 py-1 flex flex-col gap-1 border-b border-gray-200">
+                            <div className="col-span-7 bg-surface px-1 py-1 flex flex-col gap-1 border-b border-border">
                                 {bands.map(({ entry, startCol, span }) => {
                                     const isCancelled = entry.status === 'cancelled'
                                     const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
@@ -193,13 +193,13 @@ export function ScheduleCalendarMonth({
                                 <div
                                     key={day.toISOString()}
                                     className={cn(
-                                        'group bg-white p-1 flex flex-col gap-1 min-h-[80px]',
-                                        di > 0 && 'border-l border-gray-200',
-                                        !inMonth && 'bg-gray-50 text-gray-400',
+                                        'group bg-surface p-1 flex flex-col gap-1 min-h-[80px]',
+                                        di > 0 && 'border-l border-border',
+                                        !inMonth && 'bg-surface-2 text-gray-400',
                                         // Being shut is a property of the DAY, not one more
                                         // chip queued behind the events on it.
-                                        closure === 'closed' && 'bg-gray-200',
-                                        closure === 'kitchen' && 'bg-amber-50',
+                                        closure === 'closed' && 'bg-border',
+                                        closure === 'kitchen' && 'bg-warning-soft',
                                         onEmptyDayClick && 'cursor-pointer'
                                     )}
                                     onClick={
@@ -240,18 +240,18 @@ export function ScheduleCalendarMonth({
                                             treatment says nothing to a screen reader
                                             or in high contrast. */}
                                         {closure === 'closed' && (
-                                            <span className="rounded bg-gray-900 px-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                                            <span className="rounded-sm bg-gray-900 px-1 text-2xs font-semibold uppercase tracking-wide text-white">
                                                 Closed
                                             </span>
                                         )}
                                         {closure === 'kitchen' && (
-                                            <span className="rounded bg-amber-200 px-1 text-[10px] font-semibold uppercase tracking-wide text-amber-950">
+                                            <span className="rounded-sm bg-amber-200 px-1 text-2xs font-semibold uppercase tracking-wide text-warning-fg">
                                                 No kitchen
                                             </span>
                                         )}
                                     </div>
                                     {(covers > 0 || staff.length > 0) && (
-                                        <p className="text-[10px] leading-tight text-gray-500">
+                                        <p className="text-2xs leading-tight text-gray-500">
                                             {covers > 0 && <span>{covers} cover{covers === 1 ? '' : 's'}</span>}
                                             {covers > 0 && staff.length > 0 && <span aria-hidden> · </span>}
                                             {staff.length > 0 && <span>{staff.join(', ')}</span>}
@@ -278,7 +278,7 @@ export function ScheduleCalendarMonth({
                                             // every day cell carried an invisible but tappable button.
                                             // Now it is dimmed rather than hidden, and full strength on
                                             // hover or focus.
-                                            className="mt-auto flex min-h-[24px] items-center gap-1 self-start rounded-sm px-1 py-0.5 text-[11px] text-text-muted opacity-40 transition-opacity hover:bg-surface-hover hover:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
+                                            className="mt-auto flex min-h-[24px] items-center gap-1 self-start rounded-sm px-1 py-0.5 text-meta text-text-muted opacity-40 transition-opacity hover:bg-surface-hover hover:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
                                         >
                                             <span aria-hidden="true">+</span> Note
                                         </button>
@@ -338,7 +338,7 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
                 {entry.title}
             </div>
             {entry.subtitle && (
-                <div className={cn('text-[11px] leading-tight', secondaryTextClass)}>{entry.subtitle}</div>
+                <div className={cn('text-meta leading-tight', secondaryTextClass)}>{entry.subtitle}</div>
             )}
             {/*
               Status and content gaps on the card itself. The month grid is
@@ -350,8 +350,8 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
                     {entry.statusLabel && (
                         <span
                             className={cn(
-                                'rounded px-1 py-px text-[10px] font-semibold uppercase leading-tight tracking-wide',
-                                lightText ? 'bg-white/20 text-white' : 'bg-black/10 text-gray-950',
+                                'rounded-sm px-1 py-px text-2xs font-semibold uppercase leading-tight tracking-wide',
+                                lightText ? 'bg-surface/20 text-white' : 'bg-black/10 text-text-strong',
                             )}
                         >
                             {entry.statusLabel}
@@ -360,7 +360,7 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
                     {entryGaps(entry).map((gap) => (
                         <span
                             key={gap}
-                            className="rounded border border-black/20 bg-white px-1 py-px text-[10px] font-medium leading-tight text-gray-950"
+                            className="rounded-sm border border-black/20 bg-surface px-1 py-px text-2xs font-medium leading-tight text-text-strong"
                         >
                             {CONTENT_GAP_LABELS[gap]}
                         </span>
@@ -368,7 +368,7 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
                 </div>
             )}
             {entry.endsNextDay && (
-                <div className={cn('text-[10px] leading-tight', secondaryTextClass)}>+1 day</div>
+                <div className={cn('text-2xs leading-tight', secondaryTextClass)}>+1 day</div>
             )}
         </>
     )

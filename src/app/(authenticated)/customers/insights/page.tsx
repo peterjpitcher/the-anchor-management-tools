@@ -142,11 +142,11 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
         <Card>
           <div className="space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-gray-600">
-                Generated: <span className="font-medium text-gray-900">{formatGeneratedAt(snapshot.generated_at)}</span>
+              <p className="text-sm text-text-muted">
+                Generated: <span className="font-medium text-text">{formatGeneratedAt(snapshot.generated_at)}</span>
               </p>
-              <p className="text-sm text-gray-600">
-                Window: <span className="font-medium text-gray-900">{snapshot.selected_window.label}</span>
+              <p className="text-sm text-text-muted">
+                Window: <span className="font-medium text-text">{snapshot.selected_window.label}</span>
               </p>
             </div>
 
@@ -160,7 +160,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                     className={`rounded-md border px-3 py-1.5 text-xs font-medium transition ${
                       isActive
                         ? 'border-blue-600 bg-blue-50 text-blue-700'
-                        : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:text-gray-800'
+                        : 'border-border-strong bg-surface text-text-muted hover:border-gray-400 hover:text-text'
                     }`}
                   >
                     {option.label}
@@ -170,7 +170,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
             </div>
 
             {snapshot.data_warnings.length > 0 ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <div className="rounded-md border border-amber-200 bg-warning-soft px-3 py-2 text-sm text-warning-fg">
                 {snapshot.data_warnings.join(' ')}
               </div>
             ) : null}
@@ -179,7 +179,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
 
         {!hasMeaningfulData ? (
           <Card>
-            <div className="px-4 py-6 text-sm text-gray-600">
+            <div className="px-4 py-6 text-sm text-text-muted">
               No customer insight data is available yet. Once customers and bookings are active, strategy signals will appear here.
             </div>
           </Card>
@@ -226,7 +226,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                 <Stat
                   label="Dormant High-Value Customers"
                   value={formatNumber(snapshot.kpis.dormant_high_value_customers_90d)}
-                  icon={<ExclamationTriangleIcon className="h-5 w-5 text-red-500" />}
+                  icon={<ExclamationTriangleIcon className="h-5 w-5 text-danger" />}
                   variant="bordered"
                 />
               </div>
@@ -234,18 +234,18 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
 
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
-                <h3 className="text-base font-semibold text-gray-900">Booking Mix</h3>
-                <p className="mt-1 text-sm text-gray-600">
+                <h3 className="text-base font-semibold text-text">Booking Mix</h3>
+                <p className="mt-1 text-sm text-text-muted">
                   Total bookings in window: {formatNumber(snapshot.booking_mix.total_bookings)}
                 </p>
-                <div className="mt-4 h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="mt-4 h-[280px] rounded-lg border border-border bg-surface-2 p-3">
                   <BarChart
                     data={bookingMixChartData}
                     height={250}
                     formatType="number"
                   />
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-gray-600">
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-text-muted">
                   <p>Event: {formatPercent(snapshot.booking_mix.shares_percent.event)}</p>
                   <p>Table: {formatPercent(snapshot.booking_mix.shares_percent.table)}</p>
                   <p>Private: {formatPercent(snapshot.booking_mix.shares_percent.private)}</p>
@@ -254,14 +254,14 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
               </Card>
 
               <Card>
-                <h3 className="text-base font-semibold text-gray-900">Top Interest Categories</h3>
-                <p className="mt-1 text-sm text-gray-600">
+                <h3 className="text-base font-semibold text-text">Top Interest Categories</h3>
+                <p className="mt-1 text-sm text-text-muted">
                   Unique-customer interest concentration by category
                 </p>
                 {categoryChartData.length === 0 ? (
                   <p className="mt-6 text-sm text-gray-500">No category-preference data available.</p>
                 ) : (
-                  <div className="mt-4 h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <div className="mt-4 h-[280px] rounded-lg border border-border bg-surface-2 p-3">
                     <BarChart data={categoryChartData} height={250} formatType="number" />
                   </div>
                 )}
@@ -270,23 +270,23 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
 
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
-                <h3 className="text-base font-semibold text-gray-900">SMS Health Summary</h3>
+                <h3 className="text-base font-semibold text-text">SMS Health Summary</h3>
                 <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <dt className="text-gray-500">Opted-in Customers</dt>
-                    <dd className="font-semibold text-gray-900">{formatNumber(snapshot.sms_health.opted_in_customers)}</dd>
+                    <dd className="font-semibold text-text">{formatNumber(snapshot.sms_health.opted_in_customers)}</dd>
                   </div>
                   <div>
                     <dt className="text-gray-500">Opt-in Rate</dt>
-                    <dd className="font-semibold text-gray-900">{formatPercent(snapshot.sms_health.sms_opt_in_rate_percent)}</dd>
+                    <dd className="font-semibold text-text">{formatPercent(snapshot.sms_health.sms_opt_in_rate_percent)}</dd>
                   </div>
                   <div>
                     <dt className="text-gray-500">At-risk Customers</dt>
-                    <dd className="font-semibold text-gray-900">{formatNumber(snapshot.sms_health.sms_at_risk_count)}</dd>
+                    <dd className="font-semibold text-text">{formatNumber(snapshot.sms_health.sms_at_risk_count)}</dd>
                   </div>
                   <div>
                     <dt className="text-gray-500">At-risk Share</dt>
-                    <dd className="font-semibold text-gray-900">{formatPercent(snapshot.sms_health.sms_at_risk_rate_percent)}</dd>
+                    <dd className="font-semibold text-text">{formatPercent(snapshot.sms_health.sms_at_risk_rate_percent)}</dd>
                   </div>
                 </dl>
 
@@ -297,7 +297,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                   ) : (
                     <ul className="mt-2 space-y-1 text-sm text-gray-700">
                       {snapshot.sms_health.top_failure_reasons.map((item) => (
-                        <li key={item.reason} className="flex items-center justify-between rounded border border-gray-200 px-3 py-1.5">
+                        <li key={item.reason} className="flex items-center justify-between rounded-sm border border-border px-3 py-1.5">
                           <span>{item.reason}</span>
                           <span className="font-medium">{formatNumber(item.count)}</span>
                         </li>
@@ -308,12 +308,12 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
               </Card>
 
               <Card>
-                <h3 className="text-base font-semibold text-gray-900">Strategic Signals</h3>
+                <h3 className="text-base font-semibold text-text">Strategic Signals</h3>
                 <div className="mt-3 space-y-3">
                   {snapshot.strategic_signals.map((signal) => (
-                    <div key={signal.key} className="rounded-lg border border-gray-200 p-3">
+                    <div key={signal.key} className="rounded-lg border border-border p-3">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="font-medium text-gray-900">{signal.title}</p>
+                        <p className="font-medium text-text">{signal.title}</p>
                         <Badge variant={signalBadgeVariant(signal)} size="sm">
                           {signal.severity}
                         </Badge>
@@ -327,8 +327,8 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
             </div>
 
             <Card>
-              <h3 className="text-base font-semibold text-gray-900">Win-back Candidates</h3>
-              <p className="mt-1 text-sm text-gray-600">
+              <h3 className="text-base font-semibold text-text">Win-back Candidates</h3>
+              <p className="mt-1 text-sm text-text-muted">
                 High-value customers dormant for 90+ days
               </p>
 
@@ -336,24 +336,24 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                 <p className="mt-4 text-sm text-gray-500">No dormant high-value candidates detected in current scoring data.</p>
               ) : (
                 <div className="mt-4 hidden overflow-x-auto md:block">
-                  <table className="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead className="bg-gray-50">
+                  <table className="min-w-full divide-y divide-border text-sm">
+                    <thead className="bg-surface-2">
                       <tr>
-                        <th scope="col" className="px-3 py-2 text-left font-medium text-gray-600">Customer</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium text-gray-600">Score</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium text-gray-600">90d</th>
-                        <th scope="col" className="px-3 py-2 text-right font-medium text-gray-600">365d</th>
-                        <th scope="col" className="px-3 py-2 text-left font-medium text-gray-600">Last booking</th>
+                        <th scope="col" className="px-3 py-2 text-left font-medium text-text-muted">Customer</th>
+                        <th scope="col" className="px-3 py-2 text-right font-medium text-text-muted">Score</th>
+                        <th scope="col" className="px-3 py-2 text-right font-medium text-text-muted">90d</th>
+                        <th scope="col" className="px-3 py-2 text-right font-medium text-text-muted">365d</th>
+                        <th scope="col" className="px-3 py-2 text-left font-medium text-text-muted">Last booking</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
+                    <tbody className="divide-y divide-border bg-surface">
                       {snapshot.win_back_candidates.map((candidate) => (
                         <tr key={candidate.customer_id}>
                           <td className="px-3 py-2">
-                            <p className="font-medium text-gray-900">{candidate.name}</p>
+                            <p className="font-medium text-text">{candidate.name}</p>
                             {candidate.mobile ? <p className="text-xs text-gray-500">{candidate.mobile}</p> : null}
                           </td>
-                          <td className="px-3 py-2 text-right font-medium text-gray-900">{formatNumber(candidate.total_score)}</td>
+                          <td className="px-3 py-2 text-right font-medium text-text">{formatNumber(candidate.total_score)}</td>
                           <td className="px-3 py-2 text-right text-gray-700">{formatNumber(candidate.bookings_last_90)}</td>
                           <td className="px-3 py-2 text-right text-gray-700">{formatNumber(candidate.bookings_last_365)}</td>
                           <td className="px-3 py-2 text-gray-700">
@@ -372,24 +372,24 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
               {snapshot.win_back_candidates.length > 0 ? (
                 <div className="mt-4 space-y-3 md:hidden">
                   {snapshot.win_back_candidates.map((candidate) => (
-                    <div key={candidate.customer_id} className="rounded-lg border border-gray-200 p-3">
+                    <div key={candidate.customer_id} className="rounded-lg border border-border p-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-medium text-gray-900">{candidate.name}</p>
+                          <p className="font-medium text-text">{candidate.name}</p>
                           {candidate.mobile ? <p className="text-xs text-gray-500">{candidate.mobile}</p> : null}
                         </div>
-                        <span className="flex-shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-900">
+                        <span className="flex-shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-xs font-semibold text-text">
                           Score {formatNumber(candidate.total_score)}
                         </span>
                       </div>
                       <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
                         <div>
                           <dt className="text-gray-500">90d bookings</dt>
-                          <dd className="font-medium text-gray-900">{formatNumber(candidate.bookings_last_90)}</dd>
+                          <dd className="font-medium text-text">{formatNumber(candidate.bookings_last_90)}</dd>
                         </div>
                         <div>
                           <dt className="text-gray-500">365d bookings</dt>
-                          <dd className="font-medium text-gray-900">{formatNumber(candidate.bookings_last_365)}</dd>
+                          <dd className="font-medium text-text">{formatNumber(candidate.bookings_last_365)}</dd>
                         </div>
                         <div className="col-span-2">
                           <dt className="text-gray-500">Last booking</dt>
@@ -409,7 +409,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
 
             {canManageCustomers && (
               <Card>
-                <h3 className="text-base font-semibold text-gray-900 mb-3">Campaigns</h3>
+                <h3 className="text-base font-semibold text-text mb-3">Campaigns</h3>
                 <WinBackCampaign />
               </Card>
             )}

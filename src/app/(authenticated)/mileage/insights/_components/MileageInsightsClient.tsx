@@ -155,7 +155,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200">
+                <tr className="border-b border-border">
                   <SortableHeader
                     label="Destination"
                     column="destination"
@@ -192,7 +192,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
               </thead>
               <tbody>
                 {sortedByDestination.map((dest) => (
-                  <tr key={dest.destinationName} className="border-b border-gray-100">
+                  <tr key={dest.destinationName} className="border-b border-border">
                     <td className="py-2 pr-4">{dest.destinationName}</td>
                     <td className="text-right py-2 px-4">{dest.totalMiles.toLocaleString('en-GB', { maximumFractionDigits: 1 })}</td>
                     <td className="text-right py-2 px-4">{formatCurrency(dest.amountDue)}</td>

@@ -43,7 +43,7 @@ export function Topbar({ onMenuOpen, fohMode = false, userName, onSignOut, isSig
   return (
     // `shell:`, not `md:`, so this fallback topbar hands over at the same width
     // the sidebar takes over at. They disagreeing is what opened the no-nav gap.
-    <header className={`sticky top-0 z-10 h-[var(--spacing-topbar)] flex items-center px-4 shell:px-6 bg-surface border-b border-border ${!fohMode ? 'shell:hidden' : ''}`}>
+    <header className={`sticky top-0 z-10 h-topbar flex items-center px-4 shell:px-6 bg-surface border-b border-border ${!fohMode ? 'shell:hidden' : ''}`}>
       {/* Mobile hamburger — only when sidebar is available (onMenuOpen provided) */}
       {onMenuOpen && (
         <button

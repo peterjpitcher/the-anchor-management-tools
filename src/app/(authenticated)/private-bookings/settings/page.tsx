@@ -49,10 +49,10 @@ export default async function PrivateBookingsSettingsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card>
             <div className="flex items-start gap-4">
-              <MapPinIcon className="h-6 w-6 text-gray-600" />
+              <MapPinIcon className="h-6 w-6 text-text-muted" />
               <div className="flex-1">
-                <div className="text-lg font-semibold text-gray-900">Venue Spaces</div>
-                <div className="mt-1 text-sm text-gray-600">Configure spaces available for private hire.</div>
+                <div className="text-lg font-semibold text-text">Venue Spaces</div>
+                <div className="mt-1 text-sm text-text-muted">Configure spaces available for private hire.</div>
                 <div className="mt-4">
                   <LinkButton
                     href="/private-bookings/settings/spaces"
@@ -68,10 +68,10 @@ export default async function PrivateBookingsSettingsPage() {
 
           <Card>
             <div className="flex items-start gap-4">
-              <SparklesIcon className="h-6 w-6 text-gray-600" />
+              <SparklesIcon className="h-6 w-6 text-text-muted" />
               <div className="flex-1">
-                <div className="text-lg font-semibold text-gray-900">Catering Packages</div>
-                <div className="mt-1 text-sm text-gray-600">Manage food and drink options for events.</div>
+                <div className="text-lg font-semibold text-text">Catering Packages</div>
+                <div className="mt-1 text-sm text-text-muted">Manage food and drink options for events.</div>
                 <div className="mt-4">
                   <LinkButton
                     href="/private-bookings/settings/catering"
@@ -87,10 +87,10 @@ export default async function PrivateBookingsSettingsPage() {
 
           <Card>
             <div className="flex items-start gap-4">
-              <UserGroupIcon className="h-6 w-6 text-gray-600" />
+              <UserGroupIcon className="h-6 w-6 text-text-muted" />
               <div className="flex-1">
-                <div className="text-lg font-semibold text-gray-900">Vendors</div>
-                <div className="mt-1 text-sm text-gray-600">Maintain your preferred vendor list.</div>
+                <div className="text-lg font-semibold text-text">Vendors</div>
+                <div className="mt-1 text-sm text-text-muted">Maintain your preferred vendor list.</div>
                 <div className="mt-4">
                   <LinkButton
                     href="/private-bookings/settings/vendors"
@@ -106,10 +106,10 @@ export default async function PrivateBookingsSettingsPage() {
 
           <Card>
             <div className="flex items-start gap-4">
-              <ChatBubbleLeftRightIcon className="h-6 w-6 text-gray-600" />
+              <ChatBubbleLeftRightIcon className="h-6 w-6 text-text-muted" />
               <div className="flex-1">
-                <div className="text-lg font-semibold text-gray-900">SMS Queue</div>
-                <div className="mt-1 text-sm text-gray-600">Approve and send queued SMS messages.</div>
+                <div className="text-lg font-semibold text-text">SMS Queue</div>
+                <div className="mt-1 text-sm text-text-muted">Approve and send queued SMS messages.</div>
                 <div className="mt-4">
                   <LinkButton
                     href="/private-bookings/sms-queue"

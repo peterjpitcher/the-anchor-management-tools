@@ -319,7 +319,7 @@ function SegmentedControl({
           key={option.value}
           type="button"
           onClick={() => onChange(option.value)}
-          className={`rounded px-3 py-1.5 text-xs font-semibold transition ${value === option.value ? 'bg-primary text-primary-fg' : 'text-text-muted hover:bg-surface-2'}`}
+          className={`rounded-sm px-3 py-1.5 text-xs font-semibold transition ${value === option.value ? 'bg-primary text-primary-fg' : 'text-text-muted hover:bg-surface-2'}`}
         >
           {option.label}
         </button>
@@ -387,7 +387,7 @@ function DivergingMovementChart({ movements }: { movements: ReceiptVendorMovemen
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-[minmax(7rem,11rem)_1fr_5rem] items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-text-subtle">
+      <div className="grid grid-cols-[minmax(7rem,11rem)_1fr_5rem] items-center gap-3 text-meta font-semibold uppercase tracking-wide text-text-subtle">
         <span>Vendor</span>
         <div className="grid grid-cols-2 text-center"><span>Down</span><span>Up</span></div>
         <span className="text-right">Movement</span>
@@ -398,10 +398,10 @@ function DivergingMovementChart({ movements }: { movements: ReceiptVendorMovemen
         return (
           <div key={movement.vendorLabel} className="grid grid-cols-[minmax(7rem,11rem)_1fr_5rem] items-center gap-3">
             <span className="truncate text-xs font-medium text-text" title={movement.vendorLabel}>{movement.vendorLabel}</span>
-            <div className="relative h-5 rounded bg-surface-2">
+            <div className="relative h-5 rounded-sm bg-surface-2">
               <div className="absolute inset-y-0 left-1/2 w-px bg-border-strong" />
               <div
-                className={`absolute inset-y-1 rounded ${delta > 0 ? 'left-1/2 bg-rose-500' : 'right-1/2 bg-emerald-500'}`}
+                className={`absolute inset-y-1 rounded-sm ${delta > 0 ? 'left-1/2 bg-rose-500' : 'right-1/2 bg-emerald-500'}`}
                 style={{ width: `${width}%` }}
               />
             </div>
@@ -632,7 +632,7 @@ function VendorMovementPanel({
                             <td className="px-3 py-3 text-right tabular-nums text-text-muted">{movement.baselineOutgoing === null ? 'No baseline' : formatCurrency(movement.baselineOutgoing)}</td>
                             <td className={`px-3 py-3 text-right font-semibold tabular-nums ${(movement.delta ?? 0) > 0 ? 'text-danger-fg' : (movement.delta ?? 0) < 0 ? 'text-success-fg' : 'text-text-muted'}`}>
                               <div>{formatSignedCurrency(movement.delta)}</div>
-                              <div className="mt-1 text-[11px] font-medium opacity-75">{movement.baselineOutgoing === 0 && movement.latestOutgoing > 0 ? 'New' : formatSignedPercent(movement.percentageChange)}</div>
+                              <div className="mt-1 text-meta font-medium opacity-75">{movement.baselineOutgoing === 0 && movement.latestOutgoing > 0 ? 'New' : formatSignedPercent(movement.percentageChange)}</div>
                             </td>
                             <td className="px-3 py-3">
                               <select
@@ -651,7 +651,7 @@ function VendorMovementPanel({
                                   type="button"
                                   disabled={updatingWatchVendor === movement.vendorLabel}
                                   onClick={() => onToggleWatched(movement.vendorLabel, !watched)}
-                                  className={`rounded p-1.5 ${watched ? 'bg-warning-soft text-warning-fg' : 'text-text-subtle hover:bg-surface-2 hover:text-warning-fg'}`}
+                                  className={`rounded-sm p-1.5 ${watched ? 'bg-warning-soft text-warning-fg' : 'text-text-subtle hover:bg-surface-2 hover:text-warning-fg'}`}
                                   aria-label={`${watched ? 'Stop watching' : 'Watch'} ${movement.vendorLabel}`}
                                 >
                                   <StarIcon className="h-4 w-4" />

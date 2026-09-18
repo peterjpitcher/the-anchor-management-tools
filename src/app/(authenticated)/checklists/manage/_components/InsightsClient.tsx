@@ -70,7 +70,7 @@ export function InsightsClient({ data, error }: InsightsClientProps) {
         />
         <CardBody className="p-0">
           {data.perPerson.length === 0 ? (
-            <p className="px-[var(--spacing-pad-card)] py-4 text-sm text-text-muted">
+            <p className="px-pad-card py-4 text-sm text-text-muted">
               No completed ticks in this window.
             </p>
           ) : (

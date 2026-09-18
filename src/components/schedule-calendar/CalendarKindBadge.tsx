@@ -36,8 +36,8 @@ export function CalendarKindBadge({ kind, lightText, className }: CalendarKindBa
     return (
         <span
             className={cn(
-                'inline-flex min-w-0 items-center gap-0.5 rounded-sm px-1 py-px text-[9px] font-bold uppercase leading-none tracking-wide',
-                lightText ? 'bg-white/20 text-white' : 'bg-black/10 text-gray-950',
+                'inline-flex min-w-0 items-center gap-0.5 rounded-sm px-1 py-px text-2xs font-bold uppercase leading-none tracking-wide',
+                lightText ? 'bg-surface/20 text-white' : 'bg-black/10 text-text-strong',
                 className,
             )}
         >

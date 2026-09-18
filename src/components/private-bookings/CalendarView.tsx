@@ -29,10 +29,10 @@ interface CalendarViewProps {
 }
 
 const statusColors: Record<BookingStatus, string> = {
-  draft: 'bg-gray-100 text-gray-800 border-gray-300',
-  confirmed: 'bg-green-100 text-green-800 border-green-300',
-  completed: 'bg-blue-100 text-blue-800 border-blue-300',
-  cancelled: 'bg-red-100 text-red-800 border-red-300'
+  draft: 'bg-surface-hover text-text border-border-strong',
+  confirmed: 'bg-success-soft text-green-800 border-green-300',
+  completed: 'bg-blue-100 text-info-fg border-blue-300',
+  cancelled: 'bg-danger-soft text-danger-fg border-red-300'
 }
 
 export default function CalendarView({ bookings }: CalendarViewProps) {
@@ -151,28 +151,28 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-surface rounded-xl shadow-sm border border-border overflow-hidden">
       {/* Calendar Header */}
-      <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
+      <div className="px-4 sm:px-6 py-4 border-b border-border">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-gray-900">
+          <h2 className="text-xl font-semibold text-text">
             {currentDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
           </h2>
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             {/* View Mode Toggle - Mobile Only */}
-            <div className="flex bg-gray-100 rounded-lg p-1 sm:hidden">
+            <div className="flex bg-surface-hover rounded-lg p-1 sm:hidden">
               <button type="button"
                 onClick={() => setViewMode('calendar')}
-                className={`px-3 py-1 text-sm font-medium rounded ${
-                  viewMode === 'calendar' ? 'bg-white text-gray-900 shadow' : 'text-gray-600'
+                className={`px-3 py-1 text-sm font-medium rounded-sm ${
+                  viewMode === 'calendar' ? 'bg-surface text-text shadow-sm' : 'text-text-muted'
                 }`}
               >
                 Calendar
               </button>
               <button type="button"
                 onClick={() => setViewMode('agenda')}
-                className={`px-3 py-1 text-sm font-medium rounded ${
-                  viewMode === 'agenda' ? 'bg-white text-gray-900 shadow' : 'text-gray-600'
+                className={`px-3 py-1 text-sm font-medium rounded-sm ${
+                  viewMode === 'agenda' ? 'bg-surface text-text shadow-sm' : 'text-text-muted'
                 }`}
               >
                 Agenda
@@ -180,20 +180,20 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
             </div>
             <button type="button"
               onClick={() => setCurrentDate(new Date())}
-              className="px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 bg-surface border border-border-strong rounded-lg hover:bg-surface-hover transition-colors"
             >
               Today
             </button>
             <div className="flex">
               <button type="button"
                 onClick={() => navigateMonth('prev')}
-                className="p-2 text-gray-600 hover:bg-gray-100 rounded-l-lg border border-r-0 border-gray-300 transition-colors"
+                className="p-2 text-text-muted hover:bg-surface-hover rounded-l-lg border border-r-0 border-border-strong transition-colors"
               >
                 <ChevronLeftIcon className="h-5 w-5" />
               </button>
               <button type="button"
                 onClick={() => navigateMonth('next')}
-                className="p-2 text-gray-600 hover:bg-gray-100 rounded-r-lg border border-gray-300 transition-colors"
+                className="p-2 text-text-muted hover:bg-surface-hover rounded-r-lg border border-border-strong transition-colors"
               >
                 <ChevronRightIcon className="h-5 w-5" />
               </button>
@@ -238,14 +238,14 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
       {(viewMode === 'calendar' || !isMobile) ? (
         <>
           {/* Days of Week Header */}
-          <div className="hidden sm:grid grid-cols-7 bg-gray-50 border-b border-gray-200">
+          <div className="hidden sm:grid grid-cols-7 bg-surface-2 border-b border-border">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
               <div key={day} className="px-2 py-3 text-center text-sm font-medium text-gray-700">
                 {day}
               </div>
             ))}
           </div>
-          <div className="grid sm:hidden grid-cols-7 bg-gray-50 border-b border-gray-200">
+          <div className="grid sm:hidden grid-cols-7 bg-surface-2 border-b border-border">
             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
               <div key={index} className="py-2 text-center text-xs font-medium text-gray-700">
                 {day}
@@ -254,18 +254,18 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
           </div>
           
           {/* Calendar Grid */}
-          <div className="grid grid-cols-7 divide-x divide-y divide-gray-200">
+          <div className="grid grid-cols-7 divide-x divide-y divide-border">
         {calendarDays.map((day, index) => (
           <div
             key={index}
             className={`min-h-[80px] sm:min-h-[120px] p-1 sm:p-2 ${
-              day === null ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'
+              day === null ? 'bg-surface-2' : 'bg-surface hover:bg-surface-hover'
             } ${isToday(day || 0) ? 'bg-blue-50' : ''}`}
           >
             {day && (
               <>
                 <div className={`text-sm font-medium mb-1 ${
-                  isToday(day) ? 'text-blue-600' : 'text-gray-900'
+                  isToday(day) ? 'text-blue-600' : 'text-text'
                 }`}>
                   {day}
                 </div>
@@ -275,7 +275,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                     <Link
                       key={booking.id}
                       href={`/private-bookings/${booking.id}`}
-                      className={`block px-1 sm:px-2 py-0.5 sm:py-1 text-xs rounded border ${
+                      className={`block px-1 sm:px-2 py-0.5 sm:py-1 text-xs rounded-sm border ${
                         statusColors[booking.status]
                       } hover:opacity-80 transition-opacity`}
                     >
@@ -301,7 +301,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
         </>
       ) : (
         /* Agenda View - Mobile Only */
-        <div className="divide-y divide-gray-200">
+        <div className="divide-y divide-border">
           {monthBookings.length === 0 ? (
             <div className="px-4 py-8 text-center text-gray-500">
               No bookings for this month
@@ -315,7 +315,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                 <Link
                   key={booking.id}
                   href={`/private-bookings/${booking.id}`}
-                  className={`block px-4 py-4 hover:bg-gray-50 ${isToday ? 'bg-blue-50' : ''}`}
+                  className={`block px-4 py-4 hover:bg-surface-hover ${isToday ? 'bg-blue-50' : ''}`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -327,9 +327,9 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                           <span className="text-xs font-medium text-blue-600">Today</span>
                         )}
                       </div>
-                      <h3 className="font-medium text-gray-900">{booking.customer_name}</h3>
+                      <h3 className="font-medium text-text">{booking.customer_name}</h3>
                       {booking.event_type && (
-                        <p className="text-sm text-gray-600 mt-0.5">{booking.event_type}</p>
+                        <p className="text-sm text-text-muted mt-0.5">{booking.event_type}</p>
                       )}
                       <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
                         <span>
@@ -362,27 +362,27 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
       
       {/* Legend - Show only in calendar view */}
       {(viewMode === 'calendar' || !isMobile) && (
-        <div className="px-4 sm:px-6 py-4 bg-gray-50 border-t border-gray-200">
+        <div className="px-4 sm:px-6 py-4 bg-surface-2 border-t border-border">
         <div className="flex flex-wrap gap-4 text-sm">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-gray-200 border border-gray-300"></div>
-            <span className="text-gray-600">Draft</span>
+            <div className="w-3 h-3 rounded-sm bg-border border border-border-strong"></div>
+            <span className="text-text-muted">Draft</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-amber-200 border border-amber-300"></div>
-            <span className="text-gray-600">Tentative</span>
+            <div className="w-3 h-3 rounded-sm bg-amber-200 border border-amber-300"></div>
+            <span className="text-text-muted">Tentative</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-green-200 border border-green-300"></div>
-            <span className="text-gray-600">Confirmed</span>
+            <div className="w-3 h-3 rounded-sm bg-green-200 border border-green-300"></div>
+            <span className="text-text-muted">Confirmed</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-blue-200 border border-blue-300"></div>
-            <span className="text-gray-600">Completed</span>
+            <div className="w-3 h-3 rounded-sm bg-blue-200 border border-blue-300"></div>
+            <span className="text-text-muted">Completed</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-red-200 border border-red-300"></div>
-            <span className="text-gray-600">Cancelled</span>
+            <div className="w-3 h-3 rounded-sm bg-red-200 border border-red-300"></div>
+            <span className="text-text-muted">Cancelled</span>
           </div>
         </div>
         </div>

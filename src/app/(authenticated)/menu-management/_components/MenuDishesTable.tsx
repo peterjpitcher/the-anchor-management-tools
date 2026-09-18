@@ -349,7 +349,7 @@ export function MenuDishesTable({
       <th scope="col" className={className}>
         <button
           type="button"
-          className="inline-flex items-center gap-1 font-medium text-gray-600 hover:text-gray-900"
+          className="inline-flex items-center gap-1 font-medium text-text-muted hover:text-text"
           onClick={() => pipeline.handleSort(sortKey)}
         >
           {label}
@@ -415,8 +415,8 @@ export function MenuDishesTable({
             onClick={() => setShowAllCombinations((prev) => !prev)}
             className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
               showAllCombinations
-                ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-success-soft text-green-800 hover:bg-green-200'
+                : 'bg-surface-hover text-text-muted hover:bg-border'
             }`}
           >
             {showAllCombinations ? 'Show worst case only' : 'Show all combinations'}
@@ -435,13 +435,13 @@ export function MenuDishesTable({
       {/* Table */}
       {loadError ? (
         <Card className="p-4">
-          <p className="text-sm text-red-600">
+          <p className="text-sm text-danger">
             Unable to load GP% data right now. Please refresh the page or try again shortly.
           </p>
         </Card>
       ) : sorted.length === 0 && pipeline.totalItems === 0 ? (
         <Card className="p-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             {filter === 'below-target'
               ? 'No dishes are below the GP target. Great work!'
               : filter === 'missing-costing'
@@ -454,19 +454,19 @@ export function MenuDishesTable({
       ) : (
         <Card className="p-0 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-border text-sm">
+              <thead className="bg-surface-2">
                 <tr>
                   <SortHeader label="Dish" sortKey="dishName" className="px-4 py-2 text-left" />
                   <SortHeader label="Price" sortKey="sellingPrice" className="px-4 py-2 text-left" />
                   <SortHeader label="Portion Cost" sortKey="portionCost" className="px-4 py-2 text-left" />
                   <SortHeader label="GP%" sortKey="gpPct" className="px-4 py-2 text-left" />
-                  <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Target</th>
-                  <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Active status</th>
-                  <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Costing status</th>
+                  <th scope="col" className="px-4 py-2 text-left font-medium text-text-muted">Target</th>
+                  <th scope="col" className="px-4 py-2 text-left font-medium text-text-muted">Active status</th>
+                  <th scope="col" className="px-4 py-2 text-left font-medium text-text-muted">Costing status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-border">
                 {sorted.map((row, idx) => {
                   const gpValue = typeof row.gpPct === 'number' ? row.gpPct : Infinity;
                   const belowTarget = gpValue !== Infinity && row.belowTarget;
@@ -487,19 +487,19 @@ export function MenuDishesTable({
                   return (
                     <tr
                       key={rowKey}
-                      className={belowTarget ? 'bg-red-50/60' : ''}
+                      className={belowTarget ? 'bg-danger-soft/60' : ''}
                     >
                       <td className="px-4 py-2">
                         {onDishClick ? (
                           <button
                             type="button"
-                            className="text-left font-medium text-green-700 hover:text-green-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded"
+                            className="text-left font-medium text-green-700 hover:text-green-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded-sm"
                             onClick={() => onDishClick(row.originalDish)}
                           >
                             {row.dishName}
                           </button>
                         ) : (
-                          <div className="font-medium text-gray-900">{row.dishName}</div>
+                          <div className="font-medium text-text">{row.dishName}</div>
                         )}
                         {row.comboLabel && (
                           <div className="text-xs text-indigo-600">{row.comboLabel}</div>
@@ -519,18 +519,18 @@ export function MenuDishesTable({
                       <td className="px-4 py-2">
                         <div className="flex flex-col">
                           <span
-                            className={`font-medium ${belowTarget ? 'text-red-600' : 'text-gray-900'}`}
+                            className={`font-medium ${belowTarget ? 'text-danger' : 'text-text'}`}
                           >
                             {belowTarget && (
                               <ExclamationTriangleIcon
-                                className="mr-1 inline h-3.5 w-3.5 text-red-500"
+                                className="mr-1 inline h-3.5 w-3.5 text-danger"
                                 aria-label="Below target"
                               />
                             )}
                             {formatGp(gpValue)}
                           </span>
                           {targetPriceHint && (
-                            <span className="text-xs text-red-600">{targetPriceHint}</span>
+                            <span className="text-xs text-danger">{targetPriceHint}</span>
                           )}
                         </div>
                       </td>

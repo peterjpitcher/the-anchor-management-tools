@@ -149,23 +149,23 @@ export function getTableBookingStatusBadgeClasses(state: string | null | undefin
       return 'bg-slate-200 text-slate-800 border-slate-300';
     case 'confirmed':
     case 'pending':
-      return 'bg-green-100 text-green-800 border-green-200';
+      return 'bg-success-soft text-green-800 border-green-200';
     case 'seated':
       return 'bg-emerald-100 text-emerald-800 border-emerald-200';
     case 'pending_payment':
-      return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      return 'bg-yellow-100 text-warning-fg border-yellow-200';
     case 'left':
     case 'completed':
-      return 'bg-gray-100 text-gray-600 border-gray-200';
+      return 'bg-surface-hover text-text-muted border-border';
     case 'no_show':
-      return 'bg-red-100 text-red-700 border-red-200';
+      return 'bg-danger-soft text-red-700 border-red-200';
     case 'cancelled':
-      return 'bg-gray-100 text-gray-500 border-gray-200';
+      return 'bg-surface-hover text-gray-500 border-border';
     case 'visited_waiting_for_review':
     case 'review_clicked':
       return 'bg-purple-100 text-purple-900 border-purple-200';
     default:
-      return 'bg-gray-100 text-gray-900 border-gray-200';
+      return 'bg-surface-hover text-text border-border';
   }
 }
 
@@ -180,18 +180,18 @@ export function getTableBookingStatusBlockClasses(state: string | null | undefin
     case 'confirmed':
       return 'border-green-300 bg-green-200/90 text-green-900';
     case 'pending_payment':
-      return 'border-amber-300 bg-amber-200/90 text-amber-900';
+      return 'border-amber-300 bg-amber-200/90 text-warning-fg';
     case 'no_show':
-      return 'border-red-300 bg-red-200/90 text-red-900';
+      return 'border-red-300 bg-red-200/90 text-danger-fg';
     case 'cancelled':
-      return 'border-gray-300 bg-gray-200/90 text-gray-700';
+      return 'border-border-strong bg-border/90 text-gray-700';
     case 'completed':
-      return 'border-blue-300 bg-blue-200/90 text-blue-900';
+      return 'border-blue-300 bg-blue-200/90 text-info-fg';
     case 'visited_waiting_for_review':
     case 'review_clicked':
       return 'border-purple-300 bg-purple-200/90 text-purple-900';
     default:
-      return 'border-gray-300 bg-gray-200/90 text-gray-800';
+      return 'border-border-strong bg-border/90 text-text';
   }
 }
 
@@ -281,15 +281,15 @@ function getPaymentMethodLabel(method: string | null | undefined): string | null
 export function getTableBookingDepositBadgeClasses(kind: TableBookingDepositState['kind']): string {
   switch (kind) {
     case 'paid':
-      return 'border-green-300 bg-green-50 text-green-800';
+      return 'border-green-300 bg-success-soft text-green-800';
     case 'pending':
-      return 'border-amber-300 bg-amber-50 text-amber-800';
+      return 'border-amber-300 bg-warning-soft text-warning-fg';
     case 'required':
-      return 'border-blue-300 bg-blue-50 text-blue-800';
+      return 'border-blue-300 bg-blue-50 text-info-fg';
     case 'waived':
-      return 'border-gray-300 bg-gray-50 text-gray-600';
+      return 'border-border-strong bg-surface-2 text-text-muted';
     default:
-      return 'border-gray-200 bg-gray-50 text-gray-500';
+      return 'border-border bg-surface-2 text-gray-500';
   }
 }
 

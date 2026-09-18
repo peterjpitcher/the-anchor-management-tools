@@ -368,18 +368,18 @@ export function DestinationsClient({
 
       {/* Error banner */}
       {(formError || distanceError) && !showForm && !deleteTarget && !distanceDeleteTarget && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+        <div className="rounded-md bg-danger-soft p-3 text-sm text-red-700">
           {formError ?? distanceError}
         </div>
       )}
 
       {/* Home base card */}
       {homeBase && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+        <div className="rounded-lg border border-green-200 bg-success-soft p-4">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <MapPinIcon className="h-5 w-5 text-green-600" />
             <span className="font-medium text-green-800">{homeBase.name}</span>
-            <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+            <span className="ml-2 rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-green-700">
               Home Base
             </span>
             {homeBase.postcode && (
@@ -391,8 +391,8 @@ export function DestinationsClient({
 
       {/* Destinations table */}
       {nonHomeDestinations.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-          <MapPinIcon className="mx-auto h-12 w-12 text-gray-300" />
+        <div className="rounded-lg border border-border bg-surface p-8 text-center">
+          <MapPinIcon className="mx-auto h-12 w-12 text-text-subtle" />
           <p className="mt-2 text-sm text-gray-500">
             No destinations saved yet. Add your first destination above.
           </p>
@@ -400,9 +400,9 @@ export function DestinationsClient({
       ) : (
         <>
         {/* Desktop table (hidden on mobile, where a card list renders below instead) */}
-        <div className="hidden overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm md:block">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className="hidden overflow-x-auto rounded-lg border border-border bg-surface shadow-sm md:block">
+          <table className="min-w-full divide-y divide-border">
+            <thead className="bg-surface-2">
               <tr>
                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   Name
@@ -423,10 +423,10 @@ export function DestinationsClient({
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-border">
               {nonHomeDestinations.map((dest) => (
-                <tr key={dest.id} className="hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
+                <tr key={dest.id} className="hover:bg-surface-hover">
+                  <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-text">
                     {dest.name}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
@@ -460,7 +460,7 @@ export function DestinationsClient({
                           <Button
                             variant="ghost"
                             size="sm"
-                            icon={<TrashIcon className="h-4 w-4 text-red-500" />}
+                            icon={<TrashIcon className="h-4 w-4 text-danger" />}
                             aria-label={`Clear miles from ${homeBase.name} to ${dest.name}`}
                             onClick={() =>
                               setDistanceDeleteTarget({
@@ -494,7 +494,7 @@ export function DestinationsClient({
                         <Button
                           variant="ghost"
                           size="sm"
-                          icon={<TrashIcon className="h-4 w-4 text-red-500" />}
+                          icon={<TrashIcon className="h-4 w-4 text-danger" />}
                           aria-label={`Delete ${dest.name}`}
                           disabled={dest.tripCount > 0}
                           onClick={() => setDeleteTarget(dest)}
@@ -511,10 +511,10 @@ export function DestinationsClient({
         {/* Mobile card list */}
         <div className="space-y-3 md:hidden">
           {nonHomeDestinations.map((dest) => (
-            <div key={dest.id} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div key={dest.id} className="rounded-lg border border-border bg-surface p-4 shadow-sm">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-gray-900">{dest.name}</p>
+                  <p className="truncate text-sm font-medium text-text">{dest.name}</p>
                   <p className="mt-0.5 text-xs text-gray-500">{dest.postcode ?? '\u2014'}</p>
                 </div>
                 {canManage && (
@@ -529,7 +529,7 @@ export function DestinationsClient({
                     <Button
                       variant="ghost"
                       size="sm"
-                      icon={<TrashIcon className="h-4 w-4 text-red-500" />}
+                      icon={<TrashIcon className="h-4 w-4 text-danger" />}
                       aria-label={`Delete ${dest.name}`}
                       disabled={dest.tripCount > 0}
                       onClick={() => setDeleteTarget(dest)}
@@ -540,7 +540,7 @@ export function DestinationsClient({
 
               <div className="mt-3 text-sm">
                 <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Trips</p>
-                <p className="mt-0.5 text-gray-900">{dest.tripCount}</p>
+                <p className="mt-0.5 text-text">{dest.tripCount}</p>
               </div>
 
               <div className="mt-3">
@@ -573,7 +573,7 @@ export function DestinationsClient({
                       <Button
                         variant="ghost"
                         size="sm"
-                        icon={<TrashIcon className="h-4 w-4 text-red-500" />}
+                        icon={<TrashIcon className="h-4 w-4 text-danger" />}
                         aria-label={`Clear miles from ${homeBase.name} to ${dest.name}`}
                         onClick={() =>
                           setDistanceDeleteTarget({
@@ -586,7 +586,7 @@ export function DestinationsClient({
                     )}
                   </div>
                 ) : (
-                  <p className="mt-0.5 text-sm text-gray-900">
+                  <p className="mt-0.5 text-sm text-text">
                     {dest.milesFromAnchor != null ? `${dest.milesFromAnchor} mi` : '\u2014'}
                   </p>
                 )}
@@ -600,11 +600,11 @@ export function DestinationsClient({
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <ArrowsRightLeftIcon className="h-5 w-5 text-gray-500" />
-          <h2 className="text-sm font-semibold text-gray-900">Location-to-location distances</h2>
+          <h2 className="text-sm font-semibold text-text">Location-to-location distances</h2>
         </div>
 
         {canManage && nonHomeDestinations.length >= 2 && (
-          <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-white p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_auto] sm:items-end">
+          <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-surface p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_auto] sm:items-end">
             <div>
               <label htmlFor="route-distance-from" className="mb-1 block text-xs font-medium text-gray-500">
                 From
@@ -674,15 +674,15 @@ export function DestinationsClient({
         )}
 
         {locationDistances.length === 0 ? (
-          <div className="rounded-lg border border-gray-200 bg-white p-6 text-center">
+          <div className="rounded-lg border border-border bg-surface p-6 text-center">
             <p className="text-sm text-gray-500">No location-to-location distances saved yet.</p>
           </div>
         ) : (
           <>
           {/* Desktop table (hidden on mobile, where a card list renders below instead) */}
-          <div className="hidden overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm md:block">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className="hidden overflow-x-auto rounded-lg border border-border bg-surface shadow-sm md:block">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-surface-2">
                 <tr>
                   <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     From
@@ -700,13 +700,13 @@ export function DestinationsClient({
                   )}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-border">
                 {locationDistances.map((distance) => (
                   <tr
                     key={distanceKey(distance.fromDestinationId, distance.toDestinationId)}
-                    className="hover:bg-gray-50"
+                    className="hover:bg-surface-hover"
                   >
-                    <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
+                    <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-text">
                       {distance.fromDestinationName}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
@@ -720,7 +720,7 @@ export function DestinationsClient({
                         <Button
                           variant="ghost"
                           size="sm"
-                          icon={<TrashIcon className="h-4 w-4 text-red-500" />}
+                          icon={<TrashIcon className="h-4 w-4 text-danger" />}
                           aria-label={`Delete distance from ${distance.fromDestinationName} to ${distance.toDestinationName}`}
                           onClick={() =>
                             setDistanceDeleteTarget({
@@ -743,11 +743,11 @@ export function DestinationsClient({
             {locationDistances.map((distance) => (
               <div
                 key={distanceKey(distance.fromDestinationId, distance.toDestinationId)}
-                className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+                className="rounded-lg border border-border bg-surface p-4 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-text">
                       {distance.fromDestinationName} <span className="text-gray-400">→</span> {distance.toDestinationName}
                     </p>
                     <p className="mt-0.5 text-xs text-gray-500">{distance.miles} mi</p>
@@ -757,7 +757,7 @@ export function DestinationsClient({
                       variant="ghost"
                       size="sm"
                       className="shrink-0"
-                      icon={<TrashIcon className="h-4 w-4 text-red-500" />}
+                      icon={<TrashIcon className="h-4 w-4 text-danger" />}
                       aria-label={`Delete distance from ${distance.fromDestinationName} to ${distance.toDestinationName}`}
                       onClick={() =>
                         setDistanceDeleteTarget({
@@ -805,13 +805,13 @@ export function DestinationsClient({
       >
         <div className="space-y-4">
           {formError && (
-            <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+            <div className="rounded-md bg-danger-soft p-3 text-sm text-red-700">
               {formError}
             </div>
           )}
           <div>
             <label htmlFor="dest-name" className="block text-sm font-medium text-gray-700 mb-1">
-              Name <span className="text-red-500">*</span>
+              Name <span className="text-danger">*</span>
             </label>
             <Input
               id="dest-name"

@@ -536,7 +536,7 @@ function CellButton({ row, cell, todayBusiness, onSelect }: CellButtonProps) {
       {flags.length > 0 && (
         <span
           aria-hidden="true"
-          className="absolute right-0.5 top-0.5 text-[10px] font-bold text-danger-fg"
+          className="absolute right-0.5 top-0.5 text-2xs font-bold text-danger-fg"
         >
           !
         </span>

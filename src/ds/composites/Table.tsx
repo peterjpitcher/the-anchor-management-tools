@@ -210,7 +210,7 @@ export function TablePagination({
         <button
           type="button"
           disabled={page <= 1}
-          className="px-2 py-1 text-xs font-medium text-text-muted rounded-default border border-border hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="px-2 py-1 text-xs font-medium text-text-muted rounded-default border border-border hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           onClick={() => onPageChange(page - 1)}
         >
           <Icon name="chevronLeft" size={14} />
@@ -252,7 +252,7 @@ export function TablePagination({
         <button
           type="button"
           disabled={page >= totalPages}
-          className="px-2 py-1 text-xs font-medium text-text-muted rounded-default border border-border hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="px-2 py-1 text-xs font-medium text-text-muted rounded-default border border-border hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           onClick={() => onPageChange(page + 1)}
         >
           <Icon name="chevronRight" size={14} />

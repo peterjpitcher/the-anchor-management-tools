@@ -257,11 +257,11 @@ export default function EmployeeStatusActions({
         >
           <div className="fixed inset-0 bg-gray-500/75" onClick={closeSeparation} />
           <div className="flex min-h-full items-center justify-center p-4">
-            <div className="relative w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
-              <h3 id="separation-dialog-title" className="mb-2 text-lg font-semibold text-gray-900">
+            <div className="relative w-full max-w-2xl rounded-lg bg-surface p-6 shadow-lg">
+              <h3 id="separation-dialog-title" className="mb-2 text-lg font-semibold text-text">
                 Begin Separation
               </h3>
-              <p className="mb-6 text-sm text-gray-600">
+              <p className="mb-6 text-sm text-text-muted">
                 Review the remaining rota before starting the separation process. System access is not affected yet.
               </p>
 
@@ -279,7 +279,7 @@ export default function EmployeeStatusActions({
                     onChange={(event) => setSeparationEndDate(event.target.value)}
                     aria-describedby={dateError ? 'separation-date-error' : undefined}
                     aria-invalid={Boolean(dateError)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
+                    className="mt-1 block w-full rounded-md border-border-strong shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
                     required
                   />
                   {dateError && (
@@ -290,9 +290,9 @@ export default function EmployeeStatusActions({
                 </div>
 
                 <fieldset disabled={previewLoading || Boolean(previewError)}>
-                  <legend className="text-sm font-medium text-gray-900">What should happen to remaining shifts?</legend>
+                  <legend className="text-sm font-medium text-text">What should happen to remaining shifts?</legend>
                   <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                    <label className="flex cursor-pointer gap-3 rounded-lg border border-gray-300 p-4 has-[:checked]:border-yellow-600 has-[:checked]:bg-yellow-50">
+                    <label className="flex cursor-pointer gap-3 rounded-lg border border-border-strong p-4 has-[:checked]:border-yellow-600 has-[:checked]:bg-warning-soft">
                       <input
                         type="radio"
                         name="separation-shift-policy"
@@ -302,13 +302,13 @@ export default function EmployeeStatusActions({
                         className="mt-1"
                       />
                       <span>
-                        <span className="block text-sm font-semibold text-gray-900">Work agreed shifts</span>
-                        <span className="mt-1 block text-sm text-gray-600">
+                        <span className="block text-sm font-semibold text-text">Work agreed shifts</span>
+                        <span className="mt-1 block text-sm text-text-muted">
                           Keep shifts through the last working day and open any later shifts.
                         </span>
                       </span>
                     </label>
-                    <label className="flex cursor-pointer gap-3 rounded-lg border border-gray-300 p-4 has-[:checked]:border-yellow-600 has-[:checked]:bg-yellow-50">
+                    <label className="flex cursor-pointer gap-3 rounded-lg border border-border-strong p-4 has-[:checked]:border-yellow-600 has-[:checked]:bg-warning-soft">
                       <input
                         type="radio"
                         name="separation-shift-policy"
@@ -318,8 +318,8 @@ export default function EmployeeStatusActions({
                         className="mt-1"
                       />
                       <span>
-                        <span className="block text-sm font-semibold text-gray-900">Release all remaining shifts</span>
-                        <span className="mt-1 block text-sm text-gray-600">
+                        <span className="block text-sm font-semibold text-text">Release all remaining shifts</span>
+                        <span className="mt-1 block text-sm text-text-muted">
                           Open every shift which has not started, including later today.
                         </span>
                       </span>
@@ -329,7 +329,7 @@ export default function EmployeeStatusActions({
 
                 <section aria-labelledby="remaining-shifts-heading">
                   <div className="flex items-center justify-between gap-3">
-                    <h4 id="remaining-shifts-heading" className="text-sm font-medium text-gray-900">
+                    <h4 id="remaining-shifts-heading" className="text-sm font-medium text-text">
                       Remaining scheduled shifts
                     </h4>
                     {preview && (
@@ -339,19 +339,19 @@ export default function EmployeeStatusActions({
                     )}
                   </div>
 
-                  {previewLoading && <p className="mt-2 text-sm text-gray-600">Loading scheduled shifts...</p>}
+                  {previewLoading && <p className="mt-2 text-sm text-text-muted">Loading scheduled shifts...</p>}
                   {previewError && (
-                    <p role="alert" className="mt-2 rounded-md bg-red-50 p-3 text-sm text-red-800">
+                    <p role="alert" className="mt-2 rounded-md bg-danger-soft p-3 text-sm text-danger-fg">
                       {previewError}
                     </p>
                   )}
                   {preview && preview.shifts.length === 0 && (
-                    <p className="mt-2 rounded-md bg-gray-50 p-3 text-sm text-gray-600">
+                    <p className="mt-2 rounded-md bg-surface-2 p-3 text-sm text-text-muted">
                       There are no assigned shifts which have not started.
                     </p>
                   )}
                   {preview && preview.shifts.length > 0 && (
-                    <ul className="mt-2 max-h-56 divide-y divide-gray-200 overflow-y-auto rounded-md border border-gray-200">
+                    <ul className="mt-2 max-h-56 divide-y divide-border overflow-y-auto rounded-md border border-border">
                       {preview.shifts.map((shift) => {
                         const willRelease = releasedShifts.some((released) => released.id === shift.id);
                         const decision = shiftPolicy ? (willRelease ? 'Will become open' : 'Will stay assigned') : null;
@@ -360,24 +360,24 @@ export default function EmployeeStatusActions({
                           <li key={shift.id} className="p-3 text-sm">
                             <div className="flex flex-wrap items-start justify-between gap-2">
                               <div>
-                                <p className="font-medium text-gray-900">
+                                <p className="font-medium text-text">
                                   {formatDateFull(shift.shiftDate)}, {formatTime12Hour(shift.startTime)} to {formatTime12Hour(shift.endTime)}
                                 </p>
-                                <p className="mt-1 text-gray-600">
+                                <p className="mt-1 text-text-muted">
                                   {shift.name ? `${shift.name}, ` : ''}{departmentLabel(shift.department)}
                                 </p>
                               </div>
                               <div className="flex flex-wrap justify-end gap-1.5">
-                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${shift.weekStatus === 'published' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${shift.weekStatus === 'published' ? 'bg-success-soft text-green-800' : 'bg-surface-hover text-gray-700'}`}>
                                   {shift.weekStatus === 'published' ? 'Published' : 'Draft'}
                                 </span>
                                 {acceptance && (
-                                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-800">
+                                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-info-fg">
                                     {acceptance}
                                   </span>
                                 )}
                                 {decision && (
-                                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${willRelease ? 'bg-amber-100 text-amber-900' : 'bg-green-100 text-green-800'}`}>
+                                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${willRelease ? 'bg-amber-100 text-warning-fg' : 'bg-success-soft text-green-800'}`}>
                                     {decision}
                                   </span>
                                 )}
@@ -391,14 +391,14 @@ export default function EmployeeStatusActions({
                 </section>
 
                 {preview && shiftPolicy && (
-                  <p className="rounded-md bg-blue-50 p-3 text-sm text-blue-900" aria-live="polite">
+                  <p className="rounded-md bg-blue-50 p-3 text-sm text-info-fg" aria-live="polite">
                     {retainedShifts.length} shift{retainedShifts.length === 1 ? '' : 's'} will stay assigned.{' '}
                     {releasedShifts.length} shift{releasedShifts.length === 1 ? '' : 's'} will become open.
                   </p>
                 )}
 
                 {leaveAfterEndDate.length > 0 && (
-                  <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+                  <p className="rounded-md bg-warning-soft p-3 text-sm text-warning-fg">
                     There {leaveAfterEndDate.length === 1 ? 'is' : 'are'} {leaveAfterEndDate.length} approved leave day{leaveAfterEndDate.length === 1 ? '' : 's'} after the last working day. Cancel {leaveAfterEndDate.length === 1 ? 'it' : 'them'} separately before finalising the employee.
                   </p>
                 )}
@@ -413,7 +413,7 @@ export default function EmployeeStatusActions({
                     onChange={(event) => setSeparationNote(event.target.value)}
                     rows={3}
                     maxLength={500}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
+                    className="mt-1 block w-full rounded-md border-border-strong shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
                     placeholder="Optional reason or handover note"
                   />
                 </div>
@@ -424,7 +424,7 @@ export default function EmployeeStatusActions({
                   type="button"
                   onClick={closeSeparation}
                   disabled={loading}
-                  className="rounded-md px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                  className="rounded-md px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-surface-hover disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -452,15 +452,15 @@ export default function EmployeeStatusActions({
         >
           <div className="fixed inset-0 bg-gray-500/75" onClick={() => setShowConfirm(null)} />
           <div className="flex min-h-full items-center justify-center p-4">
-            <div className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-              <h3 id="revoke-dialog-title" className="mb-2 text-lg font-semibold text-gray-900">
+            <div className="relative w-full max-w-md rounded-lg bg-surface p-6 shadow-lg">
+              <h3 id="revoke-dialog-title" className="mb-2 text-lg font-semibold text-text">
                 Mark as Former and Revoke Access
               </h3>
-              <p className="mb-6 text-sm text-gray-600">
+              <p className="mb-6 text-sm text-text-muted">
                 This will set the employee status to &quot;Former&quot;, set their employment end date to today, and remove all their system permissions. This cannot be undone automatically. Continue?
               </p>
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setShowConfirm(null)} className="rounded-md px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                <button type="button" onClick={() => setShowConfirm(null)} className="rounded-md px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-surface-hover">
                   Cancel
                 </button>
                 <button type="button" onClick={handleRevokeAccess} className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500">

@@ -80,8 +80,8 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
 
   if (error) {
     return (
-      <div className="bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Onboarding Checklist</h3>
+      <div className="bg-surface shadow-sm rounded-lg p-6">
+        <h3 className="text-lg font-medium text-text mb-4">Onboarding Checklist</h3>
         <p className="text-gray-500">{error}</p>
       </div>
     )
@@ -89,8 +89,8 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
 
   if (!progress || !progress.items || progress.items.length === 0) {
     return (
-      <div className="bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Onboarding Checklist</h3>
+      <div className="bg-surface shadow-sm rounded-lg p-6">
+        <h3 className="text-lg font-medium text-text mb-4">Onboarding Checklist</h3>
         <p className="text-gray-500">No onboarding tasks found. The checklist will appear here once configured.</p>
       </div>
     )
@@ -99,36 +99,36 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
   return (
     <div className="space-y-6">
       {/* Progress Overview */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Onboarding Progress</h3>
+      <div className="bg-surface shadow-sm rounded-lg p-6">
+        <h3 className="text-lg font-medium text-text mb-4">Onboarding Progress</h3>
         
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-700">Overall Progress</span>
-            <span className="text-sm font-medium text-gray-900">{progress.percentage}%</span>
+            <span className="text-sm font-medium text-text">{progress.percentage}%</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="w-full bg-border rounded-full h-2">
             <div
               className="bg-green-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${progress.percentage}%` }}
             />
           </div>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="mt-2 text-sm text-text-muted">
             {progress.completed} of {progress.total} tasks completed
           </p>
         </div>
       </div>
 
       {/* Checklist Items */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">Onboarding Tasks</h3>
+      <div className="bg-surface shadow-sm rounded-lg">
+        <div className="px-6 py-4 border-b border-border">
+          <h3 className="text-lg font-medium text-text">Onboarding Tasks</h3>
           <p className="mt-1 text-sm text-gray-500">
             Check off each task as it&apos;s completed. Dates will be automatically recorded.
           </p>
         </div>
         
-        <ul className="divide-y divide-gray-200">
+        <ul className="divide-y divide-border">
           {progress.items.map((item) => {
             const date = item.date
             const isUpdating = updating === item.field
@@ -146,7 +146,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
                     ) : item.completed ? (
                       <CheckCircle2 className="h-5 w-5 text-green-600" />
                     ) : (
-                      <Circle className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                      <Circle className="h-5 w-5 text-gray-400 hover:text-text-muted" />
                     )}
                   </button>
                   
@@ -154,7 +154,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
                     <label
                       htmlFor={item.field}
                       className={`text-sm font-medium ${
-                        item.completed ? 'text-gray-900 line-through' : 'text-gray-900'
+                        item.completed ? 'text-text line-through' : 'text-text'
                       }`}
                     >
                       {item.label}
@@ -174,8 +174,8 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
 
       {/* Additional Information */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="text-sm font-medium text-blue-900 mb-2">Important Notes</h4>
-        <ul className="text-sm text-blue-800 space-y-1">
+        <h4 className="text-sm font-medium text-info-fg mb-2">Important Notes</h4>
+        <ul className="text-sm text-info-fg space-y-1">
           <li>• WhatsApp groups are for shift coordination and team communication</li>
           <li>• Till system access requires manager approval</li>
           <li>• Flow training must be completed within probation period</li>
@@ -185,7 +185,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
 
       {/* Special handling for Prospective employees */}
       {progress.completed === progress.total && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+        <div className="bg-success-soft border border-green-200 rounded-lg p-4">
           <div className="flex">
             <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
             <div className="ml-3">

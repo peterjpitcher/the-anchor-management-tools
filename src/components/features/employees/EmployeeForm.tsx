@@ -155,7 +155,7 @@ export default function EmployeeForm({
       <input type="hidden" name="employee_id" value={employee?.employee_id || ''} />
       {showTitle && (
         <div>
-          <h3 className="text-lg sm:text-xl font-medium leading-6 text-gray-900">
+          <h3 className="text-lg sm:text-xl font-medium leading-6 text-text">
             {employee ? 'Edit Employee' : 'Add New Employee'}
           </h3>
           <p className="mt-1 text-sm sm:text-base text-gray-500">
@@ -169,9 +169,9 @@ export default function EmployeeForm({
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-gray-500">Step {currentStep + 1} of {totalSteps}</span>
-            <span className="text-sm font-medium text-gray-900">{currentStepData.title}</span>
+            <span className="text-sm font-medium text-text">{currentStepData.title}</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="w-full bg-border rounded-full h-2">
             <div
               className="bg-green-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
@@ -194,13 +194,13 @@ export default function EmployeeForm({
             aria-hidden={isMobile && stepIndex !== currentStep}
           >
             {/* The mobile step indicator above already names the current step. */}
-            <h4 className={`font-medium text-gray-900 border-b pb-2 ${isMobile ? 'hidden' : ''}`}>
+            <h4 className={`font-medium text-text border-b pb-2 ${isMobile ? 'hidden' : ''}`}>
               {step.title}
             </h4>
             {step.fields.map((field) => (
               <div key={field.name} className="space-y-2 sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2 sm:space-y-0">
                 <label htmlFor={field.name} className="block text-sm sm:text-base font-medium text-gray-700 sm:col-span-1">
-                  {field.label} {field.required && <span className="text-red-500">*</span>}
+                  {field.label} {field.required && <span className="text-danger">*</span>}
                 </label>
                 <div className="mt-1 sm:col-span-3 sm:mt-0">
                   {field.type === 'textarea' ? (
@@ -245,7 +245,7 @@ export default function EmployeeForm({
                     <p className="mt-1 text-xs text-gray-500">{field.hint}</p>
                   )}
                   {state?.errors?.[field.name] && (
-                    <p className="mt-2 text-sm text-red-600" id={`${field.name}-error`}>
+                    <p className="mt-2 text-sm text-danger" id={`${field.name}-error`}>
                       {state.errors[field.name]}
                     </p>
                   )}
@@ -258,11 +258,11 @@ export default function EmployeeForm({
       </div>
 
       {state?.type === 'error' && !state.errors && (
-        <p className="mt-2 text-sm text-red-600">{state.message}</p>
+        <p className="mt-2 text-sm text-danger">{state.message}</p>
       )}
       {/* General success message can be shown here if needed, or use toasts */}
 
-      <div className="sticky bottom-0 -mx-4 sm:mx-0 bg-white border-t sm:border-0 pt-5 px-4 sm:px-0 pb-4 sm:pb-0">
+      <div className="sticky bottom-0 -mx-4 sm:mx-0 bg-surface border-t sm:border-0 pt-5 px-4 sm:px-0 pb-4 sm:pb-0">
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 sm:gap-0 sm:space-x-3">
           {/* Mobile navigation */}
           {isMobile ? (

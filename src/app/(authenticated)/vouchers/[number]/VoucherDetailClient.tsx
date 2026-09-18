@@ -173,7 +173,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <span className="font-mono text-2xl font-semibold text-gray-900">
+              <span className="font-mono text-2xl font-semibold text-text">
                 {voucher.voucherNumber}
               </span>
               <VoucherStatusBadge status={status} />
@@ -191,13 +191,13 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             {detail.ageLabel && (
               <>
                 <dt className="text-gray-500">Age</dt>
-                <dd className="text-gray-900">{detail.ageLabel}</dd>
+                <dd className="text-text">{detail.ageLabel}</dd>
               </>
             )}
             {voucher.expiryDate && (
               <>
                 <dt className="text-gray-500">Expiry</dt>
-                <dd className="text-gray-900">{formatDateFull(voucher.expiryDate)}</dd>
+                <dd className="text-text">{formatDateFull(voucher.expiryDate)}</dd>
               </>
             )}
             <dt className="text-gray-500">Terms</dt>
@@ -326,15 +326,15 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
             <div>
               <dt className="text-gray-500">Handed out</dt>
-              <dd className="text-gray-900">{formatDateTime12Hour(voucher.issuedAt)}</dd>
+              <dd className="text-text">{formatDateTime12Hour(voucher.issuedAt)}</dd>
             </div>
             <div>
               <dt className="text-gray-500">By</dt>
-              <dd className="text-gray-900">{voucher.issuedByName ?? 'Unknown'}</dd>
+              <dd className="text-text">{voucher.issuedByName ?? 'Unknown'}</dd>
             </div>
             <div>
               <dt className="text-gray-500">Won at</dt>
-              <dd className="text-gray-900">
+              <dd className="text-text">
                 {voucher.wonAtLabel ?? ''}
                 {detail.eventName && detail.eventName !== voucher.wonAtLabel
                   ? ` (${detail.eventName})`
@@ -343,7 +343,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             </div>
             <div>
               <dt className="text-gray-500">Expiry written on the card</dt>
-              <dd className="text-gray-900">
+              <dd className="text-text">
                 {voucher.expiryDate ? formatDateFull(voucher.expiryDate) : 'Missing'}
               </dd>
             </div>
@@ -362,7 +362,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
               <div>
                 <Link
                   href={`/customers/${detail.customer.id}`}
-                  className="font-medium text-gray-900 underline-offset-2 hover:underline"
+                  className="font-medium text-text underline-offset-2 hover:underline"
                 >
                   {detail.customer.name}
                 </Link>
@@ -401,7 +401,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                     <Badge tone={REMINDER_STATUS_TONES[reminder.status]}>
                       {reminder.status}
                     </Badge>
-                    <span className="text-gray-900">
+                    <span className="text-text">
                       {REMINDER_KIND_LABELS[reminder.reminderKind]}
                     </span>
                     <span className="text-gray-500">
@@ -434,22 +434,22 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
             <div>
               <dt className="text-gray-500">Redeemed</dt>
-              <dd className="text-gray-900">{formatDateTime12Hour(voucher.redeemedAt)}</dd>
+              <dd className="text-text">{formatDateTime12Hour(voucher.redeemedAt)}</dd>
             </div>
             <div>
               <dt className="text-gray-500">By</dt>
-              <dd className="text-gray-900">{voucher.redeemedByName ?? 'Unknown'}</dd>
+              <dd className="text-text">{voucher.redeemedByName ?? 'Unknown'}</dd>
             </div>
             {voucher.transactionRef && (
               <div>
                 <dt className="text-gray-500">Transaction ref</dt>
-                <dd className="text-gray-900">{voucher.transactionRef}</dd>
+                <dd className="text-text">{voucher.transactionRef}</dd>
               </div>
             )}
             {voucher.bookingRef && (
               <div>
                 <dt className="text-gray-500">Booking ref</dt>
-                <dd className="text-gray-900">{voucher.bookingRef}</dd>
+                <dd className="text-text">{voucher.bookingRef}</dd>
               </div>
             )}
           </dl>
@@ -473,7 +473,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             <li key={event.id} className="flex gap-3">
               <div className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-gray-400" />
               <div>
-                <div className="text-sm font-medium text-gray-900">
+                <div className="text-sm font-medium text-text">
                   {VOUCHER_EVENT_ACTION_LABELS[event.action]}
                 </div>
                 <div className="text-xs text-gray-500">
@@ -581,7 +581,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             This voucher expired{' '}
             {voucher.expiryDate ? `on ${formatDateFull(voucher.expiryDate)}` : ''}. A manager
             override is recorded in the timeline.
@@ -649,7 +649,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             The voucher goes back to issued and its redemption details are cleared. The timeline
             keeps the full history.
           </p>
@@ -694,7 +694,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             Cancelling is permanent: no reinstatement and no reprint afterwards.
           </p>
           <Textarea
@@ -739,7 +739,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             Pick a printed stock card of the same type. It takes over this voucher&apos;s
             customer, event and expiry. Nothing new is printed and this card becomes terminal.
           </p>
@@ -858,7 +858,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             autoComplete="off"
           />
           {customerHits.length > 0 && (
-            <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+            <ul className="divide-y divide-border rounded-lg border border-border">
               {customerHits.map((hit) => (
                 <li key={hit.id}>
                   <button
@@ -874,9 +874,9 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                         `Voucher assigned to ${hit.name}`
                       )
                     }
-                    className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50"
+                    className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-surface-hover"
                   >
-                    <span className="text-gray-900">{hit.name}</span>
+                    <span className="text-text">{hit.name}</span>
                     <span className="text-sm text-gray-500">{hit.mobile ?? ''}</span>
                   </button>
                 </li>

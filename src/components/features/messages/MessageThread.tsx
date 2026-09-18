@@ -125,9 +125,9 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
   }
 
   return (
-    <div className="flex flex-col h-[400px] sm:h-[500px] md:h-[600px] bg-white rounded-lg border border-gray-200">
+    <div className="flex flex-col h-[400px] sm:h-[500px] md:h-[600px] bg-surface rounded-lg border border-border">
       {/* Messages area */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-surface-2">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-gray-500 text-sm sm:text-base text-center">No messages yet. Start a conversation!</p>
@@ -137,7 +137,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
           <div key={date}>
             {/* Date separator */}
             <div className="flex items-center justify-center mb-4">
-              <span className="px-3 py-1 text-xs sm:text-sm text-gray-500 bg-gray-200 rounded-full">
+              <span className="px-3 py-1 text-xs sm:text-sm text-gray-500 bg-border rounded-full">
                 {date === new Date().toLocaleDateString() ? 'Today' : date}
               </span>
             </div>
@@ -168,9 +168,9 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                         {message.has_attachments && <Badge tone="info">Attachment</Badge>}
                       </div>
                       <div
-                        className={`px-4 py-2 rounded-2xl ${
+                        className={`px-4 py-2 rounded-xl ${
                           isInbound
-                            ? 'bg-gray-200 text-black rounded-tl-sm'
+                            ? 'bg-border text-black rounded-tl-sm'
                             : 'bg-blue-500 text-white rounded-tr-sm'
                         }`}
                       >
@@ -206,7 +206,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
 
       {/* Reply area */}
       {canReply && (
-        <div className="border-t border-gray-200 bg-white p-3">
+        <div className="border-t border-border bg-surface p-3">
           <div className="flex items-end space-x-2">
             <div className="flex-1 relative">
               <textarea
@@ -216,7 +216,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                 onKeyPress={handleKeyPress}
                 placeholder="Message"
                 rows={1}
-                className="w-full px-4 py-3 sm:py-2.5 pr-12 text-base sm:text-sm bg-gray-100 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                className="w-full px-4 py-3 sm:py-2.5 pr-12 text-base sm:text-sm bg-surface-hover border border-border-strong rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                 style={{ minHeight: '44px', maxHeight: '120px' }}
                 onInput={(e) => {
                   e.currentTarget.style.height = 'auto'

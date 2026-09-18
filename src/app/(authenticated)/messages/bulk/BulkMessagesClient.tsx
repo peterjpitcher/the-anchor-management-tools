@@ -284,7 +284,7 @@ export default function BulkMessagesClient({
         key: 'name',
         header: 'Name',
         cell: (row) => (
-          <span className="font-medium text-gray-900">
+          <span className="font-medium text-text">
             {row.first_name} {row.last_name}
           </span>
         ),
@@ -299,7 +299,7 @@ export default function BulkMessagesClient({
         key: 'mobile_number',
         header: 'Mobile',
         cell: (row) => (
-          <span className="text-gray-600 text-sm">{row.mobile_number}</span>
+          <span className="text-text-muted text-sm">{row.mobile_number}</span>
         ),
         hideOnMobile: true,
       },
@@ -308,7 +308,7 @@ export default function BulkMessagesClient({
         header: 'Last Booking',
         cell: (row) =>
           row.last_booking_date ? (
-            <span className="text-gray-600 text-sm">
+            <span className="text-text-muted text-sm">
               {formatDateInLondon(row.last_booking_date, {
                 day: 'numeric',
                 month: 'short',
@@ -372,7 +372,7 @@ export default function BulkMessagesClient({
           header={
             <div className="flex items-center gap-2">
               <FunnelIcon className="h-5 w-5 text-gray-500" />
-              <h3 className="text-lg font-medium text-gray-900">Filters</h3>
+              <h3 className="text-lg font-medium text-text">Filters</h3>
             </div>
           }
         >
@@ -496,7 +496,7 @@ export default function BulkMessagesClient({
           header={
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-medium text-gray-900">Recipients</h3>
+                <h3 className="text-lg font-medium text-text">Recipients</h3>
                 <Badge variant="info" size="sm">
                   {loading ? '...' : `${recipients.length} of ${recipientTotal}`}
                 </Badge>
@@ -543,7 +543,7 @@ export default function BulkMessagesClient({
           header={
             <div className="flex items-center gap-2">
               <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-500" />
-              <h3 className="text-lg font-medium text-gray-900">Compose Message</h3>
+              <h3 className="text-lg font-medium text-text">Compose Message</h3>
             </div>
           }
         >
@@ -599,11 +599,11 @@ export default function BulkMessagesClient({
 
           {/* Preview */}
           {trimmedMessage && previewRecipient && (
-            <div className="mt-4 rounded-md bg-gray-50 p-3 border border-gray-200">
+            <div className="mt-4 rounded-md bg-surface-2 p-3 border border-border">
               <p className="text-xs font-medium text-gray-500 mb-1">
                 Preview (for {previewRecipient.first_name} {previewRecipient.last_name}):
               </p>
-              <p className="text-sm text-gray-800 whitespace-pre-wrap">{previewMessage}</p>
+              <p className="text-sm text-text whitespace-pre-wrap">{previewMessage}</p>
             </div>
           )}
 
@@ -641,7 +641,7 @@ export default function BulkMessagesClient({
             <strong>{selectedKeys.size}</strong> recipient
             {selectedKeys.size !== 1 ? 's' : ''}?
             {quietHoursEval.inQuietHours && (
-              <span className="block mt-2 text-yellow-600">
+              <span className="block mt-2 text-warning">
                 Note: Messages will be queued until quiet hours end.
               </span>
             )}

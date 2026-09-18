@@ -694,12 +694,12 @@ export default function PrivateBookingsClient({
                           <span className="text-sm font-medium text-warning-fg">To be confirmed</span>
                         ) : (
                           <>
-                            <div className="text-[13px] text-text-strong">{formatDateFull(booking.event_date)}</div>
-                            <div className="text-[12px] text-text-muted">{formatTime12Hour(booking.start_time)}</div>
+                            <div className="text-ui text-text-strong">{formatDateFull(booking.event_date)}</div>
+                            <div className="text-xs text-text-muted">{formatTime12Hour(booking.start_time)}</div>
                           </>
                         )}
                         {!booking.is_date_tbd && booking.days_until_event !== undefined && booking.days_until_event !== null && booking.days_until_event >= 0 && (
-                          <div className="text-[11px] text-text-subtle mt-0.5">
+                          <div className="text-meta text-text-subtle mt-0.5">
                             {booking.days_until_event === 0 ? 'Today' : `${booking.days_until_event} days`}
                           </div>
                         )}
@@ -707,7 +707,7 @@ export default function PrivateBookingsClient({
 
                       <TableCell>
                         <div
-                          className="text-[13px] font-medium"
+                          className="text-ui font-medium"
                           onClick={(event) => event.stopPropagation()}
                         >
                           <CustomerLink
@@ -718,7 +718,7 @@ export default function PrivateBookingsClient({
                           />
                         </div>
                         {booking.contact_phone && (
-                          <div className="text-[12px] text-text-muted flex items-center gap-1">
+                          <div className="text-xs text-text-muted flex items-center gap-1">
                             <PhoneIcon className="h-3 w-3" />
                             {booking.contact_phone}
                           </div>
@@ -726,19 +726,19 @@ export default function PrivateBookingsClient({
                       </TableCell>
 
                       <TableCell>
-                        <div className="text-[13px] text-text flex items-center gap-1">
+                        <div className="text-ui text-text flex items-center gap-1">
                           <UserGroupIcon className="h-4 w-4 text-text-muted" />
                           {booking.guest_count ?? 0} guests
                         </div>
                         {booking.event_type && (
-                          <div className="text-[11px] text-text-muted mt-0.5">{booking.event_type}</div>
+                          <div className="text-meta text-text-muted mt-0.5">{booking.event_type}</div>
                         )}
                       </TableCell>
 
                       <TableCell>
                         <Badge tone={statusTone[booking.status]} dot>{statusLabel[booking.status]}</Badge>
                         {booking.status === 'draft' && (
-                          <div className="mt-1 text-[11px] text-text-muted">
+                          <div className="mt-1 text-meta text-text-muted">
                             {getHoldExpiryCountdown(booking.hold_expiry) ?? 'Hold expiry not set'}
                           </div>
                         )}
@@ -757,18 +757,18 @@ export default function PrivateBookingsClient({
                       </TableCell>
 
                       <TableCell>
-                        <div className="text-[13px] text-text-strong">
+                        <div className="text-ui text-text-strong">
                           {formatCurrency(toNumber(booking.gross_total ?? booking.calculated_total ?? booking.total_amount))}
                         </div>
                         {booking.final_payment_date ? (
-                          <div className="text-[11px] text-success-fg font-medium">Fully paid</div>
+                          <div className="text-meta text-success-fg font-medium">Fully paid</div>
                         ) : booking.balance_remaining != null && booking.balance_remaining > 0 ? (
-                          <div className="text-[11px] text-warning-fg font-medium">
+                          <div className="text-meta text-warning-fg font-medium">
                             Balance: {formatCurrency(booking.balance_remaining)}
                           </div>
                         ) : null}
                         {booking.deposit_paid_date && (
-                          <div className="text-[11px] text-text-muted">Deposit paid {formatDateFull(booking.deposit_paid_date)}</div>
+                          <div className="text-meta text-text-muted">Deposit paid {formatDateFull(booking.deposit_paid_date)}</div>
                         )}
                       </TableCell>
 
@@ -776,7 +776,7 @@ export default function PrivateBookingsClient({
                         <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
                           <Link
                             href={`/private-bookings/${booking.id}`}
-                            className="text-[12px] font-medium text-primary hover:underline"
+                            className="text-xs font-medium text-primary hover:underline"
                           >
                             View
                           </Link>
@@ -925,7 +925,7 @@ export default function PrivateBookingsClient({
                   <div className="flex justify-end items-center gap-2 pt-2 border-t border-border flex-wrap" onClick={(e) => e.stopPropagation()}>
                     <Link
                       href={`/private-bookings/${booking.id}`}
-                      className="inline-flex min-h-[44px] md:min-h-0 items-center text-sm font-medium text-primary hover:underline px-3 py-1"
+                      className="inline-flex min-h-touch md:min-h-0 items-center text-sm font-medium text-primary hover:underline px-3 py-1"
                     >
                       View Details
                     </Link>

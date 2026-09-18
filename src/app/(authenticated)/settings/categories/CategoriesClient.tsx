@@ -206,7 +206,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                 description="Add your first category above to get started."
               />
             ) : (
-              <div className="divide-y divide-gray-200">
+              <div className="divide-y divide-border">
                 {sortedCategories.map((category) => (
                   <div key={category.category_id} className="px-4 py-4">
                     {editingId === category.category_id ? (

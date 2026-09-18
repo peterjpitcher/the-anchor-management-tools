@@ -61,7 +61,7 @@ export function PriceHistoryPopover({
       onOpenChange={handleOpenChange}
     >
       <PopoverHeader>
-        <h4 className="text-sm font-semibold text-gray-900">
+        <h4 className="text-sm font-semibold text-text">
           Price history &ndash; {ingredientName}
         </h4>
       </PopoverHeader>
@@ -75,7 +75,7 @@ export function PriceHistoryPopover({
         ) : (
           <div className="space-y-3">
             {prices.map((entry) => (
-              <div key={entry.id} className="border border-gray-200 rounded-lg p-3">
+              <div key={entry.id} className="border border-border rounded-lg p-3">
                 <div className="flex items-center justify-between">
                   <div className="font-medium text-sm">
                     £{entry.pack_cost.toFixed(2)} per pack
@@ -91,7 +91,7 @@ export function PriceHistoryPopover({
                   </div>
                 )}
                 {entry.notes && (
-                  <div className="text-sm text-gray-600 mt-1">{entry.notes}</div>
+                  <div className="text-sm text-text-muted mt-1">{entry.notes}</div>
                 )}
               </div>
             ))}

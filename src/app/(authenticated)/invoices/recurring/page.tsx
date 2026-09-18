@@ -243,7 +243,7 @@ export default function RecurringInvoicesPage() {
                 header: 'Vendor',
                 cell: (r) => (
                   <div>
-                    <div className="text-sm font-medium text-gray-900">{r.vendor?.name || 'Unknown Vendor'}</div>
+                    <div className="text-sm font-medium text-text">{r.vendor?.name || 'Unknown Vendor'}</div>
                     {r.vendor?.contact_name && (
                       <div className="text-sm text-gray-500">{r.vendor.contact_name}</div>
                     )}
@@ -253,14 +253,14 @@ export default function RecurringInvoicesPage() {
               {
                 key: 'frequency',
                 header: 'Frequency',
-                cell: (r) => <span className="text-sm text-gray-900">{getFrequencyLabel(r.frequency)}</span>
+                cell: (r) => <span className="text-sm text-text">{getFrequencyLabel(r.frequency)}</span>
               },
               {
                 key: 'next',
                 header: 'Next Invoice',
                 cell: (r) => (
                   <div>
-                    <div className="text-sm text-gray-900">{getNextInvoiceLabel(r.next_invoice_date)}</div>
+                    <div className="text-sm text-text">{getNextInvoiceLabel(r.next_invoice_date)}</div>
                     <div className="text-xs text-gray-500">{formatDateInLondon(r.next_invoice_date)}</div>
                   </div>
                 )
@@ -268,17 +268,17 @@ export default function RecurringInvoicesPage() {
               {
                 key: 'reference',
                 header: 'Reference',
-                cell: (r) => <span className="text-sm text-gray-900">{r.reference || '-'}</span>
+                cell: (r) => <span className="text-sm text-text">{r.reference || '-'}</span>
               },
               {
                 key: 'status',
                 header: 'Status',
                 cell: (r) => r.is_active ? (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success-soft text-green-800">
                     <Play className="h-3 w-3 mr-1" /> Active
                   </span>
                 ) : (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-hover text-text">
                     <Pause className="h-3 w-3 mr-1" /> Inactive
                   </span>
                 )
@@ -357,20 +357,20 @@ export default function RecurringInvoicesPage() {
               },
             ]}
               renderMobileCard={(r) => (
-                <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="space-y-3 rounded-lg border border-border bg-surface p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-medium text-gray-900">{r.vendor?.name || 'Unknown Vendor'}</div>
+                      <div className="font-medium text-text">{r.vendor?.name || 'Unknown Vendor'}</div>
                       {r.vendor?.contact_name && (
                         <div className="text-sm text-gray-500">{r.vendor.contact_name}</div>
                       )}
                     </div>
                     {r.is_active ? (
-                      <span className="inline-flex shrink-0 items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                      <span className="inline-flex shrink-0 items-center rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-green-800">
                         <Play className="mr-1 h-3 w-3" /> Active
                       </span>
                     ) : (
-                      <span className="inline-flex shrink-0 items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">
+                      <span className="inline-flex shrink-0 items-center rounded-full bg-surface-hover px-2.5 py-0.5 text-xs font-medium text-text">
                         <Pause className="mr-1 h-3 w-3" /> Inactive
                       </span>
                     )}
@@ -378,21 +378,21 @@ export default function RecurringInvoicesPage() {
                   <dl className="grid gap-2 text-sm">
                     <div className="flex items-center justify-between gap-4">
                       <dt className="text-gray-500">Frequency</dt>
-                      <dd className="text-gray-900">{getFrequencyLabel(r.frequency)}</dd>
+                      <dd className="text-text">{getFrequencyLabel(r.frequency)}</dd>
                     </div>
                     <div className="flex items-start justify-between gap-4">
                       <dt className="text-gray-500">Next Invoice</dt>
-                      <dd className="text-right text-gray-900">
+                      <dd className="text-right text-text">
                         <div>{getNextInvoiceLabel(r.next_invoice_date)}</div>
                         <div className="text-xs text-gray-500">{formatDateInLondon(r.next_invoice_date)}</div>
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-4">
                       <dt className="text-gray-500">Reference</dt>
-                      <dd className="min-w-0 break-words text-right text-gray-900">{r.reference || '-'}</dd>
+                      <dd className="min-w-0 break-words text-right text-text">{r.reference || '-'}</dd>
                     </div>
                   </dl>
-                  <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 pt-3">
+                  <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-3">
                     <Button
                       variant="secondary"
                       size="sm"

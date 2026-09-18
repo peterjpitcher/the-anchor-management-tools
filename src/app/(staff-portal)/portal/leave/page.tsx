@@ -43,7 +43,7 @@ export default async function MyLeavePage() {
   if (!employee) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-gray-900">My Holiday</h2>
+        <h2 className="text-xl font-semibold text-text">My Holiday</h2>
         <p className="text-sm text-gray-500">
           Your account is not linked to an employee profile. Please contact your manager.
         </p>
@@ -69,7 +69,7 @@ export default async function MyLeavePage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900">My Holiday</h2>
+        <h2 className="text-xl font-semibold text-text">My Holiday</h2>
         <a
           href="/portal/leave/new"
           className="touch-target inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-700"
@@ -79,18 +79,18 @@ export default async function MyLeavePage() {
       </div>
 
       {loadErrors.length > 0 && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div role="alert" className="rounded-lg border border-red-200 bg-danger-soft px-4 py-3 text-sm text-red-700">
           {loadErrors.join(' ')}
         </div>
       )}
 
       {/* Days used */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="bg-surface rounded-lg border border-border p-4">
         <div className="flex items-center justify-between text-sm">
-          <span className="font-medium text-gray-800">
+          <span className="font-medium text-text">
             {holidayYear}/{String(holidayYear + 1).slice(2)} holiday taken
           </span>
-          <span className="font-semibold text-gray-900">
+          <span className="font-semibold text-text">
             {usedDays} day{usedDays !== 1 ? 's' : ''}
           </span>
         </div>
@@ -107,10 +107,10 @@ export default async function MyLeavePage() {
           {requests.map((req: LeaveRequest) => {
             const days = daysBetween(req.start_date, req.end_date);
             return (
-              <div key={req.id} className="bg-white border border-gray-200 rounded-lg p-4">
+              <div key={req.id} className="bg-surface border border-border rounded-lg p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-text">
                       {formatDate(req.start_date)}
                       {req.start_date !== req.end_date && ` – ${formatDate(req.end_date)}`}
                     </p>

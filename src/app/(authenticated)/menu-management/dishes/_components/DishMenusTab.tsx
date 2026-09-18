@@ -86,7 +86,7 @@ export function DishMenusTab({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-text-muted">
         Assign the dish to one or more menus. Categories drive website groupings and printed sections.
       </p>
 
@@ -94,7 +94,7 @@ export function DishMenusTab({
         {formAssignments.map((assignment, index) => {
           const menuForRow = menus.find((m) => m.code === assignment.menu_code) || menus[0];
           return (
-            <div key={`assignment-${index}`} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+            <div key={`assignment-${index}`} className="rounded-lg border border-border bg-surface p-4 shadow-sm space-y-3">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <FormGroup label="Menu" required>
                   <Select

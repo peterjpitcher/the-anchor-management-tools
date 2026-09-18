@@ -28,7 +28,7 @@ export function CancelLeaveRequestButton({ requestId }: CancelLeaveRequestButton
   return (
     <div className="mt-3 space-y-2">
       {error && (
-        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <p role="alert" className="rounded-lg border border-red-200 bg-danger-soft px-3 py-2 text-xs text-red-700">
           {error}
         </p>
       )}
@@ -36,7 +36,7 @@ export function CancelLeaveRequestButton({ requestId }: CancelLeaveRequestButton
         type="button"
         onClick={handleCancel}
         disabled={isPending}
-        className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+        className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-danger-soft disabled:opacity-50"
       >
         {isPending ? 'Cancelling...' : 'Cancel request'}
       </button>

@@ -352,7 +352,7 @@ function PaymentModal({
                 required
               />
               {amountError && (
-                <p className="mt-1 text-xs text-red-600">{amountError}</p>
+                <p className="mt-1 text-xs text-danger">{amountError}</p>
               )}
               {maxAmount !== undefined && (
                 <p className="mt-2 text-xs text-gray-500">
@@ -383,7 +383,7 @@ function PaymentModal({
                   className="mr-3 h-5 w-5"
                 />
                 <method.icon className="h-5 w-5 mr-2 text-gray-400" />
-                <span className="text-sm text-gray-900">{method.label}</span>
+                <span className="text-sm text-text">{method.label}</span>
               </label>
             ))}
           </div>
@@ -439,14 +439,14 @@ function SortableBookingItem({
       ref={setNodeRef}
       style={style}
       className={`flex items-start justify-between border-b pb-4 last:border-0 ${
-        isDragging ? 'bg-white shadow-md rounded-md' : ''
+        isDragging ? 'bg-surface shadow-default rounded-md' : ''
       }`}
     >
       <div className="flex items-start space-x-3 flex-1">
         {canEdit && (
           <button
             type="button"
-            className="mt-1 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing"
+            className="mt-1 text-text-subtle hover:text-gray-500 cursor-grab active:cursor-grabbing"
             aria-label="Reorder booking item"
             {...attributes}
             {...listeners}
@@ -458,7 +458,7 @@ function SortableBookingItem({
           {getItemIcon(item.item_type)}
         </div>
         <div className="flex-1">
-          <p className="text-sm font-medium text-gray-900">
+          <p className="text-sm font-medium text-text">
             {item.description}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
@@ -488,7 +488,7 @@ function SortableBookingItem({
         </div>
       </div>
       <div className="flex items-center space-x-2">
-        <span className="text-base font-semibold text-gray-900">
+        <span className="text-base font-semibold text-text">
           {formatMoney(item.line_total)}
         </span>
         {canEdit && (
@@ -503,7 +503,7 @@ function SortableBookingItem({
             </button>
             <button
               onClick={() => onDelete(item.id)}
-              className="text-red-400 hover:text-red-500"
+              className="text-red-400 hover:text-danger"
               title="Delete item"
               type="button"
             >
@@ -741,7 +741,7 @@ function StatusModal({
     <Modal open={isOpen} onClose={onClose} title="Change Booking Status" mobileFullscreen>
       <div className="space-y-4">
         <div>
-          <p className="text-sm text-gray-600">Current status:</p>
+          <p className="text-sm text-text-muted">Current status:</p>
           <div className="flex items-center mt-1">
             <Badge variant={statusConfig[currentStatus].variant}>
               {statusConfig[currentStatus].label}
@@ -758,7 +758,7 @@ function StatusModal({
                 return (
                   <label
                     key={status}
-                    className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50"
+                    className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-surface-hover"
                   >
                     <input
                       type="radio"
@@ -771,7 +771,7 @@ function StatusModal({
                     />
                     <StatusIcon className="h-5 w-5 mr-2 text-gray-400" />
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-text">
                         {statusConfig[status].label}
                       </p>
                       {status === "confirmed" && (
@@ -786,8 +786,8 @@ function StatusModal({
             </div>
 
             {showCancelPreview && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
-                <p className="text-sm font-medium text-red-900">
+              <div className="rounded-lg border border-red-200 bg-danger-soft p-4 space-y-3">
+                <p className="text-sm font-medium text-danger-fg">
                   Cancel this booking?
                 </p>
 
@@ -808,7 +808,7 @@ function StatusModal({
                         </Badge>
                       </div>
                     )}
-                    <div className="grid grid-cols-1 gap-3 rounded border border-gray-200 bg-white p-3 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3 rounded-sm border border-border bg-surface p-3 sm:grid-cols-2">
                       <FormGroup label="How was the cancellation received?">
                         <Select
                           value={cancelChannel}
@@ -847,7 +847,7 @@ function StatusModal({
                       </p>
                     </div>
                     {cancelPreview.outcome === 'gm_review_required' && (
-                      <div className="space-y-3 rounded border border-amber-200 bg-amber-50 p-3">
+                      <div className="space-y-3 rounded-sm border border-amber-200 bg-warning-soft p-3">
                         <FormGroup
                           label="Deposit to retain (£)"
                           help={`Manager decision — up to ${formatCurrency(cancelPreview.max_retainable)} of the paid deposit. Retaining anything requires manager permission.`}
@@ -877,7 +877,7 @@ function StatusModal({
                       </div>
                     )}
                     {cancelPreview.refund_amount > 0 && (
-                      <p className="text-sm text-gray-800">
+                      <p className="text-sm text-text">
                         Refund:{' '}
                         <strong>
                           {formatCurrency(cancelPreview.refund_amount)}
@@ -886,7 +886,7 @@ function StatusModal({
                       </p>
                     )}
                     {cancelPreview.retained_amount > 0 && (
-                      <p className="text-sm text-gray-800">
+                      <p className="text-sm text-text">
                         Retained:{' '}
                         <strong>
                           {formatCurrency(cancelPreview.retained_amount)}
@@ -895,10 +895,10 @@ function StatusModal({
                     )}
                     {cancelPreview.preview_body && (
                       <div>
-                        <p className="text-xs font-medium text-gray-600 mb-1">
+                        <p className="text-xs font-medium text-text-muted mb-1">
                           Customer will receive:
                         </p>
-                        <pre className="whitespace-pre-wrap rounded border border-gray-200 bg-white p-3 text-sm text-gray-900">
+                        <pre className="whitespace-pre-wrap rounded-sm border border-border bg-surface p-3 text-sm text-text">
                           {cancelPreview.preview_body}
                         </pre>
                       </div>
@@ -910,22 +910,22 @@ function StatusModal({
 
             {showCompletePreview && (
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
-                <p className="text-sm font-medium text-blue-900">
+                <p className="text-sm font-medium text-info-fg">
                   Mark this booking as complete?
                 </p>
                 {previewLoading ? (
                   <p className="text-sm text-blue-700">Loading preview...</p>
                 ) : completePreview ? (
                   <div>
-                    <p className="text-xs font-medium text-gray-600 mb-1">
+                    <p className="text-xs font-medium text-text-muted mb-1">
                       Customer will receive:
                     </p>
-                    <pre className="whitespace-pre-wrap rounded border border-gray-200 bg-white p-3 text-sm text-gray-900">
+                    <pre className="whitespace-pre-wrap rounded-sm border border-border bg-surface p-3 text-sm text-text">
                       {completePreview}
                     </pre>
                   </div>
                 ) : null}
-                <p className="text-xs text-gray-600">
+                <p className="text-xs text-text-muted">
                   A separate decision email about Google reviews will be sent
                   to the manager the following morning.
                 </p>
@@ -1148,7 +1148,7 @@ function AddItemModal({
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === "space"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <MapPinIcon className="h-6 w-6 mb-1" />
@@ -1160,7 +1160,7 @@ function AddItemModal({
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === "catering"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <SparklesIcon className="h-6 w-6 mb-1" />
@@ -1172,7 +1172,7 @@ function AddItemModal({
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === "vendor"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <UserGroupIcon className="h-6 w-6 mb-1" />
@@ -1184,7 +1184,7 @@ function AddItemModal({
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === "electricity"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <BoltIcon className="h-6 w-6 mb-1" />
@@ -1196,7 +1196,7 @@ function AddItemModal({
               className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                 itemType === "other"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <ClipboardDocumentListIcon className="h-6 w-6 mb-1" />
@@ -1446,7 +1446,7 @@ function DiscountModal({
               className={`p-3 rounded-lg border-2 transition-colors ${
                 discountType === "percent"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <PercentBadgeIcon className="h-6 w-6 mx-auto mb-1" />
@@ -1458,7 +1458,7 @@ function DiscountModal({
               className={`p-3 rounded-lg border-2 transition-colors ${
                 discountType === "fixed"
                   ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-gray-200 hover:border-gray-300"
+                  : "border-border hover:border-border-strong"
               }`}
             >
               <CurrencyPoundIcon className="h-6 w-6 mx-auto mb-1" />
@@ -1493,13 +1493,13 @@ function DiscountModal({
 
         {/* Preview */}
         {discountAmount && (
-          <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="bg-surface-2 p-4 rounded-lg">
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600">Current Total:</span>
+                <span className="text-text-muted">Current Total:</span>
                 <span className="font-medium">{formatMoney(currentTotal)}</span>
               </div>
-              <div className="flex justify-between text-red-600">
+              <div className="flex justify-between text-danger">
                 <span>Discount:</span>
                 <span className="font-medium">
                   -{formatMoney(calculateDiscount())}
@@ -1615,7 +1615,7 @@ function EditItemModal({
     <Modal open={isOpen} onClose={onClose} title="Edit Item" mobileFullscreen>
       <Form onSubmit={handleSubmit} className="space-y-4">
         <FormGroup label="Description">
-          <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded">
+          <p className="text-sm text-text bg-surface-2 px-3 py-2 rounded-sm">
             {item.description}
           </p>
         </FormGroup>
@@ -1678,10 +1678,10 @@ function EditItemModal({
           />
         </FormGroup>
 
-        <div className="bg-gray-50 p-3 rounded-lg">
+        <div className="bg-surface-2 p-3 rounded-lg">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Line Total:</span>
-            <span className="font-semibold text-gray-900">
+            <span className="text-text-muted">Line Total:</span>
+            <span className="font-semibold text-text">
               {formatMoney(calculateLineTotal())}
             </span>
           </div>
@@ -2578,13 +2578,13 @@ export default function PrivateBookingDetailClient({
                     Event Date
                   </label>
                   {isDateTbd ? (
-                    <div className="mt-1 flex items-center text-sm font-medium text-amber-600">
+                    <div className="mt-1 flex items-center text-sm font-medium text-warning">
                       <CalendarDaysIcon className="h-5 w-5 text-amber-500 mr-2" />
                       <span>To be confirmed</span>
                     </div>
                   ) : (
                     <>
-                      <div className="mt-1 flex items-center text-sm text-gray-900">
+                      <div className="mt-1 flex items-center text-sm text-text">
                         <CalendarDaysIcon className="h-5 w-5 text-gray-400 mr-2" />
                         {formatDateFull(booking.event_date)}
                       </div>
@@ -2602,13 +2602,13 @@ export default function PrivateBookingDetailClient({
                     Time
                   </label>
                   {isDateTbd ? (
-                    <div className="mt-1 flex items-center text-sm font-medium text-amber-600">
+                    <div className="mt-1 flex items-center text-sm font-medium text-warning">
                       <ClockIcon className="h-5 w-5 text-amber-500 mr-2" />
                       <span>To be confirmed</span>
                     </div>
                   ) : (
                     <>
-                      <div className="mt-1 flex items-center text-sm text-gray-900">
+                      <div className="mt-1 flex items-center text-sm text-text">
                         <ClockIcon className="h-5 w-5 text-gray-400 mr-2" />
                         {formatTime12Hour(booking.start_time)} -{' '}
                         {formatEndTime(booking)}
@@ -2626,7 +2626,7 @@ export default function PrivateBookingDetailClient({
                   <label className="block text-sm font-medium text-gray-500">
                     Guest Count
                   </label>
-                  <div className="mt-1 flex items-center text-sm text-gray-900">
+                  <div className="mt-1 flex items-center text-sm text-text">
                     <UserGroupIcon className="h-5 w-5 text-gray-400 mr-2" />
                     {booking.guest_count ?? "TBC"} guests
                   </div>
@@ -2636,7 +2636,7 @@ export default function PrivateBookingDetailClient({
                   <label className="block text-sm font-medium text-gray-500">
                     Event Type
                   </label>
-                  <div className="mt-1 flex items-center text-sm text-gray-900">
+                  <div className="mt-1 flex items-center text-sm text-text">
                     <SparklesIcon className="h-5 w-5 text-gray-400 mr-2" />
                     {booking.event_type || "Private Event"}
                   </div>
@@ -2701,7 +2701,7 @@ export default function PrivateBookingDetailClient({
                   <label className="block text-sm font-medium text-gray-500">
                     Booking Source
                   </label>
-                  <div className="mt-1 flex items-center text-sm text-gray-900">
+                  <div className="mt-1 flex items-center text-sm text-text">
                     <BuildingOfficeIcon className="h-5 w-5 text-gray-400 mr-2" />
                     {booking.source || "Direct"}
                   </div>
@@ -2793,7 +2793,7 @@ export default function PrivateBookingDetailClient({
                       <h3 className="text-sm font-medium text-gray-700 mb-1">
                         Customer Requests
                       </h3>
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                      <p className="text-sm text-text-muted whitespace-pre-wrap">
                         {booking.customer_requests}
                       </p>
                     </div>
@@ -2803,7 +2803,7 @@ export default function PrivateBookingDetailClient({
                       <h3 className="text-sm font-medium text-gray-700 mb-1">
                         Special Requirements
                       </h3>
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                      <p className="text-sm text-text-muted whitespace-pre-wrap">
                         {booking.special_requirements}
                       </p>
                     </div>
@@ -2813,7 +2813,7 @@ export default function PrivateBookingDetailClient({
                       <h3 className="text-sm font-medium text-gray-700 mb-1">
                         Accessibility Needs
                       </h3>
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                      <p className="text-sm text-text-muted whitespace-pre-wrap">
                         {booking.accessibility_needs}
                       </p>
                     </div>
@@ -2823,7 +2823,7 @@ export default function PrivateBookingDetailClient({
                       <h3 className="text-sm font-medium text-gray-700 mb-1">
                         Internal Notes
                       </h3>
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                      <p className="text-sm text-text-muted whitespace-pre-wrap">
                         {internalNotesForDisplay}
                       </p>
                     </div>
@@ -2833,7 +2833,7 @@ export default function PrivateBookingDetailClient({
                       <h3 className="text-sm font-medium text-gray-700 mb-1">
                         Contract Note
                       </h3>
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                      <p className="text-sm text-text-muted whitespace-pre-wrap">
                         {booking.contract_note}
                       </p>
                     </div>
@@ -2921,7 +2921,7 @@ export default function PrivateBookingDetailClient({
                   <span className="text-gray-500">
                     Original Price (before discounts)
                   </span>
-                  <span className="font-medium text-gray-900">
+                  <span className="font-medium text-text">
                     {items.length > 0
                       ? formatMoney(calculateOriginalTotal())
                       : formatMoney(0)}
@@ -2940,7 +2940,7 @@ export default function PrivateBookingDetailClient({
 
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Subtotal</span>
-                  <span className="font-medium text-gray-900">
+                  <span className="font-medium text-text">
                     {items.length > 0 ? formatMoney(calculateSubtotal()) : formatMoney(0)}
                   </span>
                 </div>
@@ -2971,7 +2971,7 @@ export default function PrivateBookingDetailClient({
                 {/* Show total savings if any discounts */}
                 {(calculateItemDiscounts() > 0 ||
                   (booking.discount_amount && booking.discount_amount > 0)) && (
-                  <div className="bg-green-50 p-2 rounded-lg">
+                  <div className="bg-success-soft p-2 rounded-lg">
                     <div className="flex justify-between text-sm">
                       <span className="font-medium text-green-800">
                         Total Savings
@@ -2986,21 +2986,21 @@ export default function PrivateBookingDetailClient({
                 <div className="pt-3 border-t space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Event price (ex VAT)</span>
-                    <span className="font-medium text-gray-900">
+                    <span className="font-medium text-text">
                       {formatMoney(bookingMoney.discountedNet)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">VAT</span>
-                    <span className="font-medium text-gray-900">
+                    <span className="font-medium text-text">
                       {formatMoney(bookingMoney.vatAmount)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-base font-medium text-gray-900">
+                    <span className="text-base font-medium text-text">
                       Event total inc. VAT
                     </span>
-                    <span className="text-xl font-bold text-gray-900">
+                    <span className="text-xl font-bold text-text">
                       {formatMoney(bookingMoney.grossTotal)}
                     </span>
                   </div>
@@ -3009,7 +3009,7 @@ export default function PrivateBookingDetailClient({
 
               <div className="space-y-3 pt-3 border-t">
                 <div className="bg-blue-50 p-3 rounded-lg">
-                  <p className="text-xs font-medium text-blue-900 mb-2">
+                  <p className="text-xs font-medium text-info-fg mb-2">
                     {depositAppliedToInvoice ? "Deposit applied to invoice" : "Refundable Deposit"}
                   </p>
                   <div className="flex justify-between items-start">
@@ -3066,7 +3066,7 @@ export default function PrivateBookingDetailClient({
                         </div>
                         {showDepositReductionReason && (
                           <div className="text-left">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                            <label className="block text-xs font-medium text-text-muted mb-1">
                               Reason for reduced deposit (GM discretion)
                             </label>
                             <Textarea
@@ -3101,7 +3101,7 @@ export default function PrivateBookingDetailClient({
                       </div>
                     ) : (
                       <div className="flex items-center gap-1 justify-end">
-                        <p className="text-sm font-medium text-gray-900">
+                        <p className="text-sm font-medium text-text">
                           {depositAppliedToInvoice ? formatMoney(appliedDepositAmount) : depositRequired ? formatMoney(depositAmount) : "No deposit"}
                         </p>
                         {!booking.deposit_paid_date && canManageDeposits && (
@@ -3113,7 +3113,7 @@ export default function PrivateBookingDetailClient({
                               setDepositWaiveConfirmed(false);
                               setEditingDeposit(true);
                             }}
-                            className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
+                            className="text-gray-400 hover:text-text-muted focus:outline-none focus:ring-1 focus:ring-gray-400 rounded-sm"
                             aria-label="Edit deposit amount"
                           >
                             <PencilIcon className="h-3.5 w-3.5" />
@@ -3172,7 +3172,7 @@ export default function PrivateBookingDetailClient({
                     </div>
                   </div>
                   {depositRequired && (
-                    <p className="text-xs text-gray-600 mt-2">
+                    <p className="text-xs text-text-muted mt-2">
                       {depositAppliedToInvoice ? "This deposit has been applied to the invoice. Any refund needs an invoice review." : "Returned after event (subject to terms)"}
                     </p>
                   )}
@@ -3212,10 +3212,10 @@ export default function PrivateBookingDetailClient({
 
                 {/* Only a separately held deposit is additional to the event price. */}
                 <div className="flex justify-between text-sm pt-3 border-t">
-                  <span className="font-medium text-gray-900">
+                  <span className="font-medium text-text">
                     Total to pay before event
                   </span>
-                  <span className="font-semibold text-gray-900">
+                  <span className="font-semibold text-text">
                     {formatMoney(
                       bookingMoney.grossTotal + (depositRequired && !depositAppliedToInvoice ? depositAmount : 0),
                     )}
@@ -3247,7 +3247,7 @@ export default function PrivateBookingDetailClient({
                         </div>
                         <div className="text-right">
                           {isDateTbd ? (
-                            <p className="text-sm font-medium text-gray-900">To be confirmed</p>
+                            <p className="text-sm font-medium text-text">To be confirmed</p>
                           ) : (
                             <>
                               {totalPaid > 0 && remaining > 0 && (
@@ -3255,7 +3255,7 @@ export default function PrivateBookingDetailClient({
                                   {formatMoney(totalPaid)} of {formatMoney(bookingTotal)} paid
                                 </p>
                               )}
-                              <p className="text-sm font-medium text-gray-900">
+                              <p className="text-sm font-medium text-text">
                                 {formatMoney(remaining)}
                               </p>
                             </>
@@ -3309,7 +3309,7 @@ export default function PrivateBookingDetailClient({
                 {canSendSms && (
                   <Link
                     href={`/private-bookings/${bookingId}/messages`}
-                    className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100"
+                    className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-surface-2 rounded-lg hover:bg-surface-hover"
                   >
                     <div className="flex items-center">
                       <ChatBubbleLeftRightIcon className="h-5 w-5 mr-3 text-purple-600" />
@@ -3323,7 +3323,7 @@ export default function PrivateBookingDetailClient({
                   type="button"
                   onClick={handleDownloadContract}
                   disabled={downloadingContract}
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
                     <DocumentIcon className="h-5 w-5 mr-3 text-blue-600" />
@@ -3336,7 +3336,7 @@ export default function PrivateBookingDetailClient({
                   href={`/api/private-bookings/event-sheet?bookingId=${bookingId}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-surface-2 rounded-lg hover:bg-surface-hover"
                 >
                   <div className="flex items-center">
                     <ClipboardDocumentListIcon className="h-5 w-5 mr-3 text-blue-600" />
@@ -3349,7 +3349,7 @@ export default function PrivateBookingDetailClient({
                   type="button"
                   onClick={handleSendContract}
                   disabled={sendingContract || !booking.contact_email}
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
                     <DocumentIcon className="h-5 w-5 mr-3 text-green-600" />
@@ -3363,7 +3363,7 @@ export default function PrivateBookingDetailClient({
                     {booking.contract_sent_to ? ` to ${booking.contract_sent_to}` : ''}
                   </p>
                 ) : (
-                  <p className="text-xs text-amber-600 px-1">
+                  <p className="text-xs text-warning px-1">
                     Contract not yet sent — terms must reach the customer before the deposit is paid.
                   </p>
                 )}
@@ -3390,7 +3390,7 @@ export default function PrivateBookingDetailClient({
 
                   if (alreadyInvoiced) {
                     return (
-                      <div className="rounded-lg bg-gray-50 px-4 py-3">
+                      <div className="rounded-lg bg-surface-2 px-4 py-3">
                         <p className="text-sm font-medium text-gray-700">
                           {booking.invoice_sent_at
                             ? `Invoice sent ${formatDateFull(booking.invoice_sent_at)}`
@@ -3440,7 +3440,7 @@ export default function PrivateBookingDetailClient({
                         type="button"
                         onClick={handleOpenInvoiceModal}
                         disabled={Boolean(blockedReason)}
-                        className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-surface-2 rounded-lg hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <div className="flex items-center">
                           <DocumentIcon className="h-5 w-5 mr-3 text-green-600" />
@@ -3449,7 +3449,7 @@ export default function PrivateBookingDetailClient({
                         <ChevronRightIcon className="h-4 w-4 text-gray-400" />
                       </button>
                       {blockedReason && (
-                        <p className="mt-1 px-1 text-xs text-amber-600">{blockedReason}</p>
+                        <p className="mt-1 px-1 text-xs text-warning">{blockedReason}</p>
                       )}
                     </div>
                   );
@@ -3467,7 +3467,7 @@ export default function PrivateBookingDetailClient({
                   <label className="block text-xs font-medium text-gray-500">
                     Booking ID
                   </label>
-                  <p className="mt-1 text-sm text-gray-900 font-mono">
+                  <p className="mt-1 text-sm text-text font-mono">
                     {booking.id.slice(0, 8)}
                   </p>
                 </div>
@@ -3475,7 +3475,7 @@ export default function PrivateBookingDetailClient({
                   <label className="block text-xs font-medium text-gray-500">
                     Created
                   </label>
-                  <p className="mt-1 text-sm text-gray-900">
+                  <p className="mt-1 text-sm text-text">
                     {formatDateFull(booking.created_at)}
                   </p>
                 </div>
@@ -3483,7 +3483,7 @@ export default function PrivateBookingDetailClient({
                   <label className="block text-xs font-medium text-gray-500">
                     Last Updated
                   </label>
-                  <p className="mt-1 text-sm text-gray-900">
+                  <p className="mt-1 text-sm text-text">
                     {formatDateFull(booking.updated_at)}
                   </p>
                 </div>
@@ -3492,7 +3492,7 @@ export default function PrivateBookingDetailClient({
                     <label className="block text-xs font-medium text-gray-500">
                       Contract Version
                     </label>
-                    <p className="mt-1 text-sm text-gray-900">
+                    <p className="mt-1 text-sm text-text">
                       v{booking.contract_version}
                     </p>
                   </div>
@@ -3513,7 +3513,7 @@ export default function PrivateBookingDetailClient({
         <Card>
           {auditTrail.length === 0 ? (
             <EmptyState
-              icon={<ClockIcon className="h-12 w-12 text-gray-300" />}
+              icon={<ClockIcon className="h-12 w-12 text-text-subtle" />}
               title="No history yet"
               description="Updates and actions for this booking will appear here."
             />
@@ -3526,14 +3526,14 @@ export default function PrivateBookingDetailClient({
                     <span className="absolute left-0 top-2 h-2 w-2 rounded-full bg-blue-500" />
                     <div className="flex flex-col gap-1">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-gray-900">
+                        <p className="text-sm font-medium text-text">
                           {getAuditActor(entry)}
                         </p>
                         <span className="text-xs text-gray-500">
                           {formatDateTime12Hour(entry.performed_at)}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-text-muted">
                         {formatAuditAction(entry.action)}
                       </p>
                       {details && (

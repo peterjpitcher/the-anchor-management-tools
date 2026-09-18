@@ -149,7 +149,7 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
         )}
 
         <div>
-          <label className="block text-sm font-medium mb-1">To <span className="text-red-500">*</span></label>
+          <label className="block text-sm font-medium mb-1">To <span className="text-danger">*</span></label>
           <Input
             type="text"
             value={toEmails}

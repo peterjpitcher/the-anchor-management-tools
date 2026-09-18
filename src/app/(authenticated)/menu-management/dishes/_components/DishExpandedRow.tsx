@@ -136,7 +136,7 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
     <div className="space-y-6">
       {hasRecipes && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-900">Recipes</h4>
+          <h4 className="text-sm font-semibold text-text">Recipes</h4>
           <div className="mt-3 space-y-3">
             {dish.recipes.map((recipe) => {
               const costLabel = recipe.cost_override != null
@@ -146,10 +146,10 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
                   : 'Cost unavailable';
 
               return (
-                <div key={recipe.recipe_id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                <div key={recipe.recipe_id} className="rounded-lg border border-border bg-surface p-3 shadow-sm">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <div className="flex items-center gap-2 font-medium text-gray-900">
+                      <div className="flex items-center gap-2 font-medium text-text">
                         {recipe.recipe_name}
                         {!recipe.recipe_is_active && (
                           <Badge variant="warning" size="sm">Inactive</Badge>
@@ -186,7 +186,7 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
 
       {hasIngredients && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-900">Ingredients</h4>
+          <h4 className="text-sm font-semibold text-text">Ingredients</h4>
           <div className="mt-3 space-y-3">
             {dish.ingredients.map((ingredient) => {
               const quantityLabel = ingredient.quantity
@@ -200,10 +200,10 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
                   : 'Unit cost unavailable';
 
               return (
-                <div key={ingredient.ingredient_id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                <div key={ingredient.ingredient_id} className="rounded-lg border border-border bg-surface p-3 shadow-sm">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <div className="font-medium text-gray-900">{ingredient.ingredient_name}</div>
+                      <div className="font-medium text-text">{ingredient.ingredient_name}</div>
                       <div className="mt-1 text-xs text-gray-500">
                         {ingredient.dietary_flags.length > 0
                           ? `Dietary: ${ingredient.dietary_flags.join(', ')}`
@@ -226,7 +226,7 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
                       <span className="mt-1 text-xs text-gray-500">{unitCostLabel}</span>
                     </div>
                   </div>
-                  <div className="mt-3 grid gap-2 text-xs text-gray-600 sm:grid-cols-3">
+                  <div className="mt-3 grid gap-2 text-xs text-text-muted sm:grid-cols-3">
                     <span>Yield: {ingredient.yield_pct != null ? `${ingredient.yield_pct}%` : '\u2014'}</span>
                     <span>Wastage: {ingredient.wastage_pct != null ? `${ingredient.wastage_pct}%` : '\u2014'}</span>
                     <span>

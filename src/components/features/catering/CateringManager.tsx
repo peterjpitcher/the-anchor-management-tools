@@ -55,7 +55,7 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
             sortable: true,
             cell: (pkg: CateringPackage) => (
                 <div>
-                    <p className="font-medium text-gray-900">{pkg.name}</p>
+                    <p className="font-medium text-text">{pkg.name}</p>
                     {pkg.summary && (
                         <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{pkg.summary}</p>
                     )}
@@ -69,7 +69,7 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
             sortFn: (a: CateringPackage, b: CateringPackage) => a.cost_per_head - b.cost_per_head,
             hideOnMobile: true,
             cell: (pkg: CateringPackage) => (
-                <span className="font-medium text-gray-900 whitespace-nowrap">{formatPrice(pkg)}</span>
+                <span className="font-medium text-text whitespace-nowrap">{formatPrice(pkg)}</span>
             )
         },
         {

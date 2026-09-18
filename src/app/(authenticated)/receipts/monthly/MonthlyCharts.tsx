@@ -110,7 +110,7 @@ function Bar({
       style={{ height: `${clampedHeight}%` }}
       aria-label={ariaLabel}
     >
-      <span className="absolute -top-6 text-[11px] font-semibold text-text">
+      <span className="absolute -top-6 text-meta font-semibold text-text">
         {formattedValue}
       </span>
     </div>
@@ -120,7 +120,7 @@ function Bar({
 function LegendSwatch({ className, label }: { className: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-2">
-      <span className={`inline-block h-3 w-3 rounded ${className}`} />
+      <span className={`inline-block h-3 w-3 rounded-sm ${className}`} />
       <span>{label}</span>
     </span>
   );

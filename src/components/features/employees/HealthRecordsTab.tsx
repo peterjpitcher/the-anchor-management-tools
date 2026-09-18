@@ -13,7 +13,7 @@ interface HealthRecordsTabProps {
 const DetailItem = ({ label, value }: { label: string; value: string | undefined | null | boolean }) => (
   <div className="py-3 sm:grid sm:grid-cols-4 sm:gap-4">
     <dt className="text-sm font-medium text-gray-500">{label}</dt>
-    <dd className="mt-1 text-sm text-gray-900 sm:col-span-3 sm:mt-0">
+    <dd className="mt-1 text-sm text-text sm:col-span-3 sm:mt-0">
       {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : (value || 'N/A')}
     </dd>
   </div>
@@ -59,8 +59,8 @@ export default function HealthRecordsTab({ employeeId, healthRecord, canEdit }: 
     <div>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium text-gray-900">Confidential Health Records</h3>
-          <p className="mt-1 text-sm text-gray-600">
+          <h3 className="text-lg font-medium text-text">Confidential Health Records</h3>
+          <p className="mt-1 text-sm text-text-muted">
             Confidential health and medical information.
           </p>
         </div>
@@ -71,7 +71,7 @@ export default function HealthRecordsTab({ employeeId, healthRecord, canEdit }: 
         )}
       </div>
       
-      <dl className="sm:divide-y sm:divide-gray-200">
+      <dl className="sm:divide-y sm:divide-border">
         {details.map(item => <DetailItem key={item.label} {...item} />)}
         {conditions.map(item => <DetailItem key={item.label} {...item} />)}
         {disabilityDetails.map(item => <DetailItem key={item.label} {...item} />)}

@@ -529,7 +529,7 @@ export function ReceiptRules({
                         <label className="flex items-center gap-1.5 text-warning-fg">
                           <input
                             type="checkbox"
-                            className="h-4 w-4 rounded border-border"
+                            className="h-4 w-4 rounded-sm border-border"
                             checked={allSuggestionsSelected}
                             onChange={toggleSelectAllSuggestions}
                             disabled={isSuggestionsPending}
@@ -580,7 +580,7 @@ export function ReceiptRules({
                             {canGovernRules && (
                               <input
                                 type="checkbox"
-                                className="mt-0.5 h-4 w-4 rounded border-border"
+                                className="mt-0.5 h-4 w-4 rounded-sm border-border"
                                 checked={selectedSuggestionIds.includes(suggestion.id)}
                                 onChange={() => toggleSuggestionSelected(suggestion.id)}
                                 aria-label={`Select suggestion ${suggestion.suggested_name}`}
@@ -710,7 +710,7 @@ export function ReceiptRules({
                         }))} />
                       </div>
                       <label className="flex items-center gap-2 text-xs text-text-muted">
-                        <input type="checkbox" name="reviewed" className="h-4 w-4 rounded border-border-strong" />
+                        <input type="checkbox" name="reviewed" className="h-4 w-4 rounded-sm border-border-strong" />
                         Mark reviewed
                       </label>
                     </div>
@@ -914,7 +914,7 @@ export function ReceiptRules({
                                     }))} />
                                   </div>
                                   <label className="flex items-center gap-2 text-xs text-text-muted">
-                                    <input type="checkbox" name="reviewed" className="h-4 w-4 rounded border-border-strong" defaultChecked={Boolean(rule.reviewed_at)} />
+                                    <input type="checkbox" name="reviewed" className="h-4 w-4 rounded-sm border-border-strong" defaultChecked={Boolean(rule.reviewed_at)} />
                                     Mark reviewed
                                   </label>
                                 </div>
