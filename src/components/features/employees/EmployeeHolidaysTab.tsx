@@ -13,7 +13,7 @@ import {
   getHolidayYear,
 } from '@/lib/leave/working-days';
 import type { EmployeeLeaveDay } from '@/app/actions/leave';
-import { getTodayIsoDate } from '@/lib/dateUtils';
+import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 
 interface EmployeeHolidaysTabProps {
   employeeId: string;
@@ -30,7 +30,7 @@ interface EmployeeHolidaysTabProps {
 }
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatDateInLondon(iso, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function yearLabel(year: number) {

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { updateOnboardingChecklist, getOnboardingProgress } from '@/app/actions/employeeActions'
 import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
 import { ProgressBar, toast } from '@/ds'
+import { formatDateInLondon } from '@/lib/dateUtils'
 
 interface OnboardingChecklistTabProps {
   employeeId: string
@@ -157,7 +158,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
                     </label>
                     {item.completed && date && (
                       <p className="text-sm text-text-muted">
-                        Completed on {new Date(date).toLocaleDateString()}
+                        Completed on {formatDateInLondon(date)}
                       </p>
                     )}
                   </div>

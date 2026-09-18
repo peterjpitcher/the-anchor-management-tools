@@ -86,6 +86,7 @@ export default function RightToWorkTab({
   // Compared as London ISO dates: a raw Date built from a date-only column is
   // UTC midnight, which flips the answer either side of midnight in production.
   const expiryIsoDate = rightToWorkData?.document_expiry_date?.split('T')[0] ?? null
+  const followUpIsoDate = rightToWorkData?.follow_up_date?.split('T')[0] ?? null
 
   const isExpired = useMemo(() => {
     if (!expiryIsoDate) return false
@@ -100,11 +101,9 @@ export default function RightToWorkTab({
   }, [expiryIsoDate, isExpired])
 
   const isFollowUpDue = useMemo(() => {
-    if (!rightToWorkData?.follow_up_date) return false
-    const followUpDate = new Date(rightToWorkData.follow_up_date)
-    const today = new Date()
-    return followUpDate <= today
-  }, [rightToWorkData?.follow_up_date])
+    if (!followUpIsoDate) return false
+    return followUpIsoDate <= getTodayIsoDate()
+  }, [followUpIsoDate])
 
   const documentTypeOptions = useMemo(() => {
     const options = [...DOCUMENT_TYPE_OPTIONS] as string[]

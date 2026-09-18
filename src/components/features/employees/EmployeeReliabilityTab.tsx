@@ -8,27 +8,17 @@ import {
   type ReliabilityScoreBreakdown,
 } from '@/lib/employee-reliability-scoring';
 import type { EmployeeReliabilityData } from '@/services/employee-reliability';
-import { formatTime12Hour } from '@/lib/dateUtils';
+import { formatDateInLondon, formatDateTime, formatTime12Hour } from '@/lib/dateUtils';
 
 interface EmployeeReliabilityTabProps {
   reliability: EmployeeReliabilityData;
 }
 
 function formatDate(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', {
+  return formatDateInLondon(iso, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
-  });
-}
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
   });
 }
 
