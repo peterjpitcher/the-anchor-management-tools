@@ -212,7 +212,7 @@ export function SidebarNav({ items, onNavigate }: SidebarNavProps) {
                 key={item.id}
                 href={item.href}
                 onClick={onNavigate}
-                className={`flex items-center gap-3 px-3 py-2 mx-2 rounded-[var(--radius-default)] text-[13px] font-medium transition-colors ${
+                className={`flex items-center gap-3 px-3 py-2 mx-2 rounded-default text-ui font-medium transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                   active
                     ? 'bg-sidebar-active-bg text-sidebar-fg'
                     : 'text-sidebar-fg-muted hover:bg-sidebar-hover-bg hover:text-sidebar-fg'
@@ -233,7 +233,7 @@ export function SidebarNav({ items, onNavigate }: SidebarNavProps) {
                 <span className="ds-label truncate">{item.label}</span>
                 {count ? (
                   <span
-                    className="ds-label ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-sidebar-active-bg text-[11px] font-semibold text-sidebar-fg"
+                    className="ds-label ml-auto inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-sidebar-active-bg text-meta font-semibold text-sidebar-fg"
                     // The state is spelled out for a screen reader rather than
                     // left to a glyph, and "unavailable" is never dressed up as a
                     // number.

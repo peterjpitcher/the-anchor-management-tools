@@ -1,7 +1,4 @@
 {
-  "src/app/(authenticated)/AuthenticatedLayout.tsx": {
-    "raw-palette": 4
-  },
   "src/app/(authenticated)/cashing-up/daily/_components/DailyClient.tsx": {
     "px-text-size": 1
   },
@@ -62,9 +59,6 @@
   },
   "src/app/(authenticated)/employees/new/NewEmployeeOnboardingClient.tsx": {
     "raw-palette": 17
-  },
-  "src/app/(authenticated)/error.tsx": {
-    "raw-palette": 3
   },
   "src/app/(authenticated)/events/[id]/EventDetailClient.tsx": {
     "raw-palette": 5,
@@ -616,10 +610,6 @@
     "raw-palette": 6,
     "px-text-size": 1
   },
-  "src/app/(authenticated)/table-bookings/foh/page.tsx": {
-    "raw-palette": 5,
-    "sidebar-outside-shell": 2
-  },
   "src/app/(authenticated)/table-bookings/reports/page.tsx": {
     "raw-palette": 69,
     "hex-colour": 1
@@ -1069,13 +1059,6 @@
   "src/components/features/shared/GuestPageShell.tsx": {
     "sidebar-outside-shell": 1
   },
-  "src/components/features/shared/NetworkStatus.tsx": {
-    "raw-palette": 2
-  },
-  "src/components/features/shared/SquareImageUpload.tsx": {
-    "raw-palette": 16,
-    "off-scale-shadow": 1
-  },
   "src/components/features/table-bookings/ChristmasCourseFields.tsx": {
     "raw-palette": 1
   },
@@ -1141,43 +1124,6 @@
   },
   "src/components/schedule-calendar/VenueCalendar.tsx": {
     "raw-palette": 14
-  },
-  "src/ds/composites/Chart.tsx": {
-    "raw-palette": 2
-  },
-  "src/ds/composites/DataTable.tsx": {
-    "raw-palette": 27,
-    "off-scale-shadow": 2,
-    "px-text-size": 1
-  },
-  "src/ds/composites/PageLayout.tsx": {
-    "raw-palette": 23
-  },
-  "src/ds/composites/Section.tsx": {
-    "raw-palette": 7
-  },
-  "src/ds/composites/SectionNav.tsx": {
-    "hex-colour": 6,
-    "px-text-size": 2
-  },
-  "src/ds/composites/Segmented.tsx": {
-    "px-text-size": 1
-  },
-  "src/ds/composites/Table.tsx": {
-    "px-text-size": 1
-  },
-  "src/ds/composites/Tabs.tsx": {
-    "px-text-size": 1
-  },
-  "src/ds/shell/MobileChrome.tsx": {
-    "raw-palette": 1,
-    "px-text-size": 10
-  },
-  "src/ds/shell/SidebarNav.tsx": {
-    "px-text-size": 2
-  },
-  "src/ds/shell/UserFooter.tsx": {
-    "px-text-size": 1
   },
   "src/lib/analytics/engagement-scoring.ts": {
     "hex-colour": 2

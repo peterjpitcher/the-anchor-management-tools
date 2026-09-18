@@ -151,18 +151,18 @@ export function SquareImageUpload({
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-sm sm:text-base font-medium text-gray-700 mb-1">
+        <label className="block mb-1 text-xs font-medium uppercase tracking-wider text-text-muted">
           {label}
         </label>
         {helpText && (
-          <p className="text-sm sm:text-base text-gray-500 mb-2">{helpText}</p>
+          <p className="text-sm text-text-soft mb-2">{helpText}</p>
         )}
       </div>
 
       {/* Preview */}
       {previewUrl && (
         <div className="relative inline-block">
-          <div className="w-32 h-32 sm:w-48 sm:h-48 rounded-lg overflow-hidden bg-gray-100 border border-gray-300">
+          <div className="w-32 h-32 sm:w-48 sm:h-48 rounded-lg overflow-hidden bg-surface-hover border border-border-strong">
             <img
               src={previewUrl}
               alt="Preview"
@@ -174,7 +174,7 @@ export function SquareImageUpload({
               type="button"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={isDeleting}
-              className="absolute -top-2 -right-2 p-2 sm:p-1.5 bg-red-600 text-white rounded-full hover:bg-red-700 disabled:opacity-50 shadow-md touch-manipulation min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+              className="absolute -top-2 -right-2 p-2 sm:p-1.5 bg-danger text-white rounded-full hover:brightness-95 disabled:opacity-50 shadow-default touch-manipulation min-w-touch min-h-touch sm:min-w-0 sm:min-h-0 flex items-center justify-center focus-visible:outline-hidden focus-visible:shadow-ring"
               title="Delete image"
             >
               <TrashIcon className="h-5 w-5 sm:h-4 sm:w-4" />
@@ -186,13 +186,13 @@ export function SquareImageUpload({
       {/* Upload controls */}
       <div className="space-y-4">
         {entityId === 'new' && (
-          <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-md">
+          <div className="text-sm text-warning-fg bg-warning-soft border border-warning-border p-3 rounded-md">
             Save the {entityType} first before uploading images
           </div>
         )}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-0 sm:space-x-4">
-          <label className={`relative ${entityId === 'new' || isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500`}>
-            <span className="inline-flex items-center px-4 py-3 sm:py-2 border border-gray-300 rounded-md shadow-sm text-base sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 min-h-[44px] touch-manipulation">
+          <label className={`relative ${entityId === 'new' || isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} rounded-md font-medium focus-within:shadow-ring`}>
+            <span className="inline-flex items-center px-4 py-3 sm:py-2 border border-border-strong rounded-md shadow-xs text-base sm:text-sm font-medium text-text bg-surface hover:bg-surface-hover active:bg-surface-hover min-h-touch touch-manipulation">
               <PhotoIcon className="h-5 w-5 mr-2" />
               {isUploading ? 'Uploading...' : previewUrl ? 'Replace Image' : 'Choose Image'}
             </span>
@@ -207,7 +207,7 @@ export function SquareImageUpload({
           </label>
         </div>
 
-        <p className="text-sm text-gray-500" aria-live="polite">
+        <p className="text-sm text-text-soft" aria-live="polite">
           {isUploading
             ? 'Uploading...'
             : 'The image uploads as soon as you choose it.'}
