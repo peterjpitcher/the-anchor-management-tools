@@ -1,4 +1,5 @@
 import { PrivateBookingWithDetails, PrivateBookingItem } from '@/types/private-bookings'
+import { STAFF } from '@/lib/brand/palette'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 import { resolveAccessTimes } from '@/lib/private-bookings/access-times'
@@ -467,6 +468,8 @@ ${scheduleFootnotesHtml}` : ''}</div>
           })
           .join('\n')
 
+  // Colours come from STAFF. The screen-only stage around the sheets is dark and STAFF has no
+  // on-dark set, so the stage uses STAFF.text as its backdrop and the light neutrals for its copy.
   return `<!DOCTYPE html>
 <html lang="en-GB">
 <head>
@@ -480,11 +483,11 @@ ${scheduleFootnotesHtml}` : ''}</div>
 
 <style>
   :root{
-    --paper:#ffffff;
-    --ink:#161616;
-    --ink-soft:#363636;
-    --ink-mute:#6b6b6b;
-    --rule:#cfcfcf;
+    --paper:${STAFF.surface};
+    --ink:${STAFF.textStrong};
+    --ink-soft:${STAFF.text};
+    --ink-mute:${STAFF.textMuted};
+    --rule:${STAFF.borderStrong};
     --font-display:'DM Serif Display', Georgia, serif;
     --font-body:'Outfit', system-ui, -apple-system, sans-serif;
     --font-script:'Clicker Script', cursive;
@@ -493,25 +496,25 @@ ${scheduleFootnotesHtml}` : ''}</div>
   *{ box-sizing:border-box; }
   html,body{ margin:0; padding:0; }
   body{
-    background:#3a3a3a;
+    background:${STAFF.text};
     font-family:var(--font-body);
     color:var(--ink);
     -webkit-print-color-adjust:exact; print-color-adjust:exact;
   }
 
   /* ---------- screen scaffolding ---------- */
-  .screen-note{ color:#e9e4d8; font-size:13.5px; text-align:center; padding:24px 16px 4px; line-height:1.6; }
-  .screen-note strong{ color:#fff; font-weight:600; }
-  .screen-note .sub{ display:block; color:#b3ada1; font-size:12px; margin-top:5px; }
+  .screen-note{ color:${STAFF.border}; font-size:13.5px; text-align:center; padding:24px 16px 4px; line-height:1.6; }
+  .screen-note strong{ color:${STAFF.surface}; font-weight:600; }
+  .screen-note .sub{ display:block; color:${STAFF.textSubtle}; font-size:12px; margin-top:5px; }
   .toolbar{ display:flex; align-items:center; justify-content:center; gap:14px; padding:6px 0 2px; }
-  .print-btn{ font-family:var(--font-body); font-weight:600; font-size:13px; color:#161616; background:#e9e4d8; border:0; border-radius:999px; padding:9px 22px; cursor:pointer; }
-  .print-btn:hover{ background:#fff; }
-  .back-link{ font-family:var(--font-body); font-weight:600; font-size:13px; color:#e9e4d8; text-decoration:none; border:1px solid #6f6a61; border-radius:999px; padding:8px 18px; }
-  .back-link:hover{ color:#fff; border-color:#e9e4d8; }
+  .print-btn{ font-family:var(--font-body); font-weight:600; font-size:13px; color:${STAFF.primaryFg}; background:${STAFF.primary}; border:0; border-radius:999px; padding:9px 22px; cursor:pointer; }
+  .print-btn:hover{ background:${STAFF.primaryHover}; }
+  .back-link{ font-family:var(--font-body); font-weight:600; font-size:13px; color:${STAFF.border}; text-decoration:none; border:1px solid ${STAFF.textMuted}; border-radius:999px; padding:8px 18px; }
+  .back-link:hover{ color:${STAFF.surface}; border-color:${STAFF.border}; }
   .stage{ display:flex; flex-direction:column; align-items:center; gap:10mm; padding:22px 0 70px; }
 
-  .doc-divider{ width:210mm; max-width:92vw; color:#e9e4d8; text-align:center; font-size:12px; letter-spacing:.18em; text-transform:uppercase; display:flex; align-items:center; gap:14px; opacity:.75; }
-  .doc-divider::before,.doc-divider::after{ content:""; flex:1; height:1px; background:#6f6a61; }
+  .doc-divider{ width:210mm; max-width:92vw; color:${STAFF.border}; text-align:center; font-size:12px; letter-spacing:.18em; text-transform:uppercase; display:flex; align-items:center; gap:14px; opacity:.75; }
+  .doc-divider::before,.doc-divider::after{ content:""; flex:1; height:1px; background:${STAFF.textMuted}; }
 
   /* ---------- A4 sheet ---------- */
   .sheet{ width:210mm; height:297mm; background:var(--paper); padding:11mm 12mm; position:relative; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 16px 46px rgba(0,0,0,.42); }
@@ -554,10 +557,10 @@ ${scheduleFootnotesHtml}` : ''}</div>
   .fin-row{ display:flex; justify-content:space-between; align-items:baseline; padding:1.4mm 3.6mm; border-bottom:1px solid var(--rule); font-size:11px; color:var(--ink-soft); }
   .fin-row:last-child{ border-bottom:0; }
   .fin-row .fv{ font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
-  .fin-row.total{ background:#f4f1ea; }
+  .fin-row.total{ background:${STAFF.surfaceHover}; }
   .fin-row.total .fk{ font-weight:700; color:var(--ink); text-transform:uppercase; letter-spacing:.06em; font-size:9.5px; }
   .fin-row.total .fv{ font-size:13px; }
-  .deposit-box{ border:1.4px solid var(--ink); padding:3mm 4mm; background:#f4f1ea; display:flex; flex-direction:column; justify-content:center; height:100%; }
+  .deposit-box{ border:1.4px solid var(--ink); padding:3mm 4mm; background:${STAFF.surfaceHover}; display:flex; flex-direction:column; justify-content:center; height:100%; }
   .deposit-box .db-l{ font-weight:700; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink); }
   .deposit-box .db-r{ font-family:var(--font-display); font-size:26px; color:var(--ink); line-height:1; margin:1.4mm 0; }
   .deposit-box small{ font-weight:500; font-size:9px; color:var(--ink-mute); line-height:1.35; }
@@ -580,7 +583,7 @@ ${scheduleFootnotesHtml}` : ''}</div>
   .sched-h.num, .sched-c.num{ text-align:right; font-variant-numeric:tabular-nums; }
   .sched-c.num{ font-weight:600; color:var(--ink); }
   .sched-sub{ display:block; font-size:9px; line-height:1.35; color:var(--ink-mute); margin-top:0.6mm; }
-  .sched-group{ grid-column:1 / -1; font-weight:700; font-size:9px; line-height:1.25; letter-spacing:.14em; text-transform:uppercase; color:var(--ink); padding:2mm 3.6mm 1.4mm; border-bottom:1px solid var(--rule); background:#f4f1ea; }
+  .sched-group{ grid-column:1 / -1; font-weight:700; font-size:9px; line-height:1.25; letter-spacing:.14em; text-transform:uppercase; color:var(--ink); padding:2mm 3.6mm 1.4mm; border-bottom:1px solid var(--rule); background:${STAFF.surfaceHover}; }
 
   /* ---------- numbered clauses (waiver) ---------- */
   ol.contract{ list-style:none; margin:0; padding:0; counter-reset:l1; }
@@ -644,7 +647,7 @@ ${scheduleFootnotesHtml}` : ''}</div>
 
   @media print{
     @page{ size:A4 portrait; margin:0; }
-    body{ background:#fff; }
+    body{ background:${STAFF.surface}; }
     .screen-note,.toolbar,.doc-divider{ display:none !important; }
     .stage{ display:block; padding:0; gap:0; }
     .sheet{ box-shadow:none; break-after:page; }

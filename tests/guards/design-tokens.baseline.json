@@ -117,17 +117,11 @@
   "src/app/actions/rota-day-info.ts": {
     "hex-colour": 1
   },
-  "src/app/api/employees/[employee_id]/starter-pack/route.ts": {
-    "hex-colour": 1
-  },
   "src/app/api/rota/hours/pdf/route.ts": {
     "hex-colour": 35
   },
   "src/app/api/rota/pdf/route.ts": {
     "hex-colour": 48
-  },
-  "src/app/auth/confirm/route.ts": {
-    "hex-colour": 5
   },
   "src/components/features/catering/CateringManager.tsx": {
     "raw-palette": 1
@@ -245,17 +239,6 @@
   "src/lib/analytics/engagement-scoring.ts": {
     "hex-colour": 2
   },
-  "src/lib/cashing-up-pdf-template.ts": {
-    "raw-palette": 8,
-    "hex-colour": 2,
-    "px-text-size": 4
-  },
-  "src/lib/constants.ts": {
-    "hex-colour": 6
-  },
-  "src/lib/contract-template.ts": {
-    "hex-colour": 22
-  },
   "src/lib/email/marketing/blocks/closing_panel_dark.ts": {
     "hex-colour": 1
   },
@@ -298,9 +281,6 @@
   "src/lib/email/marketing/blocks/whats_on_media.ts": {
     "hex-colour": 1
   },
-  "src/lib/employee-starter-template.ts": {
-    "hex-colour": 26
-  },
   "src/lib/events/artwork/composite.ts": {
     "hex-colour": 2
   },
@@ -310,40 +290,7 @@
   "src/lib/export/qr-pack.ts": {
     "hex-colour": 2
   },
-  "src/lib/invoice-template-compact.ts": {
-    "hex-colour": 28
-  },
   "src/lib/maintenance/photo-normalise.ts": {
     "hex-colour": 1
-  },
-  "src/lib/mileage/report/pdf.ts": {
-    "hex-colour": 1
-  },
-  "src/lib/mileage/report/template.ts": {
-    "hex-colour": 7
-  },
-  "src/lib/oj-statement.ts": {
-    "hex-colour": 20
-  },
-  "src/lib/oj-timesheet.ts": {
-    "hex-colour": 4
-  },
-  "src/lib/oj-work-record.ts": {
-    "hex-colour": 13
-  },
-  "src/lib/pdf/document-chrome.ts": {
-    "hex-colour": 7
-  },
-  "src/lib/pnl/report-template.ts": {
-    "hex-colour": 32
-  },
-  "src/lib/quote-template-compact.ts": {
-    "hex-colour": 28
-  },
-  "src/lib/receipts/export/claim-summary-pdf.ts": {
-    "hex-colour": 14
-  },
-  "src/lib/worker-agreement-template.ts": {
-    "hex-colour": 23
   }
 }

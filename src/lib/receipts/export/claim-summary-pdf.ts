@@ -11,6 +11,7 @@
 import PDFDocument from 'pdfkit'
 import { PassThrough } from 'stream'
 import type { Archiver } from 'archiver'
+import { STAFF } from '@/lib/brand/palette'
 import { formatMilesText, formatPoundsText } from '@/lib/mileage/report/format'
 import type { ClaimSummaryMileage } from './mileage-files'
 import type { ExpensesSummary } from './expenses-csv'
@@ -139,11 +140,11 @@ export async function appendClaimSummaryPdf(
 
     doc
       .fontSize(9)
-      .fillColor('#666666')
+      .fillColor(STAFF.textMuted)
       .text(`Generated: ${new Date().toLocaleString('en-GB', { timeZone: 'Europe/London' })}`, {
         align: 'center',
       })
-      .fillColor('#000000')
+      .fillColor(STAFF.text)
       .moveDown(1.5)
 
     // ---- Section 1: Mileage ----
@@ -168,12 +169,12 @@ export async function appendClaimSummaryPdf(
 
     doc
       .fontSize(9)
-      .fillColor('#666666')
+      .fillColor(STAFF.textMuted)
       .text(
         'For information only \u2014 MGD is paid directly to HMRC and is not included in the claim total.',
         { width: 495 }
       )
-      .fillColor('#000000')
+      .fillColor(STAFF.text)
       .moveDown(0.5)
 
     addRow(doc, 'Period', mgd.periodLabel)
@@ -187,7 +188,7 @@ export async function appendClaimSummaryPdf(
     doc
       .moveTo(50, doc.y)
       .lineTo(545, doc.y)
-      .strokeColor('#333333')
+      .strokeColor(STAFF.text)
       .lineWidth(1)
       .stroke()
       .moveDown(0.8)
@@ -211,7 +212,7 @@ export async function appendClaimSummaryPdf(
     doc
       .fontSize(9)
       .font('Helvetica')
-      .fillColor('#666666')
+      .fillColor(STAFF.textMuted)
       .text('Supporting documents included in this bundle:', { continued: false })
       .moveDown(0.3)
 
@@ -230,7 +231,7 @@ export async function appendClaimSummaryPdf(
       doc.text(`  \u2022 ${docName}`)
     }
 
-    doc.fillColor('#000000')
+    doc.fillColor(STAFF.text)
 
     // ---- Detail pages ----
 
@@ -345,8 +346,8 @@ function drawTable(doc: PDFKit.PDFDocument, options: TableOptions): void {
   function drawHeaderRow(): void {
     const y = doc.y
     // Header background
-    doc.rect(startX, y, pageWidth, headerHeight).fill('#f3f4f6')
-    doc.fillColor('#374151').fontSize(8).font('Helvetica-Bold')
+    doc.rect(startX, y, pageWidth, headerHeight).fill(STAFF.surfaceHover)
+    doc.fillColor(STAFF.text).fontSize(8).font('Helvetica-Bold')
 
     let x = startX
     for (const col of columns) {
@@ -357,7 +358,7 @@ function drawTable(doc: PDFKit.PDFDocument, options: TableOptions): void {
     }
 
     doc.y = y + headerHeight
-    doc.fillColor('#000000')
+    doc.fillColor(STAFF.text)
   }
 
   drawHeaderRow()
@@ -380,7 +381,7 @@ function drawTable(doc: PDFKit.PDFDocument, options: TableOptions): void {
     doc
       .moveTo(startX, y)
       .lineTo(startX + pageWidth, y)
-      .strokeColor('#e5e7eb')
+      .strokeColor(STAFF.border)
       .lineWidth(0.5)
       .stroke()
 
@@ -389,7 +390,7 @@ function drawTable(doc: PDFKit.PDFDocument, options: TableOptions): void {
       const cellValue = row[i] ?? ''
       const textX = col.align === 'right' ? x : x + 4
       const textW = col.align === 'right' ? col.width - 4 : col.width - 8
-      doc.fillColor('#000000').text(cellValue, textX, y + 4, { width: textW, align: col.align })
+      doc.fillColor(STAFF.text).text(cellValue, textX, y + 4, { width: textW, align: col.align })
       x += col.width
     }
 
@@ -402,7 +403,7 @@ function drawTable(doc: PDFKit.PDFDocument, options: TableOptions): void {
     doc
       .moveTo(startX, y)
       .lineTo(startX + pageWidth, y)
-      .strokeColor('#374151')
+      .strokeColor(STAFF.text)
       .lineWidth(1)
       .stroke()
 
@@ -414,7 +415,7 @@ function drawTable(doc: PDFKit.PDFDocument, options: TableOptions): void {
       const cellValue = totalRow[i] ?? ''
       const textX = col.align === 'right' ? x : x + 4
       const textW = col.align === 'right' ? col.width - 4 : col.width - 8
-      doc.fillColor('#000000').text(cellValue, textX, y + 4, { width: textW, align: col.align })
+      doc.fillColor(STAFF.text).text(cellValue, textX, y + 4, { width: textW, align: col.align })
       x += col.width
     }
 

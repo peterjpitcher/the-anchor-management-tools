@@ -1,5 +1,6 @@
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { escapeHtml } from '@/lib/cron/alerting'
+import { STAFF } from '@/lib/brand/palette'
 import {
   renderDocumentFooter,
   renderDocumentHead,
@@ -38,11 +39,11 @@ function formatDate(dateStr: string): string {
 const BODY_CSS = `
     .record-meta {
       font-size: 8pt;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
     }
 
     .record-meta strong {
-      color: #111827;
+      color: ${STAFF.text};
     }
 
     .lede {
@@ -54,7 +55,7 @@ const BODY_CSS = `
       font-size: 9pt;
       text-transform: uppercase;
       letter-spacing: 0.3px;
-      color: #111827;
+      color: ${STAFF.textStrong};
       margin: 12px 0 5px 0;
     }
 
@@ -73,20 +74,20 @@ const BODY_CSS = `
     }
 
     table.grid th {
-      background: #f3f4f6;
+      background: ${STAFF.surfaceHover};
       padding: 4px 6px;
       text-align: left;
       font-size: 7pt;
       font-weight: 600;
-      color: #374151;
-      border-bottom: 2px solid #d1d5db;
+      color: ${STAFF.text};
+      border-bottom: 2px solid ${STAFF.borderStrong};
       text-transform: uppercase;
       letter-spacing: 0.3px;
     }
 
     table.grid td {
       padding: 4px 6px;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid ${STAFF.border};
       font-size: 8pt;
       vertical-align: top;
       word-break: break-word;
@@ -100,7 +101,7 @@ const BODY_CSS = `
 
     .split-note {
       display: block;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
       font-size: 7pt;
     }
 
@@ -113,13 +114,13 @@ const BODY_CSS = `
       font-size: 8.5pt;
       margin: 0 0 4px 0;
       padding-bottom: 3px;
-      border-bottom: 1px solid #e5e7eb;
-      color: #111827;
+      border-bottom: 1px solid ${STAFF.border};
+      color: ${STAFF.textStrong};
     }
 
     .invoice-block h3 span {
       font-weight: 400;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
     }
 
     .closing {
@@ -139,13 +140,13 @@ const BODY_CSS = `
     }
 
     .closing tr.total td {
-      border-top: 1px solid #d1d5db;
+      border-top: 1px solid ${STAFF.borderStrong};
       font-weight: 700;
     }
 
     .note {
       font-size: 7.5pt;
-      color: #6b7280;
+      color: ${STAFF.textMuted};
       margin: 4px 0 10px 0;
     }
 
