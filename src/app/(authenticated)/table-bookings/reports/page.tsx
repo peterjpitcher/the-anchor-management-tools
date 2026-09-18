@@ -115,7 +115,7 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
                     key={option.key}
                     href={`/table-bookings/reports?window=${option.key}`}
                     aria-current={active ? 'page' : undefined}
-                    className={`inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-xs transition max-[820px]:min-h-[44px] ${
+                    className={`inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-xs transition max-shell:min-h-[44px] ${
                       active
                         ? 'border-blue-600 bg-blue-50 font-semibold text-blue-700'
                         : 'font-medium border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:text-gray-800'

@@ -25,7 +25,7 @@ export default async function NewLeaveRequestPage() {
         <p className="text-sm text-gray-500 mt-1">Select the dates you&apos;d like to request off.</p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
         <LeaveRequestForm employeeId={employee.employee_id} />
       </div>
     </div>

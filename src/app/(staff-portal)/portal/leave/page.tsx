@@ -79,13 +79,13 @@ export default async function MyLeavePage() {
       </div>
 
       {loadErrors.length > 0 && (
-        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {loadErrors.join(' ')}
         </div>
       )}
 
       {/* Days used */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
         <div className="flex items-center justify-between text-sm">
           <span className="font-medium text-gray-800">
             {holidayYear}/{String(holidayYear + 1).slice(2)} holiday taken
@@ -107,7 +107,7 @@ export default async function MyLeavePage() {
           {requests.map((req: LeaveRequest) => {
             const days = daysBetween(req.start_date, req.end_date);
             return (
-              <div key={req.id} className="bg-white border border-gray-200 rounded-xl p-4">
+              <div key={req.id} className="bg-white border border-gray-200 rounded-lg p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-medium text-gray-900">

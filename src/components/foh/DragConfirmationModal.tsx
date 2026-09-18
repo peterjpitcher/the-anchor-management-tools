@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { Button } from '@/ds'
 import type { PendingMove } from '@/app/(authenticated)/table-bookings/foh/useFohDrag'
 
 interface DragConfirmationModalProps {
@@ -53,44 +54,34 @@ export function DragConfirmationModal({
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-overlay"
         onClick={onCancel}
         aria-hidden="true"
       />
 
       {/* Modal */}
-      <div className="relative z-10 w-full max-w-sm rounded-lg bg-[hsl(var(--card))] p-6 shadow-xl">
+      <div className="relative z-10 w-full max-w-sm rounded-lg bg-surface p-6 shadow-lg">
         <h2
           id="drag-confirm-title"
-          className="mb-3 text-lg font-semibold text-[hsl(var(--foreground))]"
+          className="mb-3 text-lg font-semibold text-text-strong"
         >
           {title}
         </h2>
 
-        <p className="mb-5 text-sm text-[hsl(var(--muted-foreground))]">{message}</p>
+        <p className="mb-5 text-sm text-text-muted">{message}</p>
 
         <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isSubmitting}
-            className="rounded px-4 py-2 text-sm font-medium text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          <Button type="button" variant="ghost" size="lg" onClick={onCancel} disabled={isSubmitting}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isSubmitting}
-            className="rounded bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          </Button>
+          <Button type="button" variant="primary" size="lg" onClick={onConfirm} disabled={isSubmitting}>
             {isSubmitting ? 'Moving…' : 'Confirm'}
-          </button>
+          </Button>
         </div>
 
         {error && (
           <p
-            className="mt-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
+            className="mt-4 rounded-sm border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger-fg"
             role="alert"
           >
             {error}

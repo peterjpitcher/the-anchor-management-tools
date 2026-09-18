@@ -47,7 +47,7 @@ export function Switch({
         onClick={() => onChange(!checked)}
         className={cn(
           'inline-flex shrink-0 items-center justify-center rounded-default',
-          'max-[820px]:h-11 max-[820px]:w-11',
+          'max-shell:h-11 max-shell:w-11',
           'focus-visible:outline-none focus-visible:shadow-ring',
         )}
       >
