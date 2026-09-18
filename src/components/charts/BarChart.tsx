@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { resolveColour, resolveToken } from '@/ds/tokens';
 
 interface DataPoint {
   label: string;
@@ -23,7 +24,7 @@ interface BarChartProps {
 export function BarChart({
   data,
   height = 300,
-  color = '#3B82F6',
+  color = 'var(--color-chart-1)',
   showGrid = true,
   showValues = true,
   horizontal = false,
@@ -71,6 +72,14 @@ export function BarChart({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Canvas cannot read CSS variables, so resolve the tokens once per draw.
+    const palette = {
+      grid: resolveToken('--color-border'),
+      axis: resolveToken('--color-text-muted'),
+      value: resolveToken('--color-text'),
+      target: resolveToken('--color-text-subtle'),
+    };
+
     // Set canvas size
     const rect = canvas.getBoundingClientRect();
     canvas.width = rect.width * window.devicePixelRatio;
@@ -114,7 +123,7 @@ export function BarChart({
 
     // Draw grid
     if (showGrid) {
-      ctx.strokeStyle = '#E5E7EB';
+      ctx.strokeStyle = palette.grid;
       ctx.lineWidth = 1;
 
       if (horizontal) {
@@ -137,7 +146,7 @@ export function BarChart({
           ctx.lineTo(padding.left + chartWidth, y);
           ctx.stroke();
           // Also draw Y-axis value labels
-          ctx.fillStyle = '#6B7280';
+          ctx.fillStyle = palette.axis;
           ctx.font = '12px sans-serif';
           ctx.textAlign = 'right';
           ctx.textBaseline = 'middle';
@@ -147,7 +156,7 @@ export function BarChart({
     }
 
     // Draw axes
-    ctx.strokeStyle = '#6B7280';
+    ctx.strokeStyle = palette.axis;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(padding.left, padding.top);
@@ -156,7 +165,7 @@ export function BarChart({
     ctx.stroke();
 
     // Draw axis labels
-    ctx.fillStyle = '#6B7280';
+    ctx.fillStyle = palette.axis;
     ctx.font = '12px sans-serif';
 
     if (horizontal) {
@@ -209,7 +218,7 @@ export function BarChart({
 
     data.forEach((item, index) => {
       // Draw bars
-      const barColor = item.color || color;
+      const barColor = resolveColour(item.color || color);
       ctx.fillStyle = barColor;
 
       if (horizontal) {
@@ -232,7 +241,7 @@ export function BarChart({
 
         // Draw value
         if (shouldShowValues) {
-          ctx.fillStyle = '#374151';
+          ctx.fillStyle = palette.value;
           ctx.font = '12px sans-serif';
           ctx.textAlign = item.value < 0 ? 'right' : 'left'; // Align to bar end
           ctx.textBaseline = 'middle';
@@ -245,7 +254,7 @@ export function BarChart({
 
         // Draw target line
         if (item.targetLineValue !== undefined && item.targetLineValue !== null) {
-          ctx.strokeStyle = '#9CA3AF'; // Light grey
+          ctx.strokeStyle = palette.target;
           ctx.lineWidth = 1;
           ctx.setLineDash([2, 2]); // Dashed line
           
@@ -279,7 +288,7 @@ export function BarChart({
 
         // Draw value
         if (shouldShowValues) {
-          ctx.fillStyle = '#374151';
+          ctx.fillStyle = palette.value;
           ctx.font = '12px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = item.value < 0 ? 'top' : 'bottom'; // Align to bar end
@@ -292,7 +301,7 @@ export function BarChart({
 
         // Draw target line
         if (item.targetLineValue !== undefined && item.targetLineValue !== null) {
-          ctx.strokeStyle = '#9CA3AF'; // Light grey
+          ctx.strokeStyle = palette.target;
           ctx.lineWidth = 1;
           ctx.setLineDash([2, 2]); // Dashed line
           

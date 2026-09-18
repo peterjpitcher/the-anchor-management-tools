@@ -66,7 +66,39 @@ export default function RootLayout({
       <body className="font-sans antialiased" suppressHydrationWarning>
         <ServiceWorkerCleanup />
         <ChunkErrorReloader deploymentVersion={getDeploymentVersion()} />
-        <Toaster position="top-right" />
+        {/* Matches the DS toast (src/ds/primitives/Toast.tsx) so direct react-hot-toast calls
+            look the same as toast.success() from @/ds. */}
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            style: {
+              borderRadius: 'var(--radius-default)',
+              padding: '12px 14px',
+              fontSize: '0.875rem',
+              maxWidth: '28rem',
+              background: 'var(--color-surface)',
+              color: 'var(--color-text)',
+              border: '1px solid var(--color-border)',
+              boxShadow: 'var(--shadow-lg)',
+            },
+            success: {
+              style: {
+                background: 'var(--color-success-soft)',
+                color: 'var(--color-success-fg)',
+                border: '1px solid var(--color-success-border)',
+              },
+              iconTheme: { primary: 'var(--color-success)', secondary: 'var(--color-surface)' },
+            },
+            error: {
+              style: {
+                background: 'var(--color-danger-soft)',
+                color: 'var(--color-danger-fg)',
+                border: '1px solid var(--color-danger-border)',
+              },
+              iconTheme: { primary: 'var(--color-danger)', secondary: 'var(--color-surface)' },
+            },
+          }}
+        />
         <SupabaseProvider>{children}</SupabaseProvider>
       </body>
     </html>
