@@ -24,18 +24,18 @@ export function statusLabel(status: VoucherStatus): string {
 export function statusPillClass(status: VoucherStatus): string {
   switch (status) {
     case 'generated':
-      return 'bg-gray-100 text-gray-800 border border-gray-300'
+      return 'bg-surface-hover text-text border border-border-strong'
     case 'issued':
-      return 'bg-green-100 text-green-900 border border-green-300'
+      return 'bg-success-soft text-green-900 border border-green-300'
     case 'redeemed':
       return 'bg-slate-200 text-slate-800 border border-slate-300'
     case 'expired':
-      return 'bg-red-100 text-red-900 border border-red-300'
+      return 'bg-danger-soft text-danger-fg border border-red-300'
     case 'cancelled':
-      return 'bg-red-100 text-red-900 border border-red-300'
+      return 'bg-danger-soft text-danger-fg border border-red-300'
     case 'replaced':
-      return 'bg-amber-100 text-amber-900 border border-amber-300'
+      return 'bg-amber-100 text-warning-fg border border-amber-300'
     default:
-      return 'bg-gray-100 text-gray-800 border border-gray-300'
+      return 'bg-surface-hover text-text border border-border-strong'
   }
 }

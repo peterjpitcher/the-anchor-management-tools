@@ -300,7 +300,7 @@ export function ProfileClient() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[13px] font-medium text-text-strong">Password</p>
+                    <p className="text-ui font-medium text-text-strong">Password</p>
                     <p className="text-xs text-text-muted">Change your account password</p>
                   </div>
                   <Button
@@ -322,7 +322,7 @@ export function ProfileClient() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[13px] font-medium text-text-strong">SMS Notifications</p>
+                    <p className="text-ui font-medium text-text-strong">SMS Notifications</p>
                     <p className="text-xs text-text-muted">Receive booking confirmations and reminders via SMS</p>
                   </div>
                   <Switch
@@ -333,7 +333,7 @@ export function ProfileClient() {
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[13px] font-medium text-text-strong">Email Notifications</p>
+                    <p className="text-ui font-medium text-text-strong">Email Notifications</p>
                     <p className="text-xs text-text-muted">Receive updates and newsletters via email</p>
                   </div>
                   <Switch

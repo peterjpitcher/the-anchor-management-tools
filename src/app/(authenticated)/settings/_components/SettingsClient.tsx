@@ -215,7 +215,7 @@ function GeneralSection({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[13px] font-medium text-text-strong">Online Bookings</p>
+                <p className="text-ui font-medium text-text-strong">Online Bookings</p>
                 <p className="text-xs text-text-muted">Accept table bookings from the website</p>
               </div>
               <Switch
@@ -226,7 +226,7 @@ function GeneralSection({
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[13px] font-medium text-text-strong">SMS Notifications</p>
+                <p className="text-ui font-medium text-text-strong">SMS Notifications</p>
                 <p className="text-xs text-text-muted">Send automatic SMS confirmations</p>
               </div>
               <Switch
@@ -237,7 +237,7 @@ function GeneralSection({
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[13px] font-medium text-text-strong">Auto-Confirm Bookings</p>
+                <p className="text-ui font-medium text-text-strong">Auto-Confirm Bookings</p>
                 <p className="text-xs text-text-muted">Automatically confirm new bookings</p>
               </div>
               <Switch
@@ -373,7 +373,7 @@ function GeneralSection({
                   <Icon name={item.icon} size={18} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[13px] font-semibold text-text-strong">{item.title}</span>
+                  <span className="block text-ui font-semibold text-text-strong">{item.title}</span>
                   <span className="block text-xs leading-5 text-text-muted">{item.description}</span>
                 </span>
               </Link>
@@ -394,7 +394,7 @@ function GeneralSection({
               <Icon name="palette" size={20} className="text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold text-text-strong group-hover:text-primary transition-colors">
+              <p className="text-ui font-semibold text-text-strong group-hover:text-primary transition-colors">
                 Design System
               </p>
               <p className="text-xs text-text-muted">

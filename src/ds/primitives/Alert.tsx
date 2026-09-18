@@ -1,4 +1,9 @@
+'use client'
+
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import { Icon } from '../icons'
+import { IconButton } from './IconButton'
 
 type AlertTone = 'success' | 'warning' | 'danger' | 'info'
 
@@ -14,11 +19,11 @@ interface AlertProps {
   icon?: React.ReactNode
   children?: React.ReactNode
   className?: string
-  /** @deprecated Accepted for backward compatibility */
+  /** Shows a Dismiss button at the top right. */
   closable?: boolean
-  /** @deprecated Accepted for backward compatibility */
+  /** Called by the Dismiss button. Without it the alert hides itself. */
   onClose?: () => void
-  /** @deprecated Accepted for backward compatibility */
+  /** `sm` is a compact banner (13px text, tighter padding). Any other value keeps the default size. */
   size?: string
 }
 
@@ -37,13 +42,28 @@ const variantToTone: Record<string, AlertTone> = {
   info: 'info',
 }
 
-export function Alert({ tone, variant, title, description, actions, icon, children, className, closable: _closable, onClose: _onClose, size: _size }: AlertProps) {
+export function Alert({ tone, variant, title, description, actions, icon, children, className, closable = false, onClose, size }: AlertProps) {
+  const [dismissed, setDismissed] = useState(false)
+  if (dismissed) return null
+
   const resolvedTone: AlertTone = tone ?? variantToTone[variant ?? ''] ?? 'info'
   const content = children ?? description
+  const small = size === 'sm'
+  const textSize = small ? 'text-ui' : 'text-sm'
+
+  const handleClose = () => {
+    if (onClose) {
+      onClose()
+    } else {
+      setDismissed(true)
+    }
+  }
+
   return (
     <div
       className={cn(
-        'flex gap-3 border-l-4 rounded-default p-4',
+        'flex gap-3 border-l-4 rounded-default',
+        small ? 'px-3 py-2' : 'p-4',
         toneStyles[resolvedTone],
         className
       )}
@@ -55,10 +75,22 @@ export function Alert({ tone, variant, title, description, actions, icon, childr
         </span>
       )}
       <div className="flex-1 min-w-0">
-        {title && <p className="font-bold text-sm">{title}</p>}
-        {content && <div className={cn('text-sm', title && 'mt-1')}>{content}</div>}
+        {title && <p className={cn('font-bold', textSize)}>{title}</p>}
+        {content && <div className={cn(textSize, title && 'mt-1')}>{content}</div>}
         {actions && <div className="mt-2">{actions}</div>}
       </div>
+      {closable && (
+        // type="button" so dismissing an alert inside a form never submits it.
+        // text-current draws the cross in the alert's own tone colour.
+        <IconButton
+          type="button"
+          size="sm"
+          label="Dismiss"
+          icon={<Icon name="x" size={14} />}
+          onClick={handleClose}
+          className="-my-1 -mr-1 shrink-0 self-start text-current"
+        />
+      )}
     </div>
   )
 }

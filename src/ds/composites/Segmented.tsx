@@ -39,7 +39,7 @@ export function Segmented({ options, value, onChange, size = 'md', className }: 
             role="radio"
             aria-checked={isActive}
             className={cn(
-              'text-[13px] font-medium rounded-[6px] transition-all duration-150',
+              'text-ui font-medium rounded-sm transition-all duration-150 focus-visible:outline-hidden focus-visible:shadow-ring',
               size === 'sm' ? 'px-2 py-0.5' : 'px-3 py-1',
               isActive
                 ? 'bg-surface text-text shadow-sm'

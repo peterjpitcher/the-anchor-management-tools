@@ -177,7 +177,7 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
 
         {emailOption && (
           <fieldset className="space-y-2">
-            <legend className="text-[13px] font-medium text-text mb-1">Send by</legend>
+            <legend className="text-ui font-medium text-text mb-1">Send by</legend>
             <Radio
               name="message-guests-channel"
               value="email_first"

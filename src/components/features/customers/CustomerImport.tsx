@@ -292,43 +292,43 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
         <>
           <div className="mb-4">
             <h3 className="text-lg font-medium">Preview Import</h3>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-text-muted">
               Review the data before importing. Invalid records will be skipped.
             </p>
           </div>
 
-          <div className="overflow-hidden shadow ring-1 ring-black/5 md:rounded-lg mb-6">
+          <div className="overflow-hidden shadow-sm ring-1 ring-black/5 md:rounded-lg mb-6">
             <DataTable<ParsedCustomer>
               data={parsedData}
               getRowKey={(row: ParsedCustomer) => parsedData.indexOf(row)}
               emptyMessage="No rows to preview"
               columns={[
-                { key: 'first_name', header: 'First Name', cell: (c: ParsedCustomer) => <span className="text-sm text-gray-900">{c.first_name}</span> },
-                { key: 'last_name', header: 'Last Name', cell: (c: ParsedCustomer) => <span className="text-sm text-gray-900">{c.last_name || '-'}</span> },
-                { key: 'email', header: 'Email', cell: (c: ParsedCustomer) => <span className="text-sm text-gray-900">{c.email || '-'}</span> },
-                { key: 'mobile_number', header: 'Mobile Number', cell: (c: ParsedCustomer) => <span className="text-sm text-gray-900">{c.mobile_number}</span> },
+                { key: 'first_name', header: 'First Name', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.first_name}</span> },
+                { key: 'last_name', header: 'Last Name', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.last_name || '-'}</span> },
+                { key: 'email', header: 'Email', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.email || '-'}</span> },
+                { key: 'mobile_number', header: 'Mobile Number', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.mobile_number}</span> },
                 { key: 'status', header: 'Status', cell: (c: ParsedCustomer) => (
                   c.isValid ? (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Valid</span>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success-soft text-green-800">Valid</span>
                   ) : c.isDuplicate ? (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" title={(c.errors||[]).join(', ')}>Duplicate</span>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-warning-fg" title={(c.errors||[]).join(', ')}>Duplicate</span>
                   ) : (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800" title={(c.errors||[]).join(', ')}>Invalid</span>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-danger-soft text-danger-fg" title={(c.errors||[]).join(', ')}>Invalid</span>
                   )
                 ) },
               ]}
               renderMobileCard={(c: ParsedCustomer) => (
-                <div className={`${c.isDuplicate ? 'bg-yellow-50' : !c.isValid ? 'bg-red-50' : ''} p-3` }>
+                <div className={`${c.isDuplicate ? 'bg-warning-soft' : !c.isValid ? 'bg-danger-soft' : ''} p-3` }>
                   <div className="font-medium text-sm">{c.first_name} {c.last_name || '-'}</div>
-                  <div className="text-sm text-gray-600">{c.mobile_number}</div>
-                  {c.email && <div className="text-sm text-gray-500">{c.email}</div>}
+                  <div className="text-sm text-text-muted">{c.mobile_number}</div>
+                  {c.email && <div className="text-sm text-text-muted">{c.email}</div>}
                   <div className="mt-2">
                     {c.isValid ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Valid</span>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success-soft text-green-800">Valid</span>
                     ) : c.isDuplicate ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" title={(c.errors||[]).join(', ')}>Duplicate</span>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-warning-fg" title={(c.errors||[]).join(', ')}>Duplicate</span>
                     ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800" title={(c.errors||[]).join(', ')}>Invalid</span>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-danger-soft text-danger-fg" title={(c.errors||[]).join(', ')}>Invalid</span>
                     )}
                   </div>
                 </div>
@@ -354,7 +354,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
         </>
       ) : (
         <div className="text-center py-12">
-            <p className="text-gray-500">
+            <p className="text-text-muted">
                 Upload a CSV file to begin importing customers.
             </p>
         </div>

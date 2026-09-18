@@ -25,7 +25,7 @@ interface RevenueChartProps {
 const defaultValueFormatter = (value: number): string => `£${value.toLocaleString()}`
 
 const GREEN = 'var(--color-primary)'
-const RED = '#ef4444'
+const RED = 'var(--color-danger)'
 
 /**
  * Custom bar shape: coloured bar + a target marker line.
@@ -85,7 +85,7 @@ function BarWithTargetLine(props: {
           x2={x + width + 3}
           y1={targetY}
           y2={targetY}
-          stroke="#1e293b"
+          stroke="var(--color-text)"
           strokeWidth={2}
           strokeDasharray="4 2"
           opacity={0.55}
@@ -118,10 +118,10 @@ function ChartTooltipContent({ active, payload, label, valueFormatter = defaultV
       </div>
       {target > 0 && (
         <div className="flex items-center gap-1.5 mt-1">
-          <span className="inline-block w-2 shrink-0 border-t-2 border-dashed border-slate-700 opacity-60" />
+          <span className="inline-block w-2 shrink-0 border-t-2 border-dashed border-text opacity-60" />
           <span className="text-text-muted">
             Target: {valueFormatter(target)}
-            {metTarget && <span className="text-green-600 ml-1">✓</span>}
+            {metTarget && <span className="text-success-fg ml-1">✓</span>}
           </span>
         </div>
       )}

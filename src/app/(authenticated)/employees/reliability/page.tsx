@@ -87,13 +87,13 @@ export default async function EmployeeReliabilityLeaderboardPage({ searchParams 
           <div className="flex items-center gap-2">
             <Link
               href={includeFormer ? '/employees/reliability' : '/employees/reliability?includeFormer=1'}
-              className="inline-flex h-[var(--spacing-btn-h-sm)] items-center justify-center rounded-[7px] border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text hover:bg-surface-hover"
+              className="inline-flex h-btn-h-sm items-center justify-center rounded-[7px] border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text hover:bg-surface-hover"
             >
               {includeFormer ? 'Active only' : 'Include former'}
             </Link>
             <Link
               href="/employees"
-              className="inline-flex h-[var(--spacing-btn-h-sm)] items-center justify-center rounded-[7px] border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text hover:bg-surface-hover"
+              className="inline-flex h-btn-h-sm items-center justify-center rounded-[7px] border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text hover:bg-surface-hover"
             >
               Back to employees
             </Link>

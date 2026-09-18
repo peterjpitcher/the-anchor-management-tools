@@ -131,25 +131,25 @@ export default function PaymentHistoryTable({
   return (
     <>
       {/* Summary section — always rendered regardless of payments.length */}
-      <div className="rounded-md border border-gray-200 bg-gray-50 p-3 mb-3 text-xs">
-        <div className="flex justify-between text-gray-600">
+      <div className="rounded-md border border-border bg-surface-2 p-3 mb-3 text-xs">
+        <div className="flex justify-between text-text-muted">
           <span>Total</span>
           <span className="font-medium">{formatCurrency(totalAmount)}</span>
         </div>
-        <div className="flex justify-between text-gray-600 mt-1">
+        <div className="flex justify-between text-text-muted mt-1">
           <span>Paid to date</span>
           <span className="font-medium">{formatCurrency(paidToDate)}</span>
         </div>
-        <div className="flex justify-between mt-1 font-semibold text-gray-800">
+        <div className="flex justify-between mt-1 font-semibold text-text">
           <span>Outstanding</span>
           <span>{formatCurrency(outstanding)}</span>
         </div>
       </div>
 
-      <p className="text-xs font-medium text-gray-500 mb-2">Payment history</p>
+      <p className="text-xs font-medium text-text-muted mb-2">Payment history</p>
 
       {error && (
-        <p className="text-xs text-red-600 mb-2">{error}</p>
+        <p className="text-xs text-danger mb-2">{error}</p>
       )}
 
       {payments.length === 0 ? (
@@ -165,7 +165,7 @@ export default function PaymentHistoryTable({
               return (
                 <div
                   key={entry.id}
-                  className="rounded-md border border-gray-200 bg-gray-50 p-2 space-y-2"
+                  className="rounded-md border border-border bg-surface-2 p-2 space-y-2"
                 >
                   <div className="flex gap-2">
                     <div className="flex-1">
@@ -186,7 +186,7 @@ export default function PaymentHistoryTable({
                     <div className="flex-1">
                       {/* PayPal deposit: read-only; non-PayPal deposit or balance: select without PayPal */}
                       {isPayPalDeposit ? (
-                        <span className="flex items-center h-full text-xs text-gray-700 px-2">PayPal</span>
+                        <span className="flex items-center h-full text-xs text-text px-2">PayPal</span>
                       ) : (
                         <Select
                           value={editValues.method}
@@ -236,7 +236,7 @@ export default function PaymentHistoryTable({
             return (
               <div
                 key={entry.id}
-                className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-gray-600"
+                className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-text-muted"
               >
                 <span className="min-w-0">
                   {formatDateInLondon(entry.date, { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -255,7 +255,7 @@ export default function PaymentHistoryTable({
                       <button
                         type="button"
                         onClick={() => startEdit(entry)}
-                        className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
+                        className="text-gray-400 hover:text-text-muted focus:outline-none focus:ring-1 focus:ring-gray-400 rounded-sm"
                         aria-label={`Edit ${entry.type} payment`}
                         disabled={isLocked}
                       >
@@ -268,7 +268,7 @@ export default function PaymentHistoryTable({
                           setEditingId(null)
                           setError(null)
                         }}
-                        className="text-gray-400 hover:text-red-600 focus:outline-none focus:ring-1 focus:ring-red-400 rounded"
+                        className="text-gray-400 hover:text-danger focus:outline-none focus:ring-1 focus:ring-red-400 rounded-sm"
                         aria-label={`Delete ${entry.type} payment`}
                         disabled={isLocked}
                       >

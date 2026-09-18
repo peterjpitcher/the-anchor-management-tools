@@ -21,11 +21,11 @@ export default async function NewLeaveRequestPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-semibold text-gray-900">Request Holiday</h2>
-        <p className="text-sm text-gray-500 mt-1">Select the dates you&apos;d like to request off.</p>
+        <h2 className="text-xl font-semibold text-text">Request Holiday</h2>
+        <p className="text-sm text-text-muted mt-1">Select the dates you&apos;d like to request off.</p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="bg-surface rounded-lg border border-border p-4">
         <LeaveRequestForm employeeId={employee.employee_id} />
       </div>
     </div>

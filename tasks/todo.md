@@ -885,3 +885,23 @@ Changed files for this request: src/lib/events/imageVariants.ts; src/lib/events/
 Deliberately unchanged: print-sheet.ts and print-sheet.test.ts retain the existing panel geometry; ArtworkBrandingModal.tsx already reads the shared shadow settings. Other work in the original checkout is untouched.
 
 Checks passed: zero-warning lint, uncached typecheck, 788 test files (7,144 passing tests, 2 skipped) in both Europe/London and UTC, and a cold production build.
+
+## Marketing historical opening-times preview, 18 September 2026
+
+- [x] Confirm the live preview failure and trace the removed block.
+- [x] Restore the historical renderer and regression coverage without changing campaign data.
+- [x] Run lint, types, tests and production build.
+- [ ] Merge, deploy and verify the affected campaign on production.
+
+Scope: one compatibility restoration; no database migration or campaign sends.
+
+Validation: Node 20.19.5; lint and typecheck passed; London and UTC each passed 955 files and 8,985 tests (two existing skips); production build exited 0. Marketing subset: 278 tests passed.
+# Private booking page layout, 18 September 2026
+
+- [x] Move Quick Booking Update to the top of the right column.
+- [x] Move Audit Trail below both columns and remove Workflow Status from this page.
+- [ ] Verify checks, deploy and inspect the live booking page.
+
+Scope: page layout plus the separately approved zero-cost item migration. Website and booking actions are unchanged.
+
+Zero-cost migration applied to production project tfcasgxopxegwrabvwat as 20260918122623 (local file 20260918075730), SHA-256 2421d672bcd2d504a74deda7a02efaed17cb10c4de5937e2673af2040fc66de6. Rolled-back production fixture passed free-item insert, edit and deletion and rejected charged insert and edit. Function definition and restricted grants verified; all nine anon-surface checks passed. Rollback file restores the original guard.

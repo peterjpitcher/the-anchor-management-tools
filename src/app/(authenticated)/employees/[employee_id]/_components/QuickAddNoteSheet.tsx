@@ -62,7 +62,7 @@ export function QuickAddNoteSheet({ employeeId, className }: QuickAddNoteSheetPr
               autoFocus
             />
             {state?.errors?.note_text && (
-              <p className="mt-1 text-sm text-red-600">{state.errors.note_text}</p>
+              <p className="mt-1 text-sm text-danger">{state.errors.note_text}</p>
             )}
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

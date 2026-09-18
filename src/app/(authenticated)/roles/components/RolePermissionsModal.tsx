@@ -140,7 +140,7 @@ export default function RolePermissionsModal({
           {Object.entries(groupedPermissions).map(([module, permissions]) => (
             <Card key={module} padding="sm">
               <div className="flex items-center justify-between mb-3">
-                <h4 className="font-medium text-gray-900 capitalize">
+                <h4 className="font-medium text-text capitalize">
                   {module.replace('_', ' ')}
                 </h4>
                 <Button
@@ -171,7 +171,7 @@ export default function RolePermissionsModal({
       )}
       
       {(role.is_system || !canManage) && (
-        <p className="mt-4 text-sm text-gray-500 text-center">
+        <p className="mt-4 text-sm text-text-muted text-center">
           {role.is_system
             ? 'System roles cannot be modified.'
             : 'You do not have permission to change role permissions.'}

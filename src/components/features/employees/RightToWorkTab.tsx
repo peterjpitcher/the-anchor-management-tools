@@ -210,11 +210,11 @@ export default function RightToWorkTab({
       {rightToWorkData && (
         <div className="space-y-3">
           {isExpired && (
-            <div className="rounded-md bg-red-50 p-4">
+            <div className="rounded-md bg-danger-soft p-4">
               <div className="flex">
                 <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
                 <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">Document Expired</h3>
+                  <h3 className="text-sm font-medium text-danger-fg">Document Expired</h3>
                   <p className="mt-1 text-sm text-red-700">
                     This document expired on{' '}
                     {formatDateInLondon(rightToWorkData.document_expiry_date!)}.
@@ -226,12 +226,12 @@ export default function RightToWorkTab({
           )}
 
           {isExpiringSoon && (
-            <div className="rounded-md bg-yellow-50 p-4">
+            <div className="rounded-md bg-warning-soft p-4">
               <div className="flex">
                 <Clock className="h-5 w-5 text-yellow-400 flex-shrink-0" />
                 <div className="ml-3">
-                  <h3 className="text-sm font-medium text-yellow-800">Document Expiring Soon</h3>
-                  <p className="mt-1 text-sm text-yellow-700">
+                  <h3 className="text-sm font-medium text-warning-fg">Document Expiring Soon</h3>
+                  <p className="mt-1 text-sm text-warning-fg">
                     This document expires on{' '}
                     {formatDateInLondon(rightToWorkData.document_expiry_date!)}.
                     Please obtain updated documentation before expiry.
@@ -242,11 +242,11 @@ export default function RightToWorkTab({
           )}
 
           {isFollowUpDue && (
-            <div className="rounded-md bg-red-50 p-4">
+            <div className="rounded-md bg-danger-soft p-4">
               <div className="flex">
                 <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
                 <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">Follow-up Required</h3>
+                  <h3 className="text-sm font-medium text-danger-fg">Follow-up Required</h3>
                   <p className="mt-1 text-sm text-red-700">
                     A follow-up check was due on{' '}
                     {formatDateInLondon(rightToWorkData.follow_up_date!)}.
@@ -257,7 +257,7 @@ export default function RightToWorkTab({
           )}
 
           {rightToWorkData.document_type && !isExpired && !isExpiringSoon && !isFollowUpDue && (
-            <div className="rounded-md bg-green-50 p-4">
+            <div className="rounded-md bg-success-soft p-4">
               <div className="flex">
                 <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0" />
                 <div className="ml-3">
@@ -273,7 +273,7 @@ export default function RightToWorkTab({
       )}
 
       {!canEdit && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-text-muted">
           You do not have permission to update right to work information.
         </p>
       )}
@@ -282,7 +282,7 @@ export default function RightToWorkTab({
         <input type="hidden" name="employee_id" value={employeeId} />
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="check_method" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="check_method" className="block text-sm font-medium text-text sm:col-span-1">
             Check Method
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -291,7 +291,7 @@ export default function RightToWorkTab({
               name="check_method"
               defaultValue={rightToWorkData?.check_method ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
+              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
             >
               <option value="">Select check method</option>
               <option value="manual">Manual check (original documents)</option>
@@ -302,8 +302,8 @@ export default function RightToWorkTab({
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_type" className="block text-sm font-medium text-gray-700 sm:col-span-1">
-            Document Type <span className="text-red-500">*</span>
+          <label htmlFor="document_type" className="block text-sm font-medium text-text sm:col-span-1">
+            Document Type <span className="text-danger">*</span>
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
             <select
@@ -311,7 +311,7 @@ export default function RightToWorkTab({
               name="document_type"
               defaultValue={rightToWorkData?.document_type ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
+              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
               required
             >
               <option value="" disabled>
@@ -327,8 +327,8 @@ export default function RightToWorkTab({
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="verification_date" className="block text-sm font-medium text-gray-700 sm:col-span-1">
-            Verification Date <span className="text-red-500">*</span>
+          <label htmlFor="verification_date" className="block text-sm font-medium text-text sm:col-span-1">
+            Verification Date <span className="text-danger">*</span>
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
             <input
@@ -337,14 +337,14 @@ export default function RightToWorkTab({
               name="verification_date"
               defaultValue={rightToWorkData?.verification_date?.split('T')[0] ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
+              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
               required
             />
           </div>
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_reference" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="document_reference" className="block text-sm font-medium text-text sm:col-span-1">
             Document Reference
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -354,13 +354,13 @@ export default function RightToWorkTab({
               name="document_reference"
               defaultValue={rightToWorkData?.document_reference ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
+              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
             />
           </div>
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_expiry_date" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="document_expiry_date" className="block text-sm font-medium text-text sm:col-span-1">
             Expiry Date
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -370,13 +370,13 @@ export default function RightToWorkTab({
               name="document_expiry_date"
               defaultValue={rightToWorkData?.document_expiry_date?.split('T')[0] ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
+              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
             />
           </div>
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="follow_up_date" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="follow_up_date" className="block text-sm font-medium text-text sm:col-span-1">
             Follow-up Date
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -386,13 +386,13 @@ export default function RightToWorkTab({
               name="follow_up_date"
               defaultValue={rightToWorkData?.follow_up_date?.split('T')[0] ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
+              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
             />
           </div>
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_details" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="document_details" className="block text-sm font-medium text-text sm:col-span-1">
             Additional Details
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0">
@@ -402,17 +402,17 @@ export default function RightToWorkTab({
               rows={3}
               defaultValue={rightToWorkData?.document_details ?? ''}
               disabled={!canEdit}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm disabled:bg-gray-100"
+              className="block w-full rounded-md border-border-strong shadow-sm focus:border-border-focus focus:ring-green-500 sm:text-sm disabled:bg-surface-hover"
             />
           </div>
         </div>
 
         <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_photo" className="block text-sm font-medium text-gray-700 sm:col-span-1">
+          <label htmlFor="document_photo" className="block text-sm font-medium text-text sm:col-span-1">
             Document Photo
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0 space-y-3">
-            <label className="flex items-center justify-between rounded-md border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500">
+            <label className="flex items-center justify-between rounded-md border border-dashed border-border-strong px-4 py-3 text-sm text-text-muted">
               <div className="flex items-center space-x-3">
                 <Upload className="h-5 w-5 text-gray-400" />
                 <span>{selectedFileName ?? 'Upload scan or photo (PDF/JPG/PNG)'}</span>
@@ -456,7 +456,7 @@ export default function RightToWorkTab({
 
             {canViewDocuments && rightToWorkData?.photo_storage_path && (
               <div className="flex items-center space-x-3">
-                <div className="flex items-center space-x-2 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                <div className="flex items-center space-x-2 rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
                   <Eye className="h-4 w-4" />
                   {loadingPhoto ? (
                     <span>Generating preview…</span>
@@ -485,7 +485,7 @@ export default function RightToWorkTab({
                 {canEdit && (
                   <button
                     type="button"
-                    className="inline-flex items-center rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    className="inline-flex items-center rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-danger hover:bg-danger-soft disabled:opacity-50"
                     onClick={() => setDeletePhotoOpen(true)}
                     disabled={deletingPhoto}
                   >
@@ -499,12 +499,12 @@ export default function RightToWorkTab({
         </div>
 
         {state?.type === 'error' && state.errors && (
-          <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+          <div className="rounded-md bg-danger-soft p-3 text-sm text-red-700">
             {Object.values(state.errors).flat().join(', ')}
           </div>
         )}
         {state?.type === 'error' && state.message && !state.errors && (
-          <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+          <div className="rounded-md bg-danger-soft p-3 text-sm text-red-700">
             {state.message}
           </div>
 	        )}

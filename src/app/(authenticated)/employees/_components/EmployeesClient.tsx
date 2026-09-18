@@ -232,7 +232,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
               </CardBody>
             ) : (
               <>
-                <Table className="[--spacing-row-h:10px]">
+                <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Employee</TableHead>
@@ -252,19 +252,19 @@ export default function EmployeesClient({ initialData, initialError, permissions
                           <div className="flex items-center gap-2.5">
                             <Avatar name={employeeDisplayName(emp)} size="md" />
                             <div>
-                              <Link href={`/employees/${emp.employee_id}`} className="text-[13px] font-semibold text-text-strong hover:text-primary">
+                              <Link href={`/employees/${emp.employee_id}`} className="text-ui font-semibold text-text-strong hover:text-primary">
                                 {employeeListName(emp)}
                               </Link>
-                              {!emp.first_name && <span className="text-[11px] text-text-subtle ml-1">(pending)</span>}
+                              {!emp.first_name && <span className="text-meta text-text-subtle ml-1">(pending)</span>}
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="text-[13px]">{emp.job_title || '--'}</TableCell>
+                        <TableCell className="text-ui">{emp.job_title || '--'}</TableCell>
                         <TableCell>
-                          <div className="text-[13px]">{emp.employment_start_date ? formatDate(emp.employment_start_date) : '--'}</div>
-                          <div className="text-[11px] text-text-subtle">{calculateLengthOfService(emp.employment_start_date)}</div>
+                          <div className="text-ui">{emp.employment_start_date ? formatDate(emp.employment_start_date) : '--'}</div>
+                          <div className="text-meta text-text-subtle">{calculateLengthOfService(emp.employment_start_date)}</div>
                         </TableCell>
-                        <TableCell className="text-[13px]">{emp.holiday_days_current_year ?? 0} days</TableCell>
+                        <TableCell className="text-ui">{emp.holiday_days_current_year ?? 0} days</TableCell>
                         <TableCell>
                           <Badge tone={statusBadgeTone(emp.status)} dot>{emp.status}</Badge>
                           {!emp.auth_user_id && permissions.canEdit && ['Active', 'Started Separation'].includes(emp.status) && (

@@ -45,11 +45,11 @@ export function GuestCancelBooking({
       <div className="border-t border-guest-border-strong pt-5">
         <a
           href={`${manageUrl}?confirmCancel=1`}
-          className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full border-2 border-anchor-danger/[0.45] px-8 text-center font-anchor-body text-[16px] font-semibold text-anchor-danger no-underline transition-colors duration-200 ease-out hover:bg-anchor-danger/[0.06]"
+          className="inline-flex min-h-12 w-full items-center justify-center rounded-full border-2 border-anchor-danger/[0.45] px-8 text-center font-anchor-body text-base font-semibold text-anchor-danger no-underline transition-colors duration-200 ease-out hover:bg-anchor-danger/[0.06]"
         >
           Cancel booking
         </a>
-        <p className="mt-2 font-anchor-body text-[12px] leading-[1.55] text-guest-text-muted">
+        <p className="mt-2 font-anchor-body text-xs leading-[1.55] text-guest-text-muted">
           If you can let us know early, we can offer the table to someone else.
         </p>
       </div>
@@ -62,11 +62,11 @@ export function GuestCancelBooking({
         <p className="font-anchor-body text-[15px] font-bold leading-[1.4] text-anchor-danger">
           Are you sure you want to cancel?
         </p>
-        <p className="mt-1 font-anchor-body text-[13px] leading-[1.55] text-guest-text">
+        <p className="mt-1 font-anchor-body text-ui leading-[1.55] text-guest-text">
           This cannot be undone.
         </p>
         {refundNotice && (
-          <p className="mt-2 font-anchor-body text-[13px] leading-[1.55] text-guest-text">
+          <p className="mt-2 font-anchor-body text-ui leading-[1.55] text-guest-text">
             {refundNotice}
           </p>
         )}
@@ -76,10 +76,10 @@ export function GuestCancelBooking({
           <input type="hidden" name="confirm" value="1" />
 
           <fieldset className="mt-1">
-            <legend className="font-anchor-body text-[14px] font-semibold leading-[1.4] text-guest-text">
+            <legend className="font-anchor-body text-sm font-semibold leading-[1.4] text-guest-text">
               If you don&apos;t mind us asking, why?
             </legend>
-            <p className="mt-1 font-anchor-body text-[12px] leading-[1.55] text-guest-text-muted">
+            <p className="mt-1 font-anchor-body text-xs leading-[1.55] text-guest-text-muted">
               Entirely optional, and it helps us put things right.
             </p>
 
@@ -109,7 +109,7 @@ export function GuestCancelBooking({
             <div className="mt-3">
               <label
                 htmlFor="cancellation_reason_detail"
-                className="block font-anchor-body text-[14px] font-semibold text-guest-text"
+                className="block font-anchor-body text-sm font-semibold text-guest-text"
               >
                 Anything else you&apos;d like to tell us
               </label>
@@ -126,13 +126,13 @@ export function GuestCancelBooking({
           <div className="mt-4 flex flex-col gap-2.5 sm:flex-row">
             <button
               type="submit"
-              className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full border-2 border-transparent bg-anchor-danger px-8 text-center font-anchor-body text-[16px] font-semibold text-white transition-colors duration-200 ease-out hover:bg-anchor-danger/[0.88] sm:w-auto"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-full border-2 border-transparent bg-anchor-danger px-8 text-center font-anchor-body text-base font-semibold text-white transition-colors duration-200 ease-out hover:bg-anchor-danger/[0.88] sm:w-auto"
             >
               Yes, cancel my booking
             </button>
             <a
               href={manageUrl}
-              className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full border-2 border-anchor-green px-8 text-center font-anchor-body text-[16px] font-semibold text-anchor-green no-underline transition-colors duration-200 ease-out hover:bg-anchor-green hover:text-anchor-cream sm:w-auto"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-full border-2 border-anchor-green px-8 text-center font-anchor-body text-base font-semibold text-anchor-green no-underline transition-colors duration-200 ease-out hover:bg-anchor-green hover:text-anchor-cream sm:w-auto"
             >
               No, keep my booking
             </a>
@@ -143,7 +143,7 @@ export function GuestCancelBooking({
           Fallback for sandboxed frames that block form submission, and for anyone who would rather
           not answer. Cancels with no reason recorded.
         */}
-        <p className="mt-3 font-anchor-body text-[12px] leading-[1.55] text-guest-text-muted">
+        <p className="mt-3 font-anchor-body text-xs leading-[1.55] text-guest-text-muted">
           <a
             href={`${actionUrl}?action=cancel&confirm=1`}
             rel="nofollow"

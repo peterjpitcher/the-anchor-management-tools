@@ -509,35 +509,35 @@ export default function BackgroundJobsClient({
             <Card>
               <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
                 <div>
-                  <dt className="text-sm font-medium text-gray-500">Job ID</dt>
-                  <dd className="mt-1 text-sm text-gray-900 font-mono">{selectedJobDetails.id}</dd>
+                  <dt className="text-sm font-medium text-text-muted">Job ID</dt>
+                  <dd className="mt-1 text-sm text-text font-mono">{selectedJobDetails.id}</dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-medium text-gray-500">Priority</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
+                  <dt className="text-sm font-medium text-text-muted">Priority</dt>
+                  <dd className="mt-1 text-sm text-text">
                     <Badge variant="secondary">{selectedJobDetails.priority}</Badge>
                   </dd>
                 </div>
                 {selectedJobDetails.started_at && (
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Started At</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
+                    <dt className="text-sm font-medium text-text-muted">Started At</dt>
+                    <dd className="mt-1 text-sm text-text">
                       {new Date(selectedJobDetails.started_at).toLocaleString()}
                     </dd>
                   </div>
                 )}
                 {selectedJobDetails.completed_at && (
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Completed At</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
+                    <dt className="text-sm font-medium text-text-muted">Completed At</dt>
+                    <dd className="mt-1 text-sm text-text">
                       {new Date(selectedJobDetails.completed_at).toLocaleString()}
                     </dd>
                   </div>
                 )}
                 {selectedJobDetails.error_message && (
                   <div className="sm:col-span-2">
-                    <dt className="text-sm font-medium text-red-600">Error</dt>
-                    <dd className="mt-1 text-sm text-red-600 whitespace-pre-wrap">
+                    <dt className="text-sm font-medium text-danger">Error</dt>
+                    <dd className="mt-1 text-sm text-danger whitespace-pre-wrap">
                       {selectedJobDetails.error_message}
                     </dd>
                   </div>
@@ -550,7 +550,7 @@ export default function BackgroundJobsClient({
         {selectedJobDetails?.status === 'failed' && selectedJobDetails.error_message && (
           <Section title="Error Message">
             <Card>
-              <pre className="text-sm text-red-600 whitespace-pre-wrap bg-red-50 p-3 rounded">
+              <pre className="text-sm text-danger whitespace-pre-wrap bg-danger-soft p-3 rounded-sm">
                 {selectedJobDetails.error_message}
               </pre>
             </Card>
@@ -560,7 +560,7 @@ export default function BackgroundJobsClient({
         {selectedJobDetails?.payload && (
           <Section title="Payload">
             <Card>
-              <pre className="text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded">
+              <pre className="text-sm whitespace-pre-wrap bg-surface-2 p-3 rounded-sm">
                 {JSON.stringify(selectedJobDetails.payload, null, 2)}
               </pre>
             </Card>
@@ -570,7 +570,7 @@ export default function BackgroundJobsClient({
         {selectedJobDetails?.result && (
           <Section title="Result">
             <Card>
-              <pre className="text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded">
+              <pre className="text-sm whitespace-pre-wrap bg-surface-2 p-3 rounded-sm">
                 {JSON.stringify(selectedJobDetails.result, null, 2)}
               </pre>
             </Card>

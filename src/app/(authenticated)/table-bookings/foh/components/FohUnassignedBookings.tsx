@@ -18,13 +18,13 @@ export const FohUnassignedBookings = React.memo(function FohUnassignedBookings(p
 
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
   const unassignedCardClass = cn(
-    'rounded-lg border border-amber-200 bg-amber-50',
+    'rounded-lg border border-amber-200 bg-warning-soft',
     isManagerKioskStyle ? 'p-2' : 'p-4'
   )
 
   return (
     <div className={unassignedCardClass}>
-      <h3 className={cn('font-semibold text-amber-900', isManagerKioskStyle ? 'text-xs' : 'text-sm')}>Unassigned bookings</h3>
+      <h3 className={cn('font-semibold text-warning-fg', isManagerKioskStyle ? 'text-xs' : 'text-sm')}>Unassigned bookings</h3>
       <div className={cn('flex flex-wrap gap-2', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
         {bookings.map((booking) => {
           const highChairs = booking.high_chair_count ?? 0
@@ -34,8 +34,8 @@ export const FohUnassignedBookings = React.memo(function FohUnassignedBookings(p
               type="button"
               onClick={() => onBookingClick(booking)}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-white text-amber-900 hover:bg-amber-100',
-                isManagerKioskStyle ? 'px-1.5 py-0.5 text-[11px]' : 'px-2 py-1 text-xs'
+                'inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-surface text-warning-fg hover:bg-amber-100',
+                isManagerKioskStyle ? 'px-1.5 py-0.5 text-meta' : 'px-2 py-1 text-xs'
               )}
             >
               <span>

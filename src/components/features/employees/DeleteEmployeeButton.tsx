@@ -52,17 +52,17 @@ export default function DeleteEmployeeButton({ employeeId, employeeName }: Delet
           <div className="fixed inset-0 bg-gray-500/75 transition-opacity"></div>
           <div className="fixed inset-0 z-10 overflow-y-auto">
             <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-              <form action={dispatch} className="relative transform overflow-hidden rounded-lg bg-white px-4 pt-5 pb-4 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
+              <form action={dispatch} className="relative transform overflow-hidden rounded-lg bg-surface px-4 pt-5 pb-4 text-left shadow-lg transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
                 <div className="sm:flex sm:items-start">
-                  <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-                    <TrashIcon className="h-6 w-6 text-red-600" aria-hidden="true" />
+                  <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-danger-soft sm:mx-0 sm:h-10 sm:w-10">
+                    <TrashIcon className="h-6 w-6 text-danger" aria-hidden="true" />
                   </div>
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                    <h3 className="text-lg font-medium leading-6 text-gray-900" id="modal-title">
+                    <h3 className="text-lg font-medium leading-6 text-text" id="modal-title">
                       Delete Employee
                     </h3>
                     <div className="mt-2">
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-text-muted">
                         Are you sure you want to delete {employeeName}? This action cannot be undone.
                         All associated data (like notes and attachments if configured with CASCADE delete) might also be removed.
                       </p>
@@ -70,7 +70,7 @@ export default function DeleteEmployeeButton({ employeeId, employeeName }: Delet
                   </div>
                 </div>
                 {state?.type === 'error' && (
-                    <p className="mt-3 text-sm text-red-600 text-center sm:text-left sm:ml-14">
+                    <p className="mt-3 text-sm text-danger text-center sm:text-left sm:ml-14">
                         {state.message}
                     </p>
                 )}
@@ -80,7 +80,7 @@ export default function DeleteEmployeeButton({ employeeId, employeeName }: Delet
                   <button
                     type="button"
                     onClick={() => setIsOpen(false)}
-                    className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto"
+                    className="mt-3 inline-flex w-full justify-center rounded-md bg-surface px-3 py-2 text-sm font-semibold text-text shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-surface-hover sm:mt-0 sm:w-auto"
                   >
                     Cancel
                   </button>

@@ -123,6 +123,11 @@ export interface PageLayoutProps {
   showHeaderActionsOnMobile?: boolean
   hideMobileMenuButton?: boolean
   compactHeader?: boolean
+  /**
+   * 'default' sits on the app background like PageHeader, so list and detail pages look the
+   * same. 'dark' paints the page and header in the sidebar green for the FOH manager kiosk.
+   */
+  headerVariant?: 'default' | 'dark'
   navItems?: HeaderNavItem[]
   navActions?: React.ReactNode
   toolbar?: React.ReactNode
@@ -147,6 +152,16 @@ const maxWidthClasses: Record<string, string> = {
   full: 'max-w-full',
 }
 
+/*
+ * Spacing. AppShell's <main> pads the page (12px 16px on phones, the shell-pad tokens from the
+ * shell breakpoint up). PageLayout cancels that padding with matching negative margins and adds
+ * it back inside, so the dark kiosk variant can paint edge to edge while the default variant's
+ * title and content line up exactly with pages that use PageHeader.
+ */
+const BLEED = '-mx-4 -mt-3 shell:-mx-shell-pad-x shell:-mt-shell-pad-top'
+const INSET_X = 'px-4 shell:px-shell-pad-x'
+const INSET_X_COMPACT = 'px-3 shell:px-4'
+
 export function PageLayout({
   title,
   subtitle,
@@ -169,11 +184,23 @@ export function PageLayout({
   showHeaderActionsOnMobile = false,
   hideMobileMenuButton = true,
   compactHeader = false,
+  headerVariant = 'default',
 }: PageLayoutProps) {
   const router = useRouter()
+  const dark = headerVariant === 'dark'
+  const insetX = compactHeader ? INSET_X_COMPACT : INSET_X
   const showMobileHeaderActionsInNavRow = Boolean(headerActions) && !showHeaderActionsOnMobile
   const hasNavRow =
     (navItems && navItems.length > 0) || Boolean(navActions) || showMobileHeaderActionsInNavRow
+
+  const titleColour = dark ? 'text-on-dark' : 'text-text-strong'
+  const subtitleColour = dark ? 'text-on-dark-muted' : 'text-text-muted'
+  const iconButton = cn(
+    'rounded-md p-2 focus-visible:outline-hidden focus-visible:shadow-ring',
+    dark
+      ? 'text-on-dark-muted hover:bg-on-dark-hover hover:text-on-dark'
+      : 'text-text-muted hover:bg-surface-hover hover:text-text',
+  )
 
   const headerActionsNode = headerActions ? (
     <div className="flex flex-wrap items-center justify-end gap-2">{headerActions}</div>
@@ -215,7 +242,7 @@ export function PageLayout({
             <button
               type="button"
               onClick={onRetry}
-              className="mt-2 text-sm font-medium text-red-600 hover:text-red-500"
+              className="mt-2 text-sm font-medium text-danger-fg hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
             >
               Try again
             </button>
@@ -228,7 +255,7 @@ export function PageLayout({
       return (
         <div className="flex min-h-[200px] items-center justify-center">
           <Spinner size="lg" />
-          <span className="ml-3 text-sm text-gray-500">{loadingLabel}</span>
+          <span className="ml-3 text-sm text-text-muted">{loadingLabel}</span>
         </div>
       )
     }
@@ -236,17 +263,55 @@ export function PageLayout({
     return children
   })()
 
+  const breadcrumbsNode =
+    breadcrumbs && breadcrumbs.length > 0 ? (
+      <nav
+        aria-label="Breadcrumbs"
+        className={cn('mb-2 flex items-center gap-1 text-sm', subtitleColour)}
+      >
+        {breadcrumbs.map((crumb, i) => {
+          const isLast = i === breadcrumbs.length - 1
+          return (
+            <React.Fragment key={crumb.label}>
+              {i > 0 && (
+                <Icon
+                  name="chevronRight"
+                  size={14}
+                  className={cn('flex-shrink-0', dark ? 'text-on-dark-subtle' : 'text-text-subtle')}
+                />
+              )}
+              {isLast ? (
+                <span className={cn('truncate font-medium', dark ? 'text-on-dark' : 'text-text')}>
+                  {crumb.label}
+                </span>
+              ) : crumb.href ? (
+                <a
+                  href={crumb.href}
+                  className={cn('truncate transition-colors', dark ? 'hover:text-on-dark' : 'hover:text-text')}
+                >
+                  {crumb.label}
+                </a>
+              ) : (
+                <span className="truncate">{crumb.label}</span>
+              )}
+            </React.Fragment>
+          )
+        })}
+      </nav>
+    ) : null
+
   /* Mobile header */
   const mobileHeader = (
     <div className={cn(compactHeader ? 'flex items-center gap-1.5 md:hidden' : 'flex items-center gap-2 md:hidden')}>
       {backButton && (
         <button
           type="button"
+          aria-label={backButton.label}
           onClick={
             backButton.onBack ||
             (backButton.href ? () => router.push(backButton.href!) : undefined)
           }
-          className="rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 p-2 focus:outline-none focus:ring-2 focus:ring-gray-500/50"
+          className={iconButton}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -256,12 +321,14 @@ export function PageLayout({
       <div className="flex-1 min-w-0">
         <h1
           className={cn(
-            compactHeader ? 'text-base font-bold text-gray-900 truncate' : 'text-lg font-bold text-gray-900 truncate',
+            'truncate font-bold tracking-tight',
+            compactHeader ? 'text-base' : 'text-lg',
+            titleColour,
           )}
         >
           {title}
         </h1>
-        {subtitle && <p className="text-xs text-gray-500 truncate">{subtitle}</p>}
+        {subtitle && <p className={cn('truncate text-xs', subtitleColour)}>{subtitle}</p>}
       </div>
       {showHeaderActionsOnMobile && headerActions && (
         <div className="ml-1 flex items-center gap-2">{headerActions}</div>
@@ -269,7 +336,7 @@ export function PageLayout({
       {!hideMobileMenuButton && (
         <button
           type="button"
-          className="relative rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 p-2 focus:outline-none focus:ring-2 focus:ring-gray-500/50"
+          className={cn('relative', iconButton)}
           onClick={() => {
             if (typeof window !== 'undefined') {
               window.dispatchEvent(new CustomEvent('open-mobile-menu'))
@@ -285,103 +352,80 @@ export function PageLayout({
     </div>
   )
 
-  /* Desktop header */
+  /* Desktop header: the same title, subtitle and action row as PageHeader */
   const desktopHeader = (
-    <div className={cn(compactHeader ? 'hidden md:flex md:flex-col md:gap-1.5' : 'hidden md:flex md:flex-col md:gap-3')}>
-      <div className="flex flex-row items-start justify-between gap-4">
-        <div className="flex-1">
-          <h1
-            className={cn(
-              compactHeader
-                ? 'text-xl lg:text-2xl font-bold text-gray-900'
-                : 'text-2xl lg:text-3xl font-bold text-gray-900',
-            )}
-          >
-            {title}
-          </h1>
-          {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
-        </div>
-
-        {(headerActionsNode || backButton) && (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {headerActionsNode}
-            {backButton && (
-              <Button
-                variant="ghost"
-                onClick={
-                  backButton.onBack ||
-                  (backButton.href ? () => router.push(backButton.href!) : undefined)
-                }
-                icon={<Icon name="chevronLeft" size={16} />}
-              >
-                {backButton.label}
-              </Button>
-            )}
-          </div>
-        )}
+    <div className="hidden md:flex md:flex-row md:items-start md:justify-between md:gap-4">
+      <div className="min-w-0 flex-1">
+        <h1
+          className={cn(
+            'font-bold tracking-tight',
+            compactHeader ? 'text-xl' : 'text-2xl',
+            titleColour,
+          )}
+        >
+          {title}
+        </h1>
+        {subtitle && <p className={cn('mt-1 text-sm', subtitleColour)}>{subtitle}</p>}
       </div>
+
+      {(headerActionsNode || backButton) && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {headerActionsNode}
+          {backButton && (
+            <Button
+              variant="ghost"
+              onClick={
+                backButton.onBack ||
+                (backButton.href ? () => router.push(backButton.href!) : undefined)
+              }
+              icon={<Icon name="chevronLeft" size={16} />}
+              className={dark ? 'text-on-dark hover:bg-on-dark-hover' : undefined}
+            >
+              {backButton.label}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 
   return (
     <div
       className={cn(
-        'flex min-h-screen flex-col bg-gray-100 sm:-mx-6 sm:-mt-6',
+        'flex flex-col',
+        BLEED,
+        dark && 'min-h-screen bg-brand-700',
         className,
       )}
     >
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:bg-white focus:px-4 focus:py-2 focus:rounded-md focus:shadow-lg focus:text-sm focus:font-medium"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:bg-surface focus:px-4 focus:py-2 focus:rounded-md focus:shadow-lg focus:text-sm focus:font-medium focus:text-text"
       >
         Skip to main content
       </a>
 
       {/* Page header */}
-      <div className={cn('bg-white border-b border-gray-200', headerClassName)}>
+      <div
+        className={cn(
+          dark ? 'border-b border-on-dark-border' : 'mb-4',
+          headerClassName,
+        )}
+      >
         <div
-          className={
-            compactHeader
-              ? 'px-3 py-2 md:px-4 md:py-3 lg:px-6'
-              : 'px-4 pt-3 pb-3 md:px-6 md:pt-8 md:pb-6 lg:px-12'
-          }
+          className={cn(
+            insetX,
+            compactHeader ? 'pt-2 pb-2 shell:pt-3 shell:pb-3' : 'pt-3 pb-4 shell:pt-shell-pad-top',
+          )}
         >
+          {breadcrumbsNode}
           {mobileHeader}
           {desktopHeader}
-
-          {breadcrumbs && breadcrumbs.length > 0 && (
-            <div className={compactHeader ? 'mt-2' : 'mt-4'}>
-              <nav
-                aria-label="Breadcrumbs"
-                className="flex items-center gap-1 text-sm text-gray-500"
-              >
-                {breadcrumbs.map((crumb, i) => {
-                  const isLast = i === breadcrumbs.length - 1
-                  return (
-                    <React.Fragment key={crumb.label}>
-                      {i > 0 && (
-                        <Icon name="chevronRight" size={14} className="text-gray-400 flex-shrink-0" />
-                      )}
-                      {isLast ? (
-                        <span className="text-gray-900 font-medium truncate">{crumb.label}</span>
-                      ) : crumb.href ? (
-                        <a href={crumb.href} className="hover:text-gray-700 transition-colors truncate">
-                          {crumb.label}
-                        </a>
-                      ) : (
-                        <span className="truncate">{crumb.label}</span>
-                      )}
-                    </React.Fragment>
-                  )
-                })}
-              </nav>
-            </div>
-          )}
         </div>
 
         {/* Sub-navigation / toolbar */}
         {(navRow || toolbar) && (
-          <div className={compactHeader ? 'px-3 md:px-4 lg:px-6' : 'px-4 md:px-6 lg:px-12'}>
+          <div className={cn(insetX, compactHeader ? 'pb-2' : 'pb-4')}>
             <div
               className={cn(
                 compactHeader
@@ -402,13 +446,12 @@ export function PageLayout({
         )}
       </div>
 
-      <main id="main-content" className={cn('flex-1', padded && 'pb-4 sm:pb-6 md:pb-8')}>
+      <main id="main-content" className={cn('flex-1', padded && 'pb-4')}>
         <div
           className={cn(
             'w-full mx-auto',
             maxWidthClasses[containerSize],
-            padded && 'px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 md:pt-8',
-            !padded && 'pt-0',
+            padded ? cn(insetX, 'pt-0') : 'pt-0',
             contentClassName,
           )}
         >

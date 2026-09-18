@@ -89,21 +89,21 @@ export default function EmergencyContactsStep({ token, initialData, onSuccess }:
     required = false
   ) => (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-gray-800">
-        {label}{required && <span className="text-red-500 ml-1">*</span>}
+      <h3 className="text-sm font-semibold text-text">
+        {label}{required && <span className="text-danger ml-1">*</span>}
       </h3>
       {(['name', 'relationship', 'phone_number', 'mobile_number', 'address'] as (keyof ContactData)[]).map((field) => (
         <div key={field}>
-          <label className="block text-sm font-medium text-gray-700 mb-1 capitalize">
+          <label className="block text-sm font-medium text-text mb-1 capitalize">
             {field.replace(/_/g, ' ')}
-            {field === 'name' && required && <span className="text-red-500 ml-1">*</span>}
+            {field === 'name' && required && <span className="text-danger ml-1">*</span>}
           </label>
           <input
             type="text"
             value={values[field]}
             onChange={(e) => onChange(field, e.target.value)}
             required={field === 'name' && required}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+            className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
           />
         </div>
       ))}
@@ -119,7 +119,7 @@ export default function EmergencyContactsStep({ token, initialData, onSuccess }:
         true
       )}
 
-      <hr className="border-gray-200" />
+      <hr className="border-border" />
 
       {renderContactFields(
         'Secondary Contact (Optional)',
@@ -128,7 +128,7 @@ export default function EmergencyContactsStep({ token, initialData, onSuccess }:
         false
       )}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       <button
         type="submit"

@@ -118,12 +118,12 @@ export default function DeleteBookingButton({
     <>
       <button
         type="button"
-        className={`p-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+        className={`p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
           status === 'cancelled'
             ? 'text-orange-600 hover:bg-orange-50 hover:text-orange-700'
             : status && status !== 'draft'
-              ? 'text-red-700 hover:bg-red-100 hover:text-red-800'
-              : 'text-red-600 hover:bg-red-50'
+              ? 'text-red-700 hover:bg-danger-soft hover:text-danger-fg'
+              : 'text-danger hover:bg-danger-soft'
         }`}
         title={buttonTitle}
         aria-label={buttonTitle}
@@ -167,7 +167,7 @@ export default function DeleteBookingButton({
           </ModalActions>
         }
       >
-        <div className="space-y-3 text-sm text-gray-700">
+        <div className="space-y-3 text-sm text-text">
           <p>
             You are about to permanently delete the booking for{' '}
             <strong>{bookingName}</strong>. This cannot be undone.
@@ -179,17 +179,17 @@ export default function DeleteBookingButton({
             </p>
           ) : null}
           {eligibility && !eligibility.canDelete ? (
-            <p className="rounded-md bg-red-50 px-3 py-2 text-red-700">
+            <p className="rounded-md bg-danger-soft px-3 py-2 text-red-700">
               {eligibility.reason ?? 'This booking has SMS activity and cannot be deleted.'}
             </p>
           ) : null}
           <div>
             <label
               htmlFor="delete-booking-confirm-input"
-              className="block text-sm font-medium text-gray-900"
+              className="block text-sm font-medium text-text"
             >
               {hasEventDate ? 'To confirm, type the event date' : 'To confirm, type the booking id'}
-              <span className="ml-1 font-mono text-gray-500">({confirmLabel})</span>
+              <span className="ml-1 font-mono text-text-muted">({confirmLabel})</span>
               {humanReadableDate ? (
                 <span className="ml-1 text-gray-400">— {humanReadableDate}</span>
               ) : null}
@@ -207,7 +207,7 @@ export default function DeleteBookingButton({
             />
           </div>
           {error ? (
-            <p className="rounded-md bg-red-50 px-3 py-2 text-red-700">{error}</p>
+            <p className="rounded-md bg-danger-soft px-3 py-2 text-red-700">{error}</p>
           ) : null}
         </div>
       </Modal>

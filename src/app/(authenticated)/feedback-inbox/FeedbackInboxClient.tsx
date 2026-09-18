@@ -215,7 +215,7 @@ function FeedbackRow({ item, canManage, onUpdated }: RowProps) {
       </TableCell>
       <TableCell className="max-w-xs py-2 align-top whitespace-normal break-words text-text">
         {item.comments ? (
-          <span className="text-[13px] [overflow-wrap:anywhere]">{item.comments}</span>
+          <span className="text-ui [overflow-wrap:anywhere]">{item.comments}</span>
         ) : (
           <span className="text-xs text-text-subtle">No comment</span>
         )}
@@ -241,12 +241,12 @@ function FeedbackCard({ item, canManage, onUpdated }: RowProps) {
         </span>
       </div>
       {item.comments ? (
-        <p className="break-words text-[13px] text-text [overflow-wrap:anywhere]">{item.comments}</p>
+        <p className="break-words text-ui text-text [overflow-wrap:anywhere]">{item.comments}</p>
       ) : (
         <p className="text-xs text-text-subtle">No comment</p>
       )}
       <div>
-        <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-text-muted">Contact</p>
+        <p className="mb-1 text-meta font-medium uppercase tracking-wider text-text-muted">Contact</p>
         <ContactCell item={item} />
       </div>
       <div className="border-t border-border pt-3">

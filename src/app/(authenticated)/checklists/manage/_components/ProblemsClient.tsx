@@ -193,5 +193,5 @@ export function ProblemsClient({ data, error }: ProblemsClientProps) {
 }
 
 function Empty() {
-  return <p className="px-[var(--spacing-pad-card)] py-4 text-sm text-text-muted">None</p>
+  return <p className="px-pad-card py-4 text-sm text-text-muted">None</p>
 }

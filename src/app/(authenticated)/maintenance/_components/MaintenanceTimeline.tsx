@@ -183,7 +183,7 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
         )}
 
         {loading ? (
-          <div className="mt-4 flex items-center gap-2 text-[13px] text-text-muted">
+          <div className="mt-4 flex items-center gap-2 text-ui text-text-muted">
             <Spinner size="sm" />
             <span>Loading the history</span>
           </div>
@@ -192,14 +192,14 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
             <div className="mt-4 space-y-4">
               <section aria-label="Notes">
                 {notes.length === 0 ? (
-                  <p className="text-[13px] text-text-muted">
+                  <p className="text-ui text-text-muted">
                     No notes yet. Anything you write here stays with the item.
                   </p>
                 ) : (
                   <ul className="space-y-3">
                     {notes.map(entry => (
                       <li key={entry.id} className="border-l-2 border-border pl-3">
-                        <p className="whitespace-pre-wrap text-[13px] text-text">
+                        <p className="whitespace-pre-wrap text-ui text-text">
                           {entry.note.content}
                         </p>
                         <p className="mt-1 text-xs text-text-muted">
@@ -227,13 +227,13 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
 
                 <div id="maintenance-system-events" hidden={!showSystem} className="mt-2">
                   {systemEvents.length === 0 ? (
-                    <p className="text-[13px] text-text-muted">Nothing recorded yet.</p>
+                    <p className="text-ui text-text-muted">Nothing recorded yet.</p>
                   ) : (
                     <ul className="space-y-2">
                       {systemEvents.map(entry => (
                         <li key={entry.id} className="border-l-2 border-border pl-3">
                           {entry.kind === 'history' ? (
-                            <p className="text-[13px] text-text">
+                            <p className="text-ui text-text">
                               {maintenanceHistoryFieldLabel(entry.history.field)} changed from{' '}
                               <span className="font-medium">
                                 {maintenanceHistoryValueLabel(
@@ -250,7 +250,7 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
                               </span>
                             </p>
                           ) : (
-                            <p className="flex flex-wrap items-center gap-2 text-[13px] text-text">
+                            <p className="flex flex-wrap items-center gap-2 text-ui text-text">
                               <span>Photo {entry.photo.fileName ?? 'added'}</span>
                               <Badge tone={entry.photo.redactedAt ? 'warning' : 'neutral'}>
                                 {entry.photo.redactedAt ? 'Redacted' : entry.photo.state}

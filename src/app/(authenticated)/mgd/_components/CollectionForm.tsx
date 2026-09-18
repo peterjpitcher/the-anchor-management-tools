@@ -76,7 +76,7 @@ export function CollectionForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+        <div className="rounded-md bg-danger-soft p-3 text-sm text-red-700">
           {error}
         </div>
       )}
@@ -98,7 +98,7 @@ export function CollectionForm({
           min="0"
           value={netTake}
           onChange={(e) => setNetTake(e.target.value)}
-          icon={<span className="text-gray-500">£</span>}
+          icon={<span className="text-text-muted">£</span>}
           placeholder="0.00"
           required
           disabled={disabled}
@@ -121,7 +121,7 @@ export function CollectionForm({
           min="0"
           value={vatOnSupplier}
           onChange={(e) => setVatOnSupplier(e.target.value)}
-          icon={<span className="text-gray-500">£</span>}
+          icon={<span className="text-text-muted">£</span>}
           placeholder="0.00"
           required
           disabled={disabled}

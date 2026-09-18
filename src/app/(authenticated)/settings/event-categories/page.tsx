@@ -249,7 +249,7 @@ const [categories, setCategories] = useState<EventCategory[]>([])
             {renderIcon(category.icon, category.color)}
           </div>
           <div className="ml-4">
-            <div className="font-medium text-gray-900">{category.name}</div>
+            <div className="font-medium text-text">{category.name}</div>
           </div>
         </div>
       ),
@@ -295,14 +295,14 @@ const [categories, setCategories] = useState<EventCategory[]>([])
         <div className="flex items-center space-x-2">
           <button type="button"
             onClick={() => handleOpenForm(category)}
-            className="text-blue-600 hover:text-blue-900"
+            className="text-blue-600 hover:text-info-fg"
           >
             <PencilIcon className="h-5 w-5" />
             <span className="sr-only">Edit</span>
           </button>
           <button type="button"
             onClick={() => setDeleteConfirm(category)}
-            className="text-red-600 hover:text-red-900"
+            className="text-danger hover:text-danger-fg"
           >
             <TrashIcon className="h-5 w-5" />
             <span className="sr-only">Delete</span>

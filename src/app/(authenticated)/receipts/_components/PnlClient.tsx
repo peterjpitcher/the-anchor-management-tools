@@ -65,7 +65,7 @@ function MetricCard({ row, invertVariance = false }: { row: PnlReportRow; invert
     <div className="rounded-md border border-border bg-surface p-3">
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-sm font-semibold text-text-strong">{row.label}</h3>
-        <span className={clsx('shrink-0 rounded px-2 py-0.5 text-xs font-semibold', varianceClass(row.variance, invertVariance))}>
+        <span className={clsx('shrink-0 rounded-sm px-2 py-0.5 text-xs font-semibold', varianceClass(row.variance, invertVariance))}>
           {formatPnlMetricValue(row.variance, row.format)}
         </span>
       </div>
@@ -349,7 +349,7 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
                 </div>
                 <div className="flex justify-between gap-2">
                   <span>Variance</span>
-                  <span className={clsx('rounded px-2 py-0.5 text-xs font-semibold', varianceClass(item.variance, item.invert))}>
+                  <span className={clsx('rounded-sm px-2 py-0.5 text-xs font-semibold', varianceClass(item.variance, item.invert))}>
                     {formatPnlMetricValue(item.variance)}
                   </span>
                 </div>

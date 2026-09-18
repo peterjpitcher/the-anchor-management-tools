@@ -59,7 +59,7 @@ export function Modal({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <DialogBackdrop className="fixed inset-0 bg-black/50" />
+          <DialogBackdrop className="fixed inset-0 bg-overlay" />
         </TransitionChild>
 
         <div className="fixed inset-0 overflow-y-auto p-0 sm:p-4">
@@ -81,7 +81,7 @@ export function Modal({
               >
                 {title && (
                   <div className="px-4 py-4 border-b border-border sm:px-6">
-                    <DialogTitle className="text-base font-semibold text-text">
+                    <DialogTitle className="text-base font-semibold text-text-strong">
                       {title}
                     </DialogTitle>
                   </div>

@@ -106,16 +106,16 @@ export function CustomerAttach({
   if (value) {
     return (
       <div>
-        <span className="block text-sm font-medium text-gray-900">Customer (optional)</span>
+        <span className="block text-sm font-medium text-text">Customer (optional)</span>
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          <span className="inline-flex min-h-[44px] items-center rounded-lg border border-green-300 bg-green-50 px-4 py-2 text-base font-medium text-green-900">
+          <span className="inline-flex min-h-touch items-center rounded-lg border border-green-300 bg-success-soft px-4 py-2 text-base font-medium text-green-900">
             {value.name}
           </span>
           {!disabled && (
             <button
               type="button"
               onClick={() => onChange(null)}
-              className="min-h-[44px] rounded-lg border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1"
+              className="min-h-touch rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1"
             >
               Remove
             </button>
@@ -123,7 +123,7 @@ export function CustomerAttach({
         </div>
         <div aria-live="polite">
           {statusMessage && (
-            <p role="status" className="mt-2 text-sm font-medium text-gray-700">
+            <p role="status" className="mt-2 text-sm font-medium text-text">
               {statusMessage}
             </p>
           )}
@@ -134,7 +134,7 @@ export function CustomerAttach({
 
   return (
     <div>
-      <label htmlFor={`${idPrefix}-customer-search`} className="block text-sm font-medium text-gray-900">
+      <label htmlFor={`${idPrefix}-customer-search`} className="block text-sm font-medium text-text">
         Customer (optional)
       </label>
 
@@ -146,10 +146,10 @@ export function CustomerAttach({
               type="button"
               disabled={disabled}
               onClick={() => onChange({ id: booker.customerId, name: booker.name })}
-              className="min-h-[44px] rounded-full border border-gray-300 bg-white px-4 py-2 text-base text-gray-800 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-touch rounded-full border border-border-strong bg-surface px-4 py-2 text-base text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {booker.name}
-              <span className="ml-1 text-sm text-gray-500">
+              <span className="ml-1 text-sm text-text-muted">
                 (booked, {booker.seats} {booker.seats === 1 ? 'seat' : 'seats'})
               </span>
             </button>
@@ -165,12 +165,12 @@ export function CustomerAttach({
         value={searchTerm}
         disabled={disabled}
         onChange={(event) => setSearchTerm(event.target.value)}
-        className="mt-2 block h-12 w-full rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 placeholder:text-gray-400 focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40 disabled:bg-gray-100"
+        className="mt-2 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text placeholder:text-text-subtle focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40 disabled:bg-surface-hover"
       />
 
       <div aria-live="polite">
         {searchResults.length > 0 && (
-          <ul className="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+          <ul className="mt-2 divide-y divide-border rounded-lg border border-border bg-surface">
             {searchResults.map((customer) => (
               <li key={customer.id}>
                 <button
@@ -180,7 +180,7 @@ export function CustomerAttach({
                     setSearchTerm('')
                     setSearchResults([])
                   }}
-                  className="min-h-[44px] w-full px-4 py-2 text-left text-base text-gray-900 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sidebar/40"
+                  className="min-h-touch w-full px-4 py-2 text-left text-base text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sidebar/40"
                 >
                   {customer.name}
                 </button>
@@ -189,7 +189,7 @@ export function CustomerAttach({
           </ul>
         )}
         {statusMessage && (
-          <p role="status" className="mt-2 text-sm font-medium text-gray-700">
+          <p role="status" className="mt-2 text-sm font-medium text-text">
             {statusMessage}
           </p>
         )}
@@ -200,15 +200,15 @@ export function CustomerAttach({
           type="button"
           disabled={disabled}
           onClick={() => setShowQuickAdd(true)}
-          className="mt-2 min-h-[44px] rounded-lg border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-2 min-h-touch rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Add a new customer
         </button>
       ) : (
-        <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+        <div className="mt-2 rounded-lg border border-border bg-surface-2 p-3">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div className="min-w-0">
-              <label htmlFor={`${idPrefix}-quick-name`} className="block text-sm font-medium text-gray-900">
+              <label htmlFor={`${idPrefix}-quick-name`} className="block text-sm font-medium text-text">
                 Name
               </label>
               <input
@@ -217,11 +217,11 @@ export function CustomerAttach({
                 autoComplete="off"
                 value={quickName}
                 onChange={(event) => setQuickName(event.target.value)}
-                className="mt-1 block h-12 w-full rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+                className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
               />
             </div>
             <div className="min-w-0">
-              <label htmlFor={`${idPrefix}-quick-mobile`} className="block text-sm font-medium text-gray-900">
+              <label htmlFor={`${idPrefix}-quick-mobile`} className="block text-sm font-medium text-text">
                 Mobile
               </label>
               <input
@@ -231,11 +231,11 @@ export function CustomerAttach({
                 autoComplete="off"
                 value={quickMobile}
                 onChange={(event) => setQuickMobile(event.target.value)}
-                className="mt-1 block h-12 w-full rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+                className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
               />
             </div>
             <div className="min-w-0 sm:col-span-2">
-              <label htmlFor={`${idPrefix}-quick-email`} className="block text-sm font-medium text-gray-900">
+              <label htmlFor={`${idPrefix}-quick-email`} className="block text-sm font-medium text-text">
                 Email (optional, best for reminders)
               </label>
               <input
@@ -245,11 +245,11 @@ export function CustomerAttach({
                 autoComplete="off"
                 value={quickEmail}
                 onChange={(event) => setQuickEmail(event.target.value)}
-                className="mt-1 block h-12 w-full rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+                className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
               />
             </div>
           </div>
-          <p className="mt-2 text-sm text-gray-700">
+          <p className="mt-2 text-sm text-text">
             Adding someone here signs them up for updates from The Anchor, so please say so out loud.
             We will remind them about the voucher by email, or by text if they have no email address.
           </p>
@@ -258,7 +258,7 @@ export function CustomerAttach({
               type="button"
               onClick={handleQuickAdd}
               disabled={busy}
-              className="min-h-[44px] rounded-lg bg-sidebar px-4 py-2 text-base font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-touch rounded-lg bg-sidebar px-4 py-2 text-base font-semibold text-white hover:bg-sidebar/90 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? 'Adding...' : 'Add customer'}
             </button>
@@ -269,7 +269,7 @@ export function CustomerAttach({
                 setStatusMessage(null)
               }}
               disabled={busy}
-              className="min-h-[44px] rounded-lg border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-touch rounded-lg border border-border-strong bg-surface px-4 py-2 text-base font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Cancel
             </button>

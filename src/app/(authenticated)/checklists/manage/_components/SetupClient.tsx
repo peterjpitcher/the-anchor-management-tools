@@ -170,7 +170,7 @@ export function SetupClient({ checklists, error }: SetupClientProps) {
           />
           <CardBody className="p-0">
             {checklist.templates.length === 0 ? (
-              <p className="px-[var(--spacing-pad-card)] py-4 text-sm text-text-muted">
+              <p className="px-pad-card py-4 text-sm text-text-muted">
                 No tasks yet.
               </p>
             ) : (

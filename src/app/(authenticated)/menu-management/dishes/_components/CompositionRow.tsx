@@ -66,7 +66,7 @@ function badgeClasses(color: GroupColor): string {
   const map: Record<GroupColor, string> = {
     blue: 'bg-blue-100 text-blue-700',
     purple: 'bg-purple-100 text-purple-700',
-    amber: 'bg-amber-100 text-amber-700',
+    amber: 'bg-amber-100 text-warning-fg',
     emerald: 'bg-emerald-100 text-emerald-700',
     rose: 'bg-rose-100 text-rose-700',
     cyan: 'bg-cyan-100 text-cyan-700',
@@ -244,13 +244,13 @@ export function IngredientCompositionRow({
 
   return (
     <div className={cn(
-      'rounded-lg border border-gray-200 bg-white p-3 shadow-sm',
+      'rounded-lg border border-border bg-surface p-3 shadow-sm',
       borderStyle,
     )}>
       {/* Badge row */}
       {inclusionType === 'removable' && (
         <div className="mb-1">
-          <span className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+          <span className="inline-block rounded-full bg-surface-hover px-2 py-0.5 text-xs font-medium text-text-muted">
             (removable)
           </span>
         </div>
@@ -267,7 +267,7 @@ export function IngredientCompositionRow({
       )}
       {inclusionType === 'upgrade' && (
         <div className="mb-1">
-          <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+          <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-warning-fg">
             Upgrade +£{parseFloat(row.upgrade_price || '0').toFixed(2)}
           </span>
         </div>
@@ -330,7 +330,7 @@ export function IngredientCompositionRow({
               type="text"
               value={row.option_group}
               onChange={(e) => onChange(index, { option_group: e.target.value })}
-              className="w-24 shrink-0 rounded border border-gray-300 px-2 py-1 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-24 shrink-0 rounded-sm border border-border-strong px-2 py-1 text-sm placeholder:text-text-subtle focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               placeholder="Group"
               title="Enter a group name (e.g. Chips, Peas) to mark as one of several options."
               list={`ing-groups-${index}`}
@@ -360,9 +360,9 @@ export function IngredientCompositionRow({
         {lineCost !== null && (
           <div className="shrink-0 pb-0.5 text-right">
             <p className="text-xs text-gray-400">Cost</p>
-            <p className="text-sm font-semibold text-gray-700">£{lineCost.toFixed(2)}</p>
+            <p className="text-sm font-semibold text-text">£{lineCost.toFixed(2)}</p>
             {unitCost !== null && (
-              <p className="text-[10px] text-gray-400">@ £{unitCost.toFixed(4)}/unit</p>
+              <p className="text-2xs text-gray-400">@ £{unitCost.toFixed(4)}/unit</p>
             )}
           </div>
         )}
@@ -371,7 +371,7 @@ export function IngredientCompositionRow({
           <button
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="rounded-sm p-1.5 text-gray-400 hover:bg-surface-hover hover:text-text-muted"
             aria-label={expanded ? 'Collapse advanced fields' : 'Expand advanced fields'}
           >
             {expanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
@@ -380,7 +380,7 @@ export function IngredientCompositionRow({
             type="button"
             onClick={() => onRemove(index)}
             disabled={!canRemove}
-            className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30"
+            className="rounded-sm p-1.5 text-gray-400 hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Remove ingredient"
           >
             <TrashIcon className="h-4 w-4" />
@@ -390,7 +390,7 @@ export function IngredientCompositionRow({
 
       {/* Expanded: advanced fields */}
       {expanded && (
-        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 sm:grid-cols-5">
+        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3 sm:grid-cols-5">
           <FormGroup label="Yield %">
             <Input
               type="number" min="0" max="100" step="1"
@@ -515,13 +515,13 @@ export function RecipeCompositionRow({
 
   return (
     <div className={cn(
-      'rounded-lg border border-gray-200 bg-white p-3 shadow-sm',
+      'rounded-lg border border-border bg-surface p-3 shadow-sm',
       borderStyle,
     )}>
       {/* Badge row */}
       {inclusionType === 'removable' && (
         <div className="mb-1">
-          <span className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+          <span className="inline-block rounded-full bg-surface-hover px-2 py-0.5 text-xs font-medium text-text-muted">
             (removable)
           </span>
         </div>
@@ -538,7 +538,7 @@ export function RecipeCompositionRow({
       )}
       {inclusionType === 'upgrade' && (
         <div className="mb-1">
-          <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+          <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-warning-fg">
             Upgrade +£{parseFloat(row.upgrade_price || '0').toFixed(2)}
           </span>
         </div>
@@ -590,7 +590,7 @@ export function RecipeCompositionRow({
               type="text"
               value={row.option_group}
               onChange={(e) => onChange(index, { option_group: e.target.value })}
-              className="w-24 shrink-0 rounded border border-gray-300 px-2 py-1 text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-24 shrink-0 rounded-sm border border-border-strong px-2 py-1 text-sm placeholder:text-text-subtle focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               placeholder="Group"
               title="Enter a group name (e.g. Chips, Peas) to mark as one of several options."
               list={`rec-groups-${index}`}
@@ -620,9 +620,9 @@ export function RecipeCompositionRow({
         {recipeLineCost !== null && (
           <div className="shrink-0 pb-0.5 text-right">
             <p className="text-xs text-gray-400">Cost</p>
-            <p className="text-sm font-semibold text-gray-700">£{recipeLineCost.toFixed(2)}</p>
+            <p className="text-sm font-semibold text-text">£{recipeLineCost.toFixed(2)}</p>
             {recipeUnitCost !== null && (
-              <p className="text-[10px] text-gray-400">@ £{recipeUnitCost.toFixed(4)}/portion</p>
+              <p className="text-2xs text-gray-400">@ £{recipeUnitCost.toFixed(4)}/portion</p>
             )}
           </div>
         )}
@@ -631,7 +631,7 @@ export function RecipeCompositionRow({
           <button
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="rounded-sm p-1.5 text-gray-400 hover:bg-surface-hover hover:text-text-muted"
             aria-label={expanded ? 'Collapse advanced fields' : 'Expand advanced fields'}
           >
             {expanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
@@ -640,7 +640,7 @@ export function RecipeCompositionRow({
             type="button"
             onClick={() => onRemove(index)}
             disabled={!canRemove}
-            className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30"
+            className="rounded-sm p-1.5 text-gray-400 hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Remove recipe"
           >
             <TrashIcon className="h-4 w-4" />
@@ -650,7 +650,7 @@ export function RecipeCompositionRow({
 
       {/* Expanded: advanced fields */}
       {expanded && (
-        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3 sm:grid-cols-4">
           <FormGroup label="Yield %">
             <Input
               type="number" min="0" max="100" step="1"

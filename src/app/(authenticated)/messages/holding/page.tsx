@@ -55,7 +55,7 @@ export default async function HoldingQueuePage() {
           ) : (
             <div className="space-y-3">
               {rows.map((row) => (
-                <div key={row.id} className="rounded border border-border p-3">
+                <div key={row.id} className="rounded-sm border border-border p-3">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <Badge tone="info">{channelLabel(row.channel)}</Badge>
                     {Array.isArray(row.attachments) && row.attachments.length > 0 && (

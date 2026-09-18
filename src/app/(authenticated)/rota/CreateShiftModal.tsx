@@ -73,7 +73,7 @@ export default function CreateShiftModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
       <div
-        className="bg-surface rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+        className="bg-surface rounded-xl shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between p-5 border-b border-border">
@@ -81,7 +81,7 @@ export default function CreateShiftModal({
             <p className="text-sm text-text-muted">{formatDate(shiftDate)}</p>
             <p className="text-lg font-semibold text-text-strong mt-0.5">{employeeName}</p>
           </div>
-          <button type="button" onClick={onClose} className="p-1 text-text-subtle hover:text-text-muted rounded">
+          <button type="button" onClick={onClose} className="p-1 text-text-subtle hover:text-text-muted rounded-sm">
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
@@ -124,7 +124,7 @@ export default function CreateShiftModal({
               type="checkbox"
               checked={overnight}
               onChange={e => setOvernight(e.target.checked)}
-              className="rounded border-border-strong text-info-fg"
+              className="rounded-sm border-border-strong text-info-fg"
             />
             <label htmlFor="cs-overnight" className="text-text">Overnight shift</label>
           </div>
@@ -329,7 +329,7 @@ export function PremiumControl({ state, idPrefix }: PremiumControlProps) {
               type="checkbox"
               checked={state.useWindow}
               onChange={e => state.setUseWindow(e.target.checked)}
-              className="rounded border-border-strong text-info-fg"
+              className="rounded-sm border-border-strong text-info-fg"
             />
             <label htmlFor={`${idPrefix}-window`} className="text-text">Applies to part of the shift only</label>
           </div>

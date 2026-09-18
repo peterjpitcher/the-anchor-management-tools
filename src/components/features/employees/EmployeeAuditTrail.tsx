@@ -46,7 +46,7 @@ export function EmployeeAuditTrail({
 
   if (!canViewAudit) {
     return (
-      <div className="text-center py-8 text-gray-500">
+      <div className="text-center py-8 text-text-muted">
         You do not have permission to view audit history.
       </div>
     )
@@ -54,7 +54,7 @@ export function EmployeeAuditTrail({
 
   if (timelineEntries.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
+      <div className="text-center py-8 text-text-muted">
         No audit history available{employeeName ? ` for ${employeeName}` : ''}.
       </div>
     )
@@ -103,10 +103,10 @@ export function EmployeeAuditTrail({
   }
 
   const getActionColor = (operationType: string) => {
-    if (operationType === 'create') return 'bg-green-100 text-green-800'
-    if (operationType === 'delete' || operationType.includes('delete')) return 'bg-red-100 text-red-800'
-    if (operationType === 'update' || operationType.includes('update')) return 'bg-blue-100 text-blue-800'
-    return 'bg-gray-100 text-gray-800'
+    if (operationType === 'create') return 'bg-success-soft text-green-800'
+    if (operationType === 'delete' || operationType.includes('delete')) return 'bg-danger-soft text-danger-fg'
+    if (operationType === 'update' || operationType.includes('update')) return 'bg-blue-100 text-info-fg'
+    return 'bg-surface-hover text-text'
   }
 
   const formatDetails = (log: AuditLogEntry) => {
@@ -278,10 +278,10 @@ export function EmployeeAuditTrail({
 
   return (
     <div className="space-y-6">
-      <div className="bg-white shadow sm:rounded-lg">
+      <div className="bg-surface shadow-sm sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="flex items-center text-lg font-medium leading-6 text-gray-900">
+            <h3 className="flex items-center text-lg font-medium leading-6 text-text">
               <ClockIcon className="mr-2 h-5 w-5" />
               Audit Trail
             </h3>
@@ -307,13 +307,13 @@ export function EmployeeAuditTrail({
                   <li key={entry.id}>
                     <div className="relative pb-8">
                       {idx !== timelineEntries.length - 1 ? (
-                        <span className="absolute top-5 left-5 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true" />
+                        <span className="absolute top-5 left-5 -ml-px h-full w-0.5 bg-border" aria-hidden="true" />
                       ) : null}
                       <div className="relative flex space-x-3">
                         <div>
                           <span
                             className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                              isAudit ? getActionColor(log!.operation_type) : 'bg-amber-100 text-amber-800'
+                              isAudit ? getActionColor(log!.operation_type) : 'bg-amber-100 text-warning-fg'
                             }`}
                           >
                             {isAudit ? (
@@ -327,24 +327,24 @@ export function EmployeeAuditTrail({
                           {isAudit ? (
                             <>
                               <div className="flex items-start justify-between gap-2">
-                                <p className="min-w-0 break-words text-sm font-medium text-gray-900">
+                                <p className="min-w-0 break-words text-sm font-medium text-text">
                                   {log!.user_email ?? 'System'} {getActionLabel(log!)}
                                 </p>
-                                <p className="flex-shrink-0 whitespace-nowrap text-xs text-gray-500">{formatDateTime(log!.created_at)}</p>
+                                <p className="flex-shrink-0 whitespace-nowrap text-xs text-text-muted">{formatDateTime(log!.created_at)}</p>
                               </div>
                               {formatDetails(log!) && (
-                                <p className="text-sm text-gray-500 break-words">{formatDetails(log!)}</p>
+                                <p className="text-sm text-text-muted break-words">{formatDetails(log!)}</p>
                               )}
                             </>
                           ) : (
                             <>
                               <div className="flex items-start justify-between gap-2">
-                                <p className="min-w-0 break-words text-sm font-medium text-gray-900">
+                                <p className="min-w-0 break-words text-sm font-medium text-text">
                                   {note!.author_name} added a note
                                 </p>
-                                <p className="flex-shrink-0 whitespace-nowrap text-xs text-gray-500">{formatDateTime(note!.created_at)}</p>
+                                <p className="flex-shrink-0 whitespace-nowrap text-xs text-text-muted">{formatDateTime(note!.created_at)}</p>
                               </div>
-                              <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">
+                              <p className="text-sm text-text-muted whitespace-pre-wrap break-words">
                                 {note!.note_text}
                               </p>
                             </>

@@ -47,8 +47,8 @@ export function Switch({
         onClick={() => onChange(!checked)}
         className={cn(
           'inline-flex shrink-0 items-center justify-center rounded-default',
-          'max-[820px]:h-11 max-[820px]:w-11',
-          'focus-visible:outline-none focus-visible:shadow-ring',
+          'max-shell:h-11 max-shell:w-11',
+          'focus-visible:outline-hidden focus-visible:shadow-ring',
         )}
       >
         <span
@@ -61,7 +61,7 @@ export function Switch({
         >
           <span
             className={cn(
-              'inline-block rounded-full bg-white shadow-sm transition-transform duration-200',
+              'inline-block rounded-full bg-surface shadow-sm transition-transform duration-200',
               thumbSizes[size].base,
               checked ? thumbSizes[size].translate : 'translate-x-0.5'
             )}
@@ -70,7 +70,7 @@ export function Switch({
       </button>
 
       {label && (
-        <span className="text-[13px] text-text">{label}</span>
+        <span className="text-ui text-text">{label}</span>
       )}
     </label>
   )

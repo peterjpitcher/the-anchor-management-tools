@@ -19,14 +19,14 @@ export function StaffPicker({ staff, value, onChange, id = 'foh-voucher-staff' }
 
   return (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-gray-900">
+      <label htmlFor={id} className="block text-sm font-medium text-text">
         Your name
       </label>
       <select
         id={id}
         value={value ?? ''}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 block h-12 w-full rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+        className="mt-1 block h-12 w-full rounded-lg border border-border-strong bg-surface px-3 text-base text-text focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
       >
         <option value="" disabled>
           Choose who is doing this

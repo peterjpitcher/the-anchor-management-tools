@@ -394,8 +394,8 @@ export function DishCompositionTab({
       {/* Recipes section */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-semibold text-gray-900">Recipes</h4>
-          <span className="text-sm text-gray-600">
+          <h4 className="text-sm font-semibold text-text">Recipes</h4>
+          <span className="text-sm text-text-muted">
             Recipes: £{recipesResult.baseTotal.toFixed(2)}
           </span>
         </div>
@@ -431,8 +431,8 @@ export function DishCompositionTab({
       {/* Ingredients section */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-semibold text-gray-900">Direct Ingredients</h4>
-          <span className="text-sm text-gray-600">
+          <h4 className="text-sm font-semibold text-text">Direct Ingredients</h4>
+          <span className="text-sm text-text-muted">
             Direct ingredients: £{ingredientsResult.baseTotal.toFixed(2)}
           </span>
         </div>
@@ -562,9 +562,9 @@ function CostBreakdownFooter({
     : null;
 
   return (
-    <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+    <div className="space-y-2 rounded-lg border border-dashed border-border-strong bg-surface-2 p-4">
       {missingCostItems.length > 0 && (
-        <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div role="alert" className="rounded-md border border-amber-200 bg-warning-soft px-3 py-2 text-xs text-warning-fg">
           Cost data incomplete. Missing costs: {missingCostItems.join(', ')}. GP figures are unreliable until these are priced.
         </div>
       )}
@@ -576,14 +576,14 @@ function CostBreakdownFooter({
             <Row key={`cg-${name}`} label={`Choice \u2014 ${name} (worst case)`} value={g.maxCost} />
           ))}
 
-          <div className="border-t border-gray-300 pt-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-900">
+          <div className="border-t border-border-strong pt-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-text">
               Base portion cost
             </span>
             <span className="text-sm font-semibold">
               £{totalPortionCost.toFixed(2)}
               {baseGp !== null && (
-                <span className="ml-2 text-gray-600 font-normal">
+                <span className="ml-2 text-text-muted font-normal">
                   | Base GP: {(baseGp * 100).toFixed(1)}%
                 </span>
               )}
@@ -592,12 +592,12 @@ function CostBreakdownFooter({
 
           {hasAnyUpgrades && (
             <>
-              <div className="mt-2 mb-1 text-xs font-semibold uppercase tracking-wide text-amber-700">
+              <div className="mt-2 mb-1 text-xs font-semibold uppercase tracking-wide text-warning-fg">
                 Upgrades
               </div>
               {Array.from(allUpgradeGroups.entries()).map(([name, g]) => (
                 <div key={`ug-${name}`} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-text">
                     {name} (+£{g.maxPrice.toFixed(2)})
                   </span>
                   <span className="text-sm font-medium">cost £{g.maxCost.toFixed(2)}</span>
@@ -605,16 +605,16 @@ function CostBreakdownFooter({
               ))}
               {allUngroupedUpgrades.map((u, i) => (
                 <div key={`uu-${i}`} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-text">
                     {u.name} (+£{u.price.toFixed(2)})
                   </span>
                   <span className="text-sm font-medium">cost £{u.cost.toFixed(2)}</span>
                 </div>
               ))}
               {upgradeGp !== null && (
-                <div className="flex items-center justify-between border-t border-gray-200 pt-1">
-                  <span className="text-sm text-amber-800 font-medium">Upgrade GP (all upgrades)</span>
-                  <span className="text-sm font-semibold text-amber-800">
+                <div className="flex items-center justify-between border-t border-border pt-1">
+                  <span className="text-sm text-warning-fg font-medium">Upgrade GP (all upgrades)</span>
+                  <span className="text-sm font-semibold text-warning-fg">
                     {(upgradeGp * 100).toFixed(1)}%
                   </span>
                 </div>
@@ -624,18 +624,18 @@ function CostBreakdownFooter({
         </>
       ) : (
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-900">Total portion cost</span>
+          <span className="text-sm font-medium text-text">Total portion cost</span>
           <span className="text-lg font-semibold">
             £{totalPortionCost.toFixed(2)}
             {baseGp !== null && (
-              <span className="ml-2 text-sm text-gray-600 font-normal">
+              <span className="ml-2 text-sm text-text-muted font-normal">
                 GP: {(baseGp * 100).toFixed(1)}%
               </span>
             )}
           </span>
         </div>
       )}
-      <p className="text-xs text-gray-600">
+      <p className="text-xs text-text-muted">
         Figures update instantly as you tweak quantities.
       </p>
     </div>
@@ -645,7 +645,7 @@ function CostBreakdownFooter({
 function Row({ label, value }: { label: string; value: number }): React.ReactElement {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm text-gray-700">{label}</span>
+      <span className="text-sm text-text">{label}</span>
       <span className="text-sm font-medium">£{value.toFixed(2)}</span>
     </div>
   );

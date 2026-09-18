@@ -129,14 +129,14 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
   const hasIngredients = dish.ingredients.length > 0;
 
   if (!hasRecipes && !hasIngredients) {
-    return <p className="text-sm text-gray-500">No ingredients or recipes linked to this dish yet.</p>;
+    return <p className="text-sm text-text-muted">No ingredients or recipes linked to this dish yet.</p>;
   }
 
   return (
     <div className="space-y-6">
       {hasRecipes && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-900">Recipes</h4>
+          <h4 className="text-sm font-semibold text-text">Recipes</h4>
           <div className="mt-3 space-y-3">
             {dish.recipes.map((recipe) => {
               const costLabel = recipe.cost_override != null
@@ -146,30 +146,30 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
                   : 'Cost unavailable';
 
               return (
-                <div key={recipe.recipe_id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                <div key={recipe.recipe_id} className="rounded-lg border border-border bg-surface p-3 shadow-sm">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <div className="flex items-center gap-2 font-medium text-gray-900">
+                      <div className="flex items-center gap-2 font-medium text-text">
                         {recipe.recipe_name}
                         {!recipe.recipe_is_active && (
                           <Badge variant="warning" size="sm">Inactive</Badge>
                         )}
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-text-muted">
                         Qty {recipe.quantity} portion{recipe.quantity === 1 ? '' : 's'}
                       </div>
                       {recipe.notes && (
-                        <div className="mt-1 text-xs text-gray-500">Notes: {recipe.notes}</div>
+                        <div className="mt-1 text-xs text-text-muted">Notes: {recipe.notes}</div>
                       )}
                     </div>
-                    <div className="flex flex-col items-start text-xs text-gray-500 sm:items-end">
+                    <div className="flex flex-col items-start text-xs text-text-muted sm:items-end">
                       <span>{costLabel}</span>
                       <span>
                         Yield: {recipe.yield_quantity != null ? `${recipe.yield_quantity} ${recipe.yield_unit || ''}` : '\u2014'}
                       </span>
                     </div>
                   </div>
-                  <div className="mt-2 text-xs text-gray-500 space-x-2">
+                  <div className="mt-2 text-xs text-text-muted space-x-2">
                     {recipe.dietary_flags.length > 0 && (
                       <span>Dietary: {recipe.dietary_flags.join(', ')}</span>
                     )}
@@ -186,7 +186,7 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
 
       {hasIngredients && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-900">Ingredients</h4>
+          <h4 className="text-sm font-semibold text-text">Ingredients</h4>
           <div className="mt-3 space-y-3">
             {dish.ingredients.map((ingredient) => {
               const quantityLabel = ingredient.quantity
@@ -200,33 +200,33 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
                   : 'Unit cost unavailable';
 
               return (
-                <div key={ingredient.ingredient_id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                <div key={ingredient.ingredient_id} className="rounded-lg border border-border bg-surface p-3 shadow-sm">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <div className="font-medium text-gray-900">{ingredient.ingredient_name}</div>
-                      <div className="mt-1 text-xs text-gray-500">
+                      <div className="font-medium text-text">{ingredient.ingredient_name}</div>
+                      <div className="mt-1 text-xs text-text-muted">
                         {ingredient.dietary_flags.length > 0
                           ? `Dietary: ${ingredient.dietary_flags.join(', ')}`
                           : 'Dietary info not set'}
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-text-muted">
                         {ingredient.allergens.length > 0
                           ? `Allergens: ${ingredient.allergens.join(', ')}`
                           : 'No allergens recorded'}
                       </div>
                       {ingredient.notes && (
-                        <div className="mt-1 text-xs text-gray-500">Notes: {ingredient.notes}</div>
+                        <div className="mt-1 text-xs text-text-muted">Notes: {ingredient.notes}</div>
                       )}
                     </div>
                     <div className="flex flex-col items-start sm:items-end">
                       <Badge variant="primary">Qty {quantityLabel}</Badge>
                       {ingredient.measure_ml != null && (
-                        <span className="mt-1 text-xs text-gray-500">{ingredient.measure_ml}ml</span>
+                        <span className="mt-1 text-xs text-text-muted">{ingredient.measure_ml}ml</span>
                       )}
-                      <span className="mt-1 text-xs text-gray-500">{unitCostLabel}</span>
+                      <span className="mt-1 text-xs text-text-muted">{unitCostLabel}</span>
                     </div>
                   </div>
-                  <div className="mt-3 grid gap-2 text-xs text-gray-600 sm:grid-cols-3">
+                  <div className="mt-3 grid gap-2 text-xs text-text-muted sm:grid-cols-3">
                     <span>Yield: {ingredient.yield_pct != null ? `${ingredient.yield_pct}%` : '\u2014'}</span>
                     <span>Wastage: {ingredient.wastage_pct != null ? `${ingredient.wastage_pct}%` : '\u2014'}</span>
                     <span>

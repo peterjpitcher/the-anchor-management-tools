@@ -183,16 +183,16 @@ export default function RecordPaymentPage() {
           <h2 className="mb-4 text-lg font-semibold">Payment Summary</h2>
           <div className="grid grid-cols-1 gap-4 text-center sm:grid-cols-3">
             <div>
-              <p className="text-sm text-gray-600">Invoice Total</p>
+              <p className="text-sm text-text-muted">Invoice Total</p>
               <p className="text-xl font-bold">£{invoice.total_amount.toFixed(2)}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Already Paid</p>
+              <p className="text-sm text-text-muted">Already Paid</p>
               <p className="text-xl font-bold text-green-600">£{invoice.paid_amount.toFixed(2)}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Outstanding</p>
-              <p className="text-xl font-bold text-red-600">£{outstanding.toFixed(2)}</p>
+              <p className="text-sm text-text-muted">Outstanding</p>
+              <p className="text-xl font-bold text-danger">£{outstanding.toFixed(2)}</p>
             </div>
           </div>
         </Card>

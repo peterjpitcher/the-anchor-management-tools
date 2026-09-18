@@ -56,7 +56,7 @@ export default function CreateAccountStep({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <p className="text-sm text-gray-600 mb-4">
+        <p className="text-sm text-text-muted mb-4">
           {description ?? (
             <>
               Create a password for your account. You&apos;ll use your email address (<strong>{email}</strong>) and this password to sign in.
@@ -66,7 +66,7 @@ export default function CreateAccountStep({
       </div>
 
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="password" className="block text-sm font-medium text-text mb-1">
           Password
         </label>
         <input
@@ -76,13 +76,13 @@ export default function CreateAccountStep({
           onChange={(e) => setPassword(e.target.value)}
           required
           minLength={8}
-          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+          className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
           placeholder="At least 8 characters"
         />
       </div>
 
       <div>
-        <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="confirm-password" className="block text-sm font-medium text-text mb-1">
           Confirm Password
         </label>
         <input
@@ -91,13 +91,13 @@ export default function CreateAccountStep({
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           required
-          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+          className="block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-green-500"
           placeholder="Re-enter your password"
         />
       </div>
 
       {error && (
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-danger">{error}</p>
       )}
 
       <button

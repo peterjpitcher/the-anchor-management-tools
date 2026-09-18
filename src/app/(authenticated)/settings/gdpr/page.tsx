@@ -118,7 +118,7 @@ export default function GDPRSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <TrashIcon className="h-5 w-5 mr-2 text-red-500" />
+              <TrashIcon className="h-5 w-5 mr-2 text-danger" />
               Delete Your Data
             </CardTitle>
             <CardDescription className="mt-2 max-w-xl">
@@ -180,7 +180,7 @@ export default function GDPRSettingsPage() {
             <CardTitle>Your Privacy Rights</CardTitle>
           </CardHeader>
           <CardBody>
-            <div className="text-sm text-gray-700 space-y-2">
+            <div className="text-sm text-text space-y-2">
               <p>Under GDPR, you have the following rights:</p>
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li>Right to access your personal data</li>

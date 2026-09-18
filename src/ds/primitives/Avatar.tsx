@@ -8,17 +8,19 @@ interface AvatarProps {
   className?: string
 }
 
+// Every avatar colour passes 4.5:1 against the white initials (the old 500-level
+// shades did not: yellow was 1.9:1).
 const AVATAR_COLORS = [
-  'bg-[#ef4444]',
-  'bg-[#f97316]',
-  'bg-[#eab308]',
-  'bg-[#22c55e]',
-  'bg-[#3b82f6]',
-  'bg-[#8b5cf6]',
+  'bg-avatar-1',
+  'bg-avatar-2',
+  'bg-avatar-3',
+  'bg-avatar-4',
+  'bg-avatar-5',
+  'bg-avatar-6',
 ] as const
 
 const sizeStyles: Record<AvatarSize, string> = {
-  sm: 'w-6 h-6 text-[10px]',
+  sm: 'w-6 h-6 text-2xs',
   md: 'w-8 h-8 text-xs',
   lg: 'w-10 h-10 text-sm',
   xl: 'w-14 h-14 text-lg',
