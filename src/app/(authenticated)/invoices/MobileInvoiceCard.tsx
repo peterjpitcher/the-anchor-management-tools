@@ -1,3 +1,4 @@
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
 import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
 import { Card } from '@/ds'
 import { Badge } from '@/ds'
@@ -122,7 +123,7 @@ export function MobileInvoiceCard({
             <div
               className={`font-semibold ${isOverdue ? 'text-red-600' : ''}`}
             >
-              {formatCurrency(invoice.total_amount - invoice.paid_amount)}
+              {formatCurrency(invoiceBalanceDue(invoice))}
             </div>
           )}
         </div>

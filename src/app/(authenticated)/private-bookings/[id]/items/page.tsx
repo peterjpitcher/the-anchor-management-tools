@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
 import { formatDateFull } from '@/lib/dateUtils'
 import { 
@@ -844,6 +845,7 @@ export default function ItemsPage() {
       }
     >
       <div className="space-y-6">
+        {booking?.invoice_id && <Card><p className="text-sm text-text">Original invoiced prices are locked. Included items with no charge can still be added here.</p><Link className="mt-2 inline-block text-sm text-primary underline" href={`/private-bookings/${bookingId}#booking-billing`}>Add chargeable extras on a separate invoice</Link></Card>}
         <Card>
         {items.length === 0 ? (
           <EmptyState icon={<ClipboardDocumentListIcon className="h-12 w-12" />}

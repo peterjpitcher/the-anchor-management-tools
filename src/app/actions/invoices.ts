@@ -1,5 +1,7 @@
 'use server'
 
+import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
+
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
@@ -258,13 +260,14 @@ async function sendPaymentReceipt(
   const paymentAmount = payment.amount ?? invoice.paid_amount
   const paymentDate = formatDateForEmail(payment.payment_date || null)
   const paymentMethod = formatPaymentMethodForEmail(payment.payment_method || null)
-  const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
+  const outstandingBalance = invoiceBalanceDue(invoice)
   const recipientName = invoice.vendor?.contact_name || invoice.vendor?.name || 'there'
 
-  const isFullPayment = invoice.status === 'paid'
+  const isFullPayment = invoice.status === 'paid' && outstandingBalance === 0
+  const creditTotal = invoiceIssuedCreditTotal(invoice)
   const subject = isFullPayment
-    ? `Receipt: Invoice ${invoice.invoice_number} (Paid in Full)`
-    : `Receipt: Invoice ${invoice.invoice_number} (Payment Received — Balance: £${outstandingBalance.toFixed(2)})`
+    ? `Receipt: Invoice ${invoice.invoice_number} (${creditTotal > 0 ? 'Settled with Credits' : 'Paid in Full'})`
+    : `Receipt: Invoice ${invoice.invoice_number} (Payment Received, Balance: £${outstandingBalance.toFixed(2)})`
   const pdfFilename = isFullPayment
     ? `receipt-${invoice.invoice_number}.pdf`
     : `receipt-${invoice.invoice_number}-partial.pdf`
@@ -277,7 +280,7 @@ This is a receipt confirming payment has been received for invoice ${invoice.inv
 Invoice Total: ${formatCurrencyForEmail(invoice.total_amount)}
 Payment Received: ${formatCurrencyForEmail(paymentAmount)}
 Total Paid: ${formatCurrencyForEmail(invoice.paid_amount)}
-Outstanding Balance: ${formatCurrencyForEmail(outstandingBalance)}
+${creditTotal > 0 ? `Credits Applied: ${formatCurrencyForEmail(creditTotal)}\n` : ''}Outstanding Balance: ${formatCurrencyForEmail(outstandingBalance)}
 Payment Date: ${paymentDate}
 ${paymentMethod ? `Payment Method: ${paymentMethod}` : ''}
 ${payment.reference ? `Reference: ${payment.reference}` : ''}

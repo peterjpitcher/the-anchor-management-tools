@@ -1,5 +1,7 @@
 'use client'
 
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
+
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
@@ -73,7 +75,7 @@ export default function RecordPaymentPage() {
 
         setInvoice(result.invoice)
 
-        const outstanding = result.invoice.total_amount - result.invoice.paid_amount
+        const outstanding = invoiceBalanceDue(result.invoice)
         setAmount(outstanding > 0 ? outstanding.toFixed(2) : '0.00')
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load invoice')
@@ -98,7 +100,7 @@ export default function RecordPaymentPage() {
     }
 
     const paymentAmount = parseFloat(amount)
-    const outstanding = invoice.total_amount - invoice.paid_amount
+    const outstanding = invoiceBalanceDue(invoice)
 
     if (Number.isNaN(paymentAmount) || paymentAmount <= 0) {
       setError('Payment amount must be greater than 0')
@@ -164,7 +166,7 @@ export default function RecordPaymentPage() {
     )
   }
 
-  const outstanding = invoice.total_amount - invoice.paid_amount
+  const outstanding = invoiceBalanceDue(invoice)
 
   return (
     <PageLayout

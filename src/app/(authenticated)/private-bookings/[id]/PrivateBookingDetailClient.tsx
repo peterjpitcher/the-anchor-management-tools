@@ -114,6 +114,8 @@ import {
 } from '@/components/private-bookings/WorkflowPanels'
 import { formatCurrency } from '@/lib/format'
 import { computeBookingMoney } from '@/lib/private-bookings/vat'
+import { PrivateBookingBilling } from '@/components/private-bookings/PrivateBookingBilling'
+import { PrivateBookingReceiptPanel } from '@/components/private-bookings/PrivateBookingReceiptPanel'
 // Using types from private-bookings.ts
 
 // Status configuration
@@ -164,6 +166,7 @@ interface PrivateBookingDetailClientProps {
     canRefund: boolean;
     /** Invoicing is super_admin only; the server action re-checks it. */
     canInvoice: boolean;
+    canViewPricing?: boolean;
   };
   paymentHistory: PaymentHistoryEntry[];
   /**
@@ -1797,6 +1800,7 @@ export default function PrivateBookingDetailClient({
     canEditPayments,
     canRefund,
     canInvoice,
+    canViewPricing,
   } = permissions;
 
   // Refund dialog state
@@ -2378,6 +2382,9 @@ export default function PrivateBookingDetailClient({
     booking.discount_type,
     booking.discount_amount,
   );
+
+  const supplementaryTotal = toNumber(booking.supplementary_charges_total, 0);
+  const aggregateBookingTotal = bookingMoney.grossTotal + supplementaryTotal;
 
   const editDepositValue = Number(editDepositAmount);
   const showDepositReductionReason =
@@ -2996,12 +3003,14 @@ export default function PrivateBookingDetailClient({
                       {formatMoney(bookingMoney.vatAmount)}
                     </span>
                   </div>
+                  {supplementaryTotal > 0 && <div className="flex justify-between text-sm"><span>Additional invoices inc. VAT</span><span>{formatMoney(supplementaryTotal)}</span></div>}
+                  {toNumber(booking.invoice_credits_total) > 0 && <div className="flex justify-between text-sm"><span>Credits issued (shown separately)</span><span>{formatMoney(booking.invoice_credits_total)}</span></div>}
                   <div className="flex justify-between">
                     <span className="text-base font-medium text-gray-900">
-                      Event total inc. VAT
+                      Total charges inc. VAT
                     </span>
                     <span className="text-xl font-bold text-gray-900">
-                      {formatMoney(bookingMoney.grossTotal)}
+                      {formatMoney(aggregateBookingTotal)}
                     </span>
                   </div>
                 </div>
@@ -3217,7 +3226,7 @@ export default function PrivateBookingDetailClient({
                   </span>
                   <span className="font-semibold text-gray-900">
                     {formatMoney(
-                      bookingMoney.grossTotal + (depositRequired && !depositAppliedToInvoice ? depositAmount : 0),
+                      aggregateBookingTotal + (depositRequired && !depositAppliedToInvoice ? depositAmount : 0),
                     )}
                   </span>
                 </div>
@@ -3226,9 +3235,11 @@ export default function PrivateBookingDetailClient({
                   const payments: PrivateBookingPayment[] = booking.payments ?? [];
                   const totalPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0) + appliedDepositAmount;
                   // Balance is VAT-inclusive: stored prices are net
-                  const bookingTotal = bookingMoney.grossTotal;
+                  const bookingTotal = aggregateBookingTotal;
                   // An applied invoice deposit is already included in totalPaid.
-                  const remaining = Math.max(0, bookingTotal - totalPaid);
+                  const remaining = booking.invoice_id && booking.invoice_balance_total != null
+                    ? toNumber(booking.invoice_balance_total)
+                    : Math.max(0, bookingTotal - totalPaid);
                   return (
                     <>
                       <div className="flex justify-between items-start">
@@ -3237,7 +3248,7 @@ export default function PrivateBookingDetailClient({
                             Balance Due
                           </p>
                           <p className="text-xs text-gray-500">
-                            For booking items only
+                            For original charges and issued extras
                           </p>
                           {booking.balance_due_date && (
                             <p className="text-xs text-gray-500">
@@ -3260,7 +3271,7 @@ export default function PrivateBookingDetailClient({
                               </p>
                             </>
                           )}
-                          {!isDateTbd && remaining > 0 && canManageDeposits && (
+                          {!isDateTbd && remaining > 0 && canManageDeposits && !booking.invoice_id && (
                             <Button
                               type="button"
                               variant="primary"
@@ -3274,12 +3285,14 @@ export default function PrivateBookingDetailClient({
                         </div>
                       </div>
 
+                      {booking.invoice_id && remaining > 0 && <a href="#booking-billing" className="mt-2 block text-sm text-primary underline">Record payment against an invoice</a>}
+
                       <div className="mt-3 pt-3 border-t">
                         <PaymentHistoryTable
                           payments={paymentHistory}
                           bookingId={bookingId}
                           canEditPayments={canEditPayments}
-                          totalAmount={bookingMoney.grossTotal}
+                          totalAmount={aggregateBookingTotal}
                         />
                       </div>
 
@@ -3509,6 +3522,11 @@ export default function PrivateBookingDetailClient({
         </div>
       </div>
 
+      {booking.invoice_id && canViewPricing && <div className="mt-8 space-y-6">
+        <PrivateBookingBilling bookingId={bookingId} canIssue={canInvoice} canRecordPayments={canManageDeposits} canAddExtras={['confirmed', 'completed'].includes(booking.status)} onChanged={refreshBooking} />
+        <PrivateBookingReceiptPanel bookingId={bookingId} canGenerate={canInvoice} />
+      </div>}
+
       <Section id="audit-trail" title="Audit Trail" className="mt-8">
         <Card>
           {auditTrail.length === 0 ? (
@@ -3577,7 +3595,7 @@ export default function PrivateBookingDetailClient({
         const payments: PrivateBookingPayment[] = booking?.payments ?? [];
         const totalPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0) + appliedDepositAmount;
         // An applied invoice deposit is already included in totalPaid. (gross, inc. VAT)
-        const remaining = Math.max(0, bookingMoney.grossTotal - totalPaid);
+        const remaining = Math.max(0, aggregateBookingTotal - totalPaid);
         return (
           <PaymentModal
             open={showFinalModal}

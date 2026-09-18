@@ -1,5 +1,7 @@
 'use client'
 
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
+
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
@@ -465,7 +467,7 @@ export default function InvoicesClient({
                           <span className="text-success">Paid</span>
                         ) : (
                           <span className={inv.status === 'overdue' ? 'text-danger font-medium' : ''}>
-                            {formatCurrency(inv.total_amount - inv.paid_amount)}
+                            {formatCurrency(invoiceBalanceDue(inv))}
                           </span>
                         )}
                       </TableCell>

@@ -58,6 +58,7 @@ function mockSupabase(opts: {
       if (table === 'private_bookings') {
         return { select: bookingSelect }
       }
+      if (table === 'private_booking_invoices') return { select: () => ({ in: async () => ({ data: [], error: null }) }) }
       if (table === 'private_booking_payments') {
         return { select: paymentsSelect }
       }

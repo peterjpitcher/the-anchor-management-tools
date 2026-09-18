@@ -1,3 +1,4 @@
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
 import { NextRequest, NextResponse } from 'next/server'
 import JSZip from 'jszip'
 
@@ -119,7 +120,8 @@ export async function GET(request: NextRequest) {
       .select(`
         *,
         vendor:invoice_vendors(*),
-        line_items:invoice_line_items(*)
+        line_items:invoice_line_items(*),
+        credits:credit_notes(status, amount_inc_vat)
       `)
       .order('display_order', { ascending: true, foreignTable: 'invoice_line_items' })
       .gte('invoice_date', startDate)
@@ -191,7 +193,7 @@ export async function GET(request: NextRequest) {
       safeMoney(invoice.vat_amount).toFixed(2),
       safeMoney(invoice.total_amount).toFixed(2),
       safeMoney(invoice.paid_amount).toFixed(2),
-      Math.max(0, safeMoney(invoice.total_amount) - safeMoney(invoice.paid_amount)).toFixed(2)
+      invoiceBalanceDue(invoice).toFixed(2)
     ])
 
     const csvContent = [

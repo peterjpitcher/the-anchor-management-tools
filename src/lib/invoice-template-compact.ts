@@ -1,3 +1,4 @@
+import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
 import { InvoiceWithDetails } from '@/types/invoices'
 import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
@@ -358,7 +359,8 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
   const remittancePaymentMethod = remittance?.paymentMethod ?? latestPayment?.payment_method ?? null
   const remittancePaymentReference =
     remittance?.paymentReference ?? latestPayment?.reference ?? invoice.reference ?? null
-  const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
+  const creditTotal = invoiceIssuedCreditTotal(invoice)
+  const outstandingBalance = invoiceBalanceDue(invoice)
 
   // An invoice raised for a private booking can be born with payments already
   // on it, so the plain invoice view has to be able to show a balance rather
@@ -537,7 +539,7 @@ ${renderDocumentHeader({
         <span>VAT</span>
         <span>${formatCurrency(invoice.vat_amount)}</span>
       </div>
-      ${isRemittanceAdvice ? `
+      ${creditTotal > 0 ? `<div class="summary-row"><span>Credits Applied</span><span>-${formatCurrency(creditTotal)}</span></div>\n      ` : ''}${isRemittanceAdvice ? `
         <div class="summary-row">
           <span>Invoice Total</span>
           <span>${formatCurrency(invoice.total_amount)}</span>
@@ -550,7 +552,7 @@ ${renderDocumentHeader({
           <span>Outstanding Balance</span>
           <span>${formatCurrency(outstandingBalance)}</span>
         </div>
-      ` : hasPaidAmount ? `
+      ` : hasPaidAmount || creditTotal > 0 ? `
         <div class="summary-row">
           <span>Invoice Total</span>
           <span>${formatCurrency(invoice.total_amount)}</span>

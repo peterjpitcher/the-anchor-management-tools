@@ -21,9 +21,10 @@
  *    Stamping it `'sent'` would erase the payment state.
  */
 
+import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
 import { revalidatePath } from 'next/cache'
 import { createHash } from 'crypto'
-import { createClient } from '@/lib/supabase/server'
+import { requirePrivateBookingBillingAdmin as requireSuperAdmin, loadInvoiceForSending } from '@/lib/private-bookings/invoice-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from './audit'
 import { getErrorMessage } from '@/lib/errors'
@@ -149,38 +150,6 @@ function describeDatabaseError(message: string): { error: string; blocked: boole
   // dropped connection, and locking the operator out of the send button on
   // something transient is worse than letting them try again.
   return { error: message, blocked: false }
-}
-
-/**
- * Super admin only. Copied from the checklists actions, which are the newest
- * and most repeated version of this check in the codebase.
- */
-async function requireSuperAdmin(): Promise<{ userId: string } | { error: string }> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return { error: 'Unauthorized' }
-
-  const db = createAdminClient()
-  const { data, error } = await (db.rpc as unknown as (
-    fn: string,
-    args: Record<string, unknown>,
-  ) => Promise<{ data: Array<{ role_name?: string }> | null; error: unknown }>)('get_user_roles', {
-    p_user_id: user.id,
-  })
-
-  if (error) {
-    console.error('[PrivateBookingInvoice] Failed to verify caller roles', error)
-    return { error: 'Failed to verify permissions' }
-  }
-
-  if (!(data ?? []).some(row => row.role_name === 'super_admin')) {
-    return { error: 'Only super admins can raise a booking invoice.' }
-  }
-
-  return { userId: user.id }
 }
 
 /**
@@ -432,31 +401,6 @@ export async function previewPrivateBookingInvoice(
   }
 }
 
-/**
- * Fetch the complete invoice for rendering. Deliberately not
- * `InvoiceService.getInvoiceById`: that runs on the cookie client, and it does
- * not order line items, so the PDF could print them in a different order each
- * time it is generated.
- */
-async function loadInvoiceForSending(invoiceId: string): Promise<InvoiceWithDetails | null> {
-  const db = createAdminClient()
-  const { data, error } = await db
-    .from('invoices')
-    .select(`*, vendor:invoice_vendors(*), line_items:invoice_line_items(*), payments:invoice_payments(*)`)
-    .order('display_order', { ascending: true, foreignTable: 'invoice_line_items' })
-    .order('payment_date', { ascending: true, foreignTable: 'invoice_payments' })
-    .eq('id', invoiceId)
-    .is('deleted_at', null)
-    .maybeSingle()
-
-  if (error || !data) {
-    console.error('[PrivateBookingInvoice] Failed to load invoice for sending', error)
-    return null
-  }
-
-  return data as unknown as InvoiceWithDetails
-}
-
 interface SendOutcome {
   sent: boolean
   error?: string
@@ -475,7 +419,7 @@ async function deliverInvoice(
 
   const db = createAdminClient()
   const deposit = depositContext(booking)
-  const outstanding = Math.max(0, invoice.total_amount - invoice.paid_amount)
+  const outstanding = invoiceBalanceDue(invoice)
 
   const depositSentence = (() => {
     if (!deposit || deposit.waived) return ''
@@ -496,7 +440,7 @@ Thanks again for booking with us. Your invoice for ${booking.event_date ? format
 
 Invoice total: £${invoice.total_amount.toFixed(2)}
 Payments received: £${invoice.paid_amount.toFixed(2)}
-Balance due: £${outstanding.toFixed(2)}
+${invoiceIssuedCreditTotal(invoice) > 0 ? `Credits: £${invoiceIssuedCreditTotal(invoice).toFixed(2)}\n` : ''}Balance due: £${outstanding.toFixed(2)}
 Due date: ${formatDateFull(invoice.due_date)}${invoice.reference ? `\nReference: ${invoice.reference}` : ''}
 ${depositSentence}
 If anything looks wrong, just reply to this email and we will sort it out.

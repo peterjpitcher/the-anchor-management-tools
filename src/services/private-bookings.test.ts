@@ -40,6 +40,7 @@ function mockAdminClient({ booking, payments, paymentsError = false }: MockAdmin
           in: vi.fn(async (_key: string, ids: string[]) => ({ data: booking ? ids.map(id => ({ ...booking, id, invoice_id: null })) : [], error: null })),
         }
       }
+      if (table === 'private_booking_invoices') return { select: () => ({ in: async () => ({ data: [], error: null }) }) }
       if (table === 'private_booking_payments') {
         return {
           select: vi.fn().mockReturnThis(),
@@ -299,7 +300,8 @@ describe('deleteDeposit', () => {
           if (bookingCallIndex === 1) return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), single: vi.fn().mockResolvedValue({ data: { status: 'confirmed', deposit_paid_date: '2024-01-10T10:00:00Z', deposit_amount: 100, deposit_payment_method: 'cash' }, error: null }) }
           return { update: vi.fn().mockReturnThis(), eq: vi.fn().mockResolvedValue({ error: null }), select: vi.fn().mockReturnThis(), single: vi.fn().mockResolvedValue({ data: {}, error: null }) }
         }
-        if (table === 'private_booking_payments') {
+        if (table === 'private_booking_invoices') return { select: () => ({ in: async () => ({ data: [], error: null }) }) }
+      if (table === 'private_booking_payments') {
           return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockResolvedValue({ data: null, count: 0, error: null }) }
         }
         return {}

@@ -208,6 +208,8 @@ export async function storeContractSnapshot(
      * produce a different document after any edit.
      */
     documentType?: 'contract' | 'invoice' | 'receipt' | 'correspondence' | 'other'
+    /** Receipt snapshots must be immutable and storage failure must prevent success. */
+    strict?: boolean
   },
 ): Promise<void> {
   try {
@@ -216,7 +218,7 @@ export async function storeContractSnapshot(
       .from(CONTRACT_DOCUMENTS_BUCKET)
       .upload(storagePath, input.content, {
         contentType: input.mimeType,
-        upsert: true,
+        upsert: !input.strict,
       })
     if (uploadError) {
       throw new Error(uploadError.message)
@@ -237,6 +239,7 @@ export async function storeContractSnapshot(
       throw new Error(docError.message)
     }
   } catch (snapshotError) {
+    if (input.strict) throw snapshotError
     logger.error('Booking document snapshot storage failed (non-blocking)', {
       error: snapshotError instanceof Error ? snapshotError : new Error(String(snapshotError)),
       metadata: { bookingId: input.bookingId, version: input.version, fileName: input.fileName },
