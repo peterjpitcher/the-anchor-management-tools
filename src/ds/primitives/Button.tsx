@@ -83,7 +83,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ref={ref}
       className={cn(
         'inline-flex items-center justify-center gap-1.5 border font-semibold whitespace-nowrap',
-        'max-[820px]:min-h-[44px]',
+        'max-shell:min-h-touch',
         'transition-[background,border-color,color,transform,box-shadow] duration-[120ms] select-none tracking-[-0.005em]',
         'focus-visible:outline-none focus-visible:shadow-ring',
         'active:translate-y-[0.5px]',

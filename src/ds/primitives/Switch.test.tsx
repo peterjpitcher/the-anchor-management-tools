@@ -9,8 +9,8 @@ describe('Switch', () => {
     render(<Switch label="Active" checked={false} size="sm" onChange={onChange} />)
 
     const control = screen.getByRole('switch', { name: 'Active' })
-    expect(control.className).toContain('max-[820px]:h-11')
-    expect(control.className).toContain('max-[820px]:w-11')
+    expect(control.className).toContain('max-shell:h-11')
+    expect(control.className).toContain('max-shell:w-11')
     expect(control.querySelector('[aria-hidden="true"]')?.className).toContain('w-7')
 
     fireEvent.click(control)

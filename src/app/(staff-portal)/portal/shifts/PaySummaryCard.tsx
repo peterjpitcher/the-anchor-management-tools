@@ -31,7 +31,7 @@ export default function PaySummaryCard({ current }: PaySummaryCardProps): React.
   const hasPay = period.plannedPay !== null || period.actualPay !== null || period.holidayPay !== null;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       {/* Period Navigator */}
       <div className="bg-gray-50 border-b border-gray-100 px-4 py-2 flex items-center justify-between">
         <span className="text-sm font-medium text-gray-700">{period.periodLabel}</span>
