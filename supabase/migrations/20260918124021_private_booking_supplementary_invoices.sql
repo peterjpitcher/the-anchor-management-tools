@@ -812,38 +812,38 @@ AS $function$
 BEGIN
   RETURN QUERY
   SELECT
-    COALESCE(SUM(CASE 
+    COALESCE(SUM(CASE
       WHEN i.status NOT IN ('paid', 'void', 'written_off')
-        THEN GREATEST(0,i.total_amount-COALESCE(credits.amount,0)-COALESCE(i.paid_amount,0)) 
-      ELSE 0 
+        THEN GREATEST(0,i.total_amount-COALESCE(credits.amount,0)-COALESCE(i.paid_amount,0))
+      ELSE 0
     END), 0) AS total_outstanding,
-    COALESCE(SUM(CASE 
-      WHEN i.status = 'overdue' 
-        THEN GREATEST(0,i.total_amount-COALESCE(credits.amount,0)-COALESCE(i.paid_amount,0)) 
-      ELSE 0 
+    COALESCE(SUM(CASE
+      WHEN i.status = 'overdue'
+        THEN GREATEST(0,i.total_amount-COALESCE(credits.amount,0)-COALESCE(i.paid_amount,0))
+      ELSE 0
     END), 0) AS total_overdue,
-    COALESCE(SUM(CASE 
-      WHEN i.status = 'draft' 
-        THEN i.total_amount 
-      ELSE 0 
+    COALESCE(SUM(CASE
+      WHEN i.status = 'draft'
+        THEN i.total_amount
+      ELSE 0
     END), 0) AS total_draft,
-    COALESCE(SUM(CASE 
-      WHEN i.status = 'paid' 
+    COALESCE(SUM(CASE
+      WHEN i.status = 'paid'
         AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
-        THEN i.total_amount 
-      ELSE 0 
+        THEN i.total_amount
+      ELSE 0
     END), 0) AS total_this_month,
-    COUNT(CASE 
+    COUNT(CASE
       WHEN i.status NOT IN ('paid', 'void', 'written_off') AND i.total_amount-COALESCE(credits.amount,0)-COALESCE(i.paid_amount,0)>0
-        THEN 1 
+        THEN 1
     END)::INTEGER AS count_outstanding,
-    COUNT(CASE 
+    COUNT(CASE
       WHEN i.status = 'overdue' AND i.total_amount-COALESCE(credits.amount,0)-COALESCE(i.paid_amount,0)>0
-        THEN 1 
+        THEN 1
     END)::INTEGER AS count_overdue,
-    COUNT(CASE 
-      WHEN i.status = 'draft' 
-        THEN 1 
+    COUNT(CASE
+      WHEN i.status = 'draft'
+        THEN 1
     END)::INTEGER AS count_draft
   FROM public.invoices i
   LEFT JOIN (SELECT invoice_id,SUM(amount_inc_vat)::numeric AS amount FROM public.credit_notes WHERE status='issued' GROUP BY invoice_id) credits ON credits.invoice_id=i.id
