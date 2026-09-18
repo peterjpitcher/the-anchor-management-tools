@@ -47,7 +47,8 @@ export async function GET(request: Request) {
         paypal_payments_enabled
       ),
       line_items:invoice_line_items(*),
-      payments:invoice_payments(*)
+      payments:invoice_payments(*),
+      credits:credit_notes(status, amount_inc_vat)
     `)
     .order('display_order', { ascending: true, foreignTable: 'invoice_line_items' })
     .eq('invoice_date', todayIso)

@@ -85,6 +85,10 @@ export type PrivateBookingPaymentStatement = {
   paidTowardsBill: number
   /** What is still owed, as the monitor states it in the text (the view's balance_remaining). */
   balanceDue: number
+  /** Issued credit notes reduce charges, not money received. */
+  creditsAmount?: number
+  /** Overpayment on another invoice remains unallocated. */
+  unappliedCreditAmount?: number
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -130,10 +134,15 @@ export function paymentStatementProblem(statement: PrivateBookingPaymentStatemen
     if (!Number.isFinite(amountTowardsBill(entry))) return 'payment_amount_invalid'
   }
 
+  const credits = statement.creditsAmount ?? 0
+  const unapplied = statement.unappliedCreditAmount ?? 0
+  if (![credits, unapplied].every(value => Number.isFinite(value) && value >= 0)) return 'credit_amount_invalid'
+  if (unapplied > statement.paidTowardsBill + credits) return 'unapplied_credit_invalid'
+
   const listed = roundMoney(statement.entries.reduce((sum, entry) => sum + amountTowardsBill(entry), 0))
   if (Math.abs(listed - roundMoney(statement.paidTowardsBill)) > 0.005) return 'payments_do_not_add_up'
 
-  const expectedBalance = roundMoney(Math.max(0, statement.eventTotal - statement.paidTowardsBill))
+  const expectedBalance = roundMoney(Math.max(0, statement.eventTotal - credits - statement.paidTowardsBill + unapplied))
   if (Math.abs(expectedBalance - roundMoney(statement.balanceDue)) > 0.005) return 'balance_does_not_match'
 
   return null

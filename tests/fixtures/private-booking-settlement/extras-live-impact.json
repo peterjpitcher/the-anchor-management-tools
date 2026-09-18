@@ -1,0 +1,84 @@
+{
+  "sizes": [
+    {
+      "table": "credit_notes",
+      "heap_bytes": 0,
+      "total_bytes": 40960
+    },
+    {
+      "table": "invoice_payments",
+      "heap_bytes": 8192,
+      "total_bytes": 90112
+    },
+    {
+      "table": "invoices",
+      "heap_bytes": 73728,
+      "total_bytes": 262144
+    },
+    {
+      "table": "private_booking_documents",
+      "heap_bytes": 16384,
+      "total_bytes": 65536
+    },
+    {
+      "table": "private_booking_items",
+      "heap_bytes": 16384,
+      "total_bytes": 114688
+    },
+    {
+      "table": "private_bookings",
+      "heap_bytes": 49152,
+      "total_bytes": 270336
+    }
+  ],
+  "counts": {
+    "invoices": 63,
+    "credit_notes": 0,
+    "invoice_payments": 54,
+    "private_bookings": 69,
+    "original_invoice_links": 3,
+    "private_booking_documents": 39,
+    "historic_receipt_documents": 0
+  },
+  "captured_at": "2026-09-18T12:59:01.24575+00:00",
+  "dependent_views": [
+    {
+      "view_name": "customer_communications",
+      "table_name": "private_bookings",
+      "view_schema": "public",
+      "table_schema": "public",
+      "view_catalog": "postgres",
+      "table_catalog": "postgres"
+    },
+    {
+      "view_name": "private_booking_sms_reminders",
+      "table_name": "private_bookings",
+      "view_schema": "public",
+      "table_schema": "public",
+      "view_catalog": "postgres",
+      "table_catalog": "postgres"
+    },
+    {
+      "view_name": "private_booking_summary",
+      "table_name": "private_bookings",
+      "view_schema": "public",
+      "table_schema": "public",
+      "view_catalog": "postgres",
+      "table_catalog": "postgres"
+    },
+    {
+      "view_name": "private_bookings_with_details",
+      "table_name": "private_bookings",
+      "view_schema": "public",
+      "table_schema": "public",
+      "view_catalog": "postgres",
+      "table_catalog": "postgres"
+    }
+  ],
+  "latest_migration": "20260918122623",
+  "superadmin_helper": {
+    "definition": "CREATE OR REPLACE FUNCTION public.is_super_admin(check_user_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\n  SELECT EXISTS (\n    SELECT 1\n    FROM public.user_roles ur\n    JOIN public.roles r ON r.id = ur.role_id\n    WHERE ur.user_id = check_user_id\n      AND r.name = 'super_admin'\n  );\n$function$\n",
+    "authenticated_execute": true
+  },
+  "verified_project_ref": "tfcasgxopxegwrabvwat"
+}

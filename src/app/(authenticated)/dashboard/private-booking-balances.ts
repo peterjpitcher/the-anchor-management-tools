@@ -18,6 +18,7 @@ export type DashboardPrivateBookingBalanceDueRow = {
   total_amount?: unknown
   calculated_total?: unknown
   gross_total?: unknown
+  balance_remaining?: unknown
   final_payment_date?: unknown
 }
 
@@ -84,9 +85,9 @@ export function buildPrivateBookingBalanceDueSummaries(
     // Customer-payable total is VAT-inclusive (stored prices are net)
     const eventTotal = toNumber(booking.gross_total ?? booking.calculated_total ?? booking.total_amount)
     const balancePaid = balancePaymentsByBookingId.get(bookingId) ?? 0
-    const outstanding = booking.final_payment_date
-      ? 0
-      : Math.max(0, roundCurrency(eventTotal - balancePaid))
+    const outstanding = booking.balance_remaining != null
+      ? Math.max(0, roundCurrency(toNumber(booking.balance_remaining)))
+      : booking.final_payment_date ? 0 : Math.max(0, roundCurrency(eventTotal - balancePaid))
 
     if (outstanding <= 0) return []
 

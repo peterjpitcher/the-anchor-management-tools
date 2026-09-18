@@ -1,0 +1,406 @@
+{
+  "size": [
+    {
+      "rows": 63,
+      "table": "invoices"
+    },
+    {
+      "rows": 54,
+      "table": "invoice_payments"
+    },
+    {
+      "rows": 69,
+      "table": "private_bookings"
+    }
+  ],
+  "policies": [
+    {
+      "cmd": "ALL",
+      "qual": "(EXISTS ( SELECT 1\n   FROM (user_roles ur\n     JOIN roles r ON ((ur.role_id = r.id)))\n  WHERE ((ur.user_id = auth.uid()) AND (r.name = 'super_admin'::text))))",
+      "roles": [
+        "public"
+      ],
+      "tablename": "invoice_payments",
+      "permissive": "PERMISSIVE",
+      "policyname": "Superadmin access",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "( SELECT user_has_permission(auth.uid(), 'invoices'::text, 'edit'::text) AS user_has_permission)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "invoice_payments",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users with invoices edit permission can delete payments",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "invoice_payments",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users with invoices edit permission can record payments",
+      "schemaname": "public",
+      "with_check": "( SELECT user_has_permission(auth.uid(), 'invoices'::text, 'edit'::text) AS user_has_permission)"
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "( SELECT user_has_permission(auth.uid(), 'invoices'::text, 'edit'::text) AS user_has_permission)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "invoice_payments",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users with invoices edit permission can update payments",
+      "schemaname": "public",
+      "with_check": "( SELECT user_has_permission(auth.uid(), 'invoices'::text, 'edit'::text) AS user_has_permission)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "( SELECT user_has_permission(auth.uid(), 'invoices'::text, 'view'::text) AS user_has_permission)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "invoice_payments",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users with invoices view permission can view payments",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "ALL",
+      "qual": "(EXISTS ( SELECT 1\n   FROM (user_roles ur\n     JOIN roles r ON ((ur.role_id = r.id)))\n  WHERE ((ur.user_id = auth.uid()) AND (r.name = 'super_admin'::text))))",
+      "roles": [
+        "public"
+      ],
+      "tablename": "invoices",
+      "permissive": "PERMISSIVE",
+      "policyname": "Superadmin access",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "invoices",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users with invoices create permission can create invoices",
+      "schemaname": "public",
+      "with_check": "( SELECT user_has_permission(auth.uid(), 'invoices'::text, 'create'::text) AS user_has_permission)"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "( SELECT user_has_permission(auth.uid(), 'invoices'::text, 'delete'::text) AS user_has_permission)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "invoices",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users with invoices delete permission can delete invoices",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "( SELECT user_has_permission(auth.uid(), 'invoices'::text, 'edit'::text) AS user_has_permission)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "invoices",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users with invoices edit permission can update invoices",
+      "schemaname": "public",
+      "with_check": "( SELECT user_has_permission(auth.uid(), 'invoices'::text, 'edit'::text) AS user_has_permission)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "( SELECT user_has_permission(auth.uid(), 'invoices'::text, 'view'::text) AS user_has_permission)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "invoices",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users with invoices view permission can view invoices",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "private_bookings",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users can create private bookings with permission",
+      "schemaname": "public",
+      "with_check": "( SELECT user_has_permission(auth.uid(), 'private_bookings'::text, 'create'::text) AS user_has_permission)"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "( SELECT user_has_permission(auth.uid(), 'private_bookings'::text, 'delete'::text) AS user_has_permission)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "private_bookings",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users can delete private bookings with permission",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "( SELECT user_has_permission(auth.uid(), 'private_bookings'::text, 'edit'::text) AS user_has_permission)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "private_bookings",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users can update private bookings with permission",
+      "schemaname": "public",
+      "with_check": "( SELECT user_has_permission(auth.uid(), 'private_bookings'::text, 'edit'::text) AS user_has_permission)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((auth.role() = 'service_role'::text) OR ( SELECT user_has_permission(auth.uid(), 'private_bookings'::text, 'view'::text) AS user_has_permission) OR ( SELECT user_has_permission(auth.uid(), 'private_bookings'::text, 'manage'::text) AS user_has_permission))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "private_bookings",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users can view private bookings",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "( SELECT user_has_permission(auth.uid(), 'private_bookings'::text, 'view'::text) AS user_has_permission)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "private_bookings",
+      "permissive": "PERMISSIVE",
+      "policyname": "Users can view private bookings with permission",
+      "schemaname": "public",
+      "with_check": null
+    }
+  ],
+  "functions": [
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "assert_rpc_permission",
+      "definition": "CREATE OR REPLACE FUNCTION public.assert_rpc_permission(p_module text, p_action text)\n RETURNS void\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\ndeclare\n  v_role text;\n  v_uid  uuid;\nbegin\n  v_role := coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', '');\n\n  -- Trusted server-side path: service_role key (cron, admin client).\n  if v_role = 'service_role' then\n    return;\n  end if;\n\n  v_uid := auth.uid();\n\n  if v_uid is null or not public.user_has_permission(v_uid, p_module, p_action) then\n    raise exception 'permission_denied: %.%', p_module, p_action\n      using errcode = '42501';\n  end if;\nend;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "authenticated=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "get_and_increment_invoice_series",
+      "definition": "CREATE OR REPLACE FUNCTION public.get_and_increment_invoice_series(p_series_code character varying)\n RETURNS TABLE(next_sequence integer)\n LANGUAGE plpgsql\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nDECLARE\n  v_next_sequence INTEGER;\nBEGIN\n  -- Lock the row and get the next sequence\n  UPDATE invoice_series\n  SET current_sequence = current_sequence + 1\n  WHERE series_code = p_series_code\n  RETURNING current_sequence INTO v_next_sequence;\n  \n  IF NOT FOUND THEN\n    RAISE EXCEPTION 'Invoice series % not found', p_series_code;\n  END IF;\n  \n  RETURN QUERY SELECT v_next_sequence;\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "lock_invoice_settlement",
+      "definition": "CREATE OR REPLACE FUNCTION public.lock_invoice_settlement(p_invoice_id uuid)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nDECLARE v_booking_id uuid;\nBEGIN\n  SELECT id INTO v_booking_id FROM public.private_bookings\n  WHERE invoice_id = p_invoice_id FOR UPDATE;\n  PERFORM 1 FROM public.invoices WHERE id = p_invoice_id FOR UPDATE;\n  IF NOT FOUND THEN RAISE EXCEPTION 'invoice_not_found'; END IF;\n  RETURN v_booking_id;\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "create_private_booking_invoice_atomic",
+      "definition": "CREATE OR REPLACE FUNCTION public.create_private_booking_invoice_atomic(p_booking_id uuid, p_invoice_date date, p_due_date date, p_reference text, p_deposit_treatment text, p_line_items jsonb, p_totals jsonb, p_actor_id uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nDECLARE\n  v_booking          public.private_bookings;\n  v_invoice          public.invoices;\n  v_existing         public.invoices;\n  v_items_total      numeric;\n  v_gross_total      numeric;\n  v_claimed_total    numeric;\n  v_deposit          numeric := 0;\n  v_paid             numeric := 0;\n  v_status           text;\n  v_line_count       integer;\n  v_sequence         integer;\n  v_number           integer;\n  v_remainder        integer;\n  v_encoded          text := '';\n  v_invoice_number   text;\nBEGIN\n  PERFORM public.assert_rpc_permission('invoices', 'create');\n\n  IF p_deposit_treatment NOT IN ('held_separately', 'deducted') THEN\n    RAISE EXCEPTION 'invalid_deposit_treatment';\n  END IF;\n\n  -- 1. Lock the source row first. This, not any index, is the double-click guard.\n  SELECT * INTO v_booking\n  FROM public.private_bookings\n  WHERE id = p_booking_id\n  FOR UPDATE;\n\n  IF NOT FOUND THEN\n    RAISE EXCEPTION 'booking_not_found';\n  END IF;\n\n  -- 2. Idempotent short circuit. A second call returns the first invoice.\n  IF v_booking.invoice_id IS NOT NULL THEN\n    SELECT * INTO v_existing\n    FROM public.invoices\n    WHERE id = v_booking.invoice_id;\n\n    IF NOT FOUND OR v_existing.deleted_at IS NOT NULL THEN\n      RAISE EXCEPTION 'private_booking_invoice_missing_or_deleted';\n    END IF;\n\n    RETURN jsonb_build_object('created', false, 'invoice', to_jsonb(v_existing));\n  END IF;\n\n  -- 3. Recheck eligibility under the lock.\n  -- `status` is the authoritative field, not `cancelled_at`.\n  --\n  -- `cancelled_at` is stamped when a booking is cancelled and, until the\n  -- companion fix in this migration set, was never cleared when one was\n  -- reinstated. Three live confirmed bookings therefore carried a cancellation\n  -- date from months earlier and could not be invoiced, even though the status\n  -- said confirmed and the customer was owed an invoice.\n  --\n  -- Order matters: test for 'cancelled' first so a genuinely cancelled booking\n  -- still gets its specific message rather than the generic \"not confirmed\".\n  IF v_booking.status = 'cancelled' THEN\n    RAISE EXCEPTION 'booking_cancelled';\n  END IF;\n\n  IF v_booking.status <> 'confirmed' THEN\n    RAISE EXCEPTION 'booking_not_confirmed';\n  END IF;\n\n  IF v_booking.date_tbd THEN\n    RAISE EXCEPTION 'booking_date_tbd';\n  END IF;\n\n  SELECT COALESCE(SUM(line_total), 0) INTO v_items_total\n  FROM public.private_booking_items\n  WHERE booking_id = p_booking_id;\n\n  IF v_items_total <= 0 THEN\n    RAISE EXCEPTION 'booking_has_no_priced_items';\n  END IF;\n\n  v_line_count := COALESCE(jsonb_array_length(p_line_items), 0);\n  IF v_line_count = 0 THEN\n    RAISE EXCEPTION 'booking_has_no_priced_items';\n  END IF;\n\n  -- 4. The arithmetic guard. The customer already holds this figure on their\n  --    contract and by SMS, so the invoice must match it to the penny.\n  v_gross_total   := public.get_booking_gross_total(p_booking_id);\n  v_claimed_total := (p_totals->>'total_amount')::numeric;\n\n  IF v_claimed_total IS DISTINCT FROM v_gross_total THEN\n    RAISE EXCEPTION 'invoice_total_reconciliation_failed: mapper produced %, booking gross is %',\n      v_claimed_total, v_gross_total;\n  END IF;\n\n  -- 5. Invoice number. Same series and encoding as every other invoice.\n  SELECT next_sequence INTO v_sequence\n  FROM public.get_and_increment_invoice_series('INV')\n  LIMIT 1;\n\n  v_number := v_sequence + 5000;\n\n  IF v_number = 0 THEN\n    v_encoded := '0';\n  END IF;\n\n  WHILE v_number > 0 LOOP\n    v_remainder := v_number % 36;\n    v_encoded := substr('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', v_remainder + 1, 1) || v_encoded;\n    v_number := floor(v_number / 36);\n  END LOOP;\n\n  v_invoice_number := 'INV-' || lpad(v_encoded, 5, '0');\n\n  -- 6. The invoice header. Status is corrected at step 10 once payments land.\n  INSERT INTO public.invoices (\n    invoice_number,\n    vendor_id,\n    invoice_date,\n    due_date,\n    reference,\n    invoice_discount_percentage,\n    subtotal_amount,\n    discount_amount,\n    vat_amount,\n    total_amount,\n    notes,\n    internal_notes,\n    status\n  )\n  VALUES (\n    v_invoice_number,\n    (p_totals->>'vendor_id')::uuid,\n    p_invoice_date,\n    p_due_date,\n    NULLIF(btrim(COALESCE(p_reference, '')), ''),\n    COALESCE((p_totals->>'invoice_discount_percentage')::numeric, 0),\n    (p_totals->>'subtotal_amount')::numeric,\n    COALESCE((p_totals->>'discount_amount')::numeric, 0),\n    (p_totals->>'vat_amount')::numeric,\n    v_gross_total,\n    p_totals->>'notes',\n    p_totals->>'internal_notes',\n    'draft'\n  )\n  RETURNING * INTO v_invoice;\n\n  -- 7. Line items. The four money columns are GENERATED ALWAYS in this schema\n  --    and must never be named here.\n  INSERT INTO public.invoice_line_items (\n    invoice_id,\n    catalog_item_id,\n    description,\n    quantity,\n    unit_price,\n    discount_percentage,\n    vat_rate,\n    display_order\n  )\n  SELECT\n    v_invoice.id,\n    NULLIF(item->>'catalog_item_id', '')::uuid,\n    item->>'description',\n    (item->>'quantity')::numeric,\n    (item->>'unit_price')::numeric,\n    COALESCE((item->>'discount_percentage')::numeric, 0),\n    COALESCE((item->>'vat_rate')::numeric, 20),\n    COALESCE((item->>'display_order')::integer, ordinality::integer)\n  FROM jsonb_array_elements(p_line_items) WITH ORDINALITY AS t(item, ordinality);\n\n  -- 8. Copy every balance payment already recorded on the booking.\n  --    Method mapping matters: private_booking_payments allows\n  --    cash|card|invoice, invoice_payments allows\n  --    bank_transfer|cash|cheque|card|other. 'invoice' would violate the\n  --    invoice-side CHECK, and would do so AFTER the number was burnt.\n  INSERT INTO public.invoice_payments (\n    invoice_id,\n    payment_date,\n    amount,\n    payment_method,\n    reference,\n    notes,\n    source_payment_id,\n    source_kind\n  )\n  SELECT\n    v_invoice.id,\n    (p.created_at AT TIME ZONE 'Europe/London')::date,\n    p.amount,\n    CASE p.method\n      WHEN 'cash' THEN 'cash'\n      WHEN 'card' THEN 'card'\n      ELSE 'other'\n    END,\n    'Booking payment',\n    p.notes,\n    p.id,\n    'booking_payment'\n  FROM public.private_booking_payments p\n  WHERE p.booking_id = p_booking_id\n  ON CONFLICT (invoice_id, source_payment_id) WHERE source_payment_id IS NOT NULL\n  DO NOTHING;\n\n  -- 9. The deposit, only when the operator chose to apply it.\n  --    Written as a PAYMENT, never as a discount: the supply is still the full\n  --    amount, so a discount would understate the VAT.\n  IF p_deposit_treatment = 'deducted'\n     AND v_booking.deposit_paid_date IS NOT NULL\n     AND COALESCE(v_booking.deposit_waived, false) = false\n     AND COALESCE(v_booking.deposit_amount, 0) > 0 THEN\n\n    v_deposit := v_booking.deposit_amount;\n\n    INSERT INTO public.invoice_payments (\n      invoice_id,\n      payment_date,\n      amount,\n      payment_method,\n      reference,\n      notes,\n      source_kind\n    )\n    VALUES (\n      v_invoice.id,\n      (v_booking.deposit_paid_date AT TIME ZONE 'Europe/London')::date,\n      v_deposit,\n      CASE COALESCE(v_booking.deposit_payment_method, '')\n        WHEN 'cash' THEN 'cash'\n        WHEN 'card' THEN 'card'\n        ELSE 'other'\n      END,\n      'Booking and damage deposit',\n      'Deposit applied to this invoice at the operator''s instruction.',\n      'booking_deposit'\n    )\n    ON CONFLICT (invoice_id) WHERE source_kind = 'booking_deposit'\n    DO NOTHING;\n  END IF;\n\n  -- 10. Derive paid_amount from the rows, never by incrementing.\n  SELECT COALESCE(SUM(amount), 0) INTO v_paid\n  FROM public.invoice_payments\n  WHERE invoice_id = v_invoice.id;\n\n  IF v_paid > v_gross_total THEN\n    RAISE EXCEPTION 'booking_payments_exceed_invoice_total: paid % exceeds total %',\n      v_paid, v_gross_total;\n  END IF;\n\n  v_status := CASE\n    WHEN v_gross_total > 0 AND v_paid >= v_gross_total THEN 'paid'\n    WHEN v_paid > 0 THEN 'partially_paid'\n    ELSE 'draft'\n  END;\n\n  UPDATE public.invoices\n  SET paid_amount = v_paid,\n      status = v_status,\n      updated_at = now()\n  WHERE id = v_invoice.id\n  RETURNING * INTO v_invoice;\n\n  -- 11. Claim the booking. The conditional WHERE is what makes two concurrent\n  --     callers resolve to one invoice even if both got past step 2.\n  UPDATE public.private_bookings\n  SET invoice_id = v_invoice.id,\n      invoice_deposit_treatment = p_deposit_treatment,\n      updated_at = now()\n  WHERE id = p_booking_id\n    AND invoice_id IS NULL;\n\n  IF NOT FOUND THEN\n    RAISE EXCEPTION 'Booking invoice could not be finalized';\n  END IF;\n\n  RETURN jsonb_build_object(\n    'created', true,\n    'invoice', to_jsonb(v_invoice),\n    'deposit_applied', v_deposit,\n    'deposit_treatment', p_deposit_treatment\n  );\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "private_booking_settlement_rows",
+      "definition": "CREATE OR REPLACE FUNCTION public.private_booking_settlement_rows(p_booking_id uuid)\n RETURNS TABLE(amount numeric, paid_at timestamp with time zone, method text)\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nBEGIN\n  RETURN QUERY\n  SELECT p.amount::numeric, p.created_at::timestamptz, p.method::text\n  FROM public.private_booking_payments p WHERE p.booking_id = p_booking_id\n  UNION ALL\n  SELECT p.amount::numeric,\n         (p.payment_date::timestamp AT TIME ZONE 'Europe/London')::timestamptz,\n         p.payment_method::text\n  FROM public.private_bookings b\n  JOIN public.invoice_payments p ON p.invoice_id = b.invoice_id\n  WHERE b.id = p_booking_id\n    AND (p.source_kind IS NULL OR p.source_kind NOT IN ('booking_payment', 'booking_deposit')\n         OR (p.source_kind = 'booking_deposit' AND b.invoice_deposit_treatment = 'deducted'));\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "get_private_booking_settlement_total",
+      "definition": "CREATE OR REPLACE FUNCTION public.get_private_booking_settlement_total(p_booking_id uuid)\n RETURNS numeric\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nBEGIN\n  PERFORM public.assert_rpc_permission('private_bookings', 'view');\n  RETURN COALESCE((SELECT SUM(amount) FROM public.private_booking_settlement_rows(p_booking_id)), 0);\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres",
+        "authenticated=X/postgres"
+      ],
+      "name": "calculate_private_booking_balance",
+      "definition": "CREATE OR REPLACE FUNCTION public.calculate_private_booking_balance(p_booking_id uuid)\n RETURNS numeric\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nBEGIN\n  PERFORM public.assert_rpc_permission('private_bookings', 'view');\n  RETURN GREATEST(0, public.get_booking_gross_total(p_booking_id)\n    - COALESCE((SELECT SUM(amount) FROM public.private_booking_settlement_rows(p_booking_id)), 0));\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "recalculate_invoice_settlement",
+      "definition": "CREATE OR REPLACE FUNCTION public.recalculate_invoice_settlement(p_invoice_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nDECLARE v_booking_id uuid; v_paid numeric;\nBEGIN\n  v_booking_id := public.lock_invoice_settlement(p_invoice_id);\n  SELECT COALESCE(SUM(amount), 0) INTO v_paid FROM public.invoice_payments WHERE invoice_id = p_invoice_id;\n  UPDATE public.invoices\n  SET paid_amount = v_paid,\n      status = CASE\n        WHEN status IN ('void', 'written_off') THEN status\n        WHEN total_amount > 0 AND v_paid >= total_amount THEN 'paid'\n        WHEN v_paid > 0 THEN 'partially_paid'\n        WHEN sent_at IS NULL THEN 'draft'\n        WHEN due_date < (now() AT TIME ZONE 'Europe/London')::date THEN 'overdue'\n        ELSE 'sent' END,\n      updated_at = now()\n  WHERE id = p_invoice_id;\n  IF v_booking_id IS NOT NULL THEN PERFORM public.apply_balance_payment_status(v_booking_id); END IF;\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "apply_balance_payment_status",
+      "definition": "CREATE OR REPLACE FUNCTION public.apply_balance_payment_status(p_booking_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nDECLARE\n  v_paid numeric;\n  v_total numeric;\n  v_date timestamptz;\n  v_method text;\nBEGIN\n  PERFORM 1 FROM public.private_bookings WHERE id = p_booking_id FOR UPDATE;\n  IF NOT FOUND THEN RETURN; END IF;\n  v_total := public.get_booking_gross_total(p_booking_id);\n  SELECT COALESCE(SUM(amount), 0) INTO v_paid FROM public.private_booking_settlement_rows(p_booking_id);\n  IF v_total > 0 AND v_paid >= v_total THEN\n    SELECT paid_at, method INTO v_date, v_method\n    FROM public.private_booking_settlement_rows(p_booking_id)\n    ORDER BY paid_at DESC NULLS LAST, method LIMIT 1;\n  END IF;\n  UPDATE public.private_bookings\n  SET final_payment_date = v_date, final_payment_method = v_method\n  WHERE id = p_booking_id\n    AND (final_payment_date IS DISTINCT FROM v_date OR final_payment_method IS DISTINCT FROM v_method);\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "guard_invoice_payment_settlement",
+      "definition": "CREATE OR REPLACE FUNCTION public.guard_invoice_payment_settlement()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nDECLARE v_invoice public.invoices%ROWTYPE; v_id uuid;\nBEGIN\n  IF TG_OP = 'UPDATE' AND NEW.invoice_id IS DISTINCT FROM OLD.invoice_id THEN\n    RAISE EXCEPTION 'payment_invoice_cannot_change';\n  END IF;\n  v_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.invoice_id ELSE NEW.invoice_id END;\n  PERFORM public.lock_invoice_settlement(v_id);\n  SELECT * INTO v_invoice FROM public.invoices WHERE id = v_id;\n  IF TG_OP IN ('UPDATE', 'DELETE') AND OLD.source_kind = 'paypal' THEN\n    IF TG_OP = 'DELETE' OR NEW.amount IS DISTINCT FROM OLD.amount\n      OR NEW.reference IS DISTINCT FROM OLD.reference OR NEW.source_kind IS DISTINCT FROM OLD.source_kind\n      OR NEW.payment_method IS DISTINCT FROM OLD.payment_method THEN\n      RAISE EXCEPTION 'PayPal captures cannot be changed or deleted; resolve a refund or credit';\n    END IF;\n  END IF;\n  IF TG_OP IN ('UPDATE', 'DELETE') AND OLD.source_kind = 'booking_payment' THEN\n    IF TG_OP = 'DELETE' AND pg_trigger_depth() < 2 THEN\n      RAISE EXCEPTION 'Edit or delete the original booking payment';\n    END IF;\n    IF TG_OP = 'UPDATE' AND (NEW.source_kind IS DISTINCT FROM OLD.source_kind\n      OR NEW.source_payment_id IS DISTINCT FROM OLD.source_payment_id) THEN\n      RAISE EXCEPTION 'Edit or delete the original booking payment';\n    END IF;\n  END IF;\n  IF TG_OP <> 'DELETE' AND NEW.source_kind = 'booking_payment' THEN\n    IF NOT EXISTS (SELECT 1 FROM public.private_booking_payments p\n      WHERE p.id = NEW.source_payment_id AND p.amount = NEW.amount\n        AND NOT EXISTS (SELECT 1 FROM public.private_bookings b WHERE b.invoice_id = NEW.invoice_id AND b.id <> p.booking_id)\n        AND (p.created_at AT TIME ZONE 'Europe/London')::date = NEW.payment_date\n        AND (CASE WHEN p.method IN ('cash','card') THEN p.method ELSE 'other' END) = NEW.payment_method\n        AND p.notes IS NOT DISTINCT FROM NEW.notes) THEN\n      RAISE EXCEPTION 'Edit or delete the original booking payment';\n    END IF;\n  END IF;\n  IF TG_OP IN ('UPDATE', 'DELETE') AND OLD.source_kind = 'booking_deposit'\n     AND EXISTS (SELECT 1 FROM public.private_bookings WHERE invoice_id = v_id AND invoice_deposit_treatment = 'deducted') THEN\n    RAISE EXCEPTION 'Applied deposit requires invoice credit resolution';\n  END IF;\n  IF TG_OP <> 'DELETE' THEN\n    IF v_invoice.deleted_at IS NOT NULL OR v_invoice.status IN ('void', 'written_off') THEN\n      RAISE EXCEPTION 'invoice_not_payable';\n    END IF;\n    IF NEW.amount IS NULL OR NEW.amount::text IN ('NaN', 'Infinity', '-Infinity') OR NEW.amount <= 0 OR NEW.amount <> round(NEW.amount, 2) THEN\n      RAISE EXCEPTION 'invalid_payment_amount';\n    END IF;\n  END IF;\n  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "after_invoice_payment_settlement",
+      "definition": "CREATE OR REPLACE FUNCTION public.after_invoice_payment_settlement()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nBEGIN\n  PERFORM public.recalculate_invoice_settlement(CASE WHEN TG_OP = 'DELETE' THEN OLD.invoice_id ELSE NEW.invoice_id END);\n  RETURN NULL;\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "guard_private_booking_payment_settlement",
+      "definition": "CREATE OR REPLACE FUNCTION public.guard_private_booking_payment_settlement()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nDECLARE v_booking public.private_bookings%ROWTYPE; v_id uuid;\nBEGIN\n  IF TG_OP = 'UPDATE' AND NEW.booking_id IS DISTINCT FROM OLD.booking_id THEN\n    RAISE EXCEPTION 'payment_booking_cannot_change';\n  END IF;\n  v_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.booking_id ELSE NEW.booking_id END;\n  SELECT * INTO v_booking FROM public.private_bookings WHERE id = v_id FOR UPDATE;\n  IF NOT FOUND THEN RAISE EXCEPTION 'booking_not_found'; END IF;\n  IF v_booking.invoice_id IS NOT NULL THEN\n    PERFORM public.lock_invoice_settlement(v_booking.invoice_id);\n    IF EXISTS (SELECT 1 FROM public.invoices WHERE id = v_booking.invoice_id\n               AND (deleted_at IS NOT NULL OR status IN ('void', 'written_off'))) THEN\n      RAISE EXCEPTION 'invoice_not_payable';\n    END IF;\n  END IF;\n  -- Delete the mirror before the foreign key can replace its source id with NULL.\n  IF TG_OP = 'DELETE' THEN\n    DELETE FROM public.invoice_payments WHERE source_kind = 'booking_payment' AND source_payment_id = OLD.id;\n  END IF;\n  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "sync_private_booking_payment_settlement",
+      "definition": "CREATE OR REPLACE FUNCTION public.sync_private_booking_payment_settlement()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nDECLARE v_invoice_id uuid; v_booking_id uuid;\nBEGIN\n  v_booking_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.booking_id ELSE NEW.booking_id END;\n  SELECT invoice_id INTO v_invoice_id FROM public.private_bookings WHERE id = v_booking_id;\n  IF TG_OP <> 'DELETE' AND v_invoice_id IS NOT NULL THEN\n    INSERT INTO public.invoice_payments(invoice_id, payment_date, amount, payment_method, reference, notes, source_payment_id, source_kind)\n    VALUES(v_invoice_id, (NEW.created_at AT TIME ZONE 'Europe/London')::date, NEW.amount,\n      CASE WHEN NEW.method IN ('cash', 'card') THEN NEW.method ELSE 'other' END,\n      'Booking payment', NEW.notes, NEW.id, 'booking_payment')\n    ON CONFLICT (invoice_id, source_payment_id) WHERE source_payment_id IS NOT NULL\n    DO UPDATE SET amount = EXCLUDED.amount, payment_date = EXCLUDED.payment_date,\n      payment_method = EXCLUDED.payment_method, notes = EXCLUDED.notes;\n  END IF;\n  PERFORM public.apply_balance_payment_status(v_booking_id);\n  RETURN NULL;\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "cancel_private_booking_invoice_atomic",
+      "definition": "CREATE OR REPLACE FUNCTION public.cancel_private_booking_invoice_atomic(p_booking_id uuid, p_reason text, p_actor_id uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nDECLARE\n  v_booking      public.private_bookings%ROWTYPE;\n  v_invoice      public.invoices%ROWTYPE;\n  v_real_payments integer;\n  v_reason       text := NULLIF(btrim(COALESCE(p_reason, '')), '');\n  v_note         text;\nBEGIN\n  IF v_reason IS NULL THEN\n    RAISE EXCEPTION 'cancel_reason_required';\n  END IF;\n\n  -- 1. Lock the booking so a concurrent generate cannot race this cancel.\n  SELECT * INTO v_booking\n  FROM public.private_bookings\n  WHERE id = p_booking_id\n  FOR UPDATE;\n\n  IF NOT FOUND THEN\n    RAISE EXCEPTION 'booking_not_found';\n  END IF;\n\n  IF v_booking.invoice_id IS NULL THEN\n    RAISE EXCEPTION 'booking_not_invoiced';\n  END IF;\n\n  SELECT * INTO v_invoice\n  FROM public.invoices\n  WHERE id = v_booking.invoice_id\n  FOR UPDATE;\n\n  IF NOT FOUND OR v_invoice.deleted_at IS NOT NULL THEN\n    RAISE EXCEPTION 'private_booking_invoice_missing_or_deleted';\n  END IF;\n\n  -- 2. Real money blocks the cancel. The mirrored deposit does not: it was\n  --    written by the invoicing RPC, not received against this invoice.\n  SELECT count(*) INTO v_real_payments\n  FROM public.invoice_payments\n  WHERE invoice_id = v_invoice.id\n    AND source_kind IS DISTINCT FROM 'booking_deposit';\n\n  IF v_real_payments > 0 THEN\n    RAISE EXCEPTION 'invoice_has_real_payments';\n  END IF;\n\n  IF v_invoice.paypal_order_id IS NOT NULL THEN\n    RAISE EXCEPTION 'Resolve the pending PayPal order before cancelling the invoice';\n  END IF;\n\n  UPDATE public.private_bookings\n  SET invoice_id = NULL, invoice_sent_at = NULL, invoice_deposit_treatment = NULL, updated_at = now()\n  WHERE id = p_booking_id;\n\n  -- 3. Drop the mirrored deposit so the void invoice does not keep reporting\n  --    money as paid against it. The deposit itself is untouched: it lives on\n  --    private_bookings.deposit_amount and is re-mirrored onto the next invoice.\n  DELETE FROM public.invoice_payments\n  WHERE invoice_id = v_invoice.id\n    AND source_kind = 'booking_deposit';\n\n  -- 4. Void the invoice, keeping the reason and who did it on the record.\n  --    The audit log holds the same facts; this puts them where anyone reading\n  --    the invoice itself will see them.\n  v_note := format('[VOIDED %s by %s] Reason: %s', now(), COALESCE(p_actor_id::text, 'unknown'), v_reason);\n\n  UPDATE public.invoices\n  SET status = 'void',\n      paid_amount = 0,\n      internal_notes = CASE\n        WHEN COALESCE(btrim(internal_notes), '') = '' THEN v_note\n        ELSE internal_notes || E'\\n\\n' || v_note\n      END,\n      updated_at = now()\n  WHERE id = v_invoice.id\n  RETURNING * INTO v_invoice;\n\n  -- 5. Release the booking. Clearing invoice_id is what re-opens the generate\n  --    flow, because the RPC's idempotent short circuit keys off exactly this.\n  UPDATE public.private_bookings\n  SET invoice_id = NULL,\n      invoice_sent_at = NULL,\n      invoice_deposit_treatment = NULL,\n      updated_at = now()\n  WHERE id = p_booking_id;\n\n  RETURN jsonb_build_object(\n    'unlinked', true,\n    'voided', true,\n    'invoice_number', v_invoice.invoice_number,\n    'released_amount', v_invoice.total_amount\n  );\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "guard_private_booking_invoice_money",
+      "definition": "CREATE OR REPLACE FUNCTION public.guard_private_booking_invoice_money()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nBEGIN\n  IF OLD.invoice_id IS NOT NULL THEN\n    IF TG_OP = 'UPDATE' AND (NEW.discount_type IS DISTINCT FROM OLD.discount_type\n      OR NEW.discount_amount IS DISTINCT FROM OLD.discount_amount\n      OR NEW.total_amount IS DISTINCT FROM OLD.total_amount) THEN\n      RAISE EXCEPTION 'Resolve the linked invoice before changing booking prices';\n    END IF;\n    IF TG_OP = 'DELETE' OR NEW.invoice_id IS DISTINCT FROM OLD.invoice_id THEN\n      IF EXISTS (SELECT 1 FROM public.invoice_payments WHERE invoice_id = OLD.invoice_id\n                 AND source_kind IS DISTINCT FROM 'booking_deposit') THEN\n        RAISE EXCEPTION 'invoice_has_real_payments';\n      END IF;\n    END IF;\n    IF TG_OP = 'UPDATE' AND NEW.invoice_id IS NOT DISTINCT FROM OLD.invoice_id\n       AND OLD.invoice_deposit_treatment = 'deducted'\n       AND (NEW.deposit_amount IS DISTINCT FROM OLD.deposit_amount\n         OR NEW.deposit_paid_date IS DISTINCT FROM OLD.deposit_paid_date\n         OR NEW.deposit_waived IS DISTINCT FROM OLD.deposit_waived\n         OR NEW.invoice_deposit_treatment IS DISTINCT FROM OLD.invoice_deposit_treatment) THEN\n      RAISE EXCEPTION 'Applied deposit requires invoice credit resolution';\n    END IF;\n  END IF;\n  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "guard_linked_invoice_money",
+      "definition": "CREATE OR REPLACE FUNCTION public.guard_linked_invoice_money()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nBEGIN\n  IF TG_OP = 'UPDATE' AND (NEW.total_amount IS DISTINCT FROM OLD.total_amount\n    OR NEW.subtotal_amount IS DISTINCT FROM OLD.subtotal_amount\n    OR NEW.discount_amount IS DISTINCT FROM OLD.discount_amount\n    OR NEW.invoice_discount_percentage IS DISTINCT FROM OLD.invoice_discount_percentage\n    OR NEW.vat_amount IS DISTINCT FROM OLD.vat_amount)\n    AND EXISTS (SELECT 1 FROM public.private_bookings WHERE invoice_id = OLD.id) THEN\n    RAISE EXCEPTION 'Resolve the linked invoice before changing booking prices';\n  END IF;\n  IF TG_OP = 'DELETE' OR (NEW.status IN ('void', 'written_off') AND NEW.status IS DISTINCT FROM OLD.status)\n     OR NEW.deleted_at IS DISTINCT FROM OLD.deleted_at THEN\n    IF EXISTS (SELECT 1 FROM public.private_bookings WHERE invoice_id = OLD.id) THEN\n      RAISE EXCEPTION 'Cancel the invoice from its private booking after resolving its payments';\n    END IF;\n  END IF;\n  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;\nEND;\n$function$\n"
+    },
+    {
+      "acl": [
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "name": "guard_linked_invoice_item_prices",
+      "definition": "CREATE OR REPLACE FUNCTION public.guard_linked_invoice_item_prices()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_catalog'\nAS $function$\nBEGIN\n  IF TG_OP = 'UPDATE' AND NEW.invoice_id IS NOT DISTINCT FROM OLD.invoice_id\n    AND NEW.quantity IS NOT DISTINCT FROM OLD.quantity\n    AND NEW.unit_price IS NOT DISTINCT FROM OLD.unit_price\n    AND NEW.discount_percentage IS NOT DISTINCT FROM OLD.discount_percentage\n    AND NEW.vat_rate IS NOT DISTINCT FROM OLD.vat_rate THEN RETURN NEW; END IF;\n  IF EXISTS (SELECT 1 FROM public.private_bookings\n    WHERE invoice_id IN (CASE WHEN TG_OP <> 'INSERT' THEN OLD.invoice_id END,\n                         CASE WHEN TG_OP <> 'DELETE' THEN NEW.invoice_id END)) THEN\n    RAISE EXCEPTION 'Resolve the linked invoice before changing booking prices';\n  END IF;\n  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;\nEND;\n$function$\n"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "invoices_invoice_number_key",
+      "table": "invoices",
+      "definition": "UNIQUE (invoice_number)"
+    },
+    {
+      "name": "invoices_pkey",
+      "table": "invoices",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "invoices_sent_to_requires_sent_at",
+      "table": "invoices",
+      "definition": "CHECK (((sent_to IS NULL) OR (sent_at IS NOT NULL)))"
+    },
+    {
+      "name": "invoices_status_check",
+      "table": "invoices",
+      "definition": "CHECK (((status)::text = ANY (ARRAY[('draft'::character varying)::text, ('sent'::character varying)::text, ('paid'::character varying)::text, ('partially_paid'::character varying)::text, ('overdue'::character varying)::text, ('void'::character varying)::text, ('written_off'::character varying)::text])))"
+    },
+    {
+      "name": "invoices_vendor_id_fkey",
+      "table": "invoices",
+      "definition": "FOREIGN KEY (vendor_id) REFERENCES invoice_vendors(id) ON DELETE RESTRICT"
+    },
+    {
+      "name": "invoice_line_items_catalog_item_id_fkey",
+      "table": "invoice_line_items",
+      "definition": "FOREIGN KEY (catalog_item_id) REFERENCES line_item_catalog(id) ON DELETE SET NULL"
+    },
+    {
+      "name": "invoice_line_items_invoice_id_fkey",
+      "table": "invoice_line_items",
+      "definition": "FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "invoice_line_items_pkey",
+      "table": "invoice_line_items",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "invoice_payments_invoice_id_fkey",
+      "table": "invoice_payments",
+      "definition": "FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "invoice_payments_payment_method_check",
+      "table": "invoice_payments",
+      "definition": "CHECK (((payment_method)::text = ANY ((ARRAY['bank_transfer'::character varying, 'cash'::character varying, 'cheque'::character varying, 'card'::character varying, 'other'::character varying, 'paypal'::character varying])::text[])))"
+    },
+    {
+      "name": "invoice_payments_pkey",
+      "table": "invoice_payments",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "invoice_payments_source_kind_check",
+      "table": "invoice_payments",
+      "definition": "CHECK ((source_kind = ANY (ARRAY['booking_payment'::text, 'booking_deposit'::text, 'paypal'::text])))"
+    },
+    {
+      "name": "invoice_payments_source_payment_id_fkey",
+      "table": "invoice_payments",
+      "definition": "FOREIGN KEY (source_payment_id) REFERENCES private_booking_payments(id) ON DELETE SET NULL"
+    }
+  ]
+}

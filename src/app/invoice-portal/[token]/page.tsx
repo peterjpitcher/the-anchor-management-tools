@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyInvoiceToken } from '@/lib/invoices/invoice-token'
+import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import {
   GuestShell,
@@ -52,7 +53,7 @@ export default async function InvoicePortalPage({
   const admin = createAdminClient()
   const { data: invoice } = await admin
     .from('invoices')
-    .select('id, invoice_number, status, total_amount, paid_amount, invoice_date, due_date, sent_at, vendor:invoice_vendors(name, contact_name, paypal_payments_enabled)')
+    .select('id, invoice_number, status, total_amount, paid_amount, invoice_date, due_date, sent_at, vendor:invoice_vendors(name, contact_name, paypal_payments_enabled), credits:credit_notes(status, amount_inc_vat)')
     .eq('id', invoiceId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -61,10 +62,11 @@ export default async function InvoicePortalPage({
 
   const total = Number(invoice.total_amount || 0)
   const paid = Number(invoice.paid_amount || 0)
-  const outstanding = Math.round((total - paid) * 100) / 100
+  const creditTotal = invoiceIssuedCreditTotal(invoice)
+  const outstanding = invoiceBalanceDue(invoice)
 
-  const settled = invoice.status === 'paid' || outstanding <= 0
   const withdrawn = invoice.status === 'void' || invoice.status === 'written_off'
+  const settled = !withdrawn && (invoice.status === 'paid' || outstanding <= 0)
   // A draft that has actually been emailed is payable: `sent_at` is the
   // authoritative delivery record, and the send's status flip can fail after
   // the email has already reached the customer.
@@ -87,7 +89,7 @@ export default async function InvoicePortalPage({
   // contradicts the notice sitting directly under it, and the big number is the
   // part people read first.
   const heading = settled
-    ? 'This invoice is paid'
+    ? creditTotal > 0 ? 'This invoice is settled' : 'This invoice is paid'
     : withdrawn
       ? 'This invoice has been cancelled'
       : notYetIssued
@@ -136,7 +138,7 @@ export default async function InvoicePortalPage({
 
         {showAmount && (
           <GuestAmount
-            label={settled ? 'Paid in full' : 'Amount due now'}
+            label={settled ? creditTotal > 0 ? 'Payments received' : 'Paid in full' : 'Amount due now'}
             value={formatMoney(settled ? paid : Math.max(outstanding, 0))}
           />
         )}
@@ -144,6 +146,7 @@ export default async function InvoicePortalPage({
         <div className={showAmount ? 'mt-[18px]' : ''}>
           <DetailRow label="Invoice" value={invoice.invoice_number} />
           <DetailRow label="Invoice total" value={formatMoney(total)} />
+          {creditTotal > 0 && <DetailRow label="Credits applied" value={formatMoney(creditTotal)} />}
           {paid > 0 && <DetailRow label="Already paid" value={formatMoney(paid)} />}
           {invoiceCollectible && (
             <DetailRow
@@ -161,7 +164,7 @@ export default async function InvoicePortalPage({
         <div className="mt-[18px]">
           {settled && (
             <GuestAlert tone="success" role="status">
-              This invoice is paid in full. Thank you.
+              {creditTotal > 0 ? 'This invoice is settled, including the credits shown above. Thank you.' : 'This invoice is paid in full. Thank you.'}
             </GuestAlert>
           )}
           {withdrawn && (

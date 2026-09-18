@@ -1,5 +1,7 @@
 'use client'
 
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
+
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createCreditNote, getInvoice, updateInvoiceStatus, deleteInvoice, updateInvoiceDueDate } from '@/app/actions/invoices'
@@ -537,7 +539,7 @@ export default function InvoiceDetailClient({
     canEdit &&
     invoice.vendor?.paypal_payments_enabled === true &&
     ['sent', 'overdue', 'partially_paid'].includes(invoice.status) &&
-    Number(invoice.total_amount || 0) - Number(invoice.paid_amount || 0) > 0
+    invoiceBalanceDue(invoice) > 0
 
   // A due date is a payment term, not a figure, so it stays changeable after
   // the invoice is issued. Withdrawn and settled invoices are excluded: there
@@ -952,7 +954,7 @@ export default function InvoiceDetailClient({
               <div>
                 <p className="text-sm text-text-muted">Outstanding</p>
                 <p className="text-lg sm:text-xl font-semibold text-danger">
-                  £{(invoice.total_amount - invoice.paid_amount).toFixed(2)}
+                  £{(invoiceBalanceDue(invoice)).toFixed(2)}
                 </p>
               </div>
 

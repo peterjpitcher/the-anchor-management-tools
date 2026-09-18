@@ -1,3 +1,4 @@
+import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations';
@@ -289,7 +290,8 @@ export class InvoiceService {
       .from('invoices')
       .select(`
         *,
-        vendor:invoice_vendors(*)
+        vendor:invoice_vendors(*),
+        credits:credit_notes(status, amount_inc_vat)
       `, { count: 'exact' })
       .is('deleted_at', null);
 
@@ -363,7 +365,8 @@ export class InvoiceService {
         *,
         vendor:invoice_vendors(*),
         line_items:invoice_line_items(*),
-        payments:invoice_payments(*)
+        payments:invoice_payments(*),
+        credits:credit_notes(status, amount_inc_vat)
       `)
       .order('display_order', { ascending: true, foreignTable: 'invoice_line_items' })
       .eq('id', invoiceId)
@@ -431,10 +434,10 @@ export class InvoiceService {
   static async updateInvoiceStatus(invoiceId: string, newStatus: InvoiceStatus) {
     const supabase = await createClient();
     
-    // Get current invoice for old status
+    // Get current invoice for old status and remaining credited charges.
     const { data: currentInvoice, error: fetchError } = await supabase
       .from('invoices')
-      .select('*')
+      .select('*, credits:credit_notes(status, amount_inc_vat)')
       .eq('id', invoiceId)
       .is('deleted_at', null)
       .single();
@@ -457,7 +460,7 @@ export class InvoiceService {
     };
 
     if (newStatus === 'paid') {
-      updates.paid_amount = currentInvoice.total_amount;
+      updates.paid_amount = Math.max(0, Number(currentInvoice.total_amount) - invoiceIssuedCreditTotal(currentInvoice));
     }
 
     const { data: updatedInvoice, error: updateError } = await supabase
@@ -500,7 +503,7 @@ export class InvoiceService {
           0
         );
         const shortfall =
-          Math.round((Number(currentInvoice.total_amount || 0) - alreadyRecorded) * 100) / 100;
+          invoiceBalanceDue({ ...currentInvoice, paid_amount: alreadyRecorded });
 
         if (shortfall > 0) {
           const { error: paymentInsertError } = await supabase.from('invoice_payments').insert({

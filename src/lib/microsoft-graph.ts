@@ -1,3 +1,4 @@
+import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/balance'
 // import { Client } from '@microsoft/microsoft-graph-client'
 // import { ClientSecretCredential } from '@azure/identity'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
@@ -102,7 +103,8 @@ export async function sendInvoiceEmail(
     })
 
     const recipientName = invoice.vendor?.contact_name || invoice.vendor?.name || 'there'
-    const outstandingBalance = Math.max(0, Number(invoice.total_amount) - Number(invoice.paid_amount))
+    const outstandingBalance = invoiceBalanceDue(invoice)
+    const creditTotal = invoiceIssuedCreditTotal(invoice)
     // Asking for the full total on an invoice that has already been part-paid
     // is the same fault the contract email had with its deposit: it reads as
     // though the money never arrived. `outstandingBalance` already existed here
@@ -146,10 +148,10 @@ I hope you're doing well!
 
 Please find attached invoice ${invoice.invoice_number} with the following details:
 
-${paidAlready > 0
+${paidAlready > 0 || creditTotal > 0
   ? `Invoice total: £${Number(invoice.total_amount).toFixed(2)}
 Payments received: £${paidAlready.toFixed(2)}
-Balance due: £${outstandingBalance.toFixed(2)}`
+${creditTotal > 0 ? `Credits: £${creditTotal.toFixed(2)}\n` : ''}Balance due: £${outstandingBalance.toFixed(2)}`
   : `Amount Due: £${Number(invoice.total_amount).toFixed(2)}`}
 Due Date: ${new Date(invoice.due_date).toLocaleDateString('en-GB')}
 
