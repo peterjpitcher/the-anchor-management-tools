@@ -315,6 +315,18 @@ describe('invoices section', () => {
     expect(result.metrics[0].value).toBe('£1,234.56')
   })
 
+  it('takes issued credit notes off what is owed, as every other invoice screen does', async () => {
+    const result = await build(db([
+      invoice({ invoice_number: 'INV-C', due_date: '2026-09-20', total_amount: 1000, paid_amount: 200, vendor: { name: 'Credit Ltd' },
+        credits: [{ status: 'issued', amount_inc_vat: 300 }, { status: 'draft', amount_inc_vat: 400 }] }),
+      // Fully credited: nothing owed, so it is not an open invoice at all.
+      invoice({ invoice_number: 'INV-Z', total_amount: 500, paid_amount: 0, credits: [{ status: 'issued', amount_inc_vat: 500 }] }),
+    ]))
+    expect(result.signals[0].action?.text).toBe('Chase INV-C (Credit Ltd), £500, 5 days overdue')
+    expect(result.metrics[0].value).toBe('£500')
+    expect(allText(result)).not.toContain('INV-Z')
+  })
+
   it('treats a missing paid amount as nothing paid', async () => {
     const result = await build(db([invoice({ total_amount: 750, paid_amount: null })]))
     expect(result.metrics[0].value).toBe('£750')

@@ -225,6 +225,8 @@ describe('private hire section', () => {
         booking({ id: 'pb-notdue', invoice_id: 'inv-2', invoice: invoice({ id: 'inv-2', invoice_number: 'INV-002' }), balance_remaining: 1000, final_payment_date: null }),
         booking({ id: 'pb-paid', invoice_id: 'inv-3', invoice: invoice({ id: 'inv-3', status: 'paid', paid_amount: 1500 }), balance_remaining: 1000, final_payment_date: null }),
         booking({ id: 'pb-array', invoice_id: 'inv-4', invoice: [invoice({ id: 'inv-4', invoice_number: 'INV-004', total_amount: '800.00', paid_amount: '800.00' })], balance_remaining: 800, final_payment_date: null }),
+        // An issued credit note clears the rest of the invoice, so nothing is chased.
+        booking({ id: 'pb-credited', invoice_id: 'inv-5', invoice: invoice({ id: 'inv-5', invoice_number: 'INV-005', status: 'overdue', due_date: '2026-09-20', credits: [{ status: 'issued', amount_inc_vat: 1000 }] }), balance_remaining: 1000, final_payment_date: null }),
       ]))
       expect(signal(result, 'private_hire.invoice_overdue.pb-overdue')).toMatchObject({
         rag: 'red',
@@ -236,7 +238,7 @@ describe('private hire section', () => {
       expect(notDue).toMatchObject({ rag: 'green', kind: 'info', text: 'Smith party (Sat 26 Sep): £1,000 balance invoiced on invoice INV-002, due Thu 1 Oct.' })
       expect(notDue.action).toBeUndefined()
       expect(keys(result).filter((key) => key.includes('balance'))).toEqual([])
-      expect(keys(result).some((key) => key.endsWith('pb-paid') || key.endsWith('pb-array'))).toBe(false)
+      expect(keys(result).some((key) => key.endsWith('pb-paid') || key.endsWith('pb-array') || key.endsWith('pb-credited'))).toBe(false)
       const notDueItem = result.lists[0].items.find((item) => item.href === LINK('/private-bookings/pb-notdue'))
       expect(notDueItem).toMatchObject({ rag: 'green', text: 'Sat 26 Sep, 19:00 to 23:00, Smith party, 40 guests, confirmed: Ready (balance invoiced, invoice INV-002, due Thu 1 Oct)' })
       expect(result.notes).toEqual(['Not tracked in the app: menu confirmed, dietary requirements, room set-up.'])
