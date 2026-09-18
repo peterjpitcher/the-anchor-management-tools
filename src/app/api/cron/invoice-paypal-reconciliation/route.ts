@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
   try {
     const { data, error } = await admin
       .from('invoices')
-      .select('id, invoice_number, paypal_order_id, total_amount, paid_amount, status, sent_at, updated_at, paypal_reconciliation_attempts, vendor:invoice_vendors(paypal_payments_enabled)')
+      .select('id, invoice_number, paypal_order_id, total_amount, paid_amount, status, sent_at, updated_at, paypal_reconciliation_attempts, vendor:invoice_vendors(paypal_payments_enabled), credits:credit_notes(status, amount_inc_vat)')
       .not('paypal_order_id', 'is', null)
       .in('status', PAYABLE_STATUSES)
       .is('deleted_at', null)

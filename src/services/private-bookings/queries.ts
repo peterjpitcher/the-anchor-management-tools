@@ -124,6 +124,7 @@ export async function getBookings(filters?: {
         calculated_total,
         vat_amount,
         gross_total,
+        invoice_id,
         deposit_status,
         days_until_event
       `,
@@ -222,6 +223,7 @@ export async function fetchPrivateBookings(options: {
         calculated_total,
         vat_amount,
         gross_total,
+        invoice_id,
         deposit_status,
         days_until_event
       `,
@@ -296,8 +298,9 @@ export async function fetchPrivateBookings(options: {
   const enriched = (data || []).map((booking) => {
     // Customer-payable total is VAT-inclusive (stored prices are net)
     const bookingTotal = toNumber(booking.gross_total ?? booking.calculated_total ?? booking.total_amount);
-    const paymentSum = ledgers.get(booking.id)?.eventPaidTotal ?? 0;
-    const balanceRemaining = Math.max(0, bookingTotal - paymentSum);
+    const ledger = ledgers.get(booking.id);
+    const paymentSum = ledger?.eventPaidTotal ?? 0;
+    const balanceRemaining = booking.invoice_id && ledger ? ledger.invoiceBalanceTotal : Math.max(0, bookingTotal - paymentSum);
     return {
       ...booking,
       hold_expiry: holdExpiryById.get(booking.id) ?? undefined,
@@ -435,7 +438,10 @@ export async function getBookingById(id: string): Promise<PrivateBookingWithDeta
     days_until_event: daysUntilEvent,
     audit_trail: auditTrail,
     payments: ledger.payments,
-    applied_deposit_amount: ledger.appliedDepositAmount
+    applied_deposit_amount: ledger.appliedDepositAmount,
+    supplementary_charges_total: ledger.supplementaryChargesTotal,
+    invoice_balance_total: ledger.invoiceBalanceTotal,
+    invoice_credits_total: ledger.creditsTotal
   };
 
   return bookingWithDetails;
@@ -546,6 +552,7 @@ export async function getBookingByIdForMessages(id: string): Promise<PrivateBook
         calculated_total,
         vat_amount,
         gross_total,
+        invoice_id,
         days_until_event,
         deposit_status
       `
@@ -579,7 +586,7 @@ export async function getBookingByIdForMessages(id: string): Promise<PrivateBook
   return {
     ...(booking as PrivateBookingWithDetails),
     deposit_status: normalizeDepositStatus(booking),
-    balance_remaining: Math.max(0, bookingTotal - ledger.eventPaidTotal),
+    balance_remaining: booking.invoice_id ? ledger.invoiceBalanceTotal : Math.max(0, bookingTotal - ledger.eventPaidTotal),
     sms_queue: smsQueue ?? [],
   };
 }

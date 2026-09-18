@@ -327,6 +327,9 @@ export interface PrivateBookingWithDetails extends PrivateBooking {
   /** VAT on the discounted net total (stored prices are net) */
   vat_amount?: number
   /** Customer-payable total including VAT (excludes the deposit) */
+  supplementary_charges_total?: number
+  invoice_balance_total?: number
+  invoice_credits_total?: number
   gross_total?: number
   total_balance_paid?: number
   balance_remaining?: number

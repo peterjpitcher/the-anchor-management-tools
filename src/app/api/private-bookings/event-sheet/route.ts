@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
   try {
     const admin = createAdminClient()
 
-    const [bookingResult, suppliersResult] = await Promise.all([
+    const [bookingResult, suppliersResult, extraChargesResult] = await Promise.all([
       admin
         .from('private_bookings')
         .select(`
@@ -68,6 +68,7 @@ export async function GET(request: NextRequest) {
         .select('*')
         .eq('booking_id', bookingId)
         .order('arrival_time', { ascending: true, nullsFirst: false }),
+      admin.from('private_booking_charge_batches').select('lines').eq('booking_id', bookingId).eq('status', 'issued'),
     ])
 
     if (bookingResult.error || !bookingResult.data) {
@@ -76,6 +77,8 @@ export async function GET(request: NextRequest) {
     if (suppliersResult.error) {
       throw new Error(suppliersResult.error.message)
     }
+
+    if (extraChargesResult.error) throw new Error(extraChargesResult.error.message)
 
     const booking = bookingResult.data
     const suppliers = suppliersResult.data ?? []
@@ -112,14 +115,16 @@ export async function GET(request: NextRequest) {
       guestCountAdults: toNumberOrNull(booking.guest_count_adults),
       guestCountUnder18: toNumberOrNull(booking.guest_count_under_18),
       layout: (booking.layout as string | null) ?? null,
-      items: items.map((item) => ({
+      items: [...items.map((item) => ({
         itemType: (item.item_type as string) ?? 'other',
         description: (item.description as string) ?? '',
         quantity: toNumberOrNull(item.quantity) ?? 1,
         spaceName: (item.space?.name as string | null) ?? null,
         packageName: (item.package?.name as string | null) ?? null,
         vendorName: (item.vendor?.name as string | null) ?? null,
-      })),
+      })), ...(extraChargesResult.data ?? []).flatMap(batch => (batch.lines as Array<{description: string; quantity: number}>).map(line => ({
+        itemType: 'other', description: `Additional: ${line.description}`, quantity: Number(line.quantity), spaceName: null, packageName: null, vendorName: null,
+      })))],
       barTabRequired: Boolean(booking.bar_tab_required),
       barTabLimit: toNumberOrNull(booking.bar_tab_limit),
       barTabPrepaidAmount: toNumberOrNull(booking.bar_tab_prepaid_amount),

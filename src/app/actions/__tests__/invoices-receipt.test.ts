@@ -180,6 +180,47 @@ describe('recordPayment — receipt triggering logic', () => {
     expect(sendInvoiceEmail).toHaveBeenCalled()
   })
 
+  it('reports zero outstanding when a £30 credit and £90 receipt settle a £120 invoice', async () => {
+    const mockSb = buildMockSupabase({
+      invoiceBeforeStatus: 'sent',
+      invoiceAfterStatus: 'paid',
+    })
+    vi.mocked(createClient).mockResolvedValue(mockSb as any)
+    vi.mocked(InvoiceService.recordPayment).mockResolvedValue({
+      id: 'pay-1',
+      invoice_id: 'inv-1',
+      amount: 90,
+      payment_date: '2026-04-14',
+      payment_method: 'bank_transfer',
+    } as any)
+
+    // Mock the InvoiceService.getInvoiceById for receipt flow
+    vi.mocked(InvoiceService.getInvoiceById).mockResolvedValue({
+      id: 'inv-1',
+      invoice_number: 'INV-001',
+      status: 'paid',
+      vendor_id: 'v-1',
+      vendor: { email: 'vendor@test.com', name: 'Test Vendor', contact_name: 'John' },
+      total_amount: 120,
+      paid_amount: 90,
+      credits: [{ status: 'issued', amount_inc_vat: 30 }],
+      payments: [{ id: 'pay-1', amount: 90, payment_date: '2026-04-14', payment_method: 'bank_transfer' }],
+    } as any)
+
+    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: true } as any)
+
+    const result = await recordPayment(makeFormData({ amount: '90' }))
+
+    expect(result.success).toBe(true)
+    // sendInvoiceEmail should have been called for the receipt
+    expect(sendInvoiceEmail).toHaveBeenCalled()
+    const body = vi.mocked(sendInvoiceEmail).mock.calls[0][3]
+    expect(body).toContain('Invoice Total: £120.00')
+    expect(body).toContain('Credits Applied: £30.00')
+    expect(body).toContain('Outstanding Balance: £0.00')
+    expect(vi.mocked(sendInvoiceEmail).mock.calls[0][2]).toContain('Settled with Credits')
+  })
+
   it('triggers receipt when status changes to partially_paid', async () => {
     const mockSb = buildMockSupabase({
       invoiceBeforeStatus: 'sent',

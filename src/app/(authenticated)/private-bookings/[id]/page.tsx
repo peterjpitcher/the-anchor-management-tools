@@ -27,6 +27,7 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
 
   const errors: string[] = []
 
+  let canViewPricing = false
   let canView = false
   let canEdit = false
   let canDelete = false
@@ -51,6 +52,7 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
     const actions = new Set(permissionsResult.actions)
 
     canView = hasPrivateBookingPermission(actions, 'view')
+    canViewPricing = actions.has('view_pricing') || actions.has('manage')
     canEdit = hasPrivateBookingPermission(actions, 'edit')
     canDelete = hasPrivateBookingPermission(actions, 'delete')
     canManageDeposits = actions.has('manage_deposits') || actions.has('manage')
@@ -144,6 +146,7 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
         canEditPayments,
         canRefund,
         canInvoice,
+        canViewPricing,
       }}
       paymentHistory={paymentHistory}
       depositConfirmation={depositConfirmation}

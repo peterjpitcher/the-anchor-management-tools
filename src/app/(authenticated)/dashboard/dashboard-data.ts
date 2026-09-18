@@ -1,5 +1,7 @@
 'use server'
 
+import { invoiceBalanceDue } from '@/lib/invoices/balance'
+
 import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -1119,7 +1121,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             }),
             supabase
               .from('private_bookings_with_details')
-              .select('id, customer_name, customer_first_name, customer_last_name, balance_due_date, event_date, status, total_amount, calculated_total, gross_total, final_payment_date')
+              .select('id, customer_name, customer_first_name, customer_last_name, balance_due_date, event_date, status, total_amount, calculated_total, gross_total, balance_remaining, final_payment_date')
               .in('status', ['confirmed'])
               .not('balance_due_date', 'is', null)
               .gte('balance_due_date', eventsLookbackIso)
@@ -1313,7 +1315,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             // an RPC aggregate (e.g. get_unpaid_invoice_totals) for efficiency.
             supabase
               .from('invoices')
-              .select('total_amount, paid_amount')
+              .select('total_amount, paid_amount, credits:credit_notes(status, amount_inc_vat)')
               .is('deleted_at', null)
               .in('status', unpaidStatuses),
             // NEW: Overdue invoices list (up to 5 for display in today's schedule)
@@ -1372,9 +1374,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           invoices.overdueCount = overdueCountResult.count ?? 0
           
           invoices.totalUnpaidValue = (allUnpaidResult.data ?? []).reduce((sum, inv) => {
-            const total = Number(inv.total_amount ?? 0)
-            const paid = Number(inv.paid_amount ?? 0)
-            const outstanding = Math.max(0, total - paid)
+            const outstanding = invoiceBalanceDue(inv)
             return sum + (Number.isFinite(outstanding) ? outstanding : 0)
           }, 0)
 

@@ -31,12 +31,13 @@ import { sendInvoicePaymentLinkEmail } from '@/lib/email/invoice-payment-emails'
 import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import { invoicePaymentCustomId } from '@/lib/invoices/paypal-custom-id'
 import { settleInvoicePayPalOrder } from '@/lib/invoices/paypal-capture'
+import { invoiceBalanceDue, type InvoiceBalanceInput } from '@/lib/invoices/balance'
 import { invoiceCanOfferPayPal } from '@/lib/invoices/payment-link-footer'
 
 /** Statuses where asking the customer for money is legitimate. */
 const PAYABLE_STATUSES = new Set(['sent', 'overdue', 'partially_paid'])
 
-type PayableInvoice = {
+type PayableInvoice = InvoiceBalanceInput & {
   id: string
   invoice_number: string
   status: string
@@ -55,12 +56,10 @@ type PayableInvoice = {
 }
 
 const INVOICE_COLUMNS =
-  'id, invoice_number, status, total_amount, paid_amount, due_date, vendor_id, paypal_order_id, sent_at, updated_at, vendor:invoice_vendors(name, email, paypal_payments_enabled)'
+  'id, invoice_number, status, total_amount, paid_amount, due_date, vendor_id, paypal_order_id, sent_at, updated_at, vendor:invoice_vendors(name, email, paypal_payments_enabled), credits:credit_notes(status, amount_inc_vat)'
 
-function outstanding(invoice: { total_amount: number; paid_amount: number }): number {
-  // Rounded to the penny: PayPal will not accept more precision, and a floating
-  // point tail would make the amount check below fail against itself.
-  return Math.round((Number(invoice.total_amount || 0) - Number(invoice.paid_amount || 0)) * 100) / 100
+function outstanding(invoice: InvoiceBalanceInput): number {
+  return invoiceBalanceDue(invoice)
 }
 
 /** Why this invoice cannot be paid online, or null when it can. */

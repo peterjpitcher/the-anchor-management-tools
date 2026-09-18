@@ -5,9 +5,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { capturePayPalPayment, getPayPalOrder, isPayPalOrderAlreadyCapturedError, PAYPAL_DEFAULT_CURRENCY } from '@/lib/paypal'
+import { invoiceBalanceDue, type InvoiceBalanceInput } from './balance'
 import { invoicePaymentCustomId } from './paypal-custom-id'
 
-type InvoicePaymentState = {
+type InvoicePaymentState = InvoiceBalanceInput & {
   id: string
   status: string | null
   total_amount: number | null
@@ -67,7 +68,7 @@ export async function settleInvoicePayPalOrder(
     if (invoice.vendor?.paypal_payments_enabled !== true) {
       return { error: 'PayPal payments are not enabled for this vendor.' }
     }
-    const due = Math.round((Number(invoice.total_amount) - Number(invoice.paid_amount)) * 100)
+    const due = Math.round(invoiceBalanceDue(invoice) * 100)
     if (due <= 0 || positivePennies(unit.amount?.value) !== due) {
       return { error: 'The amount due has changed. Reload the invoice before paying.' }
     }

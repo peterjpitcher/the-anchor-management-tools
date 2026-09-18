@@ -1,0 +1,170 @@
+[
+  {
+    "table_name": "credit_notes",
+    "column_name": "amount_ex_vat",
+    "numeric_precision": 12,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "credit_notes",
+    "column_name": "vat_rate",
+    "numeric_precision": 5,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "credit_notes",
+    "column_name": "amount_inc_vat",
+    "numeric_precision": 12,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoice_line_items",
+    "column_name": "quantity",
+    "numeric_precision": 10,
+    "numeric_scale": 3
+  },
+  {
+    "table_name": "invoice_line_items",
+    "column_name": "unit_price",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoice_line_items",
+    "column_name": "discount_percentage",
+    "numeric_precision": 5,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoice_line_items",
+    "column_name": "vat_rate",
+    "numeric_precision": 5,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoice_line_items",
+    "column_name": "subtotal_amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoice_line_items",
+    "column_name": "discount_amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoice_line_items",
+    "column_name": "vat_amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoice_line_items",
+    "column_name": "total_amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoice_payments",
+    "column_name": "amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoices",
+    "column_name": "invoice_discount_percentage",
+    "numeric_precision": 5,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoices",
+    "column_name": "subtotal_amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoices",
+    "column_name": "discount_amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoices",
+    "column_name": "vat_amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoices",
+    "column_name": "total_amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "invoices",
+    "column_name": "paid_amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "quantity",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "unit_price",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "discount_value",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "line_total",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "vat_rate",
+    "numeric_precision": 5,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "private_bookings",
+    "column_name": "deposit_amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "private_bookings",
+    "column_name": "total_amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "private_bookings",
+    "column_name": "discount_amount",
+    "numeric_precision": 10,
+    "numeric_scale": 2
+  },
+  {
+    "table_name": "private_bookings",
+    "column_name": "bar_tab_limit",
+    "numeric_precision": null,
+    "numeric_scale": null
+  },
+  {
+    "table_name": "private_bookings",
+    "column_name": "bar_tab_prepaid_amount",
+    "numeric_precision": null,
+    "numeric_scale": null
+  }
+]

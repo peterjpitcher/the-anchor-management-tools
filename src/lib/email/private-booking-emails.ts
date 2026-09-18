@@ -1738,7 +1738,9 @@ function balanceStatementParts(statement: PrivateBookingPaymentStatement, balanc
   return {
     rows: [
       ['Event total', money(statement.eventTotal)],
+      ...(statement.creditsAmount ? [['Credits reducing your bill', money(statement.creditsAmount)] as [string, string]] : []),
       ['Paid towards your bill so far', paidTowardsBill],
+      ...(statement.unappliedCreditAmount ? [['Credit awaiting allocation', money(statement.unappliedCreditAmount)] as [string, string]] : []),
     ],
     section: {
       heading: 'Payments received',
