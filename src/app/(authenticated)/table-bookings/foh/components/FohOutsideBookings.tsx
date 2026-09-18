@@ -19,10 +19,8 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
   const { bookings, canEdit, loading, styleVariant, onBookingClick } = props
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
 
-  const panelSurfaceClass = isManagerKioskStyle
-    ? 'rounded-xl border border-green-200 bg-surface shadow-sm'
-    : 'rounded-lg border border-border bg-surface'
-  const cardWrapperClass = cn(panelSurfaceClass, isManagerKioskStyle ? 'p-2' : 'p-4')
+  // One card treatment for both styles; the kiosk only packs it tighter.
+  const cardWrapperClass = cn('rounded-lg border border-border bg-surface', isManagerKioskStyle ? 'p-2' : 'p-4')
 
   // Order comes from the schedule route, which sorts on an epoch key (start_datetime is
   // UTC while booking_time is London-local, so they cannot be compared here — FohBooking
@@ -55,7 +53,7 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
                 type="button"
                 onClick={() => onBookingClick(booking)}
                 className={cn(
-                  'flex w-full flex-col gap-1 rounded-lg border border-border bg-surface text-left transition hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-sidebar/40',
+                  'flex min-h-touch w-full flex-col gap-1 rounded-lg border border-border bg-surface text-left transition hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring',
                   isManagerKioskStyle ? 'p-2' : 'p-3'
                 )}
               >
@@ -63,14 +61,9 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
                   <p className={cn('min-w-0 truncate font-semibold text-text', isManagerKioskStyle ? 'text-ui' : 'text-sm')}>
                     {booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
                   </p>
-                  <span
-                    className={cn(
-                      'shrink-0 rounded-md border px-2 py-0.5 text-meta font-medium',
-                      getTableBookingStatusBadgeClasses(visualState)
-                    )}
-                  >
+                  <Badge size="sm" className={cn('shrink-0', getTableBookingStatusBadgeClasses(visualState))}>
                     {visualLabel}
-                  </span>
+                  </Badge>
                 </div>
                 <p className={cn('text-text-muted', isManagerKioskStyle ? 'text-meta' : 'text-xs')}>
                   {formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)}
@@ -90,7 +83,7 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
 
       {loading && (
         <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-surface/70">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-sidebar" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-primary" />
         </div>
       )}
     </div>

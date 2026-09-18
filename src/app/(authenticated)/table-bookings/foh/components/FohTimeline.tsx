@@ -107,10 +107,8 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
   } = props
 
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
-  const panelSurfaceClass = isManagerKioskStyle
-    ? 'rounded-xl border border-green-200 bg-surface shadow-sm'
-    : 'rounded-lg border border-border bg-surface'
-  const swimlaneCardClass = cn(panelSurfaceClass, isManagerKioskStyle ? 'p-2' : 'p-4')
+  // One card treatment for both styles; the kiosk only packs it tighter.
+  const swimlaneCardClass = cn('rounded-lg border border-border bg-surface', isManagerKioskStyle ? 'p-2' : 'p-4')
   const swimlaneHeaderRowClass = cn(
     'flex items-center justify-between',
     isManagerKioskStyle ? 'mb-2' : 'mb-3'
@@ -130,15 +128,22 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
   const laneTimelineClass = cn(
     'relative overflow-hidden bg-surface-2/60',
     isManagerKioskStyle ? 'h-12 pt-1' : 'h-14',
-    canEdit && 'cursor-pointer hover:bg-sidebar/5'
+    canEdit && 'cursor-pointer hover:bg-primary/5'
   )
   const laneEmptyClass = cn(
-    'absolute inset-0 flex items-center text-gray-400',
+    'absolute inset-0 flex items-center text-text-soft',
     isManagerKioskStyle ? 'px-2 text-2xs' : 'px-3 text-xs'
   )
+  // Blocks sit inside the lane's overflow-hidden track, which would clip an outer focus ring.
   const bookingBlockBaseClass = isManagerKioskStyle
-    ? 'absolute top-0.5 h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-2xs shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
-    : 'absolute top-1 h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-2xs shadow-sm transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-sidebar/40'
+    ? 'absolute top-0.5 h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-2xs shadow-sm transition hover:brightness-105 focus-visible:outline-hidden focus-visible:shadow-ring-inset'
+    : 'absolute top-1 h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-2xs shadow-sm transition hover:brightness-105 focus-visible:outline-hidden focus-visible:shadow-ring-inset'
+  // Status colours on blocks are tints (bg-primary/15 and so on), so each block sits on an
+  // opaque card of the same shape. Without it, tick lines and any overlapping block would show
+  // through the text.
+  const bookingUnderlayClass = isManagerKioskStyle
+    ? 'pointer-events-none absolute top-0.5 h-11 rounded-md bg-surface'
+    : 'pointer-events-none absolute top-1 h-12 rounded-md bg-surface'
   const bookingOverlayBaseClass = isManagerKioskStyle
     ? 'h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-2xs'
     : 'h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-2xs'
@@ -147,7 +152,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
     isManagerKioskStyle ? 'top-0.5 text-2xs' : 'pt-0.5 text-2xs'
   )
   const nowLineLabelClass = cn(
-    'absolute left-0 -translate-x-1/2 rounded-sm bg-red-600 text-white font-semibold',
+    'absolute left-0 -translate-x-1/2 rounded-sm bg-danger text-on-dark font-semibold',
     isManagerKioskStyle ? 'top-0.5 px-1 py-px text-2xs' : 'top-0.5 px-1.5 py-px text-2xs'
   )
 
@@ -171,7 +176,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
 
       {loading && (
         <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-surface/70">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-sidebar" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-primary" />
         </div>
       )}
 
@@ -199,7 +204,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
                 })}
                 {currentTimelineLeftPct != null && (
                   <div className="pointer-events-none absolute inset-y-0 z-20" style={{ left: `${currentTimelineLeftPct}%` }}>
-                    <div className="h-full w-0.5 -translate-x-1/2 bg-red-500/85" />
+                    <div className="h-full w-0.5 -translate-x-1/2 bg-danger/85" />
                     <span className={nowLineLabelClass}>Now</span>
                   </div>
                 )}
@@ -218,6 +223,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
                 styleVariant={styleVariant}
                 currentTimelineLeftPct={currentTimelineLeftPct}
                 bookingBlockBaseClass={bookingBlockBaseClass}
+                bookingUnderlayClass={bookingUnderlayClass}
                 laneMetaCellClass={laneMetaCellClass}
                 laneTimelineClass={laneTimelineClass}
                 laneEmptyClass={laneEmptyClass}
@@ -228,25 +234,24 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
           </div>
         </div>
         {activeDragData && pointerPosition ? (
+          // The opaque card underneath keeps the tinted status colour readable over the page.
           <div
-            className={cn(
-              bookingOverlayBaseClass,
-              activeDragData.statusClassName,
-              'fixed z-[9999] pointer-events-none select-none opacity-95 shadow-lg ring-2 ring-white/70'
-            )}
+            className="fixed z-[9999] pointer-events-none select-none rounded-md bg-surface opacity-95 shadow-lg ring-2 ring-white/70"
             style={{
               left: pointerPosition.x,
               top: pointerPosition.y,
               width: activeDragData.widthPx,
             }}
           >
-            <p className="truncate font-semibold">{activeDragData.bookingLabel}</p>
-            {liveSnapTime && !isOutOfBounds && (
-              <p className="truncate text-xs font-semibold opacity-80">{liveSnapTime}</p>
-            )}
-            {isOutOfBounds && (
-              <p className="truncate text-xs font-semibold text-red-200 opacity-80">Out of range</p>
-            )}
+            <div className={cn(bookingOverlayBaseClass, activeDragData.statusClassName)}>
+              <p className="truncate font-semibold">{activeDragData.bookingLabel}</p>
+              {liveSnapTime && !isOutOfBounds && (
+                <p className="truncate text-xs font-semibold opacity-80">{liveSnapTime}</p>
+              )}
+              {isOutOfBounds && (
+                <p className="truncate text-xs font-semibold text-danger-fg">Out of range</p>
+              )}
+            </div>
           </div>
         ) : null}
       </DndContext>
@@ -272,6 +277,7 @@ const LaneRow = React.memo(function LaneRow(props: {
   styleVariant: FohStyleVariant
   currentTimelineLeftPct: number | null
   bookingBlockBaseClass: string
+  bookingUnderlayClass: string
   laneMetaCellClass: string
   laneTimelineClass: string
   laneEmptyClass: string
@@ -288,6 +294,7 @@ const LaneRow = React.memo(function LaneRow(props: {
     styleVariant,
     currentTimelineLeftPct,
     bookingBlockBaseClass,
+    bookingUnderlayClass,
     laneMetaCellClass,
     laneTimelineClass,
     laneEmptyClass,
@@ -326,47 +333,53 @@ const LaneRow = React.memo(function LaneRow(props: {
           : `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.party_size || 1}p · ${visualLabel}`
 
         return (
-          <DraggableBookingBlock
-            key={`${lane.table_id}-${booking.id}`}
-            bookingId={booking.id}
-            bookingLabel={booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
-            fromTime={booking.booking_time}
-            tableId={lane.table_id}
-            tableName={lane.table_name}
-            durationMinutes={window.end - window.start}
-            timelineStartMin={timeline.startMin}
-            timelineEndMin={timeline.endMin}
-            leftPct={leftPct}
-            widthPct={widthPct}
-            canEdit={canEdit && !isLockedBlock}
-            status={booking.status}
-            isPrivateBlock={Boolean(booking.is_private_block)}
-            assignmentCount={booking.assignment_count ?? null}
-            styleVariant={styleVariant}
-            className={cn(bookingBlockBaseClass, visualClassName)}
-            statusClassName={visualClassName}
-            title={`${booking.guest_name || 'Guest'} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${detailLine}`}
-            onClick={(event) => {
-              event.stopPropagation()
-              onBookingClick(booking, lane.table_id, lane.table_name)
-            }}
-          >
-            <p className="truncate font-semibold leading-tight">
-              {booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
-            </p>
-            <p className="truncate leading-tight">
-              {booking.is_private_block
-                ? formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
-                : detailLine}
-            </p>
-            <BookingBadges booking={booking} className="mt-0.5" />
-          </DraggableBookingBlock>
+          <React.Fragment key={`${lane.table_id}-${booking.id}`}>
+            <div
+              aria-hidden="true"
+              className={bookingUnderlayClass}
+              style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+            />
+            <DraggableBookingBlock
+              bookingId={booking.id}
+              bookingLabel={booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
+              fromTime={booking.booking_time}
+              tableId={lane.table_id}
+              tableName={lane.table_name}
+              durationMinutes={window.end - window.start}
+              timelineStartMin={timeline.startMin}
+              timelineEndMin={timeline.endMin}
+              leftPct={leftPct}
+              widthPct={widthPct}
+              canEdit={canEdit && !isLockedBlock}
+              status={booking.status}
+              isPrivateBlock={Boolean(booking.is_private_block)}
+              assignmentCount={booking.assignment_count ?? null}
+              styleVariant={styleVariant}
+              className={cn(bookingBlockBaseClass, visualClassName)}
+              statusClassName={visualClassName}
+              title={`${booking.guest_name || 'Guest'} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${detailLine}`}
+              onClick={(event) => {
+                event.stopPropagation()
+                onBookingClick(booking, lane.table_id, lane.table_name)
+              }}
+            >
+              <p className="truncate font-semibold leading-tight">
+                {booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
+              </p>
+              <p className="truncate leading-tight">
+                {booking.is_private_block
+                  ? formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
+                  : detailLine}
+              </p>
+              <BookingBadges booking={booking} className="mt-0.5" />
+            </DraggableBookingBlock>
+          </React.Fragment>
         )
       })}
 
       {currentTimelineLeftPct != null && (
         <div className="pointer-events-none absolute inset-y-0 z-20" style={{ left: `${currentTimelineLeftPct}%` }}>
-          <div className="h-full w-0.5 -translate-x-1/2 bg-red-500/75" />
+          <div className="h-full w-0.5 -translate-x-1/2 bg-danger/75" />
         </div>
       )}
 

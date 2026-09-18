@@ -308,10 +308,10 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                   key={event.id}
                   type="button"
                   onClick={() => setEventId(eventId === event.id ? null : event.id)}
-                  className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                  className={`rounded-pill border px-3 py-1.5 text-sm transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                     eventId === event.id
-                      ? 'border-green-600 bg-success-soft text-green-800 font-medium'
-                      : 'border-border-strong text-text hover:border-gray-400'
+                      ? 'border-primary bg-primary-soft text-primary-soft-fg font-medium'
+                      : 'border-border bg-surface text-text-muted hover:bg-surface-hover'
                   }`}
                 >
                   {event.name}
@@ -354,10 +354,10 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                   key={preset.days}
                   type="button"
                   onClick={() => setExpiryDate(preset.date)}
-                  className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                  className={`rounded-pill border px-3 py-1.5 text-sm transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
                     expiryDate === preset.date
-                      ? 'border-green-600 bg-success-soft text-green-800 font-medium'
-                      : 'border-border-strong text-text hover:border-gray-400'
+                      ? 'border-primary bg-primary-soft text-primary-soft-fg font-medium'
+                      : 'border-border bg-surface text-text-muted hover:bg-surface-hover'
                   }`}
                 >
                   +{preset.days} days
@@ -374,7 +374,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
               </div>
             </div>
             {expiryLong && (
-              <div className="mt-3 rounded-lg bg-success-soft border border-green-200 px-4 py-3 text-green-900 font-medium">
+              <div className="mt-3 rounded-lg bg-success-soft border border-success-border px-4 py-3 text-success-fg font-medium">
                 Write this date on every card: {expiryLong}
               </div>
             )}
@@ -421,7 +421,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                   <button
                     type="button"
                     onClick={() => pickVoucher(match)}
-                    className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-surface-hover"
+                    className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                   >
                     <span className="font-mono font-medium text-text">
                       {match.voucherNumber}
@@ -478,7 +478,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                             onClick={() =>
                               setCustomer({ id: booker.customerId, name: booker.name })
                             }
-                            className="rounded-full border border-border-strong px-3 py-1.5 text-sm text-text hover:border-gray-400"
+                            className="rounded-pill border border-border bg-surface px-3 py-1.5 text-sm text-text-muted hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
                           >
                             {booker.name} · booked · {booker.seats}{' '}
                             {booker.seats === 1 ? 'seat' : 'seats'}
@@ -504,7 +504,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                                 setCustomerQuery('')
                                 setCustomerHits([])
                               }}
-                              className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-surface-hover"
+                              className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                             >
                               <span className="text-text">{hit.name}</span>
                               <span className="text-sm text-text-muted">{hit.mobile ?? ''}</span>
@@ -514,13 +514,14 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                       </ul>
                     )}
                     {!quickAddOpen && (
-                      <button
+                      <Button
                         type="button"
+                        variant="link"
                         onClick={() => setQuickAddOpen(true)}
-                        className="text-sm font-medium text-sidebar underline underline-offset-2"
+                        className="text-sm"
                       >
                         Not on file? Add them
-                      </button>
+                      </Button>
                     )}
                     {quickAddOpen && (
                       <div className="space-y-2 rounded-lg border border-border bg-surface-2 p-3">
@@ -548,7 +549,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                           onChange={(event) => setQuickAddEmail(event.target.value)}
                           autoComplete="off"
                         />
-                        {quickAddError && <p className="text-sm text-red-700">{quickAddError}</p>}
+                        {quickAddError && <p className="text-sm text-danger">{quickAddError}</p>}
                         <div className="flex gap-2">
                           <Button
                             variant="secondary"

@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Badge, Modal } from '@/ds'
+import { Badge, Button, Modal } from '@/ds'
 import { cn } from '@/lib/utils'
 import {
   formatGbp,
@@ -114,9 +114,9 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             <p className="text-sm font-semibold text-text">
               {selectedBooking.booking_reference || selectedBooking.id.slice(0, 8)}
             </p>
-            <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${statusBadgeClass(selectedBookingVisualState)}`}>
+            <Badge className={statusBadgeClass(selectedBookingVisualState)}>
               {selectedBookingVisualLabel}
-            </span>
+            </Badge>
           </div>
           <p className="mt-1 text-sm text-text">
             {selectedBooking.guest_name ? `${selectedBooking.guest_name} · ` : ''}
@@ -147,26 +147,24 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             </p>
           )}
           {selectedBookingDeposit.kind !== 'none' && (
-            <span
-              className={`mt-2 inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getTableBookingDepositBadgeClasses(selectedBookingDeposit.kind)}`}
-            >
+            <Badge className={cn('mt-2', getTableBookingDepositBadgeClasses(selectedBookingDeposit.kind))}>
               {selectedBookingDeposit.label}
               {selectedBookingDeposit.amount != null ? ` · ${formatGbp(selectedBookingDeposit.amount)}` : ''}
               {selectedBookingDeposit.methodLabel ? ` · ${selectedBookingDeposit.methodLabel}` : ''}
-            </span>
+            </Badge>
           )}
         </div>
 
         <GuestRequirements booking={selectedBooking} />
 
         {selectedBooking.is_private_block && (
-          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted">
             This block is managed by private-booking area mapping. Edit the private booking or area mapping in settings.
           </div>
         )}
 
         {selectedBookingIsEventOnly && (
-          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-info-fg">
+          <div className="rounded-md border border-info-border bg-info-soft px-3 py-2 text-xs text-info-fg">
             Manage this event booking from the event attendees list.
           </div>
         )}
@@ -196,13 +194,9 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
         )}
 
         <div className="flex justify-end border-t border-border pt-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-text hover:bg-surface-hover"
-          >
+          <Button type="button" variant="secondary" size="lg" onClick={onClose} className="min-h-touch">
             Close
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
@@ -245,7 +239,7 @@ function GuestRequirements({ booking }: { booking: FohBooking }) {
       <p className="text-sm font-semibold text-text">Guest requirements</p>
 
       {allergies.length > 0 && (
-        <div className="mt-2 rounded-md border border-red-300 bg-danger-soft px-3 py-2">
+        <div className="mt-2 rounded-md border border-danger-border bg-danger-soft px-3 py-2">
           <p className="text-xs font-bold uppercase tracking-wide text-danger-fg">Allergies</p>
           <p className="mt-0.5 text-sm font-semibold text-danger-fg">{allergies.join(', ')}</p>
         </div>
@@ -264,6 +258,13 @@ function GuestRequirements({ booking }: { booking: FohBooking }) {
     </div>
   )
 }
+
+// The action grid: full-width tiles at the 44px touch floor (owner decision D6). The
+// destructive two-step actions keep a red outline so they read differently from the rest,
+// and turn solid pale red while their confirm step is open.
+const ACTION_BUTTON_CLASS = 'min-h-touch w-full'
+const DANGER_OUTLINE_CLASS = 'border-danger-border text-danger-fg hover:bg-danger-soft'
+const DANGER_OUTLINE_SELECTED_CLASS = 'border-danger bg-danger-soft'
 
 // Inner component for the action buttons section
 function BookingActions(props: {
@@ -316,8 +317,10 @@ function BookingActions(props: {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           disabled={Boolean(bookingActionInFlight)}
           onClick={() => {
             void (async () => {
@@ -329,12 +332,14 @@ function BookingActions(props: {
               if (ok) onClose()
             })()
           }}
-          className="min-h-touch rounded-md border border-border-strong px-2 py-2 text-xs font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className={ACTION_BUTTON_CLASS}
         >
           {bookingActionInFlight === 'seated' ? 'Marking...' : 'Mark seated'}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           disabled={Boolean(bookingActionInFlight)}
           onClick={() => {
             void (async () => {
@@ -346,96 +351,100 @@ function BookingActions(props: {
               if (ok) onClose()
             })()
           }}
-          className="min-h-touch rounded-md border border-border-strong px-2 py-2 text-xs font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className={ACTION_BUTTON_CLASS}
         >
           {bookingActionInFlight === 'left' ? 'Marking...' : 'Mark left'}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           disabled={Boolean(bookingActionInFlight)}
           onClick={() => {
             onSetShowNoShowConfirmation(!showNoShowConfirmation)
           }}
-          className={cn(
-            'min-h-touch rounded-md border px-2 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-red-300 disabled:cursor-not-allowed disabled:opacity-50',
-            showNoShowConfirmation
-              ? 'border-red-400 bg-danger-soft text-danger-fg'
-              : 'border-red-300 text-red-700 hover:bg-danger-soft'
-          )}
+          className={cn(ACTION_BUTTON_CLASS, DANGER_OUTLINE_CLASS, showNoShowConfirmation && DANGER_OUTLINE_SELECTED_CLASS)}
         >
           {bookingActionInFlight === 'no_show' ? 'Saving...' : showNoShowConfirmation ? 'No-show selected' : 'Mark no-show'}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           disabled={Boolean(bookingActionInFlight)}
           onClick={() => {
             const currentSize = Math.max(1, Number(selectedBooking.party_size || 1))
             onOpenPartySizeEdit(selectedBooking.id, currentSize)
           }}
-          className="min-h-touch rounded-md border border-border-strong px-2 py-2 text-xs font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className={ACTION_BUTTON_CLASS}
         >
           {bookingActionInFlight === 'party_size' ? 'Saving...' : 'Edit party size'}
-        </button>
+        </Button>
         {/* Until this existed, the only way to re-time a booking was to drag it on the
             timeline, and drag is switched off in kiosk mode, which is what the floor iPad
             runs. There was no route to a time change at all on that screen. */}
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           disabled={Boolean(bookingActionInFlight) || Boolean(timeChangeBlocker)}
           title={timeChangeBlocker ?? undefined}
           onClick={() => {
             if (timeChangeBlocker) return
             onOpenChangeTime(selectedBooking.id)
           }}
-          className="min-h-touch rounded-md border border-border-strong px-2 py-2 text-xs font-medium text-text hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className={ACTION_BUTTON_CLASS}
         >
           {bookingActionInFlight === 'change_time' ? 'Changing...' : 'Change time'}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           disabled={Boolean(bookingActionInFlight) || !selectedBookingCanBeCancelled}
           onClick={() => {
             if (!selectedBookingCanBeCancelled) return
             onSetShowCancelBookingConfirmation(!showCancelBookingConfirmation)
           }}
-          className={cn(
-            'min-h-touch rounded-md border px-2 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-red-300 disabled:cursor-not-allowed disabled:opacity-50',
-            showCancelBookingConfirmation
-              ? 'border-red-400 bg-danger-soft text-danger-fg'
-              : 'border-red-300 text-red-700 hover:bg-danger-soft'
-          )}
+          className={cn(ACTION_BUTTON_CLASS, DANGER_OUTLINE_CLASS, showCancelBookingConfirmation && DANGER_OUTLINE_SELECTED_CLASS)}
         >
           {showCancelBookingConfirmation ? 'Cancel selected' : 'Cancel booking'}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           disabled={Boolean(bookingActionInFlight)}
           onClick={() => {
             onOpenWalkoutModal(selectedBooking.id)
           }}
-          className="min-h-touch rounded-md border border-red-300 px-2 py-2 text-xs font-medium text-red-700 hover:bg-danger-soft focus:outline-none focus:ring-2 focus:ring-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+          className={cn(ACTION_BUTTON_CLASS, DANGER_OUTLINE_CLASS)}
         >
           {bookingActionInFlight === 'walkout' ? 'Saving...' : 'Flag walkout'}
-        </button>
+        </Button>
       </div>
 
       {showNoShowConfirmation && (
-        <div className="rounded-md border border-red-300 bg-danger-soft px-3 py-2">
+        <div className="rounded-md border border-danger-border bg-danger-soft px-3 py-2">
           <p className="text-xs font-semibold text-danger-fg">Confirm no-show</p>
           <p className="mt-1 text-xs text-danger-fg">
             This will mark the booking as no-show and remove it from active covers.
           </p>
           <div className="mt-2 flex gap-2">
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               disabled={Boolean(bookingActionInFlight)}
               onClick={() => onSetShowNoShowConfirmation(false)}
-              className="rounded-md border border-border-strong bg-surface px-2.5 py-1 text-xs font-medium text-text hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-touch"
             >
               Go back
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="danger"
+              size="sm"
               disabled={Boolean(bookingActionInFlight)}
               onClick={() => {
                 void (async () => {
@@ -447,31 +456,35 @@ function BookingActions(props: {
                   if (ok) onClose()
                 })()
               }}
-              className="rounded-md border border-red-400 bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-touch"
             >
               {bookingActionInFlight === 'no_show' ? 'Saving...' : 'Confirm no-show'}
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {showCancelBookingConfirmation && selectedBookingCanBeCancelled && (
-        <div className="rounded-md border border-red-300 bg-danger-soft px-3 py-2">
+        <div className="rounded-md border border-danger-border bg-danger-soft px-3 py-2">
           <p className="text-xs font-semibold text-danger-fg">Confirm cancellation</p>
           <p className="mt-1 text-xs text-danger-fg">
             This will mark the booking as cancelled and remove it from active covers.
           </p>
           <div className="mt-2 flex gap-2">
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               disabled={Boolean(bookingActionInFlight)}
               onClick={() => onSetShowCancelBookingConfirmation(false)}
-              className="rounded-md border border-border-strong bg-surface px-2.5 py-1 text-xs font-medium text-text hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-touch"
             >
               Keep booking
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="danger"
+              size="sm"
               disabled={Boolean(bookingActionInFlight)}
               onClick={() => {
                 void (async () => {
@@ -483,10 +496,10 @@ function BookingActions(props: {
                   if (ok) onClose()
                 })()
               }}
-              className="rounded-md border border-red-400 bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-touch"
             >
               {bookingActionInFlight === 'cancel' ? 'Cancelling...' : 'Confirm cancel'}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -540,11 +553,11 @@ function BookingActions(props: {
                       })()
                     }}
                     className={cn(
-                      'flex min-h-[3.5rem] flex-col items-center justify-center rounded-lg border px-2 py-2 text-center',
-                      'focus:outline-none focus:ring-2 focus:ring-green-500',
+                      'flex min-h-14 flex-col items-center justify-center rounded-lg border px-2 py-2 text-center',
+                      'focus-visible:outline-hidden focus-visible:shadow-ring',
                       'disabled:cursor-not-allowed disabled:opacity-50',
                       moving
-                        ? 'border-green-600 bg-success-soft text-green-800'
+                        ? 'border-primary bg-primary-soft text-primary-soft-fg'
                         : 'border-border-strong text-text hover:bg-surface-hover'
                     )}
                   >

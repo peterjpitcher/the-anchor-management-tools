@@ -20,7 +20,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Alert, Badge, Button, Checkbox, Input, Select, Textarea } from '@/ds'
+import { Alert, Badge, Button, Card, Checkbox, Input, Select, Textarea } from '@/ds'
 import {
   saveSeasonalPreorderCovers,
   syncSeasonalPreorderCovers,
@@ -389,11 +389,13 @@ export default function SeasonalPreorderSection({
     }
   }
 
+  // A DS Card like the booking detail sections around it. Its own header rather than CardHeader,
+  // because CardHeader truncates the subtitle and this one is a full sentence staff need to read.
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+    <Card padding="none">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-pad-card py-3">
         <div>
-          <h2 className="text-sm font-semibold text-text">
+          <h2 className="text-sm font-semibold text-text-strong">
             Seasonal Pre-Order{order.periodName ? ` · ${order.periodName}` : ''}
           </h2>
           <p className="mt-0.5 text-xs text-text-muted">
@@ -418,7 +420,7 @@ export default function SeasonalPreorderSection({
         </div>
       </div>
 
-      <div className="space-y-4 p-4">
+      <div className="space-y-4 p-pad-card">
         <p className="text-sm text-text">{describePreorderGaps(completeness)}</p>
 
         {order.bookingAllergies.length > 0 && (
@@ -483,7 +485,7 @@ export default function SeasonalPreorderSection({
               return (
                 <div
                   key={cover.id}
-                  className={`rounded-md border p-3 ${missingMain ? 'border-amber-300 bg-warning-soft' : 'border-border bg-surface'}`}
+                  className={`rounded-md border p-3 ${missingMain ? 'border-warning-border bg-warning-soft' : 'border-border bg-surface'}`}
                 >
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -612,7 +614,7 @@ export default function SeasonalPreorderSection({
           </div>
         )}
       </div>
-    </section>
+    </Card>
   )
 }
 

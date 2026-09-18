@@ -38,6 +38,7 @@ import { Input } from '@/ds'
 import { MessageThread } from '@/components/features/messages/MessageThread'
 import { CustomerForm } from '@/components/features/customers/CustomerForm'
 import { CustomerLabelSelector } from '@/components/features/customers/CustomerLabelSelector'
+import { getTableBookingStatusBadgeClasses } from '@/lib/table-bookings/ui'
 
 export const dynamic = 'force-dynamic'
 const CUSTOMER_DETAIL_SELECT = `
@@ -1105,13 +1106,12 @@ export default function CustomerViewPage() {
       sortable: true,
       sortFn: (a: UnifiedCustomerBookingRow, b: UnifiedCustomerBookingRow) => a.status.localeCompare(b.status),
       cell: (booking: UnifiedCustomerBookingRow) => {
-        const isProblem = /(cancel|no show|expired|failed|rejected)/i.test(booking.status)
-        const isHealthy = /(booked|confirmed|completed|active|paid)/i.test(booking.status)
-        const statusClass = isProblem
-          ? 'border-red-200 bg-danger-soft text-red-700'
-          : isHealthy
-            ? 'border-green-200 bg-success-soft text-green-700'
-            : 'border-border bg-surface-2 text-text'
+        // Status colours come from the booking status map (owner decision D4), so a status reads
+        // the same here as on FOH, BOH and the booking page. The label is the stored status
+        // title-cased ("No Show"); parking rows add the payment state ("Confirmed / Paid") and
+        // event rows say "Booked", so turn it back into a status key first.
+        const statusKey = booking.status.split(' / ')[0].trim().toLowerCase().replace(/\s+/g, '_')
+        const statusClass = getTableBookingStatusBadgeClasses(statusKey === 'booked' ? 'confirmed' : statusKey)
 
         return (
           <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${statusClass}`}>

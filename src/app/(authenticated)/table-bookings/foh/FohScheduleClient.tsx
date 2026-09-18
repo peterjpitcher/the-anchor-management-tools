@@ -23,6 +23,7 @@ import {
   postBookingAction,
   buildTimeChangeOptions,
   resolveFohServiceDateNow,
+  statusBlockClass,
 } from './utils'
 import { useFohBookings } from './hooks/useFohBookings'
 import { useFohRealtime } from './hooks/useFohRealtime'
@@ -127,7 +128,7 @@ export function FohScheduleClient({
         bookingId: data.bookingId,
         bookingLabel: data.bookingLabel,
         widthPx: rect?.width ?? 280,
-        statusClassName: data.statusClassName ?? 'border-border-strong bg-border/90 text-text',
+        statusClassName: data.statusClassName ?? statusBlockClass(null),
       })
     }
   }
@@ -477,7 +478,9 @@ export function FohScheduleClient({
   }
 
   // --- Render ---
-  const pageWrapperClass = cn(isManagerKioskStyle ? 'space-y-2 rounded-xl bg-sidebar p-2 sm:p-3' : 'space-y-6')
+  // The manager kiosk sits on the same dark green as its PageLayout header (bg-brand-700 is the
+  // sidebar green); the sidebar token itself belongs to the app shell.
+  const pageWrapperClass = cn(isManagerKioskStyle ? 'space-y-2 rounded-xl bg-brand-700 p-2 sm:p-3' : 'space-y-6')
 
   return (
     /*

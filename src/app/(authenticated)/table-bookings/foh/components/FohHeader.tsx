@@ -2,7 +2,7 @@
 
 import React from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
+import { Alert, Button, LinkButton } from '@/ds'
 import { cn } from '@/lib/utils'
 import type { FohUpcomingEvent, FohStyleVariant, FohCreateMode, FohViewMode } from '../types'
 import { formatNextEventUrgency, shiftIsoDate } from '../utils'
@@ -65,10 +65,12 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     onOpenCreateModal({ mode })
   }
 
-  const panelSurfaceClass = isManagerKioskStyle
-    ? 'rounded-xl border border-green-200 bg-surface shadow-sm'
-    : 'rounded-lg border border-border bg-surface'
-  const serviceCardClass = cn(panelSurfaceClass, isManagerKioskStyle ? 'p-2' : 'p-4')
+  // One card treatment for both styles; the kiosk only packs it tighter.
+  const serviceCardClass = cn('rounded-lg border border-border bg-surface', isManagerKioskStyle ? 'p-2' : 'p-4')
+  // Owner decision D6: every control on the bar iPad is at least 44px tall. The screen's
+  // data-touch-targets rule only lifts buttons and fields on a touch pointer, and never the
+  // Checklists and Vouchers links, so the header sets the floor itself.
+  const controlSize = isManagerKioskStyle ? 'sm' : 'md'
   const serviceHeaderClass = cn(
     'flex flex-col sm:flex-row sm:justify-between',
     isManagerKioskStyle ? 'gap-1.5 sm:items-center' : 'gap-3 sm:items-end'
@@ -80,24 +82,23 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
   const serviceDateControlsClass = cn(
     // Mobile: wrap onto multiple lines so "Today" is never pushed off-screen.
     // sm+ (incl. the manager kiosk tablet): keep the original single-row scroll behaviour.
+    // The scroll clips an outer focus ring, so the buttons in this row draw theirs inset.
     'flex flex-wrap items-center gap-2 sm:flex-nowrap sm:whitespace-nowrap sm:overflow-x-auto',
     isManagerKioskStyle ? 'mt-0' : 'mt-1'
   )
   const totalsBadgeClass = cn(
     'rounded-md border px-2 py-1 text-meta font-medium',
     isManagerKioskStyle
-      ? 'border-green-300 bg-success-soft text-green-900'
+      ? 'border-primary/20 bg-primary-soft text-primary-soft-fg'
       : 'border-border-strong bg-surface-hover text-text'
   )
   const nextEventCalloutClass = cn(
     'mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2',
-    'border-amber-300 bg-warning-soft text-warning-fg',
+    'border-warning-border bg-warning-soft text-warning-fg',
     isManagerKioskStyle && 'px-2 py-1.5'
   )
-  const nextEventPillClass = cn(
-    'inline-flex items-center rounded-full bg-amber-200 px-2 py-0.5 text-2xs font-extrabold uppercase tracking-wide text-warning-fg',
-    isManagerKioskStyle && 'text-2xs'
-  )
+  const nextEventPillClass =
+    'inline-flex items-center rounded-pill bg-warning/20 px-2 py-0.5 text-2xs font-extrabold uppercase tracking-wide text-warning-fg'
   const nextEventTitleClass = cn(
     'min-w-0 truncate text-sm font-semibold leading-tight text-warning-fg',
     isManagerKioskStyle && 'text-meta'
@@ -106,25 +107,15 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     'text-sm font-medium text-warning-fg',
     isManagerKioskStyle && 'text-meta'
   )
-  const nextEventButtonClass = cn(
-    'inline-flex items-center justify-center rounded-md bg-amber-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:ring-offset-1',
-    isManagerKioskStyle && 'px-2.5 py-1 text-meta'
-  )
-  const daySwitchButtonClass = cn(
-    'rounded-md border border-border-strong text-sm text-text hover:bg-surface-hover',
-    isManagerKioskStyle ? 'px-1.5 py-1 text-xs' : 'px-2.5 py-2'
-  )
-  const dateInputClass = cn(
-    'rounded-md border border-border-strong text-sm',
-    isManagerKioskStyle ? 'px-1.5 py-1 text-xs' : 'px-3 py-2'
-  )
+  const dateInputClass =
+    'min-h-touch rounded-sm border border-border-strong bg-surface px-3 text-ui text-text outline-hidden focus:border-border-focus focus:shadow-ring'
   const viewToggleGroupClass = cn(
-    'inline-flex items-center rounded-md border border-border-strong bg-surface-hover p-0.5',
-    isManagerKioskStyle && 'border-green-300 bg-success-soft'
+    'inline-flex items-center rounded-md border p-0.5',
+    isManagerKioskStyle ? 'border-primary/20 bg-primary-soft' : 'border-border-strong bg-surface-hover'
   )
   const viewToggleSegmentClass = (active: boolean) =>
     cn(
-      'rounded-md font-medium transition focus:outline-none focus:ring-2 focus:ring-sidebar/40',
+      'min-h-touch rounded-sm font-medium transition focus-visible:outline-hidden focus-visible:shadow-ring',
       isManagerKioskStyle ? 'px-2 py-1 text-meta' : 'px-3 py-1.5 text-sm',
       active
         ? 'bg-surface text-text shadow-sm'
@@ -149,8 +140,10 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
             </div>
 
             {canEdit && (
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                size={controlSize}
                 onClick={() =>
                   onOpenCreateModal({
                     mode: 'booking',
@@ -161,10 +154,10 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
                     }
                   })
                 }
-                className={nextEventButtonClass}
+                className="min-h-touch"
               >
                 Book guests
-              </button>
+              </Button>
             )}
           </>
         ) : (
@@ -178,17 +171,19 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
             Service date
           </label>
           <div className={serviceDateControlsClass}>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size={controlSize}
               onClick={() => {
                 setDate((current: string) => shiftIsoDate(current, -1))
                 lastInteractionAtMsRef.current = Date.now()
               }}
-              className={daySwitchButtonClass}
+              className="min-h-touch focus-visible:shadow-ring-inset"
               aria-label="Previous day"
             >
               Previous
-            </button>
+            </Button>
             <input
               id="foh-date"
               type="date"
@@ -199,27 +194,31 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
               }}
               className={dateInputClass}
             />
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size={controlSize}
               onClick={() => {
                 setDate((current: string) => shiftIsoDate(current, 1))
                 lastInteractionAtMsRef.current = Date.now()
               }}
-              className={daySwitchButtonClass}
+              className="min-h-touch focus-visible:shadow-ring-inset"
               aria-label="Next day"
             >
               Next
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="secondary"
+              size={controlSize}
               onClick={() => {
                 setDate(serviceDateNow)
                 lastInteractionAtMsRef.current = Date.now()
               }}
-              className={daySwitchButtonClass}
+              className="min-h-touch focus-visible:shadow-ring-inset"
             >
               Today
-            </button>
+            </Button>
             <span className={totalsBadgeClass}>Total bookings: {totals.bookings}</span>
             <span className={totalsBadgeClass}>Total covers: {totals.covers}</span>
           </div>
@@ -227,26 +226,28 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
 
         <div className="flex flex-wrap items-center gap-2">
           {canEdit && (
-            <button
+            // Deliberately loud: it texts the kitchen, so it stays red and in capitals.
+            <Button
               type="button"
+              variant="danger"
+              size={controlSize}
               onClick={onSendFoodOrderAlert}
               disabled={submittingFoodOrderAlert}
               aria-label="Send food order SMS alert"
-              className={cn(
-                'inline-flex items-center gap-2 rounded-md border-2 border-red-900 bg-red-600 px-3.5 py-2 text-sm font-extrabold uppercase tracking-wide text-white shadow-sm ring-1 ring-red-200 transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50',
-                isManagerKioskStyle && 'px-2 py-1 text-2xs font-black'
-              )}
+              className="min-h-touch font-extrabold uppercase tracking-wide"
+              icon={
+                <Image
+                  src="/logo.png"
+                  alt=""
+                  width={20}
+                  height={20}
+                  aria-hidden
+                  className={cn('h-4 w-auto rounded-sm bg-surface px-0.5 py-0.5', isManagerKioskStyle && 'h-3.5')}
+                />
+              }
             >
-              <Image
-                src="/logo.png"
-                alt=""
-                width={20}
-                height={20}
-                aria-hidden
-                className={cn('h-4 w-auto rounded-sm bg-surface px-0.5 py-0.5', isManagerKioskStyle && 'h-3.5')}
-              />
-              <span>{submittingFoodOrderAlert ? 'Sending...' : 'Food Order'}</span>
-            </button>
+              {submittingFoodOrderAlert ? 'Sending...' : 'Food Order'}
+            </Button>
           )}
 
           {/* View toggle — always visible (view control, not gated by canEdit). */}
@@ -270,79 +271,57 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
           </div>
 
           {/* Checklists: navigation, visible to all FOH users (not gated by canEdit). */}
-          <Link
-            href="/checklists"
-            className={cn(
-              'rounded-md px-4 py-2 text-sm font-medium text-white',
-              isManagerKioskStyle
-                ? 'bg-sidebar px-2.5 py-1 text-meta font-semibold hover:bg-green-700'
-                : 'bg-sidebar hover:bg-sidebar/90'
-            )}
-          >
+          <LinkButton href="/checklists" variant="primary" size={controlSize} className="min-h-touch">
             Checklists
-          </Link>
+          </LinkButton>
 
           {/* Vouchers: navigation, visible to all FOH users (not gated by canEdit). */}
-          <Link
-            href="/vouchers/foh"
-            className={cn(
-              'rounded-md px-4 py-2 text-sm font-medium text-white',
-              isManagerKioskStyle
-                ? 'bg-sidebar px-2.5 py-1 text-meta font-semibold hover:bg-green-700'
-                : 'bg-sidebar hover:bg-sidebar/90'
-            )}
-          >
+          <LinkButton href="/vouchers/foh" variant="primary" size={controlSize} className="min-h-touch">
             Vouchers
-          </Link>
+          </LinkButton>
 
           {canEdit && (
             <>
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                size={controlSize}
                 onClick={() => openNowCreateModal('walk_in')}
-                className={cn(
-                  'rounded-md px-4 py-2 text-sm text-white',
-                  isManagerKioskStyle
-                    ? 'bg-sidebar px-2.5 py-1 text-meta font-semibold hover:bg-green-700'
-                    : 'bg-sidebar font-medium hover:bg-sidebar/90'
-                )}
+                className="min-h-touch"
               >
                 Walk-in
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="secondary"
+                size={controlSize}
                 onClick={() => openNowCreateModal('booking')}
-                className={cn(
-                  'rounded-md border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text hover:bg-surface-hover',
-                  isManagerKioskStyle
-                    ? 'px-2.5 py-1 text-meta'
-                    : ''
-                )}
+                className="min-h-touch"
               >
                 Add booking
-              </button>
+              </Button>
             </>
           )}
         </div>
       </div>
 
       {!viewingToday && (
-        <div className={cn('rounded-md border border-amber-200 bg-warning-soft px-3 py-2 text-sm text-warning-fg', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
+        <div className={cn('rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning-fg', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
           Viewing <span className="font-semibold">{date}</span>. This screen returns to{' '}
           <span className="font-semibold">{serviceDateNow}</span> after 5 minutes of inactivity.
         </div>
       )}
 
       {statusMessage && (
-        <div role="alert" className={cn('rounded-md border border-green-200 bg-success-soft px-3 py-2 text-sm text-green-800', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
+        <Alert tone="success" size="sm" className={isManagerKioskStyle ? 'mt-2' : 'mt-3'}>
           {statusMessage}
-        </div>
+        </Alert>
       )}
 
       {errorMessage && (
-        <div role="alert" className={cn('rounded-md border border-red-200 bg-danger-soft px-3 py-2 text-sm text-danger-fg', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
+        <Alert tone="danger" size="sm" className={isManagerKioskStyle ? 'mt-2' : 'mt-3'}>
           {errorMessage}
-        </div>
+        </Alert>
       )}
     </div>
   )

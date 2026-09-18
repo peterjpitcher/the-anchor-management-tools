@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Modal, ModalActions } from '@/ds'
+import { Alert, Button, Modal, ModalActions } from '@/ds'
 import { cn } from '@/lib/utils'
 import type { TimeSlotOption } from '../utils'
 
@@ -90,28 +90,32 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
       size="md"
       footer={
         <ModalActions>
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="lg"
             onClick={onClose}
             disabled={submitting}
-            className="min-h-touch rounded-md border border-border-strong bg-surface px-4 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-50"
+            className="min-h-touch"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="primary"
+            size="lg"
             disabled={submitting || !selectedOption?.available}
             onClick={() => {
               if (selectedOption?.available) onConfirm(selectedOption.time)
             }}
-            className="min-h-touch rounded-md bg-sidebar px-4 text-sm font-medium text-white hover:bg-sidebar/90 disabled:opacity-50"
+            className="min-h-touch"
           >
             {submitting
               ? 'Changing...'
               : selectedOption
                 ? `Change to ${selectedOption.time}`
                 : 'Change time'}
-          </button>
+          </Button>
         </ModalActions>
       }
     >
@@ -125,7 +129,7 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
 
         {/* Every change texts or emails the guest, so a mistap is not silent. Staff are told
             that before they pick, not after. */}
-        <p className="rounded-md border border-amber-300 bg-warning-soft px-3 py-2 text-xs text-warning-fg">
+        <p className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-xs text-warning-fg">
           {isSeated
             ? 'This party is already seated. Changing the time will still tell them their booking has moved, and will free their table for the old time.'
             : 'The guest is told about every time change.'}
@@ -157,11 +161,11 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
                       }
                       onClick={() => option && setSelected(option.time)}
                       className={cn(
-                        'flex min-h-[3.5rem] flex-col items-center justify-center rounded-lg border px-1 text-center',
-                        'focus:outline-none focus:ring-2 focus:ring-green-500',
+                        'flex min-h-14 flex-col items-center justify-center rounded-lg border px-1 text-center',
+                        'focus-visible:outline-hidden focus-visible:shadow-ring',
                         'disabled:cursor-not-allowed disabled:opacity-50',
                         isSelected
-                          ? 'border-green-600 bg-success-soft text-green-800'
+                          ? 'border-primary bg-primary-soft text-primary-soft-fg'
                           : 'border-border-strong text-text hover:bg-surface-hover',
                       )}
                     >
@@ -206,23 +210,24 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
                         }
                         onClick={() => setSelected(option.time)}
                         className={cn(
-                          'flex min-h-[3.5rem] flex-col items-center justify-center rounded-lg border px-1 text-center',
-                          'focus:outline-none focus:ring-2 focus:ring-green-500',
+                          'flex min-h-14 flex-col items-center justify-center rounded-lg border px-1 text-center',
+                          // The grid scrolls, which clips an outer focus ring.
+                          'focus-visible:outline-hidden focus-visible:shadow-ring-inset',
                           'disabled:cursor-not-allowed',
                           option.isCurrent
-                            ? 'border-gray-500 bg-surface-hover text-text opacity-100'
+                            ? 'border-text-soft bg-surface-hover text-text opacity-100'
                             : isSelected
-                              ? 'border-green-600 bg-success-soft text-green-800'
+                              ? 'border-primary bg-primary-soft text-primary-soft-fg'
                               : option.available
                                 ? 'border-border-strong text-text hover:bg-surface-hover'
-                                : 'border-border text-gray-400 opacity-60',
+                                : 'border-border text-text-soft opacity-50',
                         )}
                       >
                         <span className="text-sm font-semibold leading-tight">{option.time}</span>
                         {option.isCurrent ? (
                           <span className="mt-0.5 text-2xs font-medium text-text-muted">Current</span>
                         ) : option.blockedBy ? (
-                          <span className="mt-0.5 text-2xs text-gray-400">
+                          <span className="mt-0.5 text-2xs text-text-soft">
                             {BLOCK_LABEL[option.blockedBy]}
                           </span>
                         ) : null}
@@ -236,12 +241,9 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
         )}
 
         {error && (
-          <p
-            role="alert"
-            className="rounded-md border border-red-300 bg-danger-soft px-3 py-2 text-sm text-danger-fg"
-          >
+          <Alert tone="danger" size="sm">
             {error}
-          </p>
+          </Alert>
         )}
       </div>
     </Modal>

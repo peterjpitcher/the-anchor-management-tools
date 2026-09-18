@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { clockIn, clockOut } from '@/app/actions/timeclock'
-import { Avatar } from '@/ds'
+import { Avatar, Button } from '@/ds'
 import { disambiguatedNames } from '@/lib/employees/display-name'
 
 interface Employee {
@@ -193,8 +193,10 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
         <span>The Anchor, Staines-upon-Thames</span>
       </div>
 
+      {/* A plain overlay rather than DS Modal, so the PIN field's autoFocus (which raises the
+          iPad keyboard) works exactly as before. Only its colours and buttons are DS. */}
       {pinTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay px-4">
           <form
             className="w-full max-w-sm rounded-lg bg-surface p-6 text-text shadow-lg"
             onSubmit={(event) => {
@@ -218,25 +220,29 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
               maxLength={4}
               value={pin}
               onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
-              className="mt-2 w-full rounded-md border border-border-strong px-4 py-3 text-center text-2xl tracking-[0.4em] text-text focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-600"
+              className="mt-2 w-full rounded-sm border border-border-strong bg-surface px-4 py-3 text-center text-2xl tracking-[0.4em] text-text outline-hidden focus:border-border-focus focus:shadow-ring"
               autoFocus
             />
             <div className="mt-6 flex gap-3">
-              <button
+              <Button
                 type="button"
-                className="flex-1 rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-text"
+                variant="secondary"
+                size="lg"
+                className="min-h-touch flex-1"
                 onClick={() => { setPinTarget(null); setPin('') }}
                 disabled={isPending}
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
-                className="flex-1 rounded-md bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                variant="primary"
+                size="lg"
+                className="min-h-touch flex-1"
                 disabled={isPending}
               >
                 {isPending ? 'Saving...' : 'Confirm'}
-              </button>
+              </Button>
             </div>
           </form>
         </div>
