@@ -105,7 +105,6 @@ import {
 import { RefundDialog } from '@/components/features/invoices/RefundDialog'
 import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
 import {
-  WorkflowStatusPanel,
   RecordLockBanner,
   RecordLockControl,
   WaiverRiskPanel,
@@ -2720,76 +2719,6 @@ export default function PrivateBookingDetailClient({
             </Card>
           </Section>
 
-          {canEdit && (
-            <Section id="quick-update" title="Quick Booking Update">
-              <Card>
-                <Form onSubmit={handleNoteSubmit} className="space-y-4">
-                  <Textarea
-                    value={noteText}
-                    onChange={(event) => setNoteText(event.target.value)}
-                    rows={4}
-                    maxLength={NOTE_MAX_LENGTH}
-                    placeholder="Capture quick updates, decisions, or follow-ups for the team."
-                  />
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>
-                      {noteText.length}/{NOTE_MAX_LENGTH} characters
-                    </span>
-                    <Button
-                      type="submit"
-                      size="sm"
-                      loading={addingNote}
-                      disabled={addingNote || noteText.trim().length === 0}
-                    >
-                      Save Note
-                    </Button>
-                  </div>
-                </Form>
-              </Card>
-            </Section>
-          )}
-
-          <Section id="audit-trail" title="Audit Trail">
-            <Card>
-              {auditTrail.length === 0 ? (
-                <EmptyState
-                  icon={<ClockIcon className="h-12 w-12 text-gray-300" />}
-                  title="No history yet"
-                  description="Updates and actions for this booking will appear here."
-                />
-              ) : (
-                <ul className="space-y-6">
-                  {auditTrail.map((entry) => {
-                    const details = getAuditDetails(entry)
-                    return (
-                      <li key={entry.id} className="relative pl-5">
-                        <span className="absolute left-0 top-2 h-2 w-2 rounded-full bg-blue-500" />
-                        <div className="flex flex-col gap-1">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-sm font-medium text-gray-900">
-                              {getAuditActor(entry)}
-                            </p>
-                            <span className="text-xs text-gray-500">
-                              {formatDateTime12Hour(entry.performed_at)}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600">
-                            {formatAuditAction(entry.action)}
-                          </p>
-                          {details && (
-                            <p className="text-sm text-gray-500 whitespace-pre-wrap">
-                              {details}
-                            </p>
-                          )}
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </Card>
-          </Section>
-
           {/* Booking Items Card */}
           <Section
             id="booking-items"
@@ -2943,7 +2872,34 @@ export default function PrivateBookingDetailClient({
 
         {/* Sidebar - Right 1/3 */}
         <div className="space-y-6">
-          <WorkflowStatusPanel booking={booking} />
+          {canEdit && (
+            <Section id="quick-update" title="Quick Booking Update">
+              <Card>
+                <Form onSubmit={handleNoteSubmit} className="space-y-4">
+                  <Textarea
+                    value={noteText}
+                    onChange={(event) => setNoteText(event.target.value)}
+                    rows={4}
+                    maxLength={NOTE_MAX_LENGTH}
+                    placeholder="Capture quick updates, decisions, or follow-ups for the team."
+                  />
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>
+                      {noteText.length}/{NOTE_MAX_LENGTH} characters
+                    </span>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      loading={addingNote}
+                      disabled={addingNote || noteText.trim().length === 0}
+                    >
+                      Save Note
+                    </Button>
+                  </div>
+                </Form>
+              </Card>
+            </Section>
+          )}
           {/* Financial Summary Card */}
           <Section
             title="Financial Summary"
@@ -3552,6 +3508,47 @@ export default function PrivateBookingDetailClient({
           />
         </div>
       </div>
+
+      <Section id="audit-trail" title="Audit Trail" className="mt-8">
+        <Card>
+          {auditTrail.length === 0 ? (
+            <EmptyState
+              icon={<ClockIcon className="h-12 w-12 text-gray-300" />}
+              title="No history yet"
+              description="Updates and actions for this booking will appear here."
+            />
+          ) : (
+            <ul className="space-y-6">
+              {auditTrail.map((entry) => {
+                const details = getAuditDetails(entry)
+                return (
+                  <li key={entry.id} className="relative pl-5">
+                    <span className="absolute left-0 top-2 h-2 w-2 rounded-full bg-blue-500" />
+                    <div className="flex flex-col gap-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-gray-900">
+                          {getAuditActor(entry)}
+                        </p>
+                        <span className="text-xs text-gray-500">
+                          {formatDateTime12Hour(entry.performed_at)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        {formatAuditAction(entry.action)}
+                      </p>
+                      {details && (
+                        <p className="text-sm text-gray-500 whitespace-pre-wrap">
+                          {details}
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </Card>
+      </Section>
 
       {/* Delete Confirmation */}
       <ConfirmDialog
