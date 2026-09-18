@@ -79,8 +79,8 @@ adopted for each (the owner can overrule any of them later; each is a small chan
 | 1 | Report order | The brief's order, except Recruitment is the last section before Manager actions (first message). Leave requests sit in the Rota section |
 | 2 | "30 days" and "90 days" | 4 weeks and 13 weeks, so every weekday counts equally. Comparisons are against the weeks before this week |
 | 3 | Wording | Fixed rules and fixed templates; no AI-written text |
-| 4 | Access | Super admins only, as for Maintenance. The `manager` role has no users today |
-| 5 | Recipient (review D-03) | One validated recipient, `MANAGER_EMAIL` (`manager@the-anchor.pub`). The per-feature recipient settings no longer affect this report. Live evidence: every one of the 48 items queued since 5 September, across seven sections and five recipient settings, resolved to that one address, so nobody loses a copy |
+| 4 | Access | Super admins only, as for Maintenance. The `manager` role has no users today. Owner confirmed 18 Sep: Billy is a super admin, so no extra permission is needed |
+| 5 | Recipient (review D-03) | One validated recipient, `MANAGER_EMAIL` (`manager@the-anchor.pub`), which forwards to both the owner and Billy (owner, 18 Sep). The per-feature recipient settings no longer affect this report. Live evidence: every one of the 48 items queued since 5 September, across seven sections and five recipient settings, resolved to that one address, so nobody loses a copy |
 | 6 | Maintenance in the email | Summary plus exceptions; the full list stays on the page and `/maintenance`. This replaces the earlier "every outstanding job in the email" rule, as the brief asks |
 | 7 | Thresholds | Constants in one typed module, `src/lib/insights/thresholds.ts` |
 | 8 | Invoices | Every open invoice, labelled OJ Projects or private hire where linked |
@@ -89,6 +89,7 @@ adopted for each (the owner can overrule any of them later; each is a small chan
 | 11 | Large table parties (review D-02) | Aggregate only: counts and covers per day and service. No booking identity |
 | 12 | Biggest win from a red section (review D-04) | Not eligible |
 | 13 | Names in the email and on paper (review D-05) | The email names people only where the reader must act on that person: pending leave (the requester), private hire (the client), invoices (the customer), open shifts (none needed). Checklist rankings, repeat missers, compliance gaps, recruitment candidates and feedback authors appear as counts in the email and by name only on the page. Printed copies are for the meeting and are shredded afterwards (stated in the email footer) |
+| 15 | Undoing an out-of-range checklist reading | Refused, so the reading stays as the record of the breach now that no alert email is sent. Owner confirmed 18 Sep |
 | 14 | Postponed events (review D-06) | Not listed as upcoming (the date is no longer firm). A postponed event dated in the next 14 days raises an amber "needs a new date or cancelling" line |
 
 ## 3. Verified facts (18 September 2026)
