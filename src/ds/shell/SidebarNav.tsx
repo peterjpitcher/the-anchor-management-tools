@@ -53,6 +53,8 @@ export const NAV_GROUPS: NavGroup[] = [
       // to `/` meant the active check never matched the path the user actually
       // lands on and Dashboard was never highlighted.
       { id: 'dashboard', label: 'Dashboard', icon: 'home', href: '/dashboard', permission: { module: 'dashboard', action: 'view' } },
+      // Super admins only: the weekly insights report holds takings, invoices and named staff performance.
+      { id: 'insights', label: 'Insights', icon: 'trendUp', href: '/insights', superAdminOnly: true },
       { id: 'events', label: 'Events', icon: 'calendar', href: '/events', permission: { module: 'events', action: 'view' } },
       { id: 'customers', label: 'Customers', icon: 'users', href: '/customers', permission: { module: 'customers', action: 'view' } },
       { id: 'marketing', label: 'Marketing', icon: 'mail', href: '/marketing', permission: { module: 'marketing', action: 'view' } },

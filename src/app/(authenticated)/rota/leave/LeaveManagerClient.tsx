@@ -109,7 +109,8 @@ function LeaveRequestRow({
   };
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
+    // The weekly Insights report links straight to a pending request as /rota/leave#leave-<id>.
+    <div id={`leave-${request.id}`} className="scroll-mt-4 border border-border rounded-lg overflow-hidden target:ring-2 target:ring-primary">
       <div
         className="flex items-center justify-between px-4 py-3 bg-surface cursor-pointer hover:bg-surface-2 transition-colors"
         onClick={() => setExpanded(v => !v)}

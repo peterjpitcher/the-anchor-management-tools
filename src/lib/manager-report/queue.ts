@@ -1,13 +1,9 @@
-import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isValidEmailAddress } from '@/lib/notifications/channel'
 import { MANAGER_REPORT_SECTIONS, type ManagerReportInput, type ManagerReportQueueResult } from './types'
 
-/** Stable UUIDs make insertion atomic without resetting a previously delivered item. */
-export function managerReportId(parts: string[]): string {
-  const hash = createHash('sha256').update(JSON.stringify(parts)).digest('hex')
-  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`
-}
+export { managerReportId } from './ids'
+import { managerReportId } from './ids'
 
 export async function queueManagerReportEmail(input: ManagerReportInput): Promise<ManagerReportQueueResult> {
   try {
