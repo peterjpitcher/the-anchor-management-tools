@@ -25,6 +25,7 @@ import { noteBar } from './blocks/note_bar'
 import { offerPanel } from './blocks/offer_panel'
 import { openingHoursDates } from './blocks/opening_hours_dates'
 import { openingHoursWeek } from './blocks/opening_hours_week'
+import { openingTimes } from './blocks/opening_times'
 import { priceTiles } from './blocks/price_tiles'
 import { pullQuote } from './blocks/pull_quote'
 import { reassuranceRow } from './blocks/reassurance_row'
@@ -67,6 +68,8 @@ export const BLOCK_REGISTRY: Record<string, EmailBlockModule<any>> = {
   offer_panel: offerPanel,
   opening_hours_dates: openingHoursDates,
   opening_hours_week: openingHoursWeek,
+  // Stored campaigns retain this historical shape after newer blocks replace it.
+  opening_times: openingTimes,
   price_tiles: priceTiles,
   pull_quote: pullQuote,
   reassurance_row: reassuranceRow,
