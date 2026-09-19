@@ -905,3 +905,11 @@ Validation: Node 20.19.5; lint and typecheck passed; London and UTC each passed 
 Scope: page layout plus the separately approved zero-cost item migration. Website and booking actions are unchanged.
 
 Zero-cost migration applied to production project tfcasgxopxegwrabvwat as 20260918122623 (local file 20260918075730), SHA-256 2421d672bcd2d504a74deda7a02efaed17cb10c4de5937e2673af2040fc66de6. Rolled-back production fixture passed free-item insert, edit and deletion and rejected charged insert and edit. Function definition and restricted grants verified; all nine anon-surface checks passed. Rollback file restores the original guard.
+
+## 19 September 2026: restore private booking list
+- [x] Confirm missing view column against production.
+- [x] Add regression coverage and fix list/messages invoice detection.
+- [ ] Run quality gates, merge and deploy.
+- [ ] Verify the live list, search and booking details.
+
+Validation: all four view projections returned HTTP 200 from production; 17 targeted tests passed; lint, types, 9,837 tests in both London and UTC, and production build passed. No migration required.
