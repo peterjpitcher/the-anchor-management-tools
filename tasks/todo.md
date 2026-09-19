@@ -885,3 +885,16 @@ Changed files for this request: src/lib/events/imageVariants.ts; src/lib/events/
 Deliberately unchanged: print-sheet.ts and print-sheet.test.ts retain the existing panel geometry; ArtworkBrandingModal.tsx already reads the shared shadow settings. Other work in the original checkout is untouched.
 
 Checks passed: zero-warning lint, uncached typecheck, 788 test files (7,144 passing tests, 2 skipped) in both Europe/London and UTC, and a cold production build.
+
+## Navigation refresh, 19 September 2026
+
+Scope: compact navigation for Peter and Bill. Centre icons only in the collapsed rail; keep expanded labels left-aligned. Close transient expansion after selecting a destination. Retain deliberate pin-open mode. Apply the reviewed grouping, permission-filtered shortcuts and destination search. Colour changes wait for the owner's Orange Jelly design system. No live mutations or deployment in this stage.
+
+- [x] Implement compact sidebar with explicit open state, pinned preference, shared active matching and clearer groups.
+- [x] Add permission-filtered destination search and personal shortcuts shared with mobile.
+- [x] Verify the actual shell in a local browser, pointer and keyboard selection, collapsed icon centres, mobile drawer and preferences.
+- [x] Run lint, types, tests and production build; record limitations.
+
+Complexity: L, split into independently reviewable navigation behaviour and discovery increments. Existing business routes, records and permissions remain unchanged. No database migrations.
+
+Navigation result: local browser checks passed, including 0px collapsed icon offset and a scroll-free rail at 1280 x 720. Lint, cold type check, both time-zone suites, final focused navigation tests and production build passed. See docs/reviews/2026-09-19-navigation-refresh.md for file inventory, exact counts and limitations. Orange Jelly design tokens remain pending owner input.

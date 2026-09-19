@@ -360,3 +360,7 @@ not as belt and braces. It is the only check that finds this class of caller. Th
 same applies to a column rename inside a function body. `drop ... cascade` is not
 the answer when this search comes back positive: fix the function in the same
 migration, per the prod-migrate workflow.
+
+## 19 September 2026: navigation alignment is state-specific
+
+The owner clarified that off-centre icons occur only when the navigation is collapsed. Centre icons in the collapsed rail, and retain left-aligned icon-and-label rows when expanded. Verify both states visually.
