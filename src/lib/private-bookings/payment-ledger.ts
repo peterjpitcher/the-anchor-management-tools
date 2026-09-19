@@ -5,6 +5,7 @@ import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/bala
 import type { PrivateBookingPayment } from '@/types/private-bookings'
 
 export interface BookingPaymentLedger {
+  originalInvoiceId: string | null
   payments: PrivateBookingPayment[]
   appliedDepositAmount: number
   balancePaymentsTotal: number
@@ -110,6 +111,7 @@ export async function readBookingPaymentLedgers(
     payments.sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
     const balancePaymentsTotal = money(payments.reduce((sum, payment) => sum + payment.amount, 0))
     result.set(booking.id, {
+      originalInvoiceId: booking.invoice_id,
       payments,
       appliedDepositAmount: money(appliedDepositAmount),
       balancePaymentsTotal,

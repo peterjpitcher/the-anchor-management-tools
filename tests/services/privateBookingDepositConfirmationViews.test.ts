@@ -22,7 +22,7 @@ vi.mock('@/lib/logger', () => ({
 }))
 
 import { getBookingScheduledSms } from '@/services/private-bookings/scheduled-sms'
-import { fetchPrivateBookings } from '@/services/private-bookings/queries'
+import { fetchPrivateBookings, getBookings, getBookingByIdForMessages } from '@/services/private-bookings/queries'
 import { logger } from '@/lib/logger'
 
 const NOW = new Date('2026-09-20T09:00:00.000Z')
@@ -50,10 +50,26 @@ function draft(id: string, overrides: Record<string, unknown> = {}) {
 function seed(bookings: Record<string, unknown>[]) {
   state.db = createFakeSupabase({
     private_bookings: bookings,
-    private_bookings_with_details: bookings.map(({ deposit_confirmed_at: _hidden, deposit_waived: _alsoHidden, ...viewColumns }) => viewColumns),
+    private_bookings_with_details: bookings.map(({ deposit_confirmed_at: _hidden, deposit_waived: _alsoHidden, invoice_id: _invoiceId, invoice_deposit_treatment: _treatment, ...viewColumns }) => viewColumns),
     private_booking_send_idempotency: [],
     private_booking_payments: [],
+    private_booking_sms_queue: [],
+    private_booking_invoices: [],
   })
+  const from = state.db.from
+  state.db.from = (table: string) => {
+    const builder = from(table)
+    if (table === 'private_bookings_with_details') {
+      const select = builder.select
+      builder.select = (columns?: string, ...args: unknown[]) => {
+        if (columns?.split(',').map(column => column.trim()).includes('invoice_id')) {
+          throw new Error('column private_bookings_with_details.invoice_id does not exist')
+        }
+        return select(columns, ...args)
+      }
+    }
+    return builder
+  }
 }
 
 describe('the Communications tab preview', () => {
@@ -138,5 +154,25 @@ describe('the private bookings list', () => {
     expect(data).toHaveLength(1)
     expect(data[0].deposit_awaiting_confirmation).toBe(false)
     expect(logger.error).toHaveBeenCalledWith('Could not read deposit confirmations for the private bookings list', expect.anything())
+  })
+})
+
+
+describe('booking view invoice compatibility', () => {
+  it('loads general bookings and messages without a view invoice_id column', async () => {
+    seed([draft('booking')])
+    expect((await getBookings()).data).toHaveLength(1)
+    expect((await getBookingByIdForMessages('booking')).balance_remaining).toBe(1200)
+  })
+
+  it('uses linked invoice balances including extras for list and messages', async () => {
+    seed([draft('booking', { invoice_id: 'original' })])
+    state.db.tables.invoices = [
+      { id: 'original', status: 'paid', deleted_at: null, total_amount: 1200, paid_amount: 1200 },
+      { id: 'extra', status: 'sent', deleted_at: null, total_amount: 120, paid_amount: 20 },
+    ]
+    state.db.tables.private_booking_invoices = [{ booking_id: 'booking', invoice_id: 'extra', kind: 'supplementary' }]
+    expect((await fetchPrivateBookings({ dateFilter: 'all' })).data[0].balance_remaining).toBe(100)
+    expect((await getBookingByIdForMessages('booking')).balance_remaining).toBe(100)
   })
 })
