@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
 import { Anchor } from 'lucide-react'
@@ -8,19 +9,14 @@ import { Avatar } from '@/ds/primitives/Avatar'
 import { Icon, type IconName } from '@/ds/icons'
 import { cn } from '@/lib/utils'
 import { useNavCounts } from './NavCountsContext'
-import { navBadgeText, navCount, type NavGroup, type NavItem } from './SidebarNav'
+import { isActiveNavPath, navBadgeText, navCount, type NavGroup, type NavItem } from './SidebarNav'
 
 const MOBILE_TABS = [
   { id: 'dashboard', label: 'Home', icon: 'home', href: '/dashboard' },
   { id: 'events', label: 'Events', icon: 'calendar', href: '/events' },
-  { id: 'tables', label: 'Bookings', icon: 'table', href: '/table-bookings' },
+  { id: 'tables', label: 'Tables', icon: 'table', href: '/table-bookings' },
   { id: 'messages', label: 'Messages', icon: 'message', href: '/messages' },
 ] satisfies Array<Pick<NavItem, 'id' | 'label' | 'icon' | 'href'>>
-
-function isActivePath(pathname: string, href: string): boolean {
-  if (href === '/') return pathname === '/'
-  return pathname === href || pathname.startsWith(`${href}/`)
-}
 
 // The badge text comes from SidebarNav so a count cannot read one way here and
 // another on the desktop rail, and so a count that could not be read shows as '!'
@@ -67,7 +63,7 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
         className="relative grid h-10 w-10 place-items-center rounded-[10px] text-sidebar-fg transition-colors active:bg-white/10"
         aria-label={unreadCount > 0 ? `Messages, ${unreadCount} unread` : 'Messages'}
       >
-        <Icon name="bell" size={20} />
+        <Icon name="message" size={20} />
         {unreadCount > 0 ? (
           <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[9.5px] font-bold leading-none text-white shadow-[0_0_0_2px_var(--color-sidebar-bg)]">
             {badgeText(unreadCount)}
@@ -78,12 +74,15 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
   )
 }
 
-export function MobileBottomNav({ navGroups, onMore }: { navGroups: NavGroup[]; onMore: () => void }) {
+export function MobileBottomNav({ navGroups, shortcuts = [], onMore }: { navGroups: NavGroup[]; shortcuts?: NavItem[]; onMore: () => void }) {
   const pathname = usePathname() ?? '/'
   const { unreadCount, counts } = useNavCounts()
   const availableIds = new Set(navGroups.flatMap((group) => group.items.map((item) => item.id)))
-  const tabs = MOBILE_TABS.filter((tab) => availableIds.has(tab.id))
-  const primaryActive = tabs.some((tab) => isActivePath(pathname, tab.href))
+  const defaults = MOBILE_TABS.filter((tab) => availableIds.has(tab.id))
+  // Restricted staff still get useful destinations if none of the standard tabs apply.
+  const tabs = shortcuts.length ? shortcuts.filter(tab => availableIds.has(tab.id)).slice(0, 4)
+    : defaults.length ? defaults : navGroups.flatMap(group => group.items).slice(0, 4)
+  const primaryActive = tabs.some((tab) => isActiveNavPath(pathname, tab.href))
 
   return (
     <nav
@@ -92,7 +91,7 @@ export function MobileBottomNav({ navGroups, onMore }: { navGroups: NavGroup[]; 
       aria-label="Mobile navigation"
     >
       {tabs.map((tab) => {
-        const active = isActivePath(pathname, tab.href)
+        const active = isActiveNavPath(pathname, tab.href)
         const count = navCount(tab, unreadCount, counts)
 
         return (
@@ -144,6 +143,7 @@ export function MobileDrawer({
   userRole,
   onSignOut,
   isSigningOut,
+  shortcutControl,
 }: {
   open: boolean
   onClose: () => void
@@ -152,6 +152,7 @@ export function MobileDrawer({
   userRole: string
   onSignOut: () => void
   isSigningOut: boolean
+  shortcutControl?: ReactNode
 }) {
   const pathname = usePathname() ?? '/'
   const { unreadCount, counts } = useNavCounts()
@@ -180,16 +181,17 @@ export function MobileDrawer({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2.5 py-2">
+        <div className="flex-1 overflow-y-auto px-2.5 py-1">
+          <div className="ds-shortcut-control">{shortcutControl}</div>
           {navGroups.map((group, groupIndex) => (
             <div key={groupIndex}>
               {group.label ? (
-                <div className="px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.09em] text-sidebar-fg-muted">
+                <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-[0.09em] text-sidebar-fg-muted">
                   {group.label}
                 </div>
               ) : null}
               {group.items.map((item) => {
-                const active = isActivePath(pathname, item.href)
+                const active = isActiveNavPath(pathname, item.href)
                 const count = navCount(item, unreadCount, counts)
 
                 return (
@@ -198,7 +200,7 @@ export function MobileDrawer({
                     href={item.href}
                     onClick={onClose}
                     className={cn(
-                      'flex min-h-11 items-center gap-3 rounded-[9px] px-3 py-2.5 text-sm font-medium transition-colors',
+                      'flex min-h-8 items-center gap-2 rounded-[var(--radius-default)] px-3 py-1 text-[13px] font-medium transition-colors',
                       active
                         ? 'bg-sidebar-active-bg text-sidebar-fg'
                         : 'text-sidebar-fg-muted active:bg-sidebar-hover-bg',
