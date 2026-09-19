@@ -469,95 +469,69 @@ nav[aria-label="Mobile navigation"],
 /* ================================================
    DESIGN SYSTEM SHELL — Sidebar collapse/expand
    ================================================ */
-/* The rail is the only part that occupies layout space, and it never changes
-   width. Expanding used to widen a flex child from 64px to 232px, which
-   re-laid-out every table, chart and grid on the page each time the pointer
-   crossed the rail (measured: main went 1216px -> 1048px). The panel inside now
-   overlays the content instead, which is what the shadow and z-index always
-   implied. */
+/* Transient expansion overlays the page. Only deliberately pinning the menu
+   reserves the expanded width, so ordinary navigation does not shift content. */
+/* Compact rows share one fixed icon column. Hidden labels occupy no flex gap. */
 .ds-sidebar-rail {
   width: var(--spacing-sidebar-collapsed);
   flex-shrink: 0;
   position: sticky;
   top: 0;
-  height: 100vh;
-  /* Above page chrome, below overlays. Sticky table headers inside pages go up
-     to z-30/z-40 (the weekly review's "Task" column is z-30) and were painting
-     straight over the sidebar. Modals, drawers and menus sit at z-50 and above
-     and still cover the nav, which is what you want from an overlay. */
+  height: 100dvh;
   z-index: 45;
 }
+.ds-sidebar-rail[data-pinned="true"] { width: var(--spacing-sidebar-expanded); }
 .ds-sidebar {
   position: absolute;
   inset-block: 0;
   left: 0;
   width: var(--spacing-sidebar-collapsed);
   overflow: hidden;
-  transition: width 200ms var(--ease-default), box-shadow 200ms var(--ease-default);
+  transition: width 160ms var(--ease-default), box-shadow 160ms var(--ease-default);
 }
-.ds-sidebar:hover,
-.ds-sidebar:focus-within {
+.ds-sidebar[data-expanded="true"] {
   width: var(--spacing-sidebar-expanded);
   box-shadow: var(--shadow-lg);
 }
-.ds-sidebar .ds-label {
-  opacity: 0;
-  max-width: 0;
-  overflow: hidden;
-  /* `visibility` and `pointer-events` matter as much as the fade: without them
-     the collapsed rail keeps an invisible but clickable sliver of every label,
-     the sign-out button included, so a stray click on the rail could sign the
-     user out. */
-  visibility: hidden;
-  pointer-events: none;
-  transition: opacity 120ms, max-width 180ms, visibility 0s linear 180ms;
+.ds-nav-link {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  margin-inline: 6px;
+  padding: 1px 8px;
+  gap: 8px;
 }
-.ds-sidebar:hover .ds-label,
-.ds-sidebar:focus-within .ds-label {
-  opacity: 1;
-  max-width: 200px;
-  visibility: visible;
-  pointer-events: auto;
-  transition: opacity 120ms 60ms, max-width 180ms 60ms, visibility 0s;
+.ds-nav-icon { display: grid; place-items: center; width: 20px; height: 20px; flex-shrink: 0; }
+.ds-brand-icon { display: grid; place-items: center; width: var(--spacing-sidebar-collapsed); flex-shrink: 0; }
+.ds-sidebar .ds-label { display: none; }
+.ds-sidebar[data-expanded="true"] .ds-label { display: revert; }
+.ds-sidebar[data-expanded="false"] .ds-nav-link[data-compact-hidden="true"] { display: none; }
+.ds-sidebar[data-expanded="false"] .ds-nav-link { justify-content: center; gap: 0; padding-inline: 0; }
+.ds-sidebar .ds-collapsed-dot { opacity: 1; }
+.ds-sidebar[data-expanded="true"] .ds-collapsed-dot { opacity: 0; }
+.ds-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: calc(100% - 20px);
+  margin: 4px 10px 0;
+  padding: 2px 4px;
+  min-height: 22px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-sidebar-fg-muted);
+  text-align: left;
 }
-/* Logo: show icon when collapsed, full logo when expanded */
-.ds-sidebar .ds-logo-full {
-  display: none;
-}
-.ds-sidebar .ds-logo-icon {
-  display: block;
-}
-.ds-sidebar:hover .ds-logo-full,
-.ds-sidebar:focus-within .ds-logo-full {
-  display: block;
-}
-.ds-sidebar:hover .ds-logo-icon,
-.ds-sidebar:focus-within .ds-logo-icon {
-  display: none;
-}
-/* Collapsed rail: the numeric badges are `.ds-label`s, so they vanish with every
-   other label. Without this dot the rail gives no sign that Messages has
-   anything waiting until you hover it, which is how unread messages went
-   unnoticed. The dot is the collapsed stand-in and swaps back to the number on
-   expand. */
-.ds-sidebar .ds-collapsed-dot {
-  opacity: 1;
-  transition: opacity 120ms;
-}
-.ds-sidebar:hover .ds-collapsed-dot,
-.ds-sidebar:focus-within .ds-collapsed-dot {
-  opacity: 0;
-}
-/* Hide group dividers when collapsed */
-.ds-sidebar .ds-group-divider {
-  opacity: 0;
-  transition: opacity 120ms;
-}
-.ds-sidebar:hover .ds-group-divider,
-.ds-sidebar:focus-within .ds-group-divider {
-  opacity: 1;
-  transition-delay: 60ms;
-}
+.ds-sidebar[data-expanded="false"] .ds-group-heading,
+.ds-sidebar[data-expanded="false"] .ds-shortcuts,
+.ds-sidebar[data-expanded="false"] .ds-shortcut-control { display: none; }
+.ds-sidebar[data-expanded="true"] .ds-nav-group[data-collapsed="true"] .ds-group-items { display: none; }
+.ds-sidebar[data-expanded="false"] .ds-sidebar-footer { justify-content: center; padding: 2px 0; }
+.ds-sidebar[data-expanded="true"] .ds-sidebar-footer { padding: 6px 12px; }
+.ds-shortcut-control > button { color: var(--color-sidebar-fg-muted); margin-inline: 6px; }
+.ds-shortcut-control > button:hover { background: var(--color-sidebar-hover-bg); }
+.ds-sidebar :is(a, button):focus-visible { outline: 2px solid var(--color-sidebar-fg); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) { .ds-sidebar { transition: none; } }
 
 /* ================================================
    STANDALONE LAYOUT CLASSES — Non-authenticated screens

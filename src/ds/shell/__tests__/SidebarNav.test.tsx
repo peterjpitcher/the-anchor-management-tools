@@ -53,6 +53,7 @@ import {
   navCount,
   filterNavGroupsForPermissions,
   NAV_GROUPS,
+  isActiveNavPath,
 } from '../SidebarNav'
 import type { NavGroup } from '../SidebarNav'
 import { NavCountsProvider } from '../NavCountsContext'
@@ -87,14 +88,14 @@ describe('NAV_GROUPS', () => {
 
 describe('filterNavGroupsForPermissions', () => {
   it('keeps each surviving group paired with its own label', () => {
-    // A staff user with none of the Overview permissions. Before labels moved
+    // A staff user with limited permissions. Before labels moved
     // onto the data, dropping group 0 shifted every later group up an index and
     // the drawer titled Operations "Overview", Staff "Operations", and so on.
     const allowed = new Set(['table_bookings', 'rota'])
     const filtered = filterNavGroupsForPermissions(NAV_GROUPS, (module) => allowed.has(module))
 
-    // Admin survives on "My Profile", which every user gets (no permission gate).
-    expect(filtered.map((group) => group.label)).toEqual(['Operations', 'Staff', 'Admin'])
+    // Settings survives on "My Profile", which every user gets (no permission gate).
+    expect(filtered.map((group) => group.label)).toEqual(['Bookings & events', 'Team', 'Settings'])
     expect(filtered[0].items.map((i) => i.id)).toEqual(['tables'])
     expect(filtered[1].items.map((i) => i.id)).toEqual(['rota'])
     expect(filtered[2].items.map((i) => i.id)).toEqual(['profile'])
@@ -276,5 +277,18 @@ describe('SidebarNav', () => {
     expect(screen.queryByText('0')).not.toBeInTheDocument()
     // Spelled out, so the state is not carried by a glyph alone.
     expect(screen.getByLabelText('Maintenance count unavailable')).toBeInTheDocument()
+  })
+})
+
+
+describe('section highlighting', () => {
+  it('keeps Cashing Up active throughout daily entries and reports', () => {
+    expect(isActiveNavPath('/cashing-up/daily', '/cashing-up/dashboard')).toBe(true)
+    expect(isActiveNavPath('/cashing-up/weekly', '/cashing-up/dashboard')).toBe(true)
+    expect(isActiveNavPath('/cashing-up-old', '/cashing-up/dashboard')).toBe(false)
+  })
+  it('keeps Checklists active outside the manage landing page', () => {
+    expect(isActiveNavPath('/checklists/2026-09-19', '/checklists/manage')).toBe(true)
+    expect(isActiveNavPath('/checklists-extra', '/checklists/manage')).toBe(false)
   })
 })
