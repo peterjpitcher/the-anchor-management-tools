@@ -177,6 +177,7 @@ async function handleSignOut() {
   return (
     <>
       <AppShell
+        userId={user.id}
         showSidebar={!fohOnlyMode}
         fohMode={fohOnlyMode}
         fohEmployeeId={fohEmployeeId}
