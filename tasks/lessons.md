@@ -392,3 +392,6 @@ never raise it to get a change through. Register every new token name in `cn()`
 `src/lib/brand/palette.ts`, which a test pins to `globals.css`. When a styling pass swaps a raw
 control for a DS component, compare it with the HEAD version in a render test: behaviour changes
 hide in exactly that swap.
+
+## 19 September 2026: verify booking view projections and list routes
+The extras release selected invoice_id from private_bookings_with_details, but the live view does not expose it. Mock rows hid the mismatch and detail-only smoke checks missed the list failure. Read invoice identity from the existing payment ledger base-table query, reject absent view columns in regression tests, and verify list, filters and messages as well as detail pages after deployment.
