@@ -30,3 +30,9 @@ Owner correction: src/app/globals.css now makes both normal and secondary naviga
 ## Admin collapsed by default
 
 Updated useNavigationPreferences.ts to default Admin closed and apply that default to older saved preferences without losing shortcuts or other groups. A version marker preserves explicit choices after the update. NavigationPreferences.test.tsx covers the default, legacy preferences and remembering a later expansion. Verified the actual Firefox booking page shows Expand Admin with the group links hidden. Targeted lint and 41 shell tests passed. No other application files changed.
+
+## Full-width logo and pin control
+
+Sidebar.tsx now gives the supplied white logo the full expanded width, with 8px side padding and its natural aspect ratio. A simple pin below the logo replaces the expanded collapse control. The collapsed rail uses the white logo mark. AppShell.tsx reconnects the saved pin preference so pinning keeps the menu open on mouse-out and navigation, and unpinning returns to hover behaviour. Tests in tests/components/Sidebar.test.tsx cover pin, mouse-out and unpin.
+
+Verified on the actual Firefox booking page: full-width wordmark, Pin menu open changed to Unpin menu, the menu remained open after moving to the page, and unpinning restored Expand menu. Test pin preference restored to unpinned after verification. Targeted lint and the shell/guard suite passed. No other application files, mobile navigation, logos, colours, business logic or data changed. Local main only.

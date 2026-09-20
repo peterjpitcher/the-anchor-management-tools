@@ -105,7 +105,7 @@ describe('shortcut dialog coordination', () => {
     expect(onPinnedChange).not.toHaveBeenCalled()
     expect(container.querySelector('.ds-sidebar')).toHaveAttribute('data-expanded', 'true')
     // Escape originating in the sidebar itself still performs its normal action.
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Collapse menu' }), { key: 'Escape' })
+    fireEvent.keyDown(container.querySelector('.ds-sidebar') as HTMLElement, { key: 'Escape' })
     expect(onPinnedChange).toHaveBeenCalledWith(false)
   })
 
@@ -115,7 +115,7 @@ describe('shortcut dialog coordination', () => {
     rerender(<Sidebar navGroups={NAV_GROUPS} shortcutPickerOpen />)
     const panel = container.querySelector('.ds-sidebar') as HTMLElement
     fireEvent.pointerLeave(panel)
-    fireEvent.blur(screen.getByRole('button', { name: 'Collapse menu' }), { relatedTarget: document.body })
+    fireEvent.blur(container.querySelector('.ds-sidebar') as HTMLElement, { relatedTarget: document.body })
     expect(panel).toHaveAttribute('data-expanded', 'true')
     // Closing the chooser must leave the trigger available for focus restoration.
     rerender(<Sidebar navGroups={NAV_GROUPS} shortcutPickerOpen={false} />)
@@ -137,4 +137,22 @@ describe('hover navigation', () => {
     expect(panel).toHaveAttribute('data-expanded', 'false')
     expect(screen.queryByRole('button', { name: 'Find or go to' })).not.toBeInTheDocument()
   })
+})
+
+
+it('pins across mouse-out and restores hover mode when unpinned', () => {
+  const onPinnedChange = vi.fn()
+  const { container, rerender } = render(<Sidebar navGroups={NAV_GROUPS} onPinnedChange={onPinnedChange} />)
+  const panel = container.querySelector('.ds-sidebar') as HTMLElement
+  fireEvent.pointerEnter(panel, { pointerType: 'mouse' })
+  expect(screen.queryByRole('button', { name: 'Collapse menu' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Pin menu open' }))
+  expect(onPinnedChange).toHaveBeenLastCalledWith(true)
+  rerender(<Sidebar navGroups={NAV_GROUPS} pinned onPinnedChange={onPinnedChange} />)
+  fireEvent.pointerLeave(panel)
+  expect(panel).toHaveAttribute('data-expanded', 'true')
+  fireEvent.click(screen.getByRole('button', { name: 'Unpin menu' }))
+  expect(onPinnedChange).toHaveBeenLastCalledWith(false)
+  rerender(<Sidebar navGroups={NAV_GROUPS} pinned={false} onPinnedChange={onPinnedChange} />)
+  expect(panel).toHaveAttribute('data-expanded', 'false')
 })
