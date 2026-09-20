@@ -433,6 +433,8 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   return (
     <PageLayout
       title="Weekly Rota"
+      compactHeader
+      headerClassName="mb-1"
       subtitle={formatWeekRange(weekStart, weekEnd)}
       navItems={buildRotaNavItems(unfilledShiftCount, { ...navPermissions, weeksNeedingPublishing })}
       headerActions={
