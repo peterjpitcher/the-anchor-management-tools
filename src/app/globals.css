@@ -12,34 +12,34 @@
    ================================================ */
 @theme static {
   /* Brand palette */
-  --color-brand-50: #ecfdf5;
-  --color-brand-100: #d1fae5;
-  --color-brand-200: #a7f3d0;
-  --color-brand-300: #6ee7b7;
-  --color-brand-400: #34d399;
-  --color-brand-500: #10b981;
-  --color-brand-600: #006A4E;
-  --color-brand-700: #064e3b;
-  --color-brand-800: #043927;
-  --color-brand-900: #022c1a;
+  --color-brand-50: #FDE3CC;
+  --color-brand-100: #FDE3CC;
+  --color-brand-200: #FFD3AD;
+  --color-brand-300: #FFD3AD;
+  --color-brand-400: #F76B0C;
+  --color-brand-500: #F76B0C;
+  --color-brand-600: #B34E08;
+  --color-brand-700: #7A3708;
+  --color-brand-800: #7A3708;
+  --color-brand-900: #23252E;
 
   /* Semantic, light theme only (dark mode dropped 18 Sep 2026). Text on white must
-     reach 4.5:1: text, text-strong, text-muted (7.6:1) and text-soft (4.8:1) do.
+     reach 4.5:1: text, text-strong, text-muted and text-soft do.
      text-subtle (2.5:1) is for placeholders, icons and decoration only. */
-  --color-bg: #fafaf9;
-  --color-surface: #ffffff;
-  --color-surface-2: #fafaf9;
-  --color-surface-hover: #f5f5f4;
-  --color-border: #ececea;
-  --color-border-strong: #d6d3d1;
+  --color-bg: #F7F5F1;
+  --color-surface: #FCFBF9;
+  --color-surface-2: #ECE9E2;
+  --color-surface-hover: #ECE9E2;
+  --color-border: #ECE9E2;
+  --color-border-strong: #666873;
   --color-border-focus: var(--color-brand-600);
-  --color-text: #1c1917;
-  --color-text-strong: #0c0a09;
-  --color-text-muted: #57534e;
-  --color-text-soft: #78716c;
+  --color-text: #23252E;
+  --color-text-strong: #23252E;
+  --color-text-muted: #4A4C58;
+  --color-text-soft: #666873;
   --color-text-subtle: #a8a29e;
 
-  /* Primary: the one staff brand green for actions, active tabs and links */
+  /* Primary: the Orange Jelly deep orange for actions, active tabs and links */
   --color-primary: var(--color-brand-600);
   --color-primary-hover: var(--color-brand-700);
   --color-primary-soft: var(--color-brand-50);
@@ -55,10 +55,10 @@
   --color-on-dark-border: rgb(255 255 255 / 0.12);
 
   /* Sidebar: the app shell only. Buttons elsewhere use primary. */
-  --color-sidebar: #064e3b;
+  --color-sidebar: #23252E;
   --color-sidebar-fg: var(--color-on-dark);
   --color-sidebar-fg-muted: var(--color-on-dark-muted);
-  --color-sidebar-active-bg: var(--color-on-dark-active);
+  --color-sidebar-active-bg: var(--color-primary);
   --color-sidebar-hover-bg: var(--color-on-dark-hover);
   --color-sidebar-border: var(--color-on-dark-border);
 

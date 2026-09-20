@@ -6,6 +6,7 @@ const root = resolve(__dirname, '../../..')
 const stub = resolve(__dirname, 'stubs.tsx')
 export default defineConfig({
   root: __dirname,
+  publicDir: resolve(root, 'public'),
   plugins: [react()],
   resolve: {
     alias: [

@@ -4,7 +4,6 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
-import { Anchor } from 'lucide-react'
 import { Avatar } from '@/ds/primitives/Avatar'
 import { Icon, type IconName } from '@/ds/icons'
 import { cn } from '@/lib/utils'
@@ -40,7 +39,7 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
 
       <Link href="/dashboard" className="mr-auto flex min-w-0 items-center gap-2" aria-label="The Anchor dashboard">
         <span className="grid h-[30px] w-[30px] place-items-center rounded-lg border border-on-dark-border bg-on-dark-active">
-          <Anchor className="h-[17px] w-[17px]" aria-hidden="true" />
+          <img src="/orange-jelly/logo-icon-white.png" alt="Orange Jelly" className="h-6 w-6 object-contain" />
         </span>
         <span className="truncate text-base font-bold tracking-normal">The Anchor</span>
       </Link>
@@ -164,7 +163,7 @@ export function MobileDrawer({
         <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-4">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="grid h-9 w-9 place-items-center rounded-default border border-on-dark-border bg-on-dark-active">
-              <Anchor className="h-5 w-5" aria-hidden="true" />
+              <img src="/orange-jelly/logo-icon-white.png" alt="Orange Jelly" className="h-6 w-6 object-contain" />
             </span>
             <div className="min-w-0">
               <DialogTitle className="truncate text-sm font-bold leading-tight">The Anchor</DialogTitle>

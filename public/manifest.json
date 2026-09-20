@@ -4,8 +4,8 @@
   "description": "Comprehensive venue management system with event scheduling and customer management",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#005131",
-  "theme_color": "#005131",
+  "background_color": "#23252E",
+  "theme_color": "#23252E",
   "orientation": "portrait",
   "icons": [
     {

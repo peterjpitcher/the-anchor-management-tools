@@ -60,7 +60,7 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
             onClick={() => { if (pinned) onPinnedChange?.(false); setExpanded(!open) }}>
             <PanelLeft size={20} aria-hidden="true" />
           </button>
-          <span className="ds-label min-w-0 flex-1 text-sm font-semibold">The Anchor</span>
+          <span className="ds-label min-w-0 flex flex-1 items-center gap-2 text-sm font-semibold"><img src="/orange-jelly/logo-icon-white.png" alt="Orange Jelly" className="h-6 w-6 object-contain" />The Anchor</span>
           {onPinnedChange && (
             <button type="button" className="ds-label mr-2 grid h-6 w-6 place-items-center rounded-sm hover:bg-sidebar-hover-bg"
               aria-label={pinned ? 'Unpin menu' : 'Pin menu open'} aria-pressed={pinned}

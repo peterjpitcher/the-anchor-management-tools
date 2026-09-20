@@ -6,7 +6,7 @@ import SupabaseProvider from "@/components/providers/SupabaseProvider";
 import { ServiceWorkerCleanup } from "@/components/features/shared/ServiceWorkerRegistration";
 import { ChunkErrorReloader } from "@/components/features/shared/ChunkErrorReloader";
 import { getDeploymentVersion } from "@/lib/foh/deployment-version";
-import { GUEST } from "@/lib/brand/palette";
+import { STAFF } from "@/lib/brand/palette";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -51,7 +51,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
-  themeColor: GUEST.green,
+  themeColor: STAFF.text,
 };
 
 export default function RootLayout({

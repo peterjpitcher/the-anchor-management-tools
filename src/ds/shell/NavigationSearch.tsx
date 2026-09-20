@@ -87,7 +87,7 @@ export function NavigationSearch({ navGroups, onOpen }: NavigationSearchProps): 
         <DialogPanel onKeyDown={handleKeyboard} className="flex max-h-[75dvh] w-full max-w-lg flex-col overflow-hidden rounded-[var(--radius-default)] border border-border bg-surface shadow-lg">
           <div className="flex items-center justify-between px-4 pt-3">
             <DialogTitle className="text-sm font-semibold text-text">Find a page</DialogTitle>
-            <button type="button" onClick={() => setOpen(false)} aria-label="Close navigation search" className="rounded p-1 text-text-muted hover:text-text">
+            <button type="button" onClick={() => setOpen(false)} aria-label="Close navigation search" className="rounded-sm p-1 text-text-muted hover:text-text">
               <Icon name="x" size={18} />
             </button>
           </div>
