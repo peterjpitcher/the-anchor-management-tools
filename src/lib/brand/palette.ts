@@ -6,7 +6,7 @@
  *
  * Which palette:
  * - STAFF: anything from Orange Jelly or for staff: invoices, receipts, quotes, statements,
- *   contracts, staff emails, rota and hours PDFs. Brand green buttons (owner decision, 18 Sep 2026).
+ *   contracts, staff emails, rota and hours PDFs. Orange Jelly colours (owner design pack, 20 Sep 2026).
  * - GUEST: anything a guest or customer receives about The Anchor: booking, event, table and
  *   voucher emails, and the voucher card. The Anchor green and the guest gold primary button
  *   (owner decision, 18 Sep 2026), exactly as the guest pages draw it.
@@ -15,21 +15,21 @@
  */
 
 export const STAFF = {
-  text: '#1c1917',
-  textStrong: '#0c0a09',
-  textMuted: '#57534e',
-  textSoft: '#78716c',
+  text: '#23252E',
+  textStrong: '#23252E',
+  textMuted: '#4A4C58',
+  textSoft: '#666873',
   textSubtle: '#a8a29e',
-  bg: '#fafaf9',
-  surface: '#ffffff',
-  surface2: '#fafaf9',
-  surfaceHover: '#f5f5f4',
-  border: '#ececea',
-  borderStrong: '#d6d3d1',
-  primary: '#006A4E',
-  primaryHover: '#064e3b',
-  primarySoft: '#ecfdf5',
-  primarySoftFg: '#043927',
+  bg: '#F7F5F1',
+  surface: '#FCFBF9',
+  surface2: '#ECE9E2',
+  surfaceHover: '#ECE9E2',
+  border: '#ECE9E2',
+  borderStrong: '#666873',
+  primary: '#B34E08',
+  primaryHover: '#7A3708',
+  primarySoft: '#FDE3CC',
+  primarySoftFg: '#7A3708',
   primaryFg: '#ffffff',
   success: '#16a34a',
   successSoft: '#f0fdf4',
@@ -50,7 +50,7 @@ export const STAFF = {
 } as const
 
 /** Chart series 1 to 6, as the app draws them (--color-chart-1 .. -6). */
-export const CHART_SERIES = ['#006A4E', '#0284c7', '#d97706', '#7c3aed', '#db2777', '#0d9488'] as const
+export const CHART_SERIES = ['#B34E08', '#0284c7', '#d97706', '#7c3aed', '#db2777', '#0d9488'] as const
 
 /**
  * Category colours 1 to 8 (--color-cat-N, -soft and -fg), for fixed app categories such as rota

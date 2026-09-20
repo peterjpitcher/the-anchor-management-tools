@@ -24,7 +24,7 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     body {
       font-family: Arial, sans-serif;
       line-height: 1.3;
-      color: #1c1917;
+      color: #23252E;
       max-width: 800px;
       margin: 0 auto;
       padding: 5px;
@@ -36,7 +36,7 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
       justify-content: space-between;
       align-items: flex-start;
       margin-bottom: 10px;
-      border-bottom: 1px solid #ececea;
+      border-bottom: 1px solid #ECE9E2;
       padding-bottom: 8px;
     }
     
@@ -56,7 +56,7 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     }
     
     h1 {
-      color: #0c0a09;
+      color: #23252E;
       margin: 0 0 5px 0;
       font-size: 16pt;
       font-weight: 700;
@@ -64,26 +64,26 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     
     .invoice-number {
       font-size: 10pt;
-      color: #57534e;
+      color: #4A4C58;
       margin-bottom: 2px;
     }
     
     .status-badge {
       display: inline-block;
       padding: 1px 7px;
-      border: 1px solid #ececea;
+      border: 1px solid #ECE9E2;
       border-radius: 3px;
       font-size: 8pt;
       font-weight: 600;
-      color: #57534e;
-      background-color: #fafaf9;
+      color: #4A4C58;
+      background-color: #ECE9E2;
       margin-top: 5px;
     }
     
     .company-details {
       margin-bottom: 10px;
       font-size: 8pt;
-      color: #57534e;
+      color: #4A4C58;
     }
     
     .addresses {
@@ -94,14 +94,14 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     }
     
     .address-block {
-      background: #fafaf9;
+      background: #ECE9E2;
       padding: 8px;
       border-radius: 4px;
     }
     
     .address-block h3 {
       margin: 0 0 5px 0;
-      color: #0c0a09;
+      color: #23252E;
       font-size: 9pt;
       text-transform: uppercase;
       letter-spacing: 0.3px;
@@ -109,7 +109,7 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     
     .address-block p {
       margin: 2px 0;
-      color: #57534e;
+      color: #4A4C58;
       font-size: 8pt;
     }
     
@@ -119,7 +119,7 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
       gap: 10px;
       margin-bottom: 10px;
       padding: 8px;
-      background: #fafaf9;
+      background: #ECE9E2;
       border-radius: 4px;
       font-size: 8pt;
     }
@@ -130,7 +130,7 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     
     .meta-label {
       font-size: 7pt;
-      color: #57534e;
+      color: #4A4C58;
       text-transform: uppercase;
       letter-spacing: 0.3px;
       display: block;
@@ -139,7 +139,7 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     
     .meta-value {
       font-size: 9pt;
-      color: #1c1917;
+      color: #23252E;
       font-weight: 600;
     }
     
@@ -155,15 +155,15 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     }
     
     th {
-      background: #f5f5f4;
+      background: #ECE9E2;
       padding: 6px 8px;
       text-align: left;
       font-weight: 600;
-      color: #1c1917;
+      color: #23252E;
       font-size: 8pt;
       text-transform: uppercase;
       letter-spacing: 0.3px;
-      border-bottom: 1px solid #ececea;
+      border-bottom: 1px solid #ECE9E2;
     }
     
     th.text-right {
@@ -172,8 +172,8 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     
     td {
       padding: 6px 8px;
-      border-bottom: 1px solid #ececea;
-      color: #57534e;
+      border-bottom: 1px solid #ECE9E2;
+      color: #4A4C58;
       vertical-align: top;
     }
     
@@ -183,13 +183,13 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     
     .item-description {
       font-weight: 500;
-      color: #1c1917;
+      color: #23252E;
       margin-bottom: 2px;
     }
     
     .item-line-discount {
       font-size: 7pt;
-      color: #006A4E;
+      color: #B34E08;
     }
     
     .summary-section {
@@ -201,21 +201,21 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
       display: flex;
       justify-content: space-between;
       padding: 6px 0;
-      border-bottom: 1px solid #ececea;
+      border-bottom: 1px solid #ECE9E2;
     }
     
     .summary-row.total {
       border-bottom: none;
-      border-top: 2px solid #1c1917;
+      border-top: 2px solid #23252E;
       padding-top: 8px;
       margin-top: 5px;
       font-size: 11pt;
       font-weight: 700;
-      color: #1c1917;
+      color: #23252E;
     }
     
     .payment-section {
-      background: #fafaf9;
+      background: #ECE9E2;
       padding: 12px;
       border-radius: 4px;
       margin-top: 15px;
@@ -224,7 +224,7 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     
     .payment-section h3 {
       margin: 0 0 8px 0;
-      color: #0c0a09;
+      color: #23252E;
       font-size: 10pt;
     }
     
@@ -236,13 +236,13 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     
     .payment-method h4 {
       margin: 0 0 4px 0;
-      color: #0c0a09;
+      color: #23252E;
       font-size: 9pt;
     }
     
     .payment-method p {
       margin: 2px 0;
-      color: #57534e;
+      color: #4A4C58;
       font-size: 8pt;
     }
     
@@ -256,13 +256,13 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     
     .notes-section h3 {
       margin: 0 0 5px 0;
-      color: #0c0a09;
+      color: #23252E;
       font-size: 9pt;
     }
     
     .notes-section p {
       margin: 0;
-      color: #57534e;
+      color: #4A4C58;
       white-space: pre-wrap;
       font-size: 8pt;
     }
@@ -270,9 +270,9 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
     .footer {
       margin-top: 20px;
       padding-top: 10px;
-      border-top: 1px solid #ececea;
+      border-top: 1px solid #ECE9E2;
       text-align: center;
-      color: #57534e;
+      color: #4A4C58;
       font-size: 7pt;
     }
     
@@ -428,7 +428,7 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     body {
       font-family: Arial, sans-serif;
       line-height: 1.3;
-      color: #1c1917;
+      color: #23252E;
       max-width: 800px;
       margin: 0 auto;
       padding: 5px;
@@ -440,7 +440,7 @@ exports[`invoice PDF template > renders a stable document 1`] = `
       justify-content: space-between;
       align-items: flex-start;
       margin-bottom: 10px;
-      border-bottom: 1px solid #ececea;
+      border-bottom: 1px solid #ECE9E2;
       padding-bottom: 8px;
     }
     
@@ -460,7 +460,7 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     }
     
     h1 {
-      color: #0c0a09;
+      color: #23252E;
       margin: 0 0 5px 0;
       font-size: 16pt;
       font-weight: 700;
@@ -468,26 +468,26 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     
     .invoice-number {
       font-size: 10pt;
-      color: #57534e;
+      color: #4A4C58;
       margin-bottom: 2px;
     }
     
     .status-badge {
       display: inline-block;
       padding: 1px 7px;
-      border: 1px solid #ececea;
+      border: 1px solid #ECE9E2;
       border-radius: 3px;
       font-size: 8pt;
       font-weight: 600;
-      color: #57534e;
-      background-color: #fafaf9;
+      color: #4A4C58;
+      background-color: #ECE9E2;
       margin-top: 5px;
     }
     
     .company-details {
       margin-bottom: 10px;
       font-size: 8pt;
-      color: #57534e;
+      color: #4A4C58;
     }
     
     .addresses {
@@ -498,14 +498,14 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     }
     
     .address-block {
-      background: #fafaf9;
+      background: #ECE9E2;
       padding: 8px;
       border-radius: 4px;
     }
     
     .address-block h3 {
       margin: 0 0 5px 0;
-      color: #0c0a09;
+      color: #23252E;
       font-size: 9pt;
       text-transform: uppercase;
       letter-spacing: 0.3px;
@@ -513,7 +513,7 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     
     .address-block p {
       margin: 2px 0;
-      color: #57534e;
+      color: #4A4C58;
       font-size: 8pt;
     }
     
@@ -523,7 +523,7 @@ exports[`invoice PDF template > renders a stable document 1`] = `
       gap: 10px;
       margin-bottom: 10px;
       padding: 8px;
-      background: #fafaf9;
+      background: #ECE9E2;
       border-radius: 4px;
       font-size: 8pt;
     }
@@ -534,7 +534,7 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     
     .meta-label {
       font-size: 7pt;
-      color: #57534e;
+      color: #4A4C58;
       text-transform: uppercase;
       letter-spacing: 0.3px;
       display: block;
@@ -543,7 +543,7 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     
     .meta-value {
       font-size: 9pt;
-      color: #1c1917;
+      color: #23252E;
       font-weight: 600;
     }
     
@@ -559,15 +559,15 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     }
     
     th {
-      background: #f5f5f4;
+      background: #ECE9E2;
       padding: 6px 8px;
       text-align: left;
       font-weight: 600;
-      color: #1c1917;
+      color: #23252E;
       font-size: 8pt;
       text-transform: uppercase;
       letter-spacing: 0.3px;
-      border-bottom: 1px solid #ececea;
+      border-bottom: 1px solid #ECE9E2;
     }
     
     th.text-right {
@@ -576,8 +576,8 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     
     td {
       padding: 6px 8px;
-      border-bottom: 1px solid #ececea;
-      color: #57534e;
+      border-bottom: 1px solid #ECE9E2;
+      color: #4A4C58;
       vertical-align: top;
     }
     
@@ -587,13 +587,13 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     
     .item-description {
       font-weight: 500;
-      color: #1c1917;
+      color: #23252E;
       margin-bottom: 2px;
     }
     
     .item-line-discount {
       font-size: 7pt;
-      color: #006A4E;
+      color: #B34E08;
     }
     
     .summary-section {
@@ -605,21 +605,21 @@ exports[`invoice PDF template > renders a stable document 1`] = `
       display: flex;
       justify-content: space-between;
       padding: 6px 0;
-      border-bottom: 1px solid #ececea;
+      border-bottom: 1px solid #ECE9E2;
     }
     
     .summary-row.total {
       border-bottom: none;
-      border-top: 2px solid #1c1917;
+      border-top: 2px solid #23252E;
       padding-top: 8px;
       margin-top: 5px;
       font-size: 11pt;
       font-weight: 700;
-      color: #1c1917;
+      color: #23252E;
     }
     
     .payment-section {
-      background: #fafaf9;
+      background: #ECE9E2;
       padding: 12px;
       border-radius: 4px;
       margin-top: 15px;
@@ -628,7 +628,7 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     
     .payment-section h3 {
       margin: 0 0 8px 0;
-      color: #0c0a09;
+      color: #23252E;
       font-size: 10pt;
     }
     
@@ -640,13 +640,13 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     
     .payment-method h4 {
       margin: 0 0 4px 0;
-      color: #0c0a09;
+      color: #23252E;
       font-size: 9pt;
     }
     
     .payment-method p {
       margin: 2px 0;
-      color: #57534e;
+      color: #4A4C58;
       font-size: 8pt;
     }
     
@@ -660,13 +660,13 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     
     .notes-section h3 {
       margin: 0 0 5px 0;
-      color: #0c0a09;
+      color: #23252E;
       font-size: 9pt;
     }
     
     .notes-section p {
       margin: 0;
-      color: #57534e;
+      color: #4A4C58;
       white-space: pre-wrap;
       font-size: 8pt;
     }
@@ -674,9 +674,9 @@ exports[`invoice PDF template > renders a stable document 1`] = `
     .footer {
       margin-top: 20px;
       padding-top: 10px;
-      border-top: 1px solid #ececea;
+      border-top: 1px solid #ECE9E2;
       text-align: center;
-      color: #57534e;
+      color: #4A4C58;
       font-size: 7pt;
     }
     
@@ -872,7 +872,7 @@ exports[`quote PDF template > renders a stable document 1`] = `
     body {
       font-family: Arial, sans-serif;
       line-height: 1.3;
-      color: #1c1917;
+      color: #23252E;
       max-width: 800px;
       margin: 0 auto;
       padding: 5px;
@@ -884,7 +884,7 @@ exports[`quote PDF template > renders a stable document 1`] = `
       justify-content: space-between;
       align-items: flex-start;
       margin-bottom: 10px;
-      border-bottom: 1px solid #ececea;
+      border-bottom: 1px solid #ECE9E2;
       padding-bottom: 8px;
     }
     
@@ -904,7 +904,7 @@ exports[`quote PDF template > renders a stable document 1`] = `
     }
     
     h1 {
-      color: #0c0a09;
+      color: #23252E;
       margin: 0 0 5px 0;
       font-size: 16pt;
       font-weight: 700;
@@ -912,26 +912,26 @@ exports[`quote PDF template > renders a stable document 1`] = `
     
     .quote-number {
       font-size: 10pt;
-      color: #57534e;
+      color: #4A4C58;
       margin-bottom: 2px;
     }
     
     .status-badge {
       display: inline-block;
       padding: 1px 7px;
-      border: 1px solid #ececea;
+      border: 1px solid #ECE9E2;
       border-radius: 3px;
       font-size: 8pt;
       font-weight: 600;
-      color: #57534e;
-      background-color: #fafaf9;
+      color: #4A4C58;
+      background-color: #ECE9E2;
       margin-top: 5px;
     }
     
     .company-details {
       margin-bottom: 10px;
       font-size: 8pt;
-      color: #57534e;
+      color: #4A4C58;
     }
     
     .addresses {
@@ -942,14 +942,14 @@ exports[`quote PDF template > renders a stable document 1`] = `
     }
     
     .address-block {
-      background: #fafaf9;
+      background: #ECE9E2;
       padding: 8px;
       border-radius: 4px;
     }
     
     .address-block h3 {
       margin: 0 0 5px 0;
-      color: #0c0a09;
+      color: #23252E;
       font-size: 9pt;
       text-transform: uppercase;
       letter-spacing: 0.3px;
@@ -957,7 +957,7 @@ exports[`quote PDF template > renders a stable document 1`] = `
     
     .address-block p {
       margin: 2px 0;
-      color: #57534e;
+      color: #4A4C58;
       font-size: 8pt;
     }
     
@@ -967,7 +967,7 @@ exports[`quote PDF template > renders a stable document 1`] = `
       gap: 10px;
       margin-bottom: 10px;
       padding: 8px;
-      background: #fafaf9;
+      background: #ECE9E2;
       border-radius: 4px;
       font-size: 8pt;
     }
@@ -978,7 +978,7 @@ exports[`quote PDF template > renders a stable document 1`] = `
     
     .meta-label {
       font-size: 7pt;
-      color: #57534e;
+      color: #4A4C58;
       text-transform: uppercase;
       letter-spacing: 0.3px;
       display: block;
@@ -987,7 +987,7 @@ exports[`quote PDF template > renders a stable document 1`] = `
     
     .meta-value {
       font-size: 9pt;
-      color: #1c1917;
+      color: #23252E;
       font-weight: 600;
     }
     
@@ -1003,15 +1003,15 @@ exports[`quote PDF template > renders a stable document 1`] = `
     }
     
     th {
-      background: #f5f5f4;
+      background: #ECE9E2;
       padding: 6px 8px;
       text-align: left;
       font-weight: 600;
-      color: #1c1917;
+      color: #23252E;
       font-size: 8pt;
       text-transform: uppercase;
       letter-spacing: 0.3px;
-      border-bottom: 1px solid #ececea;
+      border-bottom: 1px solid #ECE9E2;
     }
     
     th.text-right {
@@ -1020,8 +1020,8 @@ exports[`quote PDF template > renders a stable document 1`] = `
     
     td {
       padding: 6px 8px;
-      border-bottom: 1px solid #ececea;
-      color: #57534e;
+      border-bottom: 1px solid #ECE9E2;
+      color: #4A4C58;
       vertical-align: top;
     }
     
@@ -1031,13 +1031,13 @@ exports[`quote PDF template > renders a stable document 1`] = `
     
     .item-description {
       font-weight: 500;
-      color: #1c1917;
+      color: #23252E;
       margin-bottom: 2px;
     }
     
     .item-line-discount {
       font-size: 7pt;
-      color: #006A4E;
+      color: #B34E08;
     }
     
     .summary-section {
@@ -1049,17 +1049,17 @@ exports[`quote PDF template > renders a stable document 1`] = `
       display: flex;
       justify-content: space-between;
       padding: 6px 0;
-      border-bottom: 1px solid #ececea;
+      border-bottom: 1px solid #ECE9E2;
     }
     
     .summary-row.total {
       border-bottom: none;
-      border-top: 2px solid #1c1917;
+      border-top: 2px solid #23252E;
       padding-top: 8px;
       margin-top: 5px;
       font-size: 11pt;
       font-weight: 700;
-      color: #1c1917;
+      color: #23252E;
     }
     
     .acceptance-section {
@@ -1093,13 +1093,13 @@ exports[`quote PDF template > renders a stable document 1`] = `
     
     .notes-section h3 {
       margin: 0 0 5px 0;
-      color: #0c0a09;
+      color: #23252E;
       font-size: 9pt;
     }
     
     .notes-section p {
       margin: 0;
-      color: #57534e;
+      color: #4A4C58;
       white-space: pre-wrap;
       font-size: 8pt;
     }
@@ -1107,9 +1107,9 @@ exports[`quote PDF template > renders a stable document 1`] = `
     .footer {
       margin-top: 20px;
       padding-top: 10px;
-      border-top: 1px solid #ececea;
+      border-top: 1px solid #ECE9E2;
       text-align: center;
-      color: #57534e;
+      color: #4A4C58;
       font-size: 7pt;
     }
     

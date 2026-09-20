@@ -91,7 +91,7 @@ describe('generatePnlReportHTML', () => {
     expect(html).toContain('Sales - LAST 365 DAYS VS. SHADOW P&amp;L')
     expect(html).toContain('Expenses - LAST 365 DAYS VS. SHADOW P&amp;L')
     expect(html).toContain('.report-header {')
-    expect(html).toContain('background: #ffffff;')
+    expect(html).toContain('background: #FCFBF9;')
     expect(html).toContain('P&amp;L Target')
   })
 })

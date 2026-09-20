@@ -19,8 +19,8 @@ export function AuthCard({ title, lead, children }: AuthCardProps): React.JSX.El
         <div className="auth__brand">
           <div className="auth__logo">
             <Image
-              src="/logo.png"
-              alt="The Anchor Logo"
+              src="/orange-jelly/logo-icon.png"
+              alt="Orange Jelly"
               width={44}
               height={44}
               className="w-full h-auto rounded-md"
