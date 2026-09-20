@@ -2533,6 +2533,9 @@ export default function PrivateBookingDetailClient({
 
   return (
     <PageLayout
+      compactHeader
+      // Sections wrap already-padded cards, so avoid a second inset around each heading and body.
+      contentClassName="pt-3 [&_.section-header]:p-0 [&_.section-body]:p-0 [&_.p-pad-card]:p-3 [&_.section-body_.py-12]:py-4"
       title={booking.customer_full_name || booking.customer_name}
       subtitle={booking.event_type ?? undefined}
       breadcrumbs={[
@@ -2594,11 +2597,11 @@ export default function PrivateBookingDetailClient({
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-4">
           <Section id="event-details" title="Event Details">
             <Card>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
                 <div>
                   <label className="block text-sm font-medium text-text-muted">
                     Event Date
@@ -2897,7 +2900,7 @@ export default function PrivateBookingDetailClient({
         </div>
 
         {/* Sidebar - Right 1/3 */}
-        <div className="space-y-6">
+        <div className="space-y-4">
           {canEdit && (
             <Section id="quick-update" title="Quick Booking Update">
               <Card>
@@ -3344,7 +3347,7 @@ export default function PrivateBookingDetailClient({
                 {canSendSms && (
                   <Link
                     href={`/private-bookings/${bookingId}/messages`}
-                    className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
+                    className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
                   >
                     <div className="flex items-center">
                       <ChatBubbleLeftRightIcon className="h-5 w-5 mr-3 text-primary" />
@@ -3358,7 +3361,7 @@ export default function PrivateBookingDetailClient({
                   type="button"
                   onClick={handleDownloadContract}
                   disabled={downloadingContract}
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
                     <DocumentIcon className="h-5 w-5 mr-3 text-primary" />
@@ -3371,7 +3374,7 @@ export default function PrivateBookingDetailClient({
                   href={`/api/private-bookings/event-sheet?bookingId=${bookingId}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
+                  className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
                 >
                   <div className="flex items-center">
                     <ClipboardDocumentListIcon className="h-5 w-5 mr-3 text-primary" />
@@ -3384,7 +3387,7 @@ export default function PrivateBookingDetailClient({
                   type="button"
                   onClick={handleSendContract}
                   disabled={sendingContract || !booking.contact_email}
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
                     <DocumentIcon className="h-5 w-5 mr-3 text-primary" />
@@ -3425,7 +3428,7 @@ export default function PrivateBookingDetailClient({
 
                   if (alreadyInvoiced) {
                     return (
-                      <div className="rounded-lg bg-surface-2 px-4 py-3">
+                      <div className="rounded-lg bg-surface-2 px-3 py-2">
                         <p className="text-sm font-medium text-text">
                           {booking.invoice_sent_at
                             ? `Invoice sent ${formatDateFull(booking.invoice_sent_at)}`
@@ -3475,7 +3478,7 @@ export default function PrivateBookingDetailClient({
                         type="button"
                         onClick={handleOpenInvoiceModal}
                         disabled={Boolean(blockedReason)}
-                        className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <div className="flex items-center">
                           <DocumentIcon className="h-5 w-5 mr-3 text-primary" />
@@ -3544,12 +3547,12 @@ export default function PrivateBookingDetailClient({
         </div>
       </div>
 
-      {booking.invoice_id && canViewPricing && <div className="mt-8 space-y-6">
+      {booking.invoice_id && canViewPricing && <div className="mt-4 space-y-4">
         <PrivateBookingBilling bookingId={bookingId} canIssue={canInvoice} canRecordPayments={canManageDeposits} canAddExtras={['confirmed', 'completed'].includes(booking.status)} onChanged={refreshBooking} />
         <PrivateBookingReceiptPanel bookingId={bookingId} canGenerate={canInvoice} />
       </div>}
 
-      <Section id="audit-trail" title="Audit Trail" className="mt-8">
+      <Section id="audit-trail" title="Audit Trail" className="mt-4">
         <Card>
           {auditTrail.length === 0 ? (
             <EmptyState
@@ -3558,7 +3561,7 @@ export default function PrivateBookingDetailClient({
               description="Updates and actions for this booking will appear here."
             />
           ) : (
-            <ul className="space-y-6">
+            <ul className="space-y-4">
               {auditTrail.map((entry) => {
                 const details = getAuditDetails(entry)
                 return (
