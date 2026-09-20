@@ -55,12 +55,12 @@
   --color-on-dark-border: rgb(255 255 255 / 0.12);
 
   /* Sidebar: the app shell only. Buttons elsewhere use primary. */
-  --color-sidebar: #23252E;
-  --color-sidebar-fg: var(--color-on-dark);
-  --color-sidebar-fg-muted: var(--color-on-dark-muted);
-  --color-sidebar-active-bg: var(--color-primary);
-  --color-sidebar-hover-bg: var(--color-on-dark-hover);
-  --color-sidebar-border: var(--color-on-dark-border);
+  --color-sidebar: var(--color-brand-500);
+  --color-sidebar-fg: var(--color-text-strong);
+  --color-sidebar-fg-muted: var(--color-text);
+  --color-sidebar-active-bg: var(--color-brand-200);
+  --color-sidebar-hover-bg: var(--color-brand-300);
+  --color-sidebar-border: var(--color-brand-700);
 
   /* Status. The base colour is for icons, dots, fills and borders; small text
      uses the -fg shade (success 3.3:1, warning 3.2:1 and info 4.1:1 fail as text). */
@@ -382,7 +382,7 @@ nav[aria-label="Mobile navigation"] {
 .ds-nav-link {
   display: flex;
   align-items: center;
-  min-height: 24px;
+  min-height: 30px;
   margin-inline: 6px;
   padding: 1px 8px;
   gap: 8px;

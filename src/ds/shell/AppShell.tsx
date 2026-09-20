@@ -8,7 +8,6 @@ import { FohClockBand } from './FohClockBand'
 import { MobileBottomNav, MobileDrawer, MobileTopbar } from './MobileChrome'
 import { NavCountsProvider } from './NavCountsContext'
 import { cn } from '@/lib/utils'
-import { NavigationSearch } from './NavigationSearch'
 import { ShortcutPicker } from './ShortcutPicker'
 import { useNavigationPreferences } from './useNavigationPreferences'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -86,8 +85,6 @@ export function AppShell({
         <div className="contents print:hidden">
         <Sidebar
           navGroups={navGroups}
-          pinned={preferences.pinned}
-          onPinnedChange={preferences.setPinned}
           collapsedGroups={preferences.collapsedGroups}
           onToggleGroup={toggleGroup}
           shortcuts={shortcutGroups}
@@ -115,7 +112,6 @@ export function AppShell({
         />
       )}
 
-      {showSidebar && !fohMode && <NavigationSearch navGroups={navGroups} onOpen={closeMobile} />}
 
       {/* Main content area */}
       <div className="flex-1 min-w-0 flex flex-col max-shell:min-h-0 print:block">

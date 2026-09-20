@@ -1,0 +1,24 @@
+# Navigation corrections, 20 September 2026
+
+Owner-requested changes: hover expansion and mouse-out dismissal; no navigation search; original production groups and item order; orange as the dominant application colour; more room between icons.
+
+## Changes
+
+- src/ds/shell/Sidebar.tsx: open on pointer entry, retain selection dismissal and keyboard support, remove search, use the restored Admin footer group and keep the logo beside the venue name.
+- src/ds/shell/AppShell.tsx: remove the search dialog and pin-open controls so saved pin state cannot prevent mouse-out dismissal.
+- src/ds/shell/MobileChrome.tsx: remove the search button.
+- src/ds/shell/SidebarNav.tsx: NAV_GROUPS copied exactly from fetched origin/main, 35fd2fee. Overview, Operations, Staff, Finance and Admin retain their original links and permission gates.
+- src/app/globals.css: supplied orange sidebar with dark text and peach highlights; rows increased from 24px to 30px. Primary actions retain the supplied deep orange with white labels.
+- src/ds/shell/NavigationSearch.tsx and its co-located test removed with the unwanted feature.
+- tests/components/Sidebar.test.tsx: hover entry/exit regression, including focus retained on a link and search absent.
+- src/ds/shell/__tests__/SidebarNav.test.tsx: expect restored group labels.
+
+## Deliberately unchanged
+
+Business routes, authorisation, data, guest branding, fonts, main page layouts, user footer and shortcuts. No migration, push or deployment.
+
+## Verification
+
+The actual signed-in Firefox dashboard on port 3000 shows an orange rail with spaced, centred icons. Entering an empty area of the rail opens it; leaving for the main page hides it. The expanded view shows the restored groups, no search and no pin control. Logo and venue name share one row. Served CSS confirms the orange sidebar token and 30px rows.
+
+Focused tests: 101 passed in London. Lint and uncached typecheck passed. Build runs from an isolated source copy so it cannot replace the development server output. The isolated production build exited 0. Full London suite: 1,009 files passed, 9,852 tests passed and two existing skips. Focused UTC suite: 101 passed. The build retains the existing spacing-* CSS warning from a documentation example.

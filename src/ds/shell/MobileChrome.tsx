@@ -44,14 +44,6 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
         <span className="truncate text-base font-bold tracking-normal">The Anchor</span>
       </Link>
 
-      <button
-        type="button"
-        className="grid h-10 w-10 place-items-center rounded-md text-sidebar-fg transition-colors active:bg-on-dark-hover focus-visible:outline-hidden focus-visible:shadow-ring"
-        aria-label="Search"
-        onClick={() => window.dispatchEvent(new CustomEvent('open-global-search'))}
-      >
-        <Icon name="search" size={20} />
-      </button>
 
       {/* This was a bell that showed an unread dot permanently and linked to the
           dashboard, so it signalled "something is waiting" whether or not
