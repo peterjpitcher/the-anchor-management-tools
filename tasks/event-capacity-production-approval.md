@@ -10,11 +10,11 @@ Migration name: **event_physical_capacity**.
 
 Exact SQL: [20260920200647_event_physical_capacity.sql](../supabase/migrations/20260920200647_event_physical_capacity.sql).
 
-SHA-256: `5ab02eb13c5716e507057671f8da9710f4be129d65c6e3ba287b35fb733b8283`.
+SHA-256: `7a17b0891fda382138ebb4ae19ed516ad1a6dd6c6691fc552fe3c53eba450b4b`.
 
 Exact rollback SQL: [event-capacity-rollback.sql](event-capacity-rollback.sql).
 
-Rollback SHA-256: `73294e9fb81e5d8caca22fcf91726c15da5f02d572e074d3d889b0f702f6e493`.
+Rollback SHA-256: `346a777ed19c054d28e7eca8e4adbc02cb6b3f87c193485a51bf55af440fa4d8`.
 
 [Database validation and complete eight-event change table](event-capacity-validation.md) records the live schema checks, affected objects, grants, row estimates, test output and rollback limits. The exact SQL above is the approval scope, not a future revised draft.
 
@@ -22,7 +22,7 @@ Rollback SHA-256: `73294e9fb81e5d8caca22fcf91726c15da5f02d572e074d3d889b0f702f6e
 
 Table events use physical tables, communal events use physical seats plus an explicit standing ticket allowance, and general admission retains its numeric ticket limit. Mixed is removed from new-event choices; existing mixed events remain supported as table bookings. New communal events start at zero standing tickets. Guest standing becomes available only once seated places are exhausted, and no seated request silently becomes standing.
 
-Existing booking, allocation and payment rows are not migrated. Existing manually smaller seated limits remain in force and read-only for compatibility. Eight upcoming communal events get their current inferred standing allowance made explicit: seven keep 11 standing tickets; the Christmas tasting keeps zero. The full list is in the linked validation record. These figures preserve current system availability; they are not a new assessment of venue occupancy or standing space.
+Existing booking, allocation and payment rows are not migrated. Existing manually smaller seated limits remain in force and read-only for compatibility. Eight upcoming communal events get their current inferred standing allowance made explicit: six keep 11 standing tickets; the charity quiz keeps one; the Christmas tasting keeps zero. The full list is in the linked validation record. These figures preserve current system availability; they are not a new assessment of venue occupancy or standing space.
 
 ## Risks and mitigations
 
@@ -101,3 +101,9 @@ If deployment fails after database application, the old app remains compatible w
 - Ordinary table-booking core, private-booking rules, payment integrations and customer communication templates.
 - Existing event rescheduling behaviour and historical Mixed records.
 - Venue occupancy and standing-space limits; no new venue limit has been invented.
+
+## Approval-time recheck
+
+The pre-apply recheck found the charity quiz now has stored capacity 50 and seated capacity 50, with 49 seated guests and one inferred standing place. The previously approved 11-place backfill would fail its guard. No migration was applied. This revised packet preserves one standing place and the current seated limit. All twelve original live function definitions still match the captured rollback (excluding the statement terminator). Production history remains at 20260918160300. The exact revised SQL and rollback require fresh approval.
+
+The revised isolated PostgreSQL suite passed, including the one-place quiz freeze, preservation guards, all four concurrency combinations and exact rollback. Application code is unchanged from the previously validated build.

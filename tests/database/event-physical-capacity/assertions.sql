@@ -9,7 +9,7 @@ SELECT pg_temp.assert_ok(NOT EXISTS (
  EXCEPT SELECT 'payments',to_jsonb(p) FROM payments p)
 ), 'migration preserves every existing booking, allocation and payment byte for byte');
 SELECT pg_temp.assert_ok((SELECT count(*) FROM bookings)=1 AND (SELECT count(*) FROM payments)=1 AND (SELECT count(*) FROM event_communal_seat_allocations)=1,'migration does not add historical records');
-SELECT pg_temp.assert_ok((SELECT count(*) FROM events WHERE standing_capacity=11)=7,'seven existing allowances frozen at 11');
+SELECT pg_temp.assert_ok((SELECT count(*) FROM events WHERE standing_capacity=11)=6,'six existing allowances frozen at 11');
 SELECT pg_temp.assert_ok((SELECT seated_capacity=25 AND standing_capacity=0 FROM events WHERE id='5bd854ce-48e7-4ca8-8e7c-c52cc7ec1e65'),'tasting cap of 25 preserved');
 UPDATE tables SET capacity=CASE table_number WHEN '3' THEN 2 ELSE 4 END;
 INSERT INTO events(id,name,date,time,start_datetime,duration_minutes,capacity,booking_mode,payment_mode,booking_open,event_status) VALUES
@@ -171,4 +171,7 @@ DO $$ DECLARE r jsonb; BEGIN
  PERFORM pg_temp.assert_ok((SELECT count(*)=2 FROM booking_table_assignments WHERE table_booking_id=(r->>'table_booking_id')::uuid),'both joined physical tables assigned');
 END $$;
 SELECT 'All event physical-capacity assertions passed' AS result;
+
+SELECT pg_temp.assert_ok((SELECT standing_capacity=1 FROM events WHERE id='e9e84ee8-c59b-4f93-80f6-7e7961a03240'),'quiz current standing allowance preserved at one');
+
 ROLLBACK;

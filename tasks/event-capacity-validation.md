@@ -5,9 +5,9 @@ Status: local draft only. No production writes or migration application occurred
 ## Exact files
 
 - Migration: `supabase/migrations/20260920200647_event_physical_capacity.sql`
-- SHA-256: `5ab02eb13c5716e507057671f8da9710f4be129d65c6e3ba287b35fb733b8283`
+- SHA-256: `7a17b0891fda382138ebb4ae19ed516ad1a6dd6c6691fc552fe3c53eba450b4b`
 - Rollback: `tasks/event-capacity-rollback.sql`
-- SHA-256: `73294e9fb81e5d8caca22fcf91726c15da5f02d572e074d3d889b0f702f6e493`
+- SHA-256: `346a777ed19c054d28e7eca8e4adbc02cb6b3f87c193485a51bf55af440fa4d8`
 
 ## Changed objects
 
@@ -32,7 +32,7 @@ Only the following eight event `standing_capacity` values are changed from null 
 | c3ac7e18-e562-4ef8-bea7-cae29f6e96ac | Screams & Soundtracks: Classic Horror Music Bingo | 2026-10-16 | null | 11 |
 | c3e9fbbd-df4a-41f2-a1c6-8194a5979735 | Sequins & Showstoppers: Strictly-Season Music Bingo | 2026-11-13 | null | 11 |
 | 9b8f85f8-c5cc-4956-ad1f-72f569e7fc4a | Sleigh My Name: Festive Music Bingo | 2026-12-11 | null | 11 |
-| e9e84ee8-c59b-4f93-80f6-7e7961a03240 | STANDING ROOM ONLY! Lovely Jubbly: Only Fools and Horses Charity Quiz Night | 2026-09-25 | null | 11 |
+| e9e84ee8-c59b-4f93-80f6-7e7961a03240 | STANDING ROOM ONLY! Lovely Jubbly: Only Fools and Horses Charity Quiz Night | 2026-09-25 | null | 1 |
 
 ## Preservation and locking
 
@@ -71,3 +71,9 @@ The fixture embeds actual live event functions, the real physical table picker a
 Existing waitlist holds count requested covers rather than reserving specific tables across all events and ordinary bookings. An offer can therefore lose suitable physical space before acceptance. Acceptance now rechecks and allocates atomically and fails without creating a seatless booking, preserving the offer/token/hold until expiry on failure. Guaranteed physical waitlist reservations require a separate allocation model and are deliberately outside this change.
 
 Rollback restores the exact captured live function definitions and the eight original null values. It aborts if a frozen standing allowance has since been edited. It preserves booking and payment rows created after release. Restoring the older booking rules is a behavioural rollback and should be reviewed against any later configuration changes.
+
+## Approval-time recheck
+
+The pre-apply recheck found the charity quiz now has stored capacity 50 and seated capacity 50, with 49 seated guests and one inferred standing place. The previously approved 11-place backfill would fail its guard. No migration was applied. This revised packet preserves one standing place and the current seated limit. All twelve original live function definitions still match the captured rollback (excluding the statement terminator). Production history remains at 20260918160300. The exact revised SQL and rollback require fresh approval.
+
+The revised isolated PostgreSQL suite passed, including the one-place quiz freeze, preservation guards, all four concurrency combinations and exact rollback. Application code is unchanged from the previously validated build.

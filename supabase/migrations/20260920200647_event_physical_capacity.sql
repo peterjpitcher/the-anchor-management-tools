@@ -25,7 +25,7 @@ BEGIN
 ('c3ac7e18-e562-4ef8-bea7-cae29f6e96ac'::uuid, 11),
 ('c3e9fbbd-df4a-41f2-a1c6-8194a5979735'::uuid, 11),
 ('9b8f85f8-c5cc-4956-ad1f-72f569e7fc4a'::uuid, 11),
-('e9e84ee8-c59b-4f93-80f6-7e7961a03240'::uuid, 11)
+('e9e84ee8-c59b-4f93-80f6-7e7961a03240'::uuid, 1)
   ) AS frozen(id, standing) LOOP
     PERFORM 1 FROM public.events WHERE id = r.id AND booking_mode = 'communal'
       AND standing_capacity IS NULL FOR UPDATE;
