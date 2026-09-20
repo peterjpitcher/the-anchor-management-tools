@@ -56,10 +56,10 @@
 
   /* Sidebar: the app shell only. Buttons elsewhere use primary. */
   --color-sidebar: var(--color-brand-500);
-  --color-sidebar-fg: var(--color-text-strong);
-  --color-sidebar-fg-muted: var(--color-text);
+  --color-sidebar-fg: var(--color-on-dark);
+  --color-sidebar-fg-muted: var(--color-on-dark);
   --color-sidebar-active-bg: var(--color-brand-200);
-  --color-sidebar-hover-bg: var(--color-brand-300);
+  --color-sidebar-hover-bg: var(--color-brand-600);
   --color-sidebar-border: var(--color-brand-700);
 
   /* Status. The base colour is for icons, dots, fills and borders; small text

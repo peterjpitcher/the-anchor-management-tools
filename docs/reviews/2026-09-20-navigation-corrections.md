@@ -22,3 +22,7 @@ Business routes, authorisation, data, guest branding, fonts, main page layouts, 
 The actual signed-in Firefox dashboard on port 3000 shows an orange rail with spaced, centred icons. Entering an empty area of the rail opens it; leaving for the main page hides it. The expanded view shows the restored groups, no search and no pin control. Logo and venue name share one row. Served CSS confirms the orange sidebar token and 30px rows.
 
 Focused tests: 101 passed in London. Lint and uncached typecheck passed. Build runs from an isolated source copy so it cannot replace the development server output. The isolated production build exited 0. Full London suite: 1,009 files passed, 9,852 tests passed and two existing skips. Focused UTC suite: 101 passed. The build retains the existing spacing-* CSS warning from a documentation example.
+
+## White foreground on orange
+
+Owner correction: src/app/globals.css now makes both normal and secondary navigation foregrounds white, including headings and footer controls. Orange hover rows keep white foregrounds. SidebarNav.tsx and MobileChrome.tsx retain dark text and icons on pale selected rows; pale count badges also retain dark text. Other files and behaviour are unchanged. Verified the actual Firefox rota navigation after restarting the dev server: white text and icons on orange, dark Rota text on its pale active row. Targeted lint and all 42 shell/guard tests passed. Local main only.
