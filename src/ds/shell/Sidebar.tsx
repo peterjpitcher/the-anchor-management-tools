@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
-import { PanelLeft, Pin, PinOff } from 'lucide-react'
+import { Pin, PinOff } from 'lucide-react'
 import { SidebarNav } from './SidebarNav'
 import { UserFooter } from './UserFooter'
 import type { NavGroup } from './SidebarNav'
@@ -53,20 +53,25 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
             onPinnedChange?.(false)
           }
         }}>
-        <div className="ds-sidebar-brand flex h-12 shrink-0 items-center text-sidebar-fg">
-          <button type="button" data-menu-toggle className="ds-brand-icon h-12 hover:bg-sidebar-hover-bg"
-            aria-label={open ? 'Collapse menu' : 'Expand menu'} aria-expanded={open}
-            title={open ? 'Collapse menu' : 'Expand menu'}
-            onClick={() => { if (pinned) onPinnedChange?.(false); setExpanded(!open) }}>
-            <PanelLeft size={20} aria-hidden="true" />
-          </button>
-          <span className="ds-label min-w-0 flex-1 pr-2"><img src="/orange-jelly/logo-horizontal-white.png" alt="Orange Jelly" className="h-10 w-full object-contain" /></span>
-          {onPinnedChange && (
-            <button type="button" className="ds-label mr-2 grid h-6 w-6 place-items-center rounded-sm hover:bg-sidebar-hover-bg"
-              aria-label={pinned ? 'Unpin menu' : 'Pin menu open'} aria-pressed={pinned}
-              title={pinned ? 'Unpin menu' : 'Pin menu open'}
-              onClick={() => { setExpanded(false); onPinnedChange(!pinned) }}>
-              {pinned ? <PinOff size={14} /> : <Pin size={14} />}
+        <div className="ds-sidebar-brand shrink-0 text-sidebar-fg">
+          {open ? (
+            <div className="px-2 pt-2">
+              <img src="/orange-jelly/logo-horizontal-white.png" alt="Orange Jelly" className="h-auto w-full" />
+              {onPinnedChange && (
+                <div className="flex justify-end py-1">
+                  <button type="button" className="grid h-6 w-6 place-items-center rounded-sm hover:bg-sidebar-hover-bg"
+                    aria-label={pinned ? 'Unpin menu' : 'Pin menu open'} aria-pressed={pinned}
+                    title={pinned ? 'Unpin menu' : 'Pin menu open'}
+                    onClick={() => { setExpanded(false); onPinnedChange(!pinned) }}>
+                    {pinned ? <PinOff size={16} /> : <Pin size={16} />}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button type="button" className="grid h-12 w-full place-items-center hover:bg-sidebar-hover-bg"
+              aria-label="Expand menu" aria-expanded={false} onClick={() => setExpanded(true)}>
+              <img src="/orange-jelly/logo-icon-white.png" alt="Orange Jelly" className="h-8 w-8 object-contain" />
             </button>
           )}
         </div>
