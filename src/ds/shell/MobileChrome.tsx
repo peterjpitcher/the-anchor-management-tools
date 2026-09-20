@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import type { ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
 import { Avatar } from '@/ds/primitives/Avatar'
@@ -62,14 +61,13 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
   )
 }
 
-export function MobileBottomNav({ navGroups, shortcuts = [], onMore }: { navGroups: NavGroup[]; shortcuts?: NavItem[]; onMore: () => void }) {
+export function MobileBottomNav({ navGroups, onMore }: { navGroups: NavGroup[]; onMore: () => void }) {
   const pathname = usePathname() ?? '/'
   const { unreadCount, counts } = useNavCounts()
   const availableIds = new Set(navGroups.flatMap((group) => group.items.map((item) => item.id)))
   const defaults = MOBILE_TABS.filter((tab) => availableIds.has(tab.id))
   // Restricted staff still get useful destinations if none of the standard tabs apply.
-  const tabs = shortcuts.length ? shortcuts.filter(tab => availableIds.has(tab.id)).slice(0, 4)
-    : defaults.length ? defaults : navGroups.flatMap(group => group.items).slice(0, 4)
+  const tabs = defaults.length ? defaults : navGroups.flatMap(group => group.items).slice(0, 4)
   const primaryActive = tabs.some((tab) => isActiveNavPath(pathname, tab.href))
 
   return (
@@ -131,7 +129,6 @@ export function MobileDrawer({
   userRole,
   onSignOut,
   isSigningOut,
-  shortcutControl,
 }: {
   open: boolean
   onClose: () => void
@@ -140,7 +137,6 @@ export function MobileDrawer({
   userRole: string
   onSignOut: () => void
   isSigningOut: boolean
-  shortcutControl?: ReactNode
 }) {
   const pathname = usePathname() ?? '/'
   const { unreadCount, counts } = useNavCounts()
@@ -164,7 +160,6 @@ export function MobileDrawer({
         </div>
 
         <div className="flex-1 overflow-y-auto px-2.5 py-1">
-          <div className="ds-shortcut-control">{shortcutControl}</div>
           {navGroups.map((group, groupIndex) => (
             <div key={groupIndex}>
               {group.label ? (

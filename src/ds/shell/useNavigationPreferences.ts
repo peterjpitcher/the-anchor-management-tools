@@ -4,17 +4,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 interface Preferences {
   pinned: boolean
-  shortcutIds: string[]
   collapsedGroups: string[]
 }
 
 interface NavigationPreferences extends Preferences {
   setPinned: (value: boolean) => void
-  setShortcutIds: (ids: string[]) => void
   setCollapsedGroups: (groups: string[]) => void
 }
 
-const defaults = (): Preferences => ({ pinned: false, shortcutIds: [], collapsedGroups: ['Admin'] })
+const defaults = (): Preferences => ({ pinned: false, collapsedGroups: ['Admin'] })
 const stringList = (value: unknown, limit: number): string[] => Array.isArray(value)
   ? [...new Set(value.filter((item): item is string => typeof item === 'string' && item.length > 0))].slice(0, limit)
   : []
@@ -26,7 +24,6 @@ function readPreferences(key: string): Preferences {
     const record = value as Record<string, unknown>
     return {
       pinned: record.pinned === true,
-      shortcutIds: stringList(record.shortcutIds, 4),
       // Apply the new default once to older saved preferences, preserving other choices.
       collapsedGroups: record.version === 2
         ? stringList(record.collapsedGroups, 30)
@@ -65,7 +62,6 @@ export function useNavigationPreferences(storageKey: string): NavigationPreferen
   return {
     ...(saved?.key === storageKey ? saved.value : defaults()),
     setPinned: useCallback((pinned: boolean) => update({ pinned }), [update]),
-    setShortcutIds: useCallback((ids: string[]) => update({ shortcutIds: stringList(ids, 4) }), [update]),
     setCollapsedGroups: useCallback((groups: string[]) => update({ collapsedGroups: stringList(groups, 30) }), [update]),
   }
 }

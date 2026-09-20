@@ -408,14 +408,10 @@ nav[aria-label="Mobile navigation"] {
   color: var(--color-sidebar-fg-muted);
   text-align: left;
 }
-.ds-sidebar[data-expanded="false"] .ds-group-heading,
-.ds-sidebar[data-expanded="false"] .ds-shortcuts,
-.ds-sidebar[data-expanded="false"] .ds-shortcut-control { display: none; }
+.ds-sidebar[data-expanded="false"] .ds-group-heading { display: none; }
 .ds-sidebar[data-expanded="true"] .ds-nav-group[data-collapsed="true"] .ds-group-items { display: none; }
 .ds-sidebar[data-expanded="false"] .ds-sidebar-footer { justify-content: center; padding: 2px 0; }
 .ds-sidebar[data-expanded="true"] .ds-sidebar-footer { padding: 6px 12px; }
-.ds-shortcut-control > button { color: var(--color-sidebar-fg-muted); margin-inline: 6px; }
-.ds-shortcut-control > button:hover { background: var(--color-sidebar-hover-bg); }
 .ds-sidebar :is(a, button):focus-visible { outline: 2px solid var(--color-sidebar-fg); outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) { .ds-sidebar { transition: none; } }
 

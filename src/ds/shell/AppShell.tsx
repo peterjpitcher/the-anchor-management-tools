@@ -8,7 +8,6 @@ import { FohClockBand } from './FohClockBand'
 import { MobileBottomNav, MobileDrawer, MobileTopbar } from './MobileChrome'
 import { NavCountsProvider } from './NavCountsContext'
 import { cn } from '@/lib/utils'
-import { ShortcutPicker } from './ShortcutPicker'
 import { useNavigationPreferences } from './useNavigationPreferences'
 import { usePermissions } from '@/contexts/PermissionContext'
 
@@ -43,7 +42,6 @@ export function AppShell({
   isSigningOut,
 }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [shortcutPickerOpen, setShortcutPickerOpen] = useState(false)
   const { hasPermission } = usePermissions()
   const navGroups = useMemo(
     () => filterNavGroupsForPermissions(NAV_GROUPS, hasPermission, { isSuperAdmin }),
@@ -51,18 +49,11 @@ export function AppShell({
   )
 
   const preferences = useNavigationPreferences(`anchor-navigation:${userId ?? userName}`)
-  const availableItems = navGroups.flatMap(group => group.items)
-  const shortcuts = preferences.shortcutIds.flatMap(id => {
-    const item = availableItems.find(candidate => candidate.id === id)
-    return item ? [item] : []
-  })
-  const shortcutGroups = shortcuts.length ? [{ label: 'Your shortcuts', items: shortcuts }] : []
   const toggleGroup = (label: string) => preferences.setCollapsedGroups(
     preferences.collapsedGroups.includes(label)
       ? preferences.collapsedGroups.filter(group => group !== label)
       : [...preferences.collapsedGroups, label],
   )
-  const shortcutControl = <ShortcutPicker navGroups={navGroups} shortcutIds={preferences.shortcutIds} onChange={preferences.setShortcutIds} onOpenChange={setShortcutPickerOpen} />
 
   const openMobile = useCallback(() => setMobileOpen(true), [])
   const closeMobile = useCallback(() => setMobileOpen(false), [])
@@ -89,9 +80,6 @@ export function AppShell({
           onPinnedChange={preferences.setPinned}
           collapsedGroups={preferences.collapsedGroups}
           onToggleGroup={toggleGroup}
-          shortcuts={shortcutGroups}
-          shortcutControl={shortcutControl}
-          shortcutPickerOpen={shortcutPickerOpen}
           userName={userName}
           userRole={userRole}
           onSignOut={onSignOut}
@@ -106,7 +94,6 @@ export function AppShell({
           open={mobileOpen}
           onClose={closeMobile}
           navGroups={navGroups}
-          shortcutControl={shortcutControl}
           userName={userName}
           userRole={userRole}
           onSignOut={onSignOut}
@@ -151,7 +138,7 @@ export function AppShell({
 
       {showSidebar && !fohMode && (
         <div className="contents print:hidden">
-          <MobileBottomNav navGroups={navGroups} shortcuts={shortcuts} onMore={openMobile} />
+          <MobileBottomNav navGroups={navGroups} onMore={openMobile} />
         </div>
       )}
     </div>

@@ -36,3 +36,11 @@ Updated useNavigationPreferences.ts to default Admin closed and apply that defau
 Sidebar.tsx now gives the supplied white logo the full expanded width, with 8px side padding and its natural aspect ratio. A simple pin below the logo replaces the expanded collapse control. The collapsed rail uses the white logo mark. AppShell.tsx reconnects the saved pin preference so pinning keeps the menu open on mouse-out and navigation, and unpinning returns to hover behaviour. Tests in tests/components/Sidebar.test.tsx cover pin, mouse-out and unpin.
 
 Verified on the actual Firefox booking page: full-width wordmark, Pin menu open changed to Unpin menu, the menu remained open after moving to the page, and unpinning restored Expand menu. Test pin preference restored to unpinned after verification. Targeted lint and the shell/guard suite passed. No other application files, mobile navigation, logos, colours, business logic or data changed. Local main only.
+
+## Remove shortcuts option
+Removed the chooser and duplicated shortcut links from desktop and mobile navigation. Mobile tabs use the standard permitted destinations again. Old saved shortcut IDs are ignored; pin and collapsed-group preferences remain intact.
+
+Changed: AppShell.tsx, Sidebar.tsx, MobileChrome.tsx, useNavigationPreferences.ts, globals.css, NavigationPreferences.test.tsx and Sidebar.test.tsx. Deleted ShortcutPicker.tsx. Deliberately unchanged: SidebarNav.tsx (menu ordering and permissions), logo assets, palette tokens and business pages. The pre-existing local logo-padding adjustment in Sidebar.tsx is preserved outside this commit.
+
+Validation: 40 shell, sidebar and design-token tests passed in London and UTC; shell lint and clean TypeScript check passed. In Firefox on port 3000, the expanded orange menu shows Overview immediately beneath the logo and pin. Neither Choose shortcuts nor Your shortcuts appears.
+Isolated production build passed using placeholder environment settings and an 8 GB Node heap. No production credentials or deployment were needed.
