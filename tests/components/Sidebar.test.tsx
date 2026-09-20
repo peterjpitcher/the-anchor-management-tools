@@ -74,13 +74,6 @@ describe('transient menu expansion', () => {
     expect(panel).toHaveAttribute('data-expanded', 'true')
   })
 
-  it('respects deliberate pin-open mode after selection', () => {
-    const { container } = render(<Sidebar navGroups={NAV_GROUPS} pinned onPinnedChange={vi.fn()} />)
-    fireEvent.click(screen.getByRole('link', { name: 'Table Bookings' }))
-    expect(container.querySelector('.ds-sidebar')).toHaveAttribute('data-expanded', 'true')
-    expect(screen.getByRole('button', { name: 'Unpin menu' })).toHaveAttribute('aria-pressed', 'true')
-  })
-
   it('preserves native modified clicks without dismissing the menu', () => {
     const { container } = render(<Sidebar navGroups={NAV_GROUPS} />)
     const link = screen.getByRole('link', { name: 'Events' })
@@ -102,22 +95,4 @@ describe('hover navigation', () => {
     expect(panel).toHaveAttribute('data-expanded', 'false')
     expect(screen.queryByRole('button', { name: 'Find or go to' })).not.toBeInTheDocument()
   })
-})
-
-
-it('pins across mouse-out and restores hover mode when unpinned', () => {
-  const onPinnedChange = vi.fn()
-  const { container, rerender } = render(<Sidebar navGroups={NAV_GROUPS} onPinnedChange={onPinnedChange} />)
-  const panel = container.querySelector('.ds-sidebar') as HTMLElement
-  fireEvent.pointerEnter(panel, { pointerType: 'mouse' })
-  expect(screen.queryByRole('button', { name: 'Collapse menu' })).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Pin menu open' }))
-  expect(onPinnedChange).toHaveBeenLastCalledWith(true)
-  rerender(<Sidebar navGroups={NAV_GROUPS} pinned onPinnedChange={onPinnedChange} />)
-  fireEvent.pointerLeave(panel)
-  expect(panel).toHaveAttribute('data-expanded', 'true')
-  fireEvent.click(screen.getByRole('button', { name: 'Unpin menu' }))
-  expect(onPinnedChange).toHaveBeenLastCalledWith(false)
-  rerender(<Sidebar navGroups={NAV_GROUPS} pinned={false} onPinnedChange={onPinnedChange} />)
-  expect(panel).toHaveAttribute('data-expanded', 'false')
 })

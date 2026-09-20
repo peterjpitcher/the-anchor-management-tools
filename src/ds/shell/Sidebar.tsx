@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
-import { Pin, PinOff } from 'lucide-react'
 import { SidebarNav } from './SidebarNav'
 import { UserFooter } from './UserFooter'
 import type { NavGroup } from './SidebarNav'
@@ -14,19 +13,17 @@ export interface SidebarProps {
   onSignOut?: () => void
   isSigningOut?: boolean
   onNavigate?: () => void
-  pinned?: boolean
-  onPinnedChange?: (pinned: boolean) => void
   collapsedGroups?: string[]
   onToggleGroup?: (label: string) => void
   children?: ReactNode
 }
 
 export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut, onNavigate,
-  pinned = false, onPinnedChange, collapsedGroups, onToggleGroup, children }: SidebarProps) {
+  collapsedGroups, onToggleGroup, children }: SidebarProps) {
   const [expanded, setExpanded] = useState(false)
   const pathname = usePathname()
   useEffect(() => setExpanded(false), [pathname])
-  const open = pinned || expanded
+  const open = expanded
   const navigate = () => {
     // Focus remains on the link for keyboard users, but no longer holds the rail open.
     setExpanded(false)
@@ -36,7 +33,7 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
   const settingsGroups = navGroups?.filter(group => group.label === 'Admin')
 
   return (
-    <div className="ds-sidebar-rail relative hidden shell:block" data-pinned={pinned}>
+    <div className="ds-sidebar-rail relative hidden shell:block">
       <div className="ds-sidebar flex h-full flex-col bg-sidebar" data-expanded={open}
         onPointerEnter={event => { if (event.pointerType !== 'touch') setExpanded(true) }}
         onPointerLeave={() => { setExpanded(false) }}
@@ -47,23 +44,13 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
           if (event.key === 'Tab') setExpanded(true)
           if (event.key === 'Escape') {
             setExpanded(false)
-            onPinnedChange?.(false)
           }
         }}>
         <div className="ds-sidebar-brand shrink-0 text-sidebar-fg">
           {open ? (
             <div className="px-2 pt-2">
               <img src="/orange-jelly/logo-horizontal-white.png" alt="Orange Jelly" className="h-auto w-full" />
-              {onPinnedChange && (
-                <div className="flex justify-end py-1">
-                  <button type="button" className="grid h-6 w-6 place-items-center rounded-sm hover:bg-sidebar-hover-bg"
-                    aria-label={pinned ? 'Unpin menu' : 'Pin menu open'} aria-pressed={pinned}
-                    title={pinned ? 'Unpin menu' : 'Pin menu open'}
-                    onClick={() => { setExpanded(false); onPinnedChange(!pinned) }}>
-                    {pinned ? <PinOff size={16} /> : <Pin size={16} />}
-                  </button>
-                </div>
-              )}
+
             </div>
           ) : (
             <button type="button" className="grid h-12 w-full place-items-center hover:bg-sidebar-hover-bg"
