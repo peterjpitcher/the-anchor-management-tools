@@ -108,7 +108,7 @@ describe('filterNavGroupsForPermissions', () => {
     const filtered = filterNavGroupsForPermissions(NAV_GROUPS, (module) => allowed.has(module))
 
     // Settings survives on "My Profile", which every user gets (no permission gate).
-    expect(filtered.map((group) => group.label)).toEqual(['Bookings & events', 'Team', 'Settings'])
+    expect(filtered.map((group) => group.label)).toEqual(['Operations', 'Staff', 'Admin'])
     expect(filtered[0].items.map((i) => i.id)).toEqual(['tables'])
     expect(filtered[1].items.map((i) => i.id)).toEqual(['rota'])
     expect(filtered[2].items.map((i) => i.id)).toEqual(['profile'])

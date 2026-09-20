@@ -124,3 +124,17 @@ describe('shortcut dialog coordination', () => {
     expect(panel).toHaveAttribute('data-expanded', 'false')
   })
 })
+
+
+describe('hover navigation', () => {
+  it('opens on pointer entry and closes on leave even with a focused link', () => {
+    const { container } = render(<Sidebar navGroups={NAV_GROUPS} />)
+    const panel = container.querySelector('.ds-sidebar') as HTMLElement
+    fireEvent.pointerEnter(panel, { pointerType: 'mouse' })
+    expect(panel).toHaveAttribute('data-expanded', 'true')
+    screen.getByRole('link', { name: 'Dashboard' }).focus()
+    fireEvent.pointerLeave(panel, { pointerType: 'mouse' })
+    expect(panel).toHaveAttribute('data-expanded', 'false')
+    expect(screen.queryByRole('button', { name: 'Find or go to' })).not.toBeInTheDocument()
+  })
+})
