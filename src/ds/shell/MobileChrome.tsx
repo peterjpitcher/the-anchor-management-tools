@@ -184,7 +184,7 @@ export function MobileDrawer({
                     className={cn(
                       'flex min-h-8 items-center gap-2 rounded-default px-3 py-1 text-ui font-medium transition-colors focus-visible:outline-hidden focus-visible:shadow-ring',
                       active
-                        ? 'bg-sidebar-active-bg text-sidebar-fg'
+                        ? 'bg-sidebar-active-bg text-text'
                         : 'text-sidebar-fg-muted active:bg-sidebar-hover-bg',
                     )}
                     aria-current={active ? 'page' : undefined}
