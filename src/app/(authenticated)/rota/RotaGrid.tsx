@@ -297,10 +297,10 @@ function SummaryPill({
   }[tone];
 
   return (
-    <div className={`h-full min-w-0 rounded-default border px-2.5 py-1.5 ${toneStyles}`}>
+    <div className={`grid h-full min-w-0 grid-cols-[auto_1fr] items-center gap-x-2 gap-y-0.5 rounded-default border px-2 py-1 ${toneStyles}`}>
       <p className="text-2xs font-medium uppercase leading-none opacity-75">{label}</p>
-      <p className="mt-1 text-sm font-semibold leading-none tabular-nums">{value}</p>
-      {detail && <p className="mt-1 text-meta leading-tight opacity-75">{detail}</p>}
+      <p className="text-right text-sm font-semibold leading-tight tabular-nums">{value}</p>
+      {detail && <p className="col-span-2 text-meta leading-tight opacity-75">{detail}</p>}
     </div>
   );
 }
@@ -347,7 +347,7 @@ function DraggableShiftBlock({
     <div
       ref={setNodeRef}
       style={{ ...colourStyle, transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.3 : 1 }}
-      className={`relative rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${colourClass} px-2 py-1.5 pr-6 text-xs shadow-xs cursor-grab active:cursor-grabbing select-none transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:shadow-sm`}
+      className={`relative rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${colourClass} px-1.5 py-0.5 pr-6 text-xs shadow-xs cursor-grab active:cursor-grabbing select-none transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:shadow-sm`}
       {...attributes}
       {...listeners}
       onClick={onClick}
@@ -385,7 +385,7 @@ function ShiftBlockOverlay({ shift, colour, isDraft }: { shift: RotaShift; colou
       }
     : undefined;
   return (
-    <div style={colourStyle} className={`relative w-32 rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${colour ? '' : deptColour} px-2 py-1.5 pr-6 text-xs shadow-lg opacity-95`}>
+    <div style={colourStyle} className={`relative w-32 rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${colour ? '' : deptColour} px-1.5 py-0.5 pr-6 text-xs shadow-lg opacity-95`}>
       <ShiftAcceptanceIcon shift={shift} />
       {isDraft && (
         <p className={`mb-1 text-2xs font-bold uppercase leading-none ${lightText ? 'text-on-dark' : 'text-warning-fg'}`}>Unpublished</p>
@@ -526,7 +526,7 @@ function DroppableCell({
   const leaveStyle = leaveStatus ? LEAVE_STYLES[leaveStatus] : null;
   const couldntWorkStyle = hasCouldntWork ? COULDNT_WORK_STYLE : null;
   const rejectedShiftStyle = hasRejectedShift ? REJECTED_SHIFT_STYLE : null;
-  const baseClass = 'group/cell relative min-h-[62px] border-r border-border/80 bg-surface px-2 py-1.5 transition-colors';
+  const baseClass = 'group/cell relative min-h-11 border-r border-border/80 bg-surface px-1 py-0.5 transition-colors';
   const overClass = isOver && !disabled ? 'bg-primary-soft ring-1 ring-inset ring-primary/25' : today ? 'bg-primary-soft/45' : '';
 
   return (
@@ -549,7 +549,7 @@ function DroppableCell({
           )}
         </div>
       )}
-      <div className="relative z-10 space-y-1">{children}</div>
+      <div className="relative z-10 space-y-0.5">{children}</div>
       {(onAdd || onBookHoliday || onMarkSick) && (
         <div className="absolute bottom-1 right-1 z-20 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/cell:opacity-100 group-focus-within/cell:opacity-100">
           {onMarkSick && (
@@ -1005,7 +1005,7 @@ export default function RotaGrid({
       : 'info';
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-2">
       <DndContext
         sensors={sensors}
         onDragStart={handleDragStart}
@@ -1015,11 +1015,12 @@ export default function RotaGrid({
           <Card className="min-w-0">
             <CardHeader
               title="Schedule"
+              className="px-3 py-1.5 [&>div:first-child]:flex [&>div:first-child]:flex-wrap [&>div:first-child]:items-baseline [&>div:first-child]:gap-x-2 [&_p]:mt-0"
               subtitle="Weekly assignments grouped by employee and day."
               action={<Badge tone={weekStatusTone}>{weekStatusLabel}</Badge>}
             />
-            <CardBody className="space-y-3 border-b border-border bg-surface px-4 py-3">
-              <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
+            <CardBody className="space-y-2 border-b border-border bg-surface px-3 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     type="button"
@@ -1097,7 +1098,7 @@ export default function RotaGrid({
                 </div>
               </div>
 
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-1">
                 <SummaryPill
                   label="Status"
                   value={weekStatusLabel}
@@ -1201,14 +1202,14 @@ export default function RotaGrid({
             <div className="min-w-[1040px]">
               {/* Header row */}
               <div className="flex border-b border-border bg-surface-2">
-                <div className="sticky left-0 z-30 w-[260px] shrink-0 border-r border-border bg-surface-2 px-4 py-2 text-xs font-semibold text-text-muted">
+                <div className="sticky left-0 z-30 w-[260px] shrink-0 border-r border-border bg-surface-2 px-3 py-1 text-xs font-semibold text-text-muted">
                   Employee
                 </div>
                 <div className="flex-1 grid grid-cols-7">
                   {days.map(d => (
                     <div
                       key={d}
-                      className={`border-r border-border px-2 py-2 text-center text-xs font-semibold last:border-r-0 ${
+                      className={`border-r border-border px-2 py-1 text-center text-xs font-semibold last:border-r-0 ${
                         isToday(d) ? 'bg-primary-soft text-primary-soft-fg' : 'text-text-muted'
                       }`}
                     >
@@ -1314,7 +1315,7 @@ export default function RotaGrid({
 
               {/* Open shifts row */}
               <div className="flex border-b border-warning-border bg-warning-soft/70 transition-colors hover:bg-warning-soft">
-                <div className="sticky left-0 z-20 flex w-[260px] shrink-0 flex-col justify-center border-r border-warning-border bg-warning-soft px-4 py-2">
+                <div className="sticky left-0 z-20 flex w-[260px] shrink-0 flex-col justify-center border-r border-warning-border bg-warning-soft px-3 py-1">
                   <p className="text-xs font-semibold text-warning-fg leading-tight">Open shifts</p>
                   <p className="text-2xs text-warning-fg/75">Available to staff</p>
                 </div>
@@ -1393,7 +1394,7 @@ export default function RotaGrid({
                           return (
                             <div key={emp.employee_id} className="flex border-b border-border bg-surface transition-colors hover:bg-surface-hover/70">
                               {/* Employee name column */}
-                              <div className={`sticky left-0 z-20 flex w-[260px] shrink-0 flex-col justify-center border-r border-l-4 ${empStyle.stripe} border-r-border bg-surface px-4 py-2`}>
+                              <div className={`sticky left-0 z-20 flex w-[260px] shrink-0 flex-col justify-center border-r border-l-4 ${empStyle.stripe} border-r-border bg-surface px-3 py-0.5`}>
                                 <div className="flex items-center gap-1.5 min-w-0">
                                   <p className={`text-xs font-medium leading-tight truncate ${emp.is_active ? 'text-text-strong' : 'text-text-soft'}`}>
                                     {empDisplayName(emp)}
@@ -1419,9 +1420,9 @@ export default function RotaGrid({
                                   ) : 'Former'}
                                 </p>
                                 {periodTotal && (
-                                  <div className="mt-0.5 space-y-0.5">
+                                  <div className="flex items-center gap-2">
                                     {periodMax !== null && (
-                                      <div className="h-1.5 overflow-hidden rounded-full bg-surface-hover" title={`Payroll period hours: ${formatHours(periodTotal.periodHours)} of ${formatHours(periodMax)}`}>
+                                      <div className="h-1 min-w-8 flex-1 overflow-hidden rounded-full bg-surface-hover" title={`Payroll period hours: ${formatHours(periodTotal.periodHours)} of ${formatHours(periodMax)}`}>
                                         <div
                                           className={`h-full rounded-full ${periodBarColour}`}
                                           style={{ width: `${Math.min(periodUsedPercent, 100)}%` }}
@@ -1429,7 +1430,7 @@ export default function RotaGrid({
                                       </div>
                                     )}
                                     {canViewSpend && (
-                                      <p className={`text-2xs truncate ${periodCapacityColour}`}>
+                                      <p className={`shrink-0 text-2xs ${periodCapacityColour}`}>
                                         {formatMoney(periodTotal.estimatedCost)}
                                         {periodTotal.costStatus === 'partial' ? ' · partial rate' : ''}
                                         {periodTotal.costStatus === 'missing_rate' ? ' · missing rate' : ''}
@@ -1528,7 +1529,7 @@ export default function RotaGrid({
       </DndContext>
 
       <Card>
-        <CardBody className="flex flex-wrap items-center gap-3 py-3 text-xs text-text-muted">
+        <CardBody className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 text-xs text-text-muted">
           <span className="flex items-center gap-1.5">
             <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${ROTA_SHIFT_STATUS_CLASSES.pending}`}>
               <ClockIcon className="h-3 w-3" />
