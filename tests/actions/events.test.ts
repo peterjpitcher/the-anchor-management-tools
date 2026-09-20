@@ -196,13 +196,50 @@ describe('Events actions', () => {
 
       mockedEventSchema.safeParse.mockReturnValue({
         success: false,
-        error: { errors: [{ message: 'Name is required' }] },
+        error: { errors: [{ path: ['name'], message: 'Name is required' }] },
       })
 
       const formData = buildFormData({ date: '2026-04-10' })
       const result = await createEvent(formData)
 
-      expect(result).toEqual({ error: 'Name is required' })
+      expect(result).toEqual({
+        error: 'Name: Name is required',
+        fieldErrors: { name: 'Name is required' },
+      })
+      expect(EventService.createEvent).not.toHaveBeenCalled()
+    })
+
+    it('returns field errors for every invalid event field without creating the event', async () => {
+      mockedPermission.mockResolvedValue(true)
+      mockSupabaseClientForEvents()
+
+      const lengthError = 'String must contain at most 300 character(s)'
+      mockedEventSchema.safeParse.mockReturnValue({
+        success: false,
+        error: {
+          errors: [
+            { path: ['accessibility_notes'], message: lengthError },
+            { path: ['short_description'], message: lengthError },
+          ],
+        },
+      })
+
+      const result = await createEvent(buildFormData({
+        name: 'Quiz Night',
+        date: '2026-04-10',
+        accessibility_notes: 'a'.repeat(301),
+        short_description: 'b'.repeat(301),
+      }))
+
+      expect(result).toEqual({
+        error: `Accessibility notes: ${lengthError}; Short description: ${lengthError}`,
+        fieldErrors: {
+          accessibility_notes: lengthError,
+          short_description: lengthError,
+        },
+      })
+      expect(EventService.createEvent).not.toHaveBeenCalled()
+      expect(mockedLogAuditEvent).not.toHaveBeenCalled()
     })
 
     it('should create event successfully and log audit', async () => {
@@ -291,6 +328,39 @@ describe('Events actions', () => {
   // -----------------------------------------------------------------------
 
   describe('updateEvent', () => {
+    it('names the invalid field and preserves all field errors without updating the event', async () => {
+      mockedPermission.mockResolvedValue(true)
+      mockSupabaseClientForEvents()
+
+      const lengthError = 'String must contain at most 300 character(s)'
+      mockedEventSchema.partial.mockReturnValue({
+        safeParse: vi.fn().mockReturnValue({
+          success: false,
+          error: {
+            errors: [
+              { path: ['accessibility_notes'], message: lengthError },
+              { path: ['short_description'], message: lengthError },
+            ],
+          },
+        }),
+      })
+
+      const result = await updateEvent('event-1', buildFormData({
+        accessibility_notes: 'a'.repeat(301),
+        short_description: 'b'.repeat(301),
+      }))
+
+      expect(result).toEqual({
+        error: `Accessibility notes: ${lengthError}; Short description: ${lengthError}`,
+        fieldErrors: {
+          accessibility_notes: lengthError,
+          short_description: lengthError,
+        },
+      })
+      expect(EventService.updateEvent).not.toHaveBeenCalled()
+      expect(mockedLogAuditEvent).not.toHaveBeenCalled()
+    })
+
     it('syncs the Pub Ops aggregate calendar entry after an event reschedule', async () => {
       mockedPermission.mockResolvedValue(true)
       mockSupabaseClientForEvents()

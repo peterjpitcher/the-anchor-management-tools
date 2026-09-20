@@ -65,9 +65,24 @@ const PERFORMER_TYPE_OPTIONS = [
 
 export function EventDrawer({ open, onClose, event, categories, onSave }: EventDrawerProps) {
   const router = useRouter()
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [validationAttempt, setValidationAttempt] = useState(0)
+  const errorSummaryRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (Object.keys(fieldErrors).length) errorSummaryRef.current?.focus()
+  }, [validationAttempt])
   const isEdit = !!event
   const existingPaid = !!event && resolveEventPaymentMode(event) !== 'free'
   const [isPending, startTransition] = useTransition()
+
+  function clearFieldError(field: string): void {
+    setFieldErrors(current => {
+      if (!(field in current)) return current
+      const next = { ...current }
+      delete next[field]
+      return next
+    })
+  }
 
   // ── Basic info ──
   const [name, setName] = useState('')
@@ -154,6 +169,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
   // Initialize form when event changes
   useEffect(() => {
+    setFieldErrors({})
     if (event) {
       setName(event.name || '')
       setDate(event.date || '')
@@ -432,6 +448,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
         : await createEvent(formData)
 
       if ('error' in result && result.error) {
+        setFieldErrors(('fieldErrors' in result ? result.fieldErrors : undefined) ?? {})
+        setValidationAttempt(attempt => attempt + 1)
         toast.error(result.error)
         return
       }
@@ -623,14 +641,25 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       width="640px"
     >
       <div className="flex flex-col gap-6">
+        {Object.keys(fieldErrors).length > 0 && (
+          <div ref={errorSummaryRef} tabIndex={-1} role="alert" className="text-danger text-sm">
+            <p>Please correct the following fields and save again:</p>
+            <ul>
+              {Object.entries(fieldErrors).map(([field, message]) => (
+                <li key={field}>{field.replace(/_/g, ' ')}: {message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* ── Basic Info ── */}
         <Section title="Basic Info">
           <div className="flex flex-col gap-3">
             <Input
               label="Event Name *"
+            error={fieldErrors.name}
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => { setName(e.target.value); clearFieldError('name') } }
               placeholder="Enter event name"
             />
             <Select
@@ -687,8 +716,9 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             />
             <Textarea
               label="Event Brief"
+            error={fieldErrors.brief}
               value={brief}
-              onChange={(e) => setBrief(e.target.value)}
+              onChange={(e) => { setBrief(e.target.value); clearFieldError('brief') } }
               placeholder="Positioning, audience, offers, must-have talking points..."
               rows={4}
             />
@@ -897,22 +927,25 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="URL Slug"
+            error={fieldErrors.slug}
               value={slug}
               onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
               placeholder="event-name-2024-01-01"
             />
             <Input
               label={`Meta Title (${metaTitle.length}/60)`}
+              error={fieldErrors.meta_title}
               value={metaTitle}
-              onChange={(e) => setMetaTitle(e.target.value)}
+              onChange={(e) => { setMetaTitle(e.target.value); clearFieldError('meta_title') } }
               maxLength={60}
               placeholder="SEO page title"
             />
           </div>
           <Textarea
             label={`Meta Description (${metaDescription.length}/160)`}
+            error={fieldErrors.meta_description}
             value={metaDescription}
-            onChange={(e) => setMetaDescription(e.target.value)}
+            onChange={(e) => { setMetaDescription(e.target.value); clearFieldError('meta_description') } }
             rows={2}
             className="mt-3"
             placeholder="SEO page description"
@@ -921,24 +954,27 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
           {/* Content */}
           <Textarea
             label="Short Description"
+            error={fieldErrors.short_description}
             value={shortDescription}
-            onChange={(e) => setShortDescription(e.target.value)}
+            onChange={(e) => { setShortDescription(e.target.value); clearFieldError('short_description') } }
             rows={2}
             className="mt-3"
             placeholder="Brief description for listings"
           />
           <Textarea
             label="Long Description"
+            error={fieldErrors.long_description}
             value={longDescription}
-            onChange={(e) => setLongDescription(e.target.value)}
+            onChange={(e) => { setLongDescription(e.target.value); clearFieldError('long_description') } }
             rows={4}
             className="mt-3"
             placeholder="Detailed description for the event page"
           />
           <Input
             label="Highlights"
+            error={fieldErrors.highlights}
             value={highlights}
-            onChange={(e) => setHighlights(e.target.value)}
+            onChange={(e) => { setHighlights(e.target.value); clearFieldError('highlights') } }
             placeholder="Great prizes, Fun atmosphere, Live music"
             className="mt-3"
           />
@@ -947,23 +983,28 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
           {/* Image & accessibility */}
           <Input
             label="Image Alt Text"
+            error={fieldErrors.image_alt_text}
             value={imageAltText}
-            onChange={(e) => setImageAltText(e.target.value)}
+            onChange={(e) => { setImageAltText(e.target.value); clearFieldError('image_alt_text') } }
             placeholder="Descriptive alt text for the event image"
             className="mt-3"
           />
           <Textarea
             label="Cancellation Policy"
+            error={cancellationPolicy.trim().length > 300 ? `Use 300 characters or fewer (${cancellationPolicy.trim().length} entered).` : fieldErrors.cancellation_policy}
+            hint={`${cancellationPolicy.trim().length}/300 characters`}
             value={cancellationPolicy}
-            onChange={(e) => setCancellationPolicy(e.target.value)}
+            onChange={(e) => { setCancellationPolicy(e.target.value); clearFieldError('cancellation_policy') } }
             rows={2}
             className="mt-3"
             placeholder="Cancellation and refund policy..."
           />
           <Textarea
             label="Accessibility Notes"
+            error={accessibilityNotes.trim().length > 300 ? `Use 300 characters or fewer (${accessibilityNotes.trim().length} entered).` : fieldErrors.accessibility_notes}
+            hint={`${accessibilityNotes.trim().length}/300 characters`}
             value={accessibilityNotes}
-            onChange={(e) => setAccessibilityNotes(e.target.value)}
+            onChange={(e) => { setAccessibilityNotes(e.target.value); clearFieldError('accessibility_notes') } }
             rows={2}
             className="mt-3"
             placeholder="Wheelchair access, hearing loop, accessible parking..."

@@ -1,14 +1,27 @@
-// src/app/(authenticated)/events/_components/__tests__/EventDrawer.test.tsx
-//
-// EventDrawer is a deeply-nested component that requires Drawer, Supabase
-// providers, permission context, and many design system components. Full
-// rendering tests are impractical without extensive mocking. Instead we test
-// the extractable preflight logic and verify integration contracts.
-//
-// Full component integration tests should be added once a test harness with
-// all required providers is available (or via Playwright E2E).
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { EventDrawer } from '../EventDrawer'
+import { updateEvent } from '@/app/actions/events'
+import type { Event } from '@/types/database'
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
+vi.mock('@/app/actions/events', () => ({ createEvent: vi.fn(), updateEvent: vi.fn() }))
+vi.mock('@/app/actions/event-checklist', () => ({
+  getEventChecklist: vi.fn().mockResolvedValue({ success: true, items: [] }),
+  toggleEventChecklistTask: vi.fn(),
+}))
+vi.mock('@/app/actions/event-content', () => ({ generateEventSeoContent: vi.fn() }))
+vi.mock('../EventImagePanel', () => ({ EventImagePanel: () => null }))
+vi.mock('@/components/features/events/KeywordStrategyCard', () => ({ KeywordStrategyCard: () => null }))
+vi.mock('@/components/features/events/FaqEditor', () => ({ FaqEditor: () => null }))
+vi.mock('@/components/features/events/SeoHealthIndicator', () => ({ SeoHealthIndicator: () => null }))
+vi.mock('@/ds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/ds')>()
+  return { ...actual, Drawer: ({ children }: { children: ReactNode }) => <div>{children}</div> }
+})
+
+afterEach(cleanup)
 import { parseKeywords } from '@/lib/keywords'
 
 // ── Preflight logic extracted for testability ──
@@ -178,5 +191,55 @@ describe('EventDrawer keywords not hardcoded', () => {
     expect(parseKeywords('live music, pub quiz')).toEqual(['live music', 'pub quiz'])
     expect(parseKeywords('')).toEqual([])
     expect(parseKeywords('  single  ')).toEqual(['single'])
+  })
+})
+
+
+describe('EventDrawer validation feedback', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  function renderDrawer(accessibilityNotes = 'Step-free entrance') {
+    return render(<EventDrawer
+      open
+      onClose={vi.fn()}
+      onSave={vi.fn()}
+      categories={[]}
+      event={{
+        id: 'event-1', name: 'Quiz Night', date: '2026-09-25', time: '19:00',
+        capacity: 60, created_at: '2026-09-01T12:00:00Z', slug: 'quiz-night',
+        is_free: true, payment_mode: 'free', accessibility_notes: accessibilityNotes,
+      } as Event}
+    />)
+  }
+
+  it('shows the server error beside its field, focuses the summary and clears the error after editing', async () => {
+    const message = 'String must contain at most 300 character(s)'
+    vi.mocked(updateEvent).mockResolvedValue({
+      error: `Accessibility notes: ${message}`,
+      fieldErrors: { accessibility_notes: message },
+    })
+    renderDrawer()
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+
+    const field = screen.getByRole('textbox', { name: 'Accessibility Notes' })
+    await waitFor(() => expect(field).toHaveAttribute('aria-invalid', 'true'))
+    expect(document.getElementById(field.getAttribute('aria-describedby')!)).toHaveTextContent(message)
+    const summary = screen.getByText('Please correct the following fields and save again:').parentElement
+    expect(summary).toHaveFocus()
+
+    fireEvent.change(field, { target: { value: 'Step-free access from the car park.' } })
+    expect(field).not.toHaveAttribute('aria-invalid')
+    expect(screen.queryByText(message)).not.toBeInTheDocument()
+    expect(screen.queryByText('Please correct the following fields and save again:')).not.toBeInTheDocument()
+  })
+
+  it('shows the length problem immediately for existing accessibility notes', () => {
+    renderDrawer('a'.repeat(301))
+    const field = screen.getByRole('textbox', { name: 'Accessibility Notes' })
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(document.getElementById(field.getAttribute('aria-describedby')!)).toHaveTextContent(
+      'Use 300 characters or fewer (301 entered).',
+    )
+    expect(updateEvent).not.toHaveBeenCalled()
   })
 })
