@@ -54,3 +54,12 @@ Firefox on port 3000: expanded menu has no pin control; leaving the menu shows t
 
 Spacing inspection: the private-bookings list uses AppShell's standard 28px desktop horizontal inset, with a 20px main content gap. Shared cards default to 14px padding. The individual booking detail page has its own compact override from the previous change. This is not an application-wide spacing standardisation.
 Validation: 38 navigation and design-token tests passed in London and UTC; shell lint, clean TypeScript check and isolated production build passed. Build used placeholder settings.
+
+## Centre outstanding-count badges
+The expanded sidebar's display: revert rule overrode the badge's inline-flex layout. Added a badge class and an expanded-state rule preserving inline-flex, with a unit line-height. Existing items-center and justify-center now centre the digits in both directions.
+
+Changed: SidebarNav.tsx and globals.css. Deliberately unchanged: count calculation, badge colours and sizes, collapsed notification dots, mobile badges and other navigation behaviour.
+
+Firefox on port 3000 shows centred single-digit, two-digit and 99+ badges. Shell lint and all 38 targeted navigation/design-token checks passed.
+
+Isolated production build, including TypeScript validation, passed with placeholder settings.
