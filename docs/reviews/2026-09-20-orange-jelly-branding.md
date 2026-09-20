@@ -31,3 +31,7 @@ Focused shell, palette parity and design-token guard checks: 109 passed in Londo
 The table-booking HTML fixture, three invoice/quote snapshots and the P&L background assertion were refreshed for the approved colours. Normalising hex values makes the previous and updated invoice/quote snapshots identical; no markup or content changed. The three affected test files then passed all 88 tests.
 
 The main-checkout dev server was restarted and reported Ready on port 3000. GET /auth/login returned HTTP 200 and the response contains the supplied Orange Jelly logo path. Local only; no push, deployment or migration.
+
+## Actual Firefox verification after cache recovery
+
+Port 3000 initially served old CSS with no .ds-nav-link selector or Orange Jelly palette despite current source files. Two Next development servers shared the same checkout and .next output. Stopped both, moved the generated cache to /tmp/anchor-next-stale-20260920-1535 and started one server on 3000. The served stylesheet then contained the navigation rules and both orange and ink tokens. Reloaded the actual signed-in Firefox dashboard: separate aligned rows, ink sidebar, orange Dashboard highlight. Clicking Dashboard collapsed the menu while focus remained on the link; the screenshot showed centred icons. No application code, business data or migrations changed during recovery.
