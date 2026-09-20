@@ -38,7 +38,7 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
       </button>
 
       <Link href="/dashboard" className="mr-auto flex min-w-0 items-center gap-2" aria-label="Orange Jelly dashboard">
-        <img src="/orange-jelly/logo-horizontal.png" alt="Orange Jelly" className="h-8 w-40 rounded-sm bg-surface object-contain p-1" />
+        <img src="/orange-jelly/logo-horizontal-white.png" alt="Orange Jelly" className="h-10 w-40 object-contain" />
       </Link>
 
 
@@ -151,7 +151,7 @@ export function MobileDrawer({
       <DialogPanel className="fixed inset-y-0 left-0 flex w-[min(84vw,320px)] flex-col bg-sidebar text-sidebar-fg shadow-lg">
         <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-4">
           <div className="flex min-w-0 items-center gap-2.5">
-            <DialogTitle><img src="/orange-jelly/logo-horizontal.png" alt="Orange Jelly" className="h-8 w-40 rounded-sm bg-surface object-contain p-1" /></DialogTitle>
+            <DialogTitle><img src="/orange-jelly/logo-horizontal-white.png" alt="Orange Jelly" className="h-10 w-40 object-contain" /></DialogTitle>
           </div>
           <button
             type="button"

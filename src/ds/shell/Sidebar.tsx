@@ -53,14 +53,14 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
             onPinnedChange?.(false)
           }
         }}>
-        <div className="ds-sidebar-brand flex h-8 shrink-0 items-center text-sidebar-fg">
-          <button type="button" data-menu-toggle className="ds-brand-icon h-8 hover:bg-sidebar-hover-bg"
+        <div className="ds-sidebar-brand flex h-12 shrink-0 items-center text-sidebar-fg">
+          <button type="button" data-menu-toggle className="ds-brand-icon h-12 hover:bg-sidebar-hover-bg"
             aria-label={open ? 'Collapse menu' : 'Expand menu'} aria-expanded={open}
             title={open ? 'Collapse menu' : 'Expand menu'}
             onClick={() => { if (pinned) onPinnedChange?.(false); setExpanded(!open) }}>
             <PanelLeft size={20} aria-hidden="true" />
           </button>
-          <span className="ds-label min-w-0 flex-1 pr-2"><img src="/orange-jelly/logo-horizontal.png" alt="Orange Jelly" className="h-7 w-full rounded-sm bg-surface object-contain p-1" /></span>
+          <span className="ds-label min-w-0 flex-1 pr-2"><img src="/orange-jelly/logo-horizontal-white.png" alt="Orange Jelly" className="h-10 w-full object-contain" /></span>
           {onPinnedChange && (
             <button type="button" className="ds-label mr-2 grid h-6 w-6 place-items-center rounded-sm hover:bg-sidebar-hover-bg"
               aria-label={pinned ? 'Unpin menu' : 'Pin menu open'} aria-pressed={pinned}
