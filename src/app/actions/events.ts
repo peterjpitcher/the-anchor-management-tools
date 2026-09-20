@@ -96,7 +96,18 @@ export type EventBookingRow = {
   } | null
 }
 
-type CreateEventResult = { error: string } | { success: true; data: Event; warning?: string }
+type CreateEventResult = { error: string; fieldErrors?: Record<string, string> } | { success: true; data: Event; warning?: string }
+function eventValidationFailure(error: z.ZodError): { error: string; fieldErrors: Record<string, string> } {
+  const fieldErrors: Record<string, string> = {}
+  const messages = error.errors.map(issue => {
+    const field = (issue.path ?? []).join('.')
+    if (field && !fieldErrors[field]) fieldErrors[field] = issue.message
+    const label = field.replace(/_/g, ' ')
+    return label ? `${label.charAt(0).toUpperCase()}${label.slice(1)}: ${issue.message}` : issue.message
+  })
+  return { error: messages.join('; '), fieldErrors }
+}
+
 type EventFaqInput = NonNullable<CreateEventInput['faqs']>[number]
 type PreparedEventData = Partial<CreateEventInput> & { faqs?: EventFaqInput[] }
 
@@ -418,7 +429,7 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
     const validationResult = eventSchema.safeParse(rawData);
 
     if (!validationResult.success) {
-      return { error: validationResult.error.errors[0].message };
+      return eventValidationFailure(validationResult.error);
     }
 
     const { marketingLinksWarning, ...event } = await EventService.createEvent(validationResult.data as CreateEventInput);
@@ -476,7 +487,7 @@ export async function updateEvent(id: string, formData: FormData) {
     // For updates, we allow partial data, but still validate if fields are present
     const validationResult = eventSchema.partial().safeParse(rawData);
     if (!validationResult.success) {
-      return { error: validationResult.error.errors[0].message };
+      return eventValidationFailure(validationResult.error);
     }
 
     const eventResult = await EventService.updateEvent(id, validationResult.data as UpdateEventInput);
