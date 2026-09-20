@@ -390,6 +390,8 @@ nav[aria-label="Mobile navigation"] {
 .ds-brand-icon { display: grid; place-items: center; width: var(--spacing-sidebar-collapsed); flex-shrink: 0; }
 .ds-sidebar .ds-label { display: none; }
 .ds-sidebar[data-expanded="true"] .ds-label { display: revert; }
+/* Badge layout must retain flex centring when collapsed labels become visible. */
+.ds-sidebar[data-expanded="true"] .ds-nav-badge { display: inline-flex; line-height: 1; }
 .ds-sidebar[data-expanded="false"] .ds-nav-link[data-compact-hidden="true"] { display: none; }
 .ds-sidebar[data-expanded="false"] .ds-nav-link { justify-content: center; gap: 0; padding-inline: 0; }
 .ds-sidebar .ds-collapsed-dot { opacity: 1; }

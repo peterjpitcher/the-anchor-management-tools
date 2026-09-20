@@ -256,7 +256,7 @@ export function SidebarNav({ items, onNavigate, collapsedGroups = [], onToggleGr
                 <span className="ds-label truncate">{item.label}</span>
                 {count ? (
                   <span
-                    className="ds-label ml-auto inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-sidebar-active-bg text-meta font-semibold text-text"
+                    className="ds-label ds-nav-badge ml-auto inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-sidebar-active-bg text-meta font-semibold text-text"
                     // The state is spelled out for a screen reader rather than
                     // left to a glyph, and "unavailable" is never dressed up as a
                     // number.
