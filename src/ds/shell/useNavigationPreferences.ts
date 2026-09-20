@@ -14,7 +14,7 @@ interface NavigationPreferences extends Preferences {
   setCollapsedGroups: (groups: string[]) => void
 }
 
-const defaults = (): Preferences => ({ pinned: false, shortcutIds: [], collapsedGroups: [] })
+const defaults = (): Preferences => ({ pinned: false, shortcutIds: [], collapsedGroups: ['Admin'] })
 const stringList = (value: unknown, limit: number): string[] => Array.isArray(value)
   ? [...new Set(value.filter((item): item is string => typeof item === 'string' && item.length > 0))].slice(0, limit)
   : []
@@ -27,7 +27,10 @@ function readPreferences(key: string): Preferences {
     return {
       pinned: record.pinned === true,
       shortcutIds: stringList(record.shortcutIds, 4),
-      collapsedGroups: stringList(record.collapsedGroups, 30),
+      // Apply the new default once to older saved preferences, preserving other choices.
+      collapsedGroups: record.version === 2
+        ? stringList(record.collapsedGroups, 30)
+        : [...new Set([...stringList(record.collapsedGroups, 30), 'Admin'])],
     }
   } catch {
     return defaults()
@@ -53,7 +56,7 @@ export function useNavigationPreferences(storageKey: string): NavigationPreferen
     current.current = next
     setSaved(next)
     try {
-      window.localStorage.setItem(storageKey, JSON.stringify(next.value))
+      window.localStorage.setItem(storageKey, JSON.stringify({ ...next.value, version: 2 }))
     } catch {
       // Keep controls usable when storage is unavailable or full.
     }

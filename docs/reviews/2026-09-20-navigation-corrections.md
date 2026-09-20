@@ -26,3 +26,7 @@ Focused tests: 101 passed in London. Lint and uncached typecheck passed. Build r
 ## White foreground on orange
 
 Owner correction: src/app/globals.css now makes both normal and secondary navigation foregrounds white, including headings and footer controls. Orange hover rows keep white foregrounds. SidebarNav.tsx and MobileChrome.tsx retain dark text and icons on pale selected rows; pale count badges also retain dark text. Other files and behaviour are unchanged. Verified the actual Firefox rota navigation after restarting the dev server: white text and icons on orange, dark Rota text on its pale active row. Targeted lint and all 42 shell/guard tests passed. Local main only.
+
+## Admin collapsed by default
+
+Updated useNavigationPreferences.ts to default Admin closed and apply that default to older saved preferences without losing shortcuts or other groups. A version marker preserves explicit choices after the update. NavigationPreferences.test.tsx covers the default, legacy preferences and remembering a later expansion. Verified the actual Firefox booking page shows Expand Admin with the group links hidden. Targeted lint and 41 shell tests passed. No other application files changed.
