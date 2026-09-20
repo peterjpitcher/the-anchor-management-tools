@@ -30,6 +30,9 @@ type EventCategoryRow = {
 
 type EventCapacityRow = {
   event_id: string
+  capacity: number | null
+  communal_seated_capacity: number | null
+  standing_capacity: number | null
   seats_remaining: number | null
   seated_remaining: number | null
   standing_remaining: number | null
@@ -156,14 +159,19 @@ export async function GET(_request: NextRequest) {
       )
 
       if (capacityError) {
-        logger.warn('Failed to load event capacity snapshot; falling back to static capacity fields', {
+        logger.error('Failed to load event capacity snapshot', {
           metadata: { error: capacityError.message }
         })
+        return createErrorResponse('Event availability is temporarily unavailable', 'AVAILABILITY_UNAVAILABLE', 503)
       } else if (Array.isArray(capacityRows)) {
         for (const row of capacityRows as EventCapacityRow[]) {
           capacityByEventId.set(row.event_id, row)
         }
       }
+    }
+
+    if (eventIds.some((id: string) => !capacityByEventId.has(id))) {
+      return createErrorResponse('Event availability is temporarily unavailable', 'AVAILABILITY_UNAVAILABLE', 503)
     }
 
     // Multiple ticket options (feature-flagged, same gate as the detail route).
@@ -203,8 +211,7 @@ export async function GET(_request: NextRequest) {
 
       const capacityRow = capacityByEventId.get(event.id)
       const seatsRemaining =
-        capacityRow?.seats_remaining ??
-        (typeof event.capacity === 'number' ? event.capacity : null)
+        capacityRow?.seats_remaining ?? null
       const isFull =
         capacityRow?.is_full ??
         (typeof seatsRemaining === 'number' ? seatsRemaining <= 0 : false)
@@ -233,13 +240,13 @@ export async function GET(_request: NextRequest) {
         event_status: event.event_status, // Expose raw status
         seats_remaining: seatsRemaining,
         is_full: isFull,
-        waitlist_enabled: typeof event.capacity === 'number' && event.capacity > 0,
+        waitlist_enabled: typeof capacityRow?.capacity === 'number',
         payment_mode: paymentMode,
         booking_mode: ['table', 'general', 'mixed', 'communal'].includes(String(event.booking_mode))
           ? event.booking_mode
           : 'table',
-        seated_capacity: event.seated_capacity ?? null,
-        standing_capacity: event.standing_capacity ?? null,
+        seated_capacity: capacityRow?.communal_seated_capacity ?? null,
+        standing_capacity: capacityRow?.standing_capacity ?? 0,
         seated_remaining: capacityRow?.seated_remaining ?? null,
         standing_remaining: capacityRow?.standing_remaining ?? null,
         total_remaining: totalRemaining,
@@ -286,9 +293,9 @@ export async function GET(_request: NextRequest) {
         // Both are gated on the SAME condition on purpose. An event with no
         // capacity configured must emit neither: sending remaining 0 without a
         // maximum makes the website read an uncapped event as sold out.
-        ...(typeof event.capacity === 'number'
+        ...(typeof capacityRow?.capacity === 'number'
           ? {
-              maximumAttendeeCapacity: event.capacity,
+              maximumAttendeeCapacity: capacityRow.capacity,
               remainingAttendeeCapacity: isFull
                 ? 0
                 : typeof totalRemaining === 'number'

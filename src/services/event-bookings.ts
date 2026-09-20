@@ -51,6 +51,7 @@ type EventBookingRpcResult = {
   standing_remaining?: number | null
   total_remaining?: number | null
   reason?: string
+  table_booking_id?: string | null
   table_name?: string | null
   table_names?: string[]
   table_ids?: string[]
@@ -641,15 +642,17 @@ export class EventBookingService {
     let resolvedReason: string | null = rpcResult.reason ?? null
     let nextStepUrl: string | null = null
     let manageUrl: string | null = null
-    let tableBookingId: string | null = null
-    let tableName: string | null =
-      bookingMode === 'communal' ? rpcResult.table_name || null : null
+    let tableBookingId: string | null = rpcResult.table_booking_id || null
+    let tableName: string | null = rpcResult.table_name || null
 
+    // New database responses include the table reserved in the booking transaction.
+    // Only older responses need the compatibility reservation call.
     // ── 2. Table reservation (table / mixed modes) ────────────────────────────
     if (
       (state === 'confirmed' || state === 'pending_payment') &&
       bookingMode !== 'general' &&
       bookingMode !== 'communal' &&
+      !tableBookingId &&
       rpcResult.booking_id
     ) {
       const { data: tableReservationRaw, error: tableReservationError } = await supabase.rpc(

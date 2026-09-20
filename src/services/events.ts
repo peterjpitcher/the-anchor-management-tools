@@ -1,3 +1,4 @@
+import { attachEventCapacity } from '@/lib/events/capacity'
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils';
@@ -121,9 +122,9 @@ const nullableCapacitySchema = z.preprocess(
   (val) => {
     if (val === '' || val === null || val === undefined) return null;
     const num = Number(val);
-    return isNaN(num) ? null : num;
+    return num;
   },
-  z.number().min(0, 'Capacity cannot be negative').max(10000, 'Capacity too large').nullable()
+  z.number().int('Capacity must be a whole number').min(0, 'Capacity cannot be negative').max(10000, 'Capacity too large').nullable()
 )
 
 const PUBLISHED_EVENT_STATUSES = new Set([
@@ -179,38 +180,9 @@ function isWorldCup2026EventName(value: string | null | undefined): boolean {
   return normalized.startsWith('world cup 2026:') || normalized.includes('fifa world cup 2026')
 }
 
-async function updateEventSplitCapacities(
-  eventId: string,
-  input: Pick<UpdateEventInput, 'seated_capacity' | 'standing_capacity'>
-) {
-  const payload: { seated_capacity?: number | null; standing_capacity?: number | null } = {}
-  if (input.seated_capacity !== undefined) payload.seated_capacity = input.seated_capacity
-  if (input.standing_capacity !== undefined) payload.standing_capacity = input.standing_capacity
-
-  if (Object.keys(payload).length === 0) return null
-
-  const admin = createAdminClient()
-  const { data, error } = await admin
-    .from('events')
-    .update(payload)
-    .eq('id', eventId)
-    .select('*')
-    .maybeSingle()
-
-  if (error) {
-    logger.error('Failed to update event split capacities', {
-      error: error instanceof Error ? error : new Error(String(error)),
-      metadata: { eventId }
-    })
-    throw new Error('Failed to update event capacity split')
-  }
-
-  return data
-}
-
 // The create/update event transaction RPCs whitelist columns and do not
-// persist booking_cutoff_at, so it is written via a dedicated admin update —
-// mirroring the split-capacity / online-discount helpers. Only writes when the
+// persist booking_cutoff_at, so it is written via a dedicated admin update,
+// mirroring the online-discount helper. Only writes when the
 // field was explicitly provided so partial updates never clobber the value.
 async function updateEventBookingCutoff(
   eventId: string,
@@ -377,9 +349,9 @@ export const eventSchema = z.object({
     (val) => {
       if (val === '' || val === null || val === undefined) return null;
       const num = Number(val);
-      return isNaN(num) ? null : num;
+      return num;
     },
-    z.number().min(1, 'Capacity must be at least 1').max(10000, 'Capacity too large').nullable()
+    z.number().int('Capacity must be a whole number').min(1, 'Capacity must be at least 1').max(10000, 'Capacity too large').nullable()
   ),
   seated_capacity: nullableCapacitySchema.optional(),
   standing_capacity: nullableCapacitySchema.optional(),
@@ -530,6 +502,18 @@ export class EventService {
   static async createEvent(input: CreateEventInput) {
     const supabase = await createClient();
 
+    if (input.booking_mode === 'mixed') {
+      throw new Error('Mixed booking mode is only available for existing mixed events.')
+    }
+    if (normalizeEventBookingMode(input.booking_mode) !== 'general') {
+      input = {
+        ...input,
+        capacity: null,
+        seated_capacity: null,
+        ...(input.booking_mode === 'communal' ? { standing_capacity: input.standing_capacity ?? 0 } : {}),
+      }
+    }
+
     // Determine slug: use provided or generate
     const rawSlug =
       input.slug && input.slug.trim() !== ''
@@ -613,14 +597,10 @@ export class EventService {
       online_discount_type: pricing.online_discount_type,
       online_discount_value: pricing.online_discount_value,
     })
-    const capacityEvent = await updateEventSplitCapacities(event.id, {
-      seated_capacity: input.seated_capacity,
-      standing_capacity: input.standing_capacity,
-    })
     const cutoffEvent = await updateEventBookingCutoff(event.id, {
       booking_cutoff_at: input.booking_cutoff_at,
     })
-    const savedEvent = cutoffEvent || capacityEvent || discountEvent || event
+    const savedEvent = cutoffEvent || discountEvent || event
 
     // Attempt marketing link generation — non-blocking for save, but capture failures
     let marketingLinksWarning: string | null = null
@@ -714,10 +694,18 @@ export class EventService {
       : normalizeEventBookingMode(input.booking_mode)
     const nextBookingMode = requestedBookingMode ?? currentBookingMode
 
-    if (
-      requestedBookingMode !== undefined &&
-      isCommunalBookingModeTransition(currentBookingMode, requestedBookingMode)
-    ) {
+    if (requestedBookingMode === 'mixed' && currentBookingMode !== 'mixed') {
+      throw new Error('Mixed booking mode is only available for existing mixed events.')
+    }
+    if (nextBookingMode === 'communal' && currentBookingMode !== 'communal') {
+      input = { ...input, standing_capacity: input.standing_capacity ?? 0 }
+    }
+    if (nextBookingMode !== 'general') {
+      input = { ...input }
+      delete input.capacity
+      delete input.seated_capacity
+    }
+    if (requestedBookingMode !== undefined && currentBookingMode !== requestedBookingMode) {
       const { count: activeBookings, error: activeBookingsError } = await supabase
         .from('bookings')
         .select('id', { count: 'exact', head: true })
@@ -729,7 +717,7 @@ export class EventService {
       }
 
       if ((activeBookings ?? 0) > 0) {
-        throw new Error('Cannot change communal seating mode while this event has active bookings.')
+        throw new Error('Cannot change booking mode while this event has active bookings.')
       }
     }
 
@@ -805,6 +793,13 @@ export class EventService {
 
     if (error) {
       logger.error('Update event transaction error', { error: error instanceof Error ? error : new Error(String(error)) });
+      const message = getSupabaseErrorMessage(error)
+      if (message.includes('standing_capacity_below_bookings')) {
+        throw new Error('The standing ticket limit cannot be lower than the standing tickets already reserved.')
+      }
+      if (message.includes('event_mode_has_active_bookings')) {
+        throw new Error('Cannot change booking mode while this event has active bookings.')
+      }
       throw new Error('Failed to update event');
     }
 
@@ -812,14 +807,10 @@ export class EventService {
       online_discount_type: pricing.online_discount_type,
       online_discount_value: pricing.online_discount_value,
     })
-    const capacityEvent = await updateEventSplitCapacities(id, {
-      seated_capacity: input.seated_capacity,
-      standing_capacity: input.standing_capacity,
-    })
     const cutoffEvent = await updateEventBookingCutoff(id, {
       booking_cutoff_at: input.booking_cutoff_at,
     })
-    const savedEvent = cutoffEvent || capacityEvent || discountEvent || event
+    const savedEvent = cutoffEvent || discountEvent || event
 
     // Attempt marketing link refresh — non-blocking for save, but capture failures
     let marketingLinksWarning: string | null = null
@@ -977,7 +968,7 @@ export class EventService {
       logger.error('Error fetching event by ID', { error: error instanceof Error ? error : new Error(String(error)) });
       throw new Error('Failed to fetch event');
     }
-    return event;
+    return event ? (await attachEventCapacity(createAdminClient(), [event]))[0] : null;
   }
 
   static async getEventsByDate(date: string) {
@@ -994,7 +985,7 @@ export class EventService {
       throw new Error('Failed to fetch events');
     }
 
-    return data;
+    return attachEventCapacity(createAdminClient(), data || []);
   }
 
   static async getEvents(options?: {
@@ -1013,7 +1004,7 @@ export class EventService {
 
     let query = supabase
       .from('events')
-      .select('*, category:event_categories(*), bookings:bookings(seats, status, is_reminder_only)', { count: 'exact' });
+      .select('*, category:event_categories(*), bookings:bookings(seats, status, is_reminder_only, hold_expires_at)', { count: 'exact' });
 
     if (status !== 'all') {
       query = query.eq('event_status', status);
@@ -1088,9 +1079,10 @@ export class EventService {
       }
     }
 
-    const events = (data || []).map((row: Record<string, unknown>) => {
+    const resolvedEvents = await attachEventCapacity(createAdminClient(), data || [])
+    const events = resolvedEvents.map((row: Record<string, unknown>) => {
       const bookings = Array.isArray(row.bookings)
-        ? row.bookings as { seats: number | null; status: string | null; is_reminder_only?: boolean | null }[]
+        ? row.bookings as { seats: number | null; status: string | null; is_reminder_only?: boolean | null; hold_expires_at?: string | null }[]
         : []
       const stats = buildEventBookingStats(
         row as Record<string, unknown>,

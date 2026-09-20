@@ -243,3 +243,69 @@ describe('EventDrawer validation feedback', () => {
     expect(updateEvent).not.toHaveBeenCalled()
   })
 })
+
+
+describe('EventDrawer physical seating controls', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(updateEvent).mockResolvedValue({ error: 'Fixture stops after submission' })
+  })
+
+  function renderCapacityDrawer(overrides: Partial<Event> & { seated_capacity?: number | null; standing_capacity?: number | null; resolved_standing_capacity?: number | null } = {}) {
+    render(<EventDrawer open onClose={vi.fn()} onSave={vi.fn()} categories={[]} event={{
+      id: 'event-1', name: 'Quiz Night', date: '2026-09-25', time: '19:00',
+      capacity: 60, created_at: '2026-09-01T12:00:00Z', slug: 'quiz-night',
+      is_free: true, payment_mode: 'free', booking_mode: 'table', ...overrides,
+    } as Event} />)
+  }
+
+  async function submittedData() {
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(updateEvent).toHaveBeenCalledTimes(1))
+    return vi.mocked(updateEvent).mock.calls[0][1]
+  }
+
+  it('does not offer manual seating or mixed mode for table events and preserves legacy limits', async () => {
+    renderCapacityDrawer()
+    expect(screen.queryByRole('spinbutton', { name: 'Capacity' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('spinbutton', { name: 'Ticket limit' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /Mixed/ })).not.toBeInTheDocument()
+    const data = await submittedData()
+    expect(data.has('capacity')).toBe(false)
+    expect(data.has('seated_capacity')).toBe(false)
+    expect(data.has('standing_capacity')).toBe(false)
+  })
+
+  it('shows legacy communal limits without silently replacing null standing on unrelated edits', async () => {
+    renderCapacityDrawer({ booking_mode: 'communal', seated_capacity: 40, standing_capacity: null, resolved_standing_capacity: 20 })
+    expect(screen.getByText('Existing seating limit: 40')).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Standing ticket limit' })).toHaveValue(20)
+    const data = await submittedData()
+    expect(data.has('capacity')).toBe(false)
+    expect(data.has('seated_capacity')).toBe(false)
+    expect(data.has('standing_capacity')).toBe(false)
+  })
+
+  it('submits an explicit zero standing limit when staff change it', async () => {
+    renderCapacityDrawer({ booking_mode: 'communal', standing_capacity: 20 })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Standing ticket limit' }), { target: { value: '0' } })
+    expect((await submittedData()).get('standing_capacity')).toBe('0')
+  })
+
+  it('keeps existing mixed mode selectable without offering a manual seating limit', async () => {
+    renderCapacityDrawer({ booking_mode: 'mixed' })
+    expect(screen.getByRole('option', { name: 'Mixed (existing event)' })).toBeInTheDocument()
+    expect(screen.queryByRole('spinbutton', { name: 'Ticket limit' })).not.toBeInTheDocument()
+    const data = await submittedData()
+    expect(data.get('booking_mode')).toBe('mixed')
+    expect(data.has('capacity')).toBe(false)
+  })
+
+  it.each(['general'] as const)('retains an editable ticket limit for existing %s events', async (booking_mode) => {
+    renderCapacityDrawer({ booking_mode })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Ticket limit' }), { target: { value: '75' } })
+    const data = await submittedData()
+    expect(data.get('capacity')).toBe('75')
+    expect(data.get('booking_mode')).toBe(booking_mode)
+  })
+})
