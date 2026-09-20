@@ -8,6 +8,9 @@ import { FohClockBand } from './FohClockBand'
 import { MobileBottomNav, MobileDrawer, MobileTopbar } from './MobileChrome'
 import { NavCountsProvider } from './NavCountsContext'
 import { cn } from '@/lib/utils'
+import { NavigationSearch } from './NavigationSearch'
+import { ShortcutPicker } from './ShortcutPicker'
+import { useNavigationPreferences } from './useNavigationPreferences'
 import { usePermissions } from '@/contexts/PermissionContext'
 
 interface AppShellProps {
@@ -16,6 +19,7 @@ interface AppShellProps {
   fohMode?: boolean
   fohEmployeeId?: string
   userName: string
+  userId?: string
   userRole: string
   /**
    * Drives the super-admin-only nav items. Resolved on the server from the
@@ -33,17 +37,33 @@ export function AppShell({
   fohMode = false,
   fohEmployeeId,
   userName,
+  userId,
   userRole,
   isSuperAdmin = false,
   onSignOut,
   isSigningOut,
 }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [shortcutPickerOpen, setShortcutPickerOpen] = useState(false)
   const { hasPermission } = usePermissions()
   const navGroups = useMemo(
     () => filterNavGroupsForPermissions(NAV_GROUPS, hasPermission, { isSuperAdmin }),
     [hasPermission, isSuperAdmin],
   )
+
+  const preferences = useNavigationPreferences(`anchor-navigation:${userId ?? userName}`)
+  const availableItems = navGroups.flatMap(group => group.items)
+  const shortcuts = preferences.shortcutIds.flatMap(id => {
+    const item = availableItems.find(candidate => candidate.id === id)
+    return item ? [item] : []
+  })
+  const shortcutGroups = shortcuts.length ? [{ label: 'Your shortcuts', items: shortcuts }] : []
+  const toggleGroup = (label: string) => preferences.setCollapsedGroups(
+    preferences.collapsedGroups.includes(label)
+      ? preferences.collapsedGroups.filter(group => group !== label)
+      : [...preferences.collapsedGroups, label],
+  )
+  const shortcutControl = <ShortcutPicker navGroups={navGroups} shortcutIds={preferences.shortcutIds} onChange={preferences.setShortcutIds} onOpenChange={setShortcutPickerOpen} />
 
   const openMobile = useCallback(() => setMobileOpen(true), [])
   const closeMobile = useCallback(() => setMobileOpen(false), [])
@@ -66,6 +86,13 @@ export function AppShell({
         <div className="contents print:hidden">
         <Sidebar
           navGroups={navGroups}
+          pinned={preferences.pinned}
+          onPinnedChange={preferences.setPinned}
+          collapsedGroups={preferences.collapsedGroups}
+          onToggleGroup={toggleGroup}
+          shortcuts={shortcutGroups}
+          shortcutControl={shortcutControl}
+          shortcutPickerOpen={shortcutPickerOpen}
           userName={userName}
           userRole={userRole}
           onSignOut={onSignOut}
@@ -80,12 +107,15 @@ export function AppShell({
           open={mobileOpen}
           onClose={closeMobile}
           navGroups={navGroups}
+          shortcutControl={shortcutControl}
           userName={userName}
           userRole={userRole}
           onSignOut={onSignOut}
           isSigningOut={isSigningOut}
         />
       )}
+
+      {showSidebar && !fohMode && <NavigationSearch navGroups={navGroups} onOpen={closeMobile} />}
 
       {/* Main content area */}
       <div className="flex-1 min-w-0 flex flex-col max-shell:min-h-0 print:block">
@@ -123,7 +153,7 @@ export function AppShell({
 
       {showSidebar && !fohMode && (
         <div className="contents print:hidden">
-          <MobileBottomNav navGroups={navGroups} onMore={openMobile} />
+          <MobileBottomNav navGroups={navGroups} shortcuts={shortcuts} onMore={openMobile} />
         </div>
       )}
     </div>

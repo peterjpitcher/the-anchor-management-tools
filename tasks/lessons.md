@@ -395,3 +395,7 @@ hide in exactly that swap.
 
 ## 19 September 2026: verify booking view projections and list routes
 The extras release selected invoice_id from private_bookings_with_details, but the live view does not expose it. Mock rows hid the mismatch and detail-only smoke checks missed the list failure. Read invoice identity from the existing payment ledger base-table query, reject absent view columns in regression tests, and verify list, filters and messages as well as detail pages after deployment.
+
+## 19 September 2026: navigation alignment is state-specific
+
+The owner clarified that off-centre icons occur only when the navigation is collapsed. Centre icons in the collapsed rail, and retain left-aligned icon-and-label rows when expanded. Verify both states visually.
