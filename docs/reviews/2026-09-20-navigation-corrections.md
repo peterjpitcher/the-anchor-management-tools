@@ -44,3 +44,13 @@ Changed: AppShell.tsx, Sidebar.tsx, MobileChrome.tsx, useNavigationPreferences.t
 
 Validation: 40 shell, sidebar and design-token tests passed in London and UTC; shell lint and clean TypeScript check passed. In Firefox on port 3000, the expanded orange menu shows Overview immediately beneath the logo and pin. Neither Choose shortcuts nor Your shortcuts appears.
 Isolated production build passed using placeholder environment settings and an 8 GB Node heap. No production credentials or deployment were needed.
+
+## Remove pin behaviour
+Removed the pin button, persistent pin preference and expanded-width reservation. Old saved pin values are ignored. Hover, keyboard expansion, mouse-out and link-selection dismissal remain.
+
+Changed: Sidebar.tsx, AppShell.tsx, useNavigationPreferences.ts, globals.css, NavigationPreferences.test.tsx and Sidebar.test.tsx. Deliberately unchanged: menu ordering, branding assets, mobile navigation and page spacing. Existing uncommitted logo padding remains outside this commit.
+
+Firefox on port 3000: expanded menu has no pin control; leaving the menu shows the collapsed rail and Expand menu control again.
+
+Spacing inspection: the private-bookings list uses AppShell's standard 28px desktop horizontal inset, with a 20px main content gap. Shared cards default to 14px padding. The individual booking detail page has its own compact override from the previous change. This is not an application-wide spacing standardisation.
+Validation: 38 navigation and design-token tests passed in London and UTC; shell lint, clean TypeScript check and isolated production build passed. Build used placeholder settings.

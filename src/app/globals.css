@@ -366,7 +366,6 @@ nav[aria-label="Mobile navigation"] {
   height: 100dvh;
   z-index: 45;
 }
-.ds-sidebar-rail[data-pinned="true"] { width: var(--spacing-sidebar-expanded); }
 .ds-sidebar {
   position: absolute;
   inset-block: 0;

@@ -76,8 +76,6 @@ export function AppShell({
         <div className="contents print:hidden">
         <Sidebar
           navGroups={navGroups}
-          pinned={preferences.pinned}
-          onPinnedChange={preferences.setPinned}
           collapsedGroups={preferences.collapsedGroups}
           onToggleGroup={toggleGroup}
           userName={userName}
