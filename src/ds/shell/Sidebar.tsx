@@ -48,7 +48,7 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
         }}>
         <div className="ds-sidebar-brand shrink-0 text-sidebar-fg">
           {open ? (
-            <div className="px-2 pt-2">
+            <div className="px-5 pt-4">
               <img src="/orange-jelly/logo-horizontal-white.png" alt="Orange Jelly" className="h-auto w-full" />
 
             </div>
