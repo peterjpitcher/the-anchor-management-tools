@@ -8,13 +8,22 @@ beforeEach(() => localStorage.clear())
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('navigation preferences', () => {
+  it('starts Admin collapsed and remembers an explicit expansion after reload', () => {
+    const first = renderHook(() => useNavigationPreferences('new-user'))
+    expect(first.result.current.collapsedGroups).toEqual(['Admin'])
+    act(() => first.result.current.setCollapsedGroups([]))
+    first.unmount()
+    const restored = renderHook(() => useNavigationPreferences('new-user'))
+    expect(restored.result.current.collapsedGroups).toEqual([])
+  })
+
   it('restores saved preferences without overwriting them during hydration', () => {
     localStorage.setItem('user-a', JSON.stringify({ pinned: true, shortcutIds: ['rota'], collapsedGroups: ['Finance'] }))
     const write = vi.spyOn(Storage.prototype, 'setItem')
     const { result } = renderHook(() => useNavigationPreferences('user-a'))
     expect(result.current.pinned).toBe(true)
     expect(result.current.shortcutIds).toEqual(['rota'])
-    expect(result.current.collapsedGroups).toEqual(['Finance'])
+    expect(result.current.collapsedGroups).toEqual(['Finance', 'Admin'])
     expect(write).not.toHaveBeenCalled()
   })
 
@@ -46,7 +55,7 @@ describe('navigation preferences', () => {
     const { result } = renderHook(() => useNavigationPreferences('invalid'))
     expect(result.current.pinned).toBe(false)
     expect(result.current.shortcutIds).toEqual(['a', 'b', 'c', 'd'])
-    expect(result.current.collapsedGroups).toEqual([])
+    expect(result.current.collapsedGroups).toEqual(['Admin'])
   })
 
   it('keeps controls usable when browser storage fails', () => {
