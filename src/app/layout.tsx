@@ -23,8 +23,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Management Tools",
-  description: "Management tools for The Anchor, including event planning, employee management, and SMS notifications",
+  title: "Orange Jelly Management Tools",
+  description: "Orange Jelly management tools, including event planning, employee management, and SMS notifications",
   manifest: "/manifest.json",
   robots: {
     index: false,
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Anchor Tools",
+    title: "Orange Jelly",
   },
 };
 

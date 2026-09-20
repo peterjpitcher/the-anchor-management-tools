@@ -37,11 +37,8 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
         <Icon name="menu" size={20} />
       </button>
 
-      <Link href="/dashboard" className="mr-auto flex min-w-0 items-center gap-2" aria-label="The Anchor dashboard">
-        <span className="grid h-[30px] w-[30px] place-items-center rounded-lg border border-on-dark-border bg-on-dark-active">
-          <img src="/orange-jelly/logo-icon-white.png" alt="Orange Jelly" className="h-6 w-6 object-contain" />
-        </span>
-        <span className="truncate text-base font-bold tracking-normal">The Anchor</span>
+      <Link href="/dashboard" className="mr-auto flex min-w-0 items-center gap-2" aria-label="Orange Jelly dashboard">
+        <img src="/orange-jelly/logo-horizontal.png" alt="Orange Jelly" className="h-8 w-40 rounded-sm bg-surface object-contain p-1" />
       </Link>
 
 
@@ -154,13 +151,7 @@ export function MobileDrawer({
       <DialogPanel className="fixed inset-y-0 left-0 flex w-[min(84vw,320px)] flex-col bg-sidebar text-sidebar-fg shadow-lg">
         <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-4">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="grid h-9 w-9 place-items-center rounded-default border border-on-dark-border bg-on-dark-active">
-              <img src="/orange-jelly/logo-icon-white.png" alt="Orange Jelly" className="h-6 w-6 object-contain" />
-            </span>
-            <div className="min-w-0">
-              <DialogTitle className="truncate text-sm font-bold leading-tight">The Anchor</DialogTitle>
-              <div className="truncate text-meta text-sidebar-fg-muted">Stanwell Moor Village</div>
-            </div>
+            <DialogTitle><img src="/orange-jelly/logo-horizontal.png" alt="Orange Jelly" className="h-8 w-40 rounded-sm bg-surface object-contain p-1" /></DialogTitle>
           </div>
           <button
             type="button"

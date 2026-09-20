@@ -131,18 +131,15 @@ export default function LoginClient() {
     <div className="auth">
       <div className="auth__card">
         <div className="auth__brand">
-          <div className="auth__logo">
+          <div>
             <Image
-              src="/orange-jelly/logo-icon.png"
+              src="/orange-jelly/logo-horizontal.png"
               alt="Orange Jelly"
-              width={44}
-              height={44}
-              className="w-full h-auto rounded-md"
+              width={1200}
+              height={257}
+              className="w-60 h-auto"
               priority
             />
-          </div>
-          <div>
-            <div className="auth__title">The Anchor</div>
             <div className="auth__sub">Management Tools</div>
           </div>
         </div>
@@ -203,7 +200,7 @@ export default function LoginClient() {
         </Button>
 
         <div className="auth__footer">
-          <span className="text-text-subtle text-xs">&copy; {new Date().getFullYear()} The Anchor</span>
+          <span className="text-text-subtle text-xs">&copy; {new Date().getFullYear()} Orange Jelly</span>
         </div>
       </div>
     </div>
