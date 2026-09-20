@@ -18,18 +18,15 @@ export interface SidebarProps {
   onPinnedChange?: (pinned: boolean) => void
   collapsedGroups?: string[]
   onToggleGroup?: (label: string) => void
-  shortcuts?: NavGroup[]
-  shortcutControl?: ReactNode
-  shortcutPickerOpen?: boolean
   children?: ReactNode
 }
 
 export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut, onNavigate,
-  pinned = false, onPinnedChange, collapsedGroups, onToggleGroup, shortcuts, shortcutControl, shortcutPickerOpen = false, children }: SidebarProps) {
+  pinned = false, onPinnedChange, collapsedGroups, onToggleGroup, children }: SidebarProps) {
   const [expanded, setExpanded] = useState(false)
   const pathname = usePathname()
   useEffect(() => setExpanded(false), [pathname])
-  const open = pinned || expanded || shortcutPickerOpen
+  const open = pinned || expanded
   const navigate = () => {
     // Focus remains on the link for keyboard users, but no longer holds the rail open.
     setExpanded(false)
@@ -42,8 +39,8 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
     <div className="ds-sidebar-rail relative hidden shell:block" data-pinned={pinned}>
       <div className="ds-sidebar flex h-full flex-col bg-sidebar" data-expanded={open}
         onPointerEnter={event => { if (event.pointerType !== 'touch') setExpanded(true) }}
-        onPointerLeave={() => { if (!shortcutPickerOpen) setExpanded(false) }}
-        onBlurCapture={event => { if (!shortcutPickerOpen && !event.currentTarget.contains(event.relatedTarget)) setExpanded(false) }}
+        onPointerLeave={() => { setExpanded(false) }}
+        onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setExpanded(false) }}
         onKeyDown={event => {
           // Portalled dialogs bubble through React but have their own dismissal keys.
           if (!event.currentTarget.contains(event.target as Node)) return
@@ -76,8 +73,6 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
           )}
         </div>
         <div className="ds-sidebar-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-0.5">
-          {!!shortcuts?.length && <div className="ds-shortcuts"><SidebarNav items={shortcuts} onNavigate={navigate} ariaLabel="Your shortcuts" /></div>}
-          {shortcutControl && <div className="ds-shortcut-control">{shortcutControl}</div>}
           {mainGroups ? <SidebarNav items={mainGroups} onNavigate={navigate} collapsedGroups={collapsedGroups} onToggleGroup={onToggleGroup} /> : children}
         </div>
         {!!settingsGroups?.length && <div className="shrink-0 border-t border-sidebar-border py-0.5">

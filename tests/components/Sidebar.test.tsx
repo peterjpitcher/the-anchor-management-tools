@@ -1,6 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { ComponentPropsWithoutRef, ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { Sidebar } from '@/ds/shell/Sidebar'
 import { NAV_GROUPS } from '@/ds/shell/SidebarNav'
@@ -88,40 +87,6 @@ describe('transient menu expansion', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expand menu' }))
     fireEvent.click(link, { ctrlKey: true })
     expect(container.querySelector('.ds-sidebar')).toHaveAttribute('data-expanded', 'true')
-  })
-})
-
-
-describe('shortcut dialog coordination', () => {
-  it('does not unpin the sidebar when Escape bubbles from a portalled child', () => {
-    const onPinnedChange = vi.fn()
-    const { container } = render(
-      <Sidebar navGroups={NAV_GROUPS} pinned onPinnedChange={onPinnedChange}
-        shortcutControl={createPortal(<button type="button">Shortcut dialog control</button>, document.body)} />,
-    )
-    const dialogControl = screen.getByRole('button', { name: 'Shortcut dialog control' })
-    expect(container.querySelector('.ds-sidebar')).not.toContainElement(dialogControl)
-    fireEvent.keyDown(dialogControl, { key: 'Escape' })
-    expect(onPinnedChange).not.toHaveBeenCalled()
-    expect(container.querySelector('.ds-sidebar')).toHaveAttribute('data-expanded', 'true')
-    // Escape originating in the sidebar itself still performs its normal action.
-    fireEvent.keyDown(container.querySelector('.ds-sidebar') as HTMLElement, { key: 'Escape' })
-    expect(onPinnedChange).toHaveBeenCalledWith(false)
-  })
-
-  it('preserves transient expansion through pointer leave and focus entering the chooser', () => {
-    const { container, rerender } = render(<Sidebar navGroups={NAV_GROUPS} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Expand menu' }))
-    rerender(<Sidebar navGroups={NAV_GROUPS} shortcutPickerOpen />)
-    const panel = container.querySelector('.ds-sidebar') as HTMLElement
-    fireEvent.pointerLeave(panel)
-    fireEvent.blur(container.querySelector('.ds-sidebar') as HTMLElement, { relatedTarget: document.body })
-    expect(panel).toHaveAttribute('data-expanded', 'true')
-    // Closing the chooser must leave the trigger available for focus restoration.
-    rerender(<Sidebar navGroups={NAV_GROUPS} shortcutPickerOpen={false} />)
-    expect(panel).toHaveAttribute('data-expanded', 'true')
-    fireEvent.pointerLeave(panel)
-    expect(panel).toHaveAttribute('data-expanded', 'false')
   })
 })
 
