@@ -30,8 +30,16 @@ function inferDirection(delta: number): 'up' | 'down' | 'flat' {
   return 'flat'
 }
 
+// The arrow and colour carry direction visually; this is what a screen reader hears
+// before the unsigned percentage.
+const DELTA_DIRECTION_LABEL: Record<'up' | 'down' | 'flat', string> = {
+  up: 'up',
+  down: 'down',
+  flat: 'no change',
+}
+
 const DeltaArrow = ({ direction }: { direction: 'up' | 'down' | 'flat' }) => {
-  if (direction === 'flat') return <span className="inline-block w-3 text-center">-</span>
+  if (direction === 'flat') return <span className="inline-block w-3 text-center" aria-hidden="true">-</span>
 
   return (
     <svg
@@ -78,6 +86,7 @@ export function Stat({ label, value, delta, deltaDirection, icon, hint, descript
             direction === 'flat' && 'text-text-muted'
           )}
         >
+          <span className="sr-only">{`${DELTA_DIRECTION_LABEL[direction]} `}</span>
           <DeltaArrow direction={direction} />
           {Math.abs(delta)}%
         </span>
