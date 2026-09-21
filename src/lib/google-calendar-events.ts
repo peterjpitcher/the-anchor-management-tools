@@ -222,9 +222,8 @@ function buildDescription(input: {
   event: PubOpsEventCalendarEventRow
   aggregate: PubOpsEventCalendarAggregate
   appBaseUrl: string
-  syncedAt: Date
 }): string {
-  const { event, aggregate, appBaseUrl, syncedAt } = input
+  const { event, aggregate, appBaseUrl } = input
   const adminBaseUrl = appBaseUrl.replace(/\/+$/, '')
   const adminUrl = adminBaseUrl ? `${adminBaseUrl}/events/${event.id}` : `/events/${event.id}`
   const capacity = typeof event.capacity === 'number' && Number.isFinite(event.capacity)
@@ -248,9 +247,17 @@ function buildDescription(input: {
     '',
     event.booking_url ? `Public booking link: ${event.booking_url}` : 'Public booking link: not set',
     `Admin event link: ${adminUrl}`,
-    '',
-    `Last synced: ${syncedAt.toISOString()}`,
   ].filter((line): line is string => Boolean(line)).join('\n')
+}
+
+function calendarContentHash(requestBody: {
+  summary: string
+  description: string
+  start: { dateTime: string; timeZone: string }
+  end: { dateTime: string; timeZone: string }
+  location: string
+}): string {
+  return createHash('sha256').update(JSON.stringify(requestBody)).digest('hex')
 }
 
 export function buildPubOpsEventCalendarEntry(input: {
@@ -280,32 +287,37 @@ export function buildPubOpsEventCalendarEntry(input: {
   const statusPrefix = input.event.event_status === 'draft' ? '[DRAFT] ' : ''
   const summary = `${statusPrefix}${input.event.name || 'Untitled event'} - ${seatLabel} booked`
 
+  const calendarContent = {
+    summary,
+    description: buildDescription({
+      event: input.event,
+      aggregate,
+      appBaseUrl,
+    }),
+    start: {
+      dateTime: formatForCalendar(start),
+      timeZone: CALENDAR_TIME_ZONE,
+    },
+    end: {
+      dateTime: formatForCalendar(end),
+      timeZone: CALENDAR_TIME_ZONE,
+    },
+    location: 'The Anchor',
+  }
+  const contentHash = calendarContentHash(calendarContent)
+
   return {
     shouldDelete: false,
     googleEventId,
     aggregate,
     requestBody: {
       id: googleEventId,
-      summary,
-      description: buildDescription({
-        event: input.event,
-        aggregate,
-        appBaseUrl,
-        syncedAt: now,
-      }),
-      start: {
-        dateTime: formatForCalendar(start),
-        timeZone: CALENDAR_TIME_ZONE,
-      },
-      end: {
-        dateTime: formatForCalendar(end),
-        timeZone: CALENDAR_TIME_ZONE,
-      },
-      location: 'The Anchor',
+      ...calendarContent,
       extendedProperties: {
         private: {
           source: SOURCE_PROPERTY,
           anchorEventId: input.event.id,
+          contentHash,
         },
       },
     },
@@ -403,6 +415,75 @@ async function upsertPubOpsEventCalendarEntry(
   context?: Record<string, unknown>
 ): Promise<PubOpsEventCalendarSyncResult> {
   try {
+    const existing = await calendar.events.get({
+      auth: calendarAuth(auth),
+      calendarId: PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID,
+      eventId: entry.googleEventId,
+    })
+    const existingHash = existing.data.extendedProperties?.private?.contentHash
+    const nextHash = entry.requestBody.extendedProperties.private.contentHash
+
+    if (existingHash === nextHash) {
+      return {
+        state: 'skipped',
+        eventId,
+        googleEventId: existing.data.id || entry.googleEventId,
+        reason: 'unchanged',
+      }
+    }
+  } catch (getError) {
+    const status = getGoogleErrorStatus(getError)
+    if (status !== 404 && status !== 410) {
+      logger.warn('Failed to read Pub Ops event booking calendar entry', {
+        metadata: {
+          eventId,
+          googleEventId: entry.googleEventId,
+          status,
+          error: getGoogleErrorMessage(getError),
+          ...context,
+        },
+      })
+      return {
+        state: 'failed',
+        eventId,
+        googleEventId: entry.googleEventId,
+        reason: getGoogleErrorMessage(getError),
+      }
+    }
+
+    try {
+      const response = await calendar.events.insert({
+        auth: calendarAuth(auth),
+        calendarId: PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID,
+        requestBody: entry.requestBody,
+      })
+      return {
+        state: 'created',
+        eventId,
+        googleEventId: response.data.id || entry.googleEventId,
+      }
+    } catch (insertError) {
+      if (getGoogleErrorStatus(insertError) !== 409) {
+        logger.warn('Failed to create Pub Ops event booking calendar entry', {
+          metadata: {
+            eventId,
+            googleEventId: entry.googleEventId,
+            status: getGoogleErrorStatus(insertError),
+            error: getGoogleErrorMessage(insertError),
+            ...context,
+          },
+        })
+        return {
+          state: 'failed',
+          eventId,
+          googleEventId: entry.googleEventId,
+          reason: getGoogleErrorMessage(insertError),
+        }
+      }
+    }
+  }
+
+  try {
     const response = await calendar.events.update({
       auth: calendarAuth(auth),
       calendarId: PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID,
@@ -415,77 +496,12 @@ async function upsertPubOpsEventCalendarEntry(
       googleEventId: response.data.id || entry.googleEventId,
     }
   } catch (updateError) {
-    const status = getGoogleErrorStatus(updateError)
-    if (status !== 404 && status !== 410) {
-      logger.warn('Failed to update Pub Ops event booking calendar entry', {
-        metadata: {
-          eventId,
-          googleEventId: entry.googleEventId,
-          status,
-          error: getGoogleErrorMessage(updateError),
-          ...context,
-        },
-      })
-      return {
-        state: 'failed',
-        eventId,
-        googleEventId: entry.googleEventId,
-        reason: getGoogleErrorMessage(updateError),
-      }
-    }
-  }
-
-  try {
-    const response = await calendar.events.insert({
-      auth: calendarAuth(auth),
-      calendarId: PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID,
-      requestBody: entry.requestBody,
-    })
-    return {
-      state: 'created',
-      eventId,
-      googleEventId: response.data.id || entry.googleEventId,
-    }
-  } catch (insertError) {
-    const status = getGoogleErrorStatus(insertError)
-    if (status === 409) {
-      try {
-        const response = await calendar.events.update({
-          auth: calendarAuth(auth),
-          calendarId: PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID,
-          eventId: entry.googleEventId,
-          requestBody: entry.requestBody,
-        })
-        return {
-          state: 'updated',
-          eventId,
-          googleEventId: response.data.id || entry.googleEventId,
-        }
-      } catch (retryError) {
-        logger.warn('Failed to update Pub Ops event booking calendar entry after insert conflict', {
-          metadata: {
-            eventId,
-            googleEventId: entry.googleEventId,
-            status: getGoogleErrorStatus(retryError),
-            error: getGoogleErrorMessage(retryError),
-            ...context,
-          },
-        })
-        return {
-          state: 'failed',
-          eventId,
-          googleEventId: entry.googleEventId,
-          reason: getGoogleErrorMessage(retryError),
-        }
-      }
-    }
-
-    logger.warn('Failed to create Pub Ops event booking calendar entry', {
+    logger.warn('Failed to update Pub Ops event booking calendar entry', {
       metadata: {
         eventId,
         googleEventId: entry.googleEventId,
-        status,
-        error: getGoogleErrorMessage(insertError),
+        status: getGoogleErrorStatus(updateError),
+        error: getGoogleErrorMessage(updateError),
         ...context,
       },
     })
@@ -493,7 +509,7 @@ async function upsertPubOpsEventCalendarEntry(
       state: 'failed',
       eventId,
       googleEventId: entry.googleEventId,
-      reason: getGoogleErrorMessage(insertError),
+      reason: getGoogleErrorMessage(updateError),
     }
   }
 }

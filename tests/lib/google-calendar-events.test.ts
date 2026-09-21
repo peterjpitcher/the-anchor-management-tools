@@ -4,12 +4,14 @@ vi.mock('server-only', () => ({}))
 
 const {
   eventsUpdate,
+  eventsGet,
   eventsInsert,
   eventsDelete,
   getOAuth2ClientMock,
   warn,
 } = vi.hoisted(() => ({
   eventsUpdate: vi.fn(),
+  eventsGet: vi.fn(),
   eventsInsert: vi.fn(),
   eventsDelete: vi.fn(),
   getOAuth2ClientMock: vi.fn(),
@@ -20,6 +22,7 @@ vi.mock('googleapis', () => ({
   google: {
     calendar: vi.fn(() => ({
       events: {
+        get: eventsGet,
         update: eventsUpdate,
         insert: eventsInsert,
         delete: eventsDelete,
@@ -126,6 +129,7 @@ describe('google calendar event booking aggregate helpers', () => {
     process.env.NEXT_PUBLIC_APP_URL = 'https://app.the-anchor.pub'
     getOAuth2ClientMock.mockResolvedValue({ auth: true })
     eventsUpdate.mockResolvedValue({ data: { id: 'updated-event-id' } })
+    eventsGet.mockResolvedValue({ data: { id: 'existing-event-id', extendedProperties: { private: {} } } })
     eventsInsert.mockResolvedValue({ data: { id: 'created-event-id' } })
     eventsDelete.mockResolvedValue({ data: {} })
   })
@@ -192,7 +196,9 @@ describe('google calendar event booking aggregate helpers', () => {
     expect(entry.requestBody.extendedProperties.private).toEqual({
       source: 'anchor_event_booking_aggregate',
       anchorEventId: baseEvent.id,
+      contentHash: expect.stringMatching(/^[a-f0-9]{64}$/),
     })
+    expect(entry.requestBody.description).not.toContain('Last synced:')
   })
 
   it('builds an aggregate calendar event when there are no active seats', () => {
@@ -233,8 +239,33 @@ describe('google calendar event booking aggregate helpers', () => {
     expect(eventsInsert).not.toHaveBeenCalled()
   })
 
+  it('skips an unchanged Pub Ops aggregate calendar event', async () => {
+    const entry = buildPubOpsEventCalendarEntry({
+      event: baseEvent,
+      bookings: [{ id: 'booking-1', seats: 2, status: 'confirmed', is_reminder_only: false }],
+      appBaseUrl: 'https://app.the-anchor.pub',
+    })
+    if (entry.shouldDelete) throw new Error('Expected active calendar entry')
+    eventsGet.mockResolvedValueOnce({
+      data: {
+        id: entry.googleEventId,
+        extendedProperties: { private: { contentHash: entry.requestBody.extendedProperties.private.contentHash } },
+      },
+    })
+    const supabase = makeSupabaseMock({
+      event: baseEvent,
+      bookings: [{ id: 'booking-1', seats: 2, status: 'confirmed', is_reminder_only: false }],
+    })
+
+    const result = await syncPubOpsEventCalendarByEventId(supabase as any, baseEvent.id)
+
+    expect(result).toMatchObject({ state: 'skipped', reason: 'unchanged' })
+    expect(eventsUpdate).not.toHaveBeenCalled()
+    expect(eventsInsert).not.toHaveBeenCalled()
+  })
+
   it('creates the deterministic event when update returns not found', async () => {
-    eventsUpdate.mockRejectedValueOnce(Object.assign(new Error('not found'), { status: 404 }))
+    eventsGet.mockRejectedValueOnce(Object.assign(new Error('not found'), { status: 404 }))
     const supabase = makeSupabaseMock({
       event: baseEvent,
       bookings: [{ id: 'booking-1', seats: 2, status: 'confirmed', is_reminder_only: false }],
