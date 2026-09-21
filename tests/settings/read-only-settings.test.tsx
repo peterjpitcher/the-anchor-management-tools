@@ -46,6 +46,43 @@ vi.mock('@/app/actions/customer-labels', () => ({
   applyLabelsRetroactively: vi.fn(),
 }))
 
+function weekOfHours(): BusinessHours[] {
+  return Array.from({ length: 7 }, (_, index) => ({
+    id: `hour-${index}`,
+    day_of_week: index,
+    opens: '09:00',
+    closes: '17:00',
+    kitchen_opens: null,
+    kitchen_closes: null,
+    is_closed: false,
+    is_kitchen_closed: false,
+    created_at: '',
+    updated_at: '',
+  }))
+}
+
+describe('business hours control names', () => {
+  // The desktop table had no visible label beside its checkboxes and time boxes, so a screen
+  // reader heard "checkbox" or "time" seven times over (accessibility review, 18 Sep 2026).
+  it("names each day's checkboxes and time boxes", async () => {
+    const { container } = render(<BusinessHoursManager canManage initialHours={weekOfHours()} />)
+    await screen.findAllByText('Monday')
+
+    expect(screen.getByRole('checkbox', { name: 'Closed on Monday' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Kitchen closed on Monday' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Opens on Monday')).toHaveAttribute('type', 'time')
+    expect(screen.getByLabelText('Kitchen closes on Monday')).toHaveAttribute('type', 'time')
+    expect(screen.getByLabelText('Sunday lunch start')).toHaveAttribute('type', 'time')
+
+    for (const checkbox of screen.getAllByRole('checkbox')) {
+      expect(checkbox).toHaveAccessibleName()
+    }
+    for (const input of Array.from(container.querySelectorAll('input[type="time"]'))) {
+      expect(input).toHaveAccessibleName()
+    }
+  })
+})
+
 describe('Settings read-only behaviour', () => {
   beforeEach(() => {
     vi.clearAllMocks()

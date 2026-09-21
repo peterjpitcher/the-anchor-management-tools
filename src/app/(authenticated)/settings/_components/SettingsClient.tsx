@@ -219,6 +219,7 @@ function GeneralSection({
                 <p className="text-xs text-text-muted">Accept table bookings from the website</p>
               </div>
               <Switch
+                aria-label="Online Bookings"
                 checked={toggles.online_bookings_enabled}
                 onChange={() => handleToggle('online_bookings_enabled')}
                 disabled={disabled || toggleSaving === 'online_bookings_enabled'}
@@ -230,6 +231,7 @@ function GeneralSection({
                 <p className="text-xs text-text-muted">Send automatic SMS confirmations</p>
               </div>
               <Switch
+                aria-label="SMS Notifications"
                 checked={toggles.sms_notifications_enabled}
                 onChange={() => handleToggle('sms_notifications_enabled')}
                 disabled={disabled || toggleSaving === 'sms_notifications_enabled'}
@@ -241,6 +243,7 @@ function GeneralSection({
                 <p className="text-xs text-text-muted">Automatically confirm new bookings</p>
               </div>
               <Switch
+                aria-label="Auto-Confirm Bookings"
                 checked={toggles.auto_confirm_bookings}
                 onChange={() => handleToggle('auto_confirm_bookings')}
                 disabled={disabled || toggleSaving === 'auto_confirm_bookings'}

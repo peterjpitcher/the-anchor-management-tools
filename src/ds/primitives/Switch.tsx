@@ -6,6 +6,8 @@ type SwitchSize = 'sm' | 'md'
 
 interface SwitchProps {
   label?: string
+  /** Names the switch for screen readers when `label` is not used, such as in a table row. */
+  'aria-label'?: string
   checked: boolean
   onChange: (value: boolean) => void
   disabled?: boolean
@@ -25,6 +27,7 @@ const thumbSizes: Record<SwitchSize, { base: string; translate: string }> = {
 
 export function Switch({
   label,
+  'aria-label': ariaLabel,
   checked,
   onChange,
   disabled = false,
@@ -43,6 +46,7 @@ export function Switch({
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cn(

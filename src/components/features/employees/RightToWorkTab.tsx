@@ -368,7 +368,9 @@ export default function RightToWorkTab({
             Document Photo
           </label>
           <div className="mt-1 sm:col-span-3 sm:mt-0 space-y-3">
-            <label className="flex items-center justify-between rounded-md border border-dashed border-border-strong px-4 py-3 text-sm text-text-muted">
+            {/* The file input inside is sr-only, not hidden, so the Tab key still reaches it;
+                this box draws the DS focus ring for it. */}
+            <label className="relative flex items-center justify-between rounded-md border border-dashed border-border-strong px-4 py-3 text-sm text-text-muted has-[:focus-visible]:outline-hidden has-[:focus-visible]:shadow-ring">
               <div className="flex items-center space-x-3">
                 <Upload className="h-5 w-5 text-text-subtle" />
                 <span>{selectedFileName ?? 'Upload scan or photo (PDF/JPG/PNG)'}</span>
@@ -379,7 +381,7 @@ export default function RightToWorkTab({
 	                ref={fileInputRef}
 	                accept=".pdf,.jpg,.jpeg,.png"
 	                disabled={!canEdit || isSaving}
-	                className="hidden"
+	                className="sr-only"
 	                onChange={(event) => {
 	                  const file = event.target.files?.[0]
 	                  if (!file) {
