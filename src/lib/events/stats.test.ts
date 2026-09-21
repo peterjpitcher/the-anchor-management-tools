@@ -65,12 +65,19 @@ describe('event stats', () => {
     expect(stats.estimatedRevenue).toBe(100)
   })
 
-  it('uses split communal capacity before static capacity', () => {
+  it('does not advertise stored capacity when physical availability is unknown', () => {
+    expect(resolveEventCapacity({ booking_mode: 'table', capacity: 100 })).toBeNull()
+    expect(resolveEventCapacity({ booking_mode: 'communal', capacity: 100, capacity_unavailable: true })).toBeNull()
+    expect(resolveEventCapacity({ booking_mode: 'table', capacity: 100, resolved_capacity: 0 })).toBe(0)
+  })
+
+  it('uses resolved physical capacity instead of stored limits', () => {
     expect(resolveEventCapacity({
       booking_mode: 'communal',
       capacity: 100,
       seated_capacity: 41,
       standing_capacity: 15,
-    })).toBe(56)
+      resolved_capacity: 49,
+    })).toBe(49)
   })
 })

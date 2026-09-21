@@ -6,6 +6,7 @@ import {
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { BarMini } from './BarMini'
+import { resolveEventCapacity } from '@/lib/events/stats'
 import type { Event } from '@/types/database'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { useState, useCallback } from 'react'
@@ -129,9 +130,9 @@ export function EventListView({
             </tr>
           ) : (
             events.map((event) => {
-              const capacity = event.capacity ?? 0
+              const capacity = resolveEventCapacity(event)
               const booked = (event as Event & { booked_count?: number }).booked_count ?? 0
-              const bookedRatio = capacity > 0 ? Math.round((booked / capacity) * 100) : 0
+              const bookedRatio = capacity !== null && capacity > 0 ? Math.round((booked / capacity) * 100) : 0
               const linkClicks = (event as Event & { link_clicks?: number }).link_clicks ?? 0
               return (
                 <TableRow key={event.id} onClick={() => onEventClick(event)}>
@@ -160,9 +161,9 @@ export function EventListView({
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-text-muted">
-                        {capacity > 0 ? `${booked}/${capacity}` : '-'}
+                        {capacity !== null ? `${booked}/${capacity}` : `${booked} booked`}
                       </span>
-                      {capacity > 0 && <BarMini value={bookedRatio} />}
+                      {capacity !== null && capacity > 0 && <BarMini value={bookedRatio} />}
                     </div>
                   </TableCell>
                   <TableCell align="right">
@@ -210,9 +211,9 @@ export function EventListView({
           <div className="px-4 py-12 text-center text-sm text-text-muted">No events found</div>
         ) : (
           events.map((event) => {
-            const capacity = event.capacity ?? 0
+            const capacity = resolveEventCapacity(event)
             const booked = (event as Event & { booked_count?: number }).booked_count ?? 0
-            const bookedRatio = capacity > 0 ? Math.round((booked / capacity) * 100) : 0
+            const bookedRatio = capacity !== null && capacity > 0 ? Math.round((booked / capacity) * 100) : 0
             const linkClicks = (event as Event & { link_clicks?: number }).link_clicks ?? 0
             return (
               <div key={event.id} className="py-4">
@@ -260,9 +261,9 @@ export function EventListView({
                     <dd className="mt-0.5">
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-text-muted">
-                          {capacity > 0 ? `${booked}/${capacity}` : '-'}
+                          {capacity !== null ? `${booked}/${capacity}` : `${booked} booked`}
                         </span>
-                        {capacity > 0 && <BarMini value={bookedRatio} />}
+                        {capacity !== null && capacity > 0 && <BarMini value={bookedRatio} />}
                       </div>
                     </dd>
                   </div>

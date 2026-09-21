@@ -10,6 +10,12 @@ export interface Event {
   capacity: number | null;
   seated_capacity?: number | null;
   standing_capacity?: number | null;
+  resolved_capacity?: number | null;
+  resolved_seated_capacity?: number | null;
+  resolved_standing_capacity?: number | null;
+  seated_remaining?: number | null;
+  standing_remaining?: number | null;
+  capacity_unavailable?: boolean;
   payment_mode?: 'free' | 'cash_only' | 'prepaid' | null;
   booking_mode?: 'table' | 'general' | 'mixed' | 'communal' | null;
   event_type?: string | null;

@@ -1,6 +1,8 @@
 const ESTIMATED_REVENUE_PER_BOOKED_SEAT = 25
 
 type EventLike = {
+  resolved_capacity?: number | null
+  capacity_unavailable?: boolean
   capacity?: number | null
   seated_capacity?: number | null
   standing_capacity?: number | null
@@ -63,12 +65,9 @@ function isActiveBooking(booking: BookingLike, now: Date): boolean {
 }
 
 export function resolveEventCapacity(event: EventLike): number | null {
-  if (event.booking_mode === 'communal') {
-    const seated = typeof event.seated_capacity === 'number' ? event.seated_capacity : 0
-    const standing = typeof event.standing_capacity === 'number' ? event.standing_capacity : 0
-    const splitTotal = seated + standing
-    if (splitTotal > 0) return splitTotal
-  }
+  if (event.capacity_unavailable) return null
+  if (event.resolved_capacity !== undefined) return event.resolved_capacity
+  if (event.booking_mode && event.booking_mode !== 'general') return null
 
   return typeof event.capacity === 'number' && event.capacity > 0 ? event.capacity : null
 }

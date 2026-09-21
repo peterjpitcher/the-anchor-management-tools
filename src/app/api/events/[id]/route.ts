@@ -29,6 +29,9 @@ type EventMessageTemplateRow = {
 
 type EventCapacityRow = {
   event_id: string
+  capacity: number | null
+  communal_seated_capacity: number | null
+  standing_capacity: number | null
   seats_remaining: number | null
   seated_remaining: number | null
   standing_remaining: number | null
@@ -150,29 +153,19 @@ export async function GET(
     );
 
     const lastUpdated = event.updated_at || event.created_at;
-    let seatsRemaining: number | null =
-      typeof event.capacity === 'number' ? event.capacity : null
-    let seatedRemaining: number | null = null
-    let standingRemaining: number | null = null
-    let totalRemaining: number | null = seatsRemaining
-    let isFull =
-      typeof seatsRemaining === 'number' ? seatsRemaining <= 0 : false
-
-    if (event.id) {
-      const { data: capacityRows, error: capacityError } = await supabase.rpc(
-        'get_event_capacity_snapshot_v05',
-        { p_event_ids: [event.id] }
-      )
-
-      if (!capacityError && Array.isArray(capacityRows) && capacityRows.length > 0) {
-        const capacityRow = capacityRows[0] as EventCapacityRow
-        seatsRemaining = capacityRow.seats_remaining
-        seatedRemaining = capacityRow.seated_remaining ?? null
-        standingRemaining = capacityRow.standing_remaining ?? null
-        totalRemaining = capacityRow.total_remaining ?? seatsRemaining
-        isFull = capacityRow.is_full
-      }
+    const { data: capacityRows, error: capacityError } = await supabase.rpc(
+      'get_event_capacity_snapshot_v05',
+      { p_event_ids: [event.id] }
+    )
+    if (capacityError || !Array.isArray(capacityRows) || capacityRows.length === 0) {
+      return createErrorResponse('Event availability is temporarily unavailable', 'AVAILABILITY_UNAVAILABLE', 503)
     }
+    const capacityRow = capacityRows[0] as EventCapacityRow
+    const seatsRemaining = capacityRow.seats_remaining
+    const seatedRemaining = capacityRow.seated_remaining
+    const standingRemaining = capacityRow.standing_remaining
+    const totalRemaining = capacityRow.total_remaining ?? seatsRemaining
+    const isFull = capacityRow.is_full
 
     const price = resolveEventPriceAmount(event)
     const paymentMode = resolveEventPaymentMode(event)
@@ -269,15 +262,15 @@ export async function GET(
       online_discount_ends_at: event.online_discount_ends_at ?? null,
       booking_questions: event.booking_questions ?? [],
       is_free: event.is_free === true,
-      capacity: event.capacity,
-      seated_capacity: event.seated_capacity ?? null,
-      standing_capacity: event.standing_capacity ?? null,
+      capacity: capacityRow.capacity,
+      seated_capacity: capacityRow.communal_seated_capacity ?? null,
+      standing_capacity: capacityRow.standing_capacity ?? 0,
       seats_remaining: seatsRemaining,
       seated_remaining: seatedRemaining,
       standing_remaining: standingRemaining,
       total_remaining: totalRemaining,
       is_full: isFull,
-      waitlist_enabled: typeof event.capacity === 'number' && event.capacity > 0,
+      waitlist_enabled: typeof capacityRow.capacity === 'number',
       performer_name: event.performer_name || null,
       performer_type: event.performer_type || null,
       created_at: event.created_at,
@@ -331,9 +324,9 @@ export async function GET(
       // uncapped event read as sold out on the website.
       // Both gated on the SAME condition: emitting remaining 0 without a maximum
       // makes the website read an uncapped event as sold out.
-      ...(typeof event.capacity === 'number'
+      ...(typeof capacityRow.capacity === 'number'
         ? {
-            maximumAttendeeCapacity: event.capacity,
+            maximumAttendeeCapacity: capacityRow.capacity,
             remainingAttendeeCapacity: isFull
               ? 0
               : typeof totalRemaining === 'number'

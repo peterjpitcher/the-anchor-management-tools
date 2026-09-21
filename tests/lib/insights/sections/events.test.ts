@@ -22,7 +22,7 @@ function event(overrides: Row = {}): Row {
     date: '2026-10-06',
     time: '19:00:00',
     capacity: 60,
-    booking_mode: 'table',
+    booking_mode: 'general',
     seated_capacity: null,
     standing_capacity: null,
     event_status: 'scheduled',
@@ -54,6 +54,10 @@ const THIS_WEEK = '2026-09-20T12:00:00Z'
 
 async function build(events: Row[], bookings: Row[] = [], now?: Date): Promise<{ result: SectionBuildResult; db: FakeDb }> {
   const db = new FakeDb({ events, bookings })
+  db.rpcHandlers.get_event_capacity_snapshot_v05 = () => events.filter(row => row.booking_mode !== 'general').map(row => ({
+    event_id: row.id,
+    capacity: row.snapshot_capacity ?? Number(row.seated_capacity ?? 0) + Number(row.standing_capacity ?? 0),
+  }))
   const result = await buildEventsSection(makeContext(db, now))
   return { result, db }
 }
@@ -444,6 +448,32 @@ describe('hosted events section', () => {
     })
     expect(result.headline).toBe('2 events in the next 14 days, 50 seats booked. 1 needs attention.')
     expectPrintable(result)
+  })
+
+  it.each(['table', null])('uses physical capacity rather than the stored limit for mode %s', async bookingMode => {
+    const row = event({ booking_mode: bookingMode, capacity: 999, snapshot_capacity: 40 })
+    const { result } = await build([row], [booking(row, 30, THIS_WEEK)])
+    expect(result.lists[0].items[0].text).toContain('30 of 40 booked (75%), 10 left')
+    expect(JSON.stringify(result)).not.toContain('999')
+  })
+
+  it('handles zero physical capacity without division by zero or invented places', async () => {
+    const row = event({ booking_mode: 'table', capacity: 999, snapshot_capacity: 0 })
+    const { result } = await build([row])
+    expect(result.lists[0].items[0].text).toContain('0 of 0 booked (0%), 0 left')
+    expect(result.upcoming).toEqual([])
+    expectPrintable(result)
+  })
+
+  it.each(['missing', 'error'])('does not invent seats or ask staff to set physical capacity on snapshot %s', async (failure) => {
+    const row = event({ booking_mode: 'communal', capacity: 999 })
+    const db = new FakeDb({ events: [row], bookings: [booking(row, 10, THIS_WEEK)] })
+    db.rpcHandlers.get_event_capacity_snapshot_v05 = () => []
+    if (failure === 'error') db.fail('get_event_capacity_snapshot_v05')
+    const result = await buildEventsSection(makeContext(db))
+    expect(result.lists[0].items[0].text).toContain('10 booked, seating availability unavailable')
+    expect(JSON.stringify(result)).not.toMatch(/999|Set a capacity|% booked/)
+    expect(find(result, `events.no_capacity.${row.id}`).action?.text).toContain('Check seating availability')
   })
 
   it('uses the seated and standing split for communal events, as /events does', async () => {

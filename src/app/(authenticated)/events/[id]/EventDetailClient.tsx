@@ -815,17 +815,21 @@ function OverviewTab({ event }: { event: Event }) {
                 )}
               </DetailRow>
             )}
-            {event.booking_mode === 'communal' ? (
+            {event.capacity_unavailable ? (
+              <DetailRow label="Availability" value="Currently unavailable" />
+            ) : event.booking_mode === 'communal' ? (
               <>
-                {(event as any).seated_capacity !== null && (event as any).seated_capacity !== undefined && (
-                  <DetailRow label="Seated Capacity" value={String((event as any).seated_capacity)} />
-                )}
-                {(event as any).standing_capacity !== null && (event as any).standing_capacity !== undefined && (
-                  <DetailRow label="Standing Capacity" value={String((event as any).standing_capacity)} />
-                )}
+                <DetailRow label="Seated places remaining" value={String(event.seated_remaining ?? 'Unavailable')} />
+                <DetailRow label="Standing tickets remaining" value={String(event.standing_remaining ?? 'Unavailable')} />
+                <DetailRow label="Standing ticket limit" value={String(event.resolved_standing_capacity ?? 0)} />
+                {event.seated_capacity != null && <DetailRow label="Existing seating limit" value={String(event.seated_capacity)} />}
               </>
+            ) : event.booking_mode === 'general' ? (
+              <DetailRow label="Ticket limit" value={String(event.capacity ?? 'Unlimited')} />
             ) : (
-              event.capacity !== null && <DetailRow label="Capacity" value={String(event.capacity)} />
+              <DetailRow label="Seated places remaining" value={String(event.seated_remaining ?? 'Unavailable')}>
+                <span className="text-sm text-text-muted">Subject to a suitable table for the party size.</span>
+              </DetailRow>
             )}
             <DetailRow label="Booking Type" value={formatBookingMode(event.booking_mode)} />
             <DetailRow label="Cost" value={formatEventCost(event)} />

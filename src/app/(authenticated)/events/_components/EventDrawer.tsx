@@ -49,7 +49,6 @@ const STATUS_OPTIONS = [
 const BOOKING_MODE_OPTIONS = [
   { value: 'table', label: 'Table bookings' },
   { value: 'general', label: 'Tickets (no assigned seats)' },
-  { value: 'mixed', label: 'Mixed (table + general)' },
   { value: 'communal', label: 'Communal table seating' },
 ]
 
@@ -93,7 +92,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
   const [status, setStatus] = useState('scheduled')
   const [capacity, setCapacity] = useState('')
   const [seatedCapacity, setSeatedCapacity] = useState('')
-  const [standingCapacity, setStandingCapacity] = useState('')
+  const [standingCapacity, setStandingCapacity] = useState('0')
+  const [standingCapacityChanged, setStandingCapacityChanged] = useState(false)
   const [brief, setBrief] = useState('')
 
   // ── Time & schedule ──
@@ -170,6 +170,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
   // Initialize form when event changes
   useEffect(() => {
     setFieldErrors({})
+    setStandingCapacityChanged(false)
     if (event) {
       setName(event.name || '')
       setDate(event.date || '')
@@ -178,8 +179,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setCategoryId(event.category_id || '')
       setStatus(event.event_status || 'scheduled')
       setCapacity(event.capacity?.toString() || '')
-      setSeatedCapacity((event as any).seated_capacity?.toString() || '')
-      setStandingCapacity((event as any).standing_capacity?.toString() || '')
+      setSeatedCapacity(event.seated_capacity?.toString() || '')
+      setStandingCapacity(event.resolved_standing_capacity?.toString() ?? event.standing_capacity?.toString() ?? '')
       setBrief(event.brief || '')
       setDoorsTime(event.doors_time || '')
       setLastEntryTime(event.last_entry_time || '')
@@ -221,7 +222,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setStatus('scheduled')
       setCapacity('')
       setSeatedCapacity('')
-      setStandingCapacity('')
+      setStandingCapacity('0')
       setBrief('')
       setDoorsTime('')
       setLastEntryTime('')
@@ -317,8 +318,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setPrice(cat.default_price.toString())
       setIsFree(cat.default_is_free)
     }
-    if (cat.default_capacity) setCapacity(cat.default_capacity.toString())
-    setBookingMode(cat.default_booking_mode || 'table')
+    if (cat.default_booking_mode === 'general' && cat.default_capacity) setCapacity(cat.default_capacity.toString())
+    setBookingMode(cat.default_booking_mode === 'mixed' ? 'table' : cat.default_booking_mode || 'table')
     setPaymentMode(cat.default_payment_mode || (cat.default_is_free ? 'free' : 'cash_only'))
     if (!performerName && cat.default_performer_name) setPerformerName(cat.default_performer_name)
     if (!performerType && cat.default_performer_type) setPerformerType(cat.default_performer_type)
@@ -375,15 +376,10 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       if (categoryId) formData.set('category_id', categoryId)
       formData.set('event_status', status)
       formData.set('booking_mode', bookingMode)
-      if (bookingMode === 'communal') {
-        const seated = seatedCapacity ? Number.parseInt(seatedCapacity, 10) : null
-        const standing = standingCapacity ? Number.parseInt(standingCapacity, 10) : null
-        formData.set('seated_capacity', seatedCapacity)
-        formData.set('standing_capacity', standingCapacity)
-        if (seated !== null || standing !== null) {
-          formData.set('capacity', String((seated || 0) + (standing || 0)))
-        }
-      } else if (capacity) {
+      if (bookingMode === 'communal' && (!event || event.booking_mode !== 'communal' || standingCapacityChanged)) {
+        formData.set('standing_capacity', standingCapacity || '0')
+      }
+      if (bookingMode === 'general') {
         formData.set('capacity', capacity)
       }
 
@@ -569,8 +565,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
         time: time || null,
         endTime: endTime || null,
         categoryName: selectedCategory?.name ?? null,
-        capacity: bookingMode === 'communal'
-          ? (Number.parseInt(seatedCapacity || '0', 10) || 0) + (Number.parseInt(standingCapacity || '0', 10) || 0)
+        capacity: bookingMode !== 'general'
+          ? event?.resolved_capacity ?? null
           : capacity ? parseInt(capacity) : null,
         brief: brief.trim() || null,
         performerName: performerName.trim() || null,
@@ -682,27 +678,32 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
                 onChange={(e) => setStatus(e.target.value)}
               />
             </div>
-            {bookingMode === 'communal' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Input
-                  label="Seated capacity"
+            {bookingMode !== 'general' ? (
+              <div className="space-y-3">
+                <p className="text-sm text-text-muted">Seating is limited by the tables available during this event. Each booking must fit the available seating.</p>
+                {event && event.date === date && event.time === time && event.booking_mode === bookingMode && (
+                  <p className="text-sm text-text-muted">{event?.capacity_unavailable || event?.seated_remaining == null
+                    ? 'Seating availability is currently unavailable.'
+                    : `${event.seated_remaining} seats currently available. Availability is checked again when booking.`}</p>
+                )}
+                {bookingMode === 'communal' && seatedCapacity && <p className="text-sm text-text-muted">Existing seating limit: {seatedCapacity}</p>}
+                {bookingMode === 'communal' && <Input
+                  label="Standing ticket limit"
                   type="number"
-                  value={seatedCapacity}
-                  onChange={(e) => setSeatedCapacity(e.target.value)}
-                  placeholder="Table seats"
-                />
-                <Input
-                  label="Standing capacity"
-                  type="number"
+                  min="0"
+                  step="1"
                   value={standingCapacity}
-                  onChange={(e) => setStandingCapacity(e.target.value)}
-                  placeholder="Standing tickets"
-                />
+                  placeholder="Availability unknown"
+                  onChange={(e) => { setStandingCapacity(e.target.value); setStandingCapacityChanged(true) }}
+                />}
+                {bookingMode === 'communal' && <p className="text-sm text-text-muted">Guests can buy standing tickets once all seats are booked. Standing tickets do not include a seat. Set the limit to 0 for seated bookings only.</p>}
               </div>
             ) : (
               <Input
-                label="Capacity"
+                label="Ticket limit"
                 type="number"
+                min="1"
+                step="1"
                 value={capacity}
                 onChange={(e) => setCapacity(e.target.value)}
                 placeholder="Unlimited"
@@ -810,7 +811,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
             <Select
               label="Booking Mode"
-              options={BOOKING_MODE_OPTIONS}
+              options={event?.booking_mode === 'mixed' ? [...BOOKING_MODE_OPTIONS, { value: 'mixed', label: 'Mixed (existing event)' }] : BOOKING_MODE_OPTIONS}
               value={bookingMode}
               onChange={(e) => setBookingMode(e.target.value)}
             />
