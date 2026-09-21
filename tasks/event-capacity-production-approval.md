@@ -1,5 +1,7 @@
 # Event capacity production approval packet
 
+Current status: revised packet explicitly approved and applied to production `tfcasgxopxegwrabvwat` on 21 September 2026 as migration `20260921074304_event_physical_capacity`. Repository SQL remains `20260920200647_event_physical_capacity.sql`, SHA-256 `7a17b0891fda382138ebb4ae19ed516ad1a6dd6c6691fc552fe3c53eba450b4b`. See [post-apply verification](event-capacity-postapply.md). Earlier draft-status notes below are retained as the approval history. Application PR 147 is awaiting CI and deployment.
+
 Status: implemented and validated locally on `codex/event-physical-capacity`. No production writes, deployment, customer messages or payment calls have been made.
 
 ## Exact production change
