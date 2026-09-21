@@ -11,6 +11,7 @@ vi.mock('googleapis', () => ({
   google: {
     calendar: () => ({
       events: {
+        get: vi.fn(),
         list: listMock,
         delete: deleteMock,
         update: vi.fn(),
