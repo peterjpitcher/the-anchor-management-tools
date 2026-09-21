@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createTablePaymentToken, getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 import { parseTablePaymentLinkFromUrl } from '@/lib/table-bookings/payment-link'
+import { clipShortLinkClickRow } from '@/lib/short-links/click-row'
 import { shouldShowLegacyInterstitial } from '@/lib/short-links/legacy-report'
 import {
   getCityFromHeaders,
@@ -463,7 +464,7 @@ export async function GET(
     // Build redirect response FIRST, sending it without waiting for click tracking
     const response = NextResponse.redirect(redirectTarget)
 
-    // Fire click tracking in background — does NOT block the redirect
+    // Fire click tracking in background: does NOT block the redirect
     waitUntil((async () => {
       try {
         const userAgent = request.headers.get('user-agent')
@@ -479,7 +480,7 @@ export async function GET(
         }
         const ipAddress = extractClientIp(request)
 
-        const clickPayload: Record<string, unknown> = {
+        const clickPayload: Record<string, unknown> = clipShortLinkClickRow({
           short_link_id: resolvedLink.id,
           user_agent: userAgent,
           referrer: request.headers.get('referer'),
@@ -496,7 +497,7 @@ export async function GET(
           utm_content: utmParams.utm_content,
           request_host: normalizeRequestHost(request.headers.get('host')),
           metadata: resolvedViaAlias ? { alias_code: shortCode } : {}
-        }
+        })
 
         const { error: clickInsertError } = await supabase
           .from('short_link_clicks')
@@ -521,7 +522,19 @@ export async function GET(
           })
         }
       } catch (err) {
-        console.error('Error tracking click:', err)
+        const clickError = (err && typeof err === 'object' ? err : {}) as {
+          code?: unknown
+          message?: unknown
+          details?: unknown
+          hint?: unknown
+        }
+        console.error('Error tracking click:', {
+          short_code: resolvedLink.short_code || shortCode,
+          code: clickError.code ?? null,
+          message: clickError.message ?? String(err),
+          details: clickError.details ?? null,
+          hint: clickError.hint ?? null,
+        })
       }
     })())
 
