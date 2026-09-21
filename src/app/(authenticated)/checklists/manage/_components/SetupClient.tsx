@@ -217,6 +217,7 @@ export function SetupClient({ checklists, error }: SetupClientProps) {
                       </TableCell>
                       <TableCell align="center">
                         <Switch
+                          aria-label={`${template.title} active`}
                           checked={template.isActive}
                           disabled={busyId === template.id}
                           onChange={(v) => toggleTemplate(template, v)}

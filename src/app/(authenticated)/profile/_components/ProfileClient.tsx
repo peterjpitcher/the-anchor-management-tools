@@ -326,6 +326,7 @@ export function ProfileClient() {
                     <p className="text-xs text-text-muted">Receive booking confirmations and reminders via SMS</p>
                   </div>
                   <Switch
+                    aria-label="SMS Notifications"
                     checked={profile.sms_notifications}
                     onChange={() => void toggleNotification('sms')}
                   />
@@ -337,6 +338,7 @@ export function ProfileClient() {
                     <p className="text-xs text-text-muted">Receive updates and newsletters via email</p>
                   </div>
                   <Switch
+                    aria-label="Email Notifications"
                     checked={profile.email_notifications}
                     onChange={() => void toggleNotification('email')}
                   />

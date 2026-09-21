@@ -949,11 +949,11 @@ focus:border-border-focus focus:shadow-ring`}
               <SubSection title="Switch">
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
-                    <Switch checked onChange={() => undefined} />
+                    <Switch aria-label="Enabled" checked onChange={() => undefined} />
                     <span className="text-sm text-text">Enabled</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Switch checked={false} onChange={() => undefined} />
+                    <Switch aria-label="Disabled" checked={false} onChange={() => undefined} />
                     <span className="text-sm text-text">Disabled</span>
                   </div>
                 </div>

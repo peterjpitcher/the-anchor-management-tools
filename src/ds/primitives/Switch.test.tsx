@@ -16,4 +16,12 @@ describe('Switch', () => {
     fireEvent.click(control)
     expect(onChange).toHaveBeenCalledWith(true)
   })
+
+  it('takes its name from aria-label when no visible label is rendered with it', () => {
+    render(<Switch aria-label="Online Bookings" checked onChange={vi.fn()} />)
+
+    const control = screen.getByRole('switch', { name: 'Online Bookings' })
+    expect(control).toHaveAttribute('aria-checked', 'true')
+    expect(screen.queryByText('Online Bookings')).not.toBeInTheDocument()
+  })
 })

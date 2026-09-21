@@ -214,8 +214,11 @@ export function BusinessHoursManager({
         getRowKey={(h) => h.day_of_week}
         columns={[
           { key: 'day', header: 'Day', cell: (h: any) => <span className="text-sm font-medium text-text">{DAY_NAMES[h.day_of_week]}</span> },
+          // The table has no visible label beside each control, so each carries the column
+          // and the day as its screen reader name.
           { key: 'closed', header: 'Closed', cell: (h: any) => (
             <Checkbox
+              aria-label={`Closed on ${DAY_NAMES[h.day_of_week]}`}
               checked={h.is_closed}
               onChange={(checked) => handleTimeChange(h.day_of_week, 'is_closed', checked)}
               disabled={!editable}
@@ -224,6 +227,7 @@ export function BusinessHoursManager({
           { key: 'kclosed', header: 'Kitchen Closed', cell: (h: any) => (
             h.day_of_week !== 0 && (
             <Checkbox
+              aria-label={`Kitchen closed on ${DAY_NAMES[h.day_of_week]}`}
               checked={h.is_kitchen_closed || h.is_closed}
               onChange={(checked) => handleTimeChange(h.day_of_week, 'is_kitchen_closed', checked)}
               disabled={!editable}
@@ -232,6 +236,7 @@ export function BusinessHoursManager({
           ) },
           { key: 'opens', header: 'Opens', cell: (h: any) => (
             <Input
+              aria-label={`Opens on ${DAY_NAMES[h.day_of_week]}`}
               type="time"
               value={h.opens || ''}
               onChange={(e) => handleTimeChange(h.day_of_week, 'opens', e.target.value)}
@@ -240,6 +245,7 @@ export function BusinessHoursManager({
           ) },
           { key: 'closes', header: 'Closes', cell: (h: any) => (
             <Input
+              aria-label={`Closes on ${DAY_NAMES[h.day_of_week]}`}
               type="time"
               value={h.closes || ''}
               onChange={(e) => handleTimeChange(h.day_of_week, 'closes', e.target.value)}
@@ -248,6 +254,7 @@ export function BusinessHoursManager({
           ) },
           { key: 'kopens', header: 'Kitchen Opens', cell: (h: any) => (
             <Input
+              aria-label={`Kitchen opens on ${DAY_NAMES[h.day_of_week]}`}
               type="time"
               value={h.kitchen_opens || ''}
               onChange={(e) => handleKitchenTimeChange(h.day_of_week, 'kitchen_opens', e.target.value)}
@@ -256,6 +263,7 @@ export function BusinessHoursManager({
           ) },
           { key: 'kcloses', header: 'Kitchen Closes', cell: (h: any) => (
             <Input
+              aria-label={`Kitchen closes on ${DAY_NAMES[h.day_of_week]}`}
               type="time"
               value={h.kitchen_closes || ''}
               onChange={(e) => handleKitchenTimeChange(h.day_of_week, 'kitchen_closes', e.target.value)}
@@ -265,6 +273,7 @@ export function BusinessHoursManager({
           { key: 'slopens', header: 'Sun Lunch Start', cell: (h: any) => (
             h.day_of_week === 0 ? (
               <Input
+                aria-label="Sunday lunch start"
                 type="time"
                 value={getSundayLunchTime(h, 'starts_at')}
                 onChange={(e) => handleSundayLunchTimeChange('starts_at', e.target.value)}
@@ -276,6 +285,7 @@ export function BusinessHoursManager({
           { key: 'slcloses', header: 'Sun Lunch End', cell: (h: any) => (
              h.day_of_week === 0 ? (
               <Input
+                aria-label="Sunday lunch end"
                 type="time"
                 value={getSundayLunchTime(h, 'ends_at')}
                 onChange={(e) => handleSundayLunchTimeChange('ends_at', e.target.value)}

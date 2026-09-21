@@ -164,6 +164,7 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
                   <div className="flex items-center gap-2">
                     {canEdit && (
                       <Switch
+                        aria-label={`${wt.name} active`}
                         checked={wt.is_active}
                         onChange={() => handleToggleActive(wt)}
                         size="sm"
@@ -213,6 +214,7 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
                   <TableCell>
                     {canEdit && (
                       <Switch
+                        aria-label={`${wt.name} active`}
                         checked={wt.is_active}
                         onChange={() => handleToggleActive(wt)}
                         size="sm"

@@ -168,6 +168,7 @@ export function TodayAdminClient({
                 <p className="text-xs text-text-muted">{hint}</p>
               </div>
               <Switch
+                aria-label={label}
                 checked={settings ? settings[key] : false}
                 disabled={!settings || busyFlag === key}
                 onChange={(v) => toggleFlag(key, v)}
