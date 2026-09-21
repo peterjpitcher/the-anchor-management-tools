@@ -331,7 +331,7 @@ export function buildEventSeoFacts(
     time: coalesce(input.time, db?.start_time),
     endTime: coalesce(input.endTime, db?.end_time),
     categoryName: coalesce(input.categoryName, db?.category_name),
-    capacity: coalesceNumber(input.capacity, db?.capacity),
+    capacity: input.capacity === null ? null : coalesceNumber(input.capacity, db?.capacity),
     pricingLabel: buildPricingLabel(price, isFree),
     performerName: coalesce(input.performerName, db?.performer_name),
     performerType: coalesce(input.performerType, db?.performer_type),

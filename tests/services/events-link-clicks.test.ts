@@ -118,6 +118,22 @@ describe('EventService.getEvents link clicks', () => {
     )
   })
 
+  it('includes unexpired payment holds in booked seats and requests their expiry', async () => {
+    const rows = buildEventRows()
+    rows[0].bookings = [
+      { seats: 3, status: 'confirmed' },
+      { seats: 4, status: 'pending_payment', hold_expires_at: '2099-01-01T00:00:00Z' },
+      { seats: 5, status: 'pending_payment', hold_expires_at: '2000-01-01T00:00:00Z' },
+    ]
+    const client = createEventsClient(rows)
+    const select = client.from('events').select
+    vi.mocked(createClient).mockResolvedValue(client)
+    vi.mocked(createAdminClient).mockReturnValue(createLinkClient({ rows: [], rangeCalls: [] }))
+    const result = await EventService.getEvents()
+    expect(select).toHaveBeenCalledWith(expect.stringContaining('hold_expires_at'), { count: 'exact' })
+    expect(result.events[0].booked_count).toBe(7)
+  })
+
   it('leaves the counts at zero and keeps the events list when the link read fails', async () => {
     const rangeCalls: RangeCall[] = []
     vi.mocked(createAdminClient).mockReturnValue(

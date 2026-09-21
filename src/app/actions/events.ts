@@ -304,16 +304,16 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     name: rawData.name as string,
     date: rawData.date as string,
     time: rawData.time as string || categoryDefaults.time,
-    ...(rawData.capacity !== undefined && rawData.capacity !== null && rawData.capacity !== ''
-      ? { capacity: Number(rawData.capacity) || null }
-      : !_existingEventId && categoryDefaults.capacity
+    ...(rawData.capacity !== undefined && rawData.capacity !== null
+      ? { capacity: rawData.capacity === '' ? null : Number(rawData.capacity) }
+      : !_existingEventId && bookingMode === 'general' && categoryDefaults.capacity
         ? { capacity: categoryDefaults.capacity }
       : {}),
     ...(rawData.seated_capacity !== undefined && rawData.seated_capacity !== null
       ? { seated_capacity: rawData.seated_capacity === '' ? null : Number(rawData.seated_capacity) || null }
       : {}),
     ...(rawData.standing_capacity !== undefined && rawData.standing_capacity !== null
-      ? { standing_capacity: rawData.standing_capacity === '' ? null : Number(rawData.standing_capacity) || null }
+      ? { standing_capacity: rawData.standing_capacity === '' ? null : Number(rawData.standing_capacity) }
       : {}),
     ...(rawData.payment_mode && ['free', 'cash_only', 'prepaid'].includes(rawData.payment_mode as string)
       ? { payment_mode: rawData.payment_mode as 'free' | 'cash_only' | 'prepaid' }

@@ -1,4 +1,5 @@
 import { whenLondonClockReaches } from '@/lib/dateUtils'
+import { attachEventCapacity } from '@/lib/events/capacity'
 import { resolveEventCapacity } from '@/lib/events/stats'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { compare, describeChange } from '../compare'
@@ -172,9 +173,12 @@ export async function buildEventsSection(ctx: SectionContext): Promise<SectionBu
   const excludedComparatorStatuses: readonly string[] = EVENTS.excludedComparatorStatuses
   const inNext14 = (row: EventRow): boolean => isInRange(row.date, windows.next14)
 
-  const listed = events
+  const listedRows = events
     .filter((row) => inNext14(row) && row.bookings_enabled === true && listedStatuses.includes(row.event_status ?? ''))
     .sort(byDateThenTime)
+  const physicalRows = listedRows.filter(row => row.booking_mode !== 'general')
+  const physicalCapacity = new Map((await attachEventCapacity(ctx.db, physicalRows)).map(row => [row.id, row]))
+  const listed = listedRows.map(row => physicalCapacity.get(row.id) ?? row)
   const postponed = events.filter((row) => inNext14(row) && row.event_status === 'postponed').sort(byDateThenTime)
   const past = events
     .filter((row) => row.date < today
@@ -259,7 +263,7 @@ export async function buildEventsSection(ctx: SectionContext): Promise<SectionBu
       capacity,
       booked,
       netLast7Days: booked - seatsOnBooks(bookings, sevenDaysAgoMs),
-      fill: capacity === null ? null : booked / capacity,
+      fill: capacity === null || capacity === 0 ? null : booked / capacity,
       remaining,
       usual: usualFor(row),
       soldOut: row.event_status === 'sold_out' || remaining === 0,
@@ -350,14 +354,15 @@ export async function buildEventsSection(ctx: SectionContext): Promise<SectionBu
     }
 
     if (view.capacity === null) {
+      const physical = view.row.booking_mode !== 'general'
       push(id, {
         key: `events.no_capacity.${id}`,
         entity,
         rag: 'amber',
         kind: 'issue',
-        text: `${view.label} has no capacity set, so its fill cannot be tracked.`,
+        text: physical ? `${view.label} seating availability is unavailable, so its fill cannot be tracked.` : `${view.label} has no capacity set, so its fill cannot be tracked.`,
         emailSafe: true,
-        action: { text: `Set a capacity for ${view.label} so fill can be tracked`, ...recordAction(view), impact: 'housekeeping' },
+        action: { text: physical ? `Check seating availability for ${view.label}` : `Set a capacity for ${view.label} so fill can be tracked`, ...recordAction(view), impact: 'housekeeping' },
       })
     }
 
@@ -426,7 +431,7 @@ export async function buildEventsSection(ctx: SectionContext): Promise<SectionBu
       label: 'Seats booked',
       value: formatCount(totalBooked),
       comparison: capacityTotal === 0
-        ? 'no capacity set on these events'
+        ? 'capacity unavailable or no places available on these events'
         : allHaveCapacity
           ? `${pct(bookedWithCapacity / capacityTotal)} of ${plural(capacityTotal, 'seat')}`
           : `${pct(bookedWithCapacity / capacityTotal)} of ${plural(capacityTotal, 'seat')} on the ${plural(withCapacity.length, 'event')} with a capacity`,
@@ -458,7 +463,7 @@ export async function buildEventsSection(ctx: SectionContext): Promise<SectionBu
     items: views.map((view) => {
       const time = formatTimeOfDay(view.row.time)
       const seatsText = view.capacity === null
-        ? `${formatCount(view.booked)} booked, no capacity set`
+        ? `${formatCount(view.booked)} booked, ${view.row.booking_mode !== 'general' ? 'seating availability unavailable' : 'no capacity set'}`
         : `${formatCount(view.booked)} of ${formatCount(view.capacity)} booked (${pct(view.fill ?? 0)}), ${formatCount(view.remaining ?? 0)} left`
       const usualText = view.usual
         ? `Usually ${formatCount(Math.round(view.usual.seats))} at this point${view.usual.basis === 'category' ? ' (same category)' : ''}`

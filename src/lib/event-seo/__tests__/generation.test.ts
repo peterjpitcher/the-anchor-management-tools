@@ -109,6 +109,10 @@ describe('buildEventSeoFacts', () => {
     expect(facts.brief).toBe('An evening of acoustic folk and indie covers.')
   })
 
+  it('does not restore an obsolete seating total when physical availability is unknown', () => {
+    expect(buildEventSeoFacts({ name: 'Quiz', capacity: null }, { capacity: 100 }).capacity).toBeNull()
+  })
+
   it('falls back to DB data when form input is missing', () => {
     const minimalInput: BuildFactsInput = { name: '' }
     const facts = buildEventSeoFacts(minimalInput, completeDbData())

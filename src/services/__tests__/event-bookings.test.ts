@@ -372,6 +372,19 @@ describe('EventBookingService.createBooking', () => {
 
   // ── Table booking mode ──────────────────────────────────────────────────────
 
+  it.each(['table', 'mixed'] as const)('does not retry or cancel an atomically reserved %s booking', async bookingMode => {
+    const supabase = makeSupabaseMock({ rpcResults: {
+      create_event_booking_v05: { data: { ...CONFIRMED_RPC_RESULT, table_booking_id: 'tb-atomic', table_name: 'Table 5' }, error: null },
+      create_event_table_reservation_v05: { data: null, error: { message: 'network unavailable' } },
+    } })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const result = await EventBookingService.createBooking({ ...BASE_PARAMS, bookingMode })
+    expect(result.resolvedState).toBe('confirmed')
+    expect(result.tableBookingId).toBe('tb-atomic')
+    expect(result.tableName).toBe('Table 5')
+    expect(supabase.rpc.mock.calls.some(call => call[0] === 'create_event_table_reservation_v05')).toBe(false)
+  })
+
   it('calls table reservation RPC for table booking mode on confirmed booking', async () => {
     const tableReservationResult = {
       state: 'confirmed' as const,

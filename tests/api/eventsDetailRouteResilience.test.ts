@@ -19,6 +19,8 @@ import { GET } from '@/app/api/events/[id]/route'
 
 function buildSupabaseMock(options: {
   eventFound?: boolean
+  capacityError?: boolean
+  capacityMissing?: boolean
   messageTemplatesError?: { code?: string; message: string } | null
   messageTemplatesRows?: Array<{ template_type: string; content: string | null }>
   shortLinksRows?: Array<{
@@ -96,7 +98,7 @@ function buildSupabaseMock(options: {
   }))
   const shortLinksSelect = vi.fn(() => ({ contains: shortLinksContains }))
 
-  const rpc = vi.fn(async () => ({ data: [], error: null }))
+  const rpc = vi.fn(async () => ({ data: options.capacityMissing ? [] : [{ event_id: 'evt-1', capacity: 49, communal_seated_capacity: 49, standing_capacity: 0, seats_remaining: 7, seated_remaining: 7, standing_remaining: 0, total_remaining: 7, is_full: false }], error: options.capacityError ? { message: 'unavailable' } : null }))
 
   return {
     from: vi.fn((table: string) => {
@@ -114,6 +116,22 @@ function buildSupabaseMock(options: {
 describe('events detail route resilience', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it.each([{ capacityError: true }, { capacityMissing: true }])('fails closed when capacity cannot be read: %j', async (options) => {
+    vi.mocked(createAdminClient).mockReturnValue(buildSupabaseMock(options) as unknown as ReturnType<typeof createAdminClient>)
+    const response = await GET(new Request('https://management.orangejelly.co.uk/api/events/evt-1') as Parameters<typeof GET>[0], { params: Promise.resolve({ id: 'evt-1' }) })
+    expect(response.status).toBe(503)
+    expect((await response.json()).error.code).toBe('AVAILABILITY_UNAVAILABLE')
+  })
+
+  it('returns physical totals from the snapshot', async () => {
+    vi.mocked(createAdminClient).mockReturnValue(buildSupabaseMock({}) as unknown as ReturnType<typeof createAdminClient>)
+    const response = await GET(new Request('https://management.orangejelly.co.uk/api/events/evt-1') as Parameters<typeof GET>[0], { params: Promise.resolve({ id: 'evt-1' }) })
+    const { data } = await response.json()
+    expect(data.maximumAttendeeCapacity).toBe(49)
+    expect(data.remainingAttendeeCapacity).toBe(7)
+    expect(data.waitlist_enabled).toBe(true)
   })
 
   it('returns 200 detail payload when event_message_templates query errors', async () => {
