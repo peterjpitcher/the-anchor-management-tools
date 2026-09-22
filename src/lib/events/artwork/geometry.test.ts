@@ -36,10 +36,6 @@ import {
   type QrPrintMinimum,
 } from './geometry'
 import { EVENT_IMAGE_VARIANTS, EVENT_IMAGE_VARIANT_ORDER } from '@/lib/events/imageVariants'
-import {
-  EVENT_IMAGE_VARIANTS,
-  EVENT_IMAGE_VARIANT_ORDER,
-} from '../imageVariants'
 
 const CORNERS: readonly Corner[] = ['top_left', 'top_right', 'bottom_left', 'bottom_right']
 

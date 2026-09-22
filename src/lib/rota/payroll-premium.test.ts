@@ -329,7 +329,8 @@ function baseRow(overrides: Partial<PayrollRow>): PayrollRow {
 
 async function readWorkbook(buffer: Buffer): Promise<ExcelJS.Worksheet> {
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(buffer);
+  // ExcelJS types load() against its own ArrayBuffer-shaped Buffer, not Node's; a Node Buffer works.
+  await wb.xlsx.load(buffer as unknown as ArrayBuffer);
   return wb.worksheets[0];
 }
 

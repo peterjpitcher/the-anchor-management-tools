@@ -84,6 +84,6 @@ describe('calendar adapter colours', () => {
     expect(balance.color).toBe('#F97316')
     expect(birthday.color).toBe('#FACC15')
     expect(specialHours.color).toBe('#111827')
-    expect(parking.color).toBe('#16A34A')
+    expect(parking?.color).toBe('#16A34A')
   })
 })
