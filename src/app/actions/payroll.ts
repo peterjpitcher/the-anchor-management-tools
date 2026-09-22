@@ -758,7 +758,7 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
   const result = await sendEmail({
     to: ACCOUNTANT_EMAIL,
     cc: ccEmails,
-    subject: `Payroll — ${monthLabel}`,
+    subject: `Payroll: ${monthLabel}`,
     html: htmlBody,
     attachments: [
       {
@@ -777,7 +777,7 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
     entity_id: approval.id,
     to_addresses: [ACCOUNTANT_EMAIL],
     cc_addresses: ccEmails,
-    subject: `Payroll — ${monthLabel}`,
+    subject: `Payroll: ${monthLabel}`,
     status: logStatus,
     error_message: result.success ? null : result.error ?? null,
     message_id: result.success ? result.messageId ?? null : null,
@@ -814,7 +814,7 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
     const alertHtml = buildEarningsAlertEmailHtml(year, month, overThreshold);
     await sendEmail({
       to: MANAGER_EMAIL,
-      subject: `URGENT: Earnings alert — ${overThreshold.length === 1 ? overThreshold[0].name : `${overThreshold.length} employees`} over £${EARNINGS_THRESHOLD} in ${monthLabel}`,
+      subject: `URGENT: Earnings alert (${overThreshold.length === 1 ? overThreshold[0].name : `${overThreshold.length} employees`} over £${EARNINGS_THRESHOLD} in ${monthLabel})`,
       html: alertHtml,
     });
   }
