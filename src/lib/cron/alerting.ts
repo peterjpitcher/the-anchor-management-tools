@@ -1,4 +1,5 @@
 import { sendEmail } from '@/lib/email/emailService'
+import { getAppUrl } from '@/lib/env'
 import { getErrorMessage } from '@/lib/errors'
 import { STAFF } from '@/lib/brand/palette'
 
@@ -66,7 +67,7 @@ export async function reportCronFailure(
   const errorMessage = getErrorMessage(error)
   const timestamp = new Date().toISOString()
   const environment = process.env.NODE_ENV ?? 'unknown'
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'unknown'
+  const appUrl = getAppUrl()
 
   const safeCronName = escapeHtml(cronName)
   const safeErrorMessage = escapeHtml(redactPii(errorMessage))

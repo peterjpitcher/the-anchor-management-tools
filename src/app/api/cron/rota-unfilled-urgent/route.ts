@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getAppUrl } from '@/lib/env';
 import { formatInTimeZone } from 'date-fns-tz';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email/emailService';
@@ -27,7 +28,6 @@ import { STAFF } from '@/lib/brand/palette';
  */
 
 const TIMEZONE = 'Europe/London';
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? '';
 
 function escapeHtml(value: string): string {
   return value
@@ -65,7 +65,7 @@ function buildUrgentUnfilledEmailHtml(todayIso: string, shifts: UnfilledShift[])
       ? 'A shift tomorrow still has nobody on it.'
       : `The soonest is in ${soonest} days.`;
 
-  const href = `${APP_URL}/rota/reassign`;
+  const href = `${getAppUrl()}/rota/reassign`;
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px">
       <h2 style="margin-bottom:4px">${shifts.length} unfilled ${shifts.length === 1 ? 'shift' : 'shifts'} in the next week</h2>

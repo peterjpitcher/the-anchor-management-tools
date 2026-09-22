@@ -287,7 +287,6 @@ describe('handleReplyToBook', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER = '01784 123456'
-    process.env.NEXT_PUBLIC_APP_URL = 'https://example.com'
   })
 
   it('returns handled=false for an unparseable message from someone with no live promo', async () => {

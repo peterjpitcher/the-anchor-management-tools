@@ -1,4 +1,5 @@
 import { sendEmail } from '@/lib/email/emailService'
+import { getAppUrl } from '@/lib/env'
 import { escapeHtml, redactPii } from '@/lib/cron/alerting'
 import { STAFF } from '@/lib/brand/palette'
 
@@ -79,7 +80,7 @@ export async function sendBillingRunAlert(results: BillingRunResults): Promise<v
 
   const timestamp = new Date().toISOString()
   const environment = process.env.NODE_ENV ?? 'unknown'
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'unknown'
+  const appUrl = getAppUrl()
 
   const safeTimestamp = escapeHtml(timestamp)
   const safeEnvironment = escapeHtml(environment)

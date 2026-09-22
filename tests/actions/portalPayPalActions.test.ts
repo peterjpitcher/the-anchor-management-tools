@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 
+// env.ts reads the app URL once, when it is first imported, so it is set before any import.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL = 'https://management.example.com'
+})
+
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
 }))
@@ -160,7 +165,6 @@ function payPalOrderForBooking(bookingId = 'booking-1') {
 describe('portalPayPalActions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    process.env.NEXT_PUBLIC_APP_URL = 'https://management.example.com'
     mockedClaimIdempotencyKey.mockResolvedValue({ state: 'claimed' })
     mockedPersistIdempotencyResponse.mockResolvedValue(undefined)
     mockedReleaseIdempotencyClaim.mockResolvedValue(undefined)

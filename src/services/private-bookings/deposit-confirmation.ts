@@ -220,7 +220,7 @@ export async function confirmDeposit(input: {
 
   const paymentLink = buildPrivateBookingPortalUrl(booking.id)
   if (!paymentLink) {
-    throw new DepositConfirmationError('The PayPal link could not be made (NEXT_PUBLIC_APP_URL is not set), so nothing was confirmed or sent.')
+    throw new DepositConfirmationError('The PayPal link could not be made (the app URL is not an http or https address), so nothing was confirmed or sent.')
   }
 
   // Built once before anything changes, so a booking whose request cannot be built is never marked

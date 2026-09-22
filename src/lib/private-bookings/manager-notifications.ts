@@ -1,4 +1,5 @@
 import { formatTime12Hour } from '@/lib/dateUtils'
+import { getAppUrl } from '@/lib/env'
 import { sendEmail } from '@/lib/email/emailService'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createGuestToken } from '@/lib/guest/tokens'
@@ -92,10 +93,6 @@ function normalizeCustomerName(input: {
   return joined || 'Guest'
 }
 
-function normalizeAppBaseUrl(appBaseUrl: string): string {
-  return appBaseUrl.replace(/\/+$/, '')
-}
-
 function formatCurrency(value: number | null): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 'n/a'
   return `£${value.toFixed(2)}`
@@ -120,8 +117,7 @@ export async function sendManagerPrivateBookingCreatedEmail(
   const source = humanizeToken(booking.source)
   const status = humanizeToken(booking.status)
   const createdVia = humanizeToken(input.createdVia || 'website')
-  const appBaseUrl = normalizeAppBaseUrl(process.env.NEXT_PUBLIC_APP_URL || '')
-  const bookingUrl = appBaseUrl ? `${appBaseUrl}/private-bookings/${bookingId}` : null
+  const bookingUrl = `${getAppUrl()}/private-bookings/${bookingId}`
   const subject = `New private booking enquiry: ${bookingReference}`
 
   const rows = [
@@ -136,12 +132,9 @@ export async function sendManagerPrivateBookingCreatedEmail(
     `<li><strong>Phone:</strong> ${escapeHtml(booking.contact_phone?.trim() || 'Not provided')}</li>`,
     `<li><strong>Email:</strong> ${escapeHtml(booking.contact_email?.trim() || 'Not provided')}</li>`,
     `<li><strong>Hold expiry:</strong> ${escapeHtml(formatDateTime(booking.hold_expiry))}</li>`,
-    `<li><strong>Created:</strong> ${escapeHtml(createdAt)}</li>`
+    `<li><strong>Created:</strong> ${escapeHtml(createdAt)}</li>`,
+    `<li><strong>Open booking:</strong> <a href="${escapeHtml(bookingUrl)}">${escapeHtml(bookingUrl)}</a></li>`
   ]
-
-  if (bookingUrl) {
-    rows.push(`<li><strong>Open booking:</strong> <a href="${escapeHtml(bookingUrl)}">${escapeHtml(bookingUrl)}</a></li>`)
-  }
 
   const html = [
     '<p>A new private booking enquiry has been received.</p>',
@@ -164,12 +157,9 @@ export async function sendManagerPrivateBookingCreatedEmail(
     `Phone: ${booking.contact_phone?.trim() || 'Not provided'}`,
     `Email: ${booking.contact_email?.trim() || 'Not provided'}`,
     `Hold expiry: ${formatDateTime(booking.hold_expiry)}`,
-    `Created: ${createdAt}`
+    `Created: ${createdAt}`,
+    `Open booking: ${bookingUrl}`
   ]
-
-  if (bookingUrl) {
-    textLines.push(`Open booking: ${bookingUrl}`)
-  }
 
   const result = await sendEmail({
     to: PRIVATE_BOOKINGS_MANAGER_EMAIL,
@@ -217,8 +207,7 @@ export type SendPrivateBookingOutcomeEmailResult = {
  * metadata) because `createGuestToken` does not accept arbitrary metadata.
  */
 function buildOutcomeLink(outcome: OutcomeKey, rawToken: string): string {
-  const base = normalizeAppBaseUrl(process.env.NEXT_PUBLIC_APP_URL || '')
-  return `${base}/api/private-bookings/outcome/${outcome}/${rawToken}`
+  return `${getAppUrl()}/api/private-bookings/outcome/${outcome}/${rawToken}`
 }
 
 /**

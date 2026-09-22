@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 
+// env.ts reads the app URL once, when it is first imported, so it is set before any import.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL = 'https://management.example.com'
+})
+
 // ---------------------------------------------------------------------------
 // Module mocks — hoisted above all imports
 // ---------------------------------------------------------------------------
@@ -277,7 +282,6 @@ describe('privateBookingActions', () => {
       mockedPermission.mockImplementation((_module: string, action: string) =>
         Promise.resolve(action === 'manage_deposits')
       )
-      vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://management.example.com')
 
       const result = await getBookingPortalLink('booking-1')
 

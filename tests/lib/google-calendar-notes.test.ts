@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// env.ts reads the app URL once, when it is first imported, so it is set before any import.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL = 'https://app.the-anchor.pub'
+})
+
 vi.mock('server-only', () => ({}))
 
 const {
@@ -56,7 +61,6 @@ const originalGoogleServiceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
 const originalGoogleClientId = process.env.GOOGLE_CLIENT_ID
 const originalGoogleClientSecret = process.env.GOOGLE_CLIENT_SECRET
 const originalGoogleRefreshToken = process.env.GOOGLE_REFRESH_TOKEN
-const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL
 
 function restoreEnv(name: string, value: string | undefined) {
   if (value === undefined) {
@@ -186,7 +190,6 @@ describe('Pub Ops calendar note sync', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.GOOGLE_SERVICE_ACCOUNT_KEY = '{"type":"service_account"}'
-    process.env.NEXT_PUBLIC_APP_URL = 'https://app.the-anchor.pub'
     getOAuth2ClientMock.mockResolvedValue({ auth: true })
     eventsUpdate.mockResolvedValue({ data: { id: 'updated-note-id' } })
     eventsInsert.mockResolvedValue({ data: { id: 'created-note-id' } })
@@ -198,7 +201,6 @@ describe('Pub Ops calendar note sync', () => {
     restoreEnv('GOOGLE_CLIENT_ID', originalGoogleClientId)
     restoreEnv('GOOGLE_CLIENT_SECRET', originalGoogleClientSecret)
     restoreEnv('GOOGLE_REFRESH_TOKEN', originalGoogleRefreshToken)
-    restoreEnv('NEXT_PUBLIC_APP_URL', originalAppUrl)
   })
 
   it('generates a stable Google-safe event id for each note', () => {

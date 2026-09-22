@@ -7,6 +7,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { EventBookingService } from '@/services/event-bookings'
 import { logger } from '@/lib/logger'
@@ -428,7 +429,7 @@ export async function handleReplyToBook(
   }
 
   const venuePhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || ''
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+  const appBaseUrl = getAppUrl()
 
   // 3. Reject groups larger than the SMS booking limit
   if (seats > SMS_REPLY_MAX_SEATS) {

@@ -1,6 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { PAYPAL_DEFAULT_CURRENCY, capturePayPalPayment, createSimplePayPalOrder, getPayPalOrder } from '@/lib/paypal'
 import { verifyBookingToken } from '@/lib/private-bookings/booking-token'
 import { logger } from '@/lib/logger'
@@ -141,8 +142,7 @@ export async function createDepositPaymentOrderByToken(
   }
 
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || ''
-    const portalUrl = `${appUrl}/booking-portal/${portalToken}`
+    const portalUrl = `${getAppUrl()}/booking-portal/${portalToken}`
     const result = await createSimplePayPalOrder({
       customId: `pb-deposit-${bookingId}`,
       reference: bookingId,

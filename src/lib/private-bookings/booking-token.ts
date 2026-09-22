@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import { getAppUrl } from '@/lib/env'
 
 // UUID strings are always 36 chars; base64url(36 bytes) = 48 chars (no padding needed since 36 % 3 === 0).
 // The expiry is unix seconds as fixed-width hex (8 chars, good until 2106).
@@ -68,10 +69,11 @@ export function generateBookingToken(bookingId: string): string {
  * an email scanner opening the link never creates one. The link lasts as long as the token does
  * (a year), unlike a PayPal approval link, which runs out within hours.
  *
- * Null when NEXT_PUBLIC_APP_URL is not an absolute URL, so no message ever carries a relative link.
+ * Null when the app URL (getAppUrl) is not an http or https URL, so no message ever carries a
+ * link a guest cannot open.
  */
 export function buildPrivateBookingPortalUrl(bookingId: string): string | null {
-  const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').trim().replace(/\/+$/, '')
+  const base = getAppUrl()
   if (!/^https?:\/\/[^/]+/i.test(base)) return null
   return `${base}/booking-portal/${generateBookingToken(bookingId)}`
 }

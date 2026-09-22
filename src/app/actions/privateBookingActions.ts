@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getAppUrl } from '@/lib/env'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PAYPAL_DEFAULT_CURRENCY, createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
 import { logger } from '@/lib/logger'
@@ -2273,7 +2274,7 @@ export async function createDepositPaymentOrder(
   }
 
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+    const appUrl = getAppUrl()
     const result = await createSimplePayPalOrder({
       customId: `pb-deposit-${bookingId}`,
       reference: bookingId,
@@ -2563,8 +2564,7 @@ export async function getBookingPortalLink(
   }
 
   const token = generateBookingToken(bookingId)
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
-  const url = `${baseUrl}/booking-portal/${token}`
+  const url = `${getAppUrl()}/booking-portal/${token}`
 
   return { success: true, url }
 }
@@ -2823,9 +2823,8 @@ export async function sendDepositPaymentLink(
   }
 
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || ''
     const portalToken = generateBookingToken(bookingId)
-    const portalUrl = `${appUrl}/booking-portal/${portalToken}`
+    const portalUrl = `${getAppUrl()}/booking-portal/${portalToken}`
 
     const result = await createSimplePayPalOrder({
       customId: `pb-deposit-${bookingId}`,

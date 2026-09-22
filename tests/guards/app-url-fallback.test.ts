@@ -18,6 +18,18 @@ const FALLBACK = /localhost:3000|https:\/\/\$\{(process\.)?env\.VERCEL_URL\}/
  */
 const PRODUCTION_URL_FALLBACK = /(\|\||\?\?)\s*['"`]https:\/\/management\.orangejelly\.co\.uk/g
 
+/**
+ * Any fallback at all after the variable: the request origin, an empty string (a relative link in
+ * a text or email), 'unknown', or another host. getAppUrl() is the one way to read it.
+ */
+const APP_URL_FALLBACK = /NEXT_PUBLIC_APP_URL\s*(\|\||\?\?)/g
+
+/**
+ * Reads of the variable that are not app links. The schema.org organiser describes the venue, so
+ * its URL should be the public website rather than the app; it is handled on its own.
+ */
+const NOT_AN_APP_LINK = ['src/lib/api/schema.ts']
+
 /** The value env.ts supplies only when NODE_ENV is 'test'. */
 const TEST_DEFAULT = { file: 'src/lib/env.ts', text: "NEXT_PUBLIC_APP_URL: 'http://localhost:3000'" }
 
@@ -93,6 +105,21 @@ describe('app URL fallbacks', () => {
       const source = readFileSync(file, 'utf8')
       for (const match of source.matchAll(PRODUCTION_URL_FALLBACK)) {
         offences.push(`${relative(process.cwd(), file)}:${lineOf(source, match.index ?? 0)}`)
+      }
+    }
+
+    expect(offences).toEqual([])
+  })
+
+  it('never falls back to anything else when reading NEXT_PUBLIC_APP_URL', () => {
+    const offences: string[] = []
+
+    for (const file of sourceFiles(SRC)) {
+      const path = relative(process.cwd(), file)
+      if (NOT_AN_APP_LINK.includes(path)) continue
+      const source = readFileSync(file, 'utf8')
+      for (const match of source.matchAll(APP_URL_FALLBACK)) {
+        offences.push(`${path}:${lineOf(source, match.index ?? 0)}`)
       }
     }
 
