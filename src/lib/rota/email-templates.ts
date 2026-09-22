@@ -69,8 +69,8 @@ function escapeHtml(value: string): string {
 
 function shiftLine(shift: PortalShiftEmailSummary): string {
   const date = format(parseISO(shift.date), 'EEE d MMM yyyy');
-  const name = shift.templateName ? ` — ${escapeHtml(shift.templateName)}` : '';
-  return `${date}, ${escapeHtml(shift.startTime)} – ${escapeHtml(shift.endTime)} (${escapeHtml(shift.department)})${name}`;
+  const name = shift.templateName ? `: ${escapeHtml(shift.templateName)}` : '';
+  return `${date}, ${escapeHtml(shift.startTime)} to ${escapeHtml(shift.endTime)} (${escapeHtml(shift.department)})${name}`;
 }
 
 /**
@@ -83,13 +83,13 @@ export function buildStaffRotaEmailHtml(
   shifts: ShiftSummary[],
   openShifts: ShiftSummary[] = [],
 ): string {
-  const weekLabel = `${format(parseISO(weekStart), 'd MMM')} – ${format(parseISO(weekEnd), 'd MMM yyyy')}`;
+  const weekLabel = `${format(parseISO(weekStart), 'd MMM')} to ${format(parseISO(weekEnd), 'd MMM yyyy')}`;
 
   const shiftRows = (items: ShiftSummary[]) =>
     items.map(s => `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${format(parseISO(s.date), 'EEE d MMM')}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${s.startTime} – ${s.endTime}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${s.startTime} to ${s.endTime}</td>
         <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border};text-transform:capitalize">${s.department}</td>
       </tr>
     `).join('');
@@ -147,10 +147,10 @@ export function buildRotaChangeEmailHtml(
   allShifts: ShiftSummary[],
   openShifts: ShiftSummary[] = [],
 ): string {
-  const weekLabel = `${format(parseISO(weekStart), 'd MMM')} – ${format(parseISO(weekEnd), 'd MMM yyyy')}`;
+  const weekLabel = `${format(parseISO(weekStart), 'd MMM')} to ${format(parseISO(weekEnd), 'd MMM yyyy')}`;
 
   const fmtShift = (s: ShiftSummary) =>
-    `${format(parseISO(s.date), 'EEE d MMM')}, ${s.startTime} – ${s.endTime} (${s.department})`;
+    `${format(parseISO(s.date), 'EEE d MMM')}, ${s.startTime} to ${s.endTime} (${s.department})`;
 
   const changesHtml = changes.map(c => {
     if (c.type === 'added') {
@@ -186,7 +186,7 @@ export function buildRotaChangeEmailHtml(
   const shiftRows = allShifts.map(s => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${format(parseISO(s.date), 'EEE d MMM')}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${s.startTime} – ${s.endTime}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${s.startTime} to ${s.endTime}</td>
       <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border};text-transform:capitalize">${s.department}</td>
     </tr>
   `).join('');
@@ -194,7 +194,7 @@ export function buildRotaChangeEmailHtml(
   const openShiftRows = openShifts.map(s => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${format(parseISO(s.date), 'EEE d MMM')}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${s.startTime} – ${s.endTime}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${s.startTime} to ${s.endTime}</td>
       <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border};text-transform:capitalize">${s.department}</td>
     </tr>
   `).join('');
@@ -233,7 +233,7 @@ export function buildRotaChangeEmailHtml(
 
   return `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-      <h2 style="color:${STAFF.text}">Your rota has been updated — ${weekLabel}</h2>
+      <h2 style="color:${STAFF.text}">Your rota has been updated: ${weekLabel}</h2>
       <p>Hi ${employeeName},</p>
       <p>The rota for the coming week has been updated. Here's what changed for you:</p>
 
@@ -277,7 +277,7 @@ export function buildHolidaySubmittedEmailHtml(
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
       <h2 style="color:${STAFF.text}">Holiday Request Received</h2>
       <p>Hi ${employeeName},</p>
-      <p>Your holiday request for <strong>${start} – ${end}</strong> has been submitted and is pending approval.</p>
+      <p>Your holiday request for <strong>${start} to ${end}</strong> has been submitted and is pending approval.</p>
       <p>You'll receive an email once it has been reviewed.</p>
       <p>
         <a href="${APP_URL}/portal/leave">View your requests</a>
@@ -308,7 +308,7 @@ export function buildHolidayDecisionEmailHtml(
       <h2 style="color:${colour}">Holiday Request ${label}</h2>
       <p>Hi ${employeeName},</p>
       <p>
-        Your holiday request for <strong>${start} – ${end}</strong> has been
+        Your holiday request for <strong>${start} to ${end}</strong> has been
         <strong style="color:${colour}">${label.toLowerCase()}</strong>.
       </p>
       ${managerNote ? `<p><em>${managerNote}</em></p>` : ''}
@@ -370,10 +370,10 @@ export function buildOpenShiftRequestManagerEmailHtml(
         const dateLabel = format(parseISO(day.date), 'EEE d MMM yyyy');
         const rows = day.shifts.length > 0
           ? day.shifts.map(item => {
-              const title = item.templateName ? ` — ${escapeHtml(item.templateName)}` : '';
+              const title = item.templateName ? `: ${escapeHtml(item.templateName)}` : '';
               const role = item.jobTitle ? `, ${escapeHtml(item.jobTitle)}` : '';
               const openLabel = item.isOpenShift ? ` <span style="color:${STAFF.warningFg}">(open)</span>` : '';
-              return `<li><strong>${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</strong> ${escapeHtml(item.employeeName)}${role} — ${escapeHtml(item.department)}${title}${openLabel}</li>`;
+              return `<li><strong>${escapeHtml(item.startTime)} to ${escapeHtml(item.endTime)}</strong> ${escapeHtml(item.employeeName)}${role} (${escapeHtml(item.department)})${title}${openLabel}</li>`;
             }).join('')
           : '<li>No scheduled shifts listed.</li>';
         return `
@@ -421,7 +421,7 @@ export function buildShiftAutoAcceptWarningEmailHtml(
   const rows = shifts.map(shift => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${format(parseISO(shift.date), 'EEE d MMM yyyy')}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${escapeHtml(shift.startTime)} – ${escapeHtml(shift.endTime)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${escapeHtml(shift.startTime)} to ${escapeHtml(shift.endTime)}</td>
       <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border};text-transform:capitalize">${escapeHtml(shift.department)}</td>
     </tr>
   `).join('');
@@ -474,7 +474,7 @@ export function buildEarningsAlertEmailHtml(
   return `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
       <div style="background:${STAFF.danger};padding:20px 24px;border-radius:6px 6px 0 0">
-        <h2 style="color:${STAFF.primaryFg};margin:0;font-size:20px">⚠ Action Required — Earnings Limit Alert</h2>
+        <h2 style="color:${STAFF.primaryFg};margin:0;font-size:20px">⚠ Action Required: Earnings Limit Alert</h2>
         <p style="color:${STAFF.dangerSoft};margin:6px 0 0;font-size:14px">${monthLabel} payroll</p>
       </div>
       <div style="background:${STAFF.dangerSoft};border:2px solid ${STAFF.danger};border-top:0;padding:20px 24px;border-radius:0 0 6px 6px">
@@ -495,7 +495,7 @@ export function buildEarningsAlertEmailHtml(
           Please review their scheduled hours for next month as soon as possible.
         </p>
       </div>
-      <p style="color:${STAFF.textMuted};font-size:12px;margin-top:16px">The Anchor — sent via management tools</p>
+      <p style="color:${STAFF.textMuted};font-size:12px;margin-top:16px">The Anchor (sent via management tools)</p>
     </div>
   `;
 }
@@ -526,7 +526,7 @@ export function buildPayrollEmailHtml(
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border}">${e.name}</td>
         <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border};text-align:right">${standardHours.toFixed(2)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border};text-align:right">${premiumHours > 0 ? premiumHours.toFixed(2) : '—'}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border};text-align:right">${premiumHours.toFixed(2)}</td>
         <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border};text-align:right">£${(e.hourlyRate ?? 0).toFixed(2)}</td>
         <td style="padding:8px 12px;border-bottom:1px solid ${STAFF.border};text-align:right"><strong>£${(e.totalPay ?? 0).toFixed(2)}</strong></td>
       </tr>
@@ -535,7 +535,7 @@ export function buildPayrollEmailHtml(
 
   return `
     <div style="font-family:sans-serif;max-width:700px;margin:0 auto">
-      <h2 style="color:${STAFF.text}">Payroll Summary — ${monthLabel}</h2>
+      <h2 style="color:${STAFF.text}">Payroll Summary: ${monthLabel}</h2>
       <table style="width:100%;border-collapse:collapse;margin:16px 0">
         <thead>
           <tr style="background:${STAFF.primary};color:${STAFF.primaryFg}">
@@ -551,7 +551,7 @@ export function buildPayrollEmailHtml(
           <tr style="background:${STAFF.primarySoft}">
             <td style="padding:8px 12px"><strong>Total</strong></td>
             <td style="padding:8px 12px;text-align:right"><strong>${totalStandardHours.toFixed(2)}</strong></td>
-            <td style="padding:8px 12px;text-align:right"><strong>${anyPremium ? totalPremiumHours.toFixed(2) : '—'}</strong></td>
+            <td style="padding:8px 12px;text-align:right"><strong>${totalPremiumHours.toFixed(2)}</strong></td>
             <td style="padding:8px 12px"></td>
             <td style="padding:8px 12px;text-align:right"><strong>£${totalPay.toFixed(2)}</strong></td>
           </tr>
@@ -566,7 +566,7 @@ export function buildPayrollEmailHtml(
       </p>
       ${leavingEmployees.length > 0 ? `
       <div style="margin-top:24px;padding:16px;background:${STAFF.warningSoft};border:1px solid ${STAFF.warningBorder};border-radius:4px">
-        <h3 style="color:${STAFF.warningFg};margin:0 0 12px">P45 Required — Employees Leaving This Period</h3>
+        <h3 style="color:${STAFF.warningFg};margin:0 0 12px">P45 Required: Employees Leaving This Period</h3>
         <p style="color:${STAFF.warningFg};font-size:14px;margin:0 0 12px">
           The following employees are in the process of leaving with an end date within this payroll period.
           Please prepare a P45 for each:
@@ -589,7 +589,7 @@ export function buildPayrollEmailHtml(
         </table>
       </div>
       ` : ''}
-      <p style="color:${STAFF.textMuted};font-size:12px">The Anchor — sent via management tools</p>
+      <p style="color:${STAFF.textMuted};font-size:12px">The Anchor (sent via management tools)</p>
     </div>
   `;
 }

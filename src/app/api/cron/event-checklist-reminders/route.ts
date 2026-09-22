@@ -138,7 +138,7 @@ export async function GET(request: Request) {
     })
 
     const todayDisplay = formatDateFull(new Date())
-    const subject = `Event checklist reminder – ${todayDisplay}`
+    const subject = `Event checklist reminder: ${todayDisplay}`
 
     const appUrl = getAppUrl()
 
@@ -164,7 +164,7 @@ export async function GET(request: Request) {
             <li style="margin-bottom: 8px;">
               <span style="display: inline-block; min-width: 90px; font-weight: 600; color: ${badgeColor};">${badgeLabel}</span>
               <span style="font-weight: 500; color: ${STAFF.text};">${task.label}</span>
-              <span style="color: ${STAFF.textMuted};"> – due ${dueCopy} ${task.dueDateFormatted} (${task.channel})</span>
+              <span style="color: ${STAFF.textMuted};">: due ${dueCopy} ${task.dueDateFormatted} (${task.channel})</span>
             </li>
           `
         }).join('')
