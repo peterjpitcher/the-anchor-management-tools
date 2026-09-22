@@ -11,6 +11,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint src --max-warnings=0",
+    "typecheck:tests": "NODE_OPTIONS=--max-old-space-size=8192 tsc -p tsconfig.tests.json",
     "knip": "knip",
     "mileage:distances:routes": "tsx --tsconfig tsconfig.json scripts/mileage/backfill-distance-cache-from-google-routes.ts",
     "postinstall": "patch-package",
