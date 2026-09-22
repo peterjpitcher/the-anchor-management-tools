@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { resolveEventPriceAmount } from '@/lib/events/pricing';
 import { parseLondonDateTimeLocalToIso } from '@/lib/dateUtils';
 import { buildEventImageList } from '@/lib/api/eventImageFields';
+import { GUEST_CONTACT } from '@/lib/guest-contact';
 
 export interface SchemaEvent {
   '@type': 'Event';
@@ -185,12 +186,13 @@ function createVenueLocation(): SchemaPlace {
   };
 }
 
-// Helper to create organizer
+// The organiser is the venue, so its URL is the public website, never the management app. The
+// website already rewrites a management URL here to this same address before publishing it.
 function createOrganizer(): SchemaOrganization {
   return {
     '@type': 'Organization',
     name: 'The Anchor',
-    url: process.env.NEXT_PUBLIC_APP_URL || 'https://the-anchor.pub',
+    url: GUEST_CONTACT.website,
   };
 }
 

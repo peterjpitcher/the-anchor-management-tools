@@ -80,3 +80,25 @@ describe('eventToSchema offers.validFrom', () => {
     expect(new Date(schema.offers!.validFrom!).getTime()).toBeLessThan(Date.now())
   })
 })
+
+describe('eventToSchema organizer', () => {
+  it('names the venue at its public website, not the management app', () => {
+    const schema = eventToSchema({
+      id: 'event-4',
+      name: 'Quiz Night',
+      slug: 'quiz-night-2026-10-07',
+      date: '2026-10-07',
+      time: '19:00',
+      start_datetime: '2026-10-07T18:00:00+00:00',
+      event_status: 'scheduled',
+      price: 10,
+      is_free: false,
+    })
+
+    expect(schema.organizer).toEqual({
+      '@type': 'Organization',
+      name: 'The Anchor',
+      url: 'https://www.the-anchor.pub',
+    })
+  })
+})
