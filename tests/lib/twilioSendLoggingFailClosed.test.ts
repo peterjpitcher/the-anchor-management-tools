@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
@@ -37,7 +37,7 @@ describe('sendSMS logging fail-closed behavior', () => {
       from: '+15555550123',
     })
 
-    ;(twilio as unknown as vi.Mock).mockReturnValue({
+    ;(twilio as unknown as Mock).mockReturnValue({
       messages: {
         create: twilioCreate,
       },
@@ -62,7 +62,7 @@ describe('sendSMS logging fail-closed behavior', () => {
     const messageSelect = vi.fn().mockReturnValue({ single: messageSingle })
     const messageInsert = vi.fn().mockReturnValue({ select: messageSelect })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customerSelect }
@@ -106,13 +106,13 @@ describe('sendSMS logging fail-closed behavior', () => {
       from: '+15555550123',
     })
 
-    ;(twilio as unknown as vi.Mock).mockReturnValue({
+    ;(twilio as unknown as Mock).mockReturnValue({
       messages: {
         create: twilioCreate,
       },
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn(),
     })
 
@@ -151,14 +151,14 @@ describe('sendSMS logging fail-closed behavior', () => {
       from: '+15555550123',
     })
 
-    ;(twilio as unknown as vi.Mock).mockReturnValue({
+    ;(twilio as unknown as Mock).mockReturnValue({
       messages: {
         create: twilioCreate,
       },
     })
 
     const from = vi.fn()
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({ from })
+    ;(createAdminClient as unknown as Mock).mockReturnValue({ from })
 
     const { sendSMS } = await import('@/lib/twilio')
 
@@ -195,7 +195,7 @@ describe('sendSMS logging fail-closed behavior', () => {
     })
     const twilioCreate = vi.fn().mockRejectedValue(twilioError)
 
-    ;(twilio as unknown as vi.Mock).mockReturnValue({
+    ;(twilio as unknown as Mock).mockReturnValue({
       messages: {
         create: twilioCreate,
       },
@@ -220,7 +220,7 @@ describe('sendSMS logging fail-closed behavior', () => {
     const messageSelect = vi.fn().mockReturnValue({ single: messageSingle })
     const messageInsert = vi.fn().mockReturnValue({ select: messageSelect })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customerSelect }

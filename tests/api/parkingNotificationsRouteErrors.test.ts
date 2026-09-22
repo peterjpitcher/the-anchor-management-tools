@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -38,9 +38,9 @@ describe('parking notifications route error payloads', () => {
   })
 
   it('returns a generic 500 payload when cron run acquisition fails', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'cron_job_runs') {
           return {
@@ -72,7 +72,7 @@ describe('parking notifications route error payloads', () => {
   })
 
   it('fails closed when send guard schema is unavailable in production', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     const previousNodeEnv = process.env.NODE_ENV
     const previousGuardOverride = process.env.PARKING_SEND_GUARD_ALLOW_SCHEMA_GAPS
@@ -80,7 +80,7 @@ describe('parking notifications route error payloads', () => {
     delete process.env.PARKING_SEND_GUARD_ALLOW_SCHEMA_GAPS
 
     try {
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'cron_job_runs') {
             return {
@@ -145,13 +145,13 @@ describe('parking notifications route error payloads', () => {
   })
 
   it('aborts remaining sends when sendSMS returns fatal logging_failed safety signal', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-02-15T12:00:00.000Z'))
 
     try {
-      ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+      ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
         success: true,
         sid: 'SM1',
         code: 'logging_failed',
@@ -312,7 +312,7 @@ describe('parking notifications route error payloads', () => {
         }),
       }
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
       const response = await GET(new Request('http://localhost/api/cron/parking-notifications') as any)
       const payload = await response.json()
@@ -339,17 +339,17 @@ describe('parking notifications route error payloads', () => {
   })
 
   it('aborts remaining sends when parking notification logging fails after a successful transport send', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-02-15T12:00:00.000Z'))
 
     try {
-      ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+      ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
         success: true,
         sid: 'SM1',
       })
-      ;(logParkingNotification as unknown as vi.Mock).mockRejectedValueOnce(new Error('parking log down'))
+      ;(logParkingNotification as unknown as Mock).mockRejectedValueOnce(new Error('parking log down'))
 
       const dueAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
       const startAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
@@ -473,7 +473,7 @@ describe('parking notifications route error payloads', () => {
         }),
       }
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
       const response = await GET(new Request('http://localhost/api/cron/parking-notifications') as any)
       const payload = await response.json()

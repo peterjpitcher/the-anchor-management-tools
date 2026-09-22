@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/app/actions/rbac', () => ({
   checkUserPermission: vi.fn(),
@@ -20,8 +20,8 @@ describe('getEmployeesRoster action', () => {
   })
 
   it('returns roster employees with current-year holiday counts', async () => {
-    ;(checkUserPermission as unknown as vi.Mock).mockResolvedValue(true)
-    ;(EmployeeService.getEmployeesRoster as unknown as vi.Mock).mockResolvedValue({
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(true)
+    ;(EmployeeService.getEmployeesRoster as unknown as Mock).mockResolvedValue({
       employees: [
         {
           employee_id: 'employee-1',
@@ -67,7 +67,7 @@ describe('getEmployeesRoster action', () => {
   })
 
   it('does not call the service without employees:view permission', async () => {
-    ;(checkUserPermission as unknown as vi.Mock).mockResolvedValue(false)
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(false)
 
     const result = await getEmployeesRoster()
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/settings/api-auth', () => ({
   requireSettingsManagePermission: vi.fn(),
@@ -27,7 +27,7 @@ describe('table-booking settings route error payloads', () => {
     const linksOrderFirst = vi.fn().mockReturnValue({ order: linksOrderSecond })
     const linksSelect = vi.fn().mockReturnValue({ order: linksOrderFirst })
 
-    ;(requireSettingsManagePermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireSettingsManagePermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase: {
         from: vi.fn((table: string) => {
@@ -67,7 +67,7 @@ describe('table-booking settings route error payloads', () => {
     const areasOrder = vi.fn().mockResolvedValue({ data: [], error: null })
     const areasSelect = vi.fn().mockReturnValue({ order: areasOrder })
 
-    ;(requireSettingsManagePermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireSettingsManagePermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase: {
         from: vi.fn((table: string) => {
@@ -114,7 +114,7 @@ describe('table-booking settings route error payloads', () => {
     const areasOrder = vi.fn().mockResolvedValue({ data: [], error: null })
     const areasSelect = vi.fn().mockReturnValue({ order: areasOrder })
 
-    ;(requireSettingsManagePermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireSettingsManagePermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase: {

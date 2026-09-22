@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/unified-job-queue', () => ({
   jobQueue: {
@@ -35,12 +35,12 @@ describe('job queue bulk SMS action guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    ;(checkUserPermission as unknown as vi.Mock).mockResolvedValue(true)
-    ;(headers as unknown as vi.Mock).mockResolvedValue({
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(true)
+    ;(headers as unknown as Mock).mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     })
-    ;(rateLimiters.bulk as unknown as vi.Mock).mockResolvedValue(null)
-    ;(createClient as unknown as vi.Mock).mockResolvedValue({
+    ;(rateLimiters.bulk as unknown as Mock).mockResolvedValue(null)
+    ;(createClient as unknown as Mock).mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
           data: {
@@ -49,7 +49,7 @@ describe('job queue bulk SMS action guards', () => {
         }),
       },
     })
-    ;(jobQueue.enqueue as unknown as vi.Mock).mockResolvedValue({
+    ;(jobQueue.enqueue as unknown as Mock).mockResolvedValue({
       success: true,
       jobId: 'job-1',
     })
@@ -82,7 +82,7 @@ describe('job queue bulk SMS action guards', () => {
   })
 
   it('returns a rate-limit error when bulk limiter blocks the request', async () => {
-    ;(rateLimiters.bulk as unknown as vi.Mock).mockResolvedValue(new Response('limited', { status: 429 }))
+    ;(rateLimiters.bulk as unknown as Mock).mockResolvedValue(new Response('limited', { status: 429 }))
 
     const result = await enqueueBulkSMSJob(['customer-1'], 'Hello from Anchor')
 

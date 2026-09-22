@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/guest/tokens', () => ({
   createGuestToken: vi.fn().mockResolvedValue({
@@ -159,7 +159,7 @@ describe('event payment SMS safety meta logging', () => {
   })
 
   it('logs an error when event payment confirmation SMS returns logging_failed', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: true,
       sid: 'SM1',
       code: 'logging_failed',
@@ -193,7 +193,7 @@ describe('event payment SMS safety meta logging', () => {
   })
 
   it('logs an error when event payment retry SMS returns logging_failed', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: true,
       sid: 'SM2',
       code: 'logging_failed',
@@ -225,7 +225,7 @@ describe('event payment SMS safety meta logging', () => {
   })
 
   it('propagates non-success safety metadata for event payment confirmation SMS', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: false,
       error: 'SMS sending paused by safety guard',
       code: 'safety_unavailable',
@@ -246,7 +246,7 @@ describe('event payment SMS safety meta logging', () => {
   })
 
   it('propagates logging_failed metadata when confirmation sendSMS throws', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockRejectedValueOnce({
+    ;(sendSMS as unknown as Mock).mockRejectedValueOnce({
       message: 'message persistence unavailable',
       code: 'logging_failed',
       logFailure: false,
@@ -267,7 +267,7 @@ describe('event payment SMS safety meta logging', () => {
   })
 
   it('fails closed with safety_unavailable when retry sendSMS throws unexpectedly', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockRejectedValueOnce(new Error('twilio pipeline failed'))
+    ;(sendSMS as unknown as Mock).mockRejectedValueOnce(new Error('twilio pipeline failed'))
 
     const result = await sendEventPaymentRetrySms(buildSupabaseForRetry() as any, {
       bookingId: 'booking-2',

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
@@ -121,7 +121,7 @@ describe('EmployeeService delete safeguards', () => {
       }
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: mockFrom,
       storage: { from: vi.fn() },
     })
@@ -161,7 +161,7 @@ describe('EmployeeService delete safeguards', () => {
       }
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: mockFrom,
       storage: { from: vi.fn() },
     })
@@ -203,7 +203,7 @@ describe('EmployeeService delete safeguards', () => {
       }
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: mockFrom,
       storage: { from: vi.fn() },
     })
@@ -250,7 +250,7 @@ describe('EmployeeService delete safeguards', () => {
       }
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: mockFrom,
       storage: { from: vi.fn() },
     })
@@ -285,7 +285,7 @@ describe('EmployeeService delete safeguards', () => {
       throw new Error(`Unexpected table: ${table}`)
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: mockFrom,
       storage: {
         from: vi.fn().mockReturnValue({ remove: mockStorageRemove }),
@@ -339,7 +339,7 @@ describe('EmployeeService delete safeguards', () => {
       throw new Error(`Unexpected table: ${table}`)
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: mockFrom,
       storage: {
         from: vi.fn().mockReturnValue({ remove: mockStorageRemove }),
@@ -481,7 +481,7 @@ describe('EmployeeService.getEmployeesRoster holiday counts', () => {
       throw new Error(`Unexpected table: ${table}`)
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: mockFrom,
     })
 

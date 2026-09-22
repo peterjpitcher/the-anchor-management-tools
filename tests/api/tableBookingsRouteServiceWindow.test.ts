@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { NextRequest } from 'next/server'
 
 vi.mock('@/lib/api/auth', () => ({
@@ -71,7 +71,7 @@ describe('public table bookings route: a kitchen-hours refusal', () => {
   })
 
   it('answers as a blocked booking the website already words, not as a 500', async () => {
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
       customerId: 'customer-1',
       resolutionError: undefined,
     })
@@ -83,7 +83,7 @@ describe('public table bookings route: a kitchen-hours refusal', () => {
       hint: null,
     }
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       rpc: vi.fn(async (name: string) => {
         if (name === 'create_table_booking_public_v06') {
           return { data: null, error: kitchenNotServing }

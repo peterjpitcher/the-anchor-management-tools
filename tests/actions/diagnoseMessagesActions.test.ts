@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('twilio', () => ({
   default: vi.fn(),
@@ -17,9 +17,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { diagnoseMessages } from '@/app/actions/diagnose-messages'
 
-const mockedTwilio = twilio as unknown as vi.Mock
-const mockedCreateAdminClient = createAdminClient as unknown as vi.Mock
-const mockedCheckUserPermission = checkUserPermission as unknown as vi.Mock
+const mockedTwilio = twilio as unknown as Mock
+const mockedCreateAdminClient = createAdminClient as unknown as Mock
+const mockedCheckUserPermission = checkUserPermission as unknown as Mock
 
 const REQUIRED_ENV_KEYS = [
   'TWILIO_ACCOUNT_SID',

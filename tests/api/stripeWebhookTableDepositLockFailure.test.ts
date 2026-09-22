@@ -4,7 +4,7 @@
  * (return 500) so Stripe retries. Without this guarantee, the booking is
  * left confirmed-but-unlocked and the canonical-amount invariant breaks.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/logger', () => ({
   logger: {
@@ -88,11 +88,11 @@ describe('stripe webhook — table_deposit deposit_amount_locked failure', () =>
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test'
-    ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
-    ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-lock')
-    ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
+    ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-lock')
+    ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+    ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
+    ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -106,7 +106,7 @@ describe('stripe webhook — table_deposit deposit_amount_locked failure', () =>
     })
     const lockUpdate = vi.fn().mockReturnValue({ eq: lockUpdateEq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') return { insert: webhookLogInsert }
         if (table === 'table_bookings') return { update: lockUpdate }
@@ -144,7 +144,7 @@ describe('stripe webhook — table_deposit deposit_amount_locked failure', () =>
     const lockUpdateEq = vi.fn().mockResolvedValue({ error: null })
     const lockUpdate = vi.fn().mockReturnValue({ eq: lockUpdateEq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') return { insert: webhookLogInsert }
         if (table === 'table_bookings') return { update: lockUpdate }

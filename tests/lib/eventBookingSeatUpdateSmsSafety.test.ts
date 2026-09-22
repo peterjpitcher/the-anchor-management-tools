@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/events/manage-booking', () => ({
   createEventManageToken: vi.fn().mockResolvedValue({ url: 'https://example.com/manage' }),
@@ -81,7 +81,7 @@ describe('sendEventBookingSeatUpdateSms safety signal propagation', () => {
   })
 
   it('returns code/logFailure when sendSMS reports logging_failed', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM123',
       status: 'queued',
@@ -117,7 +117,7 @@ describe('sendEventBookingSeatUpdateSms safety signal propagation', () => {
   })
 
   it('treats code=logging_failed as logFailure even when sendSMS omits logFailure', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM123',
       status: 'queued',
@@ -153,7 +153,7 @@ describe('sendEventBookingSeatUpdateSms safety signal propagation', () => {
   })
 
   it('returns success=false when sendSMS returns non-success', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: false,
       error: 'blocked',
       code: 'safety_unavailable',
@@ -183,7 +183,7 @@ describe('sendEventBookingSeatUpdateSms safety signal propagation', () => {
   })
 
   it('propagates idempotency_conflict when sendSMS throws fatal safety metadata', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockRejectedValueOnce({
+    ;(sendSMS as unknown as Mock).mockRejectedValueOnce({
       message: 'idempotency lock conflict',
       code: 'idempotency_conflict',
       logFailure: false,

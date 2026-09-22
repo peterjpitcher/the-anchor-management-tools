@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { NextRequest } from 'next/server'
 
 vi.mock('@/lib/foh/api-auth', () => ({
@@ -68,7 +68,7 @@ describe('FOH event booking route SMS safety meta', () => {
     const eventId = '11111111-1111-4111-8111-111111111111'
     const customerId = '22222222-2222-4222-8222-222222222222'
 
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: true,
       sid: 'SM1',
       code: 'logging_failed',
@@ -130,7 +130,7 @@ describe('FOH event booking route SMS safety meta', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
@@ -180,7 +180,7 @@ describe('FOH event booking route SMS safety meta', () => {
     const eventId = '11111111-1111-4111-8111-111111111111'
     const customerId = '22222222-2222-4222-8222-222222222222'
 
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: false,
       error: 'message log insert failed',
       code: 'logging_failed',
@@ -242,7 +242,7 @@ describe('FOH event booking route SMS safety meta', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
@@ -345,7 +345,7 @@ describe('FOH event booking route SMS safety meta', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
@@ -492,7 +492,7 @@ describe('FOH event booking route SMS safety meta', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,

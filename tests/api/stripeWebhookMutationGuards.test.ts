@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/logger', () => ({
   logger: {
@@ -62,13 +62,13 @@ describe('stripe webhook shared payment guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test'
-    ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
-    ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-1')
-    ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(recordAnalyticsEvent as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(sendTableBookingConfirmedAfterDepositSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({ success: true })
+    ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
+    ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-1')
+    ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+    ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
+    ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
+    ;(recordAnalyticsEvent as unknown as Mock).mockResolvedValue(undefined)
+    ;(sendTableBookingConfirmedAfterDepositSmsIfAllowed as unknown as Mock).mockResolvedValue({ success: true })
   })
 
   afterEach(() => {
@@ -94,7 +94,7 @@ describe('stripe webhook shared payment guards', () => {
       error: null,
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       rpc,
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') return { insert: webhookLogInsert }
@@ -138,7 +138,7 @@ describe('stripe webhook shared payment guards', () => {
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
     const rpc = vi.fn()
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       rpc,
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') return { insert: webhookLogInsert }

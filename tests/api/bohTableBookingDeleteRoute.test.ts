@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/foh/api-auth', () => ({
   requireBohTableBookingPermission: vi.fn(),
@@ -73,7 +73,7 @@ describe('BOH table-booking DELETE behavior', () => {
       delete: hardDelete,
     }
 
-    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireBohTableBookingPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase: {
         from: vi.fn().mockReturnValue(tableBookings),
@@ -152,7 +152,7 @@ describe('BOH table-booking DELETE behavior', () => {
       delete: hardDelete,
     }
 
-    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireBohTableBookingPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase: {
         from: vi.fn().mockReturnValue(tableBookings),

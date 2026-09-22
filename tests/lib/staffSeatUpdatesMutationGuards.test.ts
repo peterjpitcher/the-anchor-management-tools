@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/events/manage-booking', () => ({
   updateEventBookingSeatsById: vi.fn(),
@@ -202,7 +202,7 @@ describe('staff seat update mutation guards', () => {
       }),
     }
 
-    ;(getMoveTableAvailability as unknown as vi.Mock).mockResolvedValue({
+    ;(getMoveTableAvailability as unknown as Mock).mockResolvedValue({
       startIso: '2026-07-01T18:30:00.000Z',
       endIso: '2026-07-01T20:30:00.000Z',
       assignedTableIds: ['big-bay'],
@@ -215,7 +215,7 @@ describe('staff seat update mutation guards', () => {
         },
       ],
     })
-    ;(moveBookingAssignmentToTables as unknown as vi.Mock).mockResolvedValue({ ok: true })
+    ;(moveBookingAssignmentToTables as unknown as Mock).mockResolvedValue({ ok: true })
 
     const result = await updateTableBookingPartySizeWithLinkedEventSeats(supabase as any, {
       tableBookingId: 'table-booking-1',
@@ -279,7 +279,7 @@ describe('staff seat update mutation guards', () => {
       }),
     }
 
-    ;(updateEventBookingSeatsById as unknown as vi.Mock).mockResolvedValue({
+    ;(updateEventBookingSeatsById as unknown as Mock).mockResolvedValue({
       state: 'updated',
       booking_id: 'event-booking-1',
       event_id: 'event-1',
@@ -335,7 +335,7 @@ describe('staff seat update mutation guards', () => {
       }),
     }
 
-    ;(updateEventBookingSeatsById as unknown as vi.Mock).mockResolvedValue({
+    ;(updateEventBookingSeatsById as unknown as Mock).mockResolvedValue({
       state: 'updated',
       booking_id: 'event-booking-1',
       event_id: 'event-1',
@@ -345,7 +345,7 @@ describe('staff seat update mutation guards', () => {
       event_name: 'Launch Night',
     })
 
-    ;(sendEventBookingSeatUpdateSms as unknown as vi.Mock).mockResolvedValue({
+    ;(sendEventBookingSeatUpdateSms as unknown as Mock).mockResolvedValue({
       success: true,
       code: 'logging_failed',
       logFailure: true,
@@ -401,7 +401,7 @@ describe('staff seat update mutation guards', () => {
       }),
     }
 
-    ;(updateEventBookingSeatsById as unknown as vi.Mock).mockResolvedValue({
+    ;(updateEventBookingSeatsById as unknown as Mock).mockResolvedValue({
       state: 'updated',
       booking_id: 'event-booking-1',
       event_id: 'event-1',
@@ -411,7 +411,7 @@ describe('staff seat update mutation guards', () => {
       event_name: 'Launch Night',
     })
 
-    ;(sendEventBookingSeatUpdateSms as unknown as vi.Mock).mockRejectedValue(
+    ;(sendEventBookingSeatUpdateSms as unknown as Mock).mockRejectedValue(
       Object.assign(new Error('idempotency claim conflict'), {
         code: 'idempotency_conflict',
         logFailure: false,

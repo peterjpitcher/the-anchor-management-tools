@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -58,7 +58,7 @@ describe('private booking monitor route error payloads', () => {
   })
 
   it('returns a generic 500 payload when cron run acquisition fails', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     const single = vi.fn().mockResolvedValue({
       data: null,
@@ -67,7 +67,7 @@ describe('private booking monitor route error payloads', () => {
     const select = vi.fn().mockReturnValue({ single })
     const insert = vi.fn().mockReturnValue({ select })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'cron_job_runs') {
           return { insert }
@@ -84,7 +84,7 @@ describe('private booking monitor route error payloads', () => {
   })
 
   it('fails closed when duplicate-check lookup errors during reminder pass', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     const from = vi.fn((table: string) => {
       if (table === 'cron_job_runs') {
@@ -269,7 +269,7 @@ describe('private booking monitor route error payloads', () => {
       throw new Error(`Unexpected table: ${table}`)
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({ from })
+    ;(createAdminClient as unknown as Mock).mockReturnValue({ from })
 
     const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
     const payload = await response.json()
@@ -277,12 +277,12 @@ describe('private booking monitor route error payloads', () => {
     expect(response.status).toBe(200)
     expect(payload.success).toBe(true)
     expect(payload.stats.remindersSent).toBe(0)
-    expect((SmsQueueService.queueAndSend as unknown as vi.Mock).mock.calls.length).toBe(0)
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls.length).toBe(0)
   })
 
   it('aborts remaining sends when queueAndSend returns fatal logging_failed safety signal', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
-    ;(SmsQueueService.queueAndSend as unknown as vi.Mock).mockResolvedValue({
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
+    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
       success: true,
       sent: true,
       code: 'logging_failed',
@@ -400,7 +400,7 @@ describe('private booking monitor route error payloads', () => {
         }),
       }
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
       const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
       const payload = await response.json()
@@ -414,7 +414,7 @@ describe('private booking monitor route error payloads', () => {
       expect(payload.abortTriggerType).toBe('deposit_reminder_7day')
       expect(payload.abortTemplateKey).toBe('private_booking_deposit_reminder_7day')
       expect(payload.safetyAborts).toBe(1)
-      expect((SmsQueueService.queueAndSend as unknown as vi.Mock).mock.calls.length).toBe(1)
+      expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls.length).toBe(1)
 
       expect(persistCronRunResult).toHaveBeenCalledWith(
         supabase,
@@ -429,7 +429,7 @@ describe('private booking monitor route error payloads', () => {
     // Pass 5 (private_booking_post_event_followup) now runs but this test mocks
     // private_bookings to return no eligible bookings — verifies the cron completes
     // successfully without triggering any SMS sends.
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-02-15T12:00:00.000Z'))
@@ -587,7 +587,7 @@ describe('private booking monitor route error payloads', () => {
         }),
       }
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
       const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
       const payload = await response.json()

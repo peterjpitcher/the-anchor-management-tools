@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -23,9 +23,9 @@ describe('engagement scoring route error payloads', () => {
   })
 
   it('returns a generic 500 payload when scoring recalculation fails', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({})
-    ;(recalculateEngagementScoresAndLabels as unknown as vi.Mock).mockRejectedValue(
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
+    ;(createAdminClient as unknown as Mock).mockReturnValue({})
+    ;(recalculateEngagementScoresAndLabels as unknown as Mock).mockRejectedValue(
       new Error('sensitive engagement scoring diagnostics')
     )
 

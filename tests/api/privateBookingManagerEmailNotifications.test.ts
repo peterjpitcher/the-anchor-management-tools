@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/rate-limit', () => ({
   createRateLimiter: vi.fn(() => vi.fn().mockResolvedValue(null)),
@@ -62,26 +62,26 @@ import { POST as publicPrivateBookingPost } from '@/app/api/public/private-booki
 describe('private-booking manager email notifications', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({})
-    ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-1')
-    ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-    ;(getIdempotencyKey as unknown as vi.Mock).mockReturnValue('idem-1')
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(sendManagerPrivateBookingCreatedEmail as unknown as vi.Mock).mockResolvedValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({})
+    ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-1')
+    ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+    ;(getIdempotencyKey as unknown as Mock).mockReturnValue('idem-1')
+    ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
+    ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
+    ;(sendManagerPrivateBookingCreatedEmail as unknown as Mock).mockResolvedValue({
       sent: true,
     })
   })
 
   it('keeps private-booking enquiry creation successful when manager email send fails', async () => {
-    ;(PrivateBookingService as unknown as { createBooking: vi.Mock }).createBooking.mockResolvedValue({
+    ;(PrivateBookingService as unknown as { createBooking: Mock }).createBooking.mockResolvedValue({
       id: 'private-booking-1',
       booking_reference: 'PB-1',
       customer_first_name: 'Pat',
       status: 'draft',
       source: 'website',
     })
-    ;(sendManagerPrivateBookingCreatedEmail as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendManagerPrivateBookingCreatedEmail as unknown as Mock).mockResolvedValueOnce({
       sent: false,
       error: 'smtp down',
     })
@@ -116,14 +116,14 @@ describe('private-booking manager email notifications', () => {
   })
 
   it('keeps public private-booking creation successful when manager email task throws', async () => {
-    ;(PrivateBookingService as unknown as { createBooking: vi.Mock }).createBooking.mockResolvedValue({
+    ;(PrivateBookingService as unknown as { createBooking: Mock }).createBooking.mockResolvedValue({
       id: 'public-booking-1',
       booking_reference: 'PB-2',
       customer_first_name: 'Sam',
       status: 'draft',
       source: 'website',
     })
-    ;(sendManagerPrivateBookingCreatedEmail as unknown as vi.Mock).mockRejectedValueOnce(
+    ;(sendManagerPrivateBookingCreatedEmail as unknown as Mock).mockRejectedValueOnce(
       new Error('mailbox unavailable')
     )
 

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { GET } from '@/app/api/invoices/[id]/pdf/route'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -50,7 +50,7 @@ function mockSupabaseInvoice(invoiceResult = invoice) {
   const select = vi.fn(() => ({ order, eq }))
   const from = vi.fn(() => ({ select }))
 
-  ;(createClient as unknown as vi.Mock).mockResolvedValue({
+  ;(createClient as unknown as Mock).mockResolvedValue({
     auth: {
       getUser: vi.fn().mockResolvedValue({
         data: { user: { id: 'user-1' } },
@@ -63,9 +63,9 @@ function mockSupabaseInvoice(invoiceResult = invoice) {
 describe('invoice PDF route', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(checkUserPermission as unknown as vi.Mock).mockResolvedValue(true)
-    ;(generateInvoicePDF as unknown as vi.Mock).mockResolvedValue(Buffer.from('pdf'))
-    ;(logAuditEvent as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(true)
+    ;(generateInvoicePDF as unknown as Mock).mockResolvedValue(Buffer.from('pdf'))
+    ;(logAuditEvent as unknown as Mock).mockResolvedValue(undefined)
     mockSupabaseInvoice()
   })
 

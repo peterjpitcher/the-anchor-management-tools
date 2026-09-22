@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // Module mocks — must appear before any imports of the mocked modules
@@ -168,10 +168,10 @@ describe('Twilio webhook route', () => {
     })
 
     it('should return 401 when Twilio signature is invalid', async () => {
-      ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(false)
+      ;(twilio.validateRequest as unknown as Mock).mockReturnValue(false)
 
       const { client: publicClient } = stubPublicClient()
-      ;(createClient as unknown as vi.Mock).mockReturnValue(publicClient)
+      ;(createClient as unknown as Mock).mockReturnValue(publicClient)
 
       const body = makeFormBody({
         MessageSid: 'SM123',
@@ -188,10 +188,10 @@ describe('Twilio webhook route', () => {
     })
 
     it('should return 401 when X-Twilio-Signature header is missing', async () => {
-      ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(false)
+      ;(twilio.validateRequest as unknown as Mock).mockReturnValue(false)
 
       const { client: publicClient } = stubPublicClient()
-      ;(createClient as unknown as vi.Mock).mockReturnValue(publicClient)
+      ;(createClient as unknown as Mock).mockReturnValue(publicClient)
 
       const body = makeFormBody({ MessageSid: 'SM123', MessageStatus: 'delivered' })
       const req = makeRequest(body)
@@ -203,10 +203,10 @@ describe('Twilio webhook route', () => {
     it('should return 401 when TWILIO_AUTH_TOKEN is not configured', async () => {
       delete process.env.TWILIO_AUTH_TOKEN
       // validateRequest won't be reached, but the verifyTwilioSignature helper returns false
-      ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(false)
+      ;(twilio.validateRequest as unknown as Mock).mockReturnValue(false)
 
       const { client: publicClient } = stubPublicClient()
-      ;(createClient as unknown as vi.Mock).mockReturnValue(publicClient)
+      ;(createClient as unknown as Mock).mockReturnValue(publicClient)
 
       const body = makeFormBody({ MessageSid: 'SM123', MessageStatus: 'delivered' })
       const req = makeRequest(body, { 'x-twilio-signature': 'sig' })
@@ -216,10 +216,10 @@ describe('Twilio webhook route', () => {
     })
 
     it('should proceed when signature is valid', async () => {
-      ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+      ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
       const { client: publicClient } = stubPublicClient()
-      ;(createClient as unknown as vi.Mock).mockReturnValue(publicClient)
+      ;(createClient as unknown as Mock).mockReturnValue(publicClient)
 
       const messageLookupMaybeSingle = vi.fn().mockResolvedValue({
         data: {
@@ -240,7 +240,7 @@ describe('Twilio webhook route', () => {
 
       const statusHistoryInsert = vi.fn().mockResolvedValue({ error: null })
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'messages') {
             return {
@@ -298,10 +298,10 @@ describe('Twilio webhook route', () => {
 
   describe('inbound SMS handling', () => {
     function setupInboundMocks() {
-      ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+      ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
       const { client: publicClient, webhookLogInsert } = stubPublicClient()
-      ;(createClient as unknown as vi.Mock).mockReturnValue(publicClient)
+      ;(createClient as unknown as Mock).mockReturnValue(publicClient)
 
       const messageLookupMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
       const customerLookup = vi.fn().mockResolvedValue({
@@ -313,7 +313,7 @@ describe('Twilio webhook route', () => {
         error: null,
       })
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'messages') {
             return {
@@ -392,11 +392,11 @@ describe('Twilio webhook route', () => {
 
   describe('status callback handling', () => {
     it('should update message status on delivery callback', async () => {
-      ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
-      ;(isStatusUpgrade as unknown as vi.Mock).mockReturnValue(true)
+      ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
+      ;(isStatusUpgrade as unknown as Mock).mockReturnValue(true)
 
       const { client: publicClient } = stubPublicClient()
-      ;(createClient as unknown as vi.Mock).mockReturnValue(publicClient)
+      ;(createClient as unknown as Mock).mockReturnValue(publicClient)
 
       const messageLookupMaybeSingle = vi.fn().mockResolvedValue({
         data: {
@@ -425,7 +425,7 @@ describe('Twilio webhook route', () => {
         error: null,
       })
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'messages') {
             return {
@@ -479,11 +479,11 @@ describe('Twilio webhook route', () => {
     })
 
     it('should prevent status regression', async () => {
-      ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
-      ;(isStatusUpgrade as unknown as vi.Mock).mockReturnValue(false)
+      ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
+      ;(isStatusUpgrade as unknown as Mock).mockReturnValue(false)
 
       const { client: publicClient } = stubPublicClient()
-      ;(createClient as unknown as vi.Mock).mockReturnValue(publicClient)
+      ;(createClient as unknown as Mock).mockReturnValue(publicClient)
 
       const messageLookupMaybeSingle = vi.fn().mockResolvedValue({
         data: {
@@ -499,7 +499,7 @@ describe('Twilio webhook route', () => {
 
       const statusHistoryInsert = vi.fn().mockResolvedValue({ error: null })
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'messages') {
             return {
@@ -534,17 +534,17 @@ describe('Twilio webhook route', () => {
     })
 
     it('should handle message not found gracefully', async () => {
-      ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+      ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
       const { client: publicClient } = stubPublicClient()
-      ;(createClient as unknown as vi.Mock).mockReturnValue(publicClient)
+      ;(createClient as unknown as Mock).mockReturnValue(publicClient)
 
       const messageLookupMaybeSingle = vi.fn().mockResolvedValue({
         data: null,
         error: null,
       })
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'messages') {
             return {
@@ -576,10 +576,10 @@ describe('Twilio webhook route', () => {
     })
 
     it('should skip duplicate status callbacks', async () => {
-      ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+      ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
       const { client: publicClient } = stubPublicClient()
-      ;(createClient as unknown as vi.Mock).mockReturnValue(publicClient)
+      ;(createClient as unknown as Mock).mockReturnValue(publicClient)
 
       const messageLookupMaybeSingle = vi.fn().mockResolvedValue({
         data: {
@@ -593,7 +593,7 @@ describe('Twilio webhook route', () => {
         error: null,
       })
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'messages') {
             return {
@@ -629,13 +629,13 @@ describe('Twilio webhook route', () => {
 
   describe('unknown webhook type', () => {
     it('should return success for unrecognised webhook payload', async () => {
-      ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+      ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
       const { client: publicClient } = stubPublicClient()
-      ;(createClient as unknown as vi.Mock).mockReturnValue(publicClient)
+      ;(createClient as unknown as Mock).mockReturnValue(publicClient)
 
       const { client: adminClient } = stubAdminClient()
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(adminClient)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(adminClient)
 
       // No Body, no MessageStatus — not inbound, not status update
       const body = makeFormBody({ AccountSid: 'AC123' })
@@ -654,17 +654,17 @@ describe('Twilio webhook route', () => {
 
   describe('error handling', () => {
     it('should return 500 when message lookup throws', async () => {
-      ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+      ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
       const { client: publicClient } = stubPublicClient()
-      ;(createClient as unknown as vi.Mock).mockReturnValue(publicClient)
+      ;(createClient as unknown as Mock).mockReturnValue(publicClient)
 
       const messageLookupMaybeSingle = vi.fn().mockResolvedValue({
         data: null,
         error: { message: 'Database connection lost' },
       })
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'messages') {
             return {

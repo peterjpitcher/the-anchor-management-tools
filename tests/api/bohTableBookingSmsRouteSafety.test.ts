@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 const mockTableBookingPermission = vi.hoisted(() => vi.fn())
 
@@ -68,12 +68,12 @@ describe('BOH table booking SMS route safety signals', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase,
     })
 
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM123',
       scheduledFor: '2026-03-01T12:00:00.000Z',
@@ -146,12 +146,12 @@ describe('BOH table booking SMS route safety signals', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase,
     })
 
-    ;(sendSMS as unknown as vi.Mock).mockRejectedValue(new Error('Twilio unavailable'))
+    ;(sendSMS as unknown as Mock).mockRejectedValue(new Error('Twilio unavailable'))
 
     const request = new Request(`http://localhost/api/boh/table-bookings/${bookingId}/sms`, {
       method: 'POST',
@@ -214,12 +214,12 @@ describe('BOH table booking SMS route safety signals', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase,
     })
 
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: false,
       sid: 'SM999',
       scheduledFor: null,

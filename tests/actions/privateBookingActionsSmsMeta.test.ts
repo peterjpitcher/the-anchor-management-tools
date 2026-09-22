@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
@@ -27,8 +27,8 @@ describe('private booking actions SMS meta propagation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    ;(checkUserPermission as unknown as vi.Mock).mockResolvedValue(true)
-    ;(createClient as unknown as vi.Mock).mockResolvedValue({
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(true)
+    ;(createClient as unknown as Mock).mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
           data: { user: { id: 'user-1' } },

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 /**
  * A2 regression test — the public POST /api/table-bookings endpoint must
@@ -253,7 +253,7 @@ describe('POST /api/table-bookings — structured persistence', () => {
 
   it('persists dietary_requirements and allergies arrays on the booking row', async () => {
     const supabase = buildSupabase()
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const body = {
       phone: '+447000000000',
@@ -281,7 +281,7 @@ describe('POST /api/table-bookings — structured persistence', () => {
 
   it('accepts an empty last name and bypasses kitchen pacing for drinks', async () => {
     const supabase = buildSupabase()
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await POST(buildRequest({
       phone: '+447000000000',
@@ -311,7 +311,7 @@ describe('POST /api/table-bookings — structured persistence', () => {
   // longer persists or validates those line items, regardless of flag value.
   it('does NOT call saveSundayPreorderByBookingId from the public POST path even with sunday_lunch=true', async () => {
     const supabase = buildSupabase()
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const body = {
       phone: '+447000000000',
@@ -334,7 +334,7 @@ describe('POST /api/table-bookings — structured persistence', () => {
 
   it('does not call saveSundayPreorderByBookingId when booking is not sunday_lunch', async () => {
     const supabase = buildSupabase()
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const body = {
       phone: '+447000000000',
@@ -353,7 +353,7 @@ describe('POST /api/table-bookings — structured persistence', () => {
 
   it('ignores a stale sunday_preorder_items payload with a non-UUID menu_dish_id', async () => {
     const supabase = buildSupabase()
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const body = {
       phone: '+447000000000',

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/events/api-auth', () => ({
   requireEventsManagePermission: vi.fn(),
@@ -125,7 +125,7 @@ describe('customer search and lookup international phone support', () => {
       },
     ])
 
-    ;(requireEventsManagePermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireEventsManagePermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase: search.supabase,
     })
@@ -144,7 +144,7 @@ describe('customer search and lookup international phone support', () => {
       display_phone: '+33612345678',
     })
 
-    const orFilter = (search.or as unknown as vi.Mock).mock.calls[0][0] as string
+    const orFilter = (search.or as unknown as Mock).mock.calls[0][0] as string
     expect(orFilter).toContain('mobile_e164.eq.+33612345678')
   })
 
@@ -159,7 +159,7 @@ describe('customer search and lookup international phone support', () => {
       },
     ])
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase: search.supabase,
     })
@@ -179,7 +179,7 @@ describe('customer search and lookup international phone support', () => {
       display_phone: '+447700900123',
     })
 
-    const orFilter = (search.or as unknown as vi.Mock).mock.calls[0][0] as string
+    const orFilter = (search.or as unknown as Mock).mock.calls[0][0] as string
     expect(orFilter).toContain('mobile_e164.eq.+447700900123')
   })
 
@@ -197,7 +197,7 @@ describe('customer search and lookup international phone support', () => {
       ],
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(lookup.supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(lookup.supabase)
 
     const response = await getCustomersLookup({
       nextUrl: new URL('http://localhost/api/customers/lookup?phone=06%2099%2088%2077%2066&default_country_code=33'),
@@ -216,8 +216,8 @@ describe('customer search and lookup international phone support', () => {
       mobile_e164: '+33699887766',
     })
 
-    expect((lookup.canonicalIn as unknown as vi.Mock).mock.calls[0][0]).toBe('mobile_e164')
-    expect((lookup.canonicalIn as unknown as vi.Mock).mock.calls[0][1]).toContain('+33699887766')
+    expect((lookup.canonicalIn as unknown as Mock).mock.calls[0][0]).toBe('mobile_e164')
+    expect((lookup.canonicalIn as unknown as Mock).mock.calls[0][1]).toContain('+33699887766')
     expect(ensureCustomerForPhone).not.toHaveBeenCalled()
   })
 
@@ -236,7 +236,7 @@ describe('customer search and lookup international phone support', () => {
       ],
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(lookup.supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(lookup.supabase)
 
     const response = await getCustomersLookup({
       nextUrl: new URL('http://localhost/api/customers/lookup?phone=07700%20900123&default_country_code=44'),
@@ -256,9 +256,9 @@ describe('customer search and lookup international phone support', () => {
       mobile_e164: '+447700900123',
     })
 
-    expect((lookup.canonicalIn as unknown as vi.Mock).mock.calls[0][0]).toBe('mobile_e164')
-    expect((lookup.legacyIn as unknown as vi.Mock).mock.calls[0][0]).toBe('mobile_number')
-    expect((lookup.privateBookingsIn as unknown as vi.Mock).mock.calls.length).toBe(0)
+    expect((lookup.canonicalIn as unknown as Mock).mock.calls[0][0]).toBe('mobile_e164')
+    expect((lookup.legacyIn as unknown as Mock).mock.calls[0][0]).toBe('mobile_number')
+    expect((lookup.privateBookingsIn as unknown as Mock).mock.calls.length).toBe(0)
     expect(ensureCustomerForPhone).not.toHaveBeenCalled()
   })
 })

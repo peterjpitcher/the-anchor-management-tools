@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
@@ -37,7 +37,7 @@ describe('Legacy background JobQueue race guards', () => {
   })
 
   it('fails closed when outbound message log persistence fails after transport send', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM-1',
       status: 'queued',
@@ -57,7 +57,7 @@ describe('Legacy background JobQueue race guards', () => {
   })
 
   it('treats suppressed_duplicate results as success when sendSMS returns success but no SID', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: null,
       status: 'suppressed_duplicate',
@@ -80,7 +80,7 @@ describe('Legacy background JobQueue race guards', () => {
   })
 
   it('treats deferred results as success when sendSMS returns success but no SID', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: null,
       status: 'scheduled',
@@ -121,7 +121,7 @@ describe('Legacy background JobQueue race guards', () => {
       }),
     }
 
-    ;(createAdminClient as unknown as vi.Mock).mockResolvedValue(client)
+    ;(createAdminClient as unknown as Mock).mockResolvedValue(client)
 
     const queue = JobQueue.getInstance() as any
     const executeJobSpy = vi.fn().mockResolvedValue({ success: true })
@@ -167,7 +167,7 @@ describe('Legacy background JobQueue race guards', () => {
       }),
     }
 
-    ;(createAdminClient as unknown as vi.Mock).mockResolvedValue(client)
+    ;(createAdminClient as unknown as Mock).mockResolvedValue(client)
 
     const queue = JobQueue.getInstance() as any
     queue.executeJob = vi.fn().mockRejectedValue(new Error('boom'))

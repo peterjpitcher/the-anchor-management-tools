@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -38,8 +38,8 @@ describe('reconcile-sms route error payloads', () => {
   })
 
   it('returns a generic 500 payload when reconciliation throws unexpectedly', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
-    ;(createAdminClient as unknown as vi.Mock).mockImplementation(() => {
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
+    ;(createAdminClient as unknown as Mock).mockImplementation(() => {
       throw new Error('sensitive internal database failure details')
     })
 
@@ -53,7 +53,7 @@ describe('reconcile-sms route error payloads', () => {
   })
 
   it('counts Twilio 20404 as reconciled when the local message is marked failed', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
     twilioFetchMock.mockRejectedValue(Object.assign(new Error('not found'), { code: 20404 }))
 
     const stuckMessage = {
@@ -96,7 +96,7 @@ describe('reconcile-sms route error payloads', () => {
 
     const historyInsert = vi.fn().mockResolvedValue({ error: null })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'messages') {
           return {

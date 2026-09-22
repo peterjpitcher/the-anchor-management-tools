@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
@@ -65,7 +65,7 @@ describe('bulk SMS marketing eligibility', () => {
 
     const customersSelect = vi.fn().mockReturnValue({ in: customersIn })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customersSelect }
@@ -74,7 +74,7 @@ describe('bulk SMS marketing eligibility', () => {
       }),
     })
 
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM123',
       deferred: false,
@@ -123,7 +123,7 @@ describe('bulk SMS marketing eligibility', () => {
 
     const customersSelect = vi.fn().mockReturnValue({ in: customersIn })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customersSelect }
@@ -173,7 +173,7 @@ describe('bulk SMS marketing eligibility', () => {
     const eventEq = vi.fn().mockReturnValue({ maybeSingle: eventMaybeSingle })
     const eventSelect = vi.fn().mockReturnValue({ eq: eventEq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customersSelect }
@@ -207,7 +207,7 @@ describe('bulk SMS marketing eligibility', () => {
 
     const customersSelect = vi.fn().mockReturnValue({ in: customersIn })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customersSelect }

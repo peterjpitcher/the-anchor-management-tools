@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 // The FOH walk-in override inserts into `table_bookings` directly instead of going through
 // create_table_booking_core_v06, which is the only place that ever wrote an outside_reservations
@@ -141,7 +141,7 @@ function outsideWalkInRequest(date = '2026-02-16') {
 describe('FOH outside walk-in override', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
       customerId: 'customer-1',
       resolutionError: undefined,
     })
@@ -149,7 +149,7 @@ describe('FOH outside walk-in override', () => {
 
   it('records the outside table the booking occupies', async () => {
     const { supabase, rpc } = buildSupabase()
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
@@ -181,7 +181,7 @@ describe('FOH outside walk-in override', () => {
 
   it('never turns a walk-in away when the reservation row cannot be written', async () => {
     const { supabase, rpc } = buildSupabase({ syncError: { message: 'db down' } })
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
@@ -205,7 +205,7 @@ describe('FOH outside walk-in override', () => {
 
   it('rejects a future walk-in before the override path', async () => {
     const { supabase, tableBookingInsert } = buildSupabase()
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
@@ -252,7 +252,7 @@ describe('FOH outside walk-in override', () => {
       rpc,
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,

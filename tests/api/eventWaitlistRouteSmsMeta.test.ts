@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/api/auth', () => ({
   withApiAuth: vi.fn(
@@ -82,12 +82,12 @@ describe('event waitlist route SMS safety meta', () => {
     const eventId = '11111111-1111-4111-8111-111111111111'
     const customerId = '22222222-2222-4222-8222-222222222222'
 
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
       customerId,
       resolutionError: undefined,
     })
 
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: true,
       sid: 'SM1',
       code: 'logging_failed',
@@ -106,7 +106,7 @@ describe('event waitlist route SMS safety meta', () => {
     const customerEq = vi.fn().mockReturnValue({ maybeSingle: customerMaybeSingle })
     const customerSelect = vi.fn().mockReturnValue({ eq: customerEq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customerSelect }
@@ -170,12 +170,12 @@ describe('event waitlist route SMS safety meta', () => {
     const eventId = '11111111-1111-4111-8111-111111111111'
     const customerId = '22222222-2222-4222-8222-222222222222'
 
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
       customerId,
       resolutionError: undefined,
     })
 
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: false,
       error: 'message log insert failed',
       code: 'logging_failed',
@@ -194,7 +194,7 @@ describe('event waitlist route SMS safety meta', () => {
     const customerEq = vi.fn().mockReturnValue({ maybeSingle: customerMaybeSingle })
     const customerSelect = vi.fn().mockReturnValue({ eq: customerEq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customerSelect }
@@ -253,7 +253,7 @@ describe('event waitlist route SMS safety meta', () => {
     const eventId = '11111111-1111-4111-8111-111111111111'
     const customerId = '22222222-2222-4222-8222-222222222222'
 
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
       customerId,
       resolutionError: undefined,
     })
@@ -262,7 +262,7 @@ describe('event waitlist route SMS safety meta', () => {
     const customerEq = vi.fn().mockReturnValue({ maybeSingle: customerMaybeSingle })
     const customerSelect = vi.fn().mockReturnValue({ eq: customerEq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customerSelect }
@@ -326,17 +326,17 @@ describe('event waitlist route SMS safety meta', () => {
     const eventId = '11111111-1111-4111-8111-111111111111'
     const customerId = '22222222-2222-4222-8222-222222222222'
 
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
       customerId,
       resolutionError: undefined,
     })
 
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: true,
       sid: 'SM1',
     })
 
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockRejectedValueOnce(new Error('idempotency write down'))
+    ;(persistIdempotencyResponse as unknown as Mock).mockRejectedValueOnce(new Error('idempotency write down'))
 
     const customerMaybeSingle = vi.fn().mockResolvedValue({
       data: {
@@ -350,7 +350,7 @@ describe('event waitlist route SMS safety meta', () => {
     const customerEq = vi.fn().mockReturnValue({ maybeSingle: customerMaybeSingle })
     const customerSelect = vi.fn().mockReturnValue({ eq: customerEq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customerSelect }

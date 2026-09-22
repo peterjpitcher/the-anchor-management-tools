@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
@@ -40,10 +40,10 @@ describe('twilio webhook mutation guards', () => {
   })
 
   it('treats status update no-op as success to prevent webhook retry loops', async () => {
-    ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+    ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
-    ;(createClient as unknown as vi.Mock).mockReturnValue({
+    ;(createClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
@@ -79,7 +79,7 @@ describe('twilio webhook mutation guards', () => {
 
     const messageDeliveryStatusInsert = vi.fn().mockResolvedValue({ error: null })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'messages') {
           return {
@@ -124,10 +124,10 @@ describe('twilio webhook mutation guards', () => {
   // webhooks (where twilio_status === incoming status) and returns 200 immediately
   // without attempting customer delivery-outcome updates.
   it('returns 200 for exact duplicate status webhook without attempting customer updates', async () => {
-    ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+    ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
-    ;(createClient as unknown as vi.Mock).mockReturnValue({
+    ;(createClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
@@ -154,7 +154,7 @@ describe('twilio webhook mutation guards', () => {
 
     const customerLookupSelect = vi.fn()
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'messages') {
           return { select: messageLookupSelect }
@@ -190,10 +190,10 @@ describe('twilio webhook mutation guards', () => {
   })
 
   it('fails closed when post-status customer delivery-outcome updates cannot be applied', async () => {
-    ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+    ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
-    ;(createClient as unknown as vi.Mock).mockReturnValue({
+    ;(createClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
@@ -236,7 +236,7 @@ describe('twilio webhook mutation guards', () => {
 
     const messageDeliveryStatusInsert = vi.fn().mockResolvedValue({ error: null })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'messages') {
           return {
@@ -280,10 +280,10 @@ describe('twilio webhook mutation guards', () => {
   })
 
   it('does not auto-create customers for unmatched inbound SMS', async () => {
-    ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+    ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
-    ;(createClient as unknown as vi.Mock).mockReturnValue({
+    ;(createClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
@@ -337,7 +337,7 @@ describe('twilio webhook mutation guards', () => {
     const createCustomerSelect = vi.fn().mockReturnValue({ single: createCustomerSingle })
     const createCustomerInsert = vi.fn().mockReturnValue({ select: createCustomerSelect })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'messages') {
           return {
@@ -383,10 +383,10 @@ describe('twilio webhook mutation guards', () => {
   })
 
   it('returns retriable 500 when status webhook cannot load the target message due to DB errors', async () => {
-    ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+    ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
-    ;(createClient as unknown as vi.Mock).mockReturnValue({
+    ;(createClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
@@ -404,7 +404,7 @@ describe('twilio webhook mutation guards', () => {
     const messageLookupEq = vi.fn().mockReturnValue({ order: messageLookupOrder })
     const messageLookupSelect = vi.fn().mockReturnValue({ eq: messageLookupEq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'messages') {
           return { select: messageLookupSelect }
@@ -436,10 +436,10 @@ describe('twilio webhook mutation guards', () => {
   })
 
   it('fails closed when inbound duplicate lookup query errors before message insert', async () => {
-    ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+    ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
-    ;(createClient as unknown as vi.Mock).mockReturnValue({
+    ;(createClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
@@ -457,7 +457,7 @@ describe('twilio webhook mutation guards', () => {
     const existingMessageEq = vi.fn().mockReturnValue({ order: existingMessageOrder })
     const existingMessageSelect = vi.fn().mockReturnValue({ eq: existingMessageEq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'messages') {
           return { select: existingMessageSelect }
@@ -491,10 +491,10 @@ describe('twilio webhook mutation guards', () => {
   })
 
   it('fails closed when inbound sender number cannot be normalized', async () => {
-    ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+    ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
-    ;(createClient as unknown as vi.Mock).mockReturnValue({
+    ;(createClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
@@ -523,7 +523,7 @@ describe('twilio webhook mutation guards', () => {
       throw new Error(`Unexpected admin table: ${table}`)
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: adminFrom,
     })
 
@@ -554,10 +554,10 @@ describe('twilio webhook mutation guards', () => {
   })
 
   it('fails closed when inbound opt-out keyword cannot persist the customer preference update', async () => {
-    ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+    ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
-    ;(createClient as unknown as vi.Mock).mockReturnValue({
+    ;(createClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
@@ -606,7 +606,7 @@ describe('twilio webhook mutation guards', () => {
     const customerOptOutEq = vi.fn().mockReturnValue({ select: customerOptOutSelect })
     const customerUpdate = vi.fn().mockReturnValue({ eq: customerOptOutEq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'messages') {
           return {
@@ -651,10 +651,10 @@ describe('twilio webhook mutation guards', () => {
   })
 
   it('fails closed when inbound opt-out keyword update affects no rows', async () => {
-    ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(true)
+    ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
-    ;(createClient as unknown as vi.Mock).mockReturnValue({
+    ;(createClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
@@ -703,7 +703,7 @@ describe('twilio webhook mutation guards', () => {
     const customerOptOutEq = vi.fn().mockReturnValue({ select: customerOptOutSelect })
     const customerUpdate = vi.fn().mockReturnValue({ eq: customerOptOutEq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'messages') {
           return {

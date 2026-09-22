@@ -1,4 +1,4 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 /**
  * The table-booking review ask is email-first, and only `sendSMS` rewrites URLs
@@ -137,7 +137,7 @@ function buildSupabase(bookingOverrides: Record<string, unknown> = {}) {
 }
 
 async function run(bookingOverrides: Record<string, unknown> = {}) {
-  ;(createAdminClient as unknown as vi.Mock).mockReturnValue(buildSupabase(bookingOverrides))
+  ;(createAdminClient as unknown as Mock).mockReturnValue(buildSupabase(bookingOverrides))
 
   const request: any = new Request('http://localhost/api/cron/event-guest-engagement')
   request.nextUrl = new URL('http://localhost')
@@ -147,7 +147,7 @@ async function run(bookingOverrides: Record<string, unknown> = {}) {
 }
 
 function reviewEmailCall() {
-  return (sendEmail as unknown as vi.Mock).mock.calls.find(
+  return (sendEmail as unknown as Mock).mock.calls.find(
     ([options]) => options?.subject === 'Thanks for visiting The Anchor'
   )?.[0]
 }
@@ -155,7 +155,7 @@ function reviewEmailCall() {
 describe('table review email: link shortening', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
     createShortLinkInternalMock.mockResolvedValue({
       short_code: 'rev123',
       full_url: SHORT_URL,

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
@@ -96,7 +96,7 @@ describe('FOH table-booking time move — customer notification', () => {
 
   it('notifies the customer when the time actually changes', async () => {
     const supabase = buildSupabase()
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({ ok: true, userId: 'user-1', supabase })
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({ ok: true, userId: 'user-1', supabase })
 
     // Stored time is 18:00 London; move to 19:30.
     const response = await patchTime(jsonRequest({ time: '19:30' }) as any, {
@@ -114,7 +114,7 @@ describe('FOH table-booking time move — customer notification', () => {
 
   it('does not notify when the booking is dropped back on the same time', async () => {
     const supabase = buildSupabase()
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({ ok: true, userId: 'user-1', supabase })
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({ ok: true, userId: 'user-1', supabase })
 
     // Stored time is 18:00 London; "move" to the same 18:00.
     const response = await patchTime(jsonRequest({ time: '18:00' }) as any, {

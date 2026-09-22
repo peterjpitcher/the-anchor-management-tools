@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -44,8 +44,8 @@ describe('ShortLinkService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    ;(createClient as unknown as vi.Mock).mockResolvedValue(mockSupabase)
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(mockSupabase)
+    ;(createClient as unknown as Mock).mockResolvedValue(mockSupabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(mockSupabase)
 
     mockSelect.mockReturnValue({ eq: mockEq })
     mockEq.mockReturnValue({

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/rate-limit', () => ({
   createRateLimiter: vi.fn(() => vi.fn().mockResolvedValue(null)),
@@ -21,7 +21,7 @@ describe('foh food order alert route safety signals', () => {
   })
 
   it('surfaces logging_failed safety signals without returning a retry-triggering 500', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: true,
       sid: 'SM1',
       code: 'logging_failed',
@@ -50,7 +50,7 @@ describe('foh food order alert route safety signals', () => {
   })
 
   it('fails safe when the SMS transport may have succeeded but message logging failed', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: false,
       sid: 'SM1',
       code: 'logging_failed',

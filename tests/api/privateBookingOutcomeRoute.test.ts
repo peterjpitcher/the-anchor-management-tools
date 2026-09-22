@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn()
@@ -156,7 +156,7 @@ describe('GET /api/private-bookings/outcome/[outcome]/[token]', () => {
 
   it('returns 404 when the token does not exist', async () => {
     const supabase = buildSupabase({ guestTokenRow: null })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(
       buildRequest('/api/private-bookings/outcome/went_well/abc') as never,
@@ -174,7 +174,7 @@ describe('GET /api/private-bookings/outcome/[outcome]/[token]', () => {
         consumed_at: new Date().toISOString()
       }
     })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(
       buildRequest('/api/private-bookings/outcome/went_well/t') as never,
@@ -194,7 +194,7 @@ describe('GET /api/private-bookings/outcome/[outcome]/[token]', () => {
         consumed_at: null
       }
     })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(
       buildRequest('/api/private-bookings/outcome/went_well/t') as never,
@@ -223,7 +223,7 @@ describe('GET /api/private-bookings/outcome/[outcome]/[token]', () => {
       onBookingUpdate: (p) => updatesObserved.push(p),
       onTokenUpdate: (p) => updatesObserved.push(p)
     })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     // Three prefetches from three different "IPs" — no state change must occur.
     for (let i = 0; i < 3; i += 1) {
@@ -257,7 +257,7 @@ describe('GET /api/private-bookings/outcome/[outcome]/[token]', () => {
         post_event_outcome: 'issues'
       }
     })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(
       buildRequest('/api/private-bookings/outcome/went_well/t') as never,
@@ -273,7 +273,7 @@ describe('GET /api/private-bookings/outcome/[outcome]/[token]', () => {
 describe('POST /api/private-bookings/outcome/[outcome]/[token]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(checkGuestTokenThrottle as unknown as vi.Mock).mockResolvedValue({
+    ;(checkGuestTokenThrottle as unknown as Mock).mockResolvedValue({
       allowed: true,
       retryAfterSeconds: 60,
       remaining: 7
@@ -281,12 +281,12 @@ describe('POST /api/private-bookings/outcome/[outcome]/[token]', () => {
   })
 
   it('returns 429 when throttle tripped', async () => {
-    ;(checkGuestTokenThrottle as unknown as vi.Mock).mockResolvedValue({
+    ;(checkGuestTokenThrottle as unknown as Mock).mockResolvedValue({
       allowed: false,
       retryAfterSeconds: 120,
       remaining: 0
     })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(buildSupabase({}))
+    ;(createAdminClient as unknown as Mock).mockReturnValue(buildSupabase({}))
 
     const response = await POST(
       buildRequest('/api/private-bookings/outcome/went_well/t', { method: 'POST' }) as never,
@@ -310,7 +310,7 @@ describe('POST /api/private-bookings/outcome/[outcome]/[token]', () => {
       onBookingUpdate: (p) => bookingUpdates.push(p),
       onTokenUpdate: (p) => tokenUpdates.push(p)
     })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await POST(
       buildRequest('/api/private-bookings/outcome/went_well/t', { method: 'POST' }) as never,
@@ -355,7 +355,7 @@ describe('POST /api/private-bookings/outcome/[outcome]/[token]', () => {
       booking: { post_event_outcome: 'issues' },
       updateResult: { claimed: null }
     })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await POST(
       buildRequest('/api/private-bookings/outcome/went_well/t', { method: 'POST' }) as never,
@@ -436,7 +436,7 @@ describe('POST /api/private-bookings/outcome/[outcome]/[token]', () => {
       })
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockImplementation(() => clientFactory())
+    ;(createAdminClient as unknown as Mock).mockImplementation(() => clientFactory())
 
     const [r1, r2] = await Promise.all([
       POST(
@@ -466,7 +466,7 @@ describe('POST /api/private-bookings/outcome/[outcome]/[token]', () => {
 
   it('returns 404 when the token has been replaced', async () => {
     const supabase = buildSupabase({ guestTokenRow: null })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await POST(
       buildRequest('/api/private-bookings/outcome/went_well/missing', { method: 'POST' }) as never,
@@ -498,7 +498,7 @@ describe('POST /api/private-bookings/outcome/[outcome]/[token]', () => {
       return supabase.from(table)
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({ from: fromMock })
+    ;(createAdminClient as unknown as Mock).mockReturnValue({ from: fromMock })
 
     await POST(
       buildRequest('/api/private-bookings/outcome/went_well/raw-token-abc', { method: 'POST' }) as never,

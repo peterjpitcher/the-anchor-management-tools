@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -27,7 +27,7 @@ describe('event booking holds route error payloads', () => {
   })
 
   it('returns a generic 500 payload when pending booking load fails', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     const limit = vi.fn().mockResolvedValue({
       data: null,
@@ -38,7 +38,7 @@ describe('event booking holds route error payloads', () => {
     const eq = vi.fn().mockReturnValue({ not })
     const select = vi.fn().mockReturnValue({ eq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'bookings') {
           return { select }
@@ -55,7 +55,7 @@ describe('event booking holds route error payloads', () => {
   })
 
   it('syncs Pub Ops calendar entries for events with expired booking holds', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     const responses = [
       { data: [{ id: 'booking-1', event_id: 'event-1' }], error: null },
@@ -69,7 +69,7 @@ describe('event booking holds route error payloads', () => {
 
     const supabase = {
       from: vi.fn(() => {
-        const builder: Record<string, vi.Mock> & {
+        const builder: Record<string, Mock> & {
           then?: Promise<{ data: unknown; error: unknown }>['then']
         } = {} as any
         const resolveNext = () => Promise.resolve(responses.shift() ?? { data: [], error: null })
@@ -83,7 +83,7 @@ describe('event booking holds route error payloads', () => {
       }),
     }
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(new Request('http://localhost/api/cron/event-booking-holds') as any)
     const payload = await response.json()

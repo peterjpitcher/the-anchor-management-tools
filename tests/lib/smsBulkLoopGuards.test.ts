@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
@@ -54,7 +54,7 @@ describe('bulk SMS loop guards', () => {
     })
     const customersSelect = vi.fn().mockReturnValue({ in: customersIn })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customersSelect }
@@ -63,7 +63,7 @@ describe('bulk SMS loop guards', () => {
       }),
     })
 
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM123',
       deferred: false,
@@ -140,7 +140,7 @@ describe('bulk SMS loop guards', () => {
     })
     const customersSelect = vi.fn().mockReturnValue({ in: customersIn })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customersSelect }
@@ -149,7 +149,7 @@ describe('bulk SMS loop guards', () => {
       }),
     })
 
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: true,
       sid: 'SM123',
       deferred: false,
@@ -203,7 +203,7 @@ describe('bulk SMS loop guards', () => {
     })
     const customersSelect = vi.fn().mockReturnValue({ in: customersIn })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customersSelect }
@@ -212,7 +212,7 @@ describe('bulk SMS loop guards', () => {
       }),
     })
 
-    ;(sendSMS as unknown as vi.Mock).mockRejectedValueOnce(new Error('messages table unavailable'))
+    ;(sendSMS as unknown as Mock).mockRejectedValueOnce(new Error('messages table unavailable'))
 
     const result = await sendBulkSms({
       customerIds: ['customer-1', 'customer-2'],
@@ -269,7 +269,7 @@ describe('bulk SMS loop guards', () => {
     })
     const customersSelect = vi.fn().mockReturnValue({ in: customersIn })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'customers') {
           return { select: customersSelect }
@@ -278,7 +278,7 @@ describe('bulk SMS loop guards', () => {
       }),
     })
 
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: true,
       sid: 'SM123',
       deferred: false,

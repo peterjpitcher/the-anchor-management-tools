@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.hoisted(() => {
   process.env.TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || 'AC_TEST'
@@ -42,7 +42,7 @@ function mockActiveCustomerLookup() {
   const eq = vi.fn().mockReturnValue({ maybeSingle })
   const select = vi.fn().mockReturnValue({ eq })
 
-  ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+  ;(createAdminClient as unknown as Mock).mockReturnValue({
     from: vi.fn((table: string) => {
       if (table === 'customers') {
         return { select }

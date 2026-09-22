@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 const { warn, error } = vi.hoisted(() => ({
   warn: vi.fn(),
@@ -37,7 +37,7 @@ describe('table booking created SMS safety meta', () => {
   })
 
   it('returns sms meta and logs error when Twilio logging fails', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: true,
       sid: 'SM1',
       code: 'logging_failed',
@@ -101,7 +101,7 @@ describe('table booking created SMS safety meta', () => {
   })
 
   it('treats success:false logging_failed as sent/unknown to avoid retry-driven duplicates', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: false,
       error: 'SMS sent but message persistence failed',
       code: 'logging_failed',
@@ -156,7 +156,7 @@ describe('table booking created SMS safety meta', () => {
   })
 
   it('propagates logging_failed metadata when sendSMS throws', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockRejectedValueOnce({
+    ;(sendSMS as unknown as Mock).mockRejectedValueOnce({
       message: 'message persistence unavailable',
       code: 'logging_failed',
       logFailure: false,

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/unified-job-queue', () => ({
   jobQueue: {
@@ -50,11 +50,11 @@ describe('sms bulk direct action fail-safe guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    ;(checkUserPermission as unknown as vi.Mock).mockResolvedValue(true)
-    ;(headers as unknown as vi.Mock).mockResolvedValue({
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(true)
+    ;(headers as unknown as Mock).mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     })
-    ;(rateLimiters.bulk as unknown as vi.Mock).mockResolvedValue(null)
+    ;(rateLimiters.bulk as unknown as Mock).mockResolvedValue(null)
 
     previousEnv.TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID
     previousEnv.TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN
@@ -76,7 +76,7 @@ describe('sms bulk direct action fail-safe guards', () => {
   })
 
   it('returns success with logging_failed meta when the bulk helper aborts after persistence failure', async () => {
-    ;(sendBulkSms as unknown as vi.Mock).mockResolvedValue({
+    ;(sendBulkSms as unknown as Mock).mockResolvedValue({
       success: false,
       error:
         'Bulk SMS aborted due to safety failure (logging_failed): SMS sent but message persistence failed',

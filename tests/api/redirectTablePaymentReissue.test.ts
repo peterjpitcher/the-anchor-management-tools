@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 // env.ts reads the app URL once, when it is first imported, so it is set before any import. The
 // short link itself is on vip-club.uk: the reissued payment link must still use the app URL.
@@ -153,12 +153,12 @@ describe('redirect table-payment auto-reissue', () => {
         hold_expires_at: '2099-01-15T12:00:00.000Z',
       },
     })
-    ;(createClient as unknown as vi.Mock).mockReturnValue(supabaseStub.client)
-    ;(getTablePaymentPreviewByRawToken as unknown as vi.Mock).mockResolvedValue({
+    ;(createClient as unknown as Mock).mockReturnValue(supabaseStub.client)
+    ;(getTablePaymentPreviewByRawToken as unknown as Mock).mockResolvedValue({
       state: 'blocked',
       reason: 'invalid_token',
     })
-    ;(createTablePaymentToken as unknown as vi.Mock).mockResolvedValue({
+    ;(createTablePaymentToken as unknown as Mock).mockResolvedValue({
       rawToken: 'fresh-token',
       url: 'https://management.orangejelly.co.uk/g/fresh-token/table-payment',
       expiresAt: '2099-01-15T12:00:00.000Z',
@@ -208,8 +208,8 @@ describe('redirect table-payment auto-reissue', () => {
         metadata: {},
       },
     })
-    ;(createClient as unknown as vi.Mock).mockReturnValue(supabaseStub.client)
-    ;(getTablePaymentPreviewByRawToken as unknown as vi.Mock).mockResolvedValue({
+    ;(createClient as unknown as Mock).mockReturnValue(supabaseStub.client)
+    ;(getTablePaymentPreviewByRawToken as unknown as Mock).mockResolvedValue({
       state: 'blocked',
       reason: 'invalid_token',
     })
@@ -241,7 +241,7 @@ describe('redirect table-payment auto-reissue', () => {
         metadata: null,
       },
     })
-    ;(createClient as unknown as vi.Mock).mockReturnValue(supabaseStub.client)
+    ;(createClient as unknown as Mock).mockReturnValue(supabaseStub.client)
 
     const response = await callRoute('abc125')
 
@@ -264,7 +264,7 @@ describe('redirect table-payment auto-reissue', () => {
         },
       },
     })
-    ;(createClient as unknown as vi.Mock).mockReturnValue(supabaseStub.client)
+    ;(createClient as unknown as Mock).mockReturnValue(supabaseStub.client)
 
     const response = await callRoute('ma83ed9d', '?fbclid=fb-123&utm_campaign=changed&utm_content=copy-a')
     const location = new URL(response.headers.get('location') || '')

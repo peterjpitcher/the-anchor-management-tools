@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/app/actions/rbac', () => ({
   checkUserPermission: vi.fn(),
@@ -49,12 +49,12 @@ import { sendBulkSMSAsync, sendSms } from '@/app/actions/sms'
 describe('sms action bulk guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(checkUserPermission as unknown as vi.Mock).mockResolvedValue(true)
-    ;(headers as unknown as vi.Mock).mockResolvedValue({
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(true)
+    ;(headers as unknown as Mock).mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     })
-    ;(rateLimiters.bulk as unknown as vi.Mock).mockResolvedValue(null)
-    ;(sendBulkSms as unknown as vi.Mock).mockResolvedValue({
+    ;(rateLimiters.bulk as unknown as Mock).mockResolvedValue(null)
+    ;(sendBulkSms as unknown as Mock).mockResolvedValue({
       success: true,
       sent: 2,
       failed: 0,
@@ -64,19 +64,19 @@ describe('sms action bulk guards', () => {
         { customerId: 'customer-b', messageSid: 'SM2' },
       ],
     })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({})
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({})
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
       customerId: 'customer-otp',
       resolutionError: undefined
     })
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM-OTP-1'
     })
   })
 
   it('rejects bulk send when permission is missing', async () => {
-    ;(checkUserPermission as unknown as vi.Mock).mockResolvedValue(false)
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(false)
 
     const result = await sendBulkSMSAsync(['customer-a'], 'Hello')
 
@@ -85,7 +85,7 @@ describe('sms action bulk guards', () => {
   })
 
   it('rejects bulk send when bulk limiter blocks the request', async () => {
-    ;(rateLimiters.bulk as unknown as vi.Mock).mockResolvedValue(new Response('limited', { status: 429 }))
+    ;(rateLimiters.bulk as unknown as Mock).mockResolvedValue(new Response('limited', { status: 429 }))
 
     const result = await sendBulkSMSAsync(['customer-a'], 'Hello')
 
@@ -133,7 +133,7 @@ describe('sms action bulk guards', () => {
   })
 
   it('fails safe when bulk helper aborts with logging_failed after sends may have occurred', async () => {
-    ;(sendBulkSms as unknown as vi.Mock).mockResolvedValue({
+    ;(sendBulkSms as unknown as Mock).mockResolvedValue({
       success: false,
       error: 'Bulk SMS aborted due to safety failure (logging_failed): SMS sent but message persistence failed',
     })
@@ -154,17 +154,17 @@ describe('sms action bulk guards', () => {
 describe('sms action recipient safety guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(checkUserPermission as unknown as vi.Mock).mockResolvedValue(true)
-    ;(headers as unknown as vi.Mock).mockResolvedValue({
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(true)
+    ;(headers as unknown as Mock).mockResolvedValue({
       get: vi.fn().mockReturnValue(null),
     })
-    ;(rateLimiters.sms as unknown as vi.Mock).mockResolvedValue(null)
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({})
-    ;(resolveCustomerIdForSms as unknown as vi.Mock).mockResolvedValue({
+    ;(rateLimiters.sms as unknown as Mock).mockResolvedValue(null)
+    ;(createAdminClient as unknown as Mock).mockReturnValue({})
+    ;(resolveCustomerIdForSms as unknown as Mock).mockResolvedValue({
       customerId: 'customer-1',
       resolutionError: undefined
     })
-    ;(getTablePaymentPreviewByRawToken as unknown as vi.Mock).mockResolvedValue({
+    ;(getTablePaymentPreviewByRawToken as unknown as Mock).mockResolvedValue({
       state: 'ready',
       tableBookingId: 'booking-preview-1',
       customerId: 'customer-1',
@@ -179,7 +179,7 @@ describe('sms action recipient safety guards', () => {
       bookingType: 'sunday_lunch',
       tokenHash: 'token-hash-preview',
     })
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM-1',
       status: 'queued',
@@ -188,7 +188,7 @@ describe('sms action recipient safety guards', () => {
   })
 
   it('rejects manual send when permission is missing', async () => {
-    ;(checkUserPermission as unknown as vi.Mock).mockResolvedValue(false)
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(false)
 
     const result = await sendSms({
       to: '+447700900110',
@@ -203,7 +203,7 @@ describe('sms action recipient safety guards', () => {
   })
 
   it('fails closed when recipient context lookup reports a safety error', async () => {
-    ;(resolveCustomerIdForSms as unknown as vi.Mock).mockResolvedValue({
+    ;(resolveCustomerIdForSms as unknown as Mock).mockResolvedValue({
       customerId: null,
       resolutionError: 'booking_lookup_failed'
     })
@@ -219,7 +219,7 @@ describe('sms action recipient safety guards', () => {
   })
 
   it('blocks manual send when body contains an invalid table-payment token link', async () => {
-    ;(getTablePaymentPreviewByRawToken as unknown as vi.Mock).mockResolvedValue({
+    ;(getTablePaymentPreviewByRawToken as unknown as Mock).mockResolvedValue({
       state: 'blocked',
       reason: 'invalid_token',
     })
@@ -237,7 +237,7 @@ describe('sms action recipient safety guards', () => {
   })
 
   it('allows manual send when body contains a valid table-payment token link', async () => {
-    ;(getTablePaymentPreviewByRawToken as unknown as vi.Mock).mockResolvedValue({
+    ;(getTablePaymentPreviewByRawToken as unknown as Mock).mockResolvedValue({
       state: 'ready',
       tableBookingId: 'booking-preview-2',
       customerId: 'customer-1',
@@ -298,7 +298,7 @@ describe('sms action recipient safety guards', () => {
   })
 
   it('surfaces logFailure when outbound message logging fails after transport send', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM-logging-1',
       status: 'queued',
@@ -324,7 +324,7 @@ describe('sms action recipient safety guards', () => {
   })
 
   it('fails safe when sendSMS reports logging_failed as non-success', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: false,
       sid: 'SM-logging-2',
       status: 'queued',

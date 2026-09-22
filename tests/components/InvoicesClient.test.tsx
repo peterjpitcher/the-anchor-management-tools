@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import InvoicesClient from '@/app/(authenticated)/invoices/_components/InvoicesClient'
 import type { InvoiceWithDetails } from '@/types/invoices'
@@ -276,7 +276,7 @@ describe('InvoicesClient', () => {
 
   it('downloads exports using the current list filters and selected dates', async () => {
     const blob = new Blob(['zip'])
-    ;(global.fetch as unknown as vi.Mock).mockResolvedValue({
+    ;(global.fetch as unknown as Mock).mockResolvedValue({
       ok: true,
       headers: {
         get: vi.fn(() => 'attachment; filename="filtered-invoices.zip"'),

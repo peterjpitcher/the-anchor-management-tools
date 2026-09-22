@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 const mockTableBookingPermission = vi.hoisted(() => vi.fn())
 
@@ -61,11 +61,11 @@ describe('table-booking route 500 payload sanitization', () => {
   })
 
   it('returns generic GET move-table error payload when availability load fails', async () => {
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase: buildAvailabilityLoadFailureSupabase(),
     })
-    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+    ;(getTableBookingForFoh as unknown as Mock).mockResolvedValue({
       id: '00000000-0000-4000-8000-000000000001',
       status: 'confirmed',
       booking_date: '2024-01-01',
@@ -86,11 +86,11 @@ describe('table-booking route 500 payload sanitization', () => {
   })
 
   it('returns generic POST move-table error payload when availability check fails', async () => {
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase: buildAvailabilityLoadFailureSupabase(),
     })
-    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+    ;(getTableBookingForFoh as unknown as Mock).mockResolvedValue({
       id: '00000000-0000-4000-8000-000000000001',
       status: 'confirmed',
       booking_date: '2024-01-01',
@@ -136,13 +136,13 @@ describe('table-booking route 500 payload sanitization', () => {
     const bookingEq = vi.fn().mockReturnValue({ maybeSingle: bookingMaybeSingle })
     const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq })
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase: {
         from: vi.fn().mockReturnValue({ select: bookingSelect }),
       },
     })
-    ;(updateTableBookingPartySizeWithLinkedEventSeats as unknown as vi.Mock).mockRejectedValue(
+    ;(updateTableBookingPartySizeWithLinkedEventSeats as unknown as Mock).mockRejectedValue(
       new Error('sensitive seat sync diagnostics')
     )
 
@@ -180,13 +180,13 @@ describe('table-booking route 500 payload sanitization', () => {
     const bookingEq = vi.fn().mockReturnValue({ maybeSingle: bookingMaybeSingle })
     const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq })
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase: {
         from: vi.fn().mockReturnValue({ select: bookingSelect }),
       },
     })
-    ;(updateTableBookingPartySizeWithLinkedEventSeats as unknown as vi.Mock).mockRejectedValue(
+    ;(updateTableBookingPartySizeWithLinkedEventSeats as unknown as Mock).mockRejectedValue(
       new Error('sensitive seat sync diagnostics')
     )
 

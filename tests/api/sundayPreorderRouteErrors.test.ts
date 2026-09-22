@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -13,7 +13,7 @@ describe('sunday preorder cron route retirement', () => {
   })
 
   it('still rejects unauthorized cron requests', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({
       authorized: false,
       error: 'Unauthorized',
     })
@@ -29,7 +29,7 @@ describe('sunday preorder cron route retirement', () => {
   })
 
   it('does no work once authorized because Sunday pre-orders are retired', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({
       authorized: true,
     })
 
