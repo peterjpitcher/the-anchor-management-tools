@@ -198,7 +198,9 @@ async function rebuild(delivery: Record<string, any> = lastDelivery()): Promise<
 }
 
 function ready(render: DelayedFallbackRender): Extract<DelayedFallbackRender, { kind: 'ready' }> {
-  if (render.kind !== 'ready') throw new Error(`Expected a ready render, got unavailable: ${render.reason}`)
+  if (render.kind !== 'ready') {
+    throw new Error(`Expected a ready render, got ${render.kind === 'unavailable' ? `unavailable: ${render.reason}` : render.kind}`)
+  }
   return render
 }
 

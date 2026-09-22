@@ -53,6 +53,7 @@ function makeInvoice(overrides: Partial<InvoiceWithDetails> = {}): InvoiceWithDe
       address: '1 Test Lane\nStanwell Moor\nTW19 6AQ',
       payment_terms: 30,
       is_active: true,
+      paypal_payments_enabled: false,
       created_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-01T00:00:00.000Z',
     },

@@ -31,13 +31,13 @@ describe('selectChannel', () => {
     expect(selectChannel({
       policy: 'email_first',
       urgency: 'standard',
-      eligibility: { email: true, sms: true },
+      eligibility: { email: true, whatsapp: false, sms: true },
     })).toEqual({ channels: ['email', 'sms'] })
 
     expect(selectChannel({
       policy: 'email_first',
       urgency: 'standard',
-      eligibility: { email: false, sms: true },
+      eligibility: { email: false, whatsapp: false, sms: true },
     })).toEqual({ channels: ['sms'] })
   })
 
@@ -45,13 +45,13 @@ describe('selectChannel', () => {
     expect(selectChannel({
       policy: 'email_only',
       urgency: 'time_critical',
-      eligibility: { email: true, sms: true },
+      eligibility: { email: true, whatsapp: false, sms: true },
     })).toEqual({ channels: [], reason: 'invalid_time_critical_email_only' })
 
     expect(selectChannel({
       policy: 'email_first',
       urgency: 'time_critical',
-      eligibility: { email: true, sms: true },
+      eligibility: { email: true, whatsapp: false, sms: true },
     })).toEqual({ channels: [], reason: 'invalid_time_critical_email_first' })
   })
 
@@ -59,7 +59,7 @@ describe('selectChannel', () => {
     expect(selectChannel({
       policy: 'both',
       urgency: 'standard',
-      eligibility: { email: false, sms: false },
+      eligibility: { email: false, whatsapp: false, sms: false },
     })).toEqual({ channels: [], reason: 'no_channel_available' })
   })
 })

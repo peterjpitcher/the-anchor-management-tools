@@ -367,7 +367,7 @@ describe('recruitment communications safety', () => {
     expect(result.body).not.toContain('availability from the following times')
     expect(result.body).not.toContain('Best,\nThe Anchor')
     expect(result.body).not.toContain('12:00-13:00')
-    expect(result.body.match(/Wednesday, 1 July 2026/g)).toHaveLength(1)
+    expect(result.body?.match(/Wednesday, 1 July 2026/g)).toHaveLength(1)
     const context = draftRecruitmentEmail.mock.calls[0][1].context
     expect(context.available_times).toContain('Wednesday, 1 July 2026 12pm to 4pm')
   })
