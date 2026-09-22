@@ -103,7 +103,7 @@ describe('formatAvailabilityAnswer', () => {
     })
 
     it('should survive values JSON cannot serialise', () => {
-      expect(() => formatAvailabilityAnswer({ big: 1n })).not.toThrow()
+      expect(() => formatAvailabilityAnswer({ big: BigInt(1) })).not.toThrow()
     })
   })
 })
