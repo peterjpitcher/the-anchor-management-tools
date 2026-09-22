@@ -290,7 +290,7 @@ export async function sendPrivateBookingOutcomeEmail(
     `<p>Guest count: ${escapeHtml(guestCountLabel)}</p>`,
     '<p>Click one:</p>',
     '<ul>',
-    `<li><a href="${escapeHtml(links.went_well)}">Yes — went well (send the customer a Google review ask)</a></li>`,
+    `<li><a href="${escapeHtml(links.went_well)}">Yes: went well (send the customer a Google review ask)</a></li>`,
     `<li><a href="${escapeHtml(links.issues)}">Had issues (do not send review ask)</a></li>`,
     `<li><a href="${escapeHtml(links.skip)}">Skip (do not send review ask)</a></li>`,
     '</ul>',
@@ -301,14 +301,15 @@ export async function sendPrivateBookingOutcomeEmail(
     `Did ${input.customerName?.trim() || 'the guest'}'s event on ${input.eventDate?.trim() || 'recently'} go well?`,
     `Guest count: ${guestCountLabel}`,
     '',
-    `Yes — went well: ${links.went_well}`,
+    `Yes (went well): ${links.went_well}`,
     `Had issues: ${links.issues}`,
     `Skip: ${links.skip}`,
     '',
     'Links expire in 14 days.'
   ].join('\n')
 
-  const subject = `Did ${input.customerFirstName?.trim() || 'the guest'}'s event go well? — ${input.eventDate?.trim() || ''}`.trim()
+  const subjectDate = input.eventDate?.trim()
+  const subject = `Did ${input.customerFirstName?.trim() || 'the guest'}'s event go well?${subjectDate ? ` (${subjectDate})` : ''}`
 
   const result = await sendEmail({
     to: PRIVATE_BOOKINGS_MANAGER_EMAIL,
