@@ -51,6 +51,7 @@ import {
   setupReminderMessage,
 } from '@/lib/private-bookings/messages'
 import { formatPrivateBookingSmsDate } from '@/lib/private-bookings/message-catalogue'
+import type { PrivateBookingPaymentStatement } from '@/lib/private-bookings/payment-statement'
 
 /**
  * Fixture renders of every email version of a private booking text (P6).
@@ -210,11 +211,13 @@ describe.each(EVENT_DATES)('private booking email versions for an event on %s', 
 
   it('balance reminders with the payments made, all four stages', () => {
     const inputs = { customerFirstName: 'Alex', eventDate: eventSms, balanceAmount: 1234.5, balanceDueDate: dueDate }
-    const payments = {
+    // Typed as the real statement so the literals stay narrow: unannotated, id: 'deposit'
+    // widens to string and the deposit entry matches neither PaymentHistoryEntry member.
+    const payments: PrivateBookingPaymentStatement = {
       entries: [
-        { id: 'deposit', type: 'deposit' as const, amount: 250, method: 'paypal' as const, date: '2026-08-12', appliedAmount: 0 },
-        { id: 'p1', type: 'balance' as const, amount: 300, method: 'cash' as const, date: '2026-09-01' },
-        { id: 'p2', type: 'balance' as const, amount: 245.7, method: 'bank_transfer' as const, date: '2026-10-25' },
+        { id: 'deposit', type: 'deposit', amount: 250, method: 'paypal', date: '2026-08-12', appliedAmount: 0 },
+        { id: 'p1', type: 'balance', amount: 300, method: 'cash', date: '2026-09-01' },
+        { id: 'p2', type: 'balance', amount: 245.7, method: 'bank_transfer', date: '2026-10-25' },
       ],
       eventTotal: 1780.2,
       paidTowardsBill: 545.7,
