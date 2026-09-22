@@ -24,11 +24,12 @@ beforeEach(() => {
   // Set a default alert email
   process.env.OJ_PROJECTS_BILLING_ALERT_EMAIL = 'alerts@test.com'
   process.env.PAYROLL_ACCOUNTANT_EMAIL = 'payroll@test.com'
-  process.env.NODE_ENV = 'test'
+  vi.stubEnv('NODE_ENV', 'test')
 })
 
 afterEach(() => {
   // Restore original env
+  vi.unstubAllEnvs()
   process.env = { ...originalEnv }
 })
 
