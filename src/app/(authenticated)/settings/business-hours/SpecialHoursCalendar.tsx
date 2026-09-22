@@ -41,6 +41,11 @@ type CalendarDay = {
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
+// The default for an omitted initialOverrides must be one shared array. A `= []` default is a new
+// array on every render, so the effect that syncs the prop into state re-ran each render, set a
+// new array, and looped without end.
+const NO_OVERRIDES: ServiceStatusOverride[] = []
+
 const normalizeSpecialHours = (items: SpecialHours[]) =>
   items.map((item) => ({
     ...item,
@@ -52,7 +57,7 @@ const normalizeOverrides = (items: ServiceStatusOverride[]) =>
     ...item,
   }))
 
-export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOverrides = [] }: SpecialHoursCalendarProps) {
+export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOverrides = NO_OVERRIDES }: SpecialHoursCalendarProps) {
   const router = useRouter()
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()))
   const [specialHours, setSpecialHours] = useState<SpecialHours[]>(() => normalizeSpecialHours(initialSpecialHours))
