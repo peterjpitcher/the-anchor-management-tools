@@ -103,6 +103,7 @@ describe('settings manage affordances for read-only roles', () => {
           {
             category_id: 'cat-1',
             category_name: 'HR Docs',
+            email_on_upload: false,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },

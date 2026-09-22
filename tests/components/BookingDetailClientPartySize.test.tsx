@@ -42,6 +42,8 @@ function makeBooking(): Booking {
     booking_time: '19:30:00',
     party_size: 6,
     committed_party_size: 6,
+    high_chair_count: null,
+    is_outside_seating: null,
     booking_type: 'regular',
     booking_purpose: 'food',
     status: 'confirmed',

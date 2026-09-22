@@ -56,6 +56,8 @@ function weekOfHours(): BusinessHours[] {
     kitchen_closes: null,
     is_closed: false,
     is_kitchen_closed: false,
+    version_id: 'version-1',
+    schedule_config: null,
     created_at: '',
     updated_at: '',
   }))
@@ -98,6 +100,8 @@ describe('Settings read-only behaviour', () => {
       kitchen_closes: null,
       is_closed: false,
       is_kitchen_closed: false,
+      version_id: 'version-1',
+      schedule_config: null,
       created_at: '',
       updated_at: '',
     }))

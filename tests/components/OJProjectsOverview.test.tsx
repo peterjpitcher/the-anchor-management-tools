@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { ProjectsOverview } from '@/app/(authenticated)/oj-projects/_components/ProjectsOverview'
 import { PermissionProvider } from '@/contexts/PermissionContext'
+import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
 
 const routerRefresh = vi.fn()
 const routerReplace = vi.fn()
@@ -50,6 +51,22 @@ vi.mock('@/app/actions/oj-projects/entries', () => ({
   deleteEntry: (...args: unknown[]) => deleteEntry(...args),
 }))
 
+function client(id: string, name: string): OJClientSummary {
+  return {
+    id,
+    name,
+    contact_name: null,
+    email: null,
+    phone: null,
+    address: null,
+    vat_number: null,
+    payment_terms: null,
+    notes: null,
+    projectCount: 0,
+    retainerHours: null,
+  }
+}
+
 describe('ProjectsOverview', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -72,8 +89,8 @@ describe('ProjectsOverview', () => {
           entries={entries}
           workTypes={[]}
           clients={[
-            { id: '11111111-1111-1111-1111-111111111111', name: 'Alpha Client', projectCount: 0, retainerHours: null },
-            { id: '22222222-2222-2222-2222-222222222222', name: 'Bravo Client', projectCount: 0, retainerHours: null },
+            client('11111111-1111-1111-1111-111111111111', 'Alpha Client'),
+            client('22222222-2222-2222-2222-222222222222', 'Bravo Client'),
           ]}
           selectedVendorId=""
           workHistory={[]}

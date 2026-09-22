@@ -133,7 +133,7 @@ describe('VendorSummaryGrid', () => {
       },
     })
 
-    render(<VendorSummaryGrid vendors={vendors} initialWatchlist={[]} initialReviews={[]} />)
+    render(<VendorSummaryGrid initialWatchlist={[]} initialReviews={[]} />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'All vendors' }))
     const breweryRow = screen.getAllByRole('row').find((row) => within(row).queryByText('Brewery A'))
@@ -168,7 +168,7 @@ describe('VendorSummaryGrid', () => {
         movements: [{ ...movement('Brewery A', 200), comparison: 'yoy' }],
       })
 
-    render(<VendorSummaryGrid vendors={vendors} initialWatchlist={[]} initialReviews={[]} />)
+    render(<VendorSummaryGrid initialWatchlist={[]} initialReviews={[]} />)
 
     expect(await screen.findByText('Spend movement overview')).toBeInTheDocument()
     // The heading above renders while the movements are still loading, so it cannot stand
@@ -188,7 +188,6 @@ describe('VendorSummaryGrid', () => {
   it('filters to watched vendors', async () => {
     render(
       <VendorSummaryGrid
-        vendors={vendors}
         initialWatchlist={[{
           userId: 'user-1',
           vendorKey: 'brewery a',
@@ -229,7 +228,7 @@ describe('VendorSummaryGrid', () => {
       signals: [],
     })
 
-    render(<VendorSummaryGrid vendors={vendors} initialWatchlist={[]} initialReviews={[]} />)
+    render(<VendorSummaryGrid initialWatchlist={[]} initialReviews={[]} />)
 
     const statusControls = await screen.findAllByRole('combobox', { name: 'Review status for Brewery A' })
     fireEvent.change(statusControls[0], { target: { value: 'action_required' } })

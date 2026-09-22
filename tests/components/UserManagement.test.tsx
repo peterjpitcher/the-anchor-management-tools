@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { UsersContent } from '@/app/(authenticated)/users/_components/UsersContent'
 import UserRolesModal from '@/app/(authenticated)/users/components/UserRolesModal'
+import type { Role } from '@/types/rbac'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -37,8 +38,15 @@ describe('User management UI gating', () => {
     roles: [],
   }
 
-  const sampleRoles = [
-    { id: 'role-1', name: 'Manager', description: 'Manage things', is_system: false },
+  const sampleRoles: Role[] = [
+    {
+      id: 'role-1',
+      name: 'Manager',
+      description: 'Manage things',
+      is_system: false,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    },
   ]
 
   beforeEach(() => {

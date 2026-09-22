@@ -36,7 +36,7 @@ describe('Settings client components', () => {
     render(
       <CategoriesClient
         initialCategories={[
-          { category_id: '1', category_name: 'Contracts', created_at: '', updated_at: '' },
+          { category_id: '1', category_name: 'Contracts', email_on_upload: false, created_at: '', updated_at: '' },
         ]}
         canManage={false}
         initialError={null}

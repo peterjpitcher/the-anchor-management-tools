@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import toast from 'react-hot-toast'
 import FohClockWidget from '@/app/(authenticated)/table-bookings/foh/FohClockWidget'
-import { clockIn, clockOut } from '@/app/actions/timeclock'
+import { clockIn, clockOut, type OpenSessionSummary } from '@/app/actions/timeclock'
 
 vi.mock('@/app/actions/timeclock', () => ({
   clockIn: vi.fn(),
@@ -16,21 +16,11 @@ vi.mock('react-hot-toast', () => ({
   },
 }))
 
-const session = {
+// clockIn and clockOut return only these three columns (OPEN_SESSION_COLUMNS).
+const session: OpenSessionSummary = {
   id: 'session-1',
   employee_id: 'emp-1',
-  work_date: '2026-06-25',
   clock_in_at: '2026-06-25T09:00:00.000Z',
-  clock_out_at: null,
-  linked_shift_id: null,
-  is_unscheduled: false,
-  is_auto_close: false,
-  auto_close_reason: null,
-  is_reviewed: false,
-  notes: null,
-  manager_note: null,
-  created_at: '2026-06-25T09:00:00.000Z',
-  updated_at: '2026-06-25T09:00:00.000Z',
 }
 
 const employees = [
@@ -38,6 +28,7 @@ const employees = [
     employee_id: 'emp-1',
     first_name: 'Alice',
     last_name: 'Jones',
+    preferred_name: null,
   },
 ]
 
@@ -68,7 +59,7 @@ describe('FohClockWidget', () => {
   it('clocks out from the manager kiosk without asking for a PIN', async () => {
     vi.mocked(clockOut).mockResolvedValue({
       success: true,
-      data: { ...session, clock_out_at: '2026-06-25T17:00:00.000Z' },
+      data: session,
     })
 
     render(
