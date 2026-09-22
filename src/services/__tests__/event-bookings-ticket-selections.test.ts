@@ -48,7 +48,7 @@ const BASE_PARAMS: CreateBookingParams = {
 function makeSupabaseMock(rpcResults: Record<string, { data: unknown; error: unknown }>) {
   return {
     rpc: vi.fn((name: string) => Promise.resolve(rpcResults[name] ?? { data: null, error: null })),
-    from: vi.fn(() => ({
+    from: vi.fn((_table: string) => ({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       update: vi.fn().mockReturnThis(),

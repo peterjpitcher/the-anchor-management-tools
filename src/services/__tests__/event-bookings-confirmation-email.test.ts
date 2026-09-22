@@ -100,7 +100,11 @@ describe('event booking confirmation, email where we can reach them and a text o
       expiresAt: '2026-09-15T18:00:00Z',
     })
     vi.mocked(recordAnalyticsEvent).mockResolvedValue(undefined)
-    vi.mocked(syncPubOpsEventCalendarByEventId).mockResolvedValue({ state: 'updated' })
+    vi.mocked(syncPubOpsEventCalendarByEventId).mockResolvedValue({
+      state: 'updated',
+      eventId: BASE_PARAMS.eventId,
+      googleEventId: 'google-event-id',
+    })
     vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: 'SM1' } as Awaited<ReturnType<typeof sendSMS>>)
   })
 

@@ -526,7 +526,7 @@ describe('EventBookingService.createBooking', () => {
       rpcResults: { create_event_booking_v05: { data: { ...rpcResult, event_seating_type: 'standing' }, error: null } },
       fromResults: { customers: { data: ACTIVE_CUSTOMER_ROW, error: null } }
     })
-    vi.mocked(createAdminClient).mockReturnValue(supabase)
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
     await EventBookingService.createBooking({ ...BASE_PARAMS, bookingMode: 'communal', seatingPreference: 'standing', shouldSendSms: true })
     const body = vi.mocked(sendSMS).mock.calls[0][1]
     expect(body).toContain('2 standing tickets')

@@ -63,7 +63,11 @@ describe('atomic event dining requests', () => {
     vi.clearAllMocks()
     vi.mocked(createEventManageToken).mockResolvedValue({ url: 'https://example.com/manage/abc' } as Awaited<ReturnType<typeof createEventManageToken>>)
     vi.mocked(recordAnalyticsEvent).mockResolvedValue(undefined)
-    vi.mocked(syncPubOpsEventCalendarByEventId).mockResolvedValue({ state: 'updated' })
+    vi.mocked(syncPubOpsEventCalendarByEventId).mockResolvedValue({
+      state: 'updated',
+      eventId: BASE_PARAMS.eventId,
+      googleEventId: 'google-event-id',
+    })
   })
 
   it.each([undefined, [{ ticket_type_id: 'type-adult', quantity: 3 }]])('uses the atomic wrapper for requests with basket %j', async (ticketSelections) => {
