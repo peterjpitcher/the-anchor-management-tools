@@ -30,7 +30,7 @@ const validPngBytes = new Uint8Array([
   0x00, 0x00, 0x00, 0x0d,
 ])
 
-function testFile(content: Uint8Array | string, name: string, type: string) {
+function testFile(content: Uint8Array<ArrayBuffer> | string, name: string, type: string) {
   const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content
   const file = new File([bytes], name, { type })
   Object.defineProperty(file, 'arrayBuffer', {
@@ -431,7 +431,7 @@ describe('Profile action mutation guards', () => {
     const result = await exportProfileData()
 
     expect(result).toMatchObject({ success: true })
-    if (!('content' in result)) throw new Error('Expected export content')
+    if (!result.success) throw new Error('Expected export content')
     const payload = JSON.parse(result.content)
     expect(payload.customerIds).toEqual(['customer-1'])
     expect(payload.messages).toEqual([{ id: 'message-1', customer_id: 'customer-1', body: 'Hello' }])

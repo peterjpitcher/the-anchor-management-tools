@@ -160,7 +160,7 @@ describe('markReceiptTransaction', () => {
   it('should return error when validation fails with invalid status', async () => {
     const result = await markReceiptTransaction({
       transactionId: TEST_UUID,
-      // @ts-expect-error — deliberately invalid status for test
+      // Deliberately invalid status: the action takes any string and validates it at runtime.
       status: 'bogus_status',
     })
 

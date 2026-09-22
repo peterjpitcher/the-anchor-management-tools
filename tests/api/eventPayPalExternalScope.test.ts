@@ -52,9 +52,10 @@ describe('external event PayPal API scope', () => {
     vi.mocked(createEventPayPalOrderByBookingId).mockResolvedValueOnce({
       state: 'created',
       orderId: 'ORDER-1',
+      bookingId: 'booking-1',
       amount: 25,
       currency: 'GBP',
-      holdExpiresAt: null,
+      holdExpiresAt: '2026-06-01T12:15:00.000Z',
     })
 
     const { POST } = await import('@/app/api/external/event-bookings/[id]/paypal/create-order/route')
@@ -70,6 +71,7 @@ describe('external event PayPal API scope', () => {
   it('requires payments:capture for capture-order', async () => {
     vi.mocked(captureEventPayPalOrderByBookingId).mockResolvedValueOnce({
       state: 'already_confirmed',
+      bookingId: 'booking-1',
       amount: 25,
       currency: 'GBP',
       paymentId: 'payment-1',

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
 
 const {
   supabaseFrom,
@@ -45,12 +46,12 @@ import { POST } from '@/app/api/external/table-bookings/[id]/paypal/capture-orde
 
 const BOOKING_ID = '6ac0fc03-6030-44f2-9767-89a4e542620a'
 
-function buildRequest(body: unknown): Request {
+function buildRequest(body: unknown): NextRequest {
   return new Request('http://localhost/api/external/table-bookings/xxx/paypal/capture-order', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-  }) as unknown as Request
+  }) as unknown as NextRequest
 }
 
 function makePayPalOrder(amount: string) {
@@ -107,8 +108,8 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       .fn()
       .mockResolvedValueOnce({ data: bookingRow, error: null })
     const tableBookingsEq1 = vi.fn(() => ({ single: tableBookingsSingle }))
-    const tableBookingsSelect = vi.fn(() => ({ eq: tableBookingsEq1 }))
-    const tableBookingsUpdate = vi.fn(() => makeUpdateChain())
+    const tableBookingsSelect = vi.fn((_columns: string) => ({ eq: tableBookingsEq1 }))
+    const tableBookingsUpdate = vi.fn((_payload: Record<string, unknown>) => makeUpdateChain())
 
     const customersMaybeSingle = vi
       .fn()

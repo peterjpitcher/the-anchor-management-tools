@@ -98,7 +98,7 @@ describe('addEmployeeAttachment side-effect safety', () => {
     formData.set('attachment_file', file)
     formData.set('description', 'employee contract')
 
-    const result = await addEmployeeAttachment({ type: 'idle' }, formData)
+    const result = await addEmployeeAttachment(null, formData)
 
     expect(result).toEqual({ type: 'success', message: 'Attachment uploaded successfully!' })
     expect(storageRemove).not.toHaveBeenCalled()

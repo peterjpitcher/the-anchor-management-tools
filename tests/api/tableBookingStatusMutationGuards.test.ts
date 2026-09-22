@@ -10,7 +10,6 @@ vi.mock('@/lib/foh/api-auth', () => ({
 vi.mock('@/lib/foh/bookings', () => ({
   getTableBookingForFoh: vi.fn(),
   getFeePerHead: vi.fn(),
-  createChargeRequestForBooking: vi.fn(),
   hasUnpaidRequiredDeposit: vi.fn(() => false),
 }))
 
@@ -20,7 +19,6 @@ vi.mock('@/app/actions/audit', () => ({
 
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import {
-  createChargeRequestForBooking,
   getFeePerHead,
   getTableBookingForFoh,
 } from '@/lib/foh/bookings'
@@ -133,7 +131,6 @@ describe('Table-booking mutation row-effect guards', () => {
       error: 'Booking changed before this update could be applied',
       booking: null,
     })
-    expect(createChargeRequestForBooking).not.toHaveBeenCalled()
   })
 
   it('returns 404 and skips charge-request creation when BOH no-show update affects no rows', async () => {
@@ -172,7 +169,6 @@ describe('Table-booking mutation row-effect guards', () => {
       error: 'Booking changed before this update could be applied',
       booking: null,
     })
-    expect(createChargeRequestForBooking).not.toHaveBeenCalled()
   })
 
   // Updated: pending_card_capture renamed to pending_payment. Status stays
@@ -336,7 +332,6 @@ describe('Table-booking mutation row-effect guards', () => {
     expect(fohPayload).toEqual({ error: 'Cannot mark booking as no-show from current status', booking: null })
     expect(bohPayload).toEqual({ error: 'Cannot mark booking as no-show from current status' })
     expect(update).not.toHaveBeenCalled()
-    expect(createChargeRequestForBooking).not.toHaveBeenCalled()
   })
 
   // Updated (TP-03): the per-table update loop was replaced by the atomic

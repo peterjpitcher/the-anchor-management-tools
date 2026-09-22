@@ -923,7 +923,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
           per_head_cost: 30,
           pricing_model: 'per_head',
           minimum_order: 10,
-          description: 'Updated',
+          summary: 'Updated',
           includes: 'Vegan options',
           is_active: true
         },

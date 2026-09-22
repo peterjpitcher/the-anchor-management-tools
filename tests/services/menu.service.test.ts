@@ -107,7 +107,15 @@ describe('MenuService delete guards', () => {
         selling_price: 14.5,
         is_active: true,
         is_sunday_lunch: false,
-        assignments: [{ menu_code: 'main', category_code: 'food', sort_order: 0 }],
+        assignments: [{
+          menu_code: 'main',
+          category_code: 'food',
+          sort_order: 0,
+          available_from: null,
+          available_until: null,
+          is_default_side: false,
+          is_special: false,
+        }],
       })
     ).rejects.toThrow('Dish not found')
   })

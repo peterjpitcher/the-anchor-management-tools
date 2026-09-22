@@ -128,7 +128,7 @@ describe('BOH "Message guests" with the email option (P7)', () => {
     expect(emailed).toEqual(['both@example.com', 'emailonly@example.com'])
     const texted = mockedSendSMS.mock.calls.map((call) => call[0]).sort()
     expect(texted).toEqual(['+447700900002', '+447700900003'])
-    const email = mockedSendEmail.mock.calls.find((call) => call[0].to === 'both@example.com')[0]
+    const email = mockedSendEmail.mock.calls.find((call) => call[0].to === 'both@example.com')![0]
     expect(email).toMatchObject({
       subject: 'A message about your booking at The Anchor',
       commType: 'table_booking_manual_message_email',

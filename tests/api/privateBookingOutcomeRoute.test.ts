@@ -18,8 +18,6 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { hashGuestToken } from '@/lib/guest/tokens'
 import { GET, POST } from '@/app/api/private-bookings/outcome/[outcome]/[token]/route'
 
-type AnyFn = (...args: unknown[]) => unknown
-
 function buildRequest(
   urlSuffix: string,
   init?: RequestInit & { headers?: Record<string, string> }
@@ -61,7 +59,7 @@ function buildSupabase(config: {
   onBookingUpdate?: (payload: Record<string, unknown>) => void
   onTokenUpdate?: (payload: Record<string, unknown>) => void
 }) {
-  const select: AnyFn = (_cols: string) => ({
+  const select = (_cols: string) => ({
     eq(_col: string, _val: string) {
       return {
         eq(_col2: string, _val2: string) {
