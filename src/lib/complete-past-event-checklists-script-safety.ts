@@ -36,7 +36,7 @@ function parseOptionalNonNegativeInt(value: string | null | undefined): number |
 
 export function isCompletePastEventChecklistsMutationEnabled(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): boolean {
   return (
     argv.includes('--confirm') &&
@@ -54,7 +54,7 @@ export function assertCompletePastEventChecklistsMutationAllowed(): void {
 
 export function readCompletePastEventChecklistsEventLimit(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalPositiveInt(findFlagValue(argv, '--event-limit')) ??
@@ -64,7 +64,7 @@ export function readCompletePastEventChecklistsEventLimit(
 
 export function readCompletePastEventChecklistsOffset(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalNonNegativeInt(findFlagValue(argv, '--offset')) ??
@@ -74,7 +74,7 @@ export function readCompletePastEventChecklistsOffset(
 
 export function readCompletePastEventChecklistsCutoffDate(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): string {
   const fromArg = findFlagValue(argv, '--cutoff-date')
   if (fromArg && fromArg.trim().length > 0) {

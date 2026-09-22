@@ -64,7 +64,7 @@ export function assertDeletePeterPitcherBookingsMutationAllowed(): void {
 
 export function readDeletePeterPitcherBookingsLimit(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalPositiveInt(findFlagValue(argv, '--limit')) ??

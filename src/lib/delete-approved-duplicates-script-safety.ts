@@ -36,7 +36,7 @@ function parseOptionalNonNegativeInt(value: string | null | undefined): number |
 
 export function isDeleteApprovedDuplicatesMutationEnabled(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): boolean {
   return (
     argv.includes('--confirm') &&
@@ -46,7 +46,7 @@ export function isDeleteApprovedDuplicatesMutationEnabled(
 }
 
 export function assertDeleteApprovedDuplicatesMutationAllowed(
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): void {
   if (isTruthyEnv(env.ALLOW_DELETE_APPROVED_DUPLICATES_SCRIPT)) {
     return
@@ -60,7 +60,7 @@ export function assertDeleteApprovedDuplicatesMutationAllowed(
 
 export function readDeleteApprovedDuplicatesLimit(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalPositiveInt(findFlagValue(argv, '--limit')) ??
@@ -70,7 +70,7 @@ export function readDeleteApprovedDuplicatesLimit(
 
 export function readDeleteApprovedDuplicatesOffset(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalNonNegativeInt(findFlagValue(argv, '--offset')) ??

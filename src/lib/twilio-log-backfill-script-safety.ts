@@ -63,7 +63,7 @@ export function parseTwilioLogBackfillArgs(argv: string[] = process.argv): Twili
 
 export function isTwilioLogBackfillMutationEnabled(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): boolean {
   return (
     argv.includes('--confirm') &&
@@ -81,7 +81,7 @@ export function assertTwilioLogBackfillMutationAllowed(): void {
 
 export function isTwilioLogBackfillCustomerCreationEnabled(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): boolean {
   return (
     isTwilioLogBackfillMutationEnabled(argv, env) &&
