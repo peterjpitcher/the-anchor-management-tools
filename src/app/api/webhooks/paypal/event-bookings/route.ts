@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveWebhookIdForUrl, verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import {
   sendEventPaymentConfirmationSms,
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   const webhookId =
     process.env.PAYPAL_EVENT_BOOKINGS_WEBHOOK_ID?.trim()
     || (await resolveWebhookIdForUrl(
-      `${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/api/webhooks/paypal/event-bookings`,
+      `${getAppUrl()}/api/webhooks/paypal/event-bookings`,
     ))
   let idempotencyKey: string | null = null
   let requestHash: string | null = null

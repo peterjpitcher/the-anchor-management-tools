@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveWebhookIdForUrl, verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { applyInvoicePayPalCapture, positivePennies } from '@/lib/invoices/paypal-capture'
 import { INVOICE_PAYMENT_CUSTOM_ID_PREFIX } from '@/lib/invoices/paypal-custom-id'
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
   const webhookId =
     process.env.PAYPAL_INVOICES_WEBHOOK_ID?.trim()
     || (await resolveWebhookIdForUrl(
-      `${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/api/webhooks/paypal/invoices`,
+      `${getAppUrl()}/api/webhooks/paypal/invoices`,
     ))
 
   let idempotencyKey: string | null = null
