@@ -42,7 +42,7 @@ Creates a new parking booking, generates a PayPal order, and returns the approva
 - Mobile numbers are normalised to E.164; an existing customer is reused if the number matches, otherwise a new record is created.
 - Capacity is checked automatically (10 spaces by default); requests exceeding capacity return HTTP `409` with `CAPACITY_UNAVAILABLE`.
 - Pricing is calculated from the active rate card (hour/day/week/month). The resulting PayPal order amount is the standard price unless a subsequent override is applied via the UI/server actions.
-- A pending payment record is created; the `payment_due_at` is 7 days from creation.
+- A pending payment record is created; the `payment_due_at` is 7 days from creation, or 30 minutes when the request sends `"source": "website"`.
 
 **Response (201)**
 ```json
@@ -181,18 +181,22 @@ On success the user is redirected to `/parking/bookings/{id}?payment=success`; e
 |-------|--------|-------|
 | `status` | `pending_payment`, `confirmed`, `completed`, `cancelled`, `expired` | Booking lifecycle |
 | `payment_status` | `pending`, `paid`, `refunded`, `failed`, `expired` | Payment state |
-| `payment_due_at` | ISO datetime | 7-day deadline for PayPal payment |
-| `payment_overdue_notified` | boolean | Cron flag indicating reminder sent |
-| `start_notification_sent`, `end_notification_sent` | boolean | Cron flags for start/end SMS/email |
+| `payment_due_at` | ISO datetime | PayPal payment deadline: 7 days for a staff offer, 30 minutes for a website booking |
+| `initial_request_sms_sent` | boolean | Set once the payment request SMS has gone |
+| `unpaid_week_before_sms_sent`, `unpaid_day_before_sms_sent` | boolean | Cron flags for the two unpaid reminders |
+| `paid_start_three_day_sms_sent`, `paid_end_three_day_sms_sent` | boolean | Cron flags for the paid start and end reminders |
+| `payment_overdue_notified`, `start_notification_sent`, `end_notification_sent` | boolean | Legacy flags from the cron as it was before February 2026; nothing reads them |
 
 ## Notifications & Cron
 
-Parking bookings trigger automatic notifications via the `/api/cron/parking-notifications` route:
-- **Payment reminders**: once after the 7-day window expires (customer SMS + manager email).
-- **Session start**: SMS to the customer and email to the manager at 07:00 local time on the start date, only if the booking is paid.
-- **Session end**: SMS + email at 07:00 on the end date, only for paid bookings.
+`/api/cron/parking-notifications` runs every 15 minutes (`vercel.json`) and sends SMS to the customer only:
+- **Unpaid offers**: one reminder when the payment deadline is within 7 days, and a last one when it is within a day. Bookings whose whole payment window is a day or less (website bookings) get no reminders.
+- **Expiry**: once the deadline passes, the booking and its payment are set to `expired`. No message is sent.
+- **Paid bookings**: one SMS when the start is within 3 days, and one when the end is within 3 days.
 
-Ensure your deployment runs this cron daily and sets the `CRON_SECRET` environment variable. Request payload is ignored; the route computes due notifications automatically.
+The manager's only parking email is "Parking payment received", sent when a payment is captured (`src/lib/parking/payments.ts`), not by this cron. Texts follow the usual SMS rules: quiet hours hold a send from 21:00 until 09:00 London time, and the `SUSPEND_ALL_SMS` and `SUSPEND_ALL_COMMS` switches stop them.
+
+The route needs `Authorization: Bearer <CRON_SECRET>`. Request payload is ignored; the route computes due notifications automatically.
 
 ## Error Handling
 
