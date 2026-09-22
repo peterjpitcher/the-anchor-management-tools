@@ -52,6 +52,7 @@ describe('isCustomerSmsSendAllowed', () => {
     })
 
     expect(result.allowed).toBe(false)
+    if (result.allowed) throw new Error('Expected the send to be blocked')
     expect(result.reason).toBe('sms_opt_in_blocked')
   })
 
@@ -63,6 +64,7 @@ describe('isCustomerSmsSendAllowed', () => {
     })
 
     expect(result.allowed).toBe(false)
+    if (result.allowed) throw new Error('Expected the send to be blocked')
     expect(result.reason).toBe('sms_status_blocked')
   })
 

@@ -442,6 +442,7 @@ describe('handleReplyToBook', () => {
       smsMeta: null,
       tableBookingId: null,
       tableName: null,
+      eventSeatingType: null,
       rpcResult: { state: 'blocked', reason: 'duplicate_booking' },
     })
 
@@ -468,6 +469,7 @@ describe('handleReplyToBook', () => {
       smsMeta: null,
       tableBookingId: null,
       tableName: null,
+      eventSeatingType: null,
       rpcResult: { state: 'confirmed', booking_id: 'booking-uuid-001', event_name: 'Quiz Night' },
     })
 
@@ -515,6 +517,7 @@ describe('handleReplyToBook', () => {
       smsMeta: null,
       tableBookingId: null,
       tableName: null,
+      eventSeatingType: null,
       rpcResult: { state: 'confirmed', booking_id: 'booking-uuid-002', event_name: 'Quiz Night' },
     })
 

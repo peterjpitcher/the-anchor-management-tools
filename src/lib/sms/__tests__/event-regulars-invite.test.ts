@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 /**
  * sendCrossPromoForEvent in the owner's 15 September 2026 regulars modes.
@@ -195,7 +195,7 @@ function smsCallFor(customerId: string) {
   return mockSendSMS.mock.calls.find(([, , options]) => options?.customerId === customerId)
 }
 
-let warnSpy: ReturnType<typeof vi.spyOn>
+let warnSpy: MockInstance<typeof console.warn>
 
 beforeEach(() => {
   vi.clearAllMocks()

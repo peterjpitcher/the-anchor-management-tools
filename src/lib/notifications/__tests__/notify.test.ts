@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { notifyCustomer } from '../notify'
 import { sendEmail } from '@/lib/email/emailService'
 import { isEmailSuppressed } from '@/lib/email/logging'
@@ -43,7 +43,7 @@ vi.mock('@/lib/logger', () => ({
 }))
 
 function buildAuditDbMock() {
-  const chain: Record<string, any> = {}
+  const chain: Record<string, Mock> = {}
   chain.from = vi.fn().mockReturnValue(chain)
   chain.insert = vi.fn().mockReturnValue(chain)
   chain.select = vi.fn().mockReturnValue(chain)
@@ -72,8 +72,8 @@ describe('notifyCustomer', () => {
     vi.mocked(isCustomerSmsSendAllowed).mockResolvedValue({ allowed: true })
     vi.mocked(isCustomerWhatsAppSendAllowed).mockResolvedValue({ allowed: true })
     vi.mocked(sendEmail).mockResolvedValue({ success: true, messageId: 'email-1' })
-    vi.mocked(sendWhatsApp).mockResolvedValue({ success: true, sid: 'wa-1' })
-    vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: 'sms-1' })
+    vi.mocked(sendWhatsApp).mockResolvedValue({ success: true, sid: 'wa-1' } as never)
+    vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: 'sms-1' } as never)
   })
 
   it('stops the cascade after a successful email for both policy', async () => {
@@ -138,7 +138,7 @@ describe('notifyCustomer email first, with SMS as the fallback', () => {
     vi.mocked(isEmailSuppressed).mockResolvedValue(false)
     vi.mocked(isCustomerSmsSendAllowed).mockResolvedValue({ allowed: true })
     vi.mocked(sendEmail).mockResolvedValue({ success: true, messageId: 'email-1' })
-    vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: 'sms-1' })
+    vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: 'sms-1' } as never)
   })
 
   // A table booking cancellation, the shape P3 will send: the routing matrix sends
