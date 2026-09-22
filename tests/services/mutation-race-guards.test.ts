@@ -152,7 +152,8 @@ describe('Mutation race/row-effect guards', () => {
       mobile_e164: '+447795053291',
       email: 'elizabeth@example.com',
     }
-    let capturedPayload: Record<string, unknown> | null = null
+    // Assigned inside the mock, so declare it without letting TypeScript narrow it to null.
+    let capturedPayload = null as Record<string, unknown> | null
 
     const fetchMaybeSingle = vi.fn().mockResolvedValue({ data: customer, error: null })
     const fetchEq = vi.fn().mockReturnValue({ maybeSingle: fetchMaybeSingle })

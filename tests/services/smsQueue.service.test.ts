@@ -230,6 +230,8 @@ describe('SmsQueueService queue persistence guards', () => {
         messageId: 'msg-1',
         customerId: 'customer-1',
         deliveryState: 'sent',
+        code: undefined,
+        logFailure: undefined,
       })
 
     const result = await SmsQueueService.queueAndSend({

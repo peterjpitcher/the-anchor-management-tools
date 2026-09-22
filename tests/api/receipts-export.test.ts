@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildOjProjectInvoiceSummaryCsv,
   loadOjProjectInvoicesPaidInQuarter,
+  type OjProjectInvoiceForExport,
 } from '@/lib/receipts/export/oj-project-invoices'
 
 // Inline copy of the helper to test the logic independently
@@ -104,7 +105,7 @@ describe('OJ Projects invoice receipts export helpers', () => {
   })
 })
 
-function invoiceRow(overrides: Record<string, any> = {}) {
+function invoiceRow(overrides: Record<string, any> = {}): OjProjectInvoiceForExport {
   return {
     id: 'invoice-id',
     invoice_number: 'INV-001',
@@ -119,14 +120,13 @@ function invoiceRow(overrides: Record<string, any> = {}) {
     vat_amount: 20,
     total_amount: 120,
     paid_amount: 120,
-    notes: null,
-    internal_notes: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     vendor: {
       id: 'vendor-1',
       name: 'Client',
       is_active: true,
+      paypal_payments_enabled: false,
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     },

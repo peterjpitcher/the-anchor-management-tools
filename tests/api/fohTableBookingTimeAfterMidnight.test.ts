@@ -65,7 +65,7 @@ function buildSupabase(input: {
   // The assignment holds the table 15 minutes longer: a turnaround gap the move must keep.
   const assignmentEnd = new Date(Date.parse(input.end) + 15 * 60 * 1000).toISOString()
 
-  const rpc = vi.fn((fn: string) => {
+  const rpc = vi.fn((fn: string, _args?: Record<string, unknown>) => {
     if (fn === 'business_hours_for_date') {
       return Promise.resolve(input.hoursError ? { data: null, error: { message: 'hours down' } } : { data: [WEEKLY], error: null })
     }
