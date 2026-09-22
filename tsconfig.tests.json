@@ -1,13 +1,23 @@
 {
-  // Type-checks the tests/ tree, which tsconfig.json excludes (and `npm run lint` never reads).
-  // Vitest strips types, so without this a stale fixture or a mock of a deleted export still
-  // passes `npm test`. Run it with `npm run typecheck:tests`; CI runs it beside the main check.
-  // src/**/*.d.ts brings in the ambient module declarations the app relies on.
+  // Type-checks the tests/ tree and the co-located src/**/*.test.ts and *.spec.ts files, which
+  // tsconfig.json excludes (`npm run lint` never reads tests/ either). Vitest strips types, so
+  // without this a stale fixture or a mock of a deleted export still passes `npm test`. Run it
+  // with `npm run typecheck:tests`; CI runs it beside the main check. The src/**/*.test.tsx files
+  // need no entry: tsconfig.json already includes them. src/**/*.d.ts brings in the ambient
+  // module declarations the app relies on.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
     "incremental": false
   },
-  "include": ["next-env.d.ts", "vitest.setup.ts", "src/**/*.d.ts", "tests/**/*.ts", "tests/**/*.tsx"],
+  "include": [
+    "next-env.d.ts",
+    "vitest.setup.ts",
+    "src/**/*.d.ts",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "tests/**/*.ts",
+    "tests/**/*.tsx"
+  ],
   "exclude": []
 }
