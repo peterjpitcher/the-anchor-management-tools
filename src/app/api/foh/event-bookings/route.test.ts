@@ -108,7 +108,7 @@ function mockAuth(db: ReturnType<typeof createSupabaseMock>) {
   vi.mocked(requireFohPermission).mockResolvedValueOnce({
     ok: true,
     userId: 'user-1',
-    supabase: db as unknown as Awaited<ReturnType<typeof requireFohPermission>>['supabase'],
+    supabase: db as unknown as Extract<Awaited<ReturnType<typeof requireFohPermission>>, { ok: true }>['supabase'],
   } as unknown as Awaited<ReturnType<typeof requireFohPermission>>)
 }
 
