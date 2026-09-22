@@ -74,9 +74,8 @@ describe('parking notifications route error payloads', () => {
   it('fails closed when send guard schema is unavailable in production', async () => {
     ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
-    const previousNodeEnv = process.env.NODE_ENV
     const previousGuardOverride = process.env.PARKING_SEND_GUARD_ALLOW_SCHEMA_GAPS
-    process.env.NODE_ENV = 'production'
+    vi.stubEnv('NODE_ENV', 'production')
     delete process.env.PARKING_SEND_GUARD_ALLOW_SCHEMA_GAPS
 
     try {
@@ -130,11 +129,7 @@ describe('parking notifications route error payloads', () => {
       expect(payload.skipped).toBe(true)
       expect(payload.reason).toBe('send_guard_blocked')
     } finally {
-      if (previousNodeEnv === undefined) {
-        delete process.env.NODE_ENV
-      } else {
-        process.env.NODE_ENV = previousNodeEnv
-      }
+      vi.unstubAllEnvs()
 
       if (previousGuardOverride === undefined) {
         delete process.env.PARKING_SEND_GUARD_ALLOW_SCHEMA_GAPS
