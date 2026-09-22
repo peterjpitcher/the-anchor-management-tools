@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RecruitmentDashboardClient from '@/app/(authenticated)/recruitment/_components/RecruitmentDashboardClient'
@@ -54,7 +55,11 @@ vi.mock('@/app/actions/recruitment', () => {
   }
 })
 
-function makeInitialData() {
+// The component types initialData loosely, so each test can fill in only the section it needs;
+// the builder follows that type rather than inferring never[] for the sections it leaves empty.
+type InitialData = ComponentProps<typeof RecruitmentDashboardClient>['initialData']
+
+function makeInitialData(): InitialData {
   return {
     applications: Array.from({ length: 30 }, (_, index) => ({
       id: `application-${index + 1}`,
@@ -241,7 +246,7 @@ describe('RecruitmentDashboardClient A-039', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     expect(screen.getByRole('button', { name: 'Save slot' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     const dialog = await screen.findByRole('dialog', { name: 'Delete slot' })
     expect(cancelRecruitmentSlotAction).not.toHaveBeenCalled()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
@@ -277,7 +282,7 @@ describe('RecruitmentDashboardClient A-039', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Schedule/i }))
 
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Delete', exact: true })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Manage booking' }))
     expect(screen.getByRole('dialog', { name: 'Megan Daily' })).toBeInTheDocument()
   })

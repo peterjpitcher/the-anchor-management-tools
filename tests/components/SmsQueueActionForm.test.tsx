@@ -28,7 +28,7 @@ describe('SmsQueueActionForm', () => {
   })
 
   it('shows a success toast when the action completes', async () => {
-    const action = vi.fn(async (_state: SmsQueueActionState, formData: FormData) => {
+    const action = vi.fn(async (_state: SmsQueueActionState, formData: FormData): Promise<SmsQueueActionState> => {
       expect(formData.get('smsId')).toBe('sms-123')
       return { status: 'success', changedAt: Date.now() }
     })

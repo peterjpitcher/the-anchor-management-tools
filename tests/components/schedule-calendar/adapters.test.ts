@@ -147,8 +147,8 @@ describe('parkingToEntry', () => {
             status: 'confirmed',
             payment_status: 'paid',
         })
-        expect(entry.id).toBe('park:p1')
-        expect(entry.onClickHref).toBe('/parking')
-        expect(entry.kind).toBe('parking')
+        expect(entry?.id).toBe('park:p1')
+        expect(entry?.onClickHref).toBe('/parking')
+        expect(entry?.kind).toBe('parking')
     })
 })

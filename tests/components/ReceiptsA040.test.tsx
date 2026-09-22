@@ -124,9 +124,12 @@ describe('Receipts A-040', () => {
             lastImport: null,
           },
         } as any}
+        availableCardMembers={[]}
         initialFilters={{
           status: 'all',
           direction: 'all',
+          sourceType: 'all',
+          cardMember: '',
           showOnlyOutstanding: false,
           groupByVendor: false,
           missingVendorOnly: false,

@@ -62,6 +62,7 @@ const paidInvoice: InvoiceWithDetails = {
     id: 'vendor-1',
     name: 'Acme Ltd',
     is_active: true,
+    paypal_payments_enabled: false,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
   },
@@ -141,7 +142,7 @@ describe('InvoiceDetailClient credit note UI', () => {
       vat_amount: 1.23,
       total_amount: 11.23,
       line_items: [{
-        ...paidInvoice.line_items[0],
+        ...paidInvoice.line_items![0],
         quantity: 1,
         unit_price: 100,
         vat_rate: 20,

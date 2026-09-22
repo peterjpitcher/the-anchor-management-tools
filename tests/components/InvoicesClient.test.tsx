@@ -57,6 +57,7 @@ const invoiceWithDetails: InvoiceWithDetails = {
     id: 'vendor-1',
     name: 'Acme Supplies',
     is_active: true,
+    paypal_payments_enabled: false,
     created_at: '2026-04-01T00:00:00.000Z',
     updated_at: '2026-04-01T00:00:00.000Z',
   },
