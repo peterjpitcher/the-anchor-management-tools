@@ -24,12 +24,6 @@ const PRODUCTION_URL_FALLBACK = /(\|\||\?\?)\s*['"`]https:\/\/management\.orange
  */
 const APP_URL_FALLBACK = /NEXT_PUBLIC_APP_URL\s*(\|\||\?\?)/g
 
-/**
- * Reads of the variable that are not app links. The schema.org organiser describes the venue, so
- * its URL should be the public website rather than the app; it is handled on its own.
- */
-const NOT_AN_APP_LINK = ['src/lib/api/schema.ts']
-
 /** The value env.ts supplies only when NODE_ENV is 'test'. */
 const TEST_DEFAULT = { file: 'src/lib/env.ts', text: "NEXT_PUBLIC_APP_URL: 'http://localhost:3000'" }
 
@@ -115,11 +109,9 @@ describe('app URL fallbacks', () => {
     const offences: string[] = []
 
     for (const file of sourceFiles(SRC)) {
-      const path = relative(process.cwd(), file)
-      if (NOT_AN_APP_LINK.includes(path)) continue
       const source = readFileSync(file, 'utf8')
       for (const match of source.matchAll(APP_URL_FALLBACK)) {
-        offences.push(`${path}:${lineOf(source, match.index ?? 0)}`)
+        offences.push(`${relative(process.cwd(), file)}:${lineOf(source, match.index ?? 0)}`)
       }
     }
 
