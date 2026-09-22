@@ -55,7 +55,7 @@ function createMileageTripsQuery(): Record<string, unknown> {
   return chain
 }
 
-const mockFrom = vi.fn(() => createMileageTripsQuery())
+const mockFrom = vi.fn((_table: string): Record<string, unknown> => createMileageTripsQuery())
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({
