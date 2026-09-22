@@ -346,12 +346,18 @@ describe('waived-deposit wording (was "Provisional Booking Hold" for every confi
 })
 
 describe('a booking whose date is still to be confirmed', () => {
+  // The booking-portal link carries a token signed over the current time, so its hex can contain
+  // "2027" on any given run. Links are not dates, so the placeholder-date checks read the words only.
+  const LINK = /https?:\/\/\S+/g
+  const withoutLinks = (text: string): string => text.replace(LINK, '[link]')
+
   it('never prints a placeholder date as a real one', () => {
     const tbd = booking('2027-01-01', { date_tbd: true })
     const email = buildPrivateBookingCreatedEmail({ booking: tbd, firstName: 'Alex', depositAmount: 250, holdExpiry: null })
-    expect(email.text).toContain('Date: Date to be confirmed')
-    expect(email.text).not.toContain('2027')
-    expect(email.text).not.toContain('Time:')
+    const words = withoutLinks(email.text)
+    expect(words).toContain('Date: Date to be confirmed')
+    expect(words).not.toContain('2027')
+    expect(words).not.toContain('Time:')
   })
 
   it('a deposit request states no deadline and no date', () => {
@@ -360,7 +366,7 @@ describe('a booking whose date is still to be confirmed', () => {
     const email = buildDepositRequestEmail({ booking: tbd, firstName: 'Alex', depositAmount: 250.5, holdExpiry: null, paymentLink })
     const sms = depositRequestMessage({ customerFirstName: 'Alex', eventDate: null, depositAmount: 250.5, holdExpiry: null, paymentLink })
     expect(email.text).toContain('The deposit for your booking (date to be confirmed) is £250.50.')
-    expect(email.text).not.toMatch(/Pay by|2027|released/)
+    expect(withoutLinks(email.text)).not.toMatch(/Pay by|2027|released/)
     expect(sms).toBe(`Hi Alex, the deposit for your booking at The Anchor is £250.50. Pay in cash at the bar or by PayPal: ${paymentLink}`)
     for (const part of [email.subject, email.html, email.text, sms]) {
       expect(part).not.toMatch(/undefined|Invalid Date|NaN/)
