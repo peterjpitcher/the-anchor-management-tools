@@ -3,12 +3,15 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { formatDateTime } from '@/lib/dateUtils'
 import {
+  buildPaymentConfirmationManagerEmail,
   buildPaymentRequestSms,
   buildPaymentReminderSmsForStage,
   buildSessionThreeDayReminderSms
 } from '@/lib/parking/notifications'
 import type { ParkingBooking } from '@/types/parking'
+import { assertCleanText } from '../../mocks/emailRenderChecks'
 
 const baseBooking: ParkingBooking = {
   id: 'booking-1',
@@ -130,6 +133,18 @@ describe('parking notifications', () => {
     )
     expect(message).toContain('£10.00')
     expect(message).not.toContain('£25.00')
+  })
+
+  it('payment received email to the manager uses a colon and "to", not an en dash', () => {
+    const email = buildPaymentConfirmationManagerEmail(baseBooking)
+
+    expect(email.subject).toBe('Parking payment received: PAR-20250101-0001')
+    expect(email.html).toContain(
+      `<strong>Schedule:</strong> ${formatDateTime(baseBooking.start_at)} to ${formatDateTime(baseBooking.end_at)}</p>`
+    )
+    expect(email.html).toContain('<strong>Amount paid:</strong> £25.00')
+    assertCleanText(email.subject)
+    assertCleanText(email.html)
   })
 })
 

@@ -78,12 +78,12 @@ export function buildPaymentReminderSmsForStage(
 
 function buildPaymentReminderManagerEmail(booking: ParkingNotificationBooking, paymentUrl?: string) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
-  const subject = `Parking booking pending payment – ${booking.reference}`
+  const subject = `Parking booking pending payment: ${booking.reference}`
   const html = `
     <h2>Parking booking requires payment</h2>
     <p><strong>Reference:</strong> ${booking.reference}</p>
     <p><strong>Customer:</strong> ${booking.customer_first_name} ${booking.customer_last_name ?? ''}</p>
-    <p><strong>Schedule:</strong> ${formatDateTime(booking.start_at)} – ${formatDateTime(booking.end_at)}</p>
+    <p><strong>Schedule:</strong> ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}</p>
     <p><strong>Amount due:</strong> £${amount.toFixed(2)}</p>
     ${paymentUrl ? `<p><a href="${paymentUrl}">Generate payment link</a></p>` : ''}
     <p>This email was sent automatically so you can follow up with the customer.</p>
@@ -98,12 +98,12 @@ export function buildPaymentConfirmationSms(booking: ParkingNotificationBooking)
 
 export function buildPaymentConfirmationManagerEmail(booking: ParkingNotificationBooking) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
-  const subject = `Parking payment received – ${booking.reference}`
+  const subject = `Parking payment received: ${booking.reference}`
   const html = `
     <h2>Parking booking payment confirmed</h2>
     <p><strong>Reference:</strong> ${booking.reference}</p>
     <p><strong>Customer:</strong> ${booking.customer_first_name} ${booking.customer_last_name ?? ''}</p>
-    <p><strong>Schedule:</strong> ${formatDateTime(booking.start_at)} – ${formatDateTime(booking.end_at)}</p>
+    <p><strong>Schedule:</strong> ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}</p>
     <p><strong>Amount paid:</strong> £${amount.toFixed(2)}</p>
   `
   return { subject, html, to: MANAGER_EMAIL }
@@ -127,13 +127,13 @@ export function buildSessionThreeDayReminderSms(booking: ParkingNotificationBook
 
 function buildSessionManagerEmail(booking: ParkingNotificationBooking, type: 'start' | 'end') {
   const subject = type === 'start'
-    ? `Parking starts today – ${booking.reference}`
-    : `Parking ends today – ${booking.reference}`
+    ? `Parking starts today: ${booking.reference}`
+    : `Parking ends today: ${booking.reference}`
   const html = `
     <h2>Parking ${type === 'start' ? 'session starting' : 'session ending'} today</h2>
     <p><strong>Reference:</strong> ${booking.reference}</p>
     <p><strong>Customer:</strong> ${booking.customer_first_name} ${booking.customer_last_name ?? ''}</p>
-    <p><strong>Schedule:</strong> ${formatDateTime(booking.start_at)} – ${formatDateTime(booking.end_at)}</p>
+    <p><strong>Schedule:</strong> ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}</p>
     <p><strong>Vehicle:</strong> ${booking.vehicle_registration}</p>
   `
   return { subject, html, to: MANAGER_EMAIL }
