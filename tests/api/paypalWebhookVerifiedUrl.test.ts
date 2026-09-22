@@ -53,6 +53,9 @@ const webhookLogInsert = vi.fn(async (_row: Record<string, unknown>) => ({ error
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // A one-off value a case did not consume must not leak into the next case.
+  vi.mocked(resolveWebhookIdForUrl).mockReset().mockResolvedValue(null)
+  vi.mocked(verifyPayPalWebhook).mockReset()
   vi.mocked(createAdminClient).mockReturnValue({
     from: vi.fn(() => ({ insert: webhookLogInsert })),
   } as never)
@@ -75,6 +78,22 @@ describe('PayPal webhook signature lookup URL', () => {
     // Nothing registered for that URL: the route refuses rather than verify against another id.
     expect(verifyPayPalWebhook).not.toHaveBeenCalled()
     expect(await response.json()).toMatchObject({ received: false })
+  })
+})
+
+describe('PayPal parking webhook id', () => {
+  it('verifies against the webhook registered for its own URL, ignoring a configured id', async () => {
+    // The production value matched no registered webhook on 22 September 2026.
+    vi.stubEnv('PAYPAL_PARKING_WEBHOOK_ID', 'STALE-PARKING-ID')
+    vi.mocked(resolveWebhookIdForUrl).mockResolvedValueOnce('REGISTERED-ID')
+    vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(false)
+
+    await (parkingPost as Post)(webhookRequest('parking'))
+
+    expect(resolveWebhookIdForUrl).toHaveBeenCalledWith(
+      'https://management.orangejelly.co.uk/api/webhooks/paypal/parking'
+    )
+    expect(vi.mocked(verifyPayPalWebhook).mock.calls[0][2]).toBe('REGISTERED-ID')
   })
 })
 

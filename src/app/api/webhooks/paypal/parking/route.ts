@@ -97,18 +97,13 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient()
   const body = await request.text()
   const headers = Object.fromEntries(request.headers.entries())
-  // Deliberately does NOT fall back to PAYPAL_WEBHOOK_ID: that is another endpoint's
-  // id, and verifying against it rejects every genuine event here. The env var is kept
-  // as an override but is no longer required, because a webhook deleted and recreated
-  // in the dashboard gets a NEW id that a stale env var would silently reject forever.
-  // That had already happened here: the registered endpoint and the configured id did
-  // not match. Resolving by URL self-heals. When it cannot be resolved we fail closed
-  // and PayPal retries.
-  const webhookId =
-    process.env.PAYPAL_PARKING_WEBHOOK_ID?.trim()
-    || (await resolveWebhookIdForUrl(
-      `${getAppUrl()}/api/webhooks/paypal/parking`,
-    ))
+  // Resolved from PayPal by this endpoint's own URL, never from an env var. A webhook deleted
+  // and recreated in the dashboard gets a NEW id, which a configured id would silently reject
+  // forever: PAYPAL_PARKING_WEBHOOK_ID matched no registered webhook (checked 22 September 2026),
+  // and the same staleness rejected every private booking delivery for almost four weeks.
+  // PAYPAL_WEBHOOK_ID is another endpoint's id. When it cannot be resolved we fail closed and
+  // PayPal retries.
+  const webhookId = await resolveWebhookIdForUrl(`${getAppUrl()}/api/webhooks/paypal/parking`)
 
   let idempotencyKey: string | null = null
   let requestHash: string | null = null
