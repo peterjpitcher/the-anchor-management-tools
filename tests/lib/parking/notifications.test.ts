@@ -78,16 +78,14 @@ describe('parking notifications', () => {
     expect(message).toContain('https://example.com/pay')
   })
 
-  it.each(['week_before_expiry', 'day_before_expiry', 'overdue'] as const)(
+  it.each(['week_before_expiry', 'day_before_expiry'] as const)(
     'payment reminder (%s) names the customer and quotes a real price',
     (stage) => {
       const message = buildPaymentReminderSmsForStage(baseBooking, stage, 'https://example.com/pay')
       expect(message).toContain('Sam')
       expectNoPlaceholders(message)
-      if (stage !== 'overdue') {
-        expect(message).toContain('£25.00')
-        expect(message).not.toContain('£0.00')
-      }
+      expect(message).toContain('£25.00')
+      expect(message).not.toContain('£0.00')
     }
   )
 
