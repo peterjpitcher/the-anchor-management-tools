@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createHash } from 'crypto'
+import { getAppUrl } from '@/lib/env'
 import { addHours } from 'date-fns'
 import { fromZonedTime } from 'date-fns-tz'
 import { google } from 'googleapis'
@@ -190,7 +191,7 @@ export function buildPubOpsCalendarNoteEntry(input: {
   const { note } = input
   const googleEventId = generatePubOpsCalendarNoteEventId(note.id)
   const now = input.now ?? new Date()
-  const appBaseUrl = input.appBaseUrl || process.env.NEXT_PUBLIC_APP_URL || ''
+  const appBaseUrl = input.appBaseUrl || getAppUrl()
   const endDate = note.end_date && note.end_date >= note.note_date
     ? note.end_date
     : note.note_date
@@ -451,7 +452,7 @@ export async function syncPubOpsCalendarNoteById(
 
     const entry = buildPubOpsCalendarNoteEntry({
       note: note as PubOpsCalendarNoteRow,
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || '',
+      appBaseUrl: getAppUrl(),
     })
 
     return upsertPubOpsCalendarNoteEntry(auth, noteId, entry, context)

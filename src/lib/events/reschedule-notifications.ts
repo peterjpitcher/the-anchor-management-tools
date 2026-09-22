@@ -1,4 +1,5 @@
 import { logAuditEvent } from '@/app/actions/audit'
+import { getAppUrl } from '@/lib/env'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { logger } from '@/lib/logger'
 import {
@@ -92,7 +93,7 @@ export async function dispatchEventRescheduleNotifications(params: {
           oldTime,
           newDate,
           newTime,
-          appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || '',
+          appBaseUrl: getAppUrl(),
         }),
       ),
     )
@@ -116,7 +117,7 @@ export async function dispatchEventRescheduleNotifications(params: {
             customerId: customer.id,
             bookingId: booking.id,
             eventStartIso: newStartIso,
-            appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || '',
+            appBaseUrl: getAppUrl(),
           })
           manageLink = manageToken.url
         } catch (error) {

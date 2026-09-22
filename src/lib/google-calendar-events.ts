@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createHash } from 'crypto'
+import { getAppUrl } from '@/lib/env'
 import { google } from 'googleapis'
 import type { OAuth2Client } from 'google-auth-library'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -280,7 +281,7 @@ export function buildPubOpsEventCalendarEntry(input: {
   }
 
   const end = getEventEnd(input.event, start)
-  const appBaseUrl = input.appBaseUrl || process.env.NEXT_PUBLIC_APP_URL || ''
+  const appBaseUrl = input.appBaseUrl || getAppUrl()
   const seatLabel = pluralizeSeats(aggregate.totalActiveSeats)
   // Unpublished events sit on the shared calendar alongside live ones, so mark them
   // up front rather than leaving managers to open the entry to find out.
@@ -621,7 +622,7 @@ export async function syncPubOpsEventCalendarByEventId(
     const entry = buildPubOpsEventCalendarEntry({
       event: event as PubOpsEventCalendarEventRow,
       bookings: (bookings || []) as PubOpsEventCalendarBookingRow[],
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || '',
+      appBaseUrl: getAppUrl(),
     })
 
     if (entry.shouldDelete) {

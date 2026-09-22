@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { google } from 'googleapis'
+import { getAppUrl } from '@/lib/env'
 import type { OAuth2Client } from 'google-auth-library'
 import { fromZonedTime } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -228,7 +229,7 @@ export async function syncRotaWeekToCalendar(
       }
 
       const knownEventIds = new Set(existingMap.values())
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
+      const appUrl = getAppUrl()
 
       const toRecover: Array<{ evId: string; evShiftId: string }> = []
       const toDelete: Array<{ evId: string; label: string }> = []
@@ -268,7 +269,6 @@ export async function syncRotaWeekToCalendar(
           }
         } else if (
           !knownEventIds.has(ev.id) &&
-          appUrl &&
           ev.description?.includes(appUrl + '/rota')
         ) {
           // --- Legacy event: no shiftId, no weekId, but has our /rota URL ---
@@ -397,7 +397,7 @@ export async function syncRotaWeekToCalendar(
           shift.status === 'sick' ? 'Status: Sick' : null,
           shift.notes ? `Notes: ${shift.notes}` : null,
           '',
-          `${process.env.NEXT_PUBLIC_APP_URL}/rota`,
+          `${getAppUrl()}/rota`,
         ].filter(Boolean).join('\n')
 
         const eventBody = {

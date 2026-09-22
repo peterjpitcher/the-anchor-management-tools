@@ -1,7 +1,8 @@
 import { format, parseISO } from 'date-fns';
+import { getAppUrl } from '@/lib/env';
 import { STAFF } from '@/lib/brand/palette';
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? '';
+const APP_URL = getAppUrl();
 
 export type ShiftSummary = {
   date: string;       // ISO date
