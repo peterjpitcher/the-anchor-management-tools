@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { logAuditEvent } from '@/app/actions/audit';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 export type PayAgeBand = {
   id: string;
@@ -178,10 +179,6 @@ const UpdateRateSchema = z.object({
   effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
-function todayIsoDate() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export async function addPayBandRate(input: z.infer<typeof AddRateSchema>): Promise<
   { success: true; data: PayBandRate } | { success: false; error: string }
 > {
@@ -229,7 +226,7 @@ export async function updatePayBandRate(input: z.infer<typeof UpdateRateSchema>)
 
   if (loadError) return { success: false, error: loadError.message };
   if (!existing) return { success: false, error: 'Rate not found' };
-  if (existing.effective_from <= todayIsoDate()) {
+  if (existing.effective_from <= getTodayIsoDate()) {
     return { success: false, error: 'Historical or current rates cannot be edited. Add a new future rate instead.' };
   }
 
@@ -414,7 +411,7 @@ export async function updateEmployeeRateOverride(input: z.infer<typeof UpdateRat
 
   if (loadError) return { success: false, error: loadError.message };
   if (!existing) return { success: false, error: 'Rate override not found' };
-  if (existing.effective_from <= todayIsoDate()) {
+  if (existing.effective_from <= getTodayIsoDate()) {
     return { success: false, error: 'Historical or current overrides cannot be edited. Add a new future override instead.' };
   }
 
