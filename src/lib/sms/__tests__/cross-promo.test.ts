@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { sendCrossPromoForEvent, hasReachedDailyPromoLimit, sendFollowUpForEvent, resolveEventStart, computeReplyWindowExpiry } from '../cross-promo'
 
 // ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ function buildDbMock(overrides: {
     insertError = null,
   } = overrides
 
-  const db: Record<string, unknown> = {
+  const db: Record<string, Mock> = {
     rpc: vi.fn().mockImplementation((fnName: string) => {
       if (fnName === 'get_event_capacity_snapshot_v05') {
         return Promise.resolve({ data: capacityError ? null : capacityRows, error: capacityError })
@@ -202,7 +202,7 @@ describe('sendCrossPromoForEvent', () => {
       // confirmations, so promos point at NOEVENTS instead.
       expect(body).toContain('Reply NOEVENTS to stop event texts')
       expect(body).not.toContain('http') // free template has no link
-      expect(options.metadata?.template_key).toBe('event_cross_promo_7d')
+      expect(options?.metadata?.template_key).toBe('event_cross_promo_7d')
     })
 
     it('does not call generateSingleLink for free events', async () => {
@@ -251,6 +251,7 @@ describe('sendCrossPromoForEvent', () => {
         shortUrl: 'https://the-anchor.pub/s/spABC123',
         destinationUrl: 'https://www.the-anchor.pub/events/comedy-night',
         utm: {},
+        clickCount: 0,
       })
 
       const result = await sendCrossPromoForEvent(PAID_EVENT)
@@ -267,7 +268,7 @@ describe('sendCrossPromoForEvent', () => {
       // confirmations, so promos point at NOEVENTS instead.
       expect(body).toContain('Reply NOEVENTS to stop event texts')
       expect(body).not.toContain('reply with how many seats')
-      expect(options.metadata?.template_key).toBe('event_cross_promo_7d_paid')
+      expect(options?.metadata?.template_key).toBe('event_cross_promo_7d_paid')
     })
 
     it('generates the short link only once regardless of audience size', async () => {
@@ -289,6 +290,7 @@ describe('sendCrossPromoForEvent', () => {
         shortUrl: 'https://the-anchor.pub/s/spABC123',
         destinationUrl: 'https://www.the-anchor.pub/events/comedy-night',
         utm: {},
+        clickCount: 0,
       })
 
       await sendCrossPromoForEvent(PAID_EVENT)
@@ -336,6 +338,7 @@ describe('sendCrossPromoForEvent', () => {
         shortUrl: 'https://the-anchor.pub/s/spABC123',
         destinationUrl: 'https://www.the-anchor.pub/events/comedy-night',
         utm: {},
+        clickCount: 0,
       })
 
       const result = await sendCrossPromoForEvent(PAID_EVENT)
@@ -385,7 +388,7 @@ describe('sendCrossPromoForEvent', () => {
       // confirmations, so promos point at NOEVENTS instead.
       expect(body).toContain('Reply NOEVENTS to stop event texts')
       expect(body).not.toContain('http')
-      expect(options.metadata?.template_key).toBe('event_general_promo_7d')
+      expect(options?.metadata?.template_key).toBe('event_general_promo_7d')
     })
 
     it('does not mention a placeholder event when last_event_name is null', async () => {
@@ -420,6 +423,7 @@ describe('sendCrossPromoForEvent', () => {
         shortUrl: 'https://the-anchor.pub/s/spABC123',
         destinationUrl: 'https://www.the-anchor.pub/events/comedy-night',
         utm: {},
+        clickCount: 0,
       })
 
       const result = await sendCrossPromoForEvent(PAID_EVENT)
@@ -434,7 +438,7 @@ describe('sendCrossPromoForEvent', () => {
       // confirmations, so promos point at NOEVENTS instead.
       expect(body).toContain('Reply NOEVENTS to stop event texts')
       expect(body).not.toContain('reply with how many seats')
-      expect(options.metadata?.template_key).toBe('event_general_promo_7d_paid')
+      expect(options?.metadata?.template_key).toBe('event_general_promo_7d_paid')
     })
   })
 
@@ -452,12 +456,12 @@ describe('sendCrossPromoForEvent', () => {
 
       // First call — category match
       const [, body1, opts1] = mockSendSMS.mock.calls[0]
-      expect(opts1.metadata?.template_key).toBe('event_cross_promo_7d')
+      expect(opts1?.metadata?.template_key).toBe('event_cross_promo_7d')
       expect(body1).toContain('Alice')
 
       // Second call — general recent
       const [, body2, opts2] = mockSendSMS.mock.calls[1]
-      expect(opts2.metadata?.template_key).toBe('event_general_promo_7d')
+      expect(opts2?.metadata?.template_key).toBe('event_general_promo_7d')
       expect(body2).toContain('Bob')
       expect(body2).not.toContain('Drag Bingo')
     })
@@ -589,7 +593,7 @@ describe('sendFollowUpForEvent', () => {
       // Marketing-only opt-out. A bare STOP would also stop booking
       // confirmations, so promos point at NOEVENTS instead.
       expect(body).toContain('Reply NOEVENTS to stop event texts')
-      expect(options.metadata?.template_key).toBe('event_reminder_promo_24h')
+      expect(options?.metadata?.template_key).toBe('event_reminder_promo_24h')
     })
   })
 
@@ -601,7 +605,7 @@ describe('sendFollowUpForEvent', () => {
       mockGenerateSingleLink.mockResolvedValue({
         id: 'link-001', channel: 'sms_promo', label: 'SMS Promo', type: 'digital',
         shortCode: 'spABC123', shortUrl: 'https://the-anchor.pub/s/spABC123',
-        destinationUrl: 'https://www.the-anchor.pub/events/comedy-night', utm: {},
+        destinationUrl: 'https://www.the-anchor.pub/events/comedy-night', utm: {}, clickCount: 0,
       })
 
       const result = await sendFollowUpForEvent(
@@ -617,7 +621,7 @@ describe('sendFollowUpForEvent', () => {
       // Marketing-only opt-out. A bare STOP would also stop booking
       // confirmations, so promos point at NOEVENTS instead.
       expect(body).toContain('Reply NOEVENTS to stop event texts')
-      expect(options.metadata?.template_key).toBe('event_reminder_promo_24h_paid')
+      expect(options?.metadata?.template_key).toBe('event_reminder_promo_24h_paid')
     })
   })
 
