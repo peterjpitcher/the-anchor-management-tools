@@ -62,7 +62,7 @@ function createAdminMock(existingResult: SingleResult) {
     });
   });
   // payroll_periods select → then() resolves to empty (no approvals to invalidate).
-  chain.then = undefined;
+  (chain as Record<string, unknown>).then = undefined;
 
   const from = vi.fn().mockImplementation((table: string) => {
     if (table === 'payroll_periods') {

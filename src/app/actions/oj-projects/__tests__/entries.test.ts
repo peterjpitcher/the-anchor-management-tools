@@ -317,7 +317,7 @@ describe('updateEntry (time entry)', () => {
 
     const result = await updateEntry(fd)
     expect(result.error).toBeUndefined()
-    expect(result.success).toBe(true)
+    expect(result).toMatchObject({ success: true })
   })
 
   it('should succeed when entry has no existing timestamps', async () => {
@@ -335,7 +335,7 @@ describe('updateEntry (time entry)', () => {
 
     const result = await updateEntry(fd)
     expect(result.error).toBeUndefined()
-    expect(result.success).toBe(true)
+    expect(result).toMatchObject({ success: true })
   })
 })
 

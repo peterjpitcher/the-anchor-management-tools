@@ -143,6 +143,7 @@ describe('OJ invoice reissue preview', () => {
     const preview = await getOjInvoiceReissuePreview(SOURCE_INVOICE_ID)
 
     expect(preview.eligible).toBe(false)
+    if (preview.eligible) throw new Error('Expected an ineligible preview')
     expect(preview.error).toContain('Paid, partially paid, and written off invoices cannot be reissued')
   })
 

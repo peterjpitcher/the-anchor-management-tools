@@ -20,7 +20,7 @@ function createQueryChain(resolvedValue: { data?: unknown; error?: unknown; coun
   return chain
 }
 
-let latestQueryResult = { data: null as unknown, error: null as unknown, count: 0 }
+let latestQueryResult: { data: unknown; error: unknown; count?: number } = { data: null, error: null, count: 0 }
 
 const mockFrom = vi.fn(() => createQueryChain(latestQueryResult))
 const mockUpload = vi.fn().mockResolvedValue({ error: null })
