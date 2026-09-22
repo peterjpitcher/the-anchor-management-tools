@@ -1415,7 +1415,7 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const firstName = getSmartFirstName(customer.first_name)
   const message = ensureReplyInstruction(
-    `The Anchor: ${firstName}! Time to pick what you're having for Sunday lunch — get your pre-order in here: ${tokenUrl}`,
+    `The Anchor: ${firstName}! Time to pick what you're having for Sunday lunch. Get your pre-order in here: ${tokenUrl}`,
     supportPhone
   )
 

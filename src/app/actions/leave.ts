@@ -256,7 +256,7 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
     .single();
 
   if (employee?.email_address) {
-    const emailSubject = `Holiday Request Received — ${startDate} to ${endDate}`;
+    const emailSubject = `Holiday Request Received: ${startDate} to ${endDate}`;
     const emailResult = await sendEmail({
       to: employee.email_address,
       subject: emailSubject,

@@ -79,7 +79,7 @@ export async function sendRotaWeekEmails(
   );
 
   const subject = (weekEndStr: string) =>
-    `Your shifts: ${fmtDate(weekStart, false)} – ${fmtDate(weekEndStr, true)}`;
+    `Your shifts: ${fmtDate(weekStart, false)} to ${fmtDate(weekEndStr, true)}`;
 
   const results = await Promise.allSettled(
     eligible.map(async emp => {
@@ -260,7 +260,7 @@ export async function sendRotaWeekChangeEmails(
     templateName: s.name ?? '',
   }));
 
-  const emailSubject = `Your rota has been updated: ${fmtDate(weekStart, false)} – ${fmtDate(weekEnd, true)}`;
+  const emailSubject = `Your rota has been updated: ${fmtDate(weekStart, false)} to ${fmtDate(weekEnd, true)}`;
 
   // Only include employees who have at least one change
   const eligible = (employees ?? []).filter(emp => {

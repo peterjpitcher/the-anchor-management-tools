@@ -26,7 +26,9 @@ vi.mock('@/lib/table-bookings/sunday-preorder', () => ({
 }))
 
 import { sendSMS } from '@/lib/twilio'
+import { isGsm7 } from '@/lib/sms/gsm7'
 import { sendSundayPreorderLinkSmsIfAllowed } from '@/lib/table-bookings/bookings'
+import { assertCleanText } from '../mocks/emailRenderChecks'
 
 describe('Sunday pre-order SMS safety meta', () => {
   beforeEach(() => {
@@ -148,5 +150,36 @@ describe('Sunday pre-order SMS safety meta', () => {
         }),
       })
     )
+  })
+
+  it('asks for the pre-order in plain GSM-7 text with no banned dash', async () => {
+    vi.mocked(sendSMS).mockResolvedValueOnce({ success: true, sid: 'SM1' } as never)
+
+    const customerMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 'customer-1',
+        first_name: 'Pat',
+        mobile_number: '+447700900123',
+        sms_status: 'active',
+      },
+      error: null,
+    })
+    const customerEq = vi.fn().mockReturnValue({ maybeSingle: customerMaybeSingle })
+    const customerSelect = vi.fn().mockReturnValue({ eq: customerEq })
+    const supabase = { from: vi.fn(() => ({ select: customerSelect })) }
+
+    await sendSundayPreorderLinkSmsIfAllowed(supabase as any, {
+      customerId: 'customer-1',
+      tableBookingId: 'table-booking-1',
+      bookingStartIso: '2026-03-01T12:00:00.000Z',
+      appBaseUrl: 'https://example.com',
+    })
+
+    const body = vi.mocked(sendSMS).mock.calls[0][1] as string
+    expect(body).toBe(
+      "The Anchor: Pat! Time to pick what you're having for Sunday lunch. Get your pre-order in here: https://example.com/preorder"
+    )
+    assertCleanText(body)
+    expect(isGsm7(body)).toBe(true)
   })
 })
