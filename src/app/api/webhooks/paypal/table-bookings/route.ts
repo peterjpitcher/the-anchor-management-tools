@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveWebhookIdForUrl, verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { handleRefundEvent } from '@/lib/paypal-refund-webhook'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -237,7 +238,7 @@ export async function POST(request: NextRequest) {
   const webhookId =
     process.env.PAYPAL_TABLE_BOOKINGS_WEBHOOK_ID?.trim()
     || (await resolveWebhookIdForUrl(
-      `${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/api/webhooks/paypal/table-bookings`,
+      `${getAppUrl()}/api/webhooks/paypal/table-bookings`,
     ))
 
   let idempotencyKey: string | null = null
