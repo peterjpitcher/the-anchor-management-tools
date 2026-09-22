@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
@@ -65,7 +66,7 @@ export async function POST(
   }
 
   const newPartySize = parsed.data.party_size
-  const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin).replace(/\/+$/, '')
+  const appBaseUrl = getAppUrl()
 
   // Read current booking state before the update so we can detect threshold crossings
   const { data: currentBooking, error: fetchError } = await auth.supabase.from('table_bookings')

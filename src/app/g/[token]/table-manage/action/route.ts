@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
@@ -108,7 +109,7 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
       notes: payload.notes,
       cancellationReason: payload.cancellation_reason,
       cancellationReasonDetail: payload.cancellation_reason_detail,
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+      appBaseUrl: getAppUrl()
     })
 
     if (result.state === 'blocked') {

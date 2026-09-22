@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { sanitizeRecruitmentKitFilename } from '@/lib/recruitment/interview-kit-template'
@@ -60,7 +61,7 @@ export async function GET(
     .maybeSingle()
 
   try {
-    const origin = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+    const origin = getAppUrl()
     const html = generateRecruitmentTrialBriefHtml({
       application,
       appointment: appointment ?? null,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -2343,7 +2344,7 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = acquireResult.supabase
-    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+    const appBaseUrl = getAppUrl()
 
     const [bookings, tableBookings] = await Promise.all([
       loadEventBookingsForEngagement(supabase),

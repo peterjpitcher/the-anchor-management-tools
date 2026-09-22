@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { z } from 'zod'
 import {
   withApiAuth,
@@ -331,7 +332,7 @@ export async function POST(request: NextRequest) {
         }
       )
 
-      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+      const appBaseUrl = getAppUrl()
       const bookingMode = EventBookingService.normalizeBookingMode(eventRow.booking_mode)
 
       // ── Multiple ticket options resolution ──────────────────────────────────

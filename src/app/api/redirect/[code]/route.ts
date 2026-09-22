@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { waitUntil } from '@vercel/functions'
 import { logger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { createTablePaymentToken, getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 import { parseTablePaymentLinkFromUrl } from '@/lib/table-bookings/payment-link'
 import { clipShortLinkClickRow } from '@/lib/short-links/click-row'
@@ -108,11 +109,6 @@ function readTrackingParamFromUrl(url: string, key: string): string | null {
   return parsed?.searchParams.get(key) || null
 }
 
-function resolveAppBaseUrl(request: NextRequest): string {
-  const candidate = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin || FALLBACK_REDIRECT_URL
-  return candidate.replace(/\/+$/, '')
-}
-
 function extractClientIp(request: NextRequest): string | null {
   const forwardedFor = request.headers.get('x-forwarded-for')
   const firstForwarded = forwardedFor?.split(',')[0]?.trim()
@@ -181,7 +177,6 @@ function buildBlockedTablePaymentUrl(
 }
 
 async function attemptTablePaymentShortLinkRecovery(params: {
-  request: NextRequest
   supabase: any
   resolvedLink: ShortLinkRow
   rawToken: string
@@ -264,7 +259,7 @@ async function attemptTablePaymentShortLinkRecovery(params: {
       customerId,
       tableBookingId,
       holdExpiresAt: booking.hold_expires_at,
-      appBaseUrl: resolveAppBaseUrl(params.request),
+      appBaseUrl: getAppUrl(),
     })
   } catch {
     return {
@@ -401,7 +396,6 @@ export async function GET(
         if (preview.state !== 'ready') {
           if (preview.reason === 'invalid_token') {
             const recovery = await attemptTablePaymentShortLinkRecovery({
-              request,
               supabase,
               resolvedLink,
               rawToken: tablePaymentLink.rawToken,

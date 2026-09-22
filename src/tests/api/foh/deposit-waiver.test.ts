@@ -69,7 +69,6 @@ describe('POST /api/foh/bookings — deposit waiver', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubGlobal('fetch', unexpectedFetch)
-    process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000'
   })
 
   afterEach(() => {

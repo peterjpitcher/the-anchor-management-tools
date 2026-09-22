@@ -1,5 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// env.ts reads the app URL once, when it is first imported, so it is set before any import. The
+// short link itself is on vip-club.uk: the reissued payment link must still use the app URL.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL = 'https://management.orangejelly.co.uk'
+})
+
 vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(),
 }))
@@ -101,13 +107,11 @@ function buildSupabaseStub(config: SupabaseStubConfig) {
 describe('redirect table-payment auto-reissue', () => {
   const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const originalServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL
 
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example-supabase.local'
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key'
-    process.env.NEXT_PUBLIC_APP_URL = 'https://management.orangejelly.co.uk'
   })
 
   afterAll(() => {
@@ -121,12 +125,6 @@ describe('redirect table-payment auto-reissue', () => {
       delete process.env.SUPABASE_SERVICE_ROLE_KEY
     } else {
       process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceRoleKey
-    }
-
-    if (originalAppUrl === undefined) {
-      delete process.env.NEXT_PUBLIC_APP_URL
-    } else {
-      process.env.NEXT_PUBLIC_APP_URL = originalAppUrl
     }
   })
 
@@ -174,6 +172,7 @@ describe('redirect table-payment auto-reissue', () => {
       expect.objectContaining({
         customerId: 'customer-1',
         tableBookingId: 'booking-1',
+        appBaseUrl: 'https://management.orangejelly.co.uk',
       })
     )
     expect(supabaseStub.shortLinksUpdate).toHaveBeenCalledWith(

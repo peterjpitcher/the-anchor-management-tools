@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { z } from 'zod'
 import { randomBytes } from 'crypto'
 import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
@@ -1384,7 +1385,7 @@ async function createFohTableBooking(
   } else {
     bookingResult = (rpcResultRaw ?? {}) as TableBookingRpcResult
   }
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+  const appBaseUrl = getAppUrl()
 
   let nextStepUrl: string | null = null
   let holdExpiresAt = bookingResult.hold_expires_at || null
