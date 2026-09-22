@@ -5,6 +5,7 @@ import { getTodayIsoDate, formatDate, formatDateFull } from '@/lib/dateUtils'
 import { getOutstandingTodos, EVENT_CHECKLIST_DEFINITIONS } from '@/lib/event-checklist'
 import { sendEmail } from '@/lib/email/emailService'
 import { STAFF } from '@/lib/brand/palette'
+import { getAppUrl } from '@/lib/env'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -139,7 +140,7 @@ export async function GET(request: Request) {
     const todayDisplay = formatDateFull(new Date())
     const subject = `Event checklist reminder – ${todayDisplay}`
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'
+    const appUrl = getAppUrl()
 
     const htmlBody = [`
       <h2 style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin-bottom: 16px;">Event checklist reminder</h2>

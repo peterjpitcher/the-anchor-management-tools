@@ -2,6 +2,7 @@ import 'server-only'
 
 import { invoiceBalanceDue, type InvoiceBalanceInput } from './balance'
 import { generateInvoiceToken } from './invoice-token'
+import { getAppUrl } from '@/lib/env'
 
 /**
  * The "pay online" block appended to invoice emails.
@@ -41,8 +42,7 @@ export function invoiceCanOfferPayPal(invoice: PaymentLinkInvoice): boolean {
 }
 
 export function invoicePortalUrl(invoiceId: string): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'
-  return `${appUrl}/invoice-portal/${generateInvoiceToken(invoiceId)}`
+  return `${getAppUrl()}/invoice-portal/${generateInvoiceToken(invoiceId)}`
 }
 
 /**

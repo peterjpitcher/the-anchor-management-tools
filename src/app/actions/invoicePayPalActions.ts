@@ -17,6 +17,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
@@ -140,8 +141,7 @@ function isReusable(order: any): boolean {
 }
 
 function portalUrl(token: string): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'
-  return `${appUrl}/invoice-portal/${token}`
+  return `${getAppUrl()}/invoice-portal/${token}`
 }
 
 /**

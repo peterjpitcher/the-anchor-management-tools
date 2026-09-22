@@ -1,4 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+// env.ts reads the app URL once, when it is first imported, so it is set before any import.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL = 'https://management.orangejelly.co.uk'
+})
+
 import {
   buildInvoicePaymentLinkFooter,
   invoiceCanOfferPayPal,
@@ -11,7 +17,6 @@ const INVOICE_ID = '7f06990b-7636-4d72-b610-460168da18ec'
 
 beforeEach(() => {
   process.env.PRIVATE_BOOKING_TOKEN_SECRET = 'test-secret'
-  process.env.NEXT_PUBLIC_APP_URL = 'https://management.orangejelly.co.uk'
 })
 
 function invoice(overrides: Record<string, unknown> = {}) {
@@ -52,7 +57,7 @@ describe('buildInvoicePaymentLinkFooter', () => {
   it('embeds a portal link that verifies back to this invoice', () => {
     const footer = buildInvoicePaymentLinkFooter(invoice())
     const url = footer.match(/https:\/\/\S+/)?.[0]
-    expect(url).toBeDefined()
+    expect(url).toMatch(/^https:\/\/management\.orangejelly\.co\.uk\/invoice-portal\//)
 
     const token = url!.split('/invoice-portal/')[1]
     expect(verifyInvoiceToken(token)).toBe(INVOICE_ID)

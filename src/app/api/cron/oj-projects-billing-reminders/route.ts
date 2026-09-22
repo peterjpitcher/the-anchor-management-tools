@@ -3,6 +3,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { isGraphConfigured, sendInternalReminder } from '@/lib/microsoft-graph'
 import { formatInTimeZone } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
   const periodEndIso = toIsoDateUtc(periodEndUtc)
 
   const subject = `OJ Projects: finalise timesheets (billing on ${billingDateIso})`
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'
+  const appUrl = getAppUrl()
   const body = [
     `Reminder to finalise OJ Projects timesheets before automated billing on ${billingDateIso}.`,
     '',

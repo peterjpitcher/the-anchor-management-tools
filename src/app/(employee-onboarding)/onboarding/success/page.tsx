@@ -1,5 +1,4 @@
-// `manage.the-anchor.pub` does not resolve. Fall back to the live application domain.
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk';
+import { getAppUrl } from '@/lib/env';
 
 interface OnboardingSuccessPageProps {
   searchParams?: Promise<{ type?: string }>;
@@ -8,6 +7,7 @@ interface OnboardingSuccessPageProps {
 export default async function OnboardingSuccessPage({ searchParams }: OnboardingSuccessPageProps) {
   const params = await searchParams;
   const isPortalAccess = params?.type === 'portal_access';
+  const appUrl = getAppUrl();
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 px-4 py-8">
@@ -33,9 +33,9 @@ export default async function OnboardingSuccessPage({ searchParams }: Onboarding
           Save the address below to access the staff portal in future. Use the email address and password you just created to sign in.
         </p>
         <div className="flex items-center gap-2 rounded-md border border-info-border bg-surface px-3 py-2">
-          <span className="min-w-0 flex-1 break-all text-sm font-mono text-text">{BASE_URL}</span>
+          <span className="min-w-0 flex-1 break-all text-sm font-mono text-text">{appUrl}</span>
           <a
-            href={BASE_URL}
+            href={appUrl}
             className="shrink-0 text-xs font-medium text-primary hover:underline"
           >
             Open

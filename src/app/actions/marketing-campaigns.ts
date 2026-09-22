@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { logAuditEvent } from '@/app/actions/audit'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { sendEmail } from '@/lib/email/emailService'
+import { getAppUrl } from '@/lib/env'
 import {
   getMarketingConfig,
   MARKETING_UTM_MEDIUM,
@@ -555,9 +556,8 @@ export async function sendMarketingTestEmail(id: unknown): Promise<ActionResult<
     if (!campaign) return { error: 'Campaign not found' }
 
     const content = parseCampaignContent(campaign.content)
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://management.orangejelly.co.uk'
     const rendered = renderMarketingEmail(content, {
-      unsubscribeUrl: `${appUrl}/api/unsubscribe?t=test-send-placeholder-token`,
+      unsubscribeUrl: `${getAppUrl()}/api/unsubscribe?t=test-send-placeholder-token`,
       linkMap: campaign.linkMap ?? {},
       utm: {
         source: MARKETING_UTM_SOURCE,
