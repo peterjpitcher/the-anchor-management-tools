@@ -29,6 +29,7 @@ import { POST as parkingPost } from '@/app/api/webhooks/paypal/parking/route'
 import { POST as eventBookingsPost } from '@/app/api/webhooks/paypal/event-bookings/route'
 import { POST as tableBookingsPost } from '@/app/api/webhooks/paypal/table-bookings/route'
 import { POST as invoicesPost } from '@/app/api/webhooks/paypal/invoices/route'
+import { POST as privateBookingsPost } from '@/app/api/webhooks/paypal/private-bookings/route'
 
 type Post = (request: never) => Promise<Response>
 
@@ -48,10 +49,12 @@ function webhookRequest(path: string): never {
   return Object.assign(request, { nextUrl: new URL(request.url) }) as never
 }
 
+const webhookLogInsert = vi.fn(async (_row: Record<string, unknown>) => ({ error: null }))
+
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(createAdminClient).mockReturnValue({
-    from: vi.fn(() => ({ insert: vi.fn(async () => ({ error: null })) })),
+    from: vi.fn(() => ({ insert: webhookLogInsert })),
   } as never)
 })
 
@@ -72,5 +75,42 @@ describe('PayPal webhook signature lookup URL', () => {
     // Nothing registered for that URL: the route refuses rather than verify against another id.
     expect(verifyPayPalWebhook).not.toHaveBeenCalled()
     expect(await response.json()).toMatchObject({ received: false })
+  })
+})
+
+describe('PayPal private-bookings webhook id', () => {
+  // Both were set in production and neither matched the registered webhook, so every delivery
+  // from 28 August to 22 September 2026 failed verification.
+  function stubStaleIds(): void {
+    vi.stubEnv('PAYPAL_PRIVATE_BOOKINGS_WEBHOOK_ID', 'STALE-PRIVATE-BOOKINGS-ID')
+    vi.stubEnv('PAYPAL_WEBHOOK_ID', 'ANOTHER-ENDPOINTS-ID')
+  }
+
+  it('verifies against the webhook registered for its own URL, ignoring the configured ids', async () => {
+    stubStaleIds()
+    vi.mocked(resolveWebhookIdForUrl).mockResolvedValueOnce('REGISTERED-ID')
+    vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(false)
+
+    const response = await (privateBookingsPost as Post)(webhookRequest('private-bookings'))
+
+    expect(resolveWebhookIdForUrl).toHaveBeenCalledWith(
+      'https://management.orangejelly.co.uk/api/webhooks/paypal/private-bookings'
+    )
+    expect(verifyPayPalWebhook).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(verifyPayPalWebhook).mock.calls[0][2]).toBe('REGISTERED-ID')
+    expect(response.status).toBe(401)
+  })
+
+  it('fails closed, and logs why, when no webhook is registered for its URL', async () => {
+    stubStaleIds()
+
+    const response = await (privateBookingsPost as Post)(webhookRequest('private-bookings'))
+
+    expect(verifyPayPalWebhook).not.toHaveBeenCalled()
+    expect(await response.json()).toMatchObject({
+      received: false,
+      error: 'No PayPal webhook is registered for the private-bookings endpoint',
+    })
+    expect(webhookLogInsert).toHaveBeenCalledWith(expect.objectContaining({ status: 'configuration_error' }))
   })
 })
