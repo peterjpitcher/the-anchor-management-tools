@@ -86,7 +86,7 @@ describe('alignTablePaymentHoldToScheduledSend reliability guards', () => {
     await expect(alignmentPromise).rejects.toThrow(
       'Failed to align table payment hold state to scheduled SMS send time'
     )
-    const alignmentError = await alignmentPromise.catch((error: unknown) => error as Error)
+    const alignmentError = (await alignmentPromise.catch((error: unknown) => error)) as Error
     expect(alignmentError.message).toContain('table_bookings_update_failed')
     expect(alignmentError.message).toContain('booking_holds_update_failed')
   })
@@ -134,7 +134,7 @@ describe('alignTablePaymentHoldToScheduledSend reliability guards', () => {
     await expect(alignmentPromise).rejects.toThrow(
       'Failed to align table payment hold state to scheduled SMS send time'
     )
-    const alignmentError = await alignmentPromise.catch((error: unknown) => error as Error)
+    const alignmentError = (await alignmentPromise.catch((error: unknown) => error)) as Error
     expect(alignmentError.message).toContain('table_bookings_update_no_rows')
     expect(alignmentError.message).toContain('booking_holds_update_no_rows')
   })

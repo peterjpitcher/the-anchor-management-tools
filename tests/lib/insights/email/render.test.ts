@@ -106,7 +106,8 @@ describe('renderInsightsEmail', () => {
 
   it('prints the status word beside every emoji, exception rows included, so a black-and-white print keeps the status', () => {
     const words: Record<string, string> = { '🔴': 'Action', '🟠': 'Watch', '🟢': 'OK', '⚪': 'Not checked' }
-    for (const options of [{}, { heavy: true, notChecked: ['parking'] }]) {
+    const cases: Array<Parameters<typeof render>[0]> = [{}, { heavy: true, notChecked: ['parking'] }]
+    for (const options of cases) {
       const { html, text } = render(options)
       for (const output of [html, text]) {
         const marks = [...output.matchAll(/(🔴|🟠|🟢|⚪)(.{0,13})/gu)]

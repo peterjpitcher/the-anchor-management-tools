@@ -211,7 +211,7 @@ function buildSupabase(options?: {
   }
 }
 
-function lastSend(): { subject: string; html: string; text: string; metadata: Record<string, unknown> } {
+function lastSend(): { subject: string; html: string; text: string; metadata: Record<string, unknown>; commType?: string } {
   const calls = (sendEmail as unknown as Mock).mock.calls
   expect(calls.length).toBeGreaterThan(0)
   return calls[calls.length - 1][0]

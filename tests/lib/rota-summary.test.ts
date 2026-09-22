@@ -7,6 +7,15 @@ import {
   type RotaSummaryShift,
 } from '@/lib/rota/summary';
 
+// Shifts with no premium: every premium field is NULL, as the database returns it.
+const NO_PREMIUM = {
+  rate_multiplier: null,
+  rate_override: null,
+  premium_reason: null,
+  premium_start_time: null,
+  premium_end_time: null,
+} satisfies Partial<RotaSummaryShift>;
+
 const period: RotaSummaryPayrollPeriod = {
   year: 2026,
   month: 3,
@@ -82,6 +91,7 @@ describe('buildRotaSummary', () => {
       is_overnight: false,
       is_open_shift: false,
       status: 'scheduled',
+      ...NO_PREMIUM,
     },
     {
       employee_id: 'emp-missing-rate',
@@ -92,6 +102,7 @@ describe('buildRotaSummary', () => {
       is_overnight: false,
       is_open_shift: false,
       status: 'scheduled',
+      ...NO_PREMIUM,
     },
     {
       employee_id: null,
@@ -102,6 +113,7 @@ describe('buildRotaSummary', () => {
       is_overnight: false,
       is_open_shift: true,
       status: 'scheduled',
+      ...NO_PREMIUM,
     },
     {
       employee_id: 'emp-salary',
@@ -112,6 +124,7 @@ describe('buildRotaSummary', () => {
       is_overnight: false,
       is_open_shift: false,
       status: 'scheduled',
+      ...NO_PREMIUM,
     },
     {
       employee_id: 'emp-hourly',
@@ -122,6 +135,7 @@ describe('buildRotaSummary', () => {
       is_overnight: false,
       is_open_shift: false,
       status: 'cancelled',
+      ...NO_PREMIUM,
     },
   ];
 
@@ -232,6 +246,7 @@ describe('buildRotaSummary', () => {
           is_overnight: false,
           is_open_shift: false,
           status: 'scheduled',
+          ...NO_PREMIUM,
         },
         {
           employee_id: 'emp-hourly',
@@ -242,6 +257,7 @@ describe('buildRotaSummary', () => {
           is_overnight: false,
           is_open_shift: false,
           status: 'scheduled',
+          ...NO_PREMIUM,
         },
       ],
       employees: [{ employee_id: 'emp-hourly', job_title: 'Bar' }],

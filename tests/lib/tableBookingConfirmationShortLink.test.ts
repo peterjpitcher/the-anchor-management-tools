@@ -37,7 +37,7 @@ vi.mock('@/lib/table-bookings/manage-booking', () => ({
   })),
 }))
 
-const logAuditEventMock = vi.hoisted(() => vi.fn(async () => undefined))
+const logAuditEventMock = vi.hoisted(() => vi.fn(async (_event: { additional_info?: unknown }) => undefined))
 
 vi.mock('@/services/audit', () => ({
   AuditService: { logAuditEvent: logAuditEventMock },

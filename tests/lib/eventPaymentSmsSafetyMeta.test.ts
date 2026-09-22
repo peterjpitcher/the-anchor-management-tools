@@ -149,7 +149,7 @@ describe('event payment SMS safety meta logging', () => {
 
 
   it.each([1, 2])('labels %i standing tickets in payment confirmation', async (seats) => {
-    vi.mocked(sendSMS).mockResolvedValueOnce({ success: true })
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({ success: true })
     await sendEventPaymentConfirmationSms(buildSupabaseForConfirmation('standing') as never, {
       bookingId: 'booking-1', eventName: 'Test Event', seats
     })

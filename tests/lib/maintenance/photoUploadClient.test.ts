@@ -184,7 +184,7 @@ function canvasDeps(source: { width: number; height: number }): PhotoNormaliseDe
       })
         .jpeg({ quality: Math.round(quality * 100) })
         .toBuffer()
-      return new Blob([buffer], { type: 'image/jpeg' })
+      return new Blob([new Uint8Array(buffer)], { type: 'image/jpeg' })
     }),
   }
 }

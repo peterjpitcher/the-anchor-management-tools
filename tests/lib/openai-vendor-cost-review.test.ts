@@ -113,7 +113,7 @@ describe('summarizeReceiptVendorCostReview', () => {
       monthWindow: 12,
     })
 
-    expect(result?.result.reviewItems[0]).toMatchObject({
+    expect(result?.result?.reviewItems[0]).toMatchObject({
       vendorLabel: 'Brewery A',
       direction: 'resumed',
       severity: 'high',

@@ -71,7 +71,7 @@ function booking(overrides: Record<string, unknown> = {}) {
   }
 }
 
-type Payload = { subject: string; html: string; text?: string }
+type Payload = { subject: string; html: string; text?: string; attachments?: Array<{ name: string }> }
 
 function sent(): Payload {
   expect(mockedSendEmail).toHaveBeenCalledTimes(1)
@@ -343,7 +343,7 @@ describe.each([BST_DATE, GMT_DATE])('private booking emails for an event on %s',
     const payload = sent()
     expectSound(payload, { eventDate })
     expect(payload.html).not.toContain('contract version 3')
-    expect(payload.attachments[0].name).toBe('The-Anchor-booking-contract-v3.pdf')
+    expect(payload.attachments?.[0]?.name).toBe('The-Anchor-booking-contract-v3.pdf')
   })
 })
 

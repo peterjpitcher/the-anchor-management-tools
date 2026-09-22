@@ -5,7 +5,7 @@ import { ALL_CHANNELS } from '@/lib/short-links/channels'
 
 describe('event marketing links', () => {
   it('keeps event marketing options aligned with short-link channel options', () => {
-    const eventKeys = new Set(EVENT_MARKETING_CHANNELS.map(channel => channel.key))
+    const eventKeys = new Set<string>(EVENT_MARKETING_CHANNELS.map(channel => channel.key))
 
     for (const channel of ALL_CHANNELS) {
       const eventKey = channel.key === 'google_business' ? 'google_business_profile' : channel.key
@@ -15,7 +15,7 @@ describe('event marketing links', () => {
 
   it('includes pub-specific QR placements in both shared and event marketing options', () => {
     const sharedKeys = new Set(ALL_CHANNELS.map(channel => channel.key))
-    const eventKeys = new Set(EVENT_MARKETING_CHANNELS.map(channel => channel.key))
+    const eventKeys = new Set<string>(EVENT_MARKETING_CHANNELS.map(channel => channel.key))
 
     for (const key of [
       'beer_mat',
