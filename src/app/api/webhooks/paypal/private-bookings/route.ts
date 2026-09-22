@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyPayPalWebhook } from '@/lib/paypal'
+import { resolveWebhookIdForUrl, verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { handleRefundEvent } from '@/lib/paypal-refund-webhook'
 import { finalizeDepositPayment } from '@/services/private-bookings'
@@ -113,7 +114,12 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient()
   const body = await request.text()
   const headers = Object.fromEntries(request.headers.entries())
-  const webhookId = (process.env.PAYPAL_PRIVATE_BOOKINGS_WEBHOOK_ID || process.env.PAYPAL_WEBHOOK_ID)?.trim()
+  // Resolved from PayPal by this endpoint's own URL, never from an env var. The configured
+  // PAYPAL_PRIVATE_BOOKINGS_WEBHOOK_ID stopped matching the registered webhook (a recreated webhook
+  // gets a new id), so every delivery from 28 August to 22 September 2026 failed verification.
+  // PAYPAL_WEBHOOK_ID, the old fallback, is another endpoint's id and would reject them too. When
+  // the id cannot be resolved we fail closed and PayPal retries.
+  const webhookId = await resolveWebhookIdForUrl(`${getAppUrl()}/api/webhooks/paypal/private-bookings`)
 
   let idempotencyKey: string | null = null
   let requestHash: string | null = null
@@ -121,7 +127,7 @@ export async function POST(request: NextRequest) {
 
   try {
     if (!webhookId) {
-      const errorMessage = 'PAYPAL_WEBHOOK_ID not configured'
+      const errorMessage = 'No PayPal webhook is registered for the private-bookings endpoint'
       logger.error(errorMessage)
       await logPayPalWebhook(supabase, {
         status: 'configuration_error',
