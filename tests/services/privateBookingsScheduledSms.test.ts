@@ -114,7 +114,7 @@ function confirmedBooking(overrides: Partial<BookingRow> = {}): BookingRow {
 beforeEach(() => {
   vi.clearAllMocks()
   delete process.env.PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED
-  process.env.NODE_ENV = 'test'
+  vi.stubEnv('NODE_ENV', 'test')
 })
 
 describe('getBookingScheduledSms', () => {

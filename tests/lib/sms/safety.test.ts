@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { buildSmsDedupContext, claimSmsIdempotency, evaluateSmsSafetyLimits } from '@/lib/sms/safety'
 
 type IdempotencyRow = {
@@ -303,10 +303,9 @@ describe('claimSmsIdempotency', () => {
 
     expect(context).not.toBeNull()
 
-    const previousNodeEnv = process.env.NODE_ENV
     const previousAllowMissingTables = process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
 
-    process.env.NODE_ENV = 'production'
+    vi.stubEnv('NODE_ENV', 'production')
     delete process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
 
     try {
@@ -334,11 +333,7 @@ describe('claimSmsIdempotency', () => {
 
       expect(result).toBe('conflict')
     } finally {
-      if (previousNodeEnv === undefined) {
-        delete process.env.NODE_ENV
-      } else {
-        process.env.NODE_ENV = previousNodeEnv
-      }
+      vi.unstubAllEnvs()
 
       if (previousAllowMissingTables === undefined) {
         delete process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
@@ -361,10 +356,9 @@ describe('claimSmsIdempotency', () => {
 
     expect(context).not.toBeNull()
 
-    const previousNodeEnv = process.env.NODE_ENV
     const previousAllowMissingTables = process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
 
-    process.env.NODE_ENV = 'production'
+    vi.stubEnv('NODE_ENV', 'production')
     process.env.SMS_SAFETY_ALLOW_MISSING_TABLES = 'true'
 
     try {
@@ -392,11 +386,7 @@ describe('claimSmsIdempotency', () => {
 
       expect(result).toBe('conflict')
     } finally {
-      if (previousNodeEnv === undefined) {
-        delete process.env.NODE_ENV
-      } else {
-        process.env.NODE_ENV = previousNodeEnv
-      }
+      vi.unstubAllEnvs()
 
       if (previousAllowMissingTables === undefined) {
         delete process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
@@ -419,10 +409,9 @@ describe('claimSmsIdempotency', () => {
 
     expect(context).not.toBeNull()
 
-    const previousNodeEnv = process.env.NODE_ENV
     const previousAllowMissingTables = process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
 
-    process.env.NODE_ENV = 'production'
+    vi.stubEnv('NODE_ENV', 'production')
     delete process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
 
     try {
@@ -465,11 +454,7 @@ describe('claimSmsIdempotency', () => {
 
       expect(result).toBe('conflict')
     } finally {
-      if (previousNodeEnv === undefined) {
-        delete process.env.NODE_ENV
-      } else {
-        process.env.NODE_ENV = previousNodeEnv
-      }
+      vi.unstubAllEnvs()
 
       if (previousAllowMissingTables === undefined) {
         delete process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
@@ -492,10 +477,9 @@ describe('claimSmsIdempotency', () => {
 
     expect(context).not.toBeNull()
 
-    const previousNodeEnv = process.env.NODE_ENV
     const previousAllowMissingTables = process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
 
-    process.env.NODE_ENV = 'production'
+    vi.stubEnv('NODE_ENV', 'production')
     delete process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
 
     try {
@@ -561,11 +545,7 @@ describe('claimSmsIdempotency', () => {
 
       expect(result).toBe('conflict')
     } finally {
-      if (previousNodeEnv === undefined) {
-        delete process.env.NODE_ENV
-      } else {
-        process.env.NODE_ENV = previousNodeEnv
-      }
+      vi.unstubAllEnvs()
 
       if (previousAllowMissingTables === undefined) {
         delete process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
@@ -578,10 +558,9 @@ describe('claimSmsIdempotency', () => {
 
 describe('evaluateSmsSafetyLimits', () => {
   it('fails closed in production when the messages table is unavailable', async () => {
-    const previousNodeEnv = process.env.NODE_ENV
     const previousAllowMissingTables = process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
 
-    process.env.NODE_ENV = 'production'
+    vi.stubEnv('NODE_ENV', 'production')
     delete process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
 
     try {
@@ -623,11 +602,7 @@ describe('evaluateSmsSafetyLimits', () => {
       }
       expect(result.code).toBe('safety_unavailable')
     } finally {
-      if (previousNodeEnv === undefined) {
-        delete process.env.NODE_ENV
-      } else {
-        process.env.NODE_ENV = previousNodeEnv
-      }
+      vi.unstubAllEnvs()
 
       if (previousAllowMissingTables === undefined) {
         delete process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
@@ -638,10 +613,9 @@ describe('evaluateSmsSafetyLimits', () => {
   })
 
   it('ignores allow-missing-tables config in production when the messages table is unavailable', async () => {
-    const previousNodeEnv = process.env.NODE_ENV
     const previousAllowMissingTables = process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
 
-    process.env.NODE_ENV = 'production'
+    vi.stubEnv('NODE_ENV', 'production')
     process.env.SMS_SAFETY_ALLOW_MISSING_TABLES = 'true'
 
     try {
@@ -683,11 +657,7 @@ describe('evaluateSmsSafetyLimits', () => {
       }
       expect(result.code).toBe('safety_unavailable')
     } finally {
-      if (previousNodeEnv === undefined) {
-        delete process.env.NODE_ENV
-      } else {
-        process.env.NODE_ENV = previousNodeEnv
-      }
+      vi.unstubAllEnvs()
 
       if (previousAllowMissingTables === undefined) {
         delete process.env.SMS_SAFETY_ALLOW_MISSING_TABLES
