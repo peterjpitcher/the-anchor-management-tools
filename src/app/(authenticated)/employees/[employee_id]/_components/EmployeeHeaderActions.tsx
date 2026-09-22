@@ -21,11 +21,13 @@ export function EmployeeHeaderActions({ primary, secondary }: EmployeeHeaderActi
 
   return (
     <>
-      {/* Mobile: primary + More */}
-      <div className="flex items-center gap-2 md:hidden">
+      {/* Mobile: primary + More. The row, not the More button, anchors the menu, because the
+          row always starts at the page gutter. More sits near the left of the screen, so a
+          menu hung from its right edge ran off the left side. */}
+      <div className="relative flex items-center gap-2 md:hidden">
         {primary}
         {hasSecondary && (
-          <div className="relative">
+          <>
             <Button
               type="button"
               variant="secondary"
@@ -47,7 +49,7 @@ export function EmployeeHeaderActions({ primary, secondary }: EmployeeHeaderActi
             <div
               role="menu"
               hidden={!open}
-              className="absolute right-0 top-full z-40 mt-1 flex w-56 max-w-[calc(100vw-1.5rem)] flex-col gap-1 rounded-md border border-border bg-surface p-2 shadow-lg"
+              className="absolute left-0 top-full z-40 mt-1 flex w-56 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-md border border-border bg-surface p-2 shadow-lg"
               onClick={() => setOpen(false)}
             >
               {secondary.filter(Boolean).map((action, i) => (
@@ -56,7 +58,7 @@ export function EmployeeHeaderActions({ primary, secondary }: EmployeeHeaderActi
                 </div>
               ))}
             </div>
-          </div>
+          </>
         )}
       </div>
 
