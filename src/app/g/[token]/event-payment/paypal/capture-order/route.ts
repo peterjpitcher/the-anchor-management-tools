@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   })
 
   if (result.state === 'confirmed' || result.state === 'already_confirmed') {
-    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+    const appBaseUrl = getAppUrl()
     if (result.state === 'confirmed') {
       await sendEventPaymentConfirmationSms(supabase, {
         bookingId: result.bookingId,

@@ -110,7 +110,6 @@ function buildSupabase(options: { eventError?: { message: string } | null; event
 describe('guest waitlist offer confirm route SMS guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000'
     ;(acceptWaitlistOfferByRawToken as unknown as vi.Mock).mockResolvedValue({
       state: 'confirmed',
       booking_id: 'booking-1',

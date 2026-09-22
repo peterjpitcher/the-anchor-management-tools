@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getParkingBooking } from '@/lib/parking/repository'
 import { captureParkingPayment } from '@/lib/parking/payments'
@@ -9,7 +10,7 @@ export async function GET(request: NextRequest) {
   const bookingId = searchParams.get('booking_id')?.trim() || ''
   const paypalToken = searchParams.get('token')?.trim() || ''
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+  const appUrl = getAppUrl()
 
   if (!bookingId) {
     return NextResponse.redirect(parkingPaymentErrorUrl(appUrl, 'missing_parameters'), { status: 303 })

@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { z } from 'zod'
 import {
   withApiAuth,
@@ -658,7 +659,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+      const appBaseUrl = getAppUrl()
 
       let nextStepUrl: string | null = null
       let holdExpiresAt = bookingResult.hold_expires_at || null

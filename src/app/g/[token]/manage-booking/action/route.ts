@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import {
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         const checkoutResult = await createSeatIncreaseCheckoutByManageToken(supabase, {
           rawToken: token,
           targetSeats: seatsInput,
-          appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+          appBaseUrl: getAppUrl()
         })
 
         if (checkoutResult.state !== 'created') {
@@ -165,7 +166,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             eventName: updateResult.event_name || null,
             oldSeats: Math.max(1, Number(updateResult.old_seats ?? seatsInput)),
             newSeats: Math.max(1, Number(updateResult.new_seats ?? seatsInput)),
-            appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+            appBaseUrl: getAppUrl()
           })
         } catch (smsError) {
           logger.warn('Failed to send guest seat update SMS', {

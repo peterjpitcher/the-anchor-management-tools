@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { parseRecruitmentCv, RECRUITMENT_CV_BUCKET } from '@/lib/recruitment/files'
@@ -114,7 +115,7 @@ export async function GET(
   }
 
   try {
-    const origin = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+    const origin = getAppUrl()
     const html = generateRecruitmentInterviewKitHtml({
       application,
       appointment: appointment ?? null,

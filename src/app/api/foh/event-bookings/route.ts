@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { z } from 'zod'
 import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
 import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
@@ -379,7 +380,7 @@ async function createFohEventBooking(
   }
 
   // ── Delegate booking creation to shared service ─────────────────────────────
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+  const appBaseUrl = getAppUrl()
   const source = payload.walk_in === true ? 'walk-in' : 'admin'
 
   const result = await EventBookingService.createBooking({

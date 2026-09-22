@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { acceptWaitlistOfferByRawToken } from '@/lib/events/waitlist-offers'
@@ -219,7 +220,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   const supabase = createAdminClient()
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+  const appBaseUrl = getAppUrl()
 
   try {
     const acceptance = await acceptWaitlistOfferByRawToken(supabase, token)

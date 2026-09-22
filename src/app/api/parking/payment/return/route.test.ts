@@ -1,4 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+// env.ts reads the app URL once, when it is first imported, so it is set before any import. It
+// differs from the request's own origin on purpose: redirects must use the configured app URL.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL = 'https://management.orangejelly.co.uk'
+})
+
 import { NextRequest } from 'next/server'
 import { GET } from './route'
 
@@ -29,7 +36,6 @@ function makeRequest(query: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  process.env.NEXT_PUBLIC_APP_URL = 'http://localhost'
 })
 
 describe('GET /api/parking/payment/return', () => {
@@ -37,7 +43,7 @@ describe('GET /api/parking/payment/return', () => {
     const response = await GET(makeRequest('?token=ORDER-1'))
 
     expect(response.status).toBe(303)
-    expect(response.headers.get('location')).toBe('http://localhost/parking/payment-error?reason=missing_parameters')
+    expect(response.headers.get('location')).toBe('https://management.orangejelly.co.uk/parking/payment-error?reason=missing_parameters')
     expect(getParkingBooking).not.toHaveBeenCalled()
     expect(captureParkingPayment).not.toHaveBeenCalled()
   })
@@ -46,7 +52,7 @@ describe('GET /api/parking/payment/return', () => {
     const response = await GET(makeRequest('?booking_id=booking-123'))
 
     expect(response.status).toBe(303)
-    expect(response.headers.get('location')).toBe('http://localhost/parking/guest/booking-123?payment=missing_parameters')
+    expect(response.headers.get('location')).toBe('https://management.orangejelly.co.uk/parking/guest/booking-123?payment=missing_parameters')
     expect(getParkingBooking).not.toHaveBeenCalled()
     expect(captureParkingPayment).not.toHaveBeenCalled()
   })
@@ -58,7 +64,7 @@ describe('GET /api/parking/payment/return', () => {
 
     expect(response.status).toBe(303)
     expect(response.headers.get('location')).toBe(
-      'http://localhost/parking/payment-error?reason=not_found&booking_id=missing-booking',
+      'https://management.orangejelly.co.uk/parking/payment-error?reason=not_found&booking_id=missing-booking',
     )
     expect(captureParkingPayment).not.toHaveBeenCalled()
   })
@@ -71,6 +77,6 @@ describe('GET /api/parking/payment/return', () => {
 
     expect(captureParkingPayment).toHaveBeenCalledWith(booking, 'ORDER-1', expect.objectContaining({ client: expect.anything() }))
     expect(response.status).toBe(303)
-    expect(response.headers.get('location')).toBe('http://localhost/parking/guest/booking-123?payment=success')
+    expect(response.headers.get('location')).toBe('https://management.orangejelly.co.uk/parking/guest/booking-123?payment=success')
   })
 })

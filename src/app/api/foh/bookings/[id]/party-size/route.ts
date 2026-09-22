@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
 import { requireFohPermission } from '@/lib/foh/api-auth'
@@ -80,7 +81,7 @@ export async function POST(
       christmasCourseCounts: parsed.data.christmas_course_counts,
       actor: 'foh',
       sendSms: parsed.data.send_sms,
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin,
+      appBaseUrl: getAppUrl(),
       autoMoveTable: true
     })
 
@@ -135,7 +136,7 @@ export async function POST(
         previousPartySize,
         newPartySize,
         sendSms: parsed.data.send_sms,
-        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin,
+        appBaseUrl: getAppUrl(),
       })
     } catch (depositError) {
       logger.error('FOH party-size deposit transition failed after party size saved', {

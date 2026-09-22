@@ -1,20 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/env'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getParkingBooking } from '@/lib/parking/repository'
 import { createParkingPaymentOrder } from '@/lib/parking/payments'
 import { logger } from '@/lib/logger'
 import { parkingGuestUrl, parkingPaymentErrorUrl, parkingPaymentReturnUrl } from '@/lib/parking/public-links'
 
-function appBaseUrl(request: NextRequest): string {
-  return process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
-}
-
 function redirectToGuest(baseUrl: string, bookingId: string, payment: string): NextResponse {
   return NextResponse.redirect(parkingGuestUrl(baseUrl, bookingId, payment), { status: 303 })
 }
 
 export async function POST(request: NextRequest) {
-  const baseUrl = appBaseUrl(request)
+  const baseUrl = getAppUrl()
   let bookingId = ''
 
   try {
