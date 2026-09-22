@@ -1,5 +1,5 @@
 // src/tests/api/foh/deposit-waiver.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock auth and Supabase before importing the route
 vi.mock('@/lib/foh/api-auth', () => ({
@@ -11,8 +11,16 @@ vi.mock('@/lib/supabase/server', () => ({
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }) }
   })
 }))
+// The guest notice shortens the manage link and checks SMS eligibility through the
+// service-role client, which these tests do not stub. Left real, it sent two live requests
+// to the placeholder Supabase URL, and during a DNS outage those hung until the test timed out.
+vi.mock('@/lib/table-bookings/bookings', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/table-bookings/bookings')>()),
+  sendTableBookingCreatedSmsIfAllowed: vi.fn().mockResolvedValue({ sms: null }),
+}))
 
 import { requireFohPermission } from '@/lib/foh/api-auth'
+import { sendTableBookingCreatedSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import { POST } from '@/app/api/foh/bookings/route'
 import {
   FOH_BOOKING_CLIENT_CONTRACT,
@@ -49,9 +57,24 @@ const baseBookingPayload = {
 }
 
 describe('POST /api/foh/bookings — deposit waiver', () => {
+  // Every request that reaches fetch here would be a real one. The route swallows failures on
+  // its notification paths, so a rejected request alone would not fail the test: the calls
+  // are checked after each test instead.
+  const requestUrl = (input: RequestInfo | URL): string =>
+    input instanceof Request ? input.url : String(input)
+  const unexpectedFetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    throw new Error(`Unexpected network request in test: ${requestUrl(input)}`)
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('fetch', unexpectedFetch)
     process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000'
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    expect(unexpectedFetch.mock.calls.map(([input]) => requestUrl(input))).toEqual([])
   })
 
   it('should return 403 when a non-manager tries to waive the deposit', async () => {
@@ -150,6 +173,24 @@ describe('POST /api/foh/bookings — deposit waiver', () => {
     const res = await POST(req)
     // Should succeed (201) — not blocked on deposit method missing
     expect(res.status).toBe(201)
+    const json = await res.json()
+    expect(json.data.state).toBe('confirmed')
+    expect(json.data.next_step_url).toBeNull()
+    expect(mockSupabase.rpc).toHaveBeenCalledWith(
+      'create_table_booking_staff_v06',
+      expect.objectContaining({ p_deposit_waived: true })
+    )
+    // A waived booking is confirmed outright, so the guest gets a confirmation with no
+    // payment link.
+    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledTimes(1)
+    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
+      mockSupabase,
+      expect.objectContaining({
+        customerId: baseBookingPayload.customer_id,
+        bookingResult: expect.objectContaining({ state: 'confirmed', table_booking_id: 'booking-1' }),
+        nextStepUrl: null,
+      })
+    )
   })
 
   // Defects AB-001 / WF-004: management_override = waiver. A super_admin
