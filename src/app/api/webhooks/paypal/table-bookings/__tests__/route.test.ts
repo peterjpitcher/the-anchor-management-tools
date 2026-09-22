@@ -118,7 +118,7 @@ function makeCaptureCompletedBody(overrides: Record<string, unknown> = {}): stri
 function makeRequest(body: string, headers = VALID_WEBHOOK_HEADERS): NextRequest {
   return new NextRequest('http://localhost/api/webhooks/paypal/table-bookings', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
+    headers,
     body,
   })
 }
@@ -197,7 +197,7 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
     const { POST } = await import('../route')
 
     vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(true)
-    vi.mocked(claimIdempotencyKey).mockResolvedValueOnce({ state: 'replay' })
+    vi.mocked(claimIdempotencyKey).mockResolvedValueOnce({ state: 'replay', response: null })
 
     const mockSupabase = createSupabaseMock()
     vi.mocked(createAdminClient).mockReturnValue(mockSupabase as any)

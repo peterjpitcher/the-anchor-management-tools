@@ -48,7 +48,7 @@ const mockAuthSuccess = (dbMock: Record<string, unknown> = {}) => {
   vi.mocked(requireSettingsManagePermission).mockResolvedValueOnce({
     ok: true,
     userId: 'user-1',
-    supabase: dbMock as unknown as Awaited<ReturnType<typeof requireSettingsManagePermission>>['supabase'],
+    supabase: dbMock as unknown as Extract<Awaited<ReturnType<typeof requireSettingsManagePermission>>, { ok: true }>['supabase'],
   } as unknown as Awaited<ReturnType<typeof requireSettingsManagePermission>>)
 }
 

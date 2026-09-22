@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const createBookingMock = vi.fn();
-const sendManagerEmailMock = vi.fn(async () => ({ sent: true }));
+const sendManagerEmailMock = vi.fn(async (_input: unknown) => ({ sent: true }));
 
 // One recognisable sentinel: the assertion is that THIS object reaches the
 // service, proving the route hands its admin client to the booking write.
