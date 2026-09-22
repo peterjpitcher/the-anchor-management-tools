@@ -3,6 +3,7 @@ import 'server-only';
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logAuditEvent } from '@/app/actions/audit';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -23,17 +24,15 @@ export type FinalizeEmployeeSeparationResult =
   | { success: true; employmentEndDate: string; authUserDeleted: boolean }
   | { success: false; error: string; code?: string };
 
-function todayUtcIso(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
 export async function finalizeEmployeeSeparation(
   employeeId: string,
   options: FinalizeEmployeeSeparationOptions = {},
 ): Promise<FinalizeEmployeeSeparationResult> {
   const adminClient = options.adminClient ?? createAdminClient();
   const source = options.source ?? 'manual';
-  const today = options.todayIso ?? todayUtcIso();
+  // The London date. The UTC date is still yesterday from 00:00 to 00:59 BST, which refused a
+  // last working day of today when access was revoked by hand in that hour.
+  const today = options.todayIso ?? getTodayIsoDate();
   const now = new Date().toISOString();
 
   const { data: employee, error: employeeError } = await adminClient

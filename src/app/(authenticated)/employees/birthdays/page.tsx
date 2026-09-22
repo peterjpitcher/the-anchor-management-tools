@@ -8,7 +8,7 @@ import {
   ExclamationTriangleIcon,
   CalendarIcon
 } from '@heroicons/react/24/outline'
-import { format, getMonth, addDays } from 'date-fns'
+import { formatDateInLondon, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Badge } from '@/ds'
@@ -55,8 +55,12 @@ export default async function EmployeeBirthdaysPage() {
 
   const birthdays = result.birthdays || []
 
+  // Count from the London date, as getUpcomingBirthday does, so the page and the helper agree
+  // about the day. The host clock is UTC on the server, still yesterday from 00:00 to 00:59 BST.
+  const todayIso = getTodayIsoDate();
+  const monthIndexOf = (isoDate: string) => Number(isoDate.slice(5, 7)) - 1;
   const getUpcomingBirthdayDate = (daysUntil: number) => {
-    return addDays(new Date(), daysUntil);
+    return shiftIsoDate(todayIso, daysUntil) ?? todayIso;
   };
 
   const getCountdownText = (days: number) => {
@@ -77,7 +81,7 @@ export default async function EmployeeBirthdaysPage() {
   // Group birthdays by month
   const groupedByMonth = birthdays.reduce((acc, birthday) => {
     const birthdayDate = getUpcomingBirthdayDate(birthday.days_until_birthday);
-    const monthIndex = getMonth(birthdayDate);
+    const monthIndex = monthIndexOf(birthdayDate);
     const monthName = monthNames[monthIndex];
 
     if (!acc[monthName]) {
@@ -92,7 +96,7 @@ export default async function EmployeeBirthdaysPage() {
   }, {} as Record<string, { monthIndex: number; birthdays: EmployeeBirthday[] }>);
 
   // Sort months in chronological order starting from current month
-  const currentMonth = getMonth(new Date());
+  const currentMonth = monthIndexOf(todayIso);
   const sortedMonths = Object.entries(groupedByMonth)
     .sort(([, a], [, b]) => {
       const aIndex = a.monthIndex >= currentMonth ? a.monthIndex : a.monthIndex + 12;
@@ -164,7 +168,7 @@ export default async function EmployeeBirthdaysPage() {
                         <div className="flex sm:block items-center justify-between sm:text-right sm:ml-4">
                           <div className="flex items-center sm:justify-end space-x-1.5 sm:space-x-2">
                             <span className="text-xs sm:text-sm font-medium text-text">
-                              {format(new Date(birthday.date_of_birth), 'MMM d')}
+                              {formatDateInLondon(birthday.date_of_birth, { month: 'short', day: 'numeric' }, 'en-US')}
                             </span>
                             <Badge
                               variant={getCountdownBadgeVariant(birthday.days_until_birthday) as 'default' | 'info' | 'warning' | 'error'}

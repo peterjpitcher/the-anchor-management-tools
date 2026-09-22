@@ -5,8 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email/emailService';
 import { getUpcomingBirthday, calculateAge } from '@/lib/employeeUtils';
 import { displayName } from '@/lib/employees/display-name';
-import { getTodayIsoDate } from '@/lib/dateUtils';
-import { format } from 'date-fns';
+import { formatDateInLondon, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils';
 import { STAFF } from '@/lib/brand/palette';
 import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
@@ -274,15 +273,19 @@ export async function getAllBirthdays() {
   }
 }
 
+/**
+ * The day the employee's next birthday falls on, as "Friday, September 25". Counted from today's
+ * London date with the same day count that picked them for the reminder, so the email names the
+ * day it was sent for (a 29 February birthday falls on 1 March in other years).
+ */
+function formatUpcomingBirthday(emp: EmployeeWithBirthday): string {
+  const birthdayIso = shiftIsoDate(getTodayIsoDate(), emp.days_until_birthday) ?? getTodayIsoDate();
+  return formatDateInLondon(birthdayIso, { weekday: 'long', month: 'long', day: 'numeric' }, 'en-US');
+}
+
 function generateBirthdayReminderEmail(birthdays: EmployeeWithBirthday[]): string {
   const birthdayList = birthdays
     .map(emp => {
-      const birthdayDate = new Date(emp.date_of_birth);
-      birthdayDate.setFullYear(new Date().getFullYear());
-      if (birthdayDate < new Date()) {
-        birthdayDate.setFullYear(birthdayDate.getFullYear() + 1);
-      }
-      
       return `
         <tr>
           <td style="padding: 12px; border-bottom: 1px solid ${STAFF.border};">
@@ -290,7 +293,7 @@ function generateBirthdayReminderEmail(birthdays: EmployeeWithBirthday[]): strin
             <span style="color: ${STAFF.textMuted}; font-size: 14px;">${emp.job_title || 'No title'}</span>
           </td>
           <td style="padding: 12px; border-bottom: 1px solid ${STAFF.border}; text-align: center;">
-            ${format(birthdayDate, 'EEEE, MMMM d')}
+            ${formatUpcomingBirthday(emp)}
           </td>
           <td style="padding: 12px; border-bottom: 1px solid ${STAFF.border}; text-align: center;">
             Turning ${emp.turning_age}
@@ -353,14 +356,8 @@ function generatePlainTextEmail(birthdays: EmployeeWithBirthday[]): string {
   text += `The following employee${birthdays.length > 1 ? 's have birthdays' : ' has a birthday'} coming up next week:\n\n`;
   
   birthdays.forEach(emp => {
-    const birthdayDate = new Date(emp.date_of_birth);
-    birthdayDate.setFullYear(new Date().getFullYear());
-    if (birthdayDate < new Date()) {
-      birthdayDate.setFullYear(birthdayDate.getFullYear() + 1);
-    }
-    
     text += `• ${displayName(emp)} (${emp.job_title || 'No title'})\n`;
-    text += `  Birthday: ${format(birthdayDate, 'EEEE, MMMM d')}\n`;
+    text += `  Birthday: ${formatUpcomingBirthday(emp)}\n`;
     text += `  Turning: ${emp.turning_age}\n\n`;
   });
   
