@@ -259,13 +259,7 @@ describe('event checklist reminders cron', () => {
     expect(linksIn(email.text ?? '')).toEqual([`${APP_URL}/events/todo`])
     expect(email.text).toContain('Harvest Quiz Night')
 
-    assertCleanText(email.text ?? '')
-    // Subject and html skip only the banned-dash check: the route builds both with an en dash,
-    // which is a separate fix from the links tested here.
-    for (const part of [email.subject, email.html ?? '']) {
-      expect(part).not.toMatch(/undefined|Invalid Date|NaN|£0\.00|\bnull\b/)
-      expect(part).not.toMatch(/localhost|management\.example\.test\/\//)
-    }
+    expectCleanEmail(email)
   })
 })
 

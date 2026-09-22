@@ -185,18 +185,6 @@ function expectCleanEmail(email: EmailParts): void {
   }
 }
 
-/**
- * expectCleanEmail without the banned-dash check, for templates in src that still carry an en or
- * em dash: that is a separate fix from the links tested here, and each caller names the lines.
- */
-function expectCleanEmailIgnoringDashes(email: EmailParts): void {
-  for (const part of [email.subject, email.text, email.html]) {
-    if (part === undefined) continue
-    expect(part).not.toMatch(/undefined|Invalid Date|NaN|£0\.00|\bnull\b/)
-    expectNoBadLinks(part)
-  }
-}
-
 // Thursday 1 October 2026, 11am in London.
 const NOW = new Date('2026-10-01T10:00:00.000Z')
 
@@ -518,8 +506,7 @@ describe('private booking manager notifications', () => {
     expect(email.text).toContain(`Skip: ${outcomeLinks[2]}`)
     expect(appLinksIn(email.text ?? '')).toEqual(outcomeLinks)
     expect(appLinksIn(email.html ?? '')).toEqual(outcomeLinks)
-    // Dash check skipped: manager-notifications.ts lines 293, 304 and 311 write an em dash.
-    expectCleanEmailIgnoringDashes(email)
+    expectCleanEmail(email)
   })
 })
 
@@ -684,9 +671,7 @@ describe('rota staff emails', () => {
 
     expect(html).toContain(`href="${APP_URL}${path}"`)
     expect(appLinksIn(html)).toEqual([`${APP_URL}${path}`])
-    // Dash check skipped: email-templates.ts writes en dashes in every time range (lines 73, 86, 92
-    // and on) and em dashes in shift titles and headings (lines 72, 236, 373).
-    expectCleanEmailIgnoringDashes({ subject: '', html })
+    expectCleanEmail({ subject: '', html })
   })
 })
 
