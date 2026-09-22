@@ -22,14 +22,14 @@
 
 import crypto from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getAppUrl } from '@/lib/env'
 
 function generateToken(): string {
   return crypto.randomBytes(32).toString('base64url')
 }
 
 function resolveBaseUrl(appBaseUrl?: string): string {
-  const base = appBaseUrl || process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'
-  return base.replace(/\/+$/, '')
+  return (appBaseUrl || getAppUrl()).replace(/\/+$/, '')
 }
 
 export function buildUnsubscribeUrl(rawToken: string, appBaseUrl?: string): string {

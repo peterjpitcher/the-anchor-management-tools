@@ -409,7 +409,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
             <h4 className="font-medium mb-1">Example Request</h4>
             <code className="block overflow-x-auto whitespace-pre rounded-sm border border-border bg-surface p-3 font-mono text-sm text-text">
 {`curl -H "Authorization: Bearer YOUR_API_KEY" \\
-  ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/api/events`}
+  ${process.env.NEXT_PUBLIC_APP_URL}/api/events`}
             </code>
           </div>
 

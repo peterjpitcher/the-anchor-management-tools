@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// env.ts reads the app URL once, when it is first imported, so it is set before any import.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL = 'https://management.orangejelly.co.uk'
+})
+
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
@@ -102,7 +107,6 @@ function mockAdmin(row: Record<string, unknown> | null, rpcResult?: unknown) {
 beforeEach(() => {
   vi.clearAllMocks()
   process.env.PRIVATE_BOOKING_TOKEN_SECRET = 'test-secret'
-  process.env.NEXT_PUBLIC_APP_URL = 'https://management.orangejelly.co.uk'
   vi.mocked(checkUserPermission).mockResolvedValue(true)
   vi.mocked(createClient).mockResolvedValue({
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
@@ -210,7 +214,11 @@ describe('sendInvoicePaymentLink', () => {
       }),
     )
     expect(sendInvoicePaymentLinkEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'kim@example.com', amountDue: 725.6 }),
+      expect.objectContaining({
+        to: 'kim@example.com',
+        amountDue: 725.6,
+        portalUrl: expect.stringMatching(/^https:\/\/management\.orangejelly\.co\.uk\/invoice-portal\/[A-Za-z0-9_-]{88}$/),
+      }),
     )
   })
 

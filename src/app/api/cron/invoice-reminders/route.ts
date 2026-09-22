@@ -7,6 +7,7 @@ import type { InvoiceWithDetails } from '@/types/invoices'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { reportCronFailure } from '@/lib/cron/alerting'
+import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import {
   claimIdempotencyKey,
@@ -240,7 +241,7 @@ Reminder Type: ${reminderType}
 
 ${vendorEmail ? 'Customer reminder has been sent.' : 'No vendor email on file - manual follow-up required.'}
 
-View invoice: ${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/invoices/${invoice.id}
+View invoice: ${getAppUrl()}/invoices/${invoice.id}
             `.trim()
 
             const { data: existingInternalReminder, error: internalCheckError } = await supabase

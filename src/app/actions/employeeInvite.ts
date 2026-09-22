@@ -25,10 +25,7 @@ import {
 import { normalisePreferredName } from '@/lib/employees/display-name';
 import { resolveOnboardingSessionError } from '@/lib/employees/onboarding-session';
 import { formatPhoneForStorage } from '@/lib/utils';
-
-// This builds invite links that go out by email, so the fallback must resolve.
-// `manage.the-anchor.pub` does not; `management.orangejelly.co.uk` is the live domain.
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk';
+import { getAppUrl } from '@/lib/env';
 
 // DEF-015 verified: the employee_invite_tokens table column is defined as
 // `expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '7 days'`
@@ -37,7 +34,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangeje
 // invite emails both promise "7 days" — this matches the DB constraint.
 
 function buildOnboardingUrl(token: string): string {
-  return `${BASE_URL}/onboarding/${token}`;
+  return `${getAppUrl()}/onboarding/${token}`;
 }
 
 export type InviteType = 'onboarding' | 'portal_access';

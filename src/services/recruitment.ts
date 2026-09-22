@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAppUrl } from '@/lib/env'
 import {
   buildRecruitmentCvStoragePath,
   getRecruitmentCvMaxBytes,
@@ -155,12 +156,6 @@ function hashToken(token: string): string {
 
 function createToken(): string {
   return crypto.randomBytes(32).toString('base64url')
-}
-
-function recruitmentBaseUrl(): string {
-  // Builds candidate-facing booking links sent by email, so the fallback must resolve.
-  // `manage.the-anchor.pub` does not; `management.orangejelly.co.uk` is the live domain.
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'
 }
 
 function retentionMonths(): number {
@@ -2268,7 +2263,7 @@ export async function issueRecruitmentBookingLink(
     token,
     tokenHash,
     expiresAt,
-    bookingUrl: `${recruitmentBaseUrl()}/recruitment/book/${token}`,
+    bookingUrl: `${getAppUrl()}/recruitment/book/${token}`,
   }
 }
 

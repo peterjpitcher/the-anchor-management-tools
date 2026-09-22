@@ -3,13 +3,10 @@ import { authorizeCronRequest } from '@/lib/cron-auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendChaseEmail, sendPortalInviteEmail } from '@/lib/email/employee-invite-emails';
 import { reportCronFailure } from '@/lib/cron/alerting';
-
-// This builds chase-email links, so the fallback must resolve.
-// `manage.the-anchor.pub` does not; `management.orangejelly.co.uk` is the live domain.
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk';
+import { getAppUrl } from '@/lib/env';
 
 function buildOnboardingUrl(token: string): string {
-  return `${BASE_URL}/onboarding/${token}`;
+  return `${getAppUrl()}/onboarding/${token}`;
 }
 
 export async function GET(request: NextRequest) {

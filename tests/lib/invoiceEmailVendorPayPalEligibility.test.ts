@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { InvoiceWithDetails } from '@/types/invoices'
 
+// env.ts reads the app URL once, when it is first imported, so it is set before any import.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL = 'https://management.orangejelly.co.uk'
+})
+
 const mocks = vi.hoisted(() => ({
   generateInvoicePDF: vi.fn(),
   generateQuotePDF: vi.fn(),
@@ -77,7 +82,6 @@ describe('sendInvoiceEmail vendor PayPal eligibility', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.PRIVATE_BOOKING_TOKEN_SECRET = 'test-secret'
-    process.env.NEXT_PUBLIC_APP_URL = 'https://management.orangejelly.co.uk'
     mocks.generateInvoicePDF.mockResolvedValue(PDF_BYTES)
     mocks.sendEmail.mockResolvedValue({ success: true, messageId: 'message-1' })
   })
@@ -88,7 +92,7 @@ describe('sendInvoiceEmail vendor PayPal eligibility', () => {
     expect(result).toMatchObject({ success: true, pdfBuffer: PDF_BYTES })
     const payload = sentPayload()
     expect(String(payload.text)).toContain('Prefer to pay online?')
-    expect(String(payload.text)).toContain('/invoice-portal/')
+    expect(String(payload.text)).toContain('https://management.orangejelly.co.uk/invoice-portal/')
     expectInvoicePdfAttachment(payload)
   })
 
