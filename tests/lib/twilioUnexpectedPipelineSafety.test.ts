@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
@@ -39,7 +39,7 @@ function mockEligibleCustomerLookup() {
   const eq = vi.fn().mockReturnValue({ maybeSingle })
   const select = vi.fn().mockReturnValue({ eq })
 
-  ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+  ;(createAdminClient as unknown as Mock).mockReturnValue({
     from: vi.fn((table: string) => {
       if (table === 'customers') {
         return { select }
@@ -74,7 +74,7 @@ describe('sendSMS unexpected pipeline safety metadata', () => {
       code: 'safety_unavailable',
     })
     expect(evaluateSmsSafetyLimits).toHaveBeenCalled()
-    expect(twilio as unknown as vi.Mock).not.toHaveBeenCalled()
+    expect(twilio as unknown as Mock).not.toHaveBeenCalled()
   })
 })
 

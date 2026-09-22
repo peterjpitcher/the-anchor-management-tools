@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/paypal', () => ({
   verifyPayPalWebhook: vi.fn(),
@@ -31,10 +31,10 @@ describe('PayPal general webhook idempotency', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.PAYPAL_WEBHOOK_ID = 'webhook_test'
-    ;(verifyPayPalWebhook as unknown as vi.Mock).mockResolvedValue(true)
-    ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-1')
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(verifyPayPalWebhook as unknown as Mock).mockResolvedValue(true)
+    ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-1')
+    ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
+    ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -46,12 +46,12 @@ describe('PayPal general webhook idempotency', () => {
   })
 
   it('does not write audit rows when PayPal replays an already processed event', async () => {
-    ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'replay' })
+    ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'replay' })
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
     const auditLogInsert = vi.fn().mockResolvedValue({ error: null })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
@@ -96,12 +96,12 @@ describe('PayPal general webhook idempotency', () => {
   })
 
   it('persists the idempotency response after processing a new event', async () => {
-    ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
+    ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
     const auditLogInsert = vi.fn().mockResolvedValue({ error: null })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }

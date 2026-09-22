@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 const { warn, error } = vi.hoisted(() => ({
   warn: vi.fn(),
@@ -50,7 +50,7 @@ describe('parking payment persistence guards', () => {
   })
 
   it('persists sms_code and sms_log_failure markers when sendSMS returns logging_failed', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM1',
       code: 'logging_failed',
@@ -104,20 +104,20 @@ describe('parking payment persistence guards', () => {
   })
 
   it('persists sms_code and sms_log_failure markers for payment confirmation SMS when sendSMS returns logging_failed', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM2',
       code: 'logging_failed',
       logFailure: true,
     })
-    ;(buildPaymentConfirmationSms as unknown as vi.Mock).mockReturnValue('Paid')
-    ;(buildPaymentConfirmationManagerEmail as unknown as vi.Mock).mockReturnValue({
+    ;(buildPaymentConfirmationSms as unknown as Mock).mockReturnValue('Paid')
+    ;(buildPaymentConfirmationManagerEmail as unknown as Mock).mockReturnValue({
       to: 'manager@example.com',
       subject: 'Paid',
       html: '<p>Paid</p>',
     })
-    ;(sendEmail as unknown as vi.Mock).mockResolvedValue({ success: true })
-    ;(updateParkingBooking as unknown as vi.Mock).mockResolvedValue({
+    ;(sendEmail as unknown as Mock).mockResolvedValue({ success: true })
+    ;(updateParkingBooking as unknown as Mock).mockResolvedValue({
       id: 'booking-confirm',
       customer_id: null,
       customer_mobile: '+447700900123',
@@ -182,7 +182,7 @@ describe('parking payment persistence guards', () => {
   })
 
   it('fails closed when reminder-flag persistence affects no booking rows after successful SMS send', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM123456',
     })
@@ -228,7 +228,7 @@ describe('parking payment persistence guards', () => {
   })
 
   it('fails closed when reminder-flag persistence errors after successful SMS send', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM123456',
     })
@@ -273,12 +273,12 @@ describe('parking payment persistence guards', () => {
   })
 
   it('surfaces logging_failed when parking notification persistence fails after a successful SMS send', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       sid: 'SM123456',
     })
 
-    ;(logParkingNotification as unknown as vi.Mock).mockRejectedValueOnce(new Error('log down'))
+    ;(logParkingNotification as unknown as Mock).mockRejectedValueOnce(new Error('log down'))
 
     const updateMaybeSingle = vi.fn().mockResolvedValue({
       data: { id: 'booking-10' },
@@ -321,7 +321,7 @@ describe('parking payment persistence guards', () => {
   })
 
   it('propagates thrown logging_failed metadata when sendSMS throws before persistence writes', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockRejectedValue(
+    ;(sendSMS as unknown as Mock).mockRejectedValue(
       Object.assign(new Error('message persistence failed in twilio pipeline'), {
         code: 'logging_failed',
       })

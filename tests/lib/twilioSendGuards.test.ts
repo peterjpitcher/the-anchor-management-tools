@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.hoisted(() => {
   process.env.TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || 'AC_TEST'
@@ -27,7 +27,7 @@ function mockCustomerLookup(result: { data: any; error: any }) {
   const eq = vi.fn().mockReturnValue({ maybeSingle })
   const select = vi.fn().mockReturnValue({ eq })
 
-  ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+  ;(createAdminClient as unknown as Mock).mockReturnValue({
     from: vi.fn((table: string) => {
       if (table === 'customers') {
         return { select }
@@ -46,7 +46,7 @@ function mockCustomerResolutionLookupError() {
   const canonicalEq = vi.fn().mockReturnValue({ order: canonicalOrder })
   const select = vi.fn().mockReturnValue({ eq: canonicalEq })
 
-  ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+  ;(createAdminClient as unknown as Mock).mockReturnValue({
     from: vi.fn((table: string) => {
       if (table === 'customers') {
         return { select }
@@ -79,7 +79,7 @@ describe('sendSMS customer safety guards', () => {
       error: 'SMS blocked by customer safety check',
       code: 'customer_lookup_failed',
     })
-    expect(twilio as unknown as vi.Mock).not.toHaveBeenCalled()
+    expect(twilio as unknown as Mock).not.toHaveBeenCalled()
   })
 
   it('fails closed when customer eligibility lookup affects no rows', async () => {
@@ -100,7 +100,7 @@ describe('sendSMS customer safety guards', () => {
       error: 'SMS blocked by customer safety check',
       code: 'customer_lookup_failed',
     })
-    expect(twilio as unknown as vi.Mock).not.toHaveBeenCalled()
+    expect(twilio as unknown as Mock).not.toHaveBeenCalled()
   })
 
   it('blocks sends for known non-active SMS status values', async () => {
@@ -125,7 +125,7 @@ describe('sendSMS customer safety guards', () => {
       success: false,
       error: 'This number is not eligible to receive SMS messages',
     })
-    expect(twilio as unknown as vi.Mock).not.toHaveBeenCalled()
+    expect(twilio as unknown as Mock).not.toHaveBeenCalled()
   })
 
   it('blocks sends when customer sms_opt_in is false (legacy opt-out) even if sms_status is null', async () => {
@@ -150,7 +150,7 @@ describe('sendSMS customer safety guards', () => {
       success: false,
       error: 'This number is not eligible to receive SMS messages',
     })
-    expect(twilio as unknown as vi.Mock).not.toHaveBeenCalled()
+    expect(twilio as unknown as Mock).not.toHaveBeenCalled()
   })
 
   /*
@@ -167,7 +167,7 @@ describe('sendSMS customer safety guards', () => {
    */
   it('never sends to an opted-out customer, even with the transactional override', async () => {
     const create = vi.fn()
-    ;(twilio as unknown as vi.Mock).mockReturnValue({ messages: { create } })
+    ;(twilio as unknown as Mock).mockReturnValue({ messages: { create } })
 
     mockCustomerLookup({
       data: {
@@ -198,7 +198,7 @@ describe('sendSMS customer safety guards', () => {
       from: '+15555555555',
       status: 'queued',
     })
-    ;(twilio as unknown as vi.Mock).mockReturnValue({
+    ;(twilio as unknown as Mock).mockReturnValue({
       messages: { create }
     })
 
@@ -252,7 +252,7 @@ describe('sendSMS customer safety guards', () => {
       error: 'SMS blocked by customer safety check',
       code: 'customer_phone_mismatch',
     })
-    expect(twilio as unknown as vi.Mock).not.toHaveBeenCalled()
+    expect(twilio as unknown as Mock).not.toHaveBeenCalled()
   })
 
   it('fails closed when customer resolution lookup errors before resolving customer context', async () => {
@@ -268,6 +268,6 @@ describe('sendSMS customer safety guards', () => {
       error: 'SMS blocked by customer safety check',
       code: 'customer_lookup_failed',
     })
-    expect(twilio as unknown as vi.Mock).not.toHaveBeenCalled()
+    expect(twilio as unknown as Mock).not.toHaveBeenCalled()
   })
 })

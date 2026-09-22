@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/paypal', () => ({
   verifyPayPalWebhook: vi.fn(),
@@ -45,14 +45,14 @@ describe('PayPal parking webhook fail-closed guards', () => {
   })
 
   it('returns 200 and keeps idempotency claim when idempotency persistence fails after processing', async () => {
-    ;(verifyPayPalWebhook as unknown as vi.Mock).mockResolvedValue(true)
-    ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-1')
-    ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-    ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockRejectedValue(new Error('db down'))
+    ;(verifyPayPalWebhook as unknown as Mock).mockResolvedValue(true)
+    ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-1')
+    ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+    ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
+    ;(persistIdempotencyResponse as unknown as Mock).mockRejectedValue(new Error('db down'))
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
@@ -85,11 +85,11 @@ describe('PayPal parking webhook fail-closed guards', () => {
   })
 
   it('marks the parent parking booking failed when a capture is denied', async () => {
-    ;(verifyPayPalWebhook as unknown as vi.Mock).mockResolvedValue(true)
-    ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-denied')
-    ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(verifyPayPalWebhook as unknown as Mock).mockResolvedValue(true)
+    ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-denied')
+    ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+    ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
+    ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
     const auditLogInsert = vi.fn().mockResolvedValue({ error: null })
@@ -108,7 +108,7 @@ describe('PayPal parking webhook fail-closed guards', () => {
       maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'booking-1' }, error: null }),
     }
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
@@ -166,11 +166,11 @@ describe('PayPal parking webhook fail-closed guards', () => {
   })
 
   it('rejects completed captures when the amount does not match the pending parking payment', async () => {
-    ;(verifyPayPalWebhook as unknown as vi.Mock).mockResolvedValue(true)
-    ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-completed')
-    ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(verifyPayPalWebhook as unknown as Mock).mockResolvedValue(true)
+    ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-completed')
+    ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+    ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
+    ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
     const bookingQuery: any = {
@@ -193,7 +193,7 @@ describe('PayPal parking webhook fail-closed guards', () => {
       }),
     }
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }

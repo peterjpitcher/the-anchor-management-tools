@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
@@ -125,7 +125,7 @@ function buildMoveTableSupabase() {
 describe('FOH/BOH move-table parity', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+    ;(getTableBookingForFoh as unknown as Mock).mockResolvedValue({
       id: BOOKING_ID,
       status: 'confirmed',
       booking_date: '2026-02-23',
@@ -139,7 +139,7 @@ describe('FOH/BOH move-table parity', () => {
 
   it('returns equivalent GET availability payloads for FOH and BOH', async () => {
     const fohSupabase = buildMoveTableSupabase()
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValueOnce({
       ok: true,
       userId: 'user-1',
       supabase: fohSupabase,
@@ -150,7 +150,7 @@ describe('FOH/BOH move-table parity', () => {
     const fohPayload = await fohResponse.json()
 
     const bohSupabase = buildMoveTableSupabase()
-    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(requireBohTableBookingPermission as unknown as Mock).mockResolvedValueOnce({
       ok: true,
       userId: 'user-1',
       supabase: bohSupabase,
@@ -167,7 +167,7 @@ describe('FOH/BOH move-table parity', () => {
 
   it('returns equivalent POST move-table payloads for FOH and BOH', async () => {
     const fohSupabase = buildMoveTableSupabase()
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValueOnce({
       ok: true,
       userId: 'user-1',
       supabase: fohSupabase,
@@ -183,7 +183,7 @@ describe('FOH/BOH move-table parity', () => {
     const fohPayload = await fohResponse.json()
 
     const bohSupabase = buildMoveTableSupabase()
-    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(requireBohTableBookingPermission as unknown as Mock).mockResolvedValueOnce({
       ok: true,
       userId: 'user-1',
       supabase: bohSupabase,

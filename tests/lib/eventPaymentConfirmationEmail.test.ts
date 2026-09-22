@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { assertCleanRender, expectedLongDate } from '../mocks/emailRenderChecks'
 
 vi.mock('@/lib/email/emailService', () => ({
@@ -212,7 +212,7 @@ function buildSupabase(options?: {
 }
 
 function lastSend(): { subject: string; html: string; text: string; metadata: Record<string, unknown> } {
-  const calls = (sendEmail as unknown as vi.Mock).mock.calls
+  const calls = (sendEmail as unknown as Mock).mock.calls
   expect(calls.length).toBeGreaterThan(0)
   return calls[calls.length - 1][0]
 }
@@ -233,7 +233,7 @@ const QUIZ_WHEN = `${expectedLongDate('2026-09-16')} at 7pm`
 describe('event guest emails', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(sendEmail as unknown as vi.Mock).mockResolvedValue({
+    ;(sendEmail as unknown as Mock).mockResolvedValue({
       success: true,
       messageId: 'email-1',
     })
@@ -279,7 +279,7 @@ describe('event guest emails', () => {
         seats: 2,
         manage_link_included: true,
       })
-      expect((sendEmail as unknown as vi.Mock).mock.calls[0][0].commType).toBe('event_booking_confirmed')
+      expect((sendEmail as unknown as Mock).mock.calls[0][0].commType).toBe('event_booking_confirmed')
     })
 
     it('gives cash bingo its two cash rules and both halves of the age rule, and promises no table', async () => {
@@ -513,7 +513,7 @@ describe('event guest emails', () => {
     expect(result).toEqual({ success: true, messageId: 'email-1' })
     const sent = lastSend()
     assertCleanRender(sent)
-    expect(sent.commType ?? (sendEmail as unknown as vi.Mock).mock.calls[0][0].commType).toBe('event_payment_manual_review')
+    expect(sent.commType ?? (sendEmail as unknown as Mock).mock.calls[0][0].commType).toBe('event_payment_manual_review')
     expect(sent.text).toContain('Staff need to check your booking')
     expect(sent.text).not.toContain('We have received your')
   })

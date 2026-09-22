@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -29,7 +29,7 @@ describe('event guest engagement route error payloads', () => {
   })
 
   it('returns a generic 500 payload when cron run acquisition fails', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     const maybeSingle = vi.fn().mockResolvedValue({
       data: null,
@@ -41,7 +41,7 @@ describe('event guest engagement route error payloads', () => {
     const eqJob = vi.fn().mockReturnValue({ eq: eqStatus })
     const select = vi.fn().mockReturnValue({ eq: eqJob })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'cron_job_runs') {
           return { select }
@@ -58,7 +58,7 @@ describe('event guest engagement route error payloads', () => {
   })
 
   it('fails closed when send guard schema is unavailable in production', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     const previousNodeEnv = process.env.NODE_ENV
     const previousGuardOverride = process.env.EVENT_ENGAGEMENT_SEND_GUARD_ALLOW_SCHEMA_GAPS
@@ -66,7 +66,7 @@ describe('event guest engagement route error payloads', () => {
     delete process.env.EVENT_ENGAGEMENT_SEND_GUARD_ALLOW_SCHEMA_GAPS
 
     try {
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'cron_job_runs') {
             return {
@@ -131,13 +131,13 @@ describe('event guest engagement route error payloads', () => {
   })
 
   it('aborts remaining sends when sendSMS returns fatal logging_failed safety signal', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-02-15T12:00:00.000Z'))
 
     try {
-      ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+      ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
         success: true,
         sid: 'SM1',
         code: 'logging_failed',
@@ -265,7 +265,7 @@ describe('event guest engagement route error payloads', () => {
         }),
       }
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
       const request: any = new Request('http://localhost/api/cron/event-guest-engagement')
       request.nextUrl = new URL('http://localhost')
@@ -295,7 +295,7 @@ describe('event guest engagement route error payloads', () => {
   })
 
   it('fails closed when reminder dedupe lookup errors', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-02-15T12:00:00.000Z'))
@@ -424,7 +424,7 @@ describe('event guest engagement route error payloads', () => {
         }),
       }
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
       const request: any = new Request('http://localhost/api/cron/event-guest-engagement')
       request.nextUrl = new URL('http://localhost')

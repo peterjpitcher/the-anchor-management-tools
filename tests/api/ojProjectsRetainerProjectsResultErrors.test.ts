@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -18,7 +18,7 @@ describe('oj retainer-project route per-vendor error payloads', () => {
   })
 
   it('returns generic per-vendor failure error text when existing-project lookup fails', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     const settingsLimit = vi.fn().mockResolvedValue({
       data: [{ vendor_id: 'vendor-1', retainer_included_hours_per_month: 12 }],
@@ -43,7 +43,7 @@ describe('oj retainer-project route per-vendor error payloads', () => {
     const existingEqVendor = vi.fn().mockReturnValue({ eq: existingEqRetainer })
     const existingSelect = vi.fn().mockReturnValue({ eq: existingEqVendor })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'oj_vendor_billing_settings') {
           return { select: settingsSelect }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('next/headers', () => ({
   headers: vi.fn(),
@@ -26,7 +26,7 @@ describe('api auth rate limit fail-closed behavior', () => {
     const select = vi.fn().mockReturnValue({ eq })
     const from = vi.fn().mockReturnValue({ select })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({ from })
+    ;(createAdminClient as unknown as Mock).mockReturnValue({ from })
 
     const result = await checkRateLimit('api-key-1', 10)
 
@@ -42,7 +42,7 @@ describe('api auth rate limit fail-closed behavior', () => {
     const eq = vi.fn().mockReturnValue({ gte })
     const select = vi.fn().mockReturnValue({ eq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn().mockReturnValue({ select }),
     })
 
@@ -59,7 +59,7 @@ describe('api auth rate limit fail-closed behavior', () => {
     const eq = vi.fn().mockReturnValue({ gte })
     const select = vi.fn().mockReturnValue({ eq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn().mockReturnValue({ select }),
     })
 

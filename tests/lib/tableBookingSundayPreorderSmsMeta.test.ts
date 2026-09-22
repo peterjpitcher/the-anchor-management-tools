@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 const { warn, error } = vi.hoisted(() => ({
   warn: vi.fn(),
@@ -36,7 +36,7 @@ describe('Sunday pre-order SMS safety meta', () => {
   })
 
   it('treats success:false logging_failed as sent/unknown to avoid retry-driven duplicates', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(sendSMS as unknown as Mock).mockResolvedValueOnce({
       success: false,
       error: 'SMS sent but message persistence failed',
       code: 'logging_failed',
@@ -97,7 +97,7 @@ describe('Sunday pre-order SMS safety meta', () => {
   })
 
   it('propagates thrown idempotency_conflict metadata from sendSMS', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockRejectedValueOnce({
+    ;(sendSMS as unknown as Mock).mockRejectedValueOnce({
       message: 'idempotency lock conflict',
       code: 'idempotency_conflict',
       logFailure: false,

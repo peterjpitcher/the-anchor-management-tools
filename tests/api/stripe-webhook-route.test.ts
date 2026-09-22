@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // Module mocks — must appear before any imports of the mocked modules
@@ -140,7 +140,7 @@ describe('Stripe webhook route', () => {
 
   describe('signature verification', () => {
     it('should return 401 when signature is invalid', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(false)
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(false)
 
       const body = buildStripeEvent('checkout.session.completed')
       const req = makeRequest(body, { 'stripe-signature': 'bad_sig' })
@@ -152,7 +152,7 @@ describe('Stripe webhook route', () => {
     })
 
     it('should return 401 when stripe-signature header is missing', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(false)
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(false)
 
       const body = buildStripeEvent('checkout.session.completed')
       const req = makeRequest(body)
@@ -164,13 +164,13 @@ describe('Stripe webhook route', () => {
     })
 
     it('should proceed when signature is valid', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
-      ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-1')
-      ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-      ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
+      ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-1')
+      ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+      ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
 
       const { client } = stubAdminClient()
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(client)
 
       const body = buildStripeEvent('unknown.event.type', {}, 'evt_valid')
       const req = makeRequest(body, { 'stripe-signature': 'valid_sig' })
@@ -206,7 +206,7 @@ describe('Stripe webhook route', () => {
 
   describe('malformed payload', () => {
     it('should return 400 for non-JSON body', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
 
       const req = makeRequest('this is not json', { 'stripe-signature': 'sig' })
       const res = await POST(req as any)
@@ -217,7 +217,7 @@ describe('Stripe webhook route', () => {
     })
 
     it('should return 400 when event id is missing', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
 
       const body = JSON.stringify({ type: 'checkout.session.completed', data: { object: {} } })
       const req = makeRequest(body, { 'stripe-signature': 'sig' })
@@ -235,10 +235,10 @@ describe('Stripe webhook route', () => {
 
   describe('checkout.session.completed', () => {
     it('should call confirm_table_payment_v05 RPC for table deposits', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
-      ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-cs')
-      ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-      ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
+      ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-cs')
+      ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+      ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
 
       const rpcMock = vi.fn().mockResolvedValue({
         data: { state: 'confirmed', booking_id: 'b1', customer_id: 'c1', event_name: 'Quiz Night', seats: 4 },
@@ -246,7 +246,7 @@ describe('Stripe webhook route', () => {
       })
       const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'webhook_logs') return { insert: webhookLogInsert }
           const noop = { data: null, error: null }
@@ -284,10 +284,10 @@ describe('Stripe webhook route', () => {
 
   describe('payment_intent.succeeded', () => {
     it('should process approved charge payment intent', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
-      ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-pi')
-      ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-      ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
+      ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-pi')
+      ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+      ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
 
       const chargeRequestLookup = vi.fn().mockResolvedValue({
         data: {
@@ -313,7 +313,7 @@ describe('Stripe webhook route', () => {
 
       const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'webhook_logs') return { insert: webhookLogInsert }
           if (table === 'charge_requests') {
@@ -371,13 +371,13 @@ describe('Stripe webhook route', () => {
 
   describe('unknown event type', () => {
     it('should return 200 and acknowledge unknown events without error', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
-      ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-unk')
-      ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-      ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
+      ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-unk')
+      ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+      ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
 
       const { client } = stubAdminClient()
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(client)
 
       const body = buildStripeEvent('customer.subscription.created', { id: 'sub_1' }, 'evt_unk_1')
       const req = makeRequest(body, { 'stripe-signature': 'valid' })
@@ -397,12 +397,12 @@ describe('Stripe webhook route', () => {
 
   describe('idempotency', () => {
     it('should return duplicate response on replay state', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
-      ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-dup')
-      ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'replay' })
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
+      ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-dup')
+      ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'replay' })
 
       const { client } = stubAdminClient()
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(client)
 
       const body = buildStripeEvent('checkout.session.completed', {}, 'evt_dup_1')
       const req = makeRequest(body, { 'stripe-signature': 'valid' })
@@ -414,12 +414,12 @@ describe('Stripe webhook route', () => {
     })
 
     it('should return 409 on idempotency conflict', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
-      ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-conf')
-      ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'conflict' })
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
+      ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-conf')
+      ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'conflict' })
 
       const { client } = stubAdminClient()
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(client)
 
       const body = buildStripeEvent('checkout.session.completed', {}, 'evt_conf_1')
       const req = makeRequest(body, { 'stripe-signature': 'valid' })
@@ -429,12 +429,12 @@ describe('Stripe webhook route', () => {
     })
 
     it('should return 409 when event is in-progress', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
-      ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-ip')
-      ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'in_progress' })
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
+      ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-ip')
+      ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'in_progress' })
 
       const { client } = stubAdminClient()
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(client)
 
       const body = buildStripeEvent('checkout.session.completed', {}, 'evt_ip_1')
       const req = makeRequest(body, { 'stripe-signature': 'valid' })
@@ -450,15 +450,15 @@ describe('Stripe webhook route', () => {
 
   describe('handler error', () => {
     it('should return 500 and release idempotency claim on processing error', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
-      ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-err')
-      ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-      ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
+      ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-err')
+      ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+      ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
 
       const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
       const rpcMock = vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } })
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'webhook_logs') return { insert: webhookLogInsert }
           return { insert: vi.fn().mockResolvedValue({ error: null }) }
@@ -491,10 +491,10 @@ describe('Stripe webhook route', () => {
 
   describe('charge.refunded', () => {
     it('should update payment status to refunded for fully refunded charge', async () => {
-      ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
-      ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-ref')
-      ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-      ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
+      ;(verifyStripeWebhookSignature as unknown as Mock).mockReturnValue(true)
+      ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-ref')
+      ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+      ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
 
       const paymentLookupResult = vi.fn().mockResolvedValue({
         data: [{ id: 'pay-1', table_booking_id: 'tb-1', customer_id: 'cust-1' }],
@@ -503,7 +503,7 @@ describe('Stripe webhook route', () => {
       const paymentUpdateResult = vi.fn().mockResolvedValue({ error: null })
       const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
           if (table === 'webhook_logs') return { insert: webhookLogInsert }
           if (table === 'payments') {

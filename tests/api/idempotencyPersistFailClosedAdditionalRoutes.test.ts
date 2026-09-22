@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/rate-limit', () => ({
   createRateLimiter: vi.fn(() => vi.fn().mockResolvedValue(null)),
@@ -97,16 +97,16 @@ import { POST as performerInterestPost } from '@/app/api/external/performer-inte
 describe('additional route idempotency persist fail-closed guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({})
-    ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-1')
-    ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockRejectedValue(new Error('idempotency write failed'))
-    ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(createAdminClient as unknown as Mock).mockReturnValue({})
+    ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-1')
+    ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+    ;(persistIdempotencyResponse as unknown as Mock).mockRejectedValue(new Error('idempotency write failed'))
+    ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
   })
 
   it('does not release the private-booking-enquiry idempotency claim when response persistence fails after booking creation', async () => {
-    ;(getIdempotencyKey as unknown as vi.Mock).mockReturnValue('idem-enquiry-1')
-    ;(PrivateBookingService as unknown as { createBooking: vi.Mock }).createBooking.mockResolvedValue({
+    ;(getIdempotencyKey as unknown as Mock).mockReturnValue('idem-enquiry-1')
+    ;(PrivateBookingService as unknown as { createBooking: Mock }).createBooking.mockResolvedValue({
       id: 'private-booking-1',
       booking_reference: 'PB-1',
     })
@@ -136,7 +136,7 @@ describe('additional route idempotency persist fail-closed guards', () => {
   })
 
   it('does not release the parking booking idempotency claim when response persistence fails after booking creation', async () => {
-    ;(createPendingParkingBooking as unknown as vi.Mock).mockResolvedValue({
+    ;(createPendingParkingBooking as unknown as Mock).mockResolvedValue({
       booking: {
         id: 'parking-booking-1',
         reference: 'P-1',
@@ -146,11 +146,11 @@ describe('additional route idempotency persist fail-closed guards', () => {
         payment_due_at: '2026-02-15T10:00:00.000Z',
       },
     })
-    ;(createParkingPaymentOrder as unknown as vi.Mock).mockResolvedValue({
+    ;(createParkingPaymentOrder as unknown as Mock).mockResolvedValue({
       approveUrl: 'https://paypal.example/approve',
     })
-    ;(sendParkingPaymentRequest as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(logAuditEvent as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(sendParkingPaymentRequest as unknown as Mock).mockResolvedValue(undefined)
+    ;(logAuditEvent as unknown as Mock).mockResolvedValue(undefined)
 
     const request = new Request('http://localhost/api/parking/bookings', {
       method: 'POST',
@@ -201,7 +201,7 @@ describe('additional route idempotency persist fail-closed guards', () => {
   })
 
   it('surfaces logging_failed SMS meta for parking booking create responses', async () => {
-    ;(createPendingParkingBooking as unknown as vi.Mock).mockResolvedValue({
+    ;(createPendingParkingBooking as unknown as Mock).mockResolvedValue({
       booking: {
         id: 'parking-booking-logging-failed',
         reference: 'P-LOG',
@@ -211,16 +211,16 @@ describe('additional route idempotency persist fail-closed guards', () => {
         payment_due_at: '2026-02-15T10:00:00.000Z',
       },
     })
-    ;(createParkingPaymentOrder as unknown as vi.Mock).mockResolvedValue({
+    ;(createParkingPaymentOrder as unknown as Mock).mockResolvedValue({
       approveUrl: 'https://paypal.example/approve-log',
     })
-    ;(sendParkingPaymentRequest as unknown as vi.Mock).mockResolvedValue({
+    ;(sendParkingPaymentRequest as unknown as Mock).mockResolvedValue({
       sent: true,
       skipped: false,
       code: 'logging_failed',
       logFailure: true,
     })
-    ;(logAuditEvent as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(logAuditEvent as unknown as Mock).mockResolvedValue(undefined)
 
     const request = new Request('http://localhost/api/parking/bookings', {
       method: 'POST',
@@ -268,7 +268,7 @@ describe('additional route idempotency persist fail-closed guards', () => {
   })
 
   it('surfaces unsent SMS meta when initial parking payment request SMS fails before send', async () => {
-    ;(createPendingParkingBooking as unknown as vi.Mock).mockResolvedValue({
+    ;(createPendingParkingBooking as unknown as Mock).mockResolvedValue({
       booking: {
         id: 'parking-booking-sms-failed',
         reference: 'P-FAIL',
@@ -278,16 +278,16 @@ describe('additional route idempotency persist fail-closed guards', () => {
         payment_due_at: '2026-02-15T10:00:00.000Z',
       },
     })
-    ;(createParkingPaymentOrder as unknown as vi.Mock).mockResolvedValue({
+    ;(createParkingPaymentOrder as unknown as Mock).mockResolvedValue({
       approveUrl: 'https://paypal.example/approve-fail',
     })
-    ;(sendParkingPaymentRequest as unknown as vi.Mock).mockResolvedValue({
+    ;(sendParkingPaymentRequest as unknown as Mock).mockResolvedValue({
       sent: false,
       skipped: false,
       code: 'provider_unavailable',
       logFailure: false,
     })
-    ;(logAuditEvent as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(logAuditEvent as unknown as Mock).mockResolvedValue(undefined)
 
     const request = new Request('http://localhost/api/parking/bookings', {
       method: 'POST',

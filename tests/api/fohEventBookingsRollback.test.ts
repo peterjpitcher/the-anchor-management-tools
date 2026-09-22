@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { NextRequest } from 'next/server'
 
 vi.mock('@/lib/foh/api-auth', () => ({
@@ -124,7 +124,7 @@ describe('FOH event booking rollback safety', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,

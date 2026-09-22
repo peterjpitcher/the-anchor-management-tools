@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -61,8 +61,8 @@ describe('private booking monitor idempotency guard', () => {
   })
 
   it('reserves an idempotency key before firing a Pass 1 deposit reminder', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
-    ;(SmsQueueService.queueAndSend as unknown as vi.Mock).mockResolvedValue({
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
+    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
       success: true,
       sent: true,
     })
@@ -225,7 +225,7 @@ describe('private booking monitor idempotency guard', () => {
         }),
       }
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
       const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
       const payload = await response.json()
@@ -250,8 +250,8 @@ describe('private booking monitor idempotency guard', () => {
   })
 
   it('skips the Pass 1 send cleanly when idempotency insert returns 23505 (duplicate)', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
-    ;(SmsQueueService.queueAndSend as unknown as vi.Mock).mockResolvedValue({
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
+    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
       success: true,
       sent: true,
     })
@@ -407,7 +407,7 @@ describe('private booking monitor idempotency guard', () => {
         }),
       }
 
-      ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+      ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
       const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
       const payload = await response.json()

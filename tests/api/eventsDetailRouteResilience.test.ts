@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/api/auth', () => ({
   withApiAuth: vi.fn(async (handler: (req: Request, apiKey: unknown) => Promise<Response>, _permissions: string[], req?: Request) =>
@@ -135,7 +135,7 @@ describe('events detail route resilience', () => {
   })
 
   it('returns 200 detail payload when event_message_templates query errors', async () => {
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(
+    ;(createAdminClient as unknown as Mock).mockReturnValue(
       buildSupabaseMock({
         messageTemplatesError: { code: '42703', message: 'column event_message_templates.custom_content does not exist' },
       })
@@ -154,7 +154,7 @@ describe('events detail route resilience', () => {
   })
 
   it('maps template content into custom_messages', async () => {
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(
+    ;(createAdminClient as unknown as Mock).mockReturnValue(
       buildSupabaseMock({
         messageTemplatesRows: [
           { template_type: 'announcement', content: 'Doors open at 8pm' },
@@ -176,7 +176,7 @@ describe('events detail route resilience', () => {
   })
 
   it('returns 404 when event is not found', async () => {
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(
+    ;(createAdminClient as unknown as Mock).mockReturnValue(
       buildSupabaseMock({
         eventFound: false,
       })
@@ -198,7 +198,7 @@ describe('events detail route resilience', () => {
   })
 
   it('returns facebook/link-in-bio shortlinks when available', async () => {
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(
+    ;(createAdminClient as unknown as Mock).mockReturnValue(
       buildSupabaseMock({
         shortLinksRows: [
           {

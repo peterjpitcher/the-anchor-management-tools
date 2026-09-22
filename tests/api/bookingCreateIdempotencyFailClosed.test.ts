@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/rate-limit', () => ({
   createRateLimiter: vi.fn(() => vi.fn().mockResolvedValue(null)),
@@ -65,21 +65,21 @@ import { formatPhoneForStorage } from '@/lib/utils'
 import { POST as publicPrivateBookingPost } from '@/app/api/public/private-booking/route'
 import { POST as externalCreateBookingPost } from '@/app/api/external/create-booking/route'
 
-const mockedFormatPhoneForStorage = formatPhoneForStorage as unknown as vi.Mock
+const mockedFormatPhoneForStorage = formatPhoneForStorage as unknown as Mock
 
 describe('booking-create routes idempotency fail-closed guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({})
-    ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-1')
-    ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-    ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(createAdminClient as unknown as Mock).mockReturnValue({})
+    ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-1')
+    ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+    ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
   })
 
   it('does not release the public private-booking idempotency claim when response persistence fails after booking creation', async () => {
-    ;(getIdempotencyKey as unknown as vi.Mock).mockReturnValue('idem-1')
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockRejectedValue(new Error('idempotency write failed'))
-    ;(PrivateBookingService as unknown as { createBooking: vi.Mock }).createBooking.mockResolvedValue({
+    ;(getIdempotencyKey as unknown as Mock).mockReturnValue('idem-1')
+    ;(persistIdempotencyResponse as unknown as Mock).mockRejectedValue(new Error('idempotency write failed'))
+    ;(PrivateBookingService as unknown as { createBooking: Mock }).createBooking.mockResolvedValue({
       id: 'private-booking-1',
       booking_reference: 'PB-1',
       customer_id: 'customer-1',
@@ -112,9 +112,9 @@ describe('booking-create routes idempotency fail-closed guards', () => {
   })
 
   it('does not release the external create-booking idempotency claim when response persistence fails after booking creation', async () => {
-    ;(getIdempotencyKey as unknown as vi.Mock).mockReturnValue('idem-2')
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockRejectedValue(new Error('idempotency write failed'))
-    ;(PrivateBookingService as unknown as { createBooking: vi.Mock }).createBooking.mockResolvedValue({
+    ;(getIdempotencyKey as unknown as Mock).mockReturnValue('idem-2')
+    ;(persistIdempotencyResponse as unknown as Mock).mockRejectedValue(new Error('idempotency write failed'))
+    ;(PrivateBookingService as unknown as { createBooking: Mock }).createBooking.mockResolvedValue({
       id: 'external-booking-1',
       booking_reference: 'EXT-1',
     })
@@ -145,9 +145,9 @@ describe('booking-create routes idempotency fail-closed guards', () => {
   })
 
   it('passes default_country_code when normalizing external create-booking phone numbers', async () => {
-    ;(getIdempotencyKey as unknown as vi.Mock).mockReturnValue('idem-3')
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
-    ;(PrivateBookingService as unknown as { createBooking: vi.Mock }).createBooking.mockResolvedValue({
+    ;(getIdempotencyKey as unknown as Mock).mockReturnValue('idem-3')
+    ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
+    ;(PrivateBookingService as unknown as { createBooking: Mock }).createBooking.mockResolvedValue({
       id: 'external-booking-2',
       booking_reference: 'EXT-2',
     })

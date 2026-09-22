@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/logger', () => ({
   logger: {
@@ -45,11 +45,11 @@ import {
 describe('FOH bookings retired Sunday preorder guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
       customerId: 'customer-1',
       resolutionError: undefined,
     })
-    ;(sendTableBookingCreatedSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({ sms: null })
+    ;(sendTableBookingCreatedSmsIfAllowed as unknown as Mock).mockResolvedValue({ sms: null })
   })
 
   it('ignores stale FOH pre-order payload fields and creates a regular booking', async () => {
@@ -79,7 +79,7 @@ describe('FOH bookings retired Sunday preorder guards', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
@@ -151,7 +151,7 @@ describe('FOH bookings retired Sunday preorder guards', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-2',
       supabase,
@@ -188,7 +188,7 @@ describe('FOH bookings retired Sunday preorder guards', () => {
       })
     )
 
-    const serviceWindowChecks = (supabase.rpc as unknown as vi.Mock).mock.calls.filter(
+    const serviceWindowChecks = (supabase.rpc as unknown as Mock).mock.calls.filter(
       ([fn]) => fn === 'table_booking_matches_service_window_v05'
     )
     expect(serviceWindowChecks).toHaveLength(0)

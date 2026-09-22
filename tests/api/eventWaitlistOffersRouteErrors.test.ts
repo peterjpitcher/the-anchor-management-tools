@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -38,7 +38,7 @@ describe('event waitlist offers route error payloads', () => {
   })
 
   it('returns a generic 500 payload when waitlist candidate load fails', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     const limit = vi.fn().mockResolvedValue({
       data: null,
@@ -48,7 +48,7 @@ describe('event waitlist offers route error payloads', () => {
     const eqStatus = vi.fn().mockReturnValue({ order })
     const select = vi.fn().mockReturnValue({ eq: eqStatus })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'waitlist_entries') {
           return { select }
@@ -65,15 +65,15 @@ describe('event waitlist offers route error payloads', () => {
   })
 
   it('counts cleanup no-op writes as processing errors after SMS failure', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
-    ;(createNextWaitlistOffer as unknown as vi.Mock).mockResolvedValue({
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
+    ;(createNextWaitlistOffer as unknown as Mock).mockResolvedValue({
       state: 'offered',
       waitlist_offer_id: 'offer-1',
       waitlist_entry_id: 'entry-1',
       event_id: 'event-1',
       customer_id: 'customer-1',
     })
-    ;(sendWaitlistOfferSms as unknown as vi.Mock).mockResolvedValue({
+    ;(sendWaitlistOfferSms as unknown as Mock).mockResolvedValue({
       success: false,
       reason: 'sms_send_failed',
     })
@@ -95,7 +95,7 @@ describe('event waitlist offers route error payloads', () => {
     const offerCleanupEqId = vi.fn().mockReturnValue({ eq: offerCleanupEqStatus })
     const offerCleanupUpdate = vi.fn().mockReturnValue({ eq: offerCleanupEqId })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'waitlist_entries') {
           return { select: queuedSelect }
@@ -120,15 +120,15 @@ describe('event waitlist offers route error payloads', () => {
   })
 
   it('fails closed and increments fail-closed counters on post-send persistence failure', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
-    ;(createNextWaitlistOffer as unknown as vi.Mock).mockResolvedValue({
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
+    ;(createNextWaitlistOffer as unknown as Mock).mockResolvedValue({
       state: 'offered',
       waitlist_offer_id: 'offer-1',
       waitlist_entry_id: 'entry-1',
       event_id: 'event-1',
       customer_id: 'customer-1',
     })
-    ;(sendWaitlistOfferSms as unknown as vi.Mock).mockResolvedValue({
+    ;(sendWaitlistOfferSms as unknown as Mock).mockResolvedValue({
       success: false,
       reason: 'post_send_persistence_failed',
       scheduledSendAt: '2026-02-14T12:00:00.000Z',
@@ -168,7 +168,7 @@ describe('event waitlist offers route error payloads', () => {
     const holdCleanupEqOffer = vi.fn().mockReturnValue({ eq: holdCleanupEqStatus })
     const holdCleanupUpdate = vi.fn().mockReturnValue({ eq: holdCleanupEqOffer })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'waitlist_entries') {
           return {
@@ -200,15 +200,15 @@ describe('event waitlist offers route error payloads', () => {
   })
 
   it('aborts remaining sends when sendWaitlistOfferSms reports logging_failed', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
-    ;(createNextWaitlistOffer as unknown as vi.Mock).mockResolvedValue({
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
+    ;(createNextWaitlistOffer as unknown as Mock).mockResolvedValue({
       state: 'offered',
       waitlist_offer_id: 'offer-1',
       waitlist_entry_id: 'entry-1',
       event_id: 'event-1',
       customer_id: 'customer-1',
     })
-    ;(sendWaitlistOfferSms as unknown as vi.Mock).mockResolvedValue({
+    ;(sendWaitlistOfferSms as unknown as Mock).mockResolvedValue({
       success: true,
       code: 'logging_failed',
       logFailure: true,
@@ -223,7 +223,7 @@ describe('event waitlist offers route error payloads', () => {
     const queuedEq = vi.fn().mockReturnValue({ order: queuedOrder })
     const queuedSelect = vi.fn().mockReturnValue({ eq: queuedEq })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'waitlist_entries') {
           return { select: queuedSelect }

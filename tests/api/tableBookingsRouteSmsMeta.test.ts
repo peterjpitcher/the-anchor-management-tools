@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { NextRequest } from 'next/server'
 
 vi.mock('@/lib/api/auth', () => ({
@@ -83,12 +83,12 @@ describe('table bookings route SMS safety meta', () => {
   })
 
   it('returns meta.sms from sendTableBookingCreatedSmsIfAllowed', async () => {
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
       customerId: 'customer-1',
       resolutionError: undefined,
     })
 
-    ;(sendTableBookingCreatedSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({
+    ;(sendTableBookingCreatedSmsIfAllowed as unknown as Mock).mockResolvedValue({
       notificationChannel: 'sms',
       sms: {
         success: true,
@@ -97,7 +97,7 @@ describe('table bookings route SMS safety meta', () => {
       },
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       rpc: vi.fn(async (name: string) => {
         if (name === 'create_table_booking_public_v06') {
           return {
@@ -153,14 +153,14 @@ describe('table bookings route SMS safety meta', () => {
   })
 
   it('returns a success response when the SMS helper rejects, surfacing meta.sms as unexpected_exception', async () => {
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
       customerId: 'customer-1',
       resolutionError: undefined,
     })
 
-    ;(sendTableBookingCreatedSmsIfAllowed as unknown as vi.Mock).mockRejectedValueOnce(new Error('twilio down'))
+    ;(sendTableBookingCreatedSmsIfAllowed as unknown as Mock).mockRejectedValueOnce(new Error('twilio down'))
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       rpc: vi.fn(async (name: string) => {
         if (name === 'create_table_booking_public_v06') {
           return {
@@ -223,12 +223,12 @@ describe('table bookings route SMS safety meta', () => {
   })
 
   it('does not release the idempotency claim when response persistence fails after booking creation', async () => {
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
       customerId: 'customer-1',
       resolutionError: undefined,
     })
 
-    ;(sendTableBookingCreatedSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({
+    ;(sendTableBookingCreatedSmsIfAllowed as unknown as Mock).mockResolvedValue({
       notificationChannel: 'sms',
       sms: {
         success: true,
@@ -236,9 +236,9 @@ describe('table bookings route SMS safety meta', () => {
       },
     })
 
-    ;(persistIdempotencyResponse as unknown as vi.Mock).mockRejectedValueOnce(new Error('idempotency write down'))
+    ;(persistIdempotencyResponse as unknown as Mock).mockRejectedValueOnce(new Error('idempotency write down'))
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       rpc: vi.fn(async (name: string) => {
         if (name === 'create_table_booking_public_v06') {
           return {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
@@ -125,7 +125,7 @@ describe('FinancialService deletion precision guards', () => {
     const deleteEqMetric = vi.fn().mockReturnValue({ eq: deleteEqTimeframe })
     const deleteMock = vi.fn().mockReturnValue({ eq: deleteEqMetric })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table !== 'pl_targets') {
           throw new Error(`Unexpected table: ${table}`)
@@ -156,7 +156,7 @@ describe('FinancialService deletion precision guards', () => {
     const deleteEqMetric = vi.fn().mockReturnValue({ eq: deleteEqTimeframe })
     const deleteMock = vi.fn().mockReturnValue({ eq: deleteEqMetric })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table !== 'pl_manual_actuals') {
           throw new Error(`Unexpected table: ${table}`)
@@ -178,7 +178,7 @@ describe('FinancialService deletion precision guards', () => {
   })
 
   it('rejects unknown P&L metric keys', async () => {
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({ from: vi.fn() })
+    ;(createAdminClient as unknown as Mock).mockReturnValue({ from: vi.fn() })
 
     await expect(
       FinancialService.savePlTargets([{ metric: 'unknown_metric', timeframe: '12m', value: 1 }])
@@ -186,7 +186,7 @@ describe('FinancialService deletion precision guards', () => {
   })
 
   it('rejects percentages outside 0 to 100', async () => {
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({ from: vi.fn() })
+    ;(createAdminClient as unknown as Mock).mockReturnValue({ from: vi.fn() })
 
     await expect(
       FinancialService.savePlTargets([{ metric: 'total_food', timeframe: '12m', value: 101 }])
@@ -214,7 +214,7 @@ describe('FinancialService P&L aggregation correctness', () => {
     ]
 
     const { client, mocks } = createFinancialDashboardClient([firstPage, secondPage])
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
 
     const result = await FinancialService.getPlDashboardData()
 
@@ -225,7 +225,7 @@ describe('FinancialService P&L aggregation correctness', () => {
 
   it('includes cant_find transactions in the status filter', async () => {
     const { client, mocks } = createFinancialDashboardClient([[]])
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
 
     await FinancialService.getPlDashboardData()
 
@@ -260,7 +260,7 @@ describe('FinancialService P&L aggregation correctness', () => {
     ]
 
     const { client } = createFinancialDashboardClient([rows])
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
 
     const result = await FinancialService.getPlDashboardData()
 
@@ -302,7 +302,7 @@ describe('FinancialService P&L aggregation correctness', () => {
     ]
 
     const { client } = createFinancialDashboardClient([[]], rows)
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
 
     const result = await FinancialService.getPlDashboardData()
 
@@ -345,7 +345,7 @@ describe('FinancialService P&L aggregation correctness', () => {
     ]
 
     const { client, mocks } = createFinancialDashboardClient([[]], cashupRows, importedRows)
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
 
     const result = await FinancialService.getPlDashboardData()
 
@@ -371,7 +371,7 @@ describe('FinancialService P&L aggregation correctness', () => {
     ]
 
     const { client } = createFinancialDashboardClient([[]], rows)
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
 
     const result = await FinancialService.getPlDashboardData()
 
@@ -396,7 +396,7 @@ describe('FinancialService P&L aggregation correctness', () => {
     ]
 
     const { client } = createFinancialDashboardClient([[]], rows)
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(client)
 
     const result = await FinancialService.getPlDashboardData()
 

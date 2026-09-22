@@ -1,4 +1,4 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -140,7 +140,7 @@ function buildSupabase(options: { capture: { update?: Record<string, unknown> } 
 describe('table review sweep: guests with no contactable channel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-02-15T12:00:00.000Z'))
   })
@@ -152,7 +152,7 @@ describe('table review sweep: guests with no contactable channel', () => {
   async function run() {
     const capture: { update?: Record<string, unknown> } = {}
     const supabase = buildSupabase({ capture })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const request: any = new Request('http://localhost/api/cron/event-guest-engagement')
     request.nextUrl = new URL('http://localhost')

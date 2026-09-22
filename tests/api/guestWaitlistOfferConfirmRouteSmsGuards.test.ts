@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
@@ -110,7 +110,7 @@ function buildSupabase(options: { eventError?: { message: string } | null; event
 describe('guest waitlist offer confirm route SMS guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(acceptWaitlistOfferByRawToken as unknown as vi.Mock).mockResolvedValue({
+    ;(acceptWaitlistOfferByRawToken as unknown as Mock).mockResolvedValue({
       state: 'confirmed',
       booking_id: 'booking-1',
       event_id: 'event-1',
@@ -118,7 +118,7 @@ describe('guest waitlist offer confirm route SMS guards', () => {
   })
 
   it('does not send acceptance SMS when event lookup errors', async () => {
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(
+    ;(createAdminClient as unknown as Mock).mockReturnValue(
       buildSupabase({ eventError: { message: 'events unavailable' } }) as any
     )
 
@@ -134,7 +134,7 @@ describe('guest waitlist offer confirm route SMS guards', () => {
   })
 
   it('does not send acceptance SMS when event lookup affects no rows', async () => {
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(
+    ;(createAdminClient as unknown as Mock).mockReturnValue(
       buildSupabase({ eventRow: false }) as any
     )
 

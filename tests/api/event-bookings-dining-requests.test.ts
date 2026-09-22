@@ -2,7 +2,7 @@ vi.mock('@/services/event-bookings', () => ({ EventBookingService: { createBooki
 import { EventBookingService } from '@/services/event-bookings'
 import { consentHashPayload } from '@/lib/consent/validation'
 import { claimIdempotencyKey } from '@/lib/api/idempotency'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // Mirror the REAL createErrorResponse envelope: { success: false, error: { code, message } }.
@@ -132,7 +132,7 @@ function mockAdminClientWithEvent(eventRow: Record<string, unknown>) {
   const customerEq = vi.fn().mockReturnValue({ maybeSingle: customerMaybeSingle })
   const customerSelect = vi.fn().mockReturnValue({ eq: customerEq })
 
-  ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+  ;(createAdminClient as unknown as Mock).mockReturnValue({
     from: vi.fn((table: string) => {
       if (table === 'events') return { select: eventSelect }
       if (table === 'customers') return { select: customerSelect }

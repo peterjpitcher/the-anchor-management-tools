@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/app/actions/rbac', () => ({
   checkUserPermission: vi.fn(),
@@ -13,7 +13,7 @@ describe('receipts export route error payloads', () => {
   })
 
   it('returns a generic 500 payload when an unexpected error is thrown', async () => {
-    ;(checkUserPermission as unknown as vi.Mock).mockRejectedValue(
+    ;(checkUserPermission as unknown as Mock).mockRejectedValue(
       new Error('sensitive permission backend diagnostics')
     )
 

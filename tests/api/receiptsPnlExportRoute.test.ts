@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/app/actions/rbac', () => ({
   checkUserPermission: vi.fn(),
@@ -84,17 +84,17 @@ describe('receipts P&L export route', () => {
     vi.setSystemTime(new Date('2026-02-23T12:00:00.000Z'))
     vi.clearAllMocks()
 
-    ;(checkUserPermission as unknown as vi.Mock).mockResolvedValue(true)
-    ;(FinancialService.getPlDashboardData as unknown as vi.Mock).mockResolvedValue(MOCK_DASHBOARD)
-    ;(buildPnlReportViewModel as unknown as vi.Mock).mockImplementation((_, timeframe: '1m' | '3m' | '12m') => ({
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(true)
+    ;(FinancialService.getPlDashboardData as unknown as Mock).mockResolvedValue(MOCK_DASHBOARD)
+    ;(buildPnlReportViewModel as unknown as Mock).mockImplementation((_, timeframe: '1m' | '3m' | '12m') => ({
       ...MOCK_VIEW_MODEL,
       timeframe,
     }))
-    ;(generatePnlReportHTML as unknown as vi.Mock).mockReturnValue('<html><body>ok</body></html>')
-    ;(generatePDFFromHTML as unknown as vi.Mock).mockResolvedValue(Buffer.from('fake-pdf-data'))
-    ;(generatePnlSpreadsheetBuffer as unknown as vi.Mock).mockResolvedValue(Buffer.from('fake-xlsx-data'))
-    ;(getCurrentUser as unknown as vi.Mock).mockResolvedValue({ user_id: 'user-1', user_email: 'user@example.com' })
-    ;(logAuditEvent as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(generatePnlReportHTML as unknown as Mock).mockReturnValue('<html><body>ok</body></html>')
+    ;(generatePDFFromHTML as unknown as Mock).mockResolvedValue(Buffer.from('fake-pdf-data'))
+    ;(generatePnlSpreadsheetBuffer as unknown as Mock).mockResolvedValue(Buffer.from('fake-xlsx-data'))
+    ;(getCurrentUser as unknown as Mock).mockResolvedValue({ user_id: 'user-1', user_email: 'user@example.com' })
+    ;(logAuditEvent as unknown as Mock).mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -122,7 +122,7 @@ describe('receipts P&L export route', () => {
   })
 
   it('returns 403 when export permission is missing', async () => {
-    ;(checkUserPermission as unknown as vi.Mock).mockResolvedValue(false)
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(false)
 
     const request = new Request('http://localhost/api/receipts/pnl/export?timeframe=1m')
     const response = await GET(request as any)
@@ -133,7 +133,7 @@ describe('receipts P&L export route', () => {
   })
 
   it('returns a generic 500 payload when permission checks throw unexpectedly', async () => {
-    ;(checkUserPermission as unknown as vi.Mock).mockRejectedValue(
+    ;(checkUserPermission as unknown as Mock).mockRejectedValue(
       new Error('sensitive permission backend diagnostics')
     )
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
@@ -112,7 +112,7 @@ describe('BOH table booking edit routes', () => {
       }),
     }
 
-    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireBohTableBookingPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase,
       userId: 'user-1',
@@ -196,7 +196,7 @@ describe('BOH table booking edit routes', () => {
       }),
     }
 
-    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireBohTableBookingPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase,
       userId: 'user-1',
@@ -242,7 +242,7 @@ describe('BOH table booking edit routes', () => {
       }),
     }
 
-    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireBohTableBookingPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase,
       userId: 'user-1',
@@ -320,7 +320,7 @@ describe('BOH table booking edit: a refused booking update', () => {
       }),
     }
 
-    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireBohTableBookingPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       supabase,
       userId: 'user-1',

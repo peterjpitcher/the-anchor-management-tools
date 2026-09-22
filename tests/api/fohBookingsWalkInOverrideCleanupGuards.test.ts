@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/logger', () => ({
   logger: {
@@ -72,7 +72,7 @@ describe('FOH bookings walk-in override cleanup guards', () => {
   })
 
   it('logs cleanup failures and cancels orphan booking when manual walk-in override cannot claim tables', async () => {
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
+    ;(ensureCustomerForPhone as unknown as Mock).mockResolvedValue({
       customerId: 'customer-1',
       resolutionError: undefined,
     })
@@ -172,7 +172,7 @@ describe('FOH bookings walk-in override cleanup guards', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
@@ -279,7 +279,7 @@ describe('FOH bookings walk-in override cleanup guards', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,

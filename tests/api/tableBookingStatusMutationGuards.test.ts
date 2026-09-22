@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 const mockTableBookingPermission = vi.hoisted(() => vi.fn())
 
@@ -80,12 +80,12 @@ describe('Table-booking mutation row-effect guards', () => {
 
   it('returns 404 when FOH seated update affects no rows', async () => {
     const { supabase, eq } = buildUpdateNoRowSupabase()
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
     })
-    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+    ;(getTableBookingForFoh as unknown as Mock).mockResolvedValue({
       id: BOOKING_UUID,
       status: 'confirmed',
     })
@@ -105,12 +105,12 @@ describe('Table-booking mutation row-effect guards', () => {
 
   it('returns 404 and skips charge-request creation when FOH no-show update affects no rows', async () => {
     const { supabase } = buildUpdateNoRowSupabase()
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
     })
-    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+    ;(getTableBookingForFoh as unknown as Mock).mockResolvedValue({
       id: BOOKING_UUID,
       customer_id: 'customer-1',
       status: 'confirmed',
@@ -121,7 +121,7 @@ describe('Table-booking mutation row-effect guards', () => {
       start_datetime: null,
       end_datetime: null,
     })
-    ;(getFeePerHead as unknown as vi.Mock).mockResolvedValue(15)
+    ;(getFeePerHead as unknown as Mock).mockResolvedValue(15)
 
     const response = await postFohNoShow({} as any, {
       params: Promise.resolve({ id: BOOKING_UUID }),
@@ -138,12 +138,12 @@ describe('Table-booking mutation row-effect guards', () => {
 
   it('returns 404 and skips charge-request creation when BOH no-show update affects no rows', async () => {
     const { supabase } = buildUpdateNoRowSupabase()
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
     })
-    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+    ;(getTableBookingForFoh as unknown as Mock).mockResolvedValue({
       id: BOOKING_UUID,
       customer_id: 'customer-1',
       status: 'confirmed',
@@ -154,7 +154,7 @@ describe('Table-booking mutation row-effect guards', () => {
       start_datetime: null,
       end_datetime: null,
     })
-    ;(getFeePerHead as unknown as vi.Mock).mockResolvedValue(20)
+    ;(getFeePerHead as unknown as Mock).mockResolvedValue(20)
 
     const request = new Request('http://localhost/api/boh/table-bookings/booking-1/status', {
       method: 'POST',
@@ -188,12 +188,12 @@ describe('Table-booking mutation row-effect guards', () => {
       no_show_marked_by: null,
     })
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
     })
-    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+    ;(getTableBookingForFoh as unknown as Mock).mockResolvedValue({
       id: BOOKING_UUID,
       status: 'pending_payment',
     })
@@ -225,12 +225,12 @@ describe('Table-booking mutation row-effect guards', () => {
       no_show_marked_by: null,
     })
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
     })
-    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+    ;(getTableBookingForFoh as unknown as Mock).mockResolvedValue({
       id: BOOKING_UUID,
       status: 'pending_payment',
     })
@@ -260,12 +260,12 @@ describe('Table-booking mutation row-effect guards', () => {
   it('returns 409 consistently for invalid seated transitions in FOH and BOH', async () => {
     const { supabase, update } = buildUpdateNoRowSupabase()
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
     })
-    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+    ;(getTableBookingForFoh as unknown as Mock).mockResolvedValue({
       id: BOOKING_UUID,
       status: 'completed',
       booking_date: '2026-02-23',
@@ -298,12 +298,12 @@ describe('Table-booking mutation row-effect guards', () => {
 
   it('returns 409 consistently for invalid no-show transitions in FOH and BOH', async () => {
     const { supabase, update } = buildUpdateNoRowSupabase()
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
     })
-    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+    ;(getTableBookingForFoh as unknown as Mock).mockResolvedValue({
       id: BOOKING_UUID,
       customer_id: 'customer-1',
       status: 'completed',
@@ -429,12 +429,12 @@ describe('Table-booking mutation row-effect guards', () => {
       }),
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({
       ok: true,
       userId: 'user-1',
       supabase,
     })
-    ;(getTableBookingForFoh as unknown as vi.Mock).mockResolvedValue({
+    ;(getTableBookingForFoh as unknown as Mock).mockResolvedValue({
       id: BOOKING_UUID,
       status: 'confirmed',
       booking_date: '2024-01-01',

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/paypal', () => ({
   refundPayPalPayment: vi.fn(),
@@ -34,12 +34,12 @@ describe('processEventRefund', () => {
   })
 
   it('refunds event ticket payments through PayPal captures', async () => {
-    ;(refundPayPalPayment as unknown as vi.Mock).mockResolvedValue({
+    ;(refundPayPalPayment as unknown as Mock).mockResolvedValue({
       refundId: 'RFD-123',
       status: 'COMPLETED',
       amount: '10.00',
     })
-    ;(recordAnalyticsEvent as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(recordAnalyticsEvent as unknown as Mock).mockResolvedValue(undefined)
 
     const paymentLookup = chain(
       {

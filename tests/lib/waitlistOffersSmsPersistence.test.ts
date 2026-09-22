@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/twilio', () => ({
   sendSMS: vi.fn(),
@@ -120,16 +120,16 @@ function buildSupabase(options: {
 describe('waitlist offer SMS post-send persistence guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       scheduledFor: '2026-02-14T12:00:00.000Z',
       sid: 'SM123',
     })
-    ;(createGuestToken as unknown as vi.Mock).mockResolvedValue({
+    ;(createGuestToken as unknown as Mock).mockResolvedValue({
       rawToken: 'raw-token',
       hashedToken: 'hashed-token',
     })
-    ;(recordAnalyticsEvent as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(recordAnalyticsEvent as unknown as Mock).mockResolvedValue(undefined)
   })
 
   it('returns logging_failed when waitlist offer update affects no rows after SMS send', async () => {
@@ -282,7 +282,7 @@ describe('waitlist offer SMS post-send persistence guards', () => {
   })
 
   it('keeps send success when analytics logging fails but critical persistence succeeds', async () => {
-    ;(recordAnalyticsEvent as unknown as vi.Mock).mockRejectedValue(
+    ;(recordAnalyticsEvent as unknown as Mock).mockRejectedValue(
       new Error('analytics unavailable')
     )
 
@@ -312,7 +312,7 @@ describe('waitlist offer SMS post-send persistence guards', () => {
   })
 
   it('normalizes logging_failed into logFailure=true even when sendSMS returns logFailure=false', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
+    ;(sendSMS as unknown as Mock).mockResolvedValue({
       success: true,
       scheduledFor: '2026-02-14T12:00:00.000Z',
       sid: 'SM123',
@@ -348,7 +348,7 @@ describe('waitlist offer SMS post-send persistence guards', () => {
   })
 
   it('fails closed with safety_unavailable metadata when sendSMS throws before persistence updates', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockRejectedValue(new Error('twilio transport threw'))
+    ;(sendSMS as unknown as Mock).mockRejectedValue(new Error('twilio transport threw'))
 
     const supabase = buildSupabase({
       offerRow: true,
@@ -378,7 +378,7 @@ describe('waitlist offer SMS post-send persistence guards', () => {
   })
 
   it('propagates thrown idempotency_conflict metadata when sendSMS throws', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockRejectedValue(
+    ;(sendSMS as unknown as Mock).mockRejectedValue(
       Object.assign(new Error('sms blocked by idempotency lock'), {
         code: 'idempotency_conflict',
         logFailure: false,

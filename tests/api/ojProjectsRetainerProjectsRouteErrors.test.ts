@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -18,7 +18,7 @@ describe('oj retainer-project route error payloads', () => {
   })
 
   it('returns a generic error when retainer settings load fails', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
 
     const settingsLimit = vi.fn().mockResolvedValue({
       data: null,
@@ -27,7 +27,7 @@ describe('oj retainer-project route error payloads', () => {
     const settingsGt = vi.fn().mockReturnValue({ limit: settingsLimit })
     const settingsSelect = vi.fn().mockReturnValue({ gt: settingsGt })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'oj_vendor_billing_settings') {
           return { select: settingsSelect }

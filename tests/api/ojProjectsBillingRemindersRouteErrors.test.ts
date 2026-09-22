@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn(),
@@ -42,16 +42,16 @@ describe('oj projects billing reminders route error payloads', () => {
   })
 
   it('returns generic send failure payload when reminder dispatch fails', async () => {
-    ;(authorizeCronRequest as unknown as vi.Mock).mockReturnValue({ authorized: true })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({})
-    ;(isGraphConfigured as unknown as vi.Mock).mockReturnValue(true)
-    ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-1')
-    ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
-    ;(sendInternalReminder as unknown as vi.Mock).mockResolvedValue({
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
+    ;(createAdminClient as unknown as Mock).mockReturnValue({})
+    ;(isGraphConfigured as unknown as Mock).mockReturnValue(true)
+    ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-1')
+    ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
+    ;(sendInternalReminder as unknown as Mock).mockResolvedValue({
       success: false,
       error: 'sensitive graph diagnostics',
     })
-    ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
 
     const response = await GET(new Request('http://localhost/api/cron/oj-projects-billing-reminders'))
     const payload = await response.json()

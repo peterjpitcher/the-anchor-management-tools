@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('@/lib/cron-auth', () => ({
   authorizeCronRequest: vi.fn().mockReturnValue({ authorized: true })
@@ -294,7 +294,7 @@ function buildBaseSupabase(options: {
 describe('private booking monitor Pass 5a — outcome email', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(sendPrivateBookingOutcomeEmail as unknown as vi.Mock).mockResolvedValue({
+    ;(sendPrivateBookingOutcomeEmail as unknown as Mock).mockResolvedValue({
       success: true,
       tokenIds: ['hashed-1', 'hashed-2', 'hashed-3']
     })
@@ -317,7 +317,7 @@ describe('private booking monitor Pass 5a — outcome email', () => {
       ]
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
     const payload = await response.json()
@@ -344,7 +344,7 @@ describe('private booking monitor Pass 5a — outcome email', () => {
 
   it('skips the outcome email path when no eligible bookings are returned', async () => {
     const { supabase } = buildBaseSupabase({ outcomeEmailRows: [] })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
     const payload = await response.json()
@@ -355,7 +355,7 @@ describe('private booking monitor Pass 5a — outcome email', () => {
   })
 
   it('skips stamping when sendPrivateBookingOutcomeEmail fails', async () => {
-    ;(sendPrivateBookingOutcomeEmail as unknown as vi.Mock).mockResolvedValue({
+    ;(sendPrivateBookingOutcomeEmail as unknown as Mock).mockResolvedValue({
       success: false,
       tokenIds: [],
       error: 'smtp down'
@@ -377,7 +377,7 @@ describe('private booking monitor Pass 5a — outcome email', () => {
       ]
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
     const payload = await response.json()
@@ -414,7 +414,7 @@ describe('private booking monitor Pass 5a — outcome email', () => {
       ]
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
     const payload = await response.json()
@@ -428,11 +428,11 @@ describe('private booking monitor Pass 5a — outcome email', () => {
 describe('private booking monitor Pass 5b — review SMS', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(SmsQueueService.queueAndSend as unknown as vi.Mock).mockResolvedValue({
+    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
       success: true,
       sent: true
     })
-    ;(sendPrivateBookingOutcomeEmail as unknown as vi.Mock).mockResolvedValue({
+    ;(sendPrivateBookingOutcomeEmail as unknown as Mock).mockResolvedValue({
       success: true,
       tokenIds: []
     })
@@ -457,7 +457,7 @@ describe('private booking monitor Pass 5b — review SMS', () => {
       reviewClaimOverride: [{ id: 'bk-review-1' }]
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
     const payload = await response.json()
@@ -493,7 +493,7 @@ describe('private booking monitor Pass 5b — review SMS', () => {
 
   it('skips when no bookings are eligible (outcome never recorded as went_well)', async () => {
     const { supabase } = buildBaseSupabase({ reviewSmsRows: [] })
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
     const payload = await response.json()
@@ -523,7 +523,7 @@ describe('private booking monitor Pass 5b — review SMS', () => {
       reviewClaimOverride: [null]
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
     const payload = await response.json()
@@ -554,7 +554,7 @@ describe('private booking monitor Pass 5b — review SMS', () => {
       idempotencyError: { code: '23505', message: 'duplicate key value violates unique constraint' }
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
     const payload = await response.json()
@@ -583,7 +583,7 @@ describe('private booking monitor Pass 5b — review SMS', () => {
       ]
     })
 
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
 
     const response = await GET(new Request('http://localhost/api/cron/private-booking-monitor') as any)
     const payload = await response.json()
