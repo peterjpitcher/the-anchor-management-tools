@@ -225,7 +225,9 @@ describe('EventDrawer validation feedback', () => {
     await waitFor(() => expect(field).toHaveAttribute('aria-invalid', 'true'))
     expect(document.getElementById(field.getAttribute('aria-describedby')!)).toHaveTextContent(message)
     const summary = screen.getByText('Please correct the following fields and save again:').parentElement
-    expect(summary).toHaveFocus()
+    // The drawer focuses the summary in an effect that runs after the error render commits. On a
+    // busy runner React's scheduler can yield between the two, so wait for focus to settle.
+    await waitFor(() => expect(summary).toHaveFocus())
 
     fireEvent.change(field, { target: { value: 'Step-free access from the car park.' } })
     expect(field).not.toHaveAttribute('aria-invalid')
