@@ -34,6 +34,12 @@ jobs:
           # does the same thing for the same reason.
           NODE_OPTIONS: --max-old-space-size=8192
 
+      # tsconfig.json excludes tests/, and Vitest strips types, so a stale fixture or a
+      # mock of a deleted export used to pass every gate. This checks the tests tree
+      # against the real types. The script carries its own 8 GB heap: it peaks near 6 GB.
+      - name: Typecheck tests
+        run: npm run typecheck:tests
+
       - name: Test
         run: npm run test:coverage
 

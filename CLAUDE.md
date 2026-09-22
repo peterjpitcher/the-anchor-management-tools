@@ -25,7 +25,8 @@ The live staff and admin app for The Anchor (Stanwell Moor) and Orange Jelly at 
 ```bash
 npm run dev             # local server on :3000
 npm run lint            # eslint src --max-warnings=0
-npx tsc --noEmit        # there is no typecheck script
+npx tsc --noEmit        # app code only (tsconfig.json excludes tests/); no npm script
+npm run typecheck:tests # the tests/ tree against the real types (tsconfig.tests.json); CI runs both
 npm test                # vitest run (coverage floors: lines 42, branches 34, functions 52)
 npm run test:coverage
 npm run knip            # unused files and exports
