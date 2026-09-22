@@ -63,7 +63,7 @@ export type PendingSmsTemplateFixJob = {
 
 export function isFixSmsTemplateKeysMutationEnabled(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): boolean {
   return (
     argv.includes('--confirm') &&
@@ -81,7 +81,7 @@ export function assertFixSmsTemplateKeysMutationAllowed(): void {
 
 export function readFixSmsTemplateKeysLimit(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalPositiveInt(findFlagValue(argv, '--limit')) ??
@@ -91,7 +91,7 @@ export function readFixSmsTemplateKeysLimit(
 
 export function readFixSmsTemplateKeysOffset(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalNonNegativeInt(findFlagValue(argv, '--offset')) ??

@@ -36,7 +36,7 @@ function parseOptionalNonNegativeInt(value: string | null | undefined): number |
 
 export function isMergeDuplicateCustomersMutationEnabled(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): boolean {
   return (
     argv.includes('--confirm') &&
@@ -46,7 +46,7 @@ export function isMergeDuplicateCustomersMutationEnabled(
 }
 
 export function assertMergeDuplicateCustomersMutationAllowed(
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): void {
   if (isTruthyEnv(env.ALLOW_MERGE_DUPLICATE_CUSTOMERS_SCRIPT)) {
     return
@@ -60,7 +60,7 @@ export function assertMergeDuplicateCustomersMutationAllowed(
 
 export function readMergeDuplicateCustomersLimit(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalPositiveInt(findFlagValue(argv, '--limit')) ??
@@ -70,7 +70,7 @@ export function readMergeDuplicateCustomersLimit(
 
 export function readMergeDuplicateCustomersOffset(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalNonNegativeInt(findFlagValue(argv, '--offset')) ??

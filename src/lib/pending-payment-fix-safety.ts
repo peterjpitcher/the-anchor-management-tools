@@ -48,7 +48,7 @@ export function assertFixPendingPaymentMutationAllowed(): void {
 
 export function readFixPendingPaymentLimit(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): string | null {
   return findFlagValue(argv, '--limit') ?? env.FIX_PENDING_PAYMENT_LIMIT ?? null
 }

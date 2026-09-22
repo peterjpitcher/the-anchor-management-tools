@@ -46,7 +46,7 @@ export function assertFixTableBookingSmsProbeMutationAllowed(): void {
 
 export function readFixTableBookingSmsProbeLimit(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): string | null {
   return findFlagValue(argv, '--limit') ?? env.FIX_TABLE_BOOKING_SMS_PROBE_LIMIT ?? null
 }

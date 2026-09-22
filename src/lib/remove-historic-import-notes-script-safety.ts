@@ -36,7 +36,7 @@ function parseOptionalNonNegativeInt(value: string | null | undefined): number |
 
 export function isRemoveHistoricImportNotesMutationEnabled(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): boolean {
   return (
     argv.includes('--confirm') &&
@@ -46,7 +46,7 @@ export function isRemoveHistoricImportNotesMutationEnabled(
 }
 
 export function assertRemoveHistoricImportNotesMutationAllowed(
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): void {
   // Support legacy allow env var name for backwards compatibility.
   if (isTruthyEnv(env.ALLOW_REMOVE_HISTORIC_IMPORT_NOTES_MUTATION_SCRIPT)) {
@@ -61,7 +61,7 @@ export function assertRemoveHistoricImportNotesMutationAllowed(
 
 export function readRemoveHistoricImportNotesLimit(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalPositiveInt(findFlagValue(argv, '--limit')) ??
@@ -71,7 +71,7 @@ export function readRemoveHistoricImportNotesLimit(
 
 export function readRemoveHistoricImportNotesOffset(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalNonNegativeInt(findFlagValue(argv, '--offset')) ??

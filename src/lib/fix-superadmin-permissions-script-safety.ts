@@ -60,7 +60,7 @@ function parseOptionalNonNegativeInt(
 
 export function isFixSuperadminPermissionsMutationEnabled(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): boolean {
   return (
     argv.includes('--confirm') &&
@@ -70,7 +70,7 @@ export function isFixSuperadminPermissionsMutationEnabled(
 }
 
 export function assertFixSuperadminPermissionsMutationAllowed(
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): void {
   // Support legacy allow env var name.
   if (isTruthyEnv(env.ALLOW_FIX_SUPERADMIN_PERMISSIONS_SCRIPT)) {
@@ -85,7 +85,7 @@ export function assertFixSuperadminPermissionsMutationAllowed(
 
 export function readFixSuperadminPermissionsLimit(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalPositiveInt(findFlagValue(argv, '--limit'), '--limit') ??
@@ -95,7 +95,7 @@ export function readFixSuperadminPermissionsLimit(
 
 export function readFixSuperadminPermissionsOffset(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): number | null {
   return (
     parseOptionalNonNegativeInt(findFlagValue(argv, '--offset'), '--offset') ??

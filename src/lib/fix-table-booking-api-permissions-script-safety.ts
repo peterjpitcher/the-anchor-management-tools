@@ -25,7 +25,7 @@ function findFlagValue(argv: string[], flag: string): string | null {
 
 export function isFixTableBookingApiPermissionsMutationEnabled(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): boolean {
   return (
     argv.includes('--confirm') &&
@@ -35,7 +35,7 @@ export function isFixTableBookingApiPermissionsMutationEnabled(
 }
 
 export function assertFixTableBookingApiPermissionsMutationAllowed(
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): void {
   if (isTruthyEnv(env.ALLOW_FIX_TABLE_BOOKING_API_PERMISSIONS_SCRIPT)) {
     return
@@ -49,14 +49,14 @@ export function assertFixTableBookingApiPermissionsMutationAllowed(
 
 export function readFixTableBookingApiPermissionsKeyHash(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): string | null {
   return findFlagValue(argv, '--key-hash') ?? env.FIX_TABLE_BOOKING_API_KEY_HASH ?? null
 }
 
 export function readFixTableBookingApiPermissionsLimit(
   argv: string[] = process.argv,
-  env: NodeJS.ProcessEnv = process.env
+  env: Partial<NodeJS.ProcessEnv> = process.env
 ): string | null {
   return findFlagValue(argv, '--limit') ?? env.FIX_TABLE_BOOKING_API_PERMISSIONS_LIMIT ?? null
 }
