@@ -40,18 +40,9 @@ export function buildPaymentRequestSms(booking: ParkingNotificationBooking, paym
   return `${base}${linkPart} Need help? Call ${CONTACT_NUMBER}.`
 }
 
-function buildPaymentReminderSms(booking: ParkingNotificationBooking, paymentUrl?: string) {
-  const amount = booking.override_price ?? booking.calculated_price ?? 0
-  const base = `The Anchor: Hi ${booking.customer_first_name}, your parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)} is still waiting for payment (£${amount.toFixed(2)}).`
-  const linkPart = paymentUrl
-    ? ` Pay here: ${paymentUrl}.`
-    : " We'll text your payment link shortly."
-  return `${base}${linkPart} Need help? Call ${CONTACT_NUMBER}.`
-}
-
 export function buildPaymentReminderSmsForStage(
   booking: ParkingNotificationBooking,
-  stage: 'week_before_expiry' | 'day_before_expiry' | 'overdue',
+  stage: 'week_before_expiry' | 'day_before_expiry',
   paymentUrl?: string,
   // When the offer expires, for the day-before text: the day as the customer reads it (quiet
   // hours hold a late send until 09:00, which can be the day it expires; see
@@ -67,13 +58,8 @@ export function buildPaymentReminderSmsForStage(
     return `The Anchor: ${booking.customer_first_name}! Just a nudge, your parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)} needs paying (£${amount.toFixed(2)}).${urlPart}`
   }
 
-  if (stage === 'day_before_expiry') {
-    const when = expiry ? `${expiry.day} at ${formatTimeInLondon(expiry.at)}` : 'tomorrow'
-    return `The Anchor: ${booking.customer_first_name}! Your parking offer expires ${when}, £${amount.toFixed(2)} for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}. Last chance:${urlPart}`
-  }
-
-  // overdue
-  return `The Anchor: ${booking.customer_first_name}! Your parking offer has now expired for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}.${urlPart}`
+  const when = expiry ? `${expiry.day} at ${formatTimeInLondon(expiry.at)}` : 'tomorrow'
+  return `The Anchor: ${booking.customer_first_name}! Your parking offer expires ${when}, £${amount.toFixed(2)} for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}. Last chance:${urlPart}`
 }
 
 export function buildPaymentConfirmationSms(booking: ParkingNotificationBooking) {
@@ -92,14 +78,6 @@ export function buildPaymentConfirmationManagerEmail(booking: ParkingNotificatio
     <p><strong>Amount paid:</strong> £${amount.toFixed(2)}</p>
   `
   return { subject, html, to: MANAGER_EMAIL }
-}
-
-function buildSessionStartSms(booking: ParkingNotificationBooking) {
-  return `The Anchor: Hi ${booking.customer_first_name}, your parking starts today from ${formatDateTime(booking.start_at)}. Registration ${booking.vehicle_registration}. See you soon!`
-}
-
-function buildSessionEndSms(booking: ParkingNotificationBooking) {
-  return `The Anchor: Hi ${booking.customer_first_name}, just a reminder your parking finishes today at ${formatDateTime(booking.end_at)}. Need extra time? Call ${CONTACT_NUMBER}.`
 }
 
 export function buildSessionThreeDayReminderSms(booking: ParkingNotificationBooking, type: 'start' | 'end') {
