@@ -23,7 +23,7 @@ export function buildManagerFeedbackEmail(input: ManagerFeedbackEmailInput): {
   subject: string
   html: string
 } {
-  const subject = 'New guest feedback — The Anchor'
+  const subject = 'New guest feedback (The Anchor)'
 
   const submittedLabel = formatDateInLondon(input.submittedAt ?? new Date(), {
     day: 'numeric',
@@ -37,7 +37,7 @@ export function buildManagerFeedbackEmail(input: ManagerFeedbackEmailInput): {
 
   const details = [
     `<li><strong>Rating:</strong> ${escapeHtml(String(input.rating))} / 5</li>`,
-    `<li><strong>Comments:</strong> ${comments ? escapeHtml(comments) : '—'}</li>`,
+    `<li><strong>Comments:</strong> ${comments ? escapeHtml(comments) : 'Not provided'}</li>`,
     `<li><strong>Submitted:</strong> ${escapeHtml(submittedLabel)}</li>`
   ]
 
@@ -56,9 +56,9 @@ export function buildManagerFeedbackEmail(input: ManagerFeedbackEmailInput): {
     parts.push(
       '<p><strong>Contact details</strong></p>',
       '<ul>',
-      `<li><strong>Name:</strong> ${name ? escapeHtml(name) : '—'}</li>`,
-      `<li><strong>Email:</strong> ${email ? escapeHtml(email) : '—'}</li>`,
-      `<li><strong>Phone:</strong> ${phone ? escapeHtml(phone) : '—'}</li>`,
+      `<li><strong>Name:</strong> ${name ? escapeHtml(name) : 'Not provided'}</li>`,
+      `<li><strong>Email:</strong> ${email ? escapeHtml(email) : 'Not provided'}</li>`,
+      `<li><strong>Phone:</strong> ${phone ? escapeHtml(phone) : 'Not provided'}</li>`,
       '</ul>'
     )
   } else {
