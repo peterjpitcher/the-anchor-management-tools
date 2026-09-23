@@ -49,3 +49,13 @@ No migration: both SQL functions already exist and are granted to `service_role`
 - [x] Tests
 - [x] lint, typecheck, tests, build
 - [x] Deploy and verify
+
+## Result
+
+LIVE 2026-09-23. Commit `b432fab9` on `main`, production deployment
+`dpl_BPdtQ4MdgLZ9BvXaAZxjhUVKSVa2`, matched to that commit by `githubCommitSha`.
+No migration: `check_rota_leave_conflicts` was already in production with its
+`service_role` grant, verified against the live database.
+
+Gates: lint clean, `tsc --noEmit` clean, `typecheck:tests` clean, 10,043 tests pass
+in both `Europe/London` and UTC, production build succeeds.
