@@ -134,6 +134,30 @@ function cacheAccessToken(token: string, expiresInSeconds?: number) {
   cachedToken = { token, expiresAt: safeExpires - 60_000 }; // refresh one minute early
 }
 
+/**
+ * `fetch` with a hard deadline. Without one a hanging PayPal dependency holds the serverless
+ * function open until the platform kills it, and the webhook then produces no diagnostic at
+ * all: the caller cannot tell an outage from a rejected signature.
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = PAYPAL_VERIFY_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`PayPal request timed out after ${timeoutMs}ms: ${url}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function getAccessToken(): Promise<string> {
   const { baseUrl, clientId, clientSecret } = getPayPalConfig();
 
@@ -144,7 +168,7 @@ async function getAccessToken(): Promise<string> {
   const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
   const response = await retry(
-    async () => fetch(`${baseUrl}/v1/oauth2/token`, {
+    async () => fetchWithTimeout(`${baseUrl}/v1/oauth2/token`, {
       method: 'POST',
       headers: {
         Authorization: `Basic ${auth}`,
@@ -506,78 +530,223 @@ export async function getPayPalRefund(refundId: string): Promise<{
 }
 
 // Verify webhook signature
-const PAYPAL_WEBHOOK_TRANSMISSION_TOLERANCE_MS = 5 * 60 * 1000
+//
+// PayPal reuses the ORIGINAL transmission time on every retry of an event, and it retries
+// for about three days. A tight window either side therefore rejects every retry before the
+// signature is even checked, which is what killed the private-bookings endpoint between
+// 25 June and 23 September 2026. Past age and future skew are separate bounds for that
+// reason: a message four days old is a retry we still want, a message four days in the
+// future is a broken clock or a forgery.
+export const PAYPAL_WEBHOOK_MAX_TRANSMISSION_AGE_MS = 4 * 24 * 60 * 60 * 1000
+export const PAYPAL_WEBHOOK_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000
 
-export function isPayPalTransmissionTimeFresh(
+// A hanging PayPal dependency must still be able to produce a diagnostic and a 500 inside the
+// serverless function budget, so every call in the verification path is bounded.
+const PAYPAL_VERIFY_TIMEOUT_MS = 8_000
+
+export type PayPalTransmissionTimeCheck =
+  | { state: 'ok'; ageSeconds: number }
+  | { state: 'missing'; ageSeconds: null }
+  | { state: 'unparseable'; ageSeconds: null }
+  | { state: 'too_old'; ageSeconds: number }
+  | { state: 'future'; ageSeconds: number }
+
+/**
+ * Classifies a `paypal-transmission-time` header. Age is positive for a message from the
+ * past and negative for one dated in the future, so a diagnostic can say which.
+ */
+export function evaluatePayPalTransmissionTime(
   transmissionTime: string | undefined,
   nowMs = Date.now(),
-  toleranceMs = PAYPAL_WEBHOOK_TRANSMISSION_TOLERANCE_MS
-): boolean {
+  maxAgeMs = PAYPAL_WEBHOOK_MAX_TRANSMISSION_AGE_MS,
+  maxFutureSkewMs = PAYPAL_WEBHOOK_MAX_FUTURE_SKEW_MS
+): PayPalTransmissionTimeCheck {
   if (!transmissionTime) {
-    return false
+    return { state: 'missing', ageSeconds: null }
   }
 
   const transmittedMs = Date.parse(transmissionTime)
   if (!Number.isFinite(transmittedMs)) {
-    return false
+    return { state: 'unparseable', ageSeconds: null }
   }
 
-  return Math.abs(nowMs - transmittedMs) <= toleranceMs
+  const ageMs = nowMs - transmittedMs
+  const ageSeconds = Math.round(ageMs / 1000)
+
+  if (ageMs < -maxFutureSkewMs) {
+    return { state: 'future', ageSeconds }
+  }
+
+  if (ageMs > maxAgeMs) {
+    return { state: 'too_old', ageSeconds }
+  }
+
+  return { state: 'ok', ageSeconds }
 }
 
+/**
+ * Kept for callers that only need a yes or no. Prefer
+ * `evaluatePayPalTransmissionTime`, which says why.
+ */
+export function isPayPalTransmissionTimeFresh(
+  transmissionTime: string | undefined,
+  nowMs = Date.now(),
+  maxAgeMs = PAYPAL_WEBHOOK_MAX_TRANSMISSION_AGE_MS
+): boolean {
+  return evaluatePayPalTransmissionTime(transmissionTime, nowMs, maxAgeMs).state === 'ok'
+}
+
+export type PayPalWebhookVerification =
+  | { outcome: 'verified'; verificationStatus: 'SUCCESS'; transmissionAgeSeconds: number | null }
+  | { outcome: 'missing_signature_headers'; missingHeaders: string[]; transmissionAgeSeconds: null }
+  | {
+      outcome: 'stale_transmission'
+      reason: PayPalTransmissionTimeCheck['state']
+      transmissionAgeSeconds: number | null
+    }
+  | { outcome: 'invalid_payload'; message: string; transmissionAgeSeconds: number | null }
+  | {
+      outcome: 'signature_rejected'
+      verificationStatus: string
+      transmissionAgeSeconds: number | null
+    }
+  | { outcome: 'verification_unavailable'; message: string; transmissionAgeSeconds: number | null }
+
+const REQUIRED_VERIFICATION_HEADERS = [
+  'paypal-auth-algo',
+  'paypal-cert-url',
+  'paypal-transmission-id',
+  'paypal-transmission-sig',
+  'paypal-transmission-time',
+] as const
+
+/**
+ * Verifies a PayPal webhook signature and says exactly what happened.
+ *
+ * Validation order matters: anything we can reject locally is rejected before a remote call,
+ * so a malformed body or a missing header never costs a PayPal request and never comes back
+ * disguised as a signature failure. Only an explicit remote `SUCCESS` authorises processing;
+ * an unreachable or unexpected verify response is `verification_unavailable`, which callers
+ * answer with a 500 so PayPal retries.
+ */
+export async function verifyPayPalWebhookDetailed(
+  headers: Record<string, string>,
+  body: string,
+  webhookId: string,
+  nowMs = Date.now()
+): Promise<PayPalWebhookVerification> {
+  const missingHeaders = REQUIRED_VERIFICATION_HEADERS.filter((header) => !headers[header])
+  if (missingHeaders.length > 0) {
+    return { outcome: 'missing_signature_headers', missingHeaders: [...missingHeaders], transmissionAgeSeconds: null }
+  }
+
+  const transmission = evaluatePayPalTransmissionTime(headers['paypal-transmission-time'], nowMs)
+  if (transmission.state !== 'ok') {
+    return {
+      outcome: 'stale_transmission',
+      reason: transmission.state,
+      transmissionAgeSeconds: transmission.ageSeconds,
+    }
+  }
+
+  const transmissionAgeSeconds = transmission.ageSeconds
+
+  let webhookEvent: unknown
+  try {
+    webhookEvent = JSON.parse(body)
+  } catch (parseError) {
+    return {
+      outcome: 'invalid_payload',
+      message: parseError instanceof Error ? parseError.message : 'Body is not valid JSON',
+      transmissionAgeSeconds,
+    }
+  }
+
+  let response: Response
+  try {
+    const accessToken = await getAccessToken()
+    const { baseUrl } = getPayPalConfig()
+
+    const verificationData = {
+      auth_algo: headers['paypal-auth-algo'],
+      cert_url: headers['paypal-cert-url'],
+      transmission_id: headers['paypal-transmission-id'],
+      transmission_sig: headers['paypal-transmission-sig'],
+      transmission_time: headers['paypal-transmission-time'],
+      webhook_id: webhookId,
+      webhook_event: webhookEvent,
+    }
+
+    response = await retry(
+      async () => fetchWithTimeout(`${baseUrl}/v1/notifications/verify-webhook-signature`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(verificationData),
+      }),
+      RetryConfigs.api
+    )
+  } catch (requestError) {
+    return {
+      outcome: 'verification_unavailable',
+      message: requestError instanceof Error ? requestError.message : String(requestError),
+      transmissionAgeSeconds,
+    }
+  }
+
+  if (!response.ok) {
+    return {
+      outcome: 'verification_unavailable',
+      message: `PayPal verify-webhook-signature returned ${response.status}`,
+      transmissionAgeSeconds,
+    }
+  }
+
+  let data: { verification_status?: unknown }
+  try {
+    data = await response.json()
+  } catch (parseError) {
+    return {
+      outcome: 'verification_unavailable',
+      message: parseError instanceof Error
+        ? `PayPal verify-webhook-signature returned an unreadable body: ${parseError.message}`
+        : 'PayPal verify-webhook-signature returned an unreadable body',
+      transmissionAgeSeconds,
+    }
+  }
+
+  const status = typeof data?.verification_status === 'string' ? data.verification_status : null
+
+  if (status === 'SUCCESS') {
+    return { outcome: 'verified', verificationStatus: 'SUCCESS', transmissionAgeSeconds }
+  }
+
+  if (status === 'FAILURE') {
+    return { outcome: 'signature_rejected', verificationStatus: status, transmissionAgeSeconds }
+  }
+
+  // Anything other than an explicit SUCCESS or FAILURE is PayPal behaving unexpectedly. It
+  // must never authorise processing, and it must not be recorded as a rejected signature.
+  return {
+    outcome: 'verification_unavailable',
+    message: `PayPal verify-webhook-signature returned an unexpected verification_status: ${status ?? 'absent'}`,
+    transmissionAgeSeconds,
+  }
+}
+
+/**
+ * Boolean wrapper. The legacy `/api/webhooks/paypal` route still checks `!isValid`, and a
+ * diagnostic object would be truthy there, so this shape is deliberately preserved.
+ */
 export async function verifyPayPalWebhook(
   headers: Record<string, string>,
   body: string,
   webhookId: string
 ): Promise<boolean> {
-  const requiredHeaders = [
-    'paypal-auth-algo',
-    'paypal-cert-url',
-    'paypal-transmission-id',
-    'paypal-transmission-sig',
-    'paypal-transmission-time',
-  ]
-
-  if (requiredHeaders.some((header) => !headers[header])) {
-    return false
-  }
-
-  if (!isPayPalTransmissionTimeFresh(headers['paypal-transmission-time'])) {
-    return false
-  }
-
-  const accessToken = await getAccessToken();
-  const { baseUrl } = getPayPalConfig();
-
-  const verificationData = {
-    auth_algo: headers['paypal-auth-algo'],
-    cert_url: headers['paypal-cert-url'],
-    transmission_id: headers['paypal-transmission-id'],
-    transmission_sig: headers['paypal-transmission-sig'],
-    transmission_time: headers['paypal-transmission-time'],
-    webhook_id: webhookId,
-    webhook_event: JSON.parse(body),
-  };
-
-  const response = await retry(
-    async () => fetch(`${baseUrl}/v1/notifications/verify-webhook-signature`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify(verificationData),
-    }),
-    RetryConfigs.api
-  );
-
-  if (!response.ok) {
-    console.error('PayPal webhook verification failed');
-    return false;
-  }
-
-  const data = await response.json();
-  return data.verification_status === 'SUCCESS';
+  const result = await verifyPayPalWebhookDetailed(headers, body, webhookId)
+  return result.outcome === 'verified'
 }
 
 // Get order details
@@ -621,18 +790,38 @@ export async function getPayPalOrder(orderId: string) {
 const webhookIdCache = new Map<string, { id: string | null; expiresAt: number }>();
 const WEBHOOK_ID_CACHE_MS = 10 * 60 * 1000;
 
-export async function resolveWebhookIdForUrl(url: string): Promise<string | null> {
-  const normalise = (value: string) => value.trim().replace(/\/+$/, '').toLowerCase();
-  const wanted = normalise(url);
+export type PayPalWebhookRegistryLookup =
+  | { state: 'matched'; webhookId: string; fromCache: boolean }
+  | { state: 'no_match'; webhookId: null; fromCache: boolean }
+  | { state: 'unavailable'; webhookId: string | null; fromCache: boolean; message: string };
+
+function normaliseWebhookUrl(value: string): string {
+  return value.trim().replace(/\/+$/, '').toLowerCase();
+}
+
+/**
+ * Asks PayPal which webhook is registered for a URL, and says whether it got an answer.
+ *
+ * The distinction matters: "PayPal says nothing is registered here" is a configuration
+ * problem to fail closed on, while "PayPal did not answer" is an outage. Collapsing the two
+ * into a null, as the previous helper did, made a stale cached id indistinguishable from a
+ * fresh one and hid the real cause.
+ */
+export async function lookupPayPalWebhookRegistration(url: string): Promise<PayPalWebhookRegistryLookup> {
+  const wanted = normaliseWebhookUrl(url);
 
   const cached = webhookIdCache.get(wanted);
-  if (cached && cached.expiresAt > Date.now()) return cached.id;
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.id
+      ? { state: 'matched', webhookId: cached.id, fromCache: true }
+      : { state: 'no_match', webhookId: null, fromCache: true };
+  }
 
   try {
     const { baseUrl } = getPayPalConfig();
     const accessToken = await getAccessToken();
 
-    const response = await fetch(`${baseUrl}/v1/notifications/webhooks`, {
+    const response = await fetchWithTimeout(`${baseUrl}/v1/notifications/webhooks`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
@@ -640,20 +829,176 @@ export async function resolveWebhookIdForUrl(url: string): Promise<string | null
     });
 
     if (!response.ok) {
-      // Do not cache a lookup failure: the next delivery should try again
-      // rather than being locked out for the whole cache window.
-      return cached?.id ?? null;
+      // Do not cache a lookup failure: the next delivery should try again rather than being
+      // locked out for the whole cache window. An expired cached id may still be offered,
+      // but it is reported as coming from a stale cache, never as a fresh match.
+      return {
+        state: 'unavailable',
+        webhookId: cached?.id ?? null,
+        fromCache: Boolean(cached?.id),
+        message: `PayPal webhook registry returned ${response.status}`,
+      };
     }
 
     const data = await response.json();
     const match = (data?.webhooks ?? []).find(
-      (webhook: { url?: string }) => typeof webhook?.url === 'string' && normalise(webhook.url) === wanted,
+      (webhook: { url?: string }) => typeof webhook?.url === 'string' && normaliseWebhookUrl(webhook.url) === wanted,
     );
     const id = typeof match?.id === 'string' ? match.id : null;
 
     webhookIdCache.set(wanted, { id, expiresAt: Date.now() + WEBHOOK_ID_CACHE_MS });
-    return id;
-  } catch {
-    return cached?.id ?? null;
+    return id
+      ? { state: 'matched', webhookId: id, fromCache: false }
+      : { state: 'no_match', webhookId: null, fromCache: false };
+  } catch (error) {
+    return {
+      state: 'unavailable',
+      webhookId: cached?.id ?? null,
+      fromCache: Boolean(cached?.id),
+      message: error instanceof Error ? error.message : String(error),
+    };
   }
+}
+
+export async function resolveWebhookIdForUrl(url: string): Promise<string | null> {
+  const lookup = await lookupPayPalWebhookRegistration(url);
+  return lookup.webhookId;
+}
+
+export type PayPalWebhookRegistration = {
+  id: string;
+  url: string;
+  eventTypes: string[];
+};
+
+export type PayPalWebhookRegistryListing =
+  | { state: 'ok'; webhooks: PayPalWebhookRegistration[] }
+  | { state: 'unavailable'; webhooks: PayPalWebhookRegistration[]; message: string };
+
+/**
+ * Lists every webhook registered to this PayPal app, for the health check.
+ *
+ * Read-only and uncached: the health check runs once a day and must see the real registry,
+ * not whatever the verification cache happens to hold.
+ */
+export async function listPayPalWebhookRegistrations(): Promise<PayPalWebhookRegistryListing> {
+  try {
+    const { baseUrl } = getPayPalConfig();
+    const accessToken = await getAccessToken();
+
+    const response = await fetchWithTimeout(`${baseUrl}/v1/notifications/webhooks`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      return {
+        state: 'unavailable',
+        webhooks: [],
+        message: `PayPal webhook registry returned ${response.status}`,
+      };
+    }
+
+    const data = await response.json();
+    const webhooks: PayPalWebhookRegistration[] = (data?.webhooks ?? [])
+      .filter((webhook: { id?: unknown; url?: unknown }) =>
+        typeof webhook?.id === 'string' && typeof webhook?.url === 'string')
+      .map((webhook: { id: string; url: string; event_types?: Array<{ name?: unknown }> }) => ({
+        id: webhook.id,
+        url: webhook.url,
+        eventTypes: (webhook.event_types ?? [])
+          .map((eventType) => eventType?.name)
+          .filter((name): name is string => typeof name === 'string'),
+      }));
+
+    return { state: 'ok', webhooks };
+  } catch (error) {
+    return {
+      state: 'unavailable',
+      webhooks: [],
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export type PayPalWebhookIdSource = 'resolved' | 'stale_cache' | 'env' | 'none';
+
+export type PayPalWebhookIdResolution = {
+  webhookId: string | null;
+  source: PayPalWebhookIdSource;
+  lookupState: PayPalWebhookRegistryLookup['state'];
+  lookupMessage: string | null;
+  url: string;
+};
+
+/**
+ * The one rule every PayPal webhook route uses to find the id it verifies against.
+ *
+ * 1. A webhook registered for this exact URL wins outright. A configured id can never
+ *    override it: a webhook recreated in the dashboard gets a new id, and a stale env var
+ *    then rejects every genuine delivery, which is precisely what happened to private
+ *    bookings for six months.
+ * 2. If PayPal cannot be reached, the endpoint's OWN env var is used as an emergency
+ *    override, and the result records that it did.
+ * 3. A clean "nothing is registered for this URL" is NOT patched over with the env var. That
+ *    answer is trustworthy, and honouring a stale override there would revive the same bug.
+ *    The route fails closed, PayPal retries for three days, and the health cron alerts.
+ * 4. It never falls back to PAYPAL_WEBHOOK_ID, which belongs to another endpoint.
+ */
+export async function resolvePayPalWebhookId(
+  endpointUrl: string,
+  envOverride?: string | null | undefined
+): Promise<PayPalWebhookIdResolution> {
+  const lookup = await lookupPayPalWebhookRegistration(endpointUrl);
+  const configured = typeof envOverride === 'string' && envOverride.trim() ? envOverride.trim() : null;
+
+  if (lookup.state === 'matched') {
+    return {
+      webhookId: lookup.webhookId,
+      source: 'resolved',
+      lookupState: lookup.state,
+      lookupMessage: null,
+      url: endpointUrl,
+    };
+  }
+
+  if (lookup.state === 'unavailable') {
+    if (lookup.webhookId) {
+      return {
+        webhookId: lookup.webhookId,
+        source: 'stale_cache',
+        lookupState: lookup.state,
+        lookupMessage: lookup.message,
+        url: endpointUrl,
+      };
+    }
+
+    if (configured) {
+      return {
+        webhookId: configured,
+        source: 'env',
+        lookupState: lookup.state,
+        lookupMessage: lookup.message,
+        url: endpointUrl,
+      };
+    }
+
+    return {
+      webhookId: null,
+      source: 'none',
+      lookupState: lookup.state,
+      lookupMessage: lookup.message,
+      url: endpointUrl,
+    };
+  }
+
+  return {
+    webhookId: null,
+    source: 'none',
+    lookupState: lookup.state,
+    lookupMessage: null,
+    url: endpointUrl,
+  };
 }

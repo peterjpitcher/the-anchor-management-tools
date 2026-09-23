@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveWebhookIdForUrl, verifyPayPalWebhook } from '@/lib/paypal'
+import { gatePayPalWebhook, sanitizePayPalHeadersForLog } from '@/lib/paypal-webhook-gate'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { handleRefundEvent } from '@/lib/paypal-refund-webhook'
 import { finalizeDepositPayment } from '@/services/private-bookings'
@@ -29,30 +28,6 @@ function truncate(value: string | null | undefined, maxLength: number): string |
   return value.length > maxLength ? value.slice(0, maxLength) : value
 }
 
-function sanitizeHeadersForLog(headers: Record<string, string>): Record<string, string> {
-  const allowedKeys = [
-    'content-type',
-    'user-agent',
-    'x-forwarded-for',
-    'x-forwarded-proto',
-    'x-request-id',
-    'x-vercel-id',
-    'paypal-auth-algo',
-    'paypal-cert-url',
-    'paypal-transmission-id',
-    'paypal-transmission-time'
-  ]
-  const sanitized: Record<string, string> = {}
-
-  for (const key of allowedKeys) {
-    if (headers[key]) {
-      sanitized[key] = headers[key]
-    }
-  }
-
-  sanitized['paypal-transmission-sig-present'] = headers['paypal-transmission-sig'] ? 'true' : 'false'
-  return sanitized
-}
 
 async function writePrivateBookingAudit(
   supabase: ReturnType<typeof createAdminClient>,
@@ -87,7 +62,7 @@ async function logPayPalWebhook(
   const { error } = await (supabase.from('webhook_logs') as any).insert({
     webhook_type: 'paypal',
     status: input.status,
-    headers: sanitizeHeadersForLog(input.headers),
+    headers: sanitizePayPalHeadersForLog(input.headers),
     body: truncate(input.body, 10000),
     params: {
       event_id: input.eventId ?? null,
@@ -114,58 +89,37 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient()
   const body = await request.text()
   const headers = Object.fromEntries(request.headers.entries())
-  // Resolved from PayPal by this endpoint's own URL, never from an env var. The configured
-  // PAYPAL_PRIVATE_BOOKINGS_WEBHOOK_ID stopped matching the registered webhook (a recreated webhook
-  // gets a new id), so every delivery from 28 August to 22 September 2026 failed verification.
-  // PAYPAL_WEBHOOK_ID, the old fallback, is another endpoint's id and would reject them too. When
-  // the id cannot be resolved we fail closed and PayPal retries.
-  const webhookId = await resolveWebhookIdForUrl(`${getAppUrl()}/api/webhooks/paypal/private-bookings`)
 
   let idempotencyKey: string | null = null
   let requestHash: string | null = null
   let claimHeld = false
 
   try {
-    if (!webhookId) {
-      const errorMessage = 'No PayPal webhook is registered for the private-bookings endpoint'
-      logger.error(errorMessage)
+    // The id is resolved from PayPal by this endpoint's own URL. The configured
+    // PAYPAL_PRIVATE_BOOKINGS_WEBHOOK_ID stopped matching the registered webhook (a recreated
+    // webhook gets a new id), so every delivery from 26 March to 22 September 2026 failed
+    // verification. It is kept only as an emergency override for a PayPal registry outage, and
+    // can never beat a positively resolved id.
+    const gate = await gatePayPalWebhook({
+      endpointPath: '/api/webhooks/paypal/private-bookings',
+      endpointName: 'private-bookings',
+      headers,
+      body,
+      envOverride: process.env.PAYPAL_PRIVATE_BOOKINGS_WEBHOOK_ID,
+    })
+
+    if (!gate.ok) {
       await logPayPalWebhook(supabase, {
-        status: 'configuration_error',
+        status: gate.logStatus,
         headers,
         body,
-        errorMessage
+        errorMessage: gate.errorMessage,
+        errorDetails: gate.diagnostics,
       })
-
-      return NextResponse.json(
-        { received: false, error: errorMessage },
-        { status: process.env.NODE_ENV === 'production' ? 500 : 200 }
-      )
+      return NextResponse.json(gate.responseBody, { status: gate.httpStatus })
     }
 
-    const isValid = await verifyPayPalWebhook(headers, body, webhookId)
-    if (!isValid) {
-      await logPayPalWebhook(supabase, {
-        status: 'signature_failed',
-        headers,
-        body,
-        errorMessage: 'Invalid PayPal signature'
-      })
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
-    }
-
-    let event: any
-    try {
-      event = JSON.parse(body)
-    } catch (parseError) {
-      await logPayPalWebhook(supabase, {
-        status: 'invalid_payload',
-        headers,
-        body,
-        errorMessage: 'Invalid JSON payload',
-        errorDetails: parseError instanceof Error ? { message: parseError.message } : null
-      })
-      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
-    }
+    const event = gate.event
 
     const eventId = typeof event?.id === 'string' ? event.id.trim() : ''
     const eventType = typeof event?.event_type === 'string' ? event.event_type : 'unknown'
@@ -428,18 +382,58 @@ async function handleDepositCaptureDenied(
     throw new Error('Private booking deposit denied webhook missing booking ID in custom_id')
   }
 
-  // Clear the order ID so a new payment order can be created
-  const { error: updateError } = await supabase
-    .from('private_bookings')
+  // Clear the order ID so a new payment order can be created, but ONLY the order this denial
+  // is actually about. A denial can arrive days after the fact now that retries are accepted,
+  // and by then staff may have issued a replacement order: clearing by booking id alone would
+  // wipe the live checkout and its recovery lookup. The invoices handler already guards this
+  // way. A denial that names no order gets an audit row for manual review instead.
+  const deniedOrderId = typeof resource?.supplementary_data?.related_ids?.order_id === 'string'
+    ? resource.supplementary_data.related_ids.order_id.trim()
+    : ''
+
+  if (!deniedOrderId) {
+    logger.error('Private booking deposit denial carried no order id; not clearing any order', {
+      metadata: { bookingId, eventId: event.id },
+    })
+
+    const { error: unresolvedAuditError } = await writePrivateBookingAudit(supabase, {
+      operationType: 'paypal_deposit_capture_denied_unresolved',
+      bookingId,
+      operationStatus: 'failure',
+      additionalInfo: {
+        event_id: event.id,
+        reason: resource.status_details?.reason ?? 'DENIED',
+        action_needed:
+          'PayPal denied a deposit capture but named no order. Check the booking against PayPal by hand.',
+      }
+    })
+
+    if (unresolvedAuditError) {
+      throw new Error(`Failed to write private booking unresolved denial audit log: ${unresolvedAuditError.message}`)
+    }
+    return
+  }
+
+  const { data: cleared, error: updateError } = await (supabase
+    .from('private_bookings') as any)
     .update({
       paypal_deposit_order_id: null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', bookingId)
+    .eq('paypal_deposit_order_id', deniedOrderId) // Never clear a replacement order
     .is('deposit_paid_date', null) // Only clear if deposit not yet recorded
+    .select('id')
 
   if (updateError) {
     throw new Error(`Failed to clear denied PayPal order on private booking: ${updateError.message}`)
+  }
+
+  const clearedCount = Array.isArray(cleared) ? cleared.length : 0
+  if (clearedCount === 0) {
+    logger.info('Private booking denial left the current order alone', {
+      metadata: { bookingId, deniedOrderId, eventId: event.id },
+    })
   }
 
   const { error: auditError } = await writePrivateBookingAudit(supabase, {
@@ -447,6 +441,8 @@ async function handleDepositCaptureDenied(
     bookingId,
     additionalInfo: {
       event_id: event.id,
+      order_id: deniedOrderId,
+      cleared: clearedCount > 0,
       reason: resource.status_details?.reason ?? 'DENIED',
     }
   })

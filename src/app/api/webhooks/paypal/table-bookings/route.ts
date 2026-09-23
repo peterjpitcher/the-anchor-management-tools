@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveWebhookIdForUrl, verifyPayPalWebhook } from '@/lib/paypal'
+import { gatePayPalWebhook, sanitizePayPalHeadersForLog } from '@/lib/paypal-webhook-gate'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { handleRefundEvent } from '@/lib/paypal-refund-webhook'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -25,30 +24,6 @@ function truncate(value: string | null | undefined, maxLength: number): string |
   return value.length > maxLength ? value.slice(0, maxLength) : value
 }
 
-function sanitizeHeadersForLog(headers: Record<string, string>): Record<string, string> {
-  const allowedKeys = [
-    'content-type',
-    'user-agent',
-    'x-forwarded-for',
-    'x-forwarded-proto',
-    'x-request-id',
-    'x-vercel-id',
-    'paypal-auth-algo',
-    'paypal-cert-url',
-    'paypal-transmission-id',
-    'paypal-transmission-time',
-  ]
-  const sanitized: Record<string, string> = {}
-
-  for (const key of allowedKeys) {
-    if (headers[key]) {
-      sanitized[key] = headers[key]
-    }
-  }
-
-  sanitized['paypal-transmission-sig-present'] = headers['paypal-transmission-sig'] ? 'true' : 'false'
-  return sanitized
-}
 
 async function logWebhook(
   supabase: ReturnType<typeof createAdminClient>,
@@ -65,7 +40,7 @@ async function logWebhook(
   const { error } = await (supabase.from('webhook_logs') as any).insert({
     webhook_type: 'paypal',
     status: input.status,
-    headers: sanitizeHeadersForLog(input.headers),
+    headers: sanitizePayPalHeadersForLog(input.headers),
     body: truncate(input.body, 10000),
     params: {
       event_id: input.eventId ?? null,
@@ -228,58 +203,32 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient()
   const body = await request.text()
   const headers = Object.fromEntries(request.headers.entries())
-  // Deliberately does NOT fall back to PAYPAL_WEBHOOK_ID: that is another endpoint's
-  // id, and verifying against it rejects every genuine event here. The env var is kept
-  // as an override but is no longer required, because a webhook deleted and recreated
-  // in the dashboard gets a NEW id that a stale env var would silently reject forever.
-  // That had already happened here: the registered endpoint and the configured id did
-  // not match. Resolving by URL self-heals. When it cannot be resolved we fail closed
-  // and PayPal retries.
-  const webhookId =
-    process.env.PAYPAL_TABLE_BOOKINGS_WEBHOOK_ID?.trim()
-    || (await resolveWebhookIdForUrl(
-      `${getAppUrl()}/api/webhooks/paypal/table-bookings`,
-    ))
 
   let idempotencyKey: string | null = null
   let requestHash: string | null = null
   let claimHeld = false
 
   try {
-    if (!webhookId) {
-      const errorMessage = 'No PayPal webhook is registered for the table-bookings endpoint'
-      logger.error(errorMessage)
-      await logWebhook(supabase, { status: 'configuration_error', headers, body, errorMessage })
-      return NextResponse.json(
-        { received: false, error: errorMessage },
-        { status: process.env.NODE_ENV === 'production' ? 500 : 200 },
-      )
-    }
+    const gate = await gatePayPalWebhook({
+      endpointPath: '/api/webhooks/paypal/table-bookings',
+      endpointName: 'table-bookings',
+      headers,
+      body,
+      envOverride: process.env.PAYPAL_TABLE_BOOKINGS_WEBHOOK_ID,
+    })
 
-    const isValid = await verifyPayPalWebhook(headers, body, webhookId)
-    if (!isValid) {
+    if (!gate.ok) {
       await logWebhook(supabase, {
-        status: 'signature_failed',
+        status: gate.logStatus,
         headers,
         body,
-        errorMessage: 'Invalid PayPal signature',
+        errorMessage: gate.errorMessage,
+        errorDetails: gate.diagnostics,
       })
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+      return NextResponse.json(gate.responseBody, { status: gate.httpStatus })
     }
 
-    let event: any // PayPal webhook event payload is not typed in this project
-    try {
-      event = JSON.parse(body)
-    } catch (parseError) {
-      await logWebhook(supabase, {
-        status: 'invalid_payload',
-        headers,
-        body,
-        errorMessage: 'Invalid JSON payload',
-        errorDetails: parseError instanceof Error ? { message: parseError.message } : null,
-      })
-      return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 })
-    }
+    const event = gate.event
 
     const eventId = typeof event?.id === 'string' ? event.id.trim() : ''
     const eventType = typeof event?.event_type === 'string' ? event.event_type : 'unknown'
