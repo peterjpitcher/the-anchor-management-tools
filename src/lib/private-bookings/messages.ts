@@ -348,6 +348,9 @@ export function reviewRequestMessage(input: {
   reviewLink: string
 }): string {
   return cap(
-    `Hi ${name(input.customerFirstName)}, glad ${input.eventDate} went well. If you've got 30 seconds, a Google review would mean a lot: ${input.reviewLink}`
+    // Do not promise a Google review here. The link opens the feedback funnel,
+    // which asks how the visit went and only offers Google to guests who say it
+    // went well (src/app/(feedback)/feedback/page.tsx).
+    `Hi ${name(input.customerFirstName)}, glad ${input.eventDate} went well. If you've got 30 seconds, we'd love to know how we did: ${input.reviewLink}`
   )
 }

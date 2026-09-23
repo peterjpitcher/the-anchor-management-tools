@@ -1847,13 +1847,16 @@ export function buildReviewRequestEmail(input: {
   return composeMessageEmail({
     booking: input.booking,
     firstName: input.firstName,
-    subject: 'Could you leave The Anchor a Google review?',
+    // Do not promise a Google review here. The link opens the feedback funnel,
+    // which asks how the visit went and only offers Google to guests who say it
+    // went well (src/app/(feedback)/feedback/page.tsx).
+    subject: 'How was your event at The Anchor?',
     heading: 'A quick favour',
     paragraphs: [
       `We're glad your event ${onEventDate(input.booking)} went well.`,
-      "If you've got 30 seconds, a Google review would mean a lot.",
+      "If you've got 30 seconds, we'd love to know how we did.",
     ],
-    link: { label: 'Leave a Google review', url: input.reviewLink },
+    link: { label: 'Tell us how we did', url: input.reviewLink },
   });
 }
 

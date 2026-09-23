@@ -787,7 +787,7 @@ async function scheduleThankYouSms(input: {
   try {
     const admin = createAdminClient()
     const reviewLink = await getGoogleReviewLink(admin)
-    const message = `Thanks for coming to ${input.event.name} at The Anchor. We'd love your review: ${reviewLink}`
+    const message = `Thanks for coming to ${input.event.name} at The Anchor. We'd love to know how we did: ${reviewLink}`
 
     const result = await jobQueue.enqueue('send_sms', {
       to: input.phone,
