@@ -43,9 +43,16 @@ const RESERVED_TOP_LEVEL_ROUTES = new Set([
 
 // Short-link slugs that back critical customer-facing flows. They resolve like
 // any other short code, but must never be deleted or repointed from the
-// short-links UI — every review-request SMS relies on the 'feedback' slug
-// reaching the review funnel landing page.
-const PROTECTED_SHORT_LINK_SLUGS = new Set(['feedback'])
+// short-links UI, because every review-request SMS relies on them reaching the
+// review funnel landing page.
+//
+// 'review' is the live review ask, held in `system_settings.google_review_link`
+// and read by getGoogleReviewLink (src/lib/events/review-link.ts). Unlike
+// 'feedback' it has a `created_by`, so it IS listed in the staff short-links UI
+// and would otherwise be one click from deletion. 'feedback' is kept protected
+// as well: it is still printed and shared, even though a real /feedback route
+// means the host serves that page directly and its clicks are never counted.
+const PROTECTED_SHORT_LINK_SLUGS = new Set(['feedback', 'review'])
 
 export function isProtectedShortLinkSlug(code: string | null | undefined): boolean {
   if (!code) return false
