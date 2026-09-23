@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
 const mocks = vi.hoisted(() => ({
-  apply: vi.fn(), claim: vi.fn(), persist: vi.fn(), release: vi.fn(), verify: vi.fn(), insert: vi.fn(),
+  apply: vi.fn(), claim: vi.fn(), persist: vi.fn(), release: vi.fn(), gate: vi.fn(), insert: vi.fn(),
 }))
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from: () => ({ insert: mocks.insert }) }) }))
-vi.mock('@/lib/paypal', () => ({ verifyPayPalWebhook: mocks.verify, resolveWebhookIdForUrl: vi.fn() }))
+vi.mock('@/lib/paypal-webhook-gate', () => ({
+  gatePayPalWebhook: mocks.gate,
+  sanitizePayPalHeadersForLog: (headers: Record<string, string>) => headers,
+}))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn() } }))
 vi.mock('@/lib/invoices/paypal-capture', () => ({
   applyInvoicePayPalCapture: mocks.apply,
@@ -16,6 +19,7 @@ vi.mock('@/lib/api/idempotency', () => ({
   claimIdempotencyKey: mocks.claim, computeIdempotencyRequestHash: () => 'HASH',
   persistIdempotencyResponse: mocks.persist, releaseIdempotencyClaim: mocks.release,
 }))
+import { gateSignatureRejected, gateVerified } from '../helpers/paypalGateMock'
 import { POST } from '@/app/api/webhooks/paypal/invoices/route'
 
 function request(
@@ -36,7 +40,7 @@ function request(
 beforeEach(() => {
   vi.clearAllMocks()
   process.env.PAYPAL_INVOICES_WEBHOOK_ID = 'WEBHOOK-1'
-  mocks.verify.mockResolvedValue(true)
+  mocks.gate.mockImplementation(async (input: { body: string }) => gateVerified(input.body))
   mocks.claim.mockResolvedValue({ state: 'claimed' })
   mocks.apply.mockResolvedValue({ success: true })
   mocks.persist.mockResolvedValue(undefined)
@@ -84,9 +88,34 @@ describe('invoice PayPal webhook', () => {
     expect(mocks.release).toHaveBeenCalledTimes(1)
   })
   it('rejects an invalid signature before claiming or recording', async () => {
-    mocks.verify.mockResolvedValue(false)
+    mocks.gate.mockResolvedValue(gateSignatureRejected())
     expect((await POST(request())).status).toBe(401)
     expect(mocks.apply).not.toHaveBeenCalled()
     expect(mocks.claim).not.toHaveBeenCalled()
+  })
+
+  it('keeps the processed event id for 30 days, not the 24 hour default', async () => {
+    // persistIdempotencyResponse OVERWRITES expires_at and defaults to 24 hours, so omitting
+    // the TTL here let a valid PayPal retry re-enter invoice handling after 48 hours.
+    expect((await POST(request())).status).toBe(200)
+    expect(mocks.persist).toHaveBeenCalledWith(
+      expect.anything(),
+      'webhook:paypal:invoices:EVENT-1',
+      'HASH',
+      expect.objectContaining({ event_id: 'EVENT-1' }),
+      24 * 30,
+    )
+  })
+
+  it('logs a terminal success so a delivery that landed can be told from one that arrived', async () => {
+    await POST(request())
+    expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({ status: 'success' }))
+  })
+
+  it('never stores the PayPal signature on a log row', async () => {
+    mocks.gate.mockResolvedValue(gateSignatureRejected())
+    await POST(request())
+    const rows = mocks.insert.mock.calls.map(call => JSON.stringify(call[0]))
+    expect(rows.join(' ')).not.toContain('paypal-transmission-sig"')
   })
 })

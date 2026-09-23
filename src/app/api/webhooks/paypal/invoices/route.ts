@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveWebhookIdForUrl, verifyPayPalWebhook } from '@/lib/paypal'
+import { gatePayPalWebhook, sanitizePayPalHeadersForLog } from '@/lib/paypal-webhook-gate'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { applyInvoicePayPalCapture, positivePennies } from '@/lib/invoices/paypal-capture'
 import { INVOICE_PAYMENT_CUSTOM_ID_PREFIX } from '@/lib/invoices/paypal-custom-id'
@@ -33,25 +32,6 @@ function truncate(value: string | null | undefined, maxLength: number): string |
   return value.length > maxLength ? value.slice(0, maxLength) : value
 }
 
-function sanitizeHeadersForLog(headers: Record<string, string>): Record<string, string> {
-  const allowedKeys = [
-    'content-type',
-    'user-agent',
-    'x-forwarded-for',
-    'x-request-id',
-    'x-vercel-id',
-    'paypal-auth-algo',
-    'paypal-cert-url',
-    'paypal-transmission-id',
-    'paypal-transmission-sig',
-    'paypal-transmission-time',
-  ]
-  const result: Record<string, string> = {}
-  for (const key of allowedKeys) {
-    if (headers[key]) result[key] = headers[key]
-  }
-  return result
-}
 
 async function logWebhook(
   supabase: ReturnType<typeof createAdminClient>,
@@ -62,12 +42,13 @@ async function logWebhook(
     eventId?: string
     eventType?: string
     errorMessage?: string
+    errorDetails?: unknown
   },
 ) {
   const { error } = await (supabase.from('webhook_logs') as any).insert({
     webhook_type: 'paypal',
     status: input.status,
-    headers: sanitizeHeadersForLog(input.headers),
+    headers: sanitizePayPalHeadersForLog(input.headers),
     body: truncate(input.body, 10000),
     params: {
       event_id: input.eventId ?? null,
@@ -75,6 +56,7 @@ async function logWebhook(
       source: 'invoices',
     },
     error_message: truncate(input.errorMessage, 500),
+    error_details: input.errorDetails ?? null,
   })
 
   if (error) {
@@ -89,48 +71,33 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient()
   const body = await request.text()
   const headers = Object.fromEntries(request.headers.entries())
-  // Deliberately does NOT fall back to PAYPAL_WEBHOOK_ID: that is another
-  // endpoint's id, and verifying against it would reject every genuine event
-  // here. When the id cannot be resolved we fail closed and PayPal retries.
-  const webhookId =
-    process.env.PAYPAL_INVOICES_WEBHOOK_ID?.trim()
-    || (await resolveWebhookIdForUrl(
-      `${getAppUrl()}/api/webhooks/paypal/invoices`,
-    ))
 
   let idempotencyKey: string | null = null
   let requestHash: string | null = null
   let claimHeld = false
 
   try {
-    if (!webhookId) {
-      const errorMessage = 'No PayPal webhook is registered for the invoices endpoint'
-      logger.error(errorMessage)
-      await logWebhook(supabase, { status: 'configuration_error', headers, body, errorMessage })
-      return NextResponse.json(
-        { received: false, error: errorMessage },
-        { status: process.env.NODE_ENV === 'production' ? 500 : 200 },
-      )
-    }
-
     // Never trust an unverified body: it would let anyone mark invoices paid.
-    if (!(await verifyPayPalWebhook(headers, body, webhookId))) {
+    const gate = await gatePayPalWebhook({
+      endpointPath: '/api/webhooks/paypal/invoices',
+      endpointName: 'invoices',
+      headers,
+      body,
+      envOverride: process.env.PAYPAL_INVOICES_WEBHOOK_ID,
+    })
+
+    if (!gate.ok) {
       await logWebhook(supabase, {
-        status: 'signature_failed',
+        status: gate.logStatus,
         headers,
         body,
-        errorMessage: 'Invalid PayPal signature',
+        errorMessage: gate.errorMessage,
+        errorDetails: gate.diagnostics,
       })
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+      return NextResponse.json(gate.responseBody, { status: gate.httpStatus })
     }
 
-    let event: any
-    try {
-      event = JSON.parse(body)
-    } catch {
-      await logWebhook(supabase, { status: 'invalid_payload', headers, body })
-      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
-    }
+    const event = gate.event
 
     const eventId = typeof event?.id === 'string' ? event.id.trim() : ''
     const eventType = typeof event?.event_type === 'string' ? event.event_type : 'unknown'
@@ -252,17 +219,42 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, {
-        received: true,
-        event_id: eventId,
-      })
+      // The TTL must be passed explicitly. persistIdempotencyResponse defaults to 24 hours and
+      // OVERWRITES expires_at, so omitting it silently cut the 30 day claim down to one day and
+      // let a valid PayPal retry re-enter invoice handling after 48 hours.
+      await persistIdempotencyResponse(
+        supabase,
+        idempotencyKey,
+        requestHash,
+        {
+          state: 'processed',
+          received: true,
+          event_id: eventId,
+          event_type: eventType,
+          processed_at: new Date().toISOString(),
+        },
+        IDEMPOTENCY_TTL_HOURS,
+      )
       claimHeld = false
     } catch (persistError) {
       logger.error('Failed to persist PayPal invoices webhook idempotency response', {
         error: persistError instanceof Error ? persistError : new Error(String(persistError)),
         metadata: { eventId },
       })
+      await logWebhook(supabase, {
+        status: 'idempotency_persist_failed',
+        headers,
+        body,
+        eventId,
+        eventType,
+        errorMessage: persistError instanceof Error ? persistError.message : String(persistError),
+      })
+      return NextResponse.json({ received: true, idempotency_persist_failed: true })
     }
+
+    // Terminal outcome, so the health check can tell a delivery that landed from one that only
+    // arrived. This route had no success log at all.
+    await logWebhook(supabase, { status: 'success', headers, body, eventId, eventType })
 
     return NextResponse.json({ received: true })
   } catch (error) {
