@@ -141,11 +141,21 @@ async function handleExistingRefund(
   statusDetails: string | null,
   sourceType: SourceType
 ): Promise<void> {
-  // Already completed — no-op
+  // Already completed. This is NOT a no-op: the refund row and the booking summary are two
+  // separate writes, the row goes first, and if the booking write failed the retry used to
+  // land here and skip the repair forever, leaving staff a refund that still reads as unpaid.
+  // Reconverging is safe: it recomputes from the completed-refund ledger rather than adding
+  // anything, and it never asks PayPal for another refund.
   if (existingRefund.status === 'completed') {
-    logger.info('Refund already completed, ignoring duplicate webhook', {
+    logger.info('Refund already completed; reconverging the booking refund state', {
       metadata: { refundId: existingRefund.id, sourceType },
     })
+    await updateBookingRefundStatus(
+      supabase,
+      sourceType,
+      existingRefund.source_id,
+      existingRefund.original_amount
+    )
     return
   }
 
