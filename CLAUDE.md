@@ -63,7 +63,7 @@ Operational scripts in `scripts/` are dry-run by default; a mutation only happen
 | Twilio | SMS and WhatsApp; inbound webhook with signature validation | `src/lib/twilio.ts`, `src/lib/sms/`, `api/webhooks/twilio` |
 | Microsoft Graph | Email transport for Orange Jelly invoices, receipts and quotes | `src/lib/microsoft-graph.ts` |
 | Resend | Venue email and all B2B marketing email; delivery webhook | `src/lib/email/`, `api/webhooks/resend` |
-| PayPal | Every live payment: table-booking deposits, event bookings, private bookings, parking, invoices | `src/lib/paypal.ts`; one webhook route and `PAYPAL_*_WEBHOOK_ID` per surface under `api/webhooks/paypal/*`; four reconciliation crons |
+| PayPal | Every live payment: table-booking deposits, event bookings, private bookings, parking, invoices | `src/lib/paypal.ts`; one webhook route per surface under `api/webhooks/paypal/*`, all sharing `src/lib/paypal-webhook-gate.ts`; four reconciliation crons plus the daily `api/cron/paypal-webhook-health` check. Each endpoint's webhook id is resolved from PayPal by its own URL; `PAYPAL_*_WEBHOOK_ID` is an emergency override for a registry outage only, and `PAYPAL_WEBHOOK_ID` belongs to the legacy route alone. The endpoint and event matrix is `src/lib/paypal-webhook-endpoints.ts`. |
 | Stripe | Historical only (see Domain rules) | `src/lib/payments/stripe.ts`, `api/stripe/webhook` |
 | Google Calendar | Shared "Pub Ops" calendar: private bookings, birthdays, events, notes, recruitment slots | `src/lib/google-calendar*.ts` |
 | Google Routes API | Mileage distance backfill script only | `npm run mileage:distances:routes` |
