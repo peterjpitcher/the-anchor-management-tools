@@ -1,3 +1,24 @@
+// Single-segment paths on a short-link host (l.the-anchor.pub, vip-club.uk)
+// that must NOT be treated as short codes.
+//
+// This is deliberately NOT a mirror of src/app's top-level routes, and padding
+// it to match them would break things. Two callers depend on it:
+//
+//   - src/middleware.ts skips session handling for a short-code path. A real
+//     route that is missing here therefore skips middleware, but the
+//     (authenticated) layout redirects to /auth/login on its own, so an
+//     omission costs nothing. Verified against production on 2026-09-23:
+//     l.the-anchor.pub/mileage (absent here) and /dashboard (present) both 307
+//     to the login page.
+//   - src/lib/sms/link-shortening.ts leaves a URL alone when it already looks
+//     like a short link. Listing a live short code here makes the shortener
+//     shorten our own short link into a redirect chain, so the guest review
+//     slugs below must never be added.
+//
+// The risk worth guarding is the opposite direction: a NEW top-level route that
+// collides with an existing short code silently shadows it, because Vercel
+// rewrites lose to the filesystem. That is what already happened to 'feedback'.
+// tests/guards/short-link-route-collisions.test.ts catches the next one.
 const RESERVED_TOP_LEVEL_ROUTES = new Set([
   // Next.js / static
   '_next',
@@ -52,7 +73,7 @@ const RESERVED_TOP_LEVEL_ROUTES = new Set([
 // and would otherwise be one click from deletion. 'feedback' is kept protected
 // as well: it is still printed and shared, even though a real /feedback route
 // means the host serves that page directly and its clicks are never counted.
-const PROTECTED_SHORT_LINK_SLUGS = new Set(['feedback', 'review'])
+export const PROTECTED_SHORT_LINK_SLUGS = new Set(['feedback', 'review'])
 
 export function isProtectedShortLinkSlug(code: string | null | undefined): boolean {
   if (!code) return false
