@@ -27,6 +27,20 @@ import {
 } from '@/lib/api/idempotency'
 import { POST } from '@/app/api/webhooks/paypal/parking/route'
 
+
+/**
+ * The dispatcher routes on the payload before any handler runs, and a bare custom_id makes it
+ * ask table_bookings first. These tests are about parking, so that probe answers "no".
+ */
+function noTableBooking(): any {
+  const chain: any = {
+    select: () => chain,
+    eq: () => chain,
+    maybeSingle: async () => ({ data: null, error: null }),
+  }
+  return chain
+}
+
 describe('PayPal parking webhook fail-closed guards', () => {
   const originalWebhookId = process.env.PAYPAL_WEBHOOK_ID
 
@@ -50,10 +64,35 @@ describe('PayPal parking webhook fail-closed guards', () => {
     ;(persistIdempotencyResponse as unknown as Mock).mockRejectedValue(new Error('db down'))
 
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
+    const auditLogInsert = vi.fn().mockResolvedValue({ error: null })
+    const paymentQuery: any = {
+      update: vi.fn(() => paymentQuery),
+      eq: vi.fn(() => paymentQuery),
+      select: vi.fn(() => paymentQuery),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'payment-1' }, error: null }),
+    }
+    const bookingQuery: any = {
+      update: vi.fn(() => bookingQuery),
+      eq: vi.fn(() => bookingQuery),
+      select: vi.fn(() => bookingQuery),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'booking-1' }, error: null }),
+    }
     ;(createAdminClient as unknown as Mock).mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
+        }
+        if (table === 'audit_logs') {
+          return { insert: auditLogInsert }
+        }
+        if (table === 'table_bookings') {
+          return noTableBooking()
+        }
+        if (table === 'parking_booking_payments') {
+          return paymentQuery
+        }
+        if (table === 'parking_bookings') {
+          return bookingQuery
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
@@ -61,8 +100,12 @@ describe('PayPal parking webhook fail-closed guards', () => {
 
     const eventPayload = {
       id: 'WH-1',
-      event_type: 'PAYMENT.CAPTURE.PENDING',
-      resource: {},
+      event_type: 'PAYMENT.CAPTURE.DENIED',
+      resource: {
+        id: 'CAPTURE-1',
+        custom_id: 'booking-1',
+        status_details: { reason: 'INSTRUMENT_DECLINED' },
+      },
     }
 
     const request = new Request('http://localhost/api/webhooks/paypal/parking', {
@@ -115,6 +158,9 @@ describe('PayPal parking webhook fail-closed guards', () => {
         }
         if (table === 'parking_booking_payments') {
           return paymentQuery
+        }
+        if (table === 'table_bookings') {
+          return noTableBooking()
         }
         if (table === 'parking_bookings') {
           return bookingQuery
@@ -194,6 +240,9 @@ describe('PayPal parking webhook fail-closed guards', () => {
         if (table === 'webhook_logs') {
           return { insert: webhookLogInsert }
         }
+        if (table === 'table_bookings') {
+          return noTableBooking()
+        }
         if (table === 'parking_bookings') {
           return bookingQuery
         }
@@ -229,6 +278,8 @@ describe('PayPal parking webhook fail-closed guards', () => {
     expect(payload).toEqual({ error: 'Webhook processing failed' })
     expect(paymentQuery.update).not.toHaveBeenCalled()
     expect(persistIdempotencyResponse).not.toHaveBeenCalled()
-    expect(releaseIdempotencyClaim).toHaveBeenCalledWith(expect.anything(), 'webhook:paypal:parking:WH-COMPLETED-MISMATCH', 'hash-completed')
+    // One namespace for the whole app, not one per URL, so the same event arriving on another
+    // registered URL is recognised as a duplicate rather than processed again.
+    expect(releaseIdempotencyClaim).toHaveBeenCalledWith(expect.anything(), 'webhook:paypal:WH-COMPLETED-MISMATCH', 'hash-completed')
   })
 })

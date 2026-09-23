@@ -5,7 +5,10 @@ import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
 import { listPayPalWebhookRegistrations } from '@/lib/paypal'
 import {
-  PAYPAL_WEBHOOK_ENDPOINTS,
+  PAYPAL_CANONICAL_WEBHOOK_PATH,
+  PAYPAL_LEGACY_WEBHOOK_PATHS,
+  PAYPAL_OPTIONAL_EVENTS,
+  PAYPAL_REQUIRED_EVENTS,
   PAYPAL_WEBHOOK_FAILURE_STATUSES,
 } from '@/lib/paypal-webhook-endpoints'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
@@ -32,11 +35,11 @@ const WINDOW_HOURS = 24
 type Health = 'healthy' | 'unhealthy' | 'unknown'
 
 type RegistrationFinding = {
-  endpoint: string
-  label: string
   url: string
-  registered: boolean
-  webhookId: string | null
+  webhookId: string
+  /** canonical = the one we want; legacy = a per-domain URL that no longer needs its own
+   *  registration; unknown = not a URL of ours at all. */
+  kind: 'canonical' | 'legacy' | 'unknown'
   missingRequiredEvents: string[]
   missingOptionalEvents: string[]
 }
@@ -61,7 +64,8 @@ function normaliseUrl(value: string): string {
 async function checkRegistrations(): Promise<{
   health: Health
   findings: RegistrationFinding[]
-  unknownUrls: string[]
+  covered: boolean
+  redundant: number
   problem: string | null
 }> {
   const registry = await listPayPalWebhookRegistrations()
@@ -70,51 +74,54 @@ async function checkRegistrations(): Promise<{
     return {
       health: 'unknown',
       findings: [],
-      unknownUrls: [],
+      covered: false,
+      redundant: 0,
       problem: `Could not read the PayPal webhook registry: ${registry.message}`,
     }
   }
 
   const appUrl = getAppUrl()
-  const findings: RegistrationFinding[] = []
-  const knownUrls = new Set<string>()
+  const canonicalUrl = `${appUrl}${PAYPAL_CANONICAL_WEBHOOK_PATH}`
+  const legacyUrls = new Set(PAYPAL_LEGACY_WEBHOOK_PATHS.map((path) => normaliseUrl(`${appUrl}${path}`)))
 
-  for (const endpoint of PAYPAL_WEBHOOK_ENDPOINTS) {
-    const url = `${appUrl}${endpoint.path}`
-    knownUrls.add(normaliseUrl(url))
-
-    const match = registry.webhooks.find((webhook) => normaliseUrl(webhook.url) === normaliseUrl(url))
-    // A wildcard subscription covers everything, so it is not a missing event.
-    const subscribed = new Set(match?.eventTypes ?? [])
+  const findings: RegistrationFinding[] = registry.webhooks.map((webhook) => {
+    const url = normaliseUrl(webhook.url)
+    const subscribed = new Set(webhook.eventTypes)
     const coversEverything = subscribed.has('*')
 
-    findings.push({
-      endpoint: endpoint.source,
-      label: endpoint.label,
-      url,
-      registered: Boolean(match),
-      webhookId: match?.id ?? null,
-      missingRequiredEvents: match && !coversEverything
-        ? endpoint.requiredEvents.filter((type) => !subscribed.has(type))
-        : match ? [] : endpoint.requiredEvents,
-      missingOptionalEvents: match && !coversEverything
-        ? endpoint.optionalEvents.filter((type) => !subscribed.has(type))
-        : [],
-    })
-  }
+    const kind: RegistrationFinding['kind'] = url === normaliseUrl(canonicalUrl)
+      ? 'canonical'
+      : legacyUrls.has(url)
+        ? 'legacy'
+        : 'unknown'
 
-  const unknownUrls = registry.webhooks
-    .map((webhook) => webhook.url)
-    .filter((url) => !knownUrls.has(normaliseUrl(url)))
+    return {
+      url: webhook.url,
+      webhookId: webhook.id,
+      kind,
+      missingRequiredEvents: coversEverything
+        ? []
+        : PAYPAL_REQUIRED_EVENTS.filter((type) => !subscribed.has(type)),
+      missingOptionalEvents: coversEverything
+        ? []
+        : PAYPAL_OPTIONAL_EVENTS.filter((type) => !subscribed.has(type)),
+    }
+  })
 
-  const hasGap = findings.some(
-    (finding) => !finding.registered || finding.missingRequiredEvents.length > 0,
+  // Every registered URL of ours runs the same dispatcher, so ANY one of them receiving the
+  // required events means no payment event is being missed. Which URL it is only decides how
+  // much duplicate delivery we are paying for.
+  const usable = findings.filter(
+    (finding) => finding.kind !== 'unknown' && finding.missingRequiredEvents.length === 0,
   )
+  const covered = usable.length > 0
+  const redundant = Math.max(usable.length - 1, 0)
 
   return {
-    health: hasGap ? 'unhealthy' : 'healthy',
+    health: covered ? 'healthy' : 'unhealthy',
     findings,
-    unknownUrls,
+    covered,
+    redundant,
     problem: null,
   }
 }
@@ -185,17 +192,16 @@ function buildAlertHtml(report: {
   health: Health
   problems: string[]
   registrations: RegistrationFinding[]
-  unknownUrls: string[]
   failures: FailureCount[]
 }): string {
   const rows = report.registrations
     .map((finding) => {
-      const state = !finding.registered
-        ? 'NOT REGISTERED'
+      const state = finding.kind === 'unknown'
+        ? 'NOT ONE OF OURS, review by hand'
         : finding.missingRequiredEvents.length > 0
           ? `missing: ${finding.missingRequiredEvents.join(', ')}`
-          : 'ok'
-      return `<tr><td style="padding:4px 8px;">${escapeHtml(finding.label)}</td><td style="padding:4px 8px;">${escapeHtml(state)}</td><td style="padding:4px 8px;font-family:monospace;">${escapeHtml(finding.webhookId ?? '-')}</td></tr>`
+          : finding.kind === 'canonical' ? 'ok (canonical)' : 'ok (legacy, can be deleted)'
+      return `<tr><td style="padding:4px 8px;font-family:monospace;">${escapeHtml(finding.url)}</td><td style="padding:4px 8px;">${escapeHtml(state)}</td><td style="padding:4px 8px;font-family:monospace;">${escapeHtml(finding.webhookId)}</td></tr>`
     })
     .join('\n')
 
@@ -214,12 +220,9 @@ function buildAlertHtml(report: {
         : ''}
       <h3>Registrations</h3>
       <table style="border-collapse:collapse;font-size:13px;">
-        <tr><th style="text-align:left;padding:4px 8px;">Endpoint</th><th style="text-align:left;padding:4px 8px;">State</th><th style="text-align:left;padding:4px 8px;">Webhook id</th></tr>
-        ${rows || '<tr><td style="padding:4px 8px;" colspan="3">Not checked</td></tr>'}
+        <tr><th style="text-align:left;padding:4px 8px;">Registered URL</th><th style="text-align:left;padding:4px 8px;">State</th><th style="text-align:left;padding:4px 8px;">Webhook id</th></tr>
+        ${rows || '<tr><td style="padding:4px 8px;" colspan="3">NOTHING IS REGISTERED. No PayPal event can reach this app.</td></tr>'}
       </table>
-      ${report.unknownUrls.length > 0
-        ? `<h3>Registered URLs this app does not recognise</h3><p>Review these by hand; nothing is deleted automatically.</p><ul>${report.unknownUrls.map((url) => `<li style="font-family:monospace;">${escapeHtml(url)}</li>`).join('')}</ul>`
-        : ''}
       <h3>Failures in the last ${WINDOW_HOURS} hours</h3>
       <table style="border-collapse:collapse;font-size:13px;">
         <tr><th style="text-align:left;padding:4px 8px;">Source</th><th style="text-align:left;padding:4px 8px;">Status</th><th style="text-align:left;padding:4px 8px;">Attempts</th><th style="text-align:left;padding:4px 8px;">Distinct events</th></tr>
@@ -250,7 +253,6 @@ export async function GET(request: NextRequest): Promise<Response> {
     health,
     problems,
     registrations: registrations.findings,
-    unknownUrls: registrations.unknownUrls,
     failures: failures.counts,
   }
 
@@ -268,7 +270,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       try {
         const result = await sendEmail({
           to: recipient,
-          subject: `[PAYPAL WEBHOOKS] ${health} - ${PAYPAL_WEBHOOK_ENDPOINTS.length} endpoints checked`,
+              subject: `[PAYPAL WEBHOOKS] ${health}`,
           html: buildAlertHtml(report),
         })
 
@@ -297,7 +299,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       metadata: {
         health,
         problems,
-        unregistered: registrations.findings.filter((finding) => !finding.registered).map((finding) => finding.endpoint),
+        covered: registrations.covered,
         failures: failures.counts,
       },
     })
@@ -311,7 +313,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     alert_delivery: alertDelivery,
     alert_error: alertError,
     registrations: registrations.findings,
-    unknown_urls: registrations.unknownUrls,
+    covered: registrations.covered,
+    redundant_registrations: registrations.redundant,
     failures: failures.counts,
   })
 }

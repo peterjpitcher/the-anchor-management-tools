@@ -48,7 +48,9 @@ describe('A-117 remaining polish source guards', () => {
   })
 
   it('checks PayPal parking capture amount and currency before marking payment paid', () => {
-    const source = read('src/app/api/webhooks/paypal/parking/route.ts')
+    // The handler moved out of the route when the five PayPal webhook URLs were consolidated
+    // onto one dispatcher. The guard is unchanged: the check must still precede the write.
+    const source = read('src/lib/paypal-domains/parking.ts')
     const mismatchIndex = source.indexOf('PayPal capture amount or currency mismatch')
     const updateIndex = source.indexOf(".update({\n      status: 'paid'")
 

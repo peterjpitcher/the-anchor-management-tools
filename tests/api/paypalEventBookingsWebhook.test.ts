@@ -126,7 +126,8 @@ describe('PayPal event-bookings webhook', () => {
     }))
     expect(persistIdempotencyResponse).toHaveBeenCalledWith(
       expect.anything(),
-      'webhook:paypal:event-bookings:WH-EVENT-1',
+      // One namespace for the whole app now, not one per URL.
+      'webhook:paypal:WH-EVENT-1',
       'hash-1',
       expect.objectContaining({
         state: 'manual_review',
