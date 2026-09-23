@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { Badge, Button, IconButton } from '@/ds';
 import { addShiftsFromTemplates } from '@/app/actions/rota';
-import type { RotaWeek, RotaShift, RotaEmployee } from '@/app/actions/rota';
+import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
 import { displayName } from '@/lib/employees/display-name';
 import { calculatePaidHours } from '@/lib/rota/pay-math';
@@ -22,6 +22,8 @@ interface AddShiftsModalProps {
   templates: ShiftTemplate[];
   existingShifts: RotaShift[];
   employees: RotaEmployee[];
+  /** The week's leave days, so a row whose employee is off can say so up front. */
+  leaveDays: LeaveDayWithRequest[];
   onClose: () => void;
   onShiftsAdded: (shifts: RotaShift[]) => void;
 }
@@ -63,6 +65,32 @@ function empName(emp: RotaEmployee): string {
   return displayName(emp, 'Unknown');
 }
 
+/**
+ * Would this templated shift land on the employee's approved leave?
+ *
+ * The server is what actually decides, and it turns any such row into an open shift.
+ * This is only so a manager is not surprised by the outcome. The dates mirror
+ * public.rota_shift_leave_dates: the shift date, plus the next day when the times wrap
+ * past midnight. The next day is taken from the week's own dates rather than
+ * calculated, so a Sunday wrap simply is not flagged here; the server still opens it.
+ */
+function willBeOpenedForLeave(
+  template: ShiftTemplate,
+  date: string,
+  approvedLeave: Set<string>,
+  weekDates: string[],
+): boolean {
+  if (!template.employee_id || !date) return false;
+
+  const dates = [date];
+  if (template.end_time.slice(0, 5) <= template.start_time.slice(0, 5)) {
+    const next = weekDates[weekDates.indexOf(date) + 1];
+    if (next) dates.push(next);
+  }
+
+  return dates.some(d => approvedLeave.has(`${template.employee_id}:${d}`));
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -73,12 +101,23 @@ export default function AddShiftsModal({
   templates,
   existingShifts,
   employees,
+  leaveDays,
   onClose,
   onShiftsAdded,
 }: AddShiftsModalProps) {
   const empMap = useMemo(
     () => new Map(employees.map(e => [e.employee_id, e])),
     [employees],
+  );
+
+  // Only approved leave bars an assignment; a pending request does not.
+  const approvedLeave = useMemo(
+    () => new Set(
+      leaveDays
+        .filter(l => l.status === 'approved')
+        .map(l => `${l.employee_id}:${l.leave_date}`),
+    ),
+    [leaveDays],
   );
 
   // Build a set of existing shifts for duplicate detection.
@@ -189,6 +228,8 @@ export default function AddShiftsModal({
       }
       const parts: string[] = [];
       if (result.created > 0) parts.push(`${result.created} shift${result.created !== 1 ? 's' : ''} added`);
+      // A name dropped for leave still produced a shift, but an open one, so say so.
+      if (result.opened > 0) parts.push(`${result.opened} left open, staff on leave`);
       if (result.skipped > 0) parts.push(`${result.skipped} already existed and skipped`);
       if (parts.length) toast.success(parts.join(' · '));
       else toast('No new shifts were added', { icon: 'ℹ️' });
@@ -234,6 +275,8 @@ export default function AddShiftsModal({
             const globalIdx = scheduled.indexOf(item);
             const isDisabled = item.state === 'exists';
             const emp = item.template.employee_id ? empMap.get(item.template.employee_id) : undefined;
+            const opensForLeave = !isDisabled
+              && willBeOpenedForLeave(item.template, item.date, approvedLeave, weekDates);
 
             return (
               <div
@@ -268,8 +311,15 @@ export default function AddShiftsModal({
                       {formatPaidHours(item.template.start_time, item.template.end_time, item.template.unpaid_break_minutes)} paid
                     </span>
                     {emp && (
-                      <span className="text-xs bg-surface-hover text-text-muted px-1.5 py-0.5 rounded-full">
+                      <span
+                        className={`text-xs px-1.5 py-0.5 rounded-full ${
+                          opensForLeave
+                            ? 'bg-warning-soft text-warning-fg'
+                            : 'bg-surface-hover text-text-muted'
+                        }`}
+                      >
                         👤 {empName(emp)}
+                        {opensForLeave && ', on leave, will be added as open'}
                       </span>
                     )}
                   </div>
@@ -343,6 +393,7 @@ export default function AddShiftsModal({
               </p>
               {floating.map((item, idx) => {
                 const emp = item.template.employee_id ? empMap.get(item.template.employee_id) : undefined;
+                const opensForLeave = willBeOpenedForLeave(item.template, item.day, approvedLeave, weekDates);
                 return (
                   <div key={item.template.id} className="flex items-center gap-3 mb-2 last:mb-0">
                     <input
@@ -366,6 +417,7 @@ export default function AddShiftsModal({
                         {emp && (
                           <span className="text-xs bg-warning-soft text-warning-fg px-1.5 py-0.5 rounded-full">
                             👤 {empName(emp)}
+                            {opensForLeave && ', on leave, will be added as open'}
                           </span>
                         )}
                       </div>
