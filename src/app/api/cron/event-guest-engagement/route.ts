@@ -525,13 +525,13 @@ function buildTableReviewEmail(input: { firstName: string; redirectUrl: string }
     html: [
       `<div style="font-family:Arial,sans-serif;line-height:1.5;color:${GUEST.text}">`,
       `<p>Hi ${safeFirstName}, thanks for popping in.</p>`,
-      `<p>If you have 30 seconds, a quick review means the world to us: <a href="${safeRedirectUrl}">leave a review</a>.</p>`,
+      `<p>If you have 30 seconds, we'd love to know how we did: <a href="${safeRedirectUrl}">tell us how we did</a>.</p>`,
       '<p>The Anchor</p>',
       '</div>',
     ].join(''),
     text: [
       `Hi ${input.firstName}, thanks for popping in.`,
-      `If you have 30 seconds, a quick review means the world to us: ${input.redirectUrl}`,
+      `If you have 30 seconds, we'd love to know how we did: ${input.redirectUrl}`,
       'The Anchor',
     ].join('\n'),
   }
@@ -1170,7 +1170,7 @@ async function processReviewFollowups(
     if (!shortened) result.shortLinkFallbacks += 1
     const firstName = getSmartFirstName(customer.first_name)
     const messageBody = ensureReplyInstruction(
-      `The Anchor: ${firstName}! Hope you had a belter at ${event.name} last night. Got 30 seconds? A quick review means the world to us: ${redirectUrl}`,
+      `The Anchor: ${firstName}! Hope you had a belter at ${event.name} last night. Got 30 seconds? We'd love to know how we did: ${redirectUrl}`,
       supportPhone
     )
 
@@ -1541,7 +1541,7 @@ async function processTableReviewFollowups(
     if (!shortened) result.shortLinkFallbacks += 1
     const firstName = getSmartFirstName(customer.first_name)
     const messageBody = ensureReplyInstruction(
-      `The Anchor: ${firstName}! Thanks for popping in. Got 30 seconds? A quick review means the world to us: ${redirectUrl}`,
+      `The Anchor: ${firstName}! Thanks for popping in. Got 30 seconds? We'd love to know how we did: ${redirectUrl}`,
       supportPhone
     )
 
