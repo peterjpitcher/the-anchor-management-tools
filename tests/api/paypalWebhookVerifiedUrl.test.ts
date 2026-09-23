@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 /**
  * Each PayPal webhook route finds the id it verifies signatures against by looking up the
  * webhook registered for its own URL. That URL is built from getAppUrl(), so it must come out
- * exactly as PayPal has it registered: the live app URL plus the route's path, one slash between.
+ * exactly as PayPal has it registered: the live app URL plus the route's path, one slash
+ * between.
+ *
+ * The gate itself is real here, so this also pins the precedence rule: a resolved id always
+ * wins over a configured one, and a clean "nothing registered" fails closed instead of falling
+ * back to a stale override.
  */
 
 // Set before any import, so env.ts validates the live value rather than the suite default.
@@ -12,9 +17,8 @@ vi.hoisted(() => {
 })
 
 vi.mock('@/lib/paypal', () => ({
-  verifyPayPalWebhook: vi.fn(),
-  // No webhook registered for the URL, so each route fails closed straight after the lookup.
-  resolveWebhookIdForUrl: vi.fn(async () => null),
+  resolvePayPalWebhookId: vi.fn(),
+  verifyPayPalWebhookDetailed: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
@@ -23,7 +27,7 @@ vi.mock('@/lib/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
-import { resolveWebhookIdForUrl, verifyPayPalWebhook } from '@/lib/paypal'
+import { resolvePayPalWebhookId, verifyPayPalWebhookDetailed } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { POST as parkingPost } from '@/app/api/webhooks/paypal/parking/route'
 import { POST as eventBookingsPost } from '@/app/api/webhooks/paypal/event-bookings/route'
@@ -33,11 +37,12 @@ import { POST as privateBookingsPost } from '@/app/api/webhooks/paypal/private-b
 
 type Post = (request: never) => Promise<Response>
 
-const ROUTES: Array<{ path: string; envId: string; post: Post }> = [
-  { path: 'parking', envId: 'PAYPAL_PARKING_WEBHOOK_ID', post: parkingPost as Post },
-  { path: 'event-bookings', envId: 'PAYPAL_EVENT_BOOKINGS_WEBHOOK_ID', post: eventBookingsPost as Post },
-  { path: 'table-bookings', envId: 'PAYPAL_TABLE_BOOKINGS_WEBHOOK_ID', post: tableBookingsPost as Post },
-  { path: 'invoices', envId: 'PAYPAL_INVOICES_WEBHOOK_ID', post: invoicesPost as Post },
+const ROUTES: Array<{ path: string; envId: string; endpointName: string; post: Post }> = [
+  { path: 'parking', envId: 'PAYPAL_PARKING_WEBHOOK_ID', endpointName: 'parking', post: parkingPost as Post },
+  { path: 'event-bookings', envId: 'PAYPAL_EVENT_BOOKINGS_WEBHOOK_ID', endpointName: 'event-bookings', post: eventBookingsPost as Post },
+  { path: 'table-bookings', envId: 'PAYPAL_TABLE_BOOKINGS_WEBHOOK_ID', endpointName: 'table-bookings', post: tableBookingsPost as Post },
+  { path: 'invoices', envId: 'PAYPAL_INVOICES_WEBHOOK_ID', endpointName: 'invoices', post: invoicesPost as Post },
+  { path: 'private-bookings', envId: 'PAYPAL_PRIVATE_BOOKINGS_WEBHOOK_ID', endpointName: 'private-bookings', post: privateBookingsPost as Post },
 ]
 
 function webhookRequest(path: string): never {
@@ -51,11 +56,26 @@ function webhookRequest(path: string): never {
 
 const webhookLogInsert = vi.fn(async (_row: Record<string, unknown>) => ({ error: null }))
 
+function resolution(overrides: Partial<{
+  webhookId: string | null
+  source: string
+  lookupState: string
+  lookupMessage: string | null
+}>) {
+  return {
+    webhookId: null,
+    source: 'none',
+    lookupState: 'no_match',
+    lookupMessage: null,
+    url: 'https://management.orangejelly.co.uk',
+    ...overrides,
+  } as never
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
-  // A one-off value a case did not consume must not leak into the next case.
-  vi.mocked(resolveWebhookIdForUrl).mockReset().mockResolvedValue(null)
-  vi.mocked(verifyPayPalWebhook).mockReset()
+  vi.mocked(resolvePayPalWebhookId).mockReset().mockResolvedValue(resolution({}))
+  vi.mocked(verifyPayPalWebhookDetailed).mockReset()
   vi.mocked(createAdminClient).mockReturnValue({
     from: vi.fn(() => ({ insert: webhookLogInsert })),
   } as never)
@@ -71,65 +91,50 @@ describe('PayPal webhook signature lookup URL', () => {
 
     const response = await post(webhookRequest(path))
 
-    expect(resolveWebhookIdForUrl).toHaveBeenCalledTimes(1)
-    expect(resolveWebhookIdForUrl).toHaveBeenCalledWith(
-      `https://management.orangejelly.co.uk/api/webhooks/paypal/${path}`
+    expect(resolvePayPalWebhookId).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(resolvePayPalWebhookId).mock.calls[0][0]).toBe(
+      `https://management.orangejelly.co.uk/api/webhooks/paypal/${path}`,
     )
     // Nothing registered for that URL: the route refuses rather than verify against another id.
-    expect(verifyPayPalWebhook).not.toHaveBeenCalled()
+    expect(verifyPayPalWebhookDetailed).not.toHaveBeenCalled()
     expect(await response.json()).toMatchObject({ received: false })
   })
-})
 
-describe('PayPal parking webhook id', () => {
-  it('verifies against the webhook registered for its own URL, ignoring a configured id', async () => {
-    // The production value matched no registered webhook on 22 September 2026.
-    vi.stubEnv('PAYPAL_PARKING_WEBHOOK_ID', 'STALE-PARKING-ID')
-    vi.mocked(resolveWebhookIdForUrl).mockResolvedValueOnce('REGISTERED-ID')
-    vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(false)
-
-    await (parkingPost as Post)(webhookRequest('parking'))
-
-    expect(resolveWebhookIdForUrl).toHaveBeenCalledWith(
-      'https://management.orangejelly.co.uk/api/webhooks/paypal/parking'
-    )
-    expect(vi.mocked(verifyPayPalWebhook).mock.calls[0][2]).toBe('REGISTERED-ID')
-  })
-})
-
-describe('PayPal private-bookings webhook id', () => {
-  // Both were set in production and neither matched the registered webhook, so every delivery
-  // from 28 August to 22 September 2026 failed verification.
-  function stubStaleIds(): void {
-    vi.stubEnv('PAYPAL_PRIVATE_BOOKINGS_WEBHOOK_ID', 'STALE-PRIVATE-BOOKINGS-ID')
+  it.each(ROUTES)('$path hands its own env var to the resolver, never PAYPAL_WEBHOOK_ID', async ({ path, envId, post }) => {
     vi.stubEnv('PAYPAL_WEBHOOK_ID', 'ANOTHER-ENDPOINTS-ID')
-  }
+    vi.stubEnv(envId, 'THIS-ENDPOINTS-OVERRIDE')
 
-  it('verifies against the webhook registered for its own URL, ignoring the configured ids', async () => {
-    stubStaleIds()
-    vi.mocked(resolveWebhookIdForUrl).mockResolvedValueOnce('REGISTERED-ID')
-    vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(false)
+    await post(webhookRequest(path))
 
-    const response = await (privateBookingsPost as Post)(webhookRequest('private-bookings'))
+    expect(vi.mocked(resolvePayPalWebhookId).mock.calls[0][1]).toBe('THIS-ENDPOINTS-OVERRIDE')
+  })
 
-    expect(resolveWebhookIdForUrl).toHaveBeenCalledWith(
-      'https://management.orangejelly.co.uk/api/webhooks/paypal/private-bookings'
+  it.each(ROUTES)('$path verifies against the resolved id, not a stale configured one', async ({ path, envId, post }) => {
+    vi.stubEnv(envId, 'STALE-ID')
+    vi.mocked(resolvePayPalWebhookId).mockResolvedValueOnce(
+      resolution({ webhookId: 'REGISTERED-ID', source: 'resolved', lookupState: 'matched' }),
     )
-    expect(verifyPayPalWebhook).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(verifyPayPalWebhook).mock.calls[0][2]).toBe('REGISTERED-ID')
+    vi.mocked(verifyPayPalWebhookDetailed).mockResolvedValueOnce({
+      outcome: 'signature_rejected',
+      verificationStatus: 'FAILURE',
+      transmissionAgeSeconds: 10,
+    })
+
+    const response = await post(webhookRequest(path))
+
+    expect(vi.mocked(verifyPayPalWebhookDetailed).mock.calls[0][2]).toBe('REGISTERED-ID')
     expect(response.status).toBe(401)
   })
 
-  it('fails closed, and logs why, when no webhook is registered for its URL', async () => {
-    stubStaleIds()
+  it.each(ROUTES)('$path logs configuration_error when nothing is registered', async ({ path, endpointName, post }) => {
+    const response = await post(webhookRequest(path))
 
-    const response = await (privateBookingsPost as Post)(webhookRequest('private-bookings'))
-
-    expect(verifyPayPalWebhook).not.toHaveBeenCalled()
     expect(await response.json()).toMatchObject({
       received: false,
-      error: 'No PayPal webhook is registered for the private-bookings endpoint',
+      error: `No PayPal webhook is registered for the ${endpointName} endpoint`,
     })
-    expect(webhookLogInsert).toHaveBeenCalledWith(expect.objectContaining({ status: 'configuration_error' }))
+    expect(webhookLogInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'configuration_error' }),
+    )
   })
 })

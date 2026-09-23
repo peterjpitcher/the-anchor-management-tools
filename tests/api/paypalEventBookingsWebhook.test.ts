@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/lib/paypal', () => ({
-  verifyPayPalWebhook: vi.fn(),
-  // The route resolves the webhook id from PayPal by endpoint URL when no env var is set,
-  // so signature verification can never run against another endpoint's id.
-  resolveWebhookIdForUrl: vi.fn(async () => 'WEBHOOK-ID-FROM-PAYPAL'),
-}))
+// The route goes through the shared gate. What the gate itself accepts is proved against the
+// real helper in tests/lib/paypalWebhookVerification.test.ts.
+vi.mock('@/lib/paypal-webhook-gate', async () => {
+  const { paypalGateModuleMock } = await import('../helpers/paypalGateMock')
+  return paypalGateModuleMock()
+})
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
@@ -28,7 +28,6 @@ vi.mock('@/lib/api/idempotency', () => ({
   releaseIdempotencyClaim: vi.fn(),
 }))
 
-import { verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEventPaymentManualReviewSms } from '@/lib/events/event-payments'
 import { sendEventPaymentManualReviewEmail } from '@/lib/email/event-ticket-emails'
@@ -44,7 +43,6 @@ describe('PayPal event-bookings webhook', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.PAYPAL_WEBHOOK_ID = 'webhook_test'
-    vi.mocked(verifyPayPalWebhook).mockResolvedValue(true)
     vi.mocked(claimIdempotencyKey).mockResolvedValue({ state: 'claimed' } as any)
     vi.mocked(persistIdempotencyResponse).mockResolvedValue(undefined)
     vi.mocked(sendEventPaymentManualReviewSms).mockResolvedValue({ success: true, code: null, logFailure: false })
@@ -61,6 +59,8 @@ describe('PayPal event-bookings webhook', () => {
 
   it('routes blocked capture confirmations to manual review instead of silently acking blocked', async () => {
     const auditInsert = vi.fn().mockResolvedValue({ error: null })
+    // This route used to write nothing to webhook_logs, so its silence proved nothing.
+    const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
     const rpc = vi.fn().mockResolvedValue({
       data: { state: 'blocked', reason: 'booking_not_pending_payment' },
       error: null,
@@ -71,6 +71,9 @@ describe('PayPal event-bookings webhook', () => {
       from: vi.fn((table: string) => {
         if (table === 'audit_logs') {
           return { insert: auditInsert }
+        }
+        if (table === 'webhook_logs') {
+          return { insert: webhookLogInsert }
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
@@ -109,6 +112,12 @@ describe('PayPal event-bookings webhook', () => {
       amount: 12.5,
       currency: 'GBP',
     })
+    expect(webhookLogInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'received', params: expect.objectContaining({ source: 'event_bookings' }) }),
+    )
+    expect(webhookLogInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'manual_review' }),
+    )
     expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({
       operation_type: 'event_payment.paypal_webhook_manual_review',
       resource_type: 'event_booking',

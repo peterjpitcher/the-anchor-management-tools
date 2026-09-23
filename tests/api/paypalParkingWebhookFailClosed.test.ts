@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
-vi.mock('@/lib/paypal', () => ({
-  verifyPayPalWebhook: vi.fn(),
-  // The route resolves the webhook id from PayPal by endpoint URL when no env var is set,
-  // so signature verification can never run against another endpoint's id.
-  resolveWebhookIdForUrl: vi.fn(async () => 'WEBHOOK-ID-FROM-PAYPAL'),
-}))
+// The route goes through the shared gate. What the gate itself accepts is proved against the
+// real helper in tests/lib/paypalWebhookVerification.test.ts.
+vi.mock('@/lib/paypal-webhook-gate', async () => {
+  const { paypalGateModuleMock } = await import('../helpers/paypalGateMock')
+  return paypalGateModuleMock()
+})
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
@@ -18,7 +18,6 @@ vi.mock('@/lib/api/idempotency', () => ({
   releaseIdempotencyClaim: vi.fn(),
 }))
 
-import { verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   claimIdempotencyKey,
@@ -45,7 +44,6 @@ describe('PayPal parking webhook fail-closed guards', () => {
   })
 
   it('returns 200 and keeps idempotency claim when idempotency persistence fails after processing', async () => {
-    ;(verifyPayPalWebhook as unknown as Mock).mockResolvedValue(true)
     ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-1')
     ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
     ;(releaseIdempotencyClaim as unknown as Mock).mockResolvedValue(undefined)
@@ -85,7 +83,6 @@ describe('PayPal parking webhook fail-closed guards', () => {
   })
 
   it('marks the parent parking booking failed when a capture is denied', async () => {
-    ;(verifyPayPalWebhook as unknown as Mock).mockResolvedValue(true)
     ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-denied')
     ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
     ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)
@@ -166,7 +163,6 @@ describe('PayPal parking webhook fail-closed guards', () => {
   })
 
   it('rejects completed captures when the amount does not match the pending parking payment', async () => {
-    ;(verifyPayPalWebhook as unknown as Mock).mockResolvedValue(true)
     ;(computeIdempotencyRequestHash as unknown as Mock).mockReturnValue('hash-completed')
     ;(claimIdempotencyKey as unknown as Mock).mockResolvedValue({ state: 'claimed' })
     ;(persistIdempotencyResponse as unknown as Mock).mockResolvedValue(undefined)

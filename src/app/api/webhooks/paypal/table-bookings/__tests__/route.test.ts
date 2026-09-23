@@ -3,12 +3,13 @@ import { NextRequest } from 'next/server'
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
-vi.mock('@/lib/paypal', () => ({
-  verifyPayPalWebhook: vi.fn(),
-  // The route resolves the webhook id from PayPal by endpoint URL when no env var is set,
-  // so signature verification can never run against another endpoint's id.
-  resolveWebhookIdForUrl: vi.fn(async () => 'WEBHOOK-ID-FROM-PAYPAL'),
-}))
+// The route now goes through the shared gate, which resolves the id from PayPal by endpoint
+// URL and reports exactly why a verification failed. What the gate accepts is proved against
+// the real helper in tests/lib/paypalWebhookVerification.test.ts.
+vi.mock('@/lib/paypal-webhook-gate', async () => {
+  const { paypalGateModuleMock } = await import('@/../tests/helpers/paypalGateMock')
+  return paypalGateModuleMock()
+})
 
 vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), info: vi.fn() },
@@ -133,11 +134,12 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
   })
 
   it('returns 401 when PayPal signature verification fails', async () => {
-    const { verifyPayPalWebhook } = await import('@/lib/paypal')
+    const { gatePayPalWebhook } = await import('@/lib/paypal-webhook-gate')
+    const { gateSignatureRejected } = await import('@/../tests/helpers/paypalGateMock')
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const { POST } = await import('../route')
 
-    vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(false)
+    vi.mocked(gatePayPalWebhook).mockResolvedValueOnce(gateSignatureRejected())
     const mockSupabase = createSupabaseMock()
     vi.mocked(createAdminClient).mockReturnValue(mockSupabase as any)
 
@@ -149,12 +151,10 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
   })
 
   it('marks booking paid when PAYMENT.CAPTURE.COMPLETED is valid and booking not yet captured', async () => {
-    const { verifyPayPalWebhook } = await import('@/lib/paypal')
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const { claimIdempotencyKey, persistIdempotencyResponse } = await import('@/lib/api/idempotency')
     const { POST } = await import('../route')
 
-    vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(true)
     vi.mocked(claimIdempotencyKey).mockResolvedValueOnce({ state: 'claimed' })
     vi.mocked(persistIdempotencyResponse).mockResolvedValueOnce(undefined)
 
@@ -191,12 +191,10 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
   })
 
   it('returns 200 without reprocessing when idempotency claim returns replay', async () => {
-    const { verifyPayPalWebhook } = await import('@/lib/paypal')
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const { claimIdempotencyKey } = await import('@/lib/api/idempotency')
     const { POST } = await import('../route')
 
-    vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(true)
     vi.mocked(claimIdempotencyKey).mockResolvedValueOnce({ state: 'replay', response: null })
 
     const mockSupabase = createSupabaseMock()
@@ -213,12 +211,10 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
   })
 
   it('returns 200 without update when booking already has a capture ID', async () => {
-    const { verifyPayPalWebhook } = await import('@/lib/paypal')
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const { claimIdempotencyKey, persistIdempotencyResponse } = await import('@/lib/api/idempotency')
     const { POST } = await import('../route')
 
-    vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(true)
     vi.mocked(claimIdempotencyKey).mockResolvedValueOnce({ state: 'claimed' })
     vi.mocked(persistIdempotencyResponse).mockResolvedValueOnce(undefined)
 
@@ -246,11 +242,9 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
   })
 
   it('returns 200 and ignores non-CAPTURE.COMPLETED event types', async () => {
-    const { verifyPayPalWebhook } = await import('@/lib/paypal')
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const { POST } = await import('../route')
 
-    vi.mocked(verifyPayPalWebhook).mockResolvedValueOnce(true)
     const mockSupabase = createSupabaseMock()
     vi.mocked(createAdminClient).mockReturnValue(mockSupabase as any)
 
