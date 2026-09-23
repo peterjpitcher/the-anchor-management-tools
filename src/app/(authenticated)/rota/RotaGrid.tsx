@@ -835,7 +835,13 @@ export default function RotaGrid({
       } else {
         setShifts(prev => [...prev, ...result.shifts]);
         router.refresh();
-        toast.success(`${result.created} shift${result.created !== 1 ? 's' : ''} added from templates`);
+        // Say when a name was dropped: the shift still landed, but as an open
+        // shift, and a manager needs to know there is cover to fill.
+        const parts = [`${result.created} shift${result.created !== 1 ? 's' : ''} added from templates`];
+        if (result.opened > 0) {
+          parts.push(`${result.opened} left open, staff on leave`);
+        }
+        toast.success(parts.join(' · '));
       }
     });
   };
@@ -1696,6 +1702,7 @@ export default function RotaGrid({
           templates={templates}
           existingShifts={shifts}
           employees={employees}
+          leaveDays={activeLeaveDays}
           onClose={() => setShowAddShifts(false)}
           onShiftsAdded={(newShifts) => {
             setShifts(prev => [...prev, ...newShifts]);
