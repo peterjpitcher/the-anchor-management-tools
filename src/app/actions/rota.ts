@@ -536,6 +536,76 @@ async function writeShiftsWithLeaveGuard(
 }
 
 /**
+ * Approved leave bars a PERSON from a shift, not the shift itself.
+ *
+ * The guard is all-or-nothing with no override (D1), so one person's holiday used to
+ * take a whole template population down with it and the cover that shift represents
+ * vanished from the week. On the template paths the answer is not to force the
+ * assignment through, it is to drop the name: the row is written as an open shift, so
+ * the rota still shows the cover and a manager can offer it to somebody else.
+ *
+ * Only the template paths do this. A manager naming a person by hand, on create, edit
+ * or drag, is making a deliberate choice and still gets the refusal.
+ *
+ * The dry run goes through check_rota_leave_conflicts, the same SQL rule the guarded
+ * write applies, so the two cannot drift. The guarded write stays the backstop: if
+ * leave is approved in the gap between the two calls, the write refuses the batch
+ * rather than rostering somebody on holiday.
+ */
+async function openTemplateRowsClashingWithLeave(
+  admin: ReturnType<typeof createAdminClient>,
+  payload: Record<string, unknown>[],
+): Promise<{ payload: Record<string, unknown>[]; opened: number } | { error: string }> {
+  // Only a real assignment can clash, which is the same positive rule the SQL uses.
+  const probe = payload
+    .map((values, index) => ({ values, index }))
+    .filter(({ values }) => Boolean(values.employee_id) && values.is_open_shift !== true)
+    .map(({ values, index }) => ({
+      ref: String(index),
+      employee_id: values.employee_id,
+      shift_date: values.shift_date,
+      start_time: values.start_time,
+      end_time: values.end_time,
+      is_overnight: values.is_overnight ?? false,
+      status: values.status ?? 'scheduled',
+      is_open_shift: false,
+    }));
+
+  if (probe.length === 0) return { payload, opened: 0 };
+
+  const { data, error } = await admin.rpc('check_rota_leave_conflicts', { p_shifts: probe });
+  if (error) return { error: error.message };
+
+  // One row can come back twice when an overnight shift straddles two leave days, so
+  // the set counts people-shifts opened, not conflict rows.
+  const clashing = new Set(
+    (Array.isArray(data) ? (data as LeaveConflictRow[]) : []).map(row => row.ref),
+  );
+
+  if (clashing.size === 0) return { payload, opened: 0 };
+
+  const adjusted = payload.map((values, index) => {
+    if (!clashing.has(String(index))) return values;
+    return {
+      ...values,
+      employee_id: null,
+      is_open_shift: true,
+      // An open shift has nobody to accept it, so the acceptance columns must be
+      // cleared alongside the name rather than left on the row.
+      ...initialAcceptanceForShift({
+        employee_id: null,
+        is_open_shift: true,
+        status: (values.status as string | undefined) ?? 'scheduled',
+        shift_date: values.shift_date as string,
+        start_time: values.start_time as string,
+      }),
+    };
+  });
+
+  return { payload: adjusted, opened: clashing.size };
+}
+
+/**
  * Send one manager alert and record it in the rota email log.
  *
  * The address comes from the single resolver (spec F8, decision D15): the Rota
@@ -2739,7 +2809,10 @@ export async function moveShift(
 
 export async function autoPopulateWeekFromTemplates(
   weekId: string,
-): Promise<{ success: true; created: number; shifts: RotaShift[] } | { success: false; error: string }> {
+): Promise<
+  { success: true; created: number; opened: number; shifts: RotaShift[] } |
+  { success: false; error: string }
+> {
   const canEdit = await checkUserPermission('rota', 'edit');
   if (!canEdit) return { success: false, error: 'Permission denied' };
 
@@ -2760,7 +2833,7 @@ export async function autoPopulateWeekFromTemplates(
 
   if (weekError || !week) return { success: false, error: 'Rota week not found' };
   if (tErr) return { success: false, error: tErr.message };
-  if (!templates?.length) return { success: true, created: 0, shifts: [] };
+  if (!templates?.length) return { success: true, created: 0, opened: 0, shifts: [] };
 
   const dayList = Array.from({ length: 7 }, (_, i) => addDaysIso(week.week_start as string, i));
 
@@ -2804,16 +2877,22 @@ export async function autoPopulateWeekFromTemplates(
   }
 
   if (insertPayload.length === 0) {
-    return { success: true, created: 0, shifts: [] };
+    return { success: true, created: 0, opened: 0, shifts: [] };
   }
 
-  // One guarded batch: every clash with approved leave comes back together and
-  // the whole population is refused, so a manager fixes the week in one pass
-  // rather than discovering the next clash on the next attempt.
   const admin = createAdminClient();
+
+  // A template employee on approved leave loses the name, not the shift: the row
+  // becomes an open shift so the week still shows the cover that is needed.
+  const leaveAdjusted = await openTemplateRowsClashingWithLeave(admin, insertPayload);
+  if ('error' in leaveAdjusted) return { success: false, error: leaveAdjusted.error };
+
+  // One guarded batch: anything the dry run above could not resolve comes back
+  // together and the whole population is refused, so a manager fixes the week in
+  // one pass rather than discovering the next clash on the next attempt.
   const written = await writeShiftsWithLeaveGuard(
     admin,
-    insertPayload.map((values, index) => ({ ref: String(index), values })),
+    leaveAdjusted.payload.map((values, index) => ({ ref: String(index), values })),
   );
 
   if (!written.success) {
@@ -2840,10 +2919,14 @@ export async function autoPopulateWeekFromTemplates(
     resource_type: 'rota_week',
     resource_id: weekId,
     operation_status: 'success',
-    additional_info: { action: 'auto_populate_from_templates', shifts_created: newShifts.length },
+    additional_info: {
+      action: 'auto_populate_from_templates',
+      shifts_created: newShifts.length,
+      shifts_opened: leaveAdjusted.opened,
+    },
   });
 
-  return { success: true, created: newShifts.length, shifts: newShifts };
+  return { success: true, created: newShifts.length, opened: leaveAdjusted.opened, shifts: newShifts };
 }
 
 // ---------------------------------------------------------------------------
@@ -2858,7 +2941,7 @@ export async function addShiftsFromTemplates(
   weekId: string,
   selections: ShiftSelection[],
 ): Promise<
-  { success: true; created: number; skipped: number; shifts: RotaShift[] } |
+  { success: true; created: number; skipped: number; opened: number; shifts: RotaShift[] } |
   { success: false; error: string }
 > {
   const canEdit = await checkUserPermission('rota', 'edit');
@@ -2934,15 +3017,21 @@ export async function addShiftsFromTemplates(
   const skipped = selections.length - insertPayload.length;
 
   if (insertPayload.length === 0) {
-    return { success: true, created: 0, skipped, shifts: [] };
+    return { success: true, created: 0, skipped, opened: 0, shifts: [] };
   }
 
-  // One guarded batch, all or nothing, so every leave clash in the selection is
-  // reported together and none of it is half-written.
   const admin = createAdminClient();
+
+  // A template employee on approved leave loses the name, not the shift: the row
+  // becomes an open shift so the selection still lands and the cover is visible.
+  const leaveAdjusted = await openTemplateRowsClashingWithLeave(admin, insertPayload);
+  if ('error' in leaveAdjusted) return { success: false, error: leaveAdjusted.error };
+
+  // One guarded batch, all or nothing, so anything the dry run above could not
+  // resolve is reported together and none of it is half-written.
   const written = await writeShiftsWithLeaveGuard(
     admin,
-    insertPayload.map((values, index) => ({ ref: String(index), values })),
+    leaveAdjusted.payload.map((values, index) => ({ ref: String(index), values })),
   );
 
   if (!written.success) {
@@ -2977,10 +3066,15 @@ export async function addShiftsFromTemplates(
     resource_type: 'rota_week',
     resource_id: weekId,
     operation_status: 'success',
-    additional_info: { action: 'add_shifts_from_selection', shifts_created: newShifts.length, shifts_skipped: skipped },
+    additional_info: {
+      action: 'add_shifts_from_selection',
+      shifts_created: newShifts.length,
+      shifts_skipped: skipped,
+      shifts_opened: leaveAdjusted.opened,
+    },
   });
 
-  return { success: true, created: newShifts.length, skipped, shifts: newShifts };
+  return { success: true, created: newShifts.length, skipped, opened: leaveAdjusted.opened, shifts: newShifts };
 }
 
 // ---------------------------------------------------------------------------
