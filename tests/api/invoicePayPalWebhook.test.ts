@@ -76,8 +76,10 @@ describe('invoice PayPal webhook', () => {
     expect(mocks.apply).not.toHaveBeenCalled()
   })
   it.each(['in_progress', 'conflict'])('keeps %s deliveries retryable', async state => {
+    // 409 now, not 503: all five URLs share one dispatcher and one idempotency namespace, so
+    // this is the same answer every endpoint gives. Either way it is non-2xx, so PayPal retries.
     mocks.claim.mockResolvedValue({ state })
-    expect((await POST(request())).status).toBe(503)
+    expect((await POST(request())).status).toBe(409)
     expect(mocks.apply).not.toHaveBeenCalled()
   })
   it.each([
@@ -100,7 +102,9 @@ describe('invoice PayPal webhook', () => {
     expect((await POST(request())).status).toBe(200)
     expect(mocks.persist).toHaveBeenCalledWith(
       expect.anything(),
-      'webhook:paypal:invoices:EVENT-1',
+      // One namespace for the whole app, so the same event arriving on another registered URL
+      // is recognised as a duplicate instead of being processed again.
+      'webhook:paypal:EVENT-1',
       'HASH',
       expect.objectContaining({ event_id: 'EVENT-1' }),
       24 * 30,

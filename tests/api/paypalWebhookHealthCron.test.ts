@@ -3,9 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 /**
  * A health check that only looks at signature failures, and that goes quiet when it cannot
  * reach its own dependencies, is worse than none: it would have stayed silent through the six
- * months this endpoint was dead. So it reports healthy, unhealthy or unknown, counts
+ * months this app's webhooks were dead. So it reports healthy, unhealthy or unknown, counts
  * post-verification failures as well as verification ones, and never calls a suppressed or
  * failed alert email a delivery.
+ *
+ * What it does NOT do any more is demand a registration per domain. PayPal fans every event out
+ * to every registered URL, so one registration carrying the required events is full coverage;
+ * extra ones are waste to report, not a fault to alert on.
  */
 
 vi.hoisted(() => {
@@ -22,20 +26,18 @@ vi.mock('@/lib/logger', () => ({
 import { listPayPalWebhookRegistrations } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail } from '@/lib/email/emailService'
-import { PAYPAL_WEBHOOK_ENDPOINTS } from '@/lib/paypal-webhook-endpoints'
+import { PAYPAL_REQUIRED_EVENTS } from '@/lib/paypal-webhook-endpoints'
 import { GET } from '@/app/api/cron/paypal-webhook-health/route'
 
 const APP_URL = 'https://management.orangejelly.co.uk'
+const CANONICAL = `${APP_URL}/api/webhooks/paypal`
 
-function everyEndpointRegistered() {
-  return {
-    state: 'ok' as const,
-    webhooks: PAYPAL_WEBHOOK_ENDPOINTS.map((endpoint, index) => ({
-      id: `WH-${index}`,
-      url: `${APP_URL}${endpoint.path}`,
-      eventTypes: [...endpoint.requiredEvents, ...endpoint.optionalEvents],
-    })),
-  }
+function registry(webhooks: Array<{ id: string; url: string; eventTypes: string[] }>) {
+  return { state: 'ok' as const, webhooks }
+}
+
+function canonicalOnly() {
+  return registry([{ id: 'WH-CANON', url: CANONICAL, eventTypes: [...PAYPAL_REQUIRED_EVENTS] }])
 }
 
 function supabaseReturning(rows: Array<Record<string, unknown>> | null, error: { message: string } | null = null) {
@@ -71,52 +73,79 @@ describe('GET /api/cron/paypal-webhook-health', () => {
     expect(response.status).toBe(401)
   })
 
-  it('stays silent on a quiet, fully registered day', async () => {
-    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(everyEndpointRegistered())
+  it('stays silent when one registration covers everything', async () => {
+    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(canonicalOnly())
     vi.mocked(createAdminClient).mockReturnValue(supabaseReturning([]))
 
     const body = await (await GET(cronRequest())).json()
 
     expect(body.health).toBe('healthy')
+    expect(body.covered).toBe(true)
+    expect(body.redundant_registrations).toBe(0)
     expect(body.alert_delivery).toBe('not_needed')
     expect(sendEmail).not.toHaveBeenCalled()
   })
 
-  it('flags an endpoint with no registered webhook', async () => {
-    const registry = everyEndpointRegistered()
-    registry.webhooks = registry.webhooks.filter((webhook) => !webhook.url.endsWith('/parking'))
-    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(registry)
+  it('is healthy on a legacy URL alone, because every URL runs the same dispatcher', async () => {
+    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(
+      registry([{ id: 'WH-1', url: `${APP_URL}/api/webhooks/paypal/invoices`, eventTypes: [...PAYPAL_REQUIRED_EVENTS] }]),
+    )
     vi.mocked(createAdminClient).mockReturnValue(supabaseReturning([]))
 
     const body = await (await GET(cronRequest())).json()
 
-    expect(body.health).toBe('unhealthy')
-    expect(body.alert_delivery).toBe('sent')
-    expect(body.registrations.find((row: any) => row.endpoint === 'parking').registered).toBe(false)
+    expect(body.health).toBe('healthy')
+    expect(body.registrations[0].kind).toBe('legacy')
   })
 
-  it('flags a registered endpoint that is missing a required event', async () => {
-    const registry = everyEndpointRegistered()
-    registry.webhooks = registry.webhooks.map((webhook) =>
-      webhook.url.endsWith('/invoices')
-        ? { ...webhook, eventTypes: ['PAYMENT.CAPTURE.COMPLETED'] }
-        : webhook,
+  it('counts extra registrations as redundant, not as a fault', async () => {
+    // This is today's live state: three URLs registered, each receiving every event.
+    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(
+      registry([
+        { id: 'WH-1', url: `${APP_URL}/api/webhooks/paypal/invoices`, eventTypes: [...PAYPAL_REQUIRED_EVENTS] },
+        { id: 'WH-2', url: `${APP_URL}/api/webhooks/paypal/private-bookings`, eventTypes: [...PAYPAL_REQUIRED_EVENTS] },
+        { id: 'WH-3', url: `${APP_URL}/api/webhooks/paypal/table-bookings`, eventTypes: [...PAYPAL_REQUIRED_EVENTS] },
+      ]),
     )
-    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(registry)
+    vi.mocked(createAdminClient).mockReturnValue(supabaseReturning([]))
+
+    const body = await (await GET(cronRequest())).json()
+
+    expect(body.health).toBe('healthy')
+    expect(body.redundant_registrations).toBe(2)
+    expect(sendEmail).not.toHaveBeenCalled()
+  })
+
+  it('is unhealthy when nothing at all is registered', async () => {
+    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(registry([]))
     vi.mocked(createAdminClient).mockReturnValue(supabaseReturning([]))
 
     const body = await (await GET(cronRequest())).json()
 
     expect(body.health).toBe('unhealthy')
-    expect(body.registrations.find((row: any) => row.endpoint === 'invoices').missingRequiredEvents).toEqual([
+    expect(body.covered).toBe(false)
+    expect(body.alert_delivery).toBe('sent')
+  })
+
+  it('is unhealthy when the only registration is missing a required event', async () => {
+    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(
+      registry([{ id: 'WH-CANON', url: CANONICAL, eventTypes: ['PAYMENT.CAPTURE.COMPLETED'] }]),
+    )
+    vi.mocked(createAdminClient).mockReturnValue(supabaseReturning([]))
+
+    const body = await (await GET(cronRequest())).json()
+
+    expect(body.health).toBe('unhealthy')
+    expect(body.registrations[0].missingRequiredEvents).toEqual([
       'PAYMENT.CAPTURE.DENIED',
+      'PAYMENT.CAPTURE.REFUNDED',
     ])
   })
 
   it('accepts a wildcard subscription as covering every event', async () => {
-    const registry = everyEndpointRegistered()
-    registry.webhooks = registry.webhooks.map((webhook) => ({ ...webhook, eventTypes: ['*'] }))
-    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(registry)
+    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(
+      registry([{ id: 'WH-CANON', url: CANONICAL, eventTypes: ['*'] }]),
+    )
     vi.mocked(createAdminClient).mockReturnValue(supabaseReturning([]))
 
     const body = await (await GET(cronRequest())).json()
@@ -124,21 +153,26 @@ describe('GET /api/cron/paypal-webhook-health', () => {
     expect(body.health).toBe('healthy')
   })
 
-  it('reports an unrecognised registered URL without deleting anything', async () => {
-    const registry = everyEndpointRegistered()
-    registry.webhooks.push({ id: 'WH-X', url: 'https://example.invalid/hook', eventTypes: ['*'] })
-    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(registry)
+  it('reports a registered URL that is not ours, without deleting anything', async () => {
+    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(
+      registry([
+        { id: 'WH-CANON', url: CANONICAL, eventTypes: [...PAYPAL_REQUIRED_EVENTS] },
+        { id: 'WH-X', url: 'https://example.invalid/hook', eventTypes: ['*'] },
+      ]),
+    )
     vi.mocked(createAdminClient).mockReturnValue(supabaseReturning([]))
 
     const body = await (await GET(cronRequest())).json()
 
-    expect(body.unknown_urls).toEqual(['https://example.invalid/hook'])
+    expect(body.registrations.find((row: any) => row.webhookId === 'WH-X').kind).toBe('unknown')
+    // Someone else's URL does not make our own coverage unhealthy.
+    expect(body.covered).toBe(true)
   })
 
   it('counts a failure that happened AFTER a valid signature', async () => {
     // A cryptographically valid event whose deposit finalisation then failed logs `error`, which
     // a signature-only check would treat as a clean day.
-    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(everyEndpointRegistered())
+    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(canonicalOnly())
     vi.mocked(createAdminClient).mockReturnValue(
       supabaseReturning([
         { status: 'error', params: { source: 'private_bookings', event_id: 'WH-1' } },
@@ -175,7 +209,7 @@ describe('GET /api/cron/paypal-webhook-health', () => {
   })
 
   it('reports unknown when the database cannot be read', async () => {
-    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(everyEndpointRegistered())
+    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(canonicalOnly())
     vi.mocked(createAdminClient).mockReturnValue(supabaseReturning(null, { message: 'connection refused' }))
 
     const body = await (await GET(cronRequest())).json()
@@ -200,7 +234,7 @@ describe('GET /api/cron/paypal-webhook-health', () => {
   })
 
   it('separates a suppressed alert from a failed one', async () => {
-    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(everyEndpointRegistered())
+    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(canonicalOnly())
     vi.mocked(createAdminClient).mockReturnValue(
       supabaseReturning([{ status: 'signature_rejected', params: { source: 'invoices', event_id: 'WH-9' } }]),
     )
@@ -216,7 +250,7 @@ describe('GET /api/cron/paypal-webhook-health', () => {
   })
 
   it('reports a failed send rather than swallowing it', async () => {
-    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(everyEndpointRegistered())
+    vi.mocked(listPayPalWebhookRegistrations).mockResolvedValue(canonicalOnly())
     vi.mocked(createAdminClient).mockReturnValue(
       supabaseReturning([{ status: 'signature_rejected', params: { source: 'invoices', event_id: 'WH-9' } }]),
     )

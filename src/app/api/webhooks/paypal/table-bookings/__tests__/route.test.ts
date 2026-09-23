@@ -258,7 +258,10 @@ describe('POST /api/webhooks/paypal/table-bookings', () => {
 
     expect(response.status).toBe(200)
     const json = await response.json()
-    expect(json.ignored).toBe(true)
+    // Acknowledged with nothing done. It reads `unrouted` rather than `ignored` now: the
+    // dispatcher says the event belongs to no domain here, instead of this URL assuming every
+    // event is a table booking and quietly dropping the ones that are not.
+    expect(json.unrouted).toBe(true)
     expect(mockSupabase._tbUpdate).not.toHaveBeenCalled()
   })
 })
