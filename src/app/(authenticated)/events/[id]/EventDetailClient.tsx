@@ -45,7 +45,7 @@ import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawe
 import { AddManualBookingForm } from './AddManualBookingForm'
 import { RefundBookingDialog } from './RefundBookingDialog'
 import { EditAttendeeNamesModal } from './EditAttendeeNamesModal'
-import { validateSeatsInput } from './manual-booking-helpers'
+import { describeSeatUpdateBlock, validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
 import { EventArtworkDownloadsCard } from '@/components/features/events/EventArtworkDownloadsCard'
@@ -296,6 +296,9 @@ export default function EventDetailClient({
       })
       if ('error' in result) {
         toast.error(result.error)
+      } else if (result.data.state === 'blocked') {
+        // A refusal comes back as success with state 'blocked'; nothing was saved.
+        toast.error(describeSeatUpdateBlock(result.data.reason))
       } else {
         toast.success('Seats updated')
         setEditingBookingId(null)
