@@ -5,6 +5,7 @@ import {
   summariseTicketBasket,
   validateSeatsInput,
   validateAttendeeNameList,
+  describeSeatUpdateBlock,
 } from './manual-booking-helpers'
 
 const types = [
@@ -112,5 +113,19 @@ describe('validateAttendeeNameList', () => {
   it('should reject names above the maximum length', () => {
     const result = validateAttendeeNameList(['a'.repeat(121)], 1)
     expect(result.error).toBe('Each name must be 120 characters or fewer.')
+  })
+})
+
+describe('describeSeatUpdateBlock', () => {
+  it('should explain a full seated area and point staff to standing', () => {
+    expect(describeSeatUpdateBlock('insufficient_seated_capacity')).toMatch(/No seated places are left/)
+    expect(describeSeatUpdateBlock('insufficient_seated_capacity')).toMatch(/standing/)
+  })
+
+  it('should fall back to a plain refusal for unknown or missing reasons', () => {
+    const fallback = 'The seat count could not be changed. Nothing was saved.'
+    expect(describeSeatUpdateBlock('something_new')).toBe(fallback)
+    expect(describeSeatUpdateBlock(null)).toBe(fallback)
+    expect(describeSeatUpdateBlock(undefined)).toBe(fallback)
   })
 })
