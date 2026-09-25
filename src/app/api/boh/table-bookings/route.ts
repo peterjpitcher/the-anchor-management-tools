@@ -196,6 +196,9 @@ function isSchemaCompatibilityError(error: unknown): boolean {
   )
 }
 
+// Set by the communal seating conversion (migration 20260611000000_communal_event_seating).
+const CONVERTED_TO_COMMUNAL_REASON = 'converted_to_communal_seating'
+
 async function loadBookingsRows(
   supabase: any,
   input: { startDate: string; endDate: string }
@@ -214,6 +217,9 @@ async function loadBookingsRows(
       .select(select)
       .gte('booking_date', input.startDate)
       .lte('booking_date', input.endDate)
+      // Converting an event to communal seating cancels its linked table bookings, but the
+      // guests still hold confirmed event tickets; listing them as cancellations misleads staff.
+      .or(`cancellation_reason.is.null,cancellation_reason.neq.${CONVERTED_TO_COMMUNAL_REASON}`)
       .order('booking_date', { ascending: true })
       .order('booking_time', { ascending: true })
 
