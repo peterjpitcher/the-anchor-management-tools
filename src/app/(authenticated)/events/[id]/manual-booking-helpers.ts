@@ -126,3 +126,29 @@ export function validateAttendeeNameList(
   }
   return { names: trimmed, error: null }
 }
+
+const SEAT_UPDATE_BLOCKED_MESSAGES: Record<string, string> = {
+  insufficient_seated_capacity:
+    'No seated places are left for this event, so seats cannot be added. Book the extra guests separately as standing, or free a table first.',
+  insufficient_standing_capacity: 'No standing places are left for this event, so seats cannot be added.',
+  insufficient_capacity: 'The event does not have enough places left to add these seats.',
+  standing_capacity_not_configured: 'This event has no standing places set up, so standing seats cannot be added.',
+  table_capacity_insufficient: 'The table for this booking is not big enough. Move it to a larger table first.',
+  event_started: 'This event has already started, so the seat count can no longer be changed.',
+  status_not_changeable: 'Only confirmed or awaiting-payment bookings can have their seats changed.',
+  prepaid_paid_booking:
+    'This booking has already been paid, so the seat count cannot be changed here. Cancel it with a refund to reduce seats, or take a payment for the extra seats instead.',
+  multi_ticket_type_booking:
+    'This booking has multiple ticket options, so the overall seat count cannot be edited. Edit the ticket lines instead.',
+  booking_not_found: 'This booking could not be found.',
+  event_not_found: 'The event for this booking could not be found.',
+}
+
+/**
+ * Staff-facing message for a seat update the database refused. The action
+ * returns a refusal as `state: 'blocked'` with a reason code; nothing was saved.
+ */
+export function describeSeatUpdateBlock(reason: string | null | undefined): string {
+  const known = reason ? SEAT_UPDATE_BLOCKED_MESSAGES[reason] : undefined
+  return known ?? 'The seat count could not be changed. Nothing was saved.'
+}
