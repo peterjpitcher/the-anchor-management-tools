@@ -2,17 +2,21 @@
 
 import { Customer } from '@/types/database'
 import { useState } from 'react'
-import { Input } from '@/ds'
-import { Button } from '@/ds'
+import { Button, Card, CardBody, CardHeader, FormFooter, Input } from '@/ds'
 import { formatPhoneForStorage } from '@/lib/utils'
 
 interface CustomerFormProps {
   customer?: Customer
   onSubmit: (data: Omit<Customer, 'id' | 'created_at'>) => Promise<void>
   onCancel: () => void
+  /**
+   * A form page (the add and edit screens on /customers) frames the fields in a titled Card
+   * with the footer below it. Left out, the form sits bare, as it does inside a Modal.
+   */
+  framed?: boolean
 }
 
-export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps) {
+export function CustomerForm({ customer, onSubmit, onCancel, framed = false }: CustomerFormProps) {
   const [firstName, setFirstName] = useState(customer?.first_name ?? '')
   const [lastName, setLastName] = useState(customer?.last_name ?? '')
   const [email, setEmail] = useState(customer?.email ?? '')
@@ -56,112 +60,83 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
     }
   }
 
+  const fields = (
+    <>
+      <Input
+        label="First Name"
+        type="text"
+        id="first_name"
+        name="first_name"
+        autoComplete="given-name"
+        value={firstName}
+        onChange={(e) => { setFirstName(e.target.value); setNameError(null) }}
+        error={nameError ?? undefined}
+      />
+
+      <Input
+        label="Last Name"
+        type="text"
+        id="last_name"
+        name="last_name"
+        autoComplete="family-name"
+        value={lastName}
+        onChange={(e) => setLastName(e.target.value)}
+      />
+
+      <Input
+        label="Mobile Number"
+        type="tel"
+        id="mobile_number"
+        name="mobile_number"
+        value={mobileNumber}
+        onChange={(e) => setMobileNumber(e.target.value)}
+        placeholder="+1 415 555 2671 or 07700 900123"
+        required
+        autoComplete="tel"
+        inputMode="tel"
+        hint="Enter an international number (e.g. +1...) or a local number (defaults to +44)"
+        error={phoneError ?? undefined}
+      />
+
+      <Input
+        label="Email"
+        type="email"
+        id="email"
+        name="email"
+        autoComplete="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="name@example.com"
+      />
+    </>
+  )
+
+  const footer = (
+    <FormFooter>
+      <Button type="button" variant="secondary" onClick={onCancel}>
+        Cancel
+      </Button>
+      <Button type="submit" variant="primary" disabled={isSubmitting}>
+        {isSubmitting
+          ? 'Saving...'
+          : customer
+            ? 'Update Customer'
+            : 'Create Customer'}
+      </Button>
+    </FormFooter>
+  )
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="grid grid-cols-1 gap-6">
-        <div>
-          <label
-            htmlFor="first_name"
-            className="block text-sm font-medium text-text mb-2"
-          >
-            First Name
-          </label>
-          <Input
-            type="text"
-            id="first_name"
-            name="first_name"
-            autoComplete="given-name"
-            value={firstName}
-            onChange={(e) => { setFirstName(e.target.value); setNameError(null) }}
-          />
-          {nameError && (
-            <p className="mt-2 text-sm text-danger">{nameError}</p>
-          )}
-        </div>
-
-        <div>
-          <label
-            htmlFor="last_name"
-            className="block text-sm font-medium text-text mb-2"
-          >
-            Last Name
-          </label>
-          <Input
-            type="text"
-            id="last_name"
-            name="last_name"
-            autoComplete="family-name"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label
-            htmlFor="mobile_number"
-            className="block text-sm font-medium text-text mb-2"
-          >
-            Mobile Number
-          </label>
-          <Input
-            type="tel"
-            id="mobile_number"
-            name="mobile_number"
-            value={mobileNumber}
-            onChange={(e) => setMobileNumber(e.target.value)}
-            placeholder="+1 415 555 2671 or 07700 900123"
-            required
-            autoComplete="tel"
-            inputMode="tel"
-          />
-          <p className="mt-2 text-sm text-text-muted">
-            Enter an international number (e.g. +1...) or a local number (defaults to +44)
-          </p>
-          {phoneError && (
-            <p className="mt-2 text-sm text-danger">{phoneError}</p>
-          )}
-        </div>
-
-        <div>
-          <label
-            htmlFor="email"
-            className="block text-sm font-medium text-text mb-2"
-          >
-            Email
-          </label>
-          <Input
-            type="email"
-            id="email"
-            name="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@example.com"
-          />
-        </div>
-      </div>
-
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end mt-8">
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={onCancel}
-          className="w-full sm:w-auto"
-        >
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full sm:w-auto"
-        >
-          {isSubmitting
-            ? 'Saving...'
-            : customer
-              ? 'Update Customer'
-              : 'Create Customer'}
-        </Button>
-      </div>
+      {framed ? (
+        <Card>
+          <CardHeader title="Customer Details" />
+          <CardBody className="space-y-4">{fields}</CardBody>
+        </Card>
+      ) : (
+        <div className="space-y-4">{fields}</div>
+      )}
+      {footer}
     </form>
   )
-} 
+}

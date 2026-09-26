@@ -2,15 +2,12 @@ import { notFound, redirect } from 'next/navigation'
 import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 import { calculateAge, calculateLengthOfService } from '@/lib/employeeUtils'
 import { displayNameWithLegal } from '@/lib/employees/display-name'
-import { Badge, Icon } from '@/ds'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
+import { Alert, Badge, Card, CardBody, CardHeader, DescriptionList, PageLayout, Stat } from '@/ds'
 import { EmployeeDetailTabs } from './_components/EmployeeDetailTabs'
 import { EmployeeHeaderActions } from './_components/EmployeeHeaderActions'
 import { QuickAddNoteSheet } from './_components/QuickAddNoteSheet'
-import { Alert } from '@/ds'
-import DeleteEmployeeButton from '@/components/features/employees/DeleteEmployeeButton'
+import { EMPLOYEES_BACK_TO_LIST } from '../_shared/nav'
+import { employmentStatusTone } from '../_shared/status-ui'
 import EmployeeNotesList from '@/components/features/employees/EmployeeNotesList'
 import AddEmployeeNoteForm from '@/components/features/employees/AddEmployeeNoteForm'
 import EmployeeAttachmentsList from '@/components/features/employees/EmployeeAttachmentsList'
@@ -22,9 +19,7 @@ import RightToWorkTab from '@/components/features/employees/RightToWorkTab'
 import OnboardingChecklistTab from '@/components/features/employees/OnboardingChecklistTab'
 import { EmployeeAuditTrail } from '@/components/features/employees/EmployeeAuditTrail'
 import { EmployeeRecentChanges } from '@/components/features/employees/EmployeeRecentChanges'
-import EmployeeStatusActions from '@/components/features/employees/EmployeeStatusActions'
 import { getEmployeeDetailData } from '@/app/actions/employeeDetails'
-import { LinkButton } from '@/ds'
 import EmployeePayTab from '@/components/features/employees/EmployeePayTab'
 import EmployeeHolidaysTab from '@/components/features/employees/EmployeeHolidaysTab'
 import EmployeeReliabilityTab from '@/components/features/employees/EmployeeReliabilityTab'
@@ -41,16 +36,6 @@ interface EmployeeDetailPageProps {
   params: Promise<{
     employee_id: string
   }>
-}
-
-function statusBadgeTone(status: string): 'success' | 'info' | 'warning' | 'danger' | 'neutral' {
-  switch (status) {
-    case 'Active': return 'success'
-    case 'Onboarding': return 'info'
-    case 'Started Separation': return 'warning'
-    case 'Former': return 'danger'
-    default: return 'neutral'
-  }
 }
 
 export default async function EmployeeDetailPage({ params }: EmployeeDetailPageProps) {
@@ -110,6 +95,14 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
   const rateOverrides = rateOverridesResult.success ? rateOverridesResult.data : []
   const leaveRequests = leaveRequestsResult.success ? leaveRequestsResult.data : []
   const leaveDays = leaveDaysResult.success ? leaveDaysResult.data : []
+  // A failed load is shown on its tab as an error, never as an empty list of rates or holidays.
+  // The Holidays tab also needs the pay settings, which hold the employee's own allowance.
+  const paySettingsError = paySettingsResult.success ? null : paySettingsResult.error
+  const payLoadError = paySettingsError ?? (rateOverridesResult.success ? null : rateOverridesResult.error)
+  const holidaysLoadError =
+    (leaveRequestsResult.success ? null : leaveRequestsResult.error) ??
+    (leaveDaysResult.success ? null : leaveDaysResult.error) ??
+    paySettingsError
 
   // Resolve current rate for display (today's date in London timezone)
   const today = getTodayIsoDate()
@@ -130,26 +123,51 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     : employee.email_address
   const age = calculateAge(employee.date_of_birth ?? null)
 
-  const displayFields = [
-    { label: 'Full Name', value: employee.first_name && employee.last_name ? `${employee.first_name} ${employee.last_name}` : '—' },
-    { label: 'Email Address', value: employee.email_address, isEmail: true },
-    { label: 'Job Title', value: employee.job_title ?? '—' },
-    { label: 'Employment Status', value: employee.status, isBadge: true },
-    { label: 'First Shift Date', value: employee.first_shift_date ? formatDate(employee.first_shift_date) : 'N/A' },
-    { label: 'Start Date', value: employee.employment_start_date ? formatDate(employee.employment_start_date) : 'N/A' },
-    { label: 'End Date', value: employee.employment_end_date ? formatDate(employee.employment_end_date) : 'N/A' },
+  // Missing values fall back to the DS dash; the rest keep their own "N/A" or "No".
+  const phoneValue = (value: string | null | undefined) =>
+    value ? (
+      <a href={`tel:${value}`} className="text-primary hover:underline">
+        {value}
+      </a>
+    ) : 'N/A'
+
+  const detailItems = [
     {
+      key: 'full_name',
+      label: 'Full Name',
+      value: employee.first_name && employee.last_name ? `${employee.first_name} ${employee.last_name}` : null,
+    },
+    {
+      key: 'email_address',
+      label: 'Email Address',
+      value: (
+        <a href={`mailto:${employee.email_address}`} className="text-primary hover:underline">
+          {employee.email_address}
+        </a>
+      ),
+    },
+    { key: 'job_title', label: 'Job Title', value: employee.job_title ?? null },
+    {
+      key: 'status',
+      label: 'Employment Status',
+      value: <Badge tone={employmentStatusTone(employee.status)}>{employee.status}</Badge>,
+    },
+    { key: 'first_shift_date', label: 'First Shift Date', value: employee.first_shift_date ? formatDate(employee.first_shift_date) : 'N/A' },
+    { key: 'employment_start_date', label: 'Start Date', value: employee.employment_start_date ? formatDate(employee.employment_start_date) : 'N/A' },
+    { key: 'employment_end_date', label: 'End Date', value: employee.employment_end_date ? formatDate(employee.employment_end_date) : 'N/A' },
+    {
+      key: 'date_of_birth',
       label: 'Date of Birth',
       value: employee.date_of_birth
         ? `${formatDate(employee.date_of_birth)}${age === null ? '' : ` (${age} years old)`}`
         : 'N/A',
     },
-    { label: 'Telephone', value: employee.phone_number || 'N/A', isPhone: true },
-    { label: 'Mobile', value: employee.mobile_number || 'N/A', isPhone: true },
-    { label: 'Post Code', value: employee.post_code || 'N/A' },
-    { label: 'Uniform Preference', value: employee.uniform_preference || 'N/A' },
-    { label: 'Keyholder', value: employee.keyholder_status ? 'Yes' : 'No' },
-    { label: 'Address', value: employee.address || 'N/A', isFullWidth: true },
+    { key: 'phone_number', label: 'Telephone', value: phoneValue(employee.phone_number) },
+    { key: 'mobile_number', label: 'Mobile', value: phoneValue(employee.mobile_number) },
+    { key: 'post_code', label: 'Post Code', value: employee.post_code || 'N/A' },
+    { key: 'uniform_preference', label: 'Uniform Preference', value: employee.uniform_preference || 'N/A' },
+    { key: 'keyholder_status', label: 'Keyholder', value: employee.keyholder_status ? 'Yes' : 'No' },
+    { key: 'address', label: 'Address', value: employee.address || 'N/A', span: 2 as const },
   ]
 
   const setupMissingItems = isOnboarding ? [] : [
@@ -166,37 +184,11 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
       key: 'details',
       label: 'Details',
       content: (
-        <dl className="divide-y divide-border">
-          {displayFields.map((field, index) => (
-            <div
-              key={index}
-              className={`py-3 flex flex-col sm:grid sm:grid-cols-4 sm:gap-4 ${field.isFullWidth ? 'sm:grid-cols-1' : ''}`}
-            >
-              <dt className="text-sm font-medium text-text-muted mb-1 sm:mb-0">{field.label}</dt>
-              <dd className={`text-sm text-text ${field.isFullWidth ? '' : 'sm:col-span-3'}`}>
-                {field.isBadge ? (
-                  <Badge tone={statusBadgeTone(employee.status)}>
-                    {employee.status}
-                  </Badge>
-                ) : field.isEmail ? (
-                  <a href={`mailto:${field.value}`} className="text-primary hover:underline">
-                    {field.value}
-                  </a>
-                ) : field.isPhone ? (
-                  field.value === 'N/A' ? (
-                    field.value
-                  ) : (
-                    <a href={`tel:${field.value}`} className="text-primary hover:underline">
-                      {field.value}
-                    </a>
-                  )
-                ) : (
-                  field.value
-                )}
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <Card>
+          <CardBody>
+            <DescriptionList items={detailItems} />
+          </CardBody>
+        </Card>
       )
     },
     {
@@ -264,6 +256,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           initialPaySettings={paySettings}
           initialOverrides={rateOverrides}
           currentRate={currentRate}
+          loadError={payLoadError}
         />
       )
     },
@@ -278,6 +271,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           leaveDays={leaveDays}
           paySettings={paySettings}
           rotaSettings={rotaSettings}
+          loadError={holidaysLoadError}
         />
       )
     },
@@ -288,92 +282,45 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     }
   ]
 
-  const editAction = permissions.canEdit ? (
-    <LinkButton href={`/employees/${employee.employee_id}/edit`} size="sm" variant="primary">
-      Edit Employee
-    </LinkButton>
-  ) : undefined
-
-  const secondaryActions = [
-    !isOnboarding ? (
-      <LinkButton
-        key="starter-pack"
-        href={`/api/employees/${employee.employee_id}/starter-pack`}
-        size="sm"
-        variant="secondary"
-        target="_blank"
-        leftIcon={<Icon name="download" size={16} />}
-      >
-        New Starter PDF
-      </LinkButton>
-    ) : null,
-    !isOnboarding ? (
-      <LinkButton
-        key="contract"
-        href={`/api/employees/${employee.employee_id}/employment-contract`}
-        size="sm"
-        variant="secondary"
-        target="_blank"
-        leftIcon={<Icon name="download" size={16} />}
-      >
-        Casual Worker Agreement
-      </LinkButton>
-    ) : null,
-    <EmployeeStatusActions
-      key="status"
-      employeeId={employee.employee_id}
-      status={employee.status}
-      canEdit={permissions.canEdit}
-      employmentStartDate={employee.employment_start_date}
-    />,
-    permissions.canDelete ? (
-      <DeleteEmployeeButton
-        key="delete"
+  // The same title and header in every state of the page.
+  const layoutProps = {
+    title: headerName,
+    subtitle: isOnboarding ? 'Onboarding, profile not yet complete' : (employee.job_title ?? undefined),
+    backButton: EMPLOYEES_BACK_TO_LIST,
+    headerActions: (
+      <EmployeeHeaderActions
         employeeId={employee.employee_id}
         employeeName={headerName}
+        status={employee.status}
+        employmentStartDate={employee.employment_start_date}
+        canEdit={permissions.canEdit}
+        canDelete={permissions.canDelete}
       />
-    ) : null,
-  ].filter(Boolean)
-
-  const headerActions = (
-    <EmployeeHeaderActions primary={editAction} secondary={secondaryActions} />
-  )
+    ),
+  }
 
   return (
-    <PageLayout
-      title={headerName}
-      subtitle={isOnboarding ? 'Onboarding — profile not yet complete' : (employee.job_title ?? undefined)}
-      backButton={{ label: 'Back to Employees', href: '/employees' }}
-      headerActions={headerActions}
-    >
-      {/* Mobile fast path: add a note from the top without scrolling to the Notes section */}
+    <PageLayout {...layoutProps}>
+      {/* Phones: add a note from the top without scrolling down to Notes */}
       {permissions.canEdit && (
-        <div className="mb-4 md:hidden">
+        <div className="shell:hidden">
           <QuickAddNoteSheet employeeId={employee.employee_id} className="w-full" />
         </div>
       )}
       <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
-          <section id="overview">
-            <Card>
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-                <div>
-                  <p className="text-sm text-text-muted">Employment</p>
-                  <p className="text-xl font-semibold text-text">
-                    {employee.status}{employee.employment_start_date ? ` • Started ${formatDate(employee.employment_start_date)}` : ''}
-                  </p>
-                  {employee.employment_start_date && (
-                    <p className="text-sm text-text-muted">
-                      {calculateLengthOfService(employee.employment_start_date)}
-                    </p>
-                  )}
-                </div>
-                <Badge tone={statusBadgeTone(employee.status)} dot>
-                  {employee.status}
-                </Badge>
-              </div>
-            </Card>
-          </section>
+          <Card>
+            <CardBody className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <Stat
+                label="Employment"
+                value={`${employee.status}${employee.employment_start_date ? ` • Started ${formatDate(employee.employment_start_date)}` : ''}`}
+                hint={employee.employment_start_date ? calculateLengthOfService(employee.employment_start_date) : undefined}
+              />
+              <Badge tone={employmentStatusTone(employee.status)} dot>
+                {employee.status}
+              </Badge>
+            </CardBody>
+          </Card>
 
           {isOnboarding && (
             <Alert tone="info" title="Onboarding in progress">
@@ -391,19 +338,11 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
             </Alert>
           )}
 
-          <section id="details">
-            <Card>
-              <EmployeeDetailTabs tabs={tabs} />
-            </Card>
-          </section>
+          <EmployeeDetailTabs tabs={tabs} />
 
-          <Section
-            id="notes"
-            title="Notes"
-            description="Track key updates and conversations related to this employee."
-            className="bg-surface border border-border shadow-sm"
-          >
-            <div className="space-y-6">
+          <Card>
+            <CardHeader title="Notes" subtitle="Track key updates and conversations related to this employee" />
+            <CardBody className="space-y-6">
               {permissions.canEdit && (
                 <div className="border-b border-border pb-6">
                   <AddEmployeeNoteForm employeeId={employee.employee_id} />
@@ -411,20 +350,19 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
               )}
 
               <EmployeeNotesList notes={notes} />
-            </div>
-          </Section>
+            </CardBody>
+          </Card>
 
-          <Section
-            id="documents"
-            title="Documents"
-            description={
-              permissions.canViewDocuments
-                ? 'Manage employee documents and files.'
-                : 'You do not have permission to view employee documents.'
-            }
-            className="bg-surface border border-border shadow-sm"
-          >
-            <div className="space-y-6">
+          <Card>
+            <CardHeader
+              title="Documents"
+              subtitle={
+                permissions.canViewDocuments
+                  ? 'Manage employee documents and files'
+                  : 'You do not have permission to view employee documents'
+              }
+            />
+            <CardBody className="space-y-6">
               {permissions.canViewDocuments ? (
                 <EmployeeAttachmentsList
                   employeeId={employee.employee_id}
@@ -433,9 +371,9 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                   canDelete={permissions.canDeleteDocuments}
                 />
               ) : (
-                <div className="text-sm text-text-muted">
+                <p className="text-sm text-text-muted">
                   Document visibility requires `employees:view_documents`.
-                </div>
+                </p>
               )}
 
               {permissions.canUploadDocuments && (
@@ -446,26 +384,20 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                   />
                 </div>
               )}
-            </div>
-          </Section>
+            </CardBody>
+          </Card>
         </div>
 
         <div className="min-w-0 space-y-6">
-          <section id="audit">
-            <Card>
-              <EmployeeAuditTrail
-                employeeId={employee.employee_id}
-                employeeName={headerName}
-                auditLogs={auditLogs}
-                notes={notes}
-                canViewAudit={permissions.canView}
-              />
-            </Card>
-          </section>
+          <EmployeeAuditTrail
+            employeeId={employee.employee_id}
+            employeeName={headerName}
+            auditLogs={auditLogs}
+            notes={notes}
+            canViewAudit={permissions.canView}
+          />
 
-          <Card>
-            <EmployeeRecentChanges employeeId={employee.employee_id} />
-          </Card>
+          <EmployeeRecentChanges employeeId={employee.employee_id} />
         </div>
       </div>
     </PageLayout>

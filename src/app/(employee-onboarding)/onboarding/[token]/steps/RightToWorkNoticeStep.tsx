@@ -1,13 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Button, Checkbox } from '@/ds';
+import { Alert, Button, Card, CardBody, CardHeader, Checkbox } from '@/ds';
+import { StepFooter } from './StepParts';
 import { acknowledgeRightToWorkNotice } from '@/app/actions/employeeInvite';
 
 interface RightToWorkNoticeStepProps {
   token: string;
   initialAcknowledged: boolean;
   onSuccess: () => void;
+  onBack?: () => void;
 }
 
 /**
@@ -26,6 +28,7 @@ export default function RightToWorkNoticeStep({
   token,
   initialAcknowledged,
   onSuccess,
+  onBack,
 }: RightToWorkNoticeStepProps) {
   const [acknowledged, setAcknowledged] = useState(initialAcknowledged);
   const [error, setError] = useState('');
@@ -57,16 +60,18 @@ export default function RightToWorkNoticeStep({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="rounded-lg border border-border bg-surface-2 p-4">
-        <h2 className="text-base font-semibold text-text-strong">Before your first shift</h2>
-        <p className="mt-2 text-sm text-text-muted">
-          Before you can start any shifts, a manager needs to see your right to work documents in
-          person. This is a legal check every UK employer must make, and we do it for everyone.
-          Please bring your passport with you, or send us your right to work share code if you have
-          an eVisa. If you are unsure what to bring, just ask and we will help. Once the check is
-          done, we can put you on the rota straight away.
-        </p>
-      </div>
+      <Card variant="secondary">
+        <CardHeader title="Before Your First Shift" />
+        <CardBody>
+          <p className="text-sm text-text-muted">
+            Before you can start any shifts, a manager needs to see your right to work documents in
+            person. This is a legal check every UK employer must make, and we do it for everyone.
+            Please bring your passport with you, or send us your right to work share code if you have
+            an eVisa. If you are unsure what to bring, just ask and we will help. Once the check is
+            done, we can put you on the rota straight away.
+          </p>
+        </CardBody>
+      </Card>
 
       <ul className="space-y-2 text-sm text-text-muted">
         <li>A British or Irish passport is fine even if it has expired.</li>
@@ -93,9 +98,11 @@ export default function RightToWorkNoticeStep({
         label="I understand I need to show my documents before I can be given any shifts"
       />
 
-      <Button type="submit" variant="primary" className="w-full" loading={loading}>
-        Save and continue
-      </Button>
+      <StepFooter onBack={onBack}>
+        <Button type="submit" variant="primary" loading={loading}>
+          Save & Continue
+        </Button>
+      </StepFooter>
     </form>
   );
 }

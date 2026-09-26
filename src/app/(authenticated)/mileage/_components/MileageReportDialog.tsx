@@ -164,10 +164,10 @@ export function MileageReportDialog({
     <Modal
       open={open}
       onClose={handleClose}
-      title="Download mileage report"
+      title="Download Mileage Report"
       footer={
         <>
-          <Button variant="ghost" onClick={handleClose} disabled={isDownloading}>
+          <Button variant="secondary" onClick={handleClose} disabled={isDownloading}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleDownload} loading={isDownloading} disabled={isDownloading}>
@@ -215,11 +215,11 @@ export function MileageReportDialog({
           The report lists every trip in these dates, OJ Projects trips included. Downloading it does not record a payment.
         </p>
         {ignoredFilters.length > 0 && (
-          <p className="rounded-md bg-surface-2 p-3 text-sm text-text">
+          <Alert tone="info" role="status">
             {`The PDF uses the dates and driver only. It ignores the ${joinWords(ignoredFilters)} ${
               ignoredFilters.length === 1 ? 'filter' : 'filters'
             } on the trips table, so it lists every trip in these dates.`}
-          </p>
+          </Alert>
         )}
         {downloadError && (
           <Alert tone="danger" title="Nothing was downloaded">

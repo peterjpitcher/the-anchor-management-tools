@@ -1,11 +1,9 @@
 import { redirect } from 'next/navigation'
-import { PageLayout } from '@/ds'
 import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { BohBookingsClient, type BohViewMode } from './BohBookingsClient'
-import { LinkButton } from '@/ds'
 import { isValidIsoDate } from '@/lib/dateUtils'
 
 const VIEW_MODES: BohViewMode[] = ['day', 'week', 'month']
@@ -61,37 +59,18 @@ export default async function TableBookingsBohPage({ searchParams }: TableBookin
     )
   }
 
+  // The client renders PageLayout itself: its header actions (view switch, Refresh, Download PDF,
+  // Book Table) drive the client's own state.
   return (
-    <PageLayout
-      title="Back of House Table Bookings"
-      subtitle="Manage table bookings across day, week, and month views"
-      navItems={[
-        { label: 'Back of House', href: '/table-bookings/boh' },
-        { label: 'Front of House', href: '/table-bookings/foh' },
-        ...(canViewReports ? [{ label: 'Reports', href: '/table-bookings/reports' }] : [])
-      ]}
-      backButton={{
-        label: 'Back to Dashboard',
-        href: '/'
-      }}
-      headerActions={
-        canManageSettings ? (
-          <div className="flex items-center gap-2">
-            <LinkButton href="/settings/table-bookings" variant="secondary" size="sm">
-              Table Setup
-            </LinkButton>
-          </div>
-        ) : undefined
-      }
-    >
-      <BohBookingsClient
-        canEdit={canEdit}
-        canManage={canManage}
-        canWaiveDeposit={canWaiveDeposit}
-        canSendMessages={canSendMessages}
-        initialDate={initialDate}
-        initialView={initialView}
-      />
-    </PageLayout>
+    <BohBookingsClient
+      canEdit={canEdit}
+      canManage={canManage}
+      canWaiveDeposit={canWaiveDeposit}
+      canSendMessages={canSendMessages}
+      canViewReports={canViewReports}
+      canManageSettings={canManageSettings}
+      initialDate={initialDate}
+      initialView={initialView}
+    />
   )
 }

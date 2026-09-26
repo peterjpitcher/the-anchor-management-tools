@@ -5,7 +5,7 @@ import { getMarketingSettings } from '@/app/actions/marketing-campaigns'
 import { Alert, PageLayout } from '@/ds'
 import { getMarketingConfig } from '@/lib/email/marketing/config'
 
-import { MARKETING_SECTION_NAV } from '../_shared/marketing-ui'
+import { marketingLayout } from '../_shared/nav'
 import { MarketingSettingsClient } from './MarketingSettingsClient'
 
 export const dynamic = 'force-dynamic'
@@ -18,7 +18,7 @@ export default async function MarketingSettingsPage() {
 
   if (settingsResult.error || !settingsResult.data) {
     return (
-      <PageLayout title="Marketing" subtitle="Settings" navItems={MARKETING_SECTION_NAV}>
+      <PageLayout {...marketingLayout('settings')} containerSize="md">
         <Alert tone="danger" title="Could not load marketing settings">
           {settingsResult.error ?? 'Something went wrong. Refresh to try again.'}
         </Alert>

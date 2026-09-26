@@ -61,8 +61,32 @@ import type {
 import PaymentHistoryTable from './PaymentHistoryTable'
 import { ConfirmDepositPanel } from './ConfirmDepositPanel'
 // Design system components
-import { Field, Form, PageLayout, Section, Card, CardHeader, CardBody, Icon, type IconName } from '@/ds'
-import { Button, IconButton, LinkButton, Input, Select, Textarea, Badge, Checkbox, Modal, ConfirmDialog, Empty, Alert, toast } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  ConfirmDialog,
+  DescriptionList,
+  Empty,
+  Field,
+  FormFooter,
+  Icon,
+  IconButton,
+  Input,
+  LinkButton,
+  Modal,
+  PageLayout,
+  Radio,
+  Segmented,
+  Select,
+  Spinner,
+  Textarea,
+  toast,
+} from '@/ds'
 import { InvoiceBookingModal } from './InvoiceBookingModal'
 import {
   generatePrivateBookingInvoice,
@@ -87,39 +111,56 @@ import { computeBookingMoney } from '@/lib/private-bookings/vat'
 import { PrivateBookingBilling } from '@/components/private-bookings/PrivateBookingBilling'
 import { PrivateBookingReceiptPanel } from '@/components/private-bookings/PrivateBookingReceiptPanel'
 import {
+  CANCELLATION_OUTCOME_TONE,
   privateBookingPaymentTextClass,
   privateBookingPaymentTone,
   privateBookingStatusTone,
-  type PrivateBookingBadgeTone,
+  type CancellationOutcome,
   type PrivateBookingPaymentState,
 } from '../_shared/status-ui'
-// Using types from private-bookings.ts
+import { PB_BACK_TO_LIST, PB_DETAIL_NAV, privateBookingContractHref } from '../_shared/nav'
 
-// Status configuration. Colours come from the shared private booking status map.
-const statusConfig: Record<
-  BookingStatus,
-  {
-    label: string;
-    icon: IconName;
-  }
-> = {
-  draft: {
-    label: "Draft",
-    icon: "edit",
-  },
-  confirmed: {
-    label: "Confirmed",
-    icon: "checkCircle",
-  },
-  completed: {
-    label: "Completed",
-    icon: "checkCircle",
-  },
-  cancelled: {
-    label: "Cancelled",
-    icon: "x",
-  },
+// Status labels. Colours come from the shared private booking status map.
+const statusConfig: Record<BookingStatus, { label: string }> = {
+  draft: { label: "Draft" },
+  confirmed: { label: "Confirmed" },
+  completed: { label: "Completed" },
+  cancelled: { label: "Cancelled" },
 };
+
+const PAYMENT_METHODS = [
+  { value: "card", label: "Card" },
+  { value: "cash", label: "Cash" },
+  { value: "invoice", label: "Invoice" },
+] as const;
+
+const ITEM_TYPE_OPTIONS = [
+  { id: "space", label: "Space" },
+  { id: "catering", label: "Catering" },
+  { id: "vendor", label: "Vendor" },
+  { id: "electricity", label: "Electricity" },
+  { id: "other", label: "Other" },
+];
+
+const DISCOUNT_TYPE_OPTIONS = [
+  { id: "percent", label: "Percentage" },
+  { id: "fixed", label: "Fixed Amount" },
+];
+
+/**
+ * The old compat Form caught a server action that threw (a dropped connection) and showed the
+ * error. The native forms here keep that: the error reaches the user as a toast.
+ */
+function withSubmitErrorToast(
+  handler: (event: React.FormEvent<HTMLFormElement>) => Promise<void>,
+): (event: React.FormEvent<HTMLFormElement>) => void {
+  return (event) => {
+    event.preventDefault();
+    handler(event).catch((error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "An unexpected error occurred");
+    });
+  };
+}
 
 const NOTE_MAX_LENGTH = 2000;
 
@@ -305,7 +346,7 @@ function PaymentModal({
       onClose={onClose}
       title={type === "deposit" ? "Record Deposit Payment" : "Record Payment"}
     >
-      <Form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
         <Field label="Payment Amount (£)">
           {type === "deposit" ? (
             <>
@@ -327,7 +368,7 @@ function PaymentModal({
                 required
               />
               {amountError && (
-                <p className="mt-1 text-xs text-danger">{amountError}</p>
+                <p className="mt-1 text-xs text-danger-fg" role="alert">{amountError}</p>
               )}
               {maxAmount !== undefined && (
                 <p className="mt-2 text-xs text-text-muted">
@@ -339,40 +380,31 @@ function PaymentModal({
         </Field>
 
         <Field label="Payment Method">
-          <div className="space-y-2">
-            {([
-              { value: "card", label: "Card", icon: "creditCard" },
-              { value: "cash", label: "Cash", icon: "cash" },
-              { value: "invoice", label: "Invoice", icon: "fileText" },
-            ] satisfies { value: string; label: string; icon: IconName }[]).map((method) => (
-              <label key={method.value} className="flex items-center">
-                <input
-                  type="radio"
-                  value={method.value}
-                  checked={paymentMethod === method.value}
-                  onChange={(e) =>
-                    setPaymentMethod(
-                      e.target.value as "cash" | "card" | "invoice",
-                    )
-                  }
-                  className="mr-3 h-5 w-5"
-                />
-                <Icon name={method.icon} size={20} className="mr-2 text-text-subtle" />
-                <span className="text-sm text-text">{method.label}</span>
-              </label>
+          <div className="space-y-2" role="radiogroup" aria-label="Payment method">
+            {PAYMENT_METHODS.map((method) => (
+              <Radio
+                key={method.value}
+                name={`payment-method-${type}`}
+                value={method.value}
+                label={method.label}
+                checked={paymentMethod === method.value}
+                onChange={(value) =>
+                  setPaymentMethod(value as "cash" | "card" | "invoice")
+                }
+              />
             ))}
           </div>
         </Field>
 
-        <div className="flex justify-end gap-3 pt-4">
+        <FormFooter>
           <Button type="button" onClick={onClose} variant="secondary">
             Cancel
           </Button>
-          <Button type="submit" loading={isSubmitting}>
+          <Button type="submit" variant="primary" loading={isSubmitting}>
             {isSubmitting ? "Recording..." : "Record Payment"}
           </Button>
-        </div>
-      </Form>
+        </FormFooter>
+      </form>
     </Modal>
   );
 }
@@ -414,20 +446,20 @@ function SortableBookingItem({
       ref={setNodeRef}
       style={style}
       className={`flex items-start justify-between border-b border-border pb-4 last:border-0 ${
-        isDragging ? 'bg-surface shadow-default rounded-md' : ''
+        isDragging ? 'bg-surface shadow-default rounded-default' : ''
       }`}
     >
       <div className="flex items-start space-x-3 flex-1">
         {canEdit && (
-          <button
+          <IconButton
             type="button"
-            className="mt-1 rounded-sm text-text-subtle hover:text-text-muted cursor-grab active:cursor-grabbing focus-visible:outline-hidden focus-visible:shadow-ring"
-            aria-label="Reorder booking item"
+            size="sm"
+            label="Reorder booking item"
+            icon={<Icon name="menu" size={20} />}
+            className="text-text-muted cursor-grab active:cursor-grabbing"
             {...attributes}
             {...listeners}
-          >
-            <Icon name="menu" size={20} className="block" />
-          </button>
+          />
         )}
         <div className="text-text-subtle pt-1">
           {getItemIcon(item.item_type)}
@@ -503,13 +535,8 @@ interface StatusModalProps {
 }
 
 type CancellationPreview = {
-  outcome:
-    | 'no_money'
-    | 'refundable'
-    | 'deposit_partial_refund'
-    | 'gm_review_required'
-    | 'manual_review'
-    | null;
+  // The outcomes, and their badge colours, are named in the shared status-ui file.
+  outcome: CancellationOutcome | null;
   refund_amount: number;
   retained_amount: number;
   deposit_deduction: number;
@@ -535,17 +562,6 @@ const getCancellationOutcomeLabel = (preview: CancellationPreview): string => {
     return `Less than 30 days' notice — manager decides deposit retention (up to ${formatCurrency(preview.max_retainable)})`;
   }
   return CANCELLATION_OUTCOME_LABEL[preview.outcome];
-};
-
-const CANCELLATION_OUTCOME_TONE: Record<
-  NonNullable<CancellationPreview['outcome']>,
-  PrivateBookingBadgeTone
-> = {
-  no_money: 'neutral',
-  refundable: 'info',
-  deposit_partial_refund: 'success',
-  gm_review_required: 'warning',
-  manual_review: 'danger',
 };
 
 function StatusModal({
@@ -709,9 +725,9 @@ function StatusModal({
   const confirmLabel = isSubmitting
     ? 'Updating...'
     : newStatus === 'cancelled'
-      ? 'Cancel booking and send SMS'
+      ? 'Cancel Booking and Send SMS'
       : newStatus === 'completed'
-        ? 'Mark complete and send SMS'
+        ? 'Mark Complete and Send SMS'
         : 'Update Status';
 
   return (
@@ -730,47 +746,36 @@ function StatusModal({
           <>
             <div className="space-y-2">
               <p className="text-sm font-medium text-text">Change to:</p>
-              {availableStatuses.map((status) => {
-                return (
-                  <label
+              <div className="space-y-2" role="radiogroup" aria-label="Change to">
+                {availableStatuses.map((status) => (
+                  <Radio
                     key={status}
-                    className="flex items-center p-3 border border-border rounded-lg cursor-pointer hover:bg-surface-hover"
-                  >
-                    <input
-                      type="radio"
-                      value={status}
-                      checked={newStatus === status}
-                      onChange={(e) =>
-                        setNewStatus(e.target.value as BookingStatus)
-                      }
-                      className="mr-3 h-5 w-5"
-                    />
-                    <Icon name={statusConfig[status].icon} size={20} className="mr-2 text-text-subtle" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-text">
-                        {statusConfig[status].label}
-                      </p>
-                      {status === "confirmed" && (
-                        <p className="text-xs text-text-muted">
-                          Customer will receive confirmation SMS
-                        </p>
-                      )}
-                    </div>
-                  </label>
-                );
-              })}
+                    name="new-booking-status"
+                    value={status}
+                    label={statusConfig[status].label}
+                    description={
+                      status === "confirmed"
+                        ? "Customer will receive confirmation SMS"
+                        : undefined
+                    }
+                    checked={newStatus === status}
+                    onChange={(value) => setNewStatus(value as BookingStatus)}
+                    className="rounded-default border border-border p-3"
+                  />
+                ))}
+              </div>
             </div>
 
             {showCancelPreview && (
-              <div className="rounded-lg border border-danger-border bg-danger-soft p-4 space-y-3">
-                <p className="text-sm font-medium text-danger-fg">
-                  Cancel this booking?
-                </p>
-
+              <Alert tone="danger" title="Cancel This Booking?" role="status">
+                <div className="space-y-3">
                 {previewLoading ? (
-                  <p className="text-sm text-danger-fg">Computing outcome...</p>
+                  <div className="flex items-center gap-2">
+                    <Spinner size="sm" />
+                    Computing outcome...
+                  </div>
                 ) : cancelPreview?.error ? (
-                  <p className="text-sm text-danger-fg">{cancelPreview.error}</p>
+                  <p>{cancelPreview.error}</p>
                 ) : cancelPreview ? (
                   <>
                     {cancelPreview.outcome && (
@@ -784,7 +789,7 @@ function StatusModal({
                         </Badge>
                       </div>
                     )}
-                    <div className="grid grid-cols-1 gap-3 rounded-sm border border-border bg-surface p-3 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <Field label="How was the cancellation received?">
                         <Select
                           value={cancelChannel}
@@ -823,10 +828,10 @@ function StatusModal({
                       </p>
                     </div>
                     {cancelPreview.outcome === 'gm_review_required' && (
-                      <div className="space-y-3 rounded-sm border border-warning-border bg-warning-soft p-3">
+                      <div className="space-y-3">
                         <Field
                           label="Deposit to retain (£)"
-                          help={`Manager decision — up to ${formatCurrency(cancelPreview.max_retainable)} of the paid deposit. Retaining anything requires manager permission.`}
+                          hint={`Manager decision: up to ${formatCurrency(cancelPreview.max_retainable)} of the paid deposit. Retaining anything requires manager permission.`}
                         >
                           <Input
                             type="number"
@@ -881,16 +886,18 @@ function StatusModal({
                     )}
                   </>
                 ) : null}
-              </div>
+                </div>
+              </Alert>
             )}
 
             {showCompletePreview && (
-              <div className="rounded-lg border border-info-border bg-info-soft p-4 space-y-3">
-                <p className="text-sm font-medium text-info-fg">
-                  Mark this booking as complete?
-                </p>
+              <Alert tone="info" title="Mark This Booking as Complete?" role="status">
+                <div className="space-y-3">
                 {previewLoading ? (
-                  <p className="text-sm text-info-fg">Loading preview...</p>
+                  <div className="flex items-center gap-2">
+                    <Spinner size="sm" />
+                    Loading preview...
+                  </div>
                 ) : completePreview ? (
                   <div>
                     <p className="text-xs font-medium text-text-muted mb-1">
@@ -905,14 +912,16 @@ function StatusModal({
                   A separate decision email about Google reviews will be sent
                   to the manager the following morning.
                 </p>
-              </div>
+                </div>
+              </Alert>
             )}
 
-            <div className="flex justify-end gap-3 mt-6">
+            <FormFooter>
               <Button type="button" onClick={onClose} variant="secondary">
                 Cancel
               </Button>
               <Button
+                type="button"
                 onClick={handleSubmit}
                 disabled={isSubmitting || newStatus === currentStatus}
                 loading={isSubmitting}
@@ -920,17 +929,18 @@ function StatusModal({
               >
                 {confirmLabel}
               </Button>
-            </div>
+            </FormFooter>
           </>
         ) : (
-          <div className="text-center py-4">
-            <p className="text-sm text-text-muted">
-              No status changes available for completed bookings.
-            </p>
-            <Button onClick={onClose} variant="secondary" className="mt-4">
-              Close
-            </Button>
-          </div>
+          <Empty
+            size="sm"
+            title="No status changes available for completed bookings"
+            action={
+              <Button onClick={onClose} variant="secondary">
+                Close
+              </Button>
+            }
+          />
         )}
       </div>
     </Modal>
@@ -1114,76 +1124,17 @@ function AddItemModal({
       title="Add Booking Item"
       size="lg"
     >
-      <Form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
         {/* Item Type Selection */}
         <Field label="Item Type">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <button
-              type="button"
-              onClick={() => setItemType("space")}
-              aria-pressed={itemType === "space"}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                itemType === "space"
-                  ? "border-primary bg-primary-soft text-primary-soft-fg"
-                  : "border-border hover:border-border-strong"
-              }`}
-            >
-              <Icon name="mapPin" size={24} className="mb-1" />
-              <span className="text-sm">Space</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setItemType("catering")}
-              aria-pressed={itemType === "catering"}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                itemType === "catering"
-                  ? "border-primary bg-primary-soft text-primary-soft-fg"
-                  : "border-border hover:border-border-strong"
-              }`}
-            >
-              <Icon name="sparkles" size={24} className="mb-1" />
-              <span className="text-sm">Catering</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setItemType("vendor")}
-              aria-pressed={itemType === "vendor"}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                itemType === "vendor"
-                  ? "border-primary bg-primary-soft text-primary-soft-fg"
-                  : "border-border hover:border-border-strong"
-              }`}
-            >
-              <Icon name="users" size={24} className="mb-1" />
-              <span className="text-sm">Vendor</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setItemType("electricity")}
-              aria-pressed={itemType === "electricity"}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                itemType === "electricity"
-                  ? "border-primary bg-primary-soft text-primary-soft-fg"
-                  : "border-border hover:border-border-strong"
-              }`}
-            >
-              <Icon name="bolt" size={24} className="mb-1" />
-              <span className="text-sm">Electricity</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setItemType("other")}
-              aria-pressed={itemType === "other"}
-              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                itemType === "other"
-                  ? "border-primary bg-primary-soft text-primary-soft-fg"
-                  : "border-border hover:border-border-strong"
-              }`}
-            >
-              <Icon name="clipboardList" size={24} className="mb-1" />
-              <span className="text-sm">Other</span>
-            </button>
-          </div>
+          <Segmented
+            options={ITEM_TYPE_OPTIONS}
+            value={itemType}
+            onChange={(id) =>
+              setItemType(id as "space" | "catering" | "vendor" | "electricity" | "other")
+            }
+            className="flex-wrap"
+          />
         </Field>
 
         {/* Item Selection */}
@@ -1312,34 +1263,29 @@ function AddItemModal({
         )}
 
         {/* Discount */}
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-text">
-            Discount (optional)
-          </label>
+        <Field label="Discount (optional)">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field>
-              <Input
-                type="number"
-                value={discountAmount}
-                onChange={(e) => setDiscountAmount(e.target.value)}
-                placeholder="Amount"
-                min="0"
-                step="0.01"
-              />
-            </Field>
-            <Field>
-              <Select
-                value={discountType}
-                onChange={(e) =>
-                  setDiscountType(e.target.value as "percent" | "fixed")
-                }
-              >
-                <option value="percent">Percentage (%)</option>
-                <option value="fixed">Fixed Amount (£)</option>
-              </Select>
-            </Field>
+            <Input
+              type="number"
+              value={discountAmount}
+              onChange={(e) => setDiscountAmount(e.target.value)}
+              placeholder="Amount"
+              aria-label="Discount amount"
+              min="0"
+              step="0.01"
+            />
+            <Select
+              value={discountType}
+              aria-label="Discount type"
+              onChange={(e) =>
+                setDiscountType(e.target.value as "percent" | "fixed")
+              }
+            >
+              <option value="percent">Percentage (%)</option>
+              <option value="fixed">Fixed Amount (£)</option>
+            </Select>
           </div>
-        </div>
+        </Field>
 
         {/* Notes */}
         <Field label="Notes (optional)">
@@ -1351,15 +1297,15 @@ function AddItemModal({
         </Field>
 
         {/* Actions */}
-        <div className="flex justify-end gap-3 pt-4">
+        <FormFooter>
           <Button type="button" onClick={onClose} variant="secondary">
             Cancel
           </Button>
-          <Button type="submit" loading={isSubmitting}>
+          <Button type="submit" variant="primary" loading={isSubmitting}>
             {isSubmitting ? "Adding..." : "Add Item"}
           </Button>
-        </div>
-      </Form>
+        </FormFooter>
+      </form>
     </Modal>
   );
 }
@@ -1418,36 +1364,13 @@ function DiscountModal({
 
   return (
     <Modal open={isOpen} onClose={onClose} title="Apply Booking Discount" mobileFullscreen>
-      <Form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
         <Field label="Discount Type">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setDiscountType("percent")}
-              aria-pressed={discountType === "percent"}
-              className={`p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                discountType === "percent"
-                  ? "border-primary bg-primary-soft text-primary-soft-fg"
-                  : "border-border hover:border-border-strong"
-              }`}
-            >
-              <Icon name="percent" size={24} className="block mx-auto mb-1" />
-              <span className="text-sm">Percentage</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setDiscountType("fixed")}
-              aria-pressed={discountType === "fixed"}
-              className={`p-3 rounded-lg border-2 transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                discountType === "fixed"
-                  ? "border-primary bg-primary-soft text-primary-soft-fg"
-                  : "border-border hover:border-border-strong"
-              }`}
-            >
-              <Icon name="pound" size={24} className="block mx-auto mb-1" />
-              <span className="text-sm">Fixed Amount</span>
-            </button>
-          </div>
+          <Segmented
+            options={DISCOUNT_TYPE_OPTIONS}
+            value={discountType}
+            onChange={(id) => setDiscountType(id as "percent" | "fixed")}
+          />
         </Field>
 
         <Field
@@ -1476,7 +1399,7 @@ function DiscountModal({
 
         {/* Preview */}
         {discountAmount && (
-          <div className="bg-surface-2 p-4 rounded-lg">
+          <div className="bg-surface-2 p-4 rounded-default">
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-text-muted">Current Total:</span>
@@ -1496,19 +1419,20 @@ function DiscountModal({
           </div>
         )}
 
-        <div className="flex justify-end gap-3 pt-4">
+        <FormFooter>
           <Button type="button" onClick={onClose} variant="secondary">
             Cancel
           </Button>
           <Button
             type="submit"
+            variant="primary"
             disabled={!discountAmount}
             loading={isSubmitting}
           >
             {isSubmitting ? "Applying..." : "Apply Discount"}
           </Button>
-        </div>
-      </Form>
+        </FormFooter>
+      </form>
     </Modal>
   );
 }
@@ -1596,7 +1520,7 @@ function EditItemModal({
 
   return (
     <Modal open={isOpen} onClose={onClose} title="Edit Item" mobileFullscreen>
-      <Form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
         <Field label="Description">
           <p className="text-sm text-text bg-surface-2 px-3 py-2 rounded-sm">
             {item.description}
@@ -1637,10 +1561,12 @@ function EditItemModal({
               step={discountType === "percent" ? "1" : "0.01"}
               max={discountType === "percent" ? "100" : undefined}
               placeholder="0"
+              aria-label="Discount amount"
               className="flex-1"
             />
             <Select
               value={discountType}
+              aria-label="Discount type"
               onChange={(e) =>
                 setDiscountType(e.target.value as "percent" | "fixed")
               }
@@ -1661,7 +1587,7 @@ function EditItemModal({
           />
         </Field>
 
-        <div className="bg-surface-2 p-3 rounded-lg">
+        <div className="bg-surface-2 p-3 rounded-default">
           <div className="flex justify-between text-sm">
             <span className="text-text-muted">Line Total:</span>
             <span className="font-semibold text-text">
@@ -1670,15 +1596,15 @@ function EditItemModal({
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 pt-4">
+        <FormFooter>
           <Button type="button" onClick={onClose} variant="secondary">
             Cancel
           </Button>
-          <Button type="submit" loading={isSubmitting}>
+          <Button type="submit" variant="primary" loading={isSubmitting}>
             {isSubmitting ? "Saving..." : "Save Changes"}
           </Button>
-        </div>
-      </Form>
+        </FormFooter>
+      </form>
     </Modal>
   );
 }
@@ -1805,14 +1731,6 @@ export default function PrivateBookingDetailClient({
     );
     return () => { cancelled = true; };
   }, [booking?.id]);
-
-  const navItems = [
-    { label: 'Overview', href: `/private-bookings/${bookingId}` },
-    { label: 'Items', href: `/private-bookings/${bookingId}/items` },
-    { label: 'Messages', href: `/private-bookings/${bookingId}/messages` },
-    { label: 'Communications', href: `/private-bookings/${bookingId}/communications` },
-    { label: 'Contract', href: `/private-bookings/${bookingId}/contract` },
-  ];
 
   const loadBooking = useCallback(
     async (id: string) => {
@@ -2310,33 +2228,21 @@ export default function PrivateBookingDetailClient({
     return subtotal;
   };
 
+  // One header for every state, so the title does not jump while the booking loads. Every tab of
+  // the booking shows the customer's name.
+  const layoutProps = {
+    title: booking ? booking.customer_full_name || booking.customer_name : 'Private Booking',
+    subtitle: booking?.event_type ?? undefined,
+    backButton: PB_BACK_TO_LIST,
+    navItems: PB_DETAIL_NAV(bookingId),
+  }
+
   if (loading) {
-    return (
-      <PageLayout
-        title="Private Booking"
-        subtitle="Loading booking details"
-        backButton={{
-          label: "Back to Private Bookings",
-          href: "/private-bookings",
-        }}
-        loading
-        loadingLabel="Loading booking..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading booking..." />
   }
 
   if (!booking) {
-    return (
-      <PageLayout
-        title="Private Booking"
-        subtitle={pageError ? undefined : "Booking not found"}
-        backButton={{
-          label: "Back to Private Bookings",
-          href: "/private-bookings",
-        }}
-        error={pageError ?? "We couldn't find that booking."}
-      />
-    )
+    return <PageLayout {...layoutProps} error={pageError ?? "We couldn't find that booking."} />
   }
 
   const isDateTbd = isBookingDateTbd(booking);
@@ -2498,47 +2404,45 @@ export default function PrivateBookingDetailClient({
     return null
   }
 
-  // StatusIcon is defined inline where needed above; remove duplicate unused const here
-
   return (
     <PageLayout
-      compactHeader
-      // Sections wrap already-padded cards, so avoid a second inset around each heading and body.
-      contentClassName="pt-3 [&_.section-header]:p-0 [&_.section-body]:p-0 [&_.p-pad-card]:p-3 [&_.section-body_.py-12]:py-4"
-      title={booking.customer_full_name || booking.customer_name}
-      subtitle={booking.event_type ?? undefined}
-      breadcrumbs={[
-        { label: "Private Bookings", href: "/private-bookings" },
-        { label: booking.customer_full_name || booking.customer_name, href: "" },
-      ]}
-      backButton={{ label: "Back to Private Bookings", href: "/private-bookings" }}
-      navItems={navItems}
+      {...layoutProps}
       headerActions={
-        <div className="flex items-center gap-2">
+        <>
           <Button
             type="button"
             variant="secondary"
+            size="sm"
             onClick={handleCopyPortalLink}
             loading={isCopyingLink}
+            icon={<Icon name="link" size={16} />}
             aria-label="Copy customer portal link to clipboard"
           >
-            <Icon name="link" size={16} className="mr-1.5" />
             Share Link
           </Button>
+          {/* The contract is a PDF that opens outside the app, so it is an action, not a tab. */}
+          <LinkButton
+            href={privateBookingContractHref(bookingId)}
+            target="_blank"
+            variant="secondary"
+            size="sm"
+            icon={<Icon name="externalLink" size={16} />}
+          >
+            Open Contract
+          </LinkButton>
           {canEdit && (
             <>
-              <Button variant="secondary" onClick={() => setShowStatusModal(true)}>Update Status</Button>
-              <LinkButton variant="primary" href={`/private-bookings/${bookingId}/edit`}>Edit Booking</LinkButton>
+              <Button variant="secondary" size="sm" onClick={() => setShowStatusModal(true)}>Update Status</Button>
+              <LinkButton variant="primary" size="sm" href={`/private-bookings/${bookingId}/edit`}>Edit Booking</LinkButton>
             </>
           )}
-        </div>
+        </>
       }
     >
       {pageError && (
         <Alert
           tone="danger"
           title="We couldn’t refresh the booking"
-          className="mb-6"
         >
           {pageError}
         </Alert>
@@ -2561,184 +2465,188 @@ export default function PrivateBookingDetailClient({
         <Alert
           tone="warning"
           title="Event date and time still to be confirmed"
-          className="mb-6"
         >
           Keep this booking in draft until the customer confirms the event details.
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-4">
-          <Section id="event-details" title="Event Details">
-            <Card>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-text-muted">
-                    Event Date
-                  </label>
-                  {isDateTbd ? (
-                    <div className="mt-1 flex items-center text-sm font-medium text-warning-fg">
-                      <Icon name="calendar" size={20} className="text-warning mr-2" />
-                      <span>To be confirmed</span>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="mt-1 flex items-center text-sm text-text">
-                        <Icon name="calendar" size={20} className="text-text-subtle mr-2" />
-                        {formatDateFull(booking.event_date)}
-                      </div>
-                      {booking.setup_date && (
-                        <p className="mt-1 text-sm text-text-muted">
-                          Setup: {formatDateFull(booking.setup_date)}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-muted">
-                    Time
-                  </label>
-                  {isDateTbd ? (
-                    <div className="mt-1 flex items-center text-sm font-medium text-warning-fg">
-                      <Icon name="clock" size={20} className="text-warning mr-2" />
-                      <span>To be confirmed</span>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="mt-1 flex items-center text-sm text-text">
-                        <Icon name="clock" size={20} className="text-text-subtle mr-2" />
-                        {formatTime12Hour(booking.start_time)} -{' '}
-                        {formatEndTime(booking)}
-                      </div>
-                      {booking.setup_time && (
-                        <p className="mt-1 text-sm text-text-muted">
-                          Setup: {formatTime12Hour(booking.setup_time || null)}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-muted">
-                    Guest Count
-                  </label>
-                  <div className="mt-1 flex items-center text-sm text-text">
-                    <Icon name="users" size={20} className="text-text-subtle mr-2" />
-                    {booking.guest_count ?? "TBC"} guests
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-muted">
-                    Event Type
-                  </label>
-                  <div className="mt-1 flex items-center text-sm text-text">
-                    <Icon name="sparkles" size={20} className="text-text-subtle mr-2" />
-                    {booking.event_type || "Private Event"}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-muted">
-                    Contact Phone
-                  </label>
-                  <div className="mt-1 flex items-center text-sm">
-                    <Icon name="phone" size={20} className="text-text-subtle mr-2" />
-                    {booking.contact_phone ? (
-                      <a
-                        href={`tel:${booking.contact_phone}`}
-                        className="text-primary hover:underline"
-                      >
-                        {booking.contact_phone}
-                      </a>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader title="Event Details" />
+            <CardBody className="space-y-4">
+              <DescriptionList
+                items={[
+                  {
+                    key: 'event_date',
+                    label: 'Event Date',
+                    value: isDateTbd ? (
+                      <span className="flex items-center font-medium text-warning-fg">
+                        <Icon name="calendar" size={20} className="text-warning mr-2" />
+                        To be confirmed
+                      </span>
                     ) : (
-                      <span className="text-text-muted">Not provided</span>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-muted">
-                    Contact Email
-                  </label>
-                  <div className="mt-1 flex items-center text-sm">
-                    <Icon name="mail" size={20} className="text-text-subtle mr-2" />
-                    {booking.contact_email ? (
-                      <a
-                        href={`mailto:${booking.contact_email}`}
-                        className="text-primary hover:underline"
-                      >
-                        {booking.contact_email}
-                      </a>
+                      <>
+                        <span className="flex items-center">
+                          <Icon name="calendar" size={20} className="text-text-subtle mr-2" />
+                          {formatDateFull(booking.event_date)}
+                        </span>
+                        {booking.setup_date && (
+                          <span className="mt-1 block text-text-muted">
+                            Setup: {formatDateFull(booking.setup_date)}
+                          </span>
+                        )}
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'time',
+                    label: 'Time',
+                    value: isDateTbd ? (
+                      <span className="flex items-center font-medium text-warning-fg">
+                        <Icon name="clock" size={20} className="text-warning mr-2" />
+                        To be confirmed
+                      </span>
                     ) : (
-                      <span className="text-text-muted">Not provided</span>
-                    )}
-                  </div>
-                  {canEdit &&
-                    booking.contact_email &&
-                    (booking.status === 'confirmed' || booking.status === 'completed') && (
-                      <div className="mt-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          loading={sendingCalendarInvite}
-                          disabled={sendingCalendarInvite}
-                          onClick={handleResendCalendarInvite}
-                        >
-                          <Icon name="calendar" size={16} className="mr-1.5" />
-                          Resend Calendar Invite
-                        </Button>
-                      </div>
-                    )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-muted">
-                    Booking Source
-                  </label>
-                  <div className="mt-1 flex items-center text-sm text-text">
-                    <Icon name="building" size={20} className="text-text-subtle mr-2" />
-                    {booking.source || "Direct"}
-                  </div>
-                </div>
-              </div>
+                      <>
+                        <span className="flex items-center">
+                          <Icon name="clock" size={20} className="text-text-subtle mr-2" />
+                          {formatTime12Hour(booking.start_time)} -{' '}
+                          {formatEndTime(booking)}
+                        </span>
+                        {booking.setup_time && (
+                          <span className="mt-1 block text-text-muted">
+                            Setup: {formatTime12Hour(booking.setup_time || null)}
+                          </span>
+                        )}
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'guest_count',
+                    label: 'Guest Count',
+                    value: (
+                      <span className="flex items-center">
+                        <Icon name="users" size={20} className="text-text-subtle mr-2" />
+                        {booking.guest_count ?? "TBC"} guests
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'event_type',
+                    label: 'Event Type',
+                    value: (
+                      <span className="flex items-center">
+                        <Icon name="sparkles" size={20} className="text-text-subtle mr-2" />
+                        {booking.event_type || "Private Event"}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'contact_phone',
+                    label: 'Contact Phone',
+                    value: (
+                      <span className="flex items-center">
+                        <Icon name="phone" size={20} className="text-text-subtle mr-2" />
+                        {booking.contact_phone ? (
+                          <a
+                            href={`tel:${booking.contact_phone}`}
+                            className="text-primary hover:underline"
+                          >
+                            {booking.contact_phone}
+                          </a>
+                        ) : (
+                          <span className="text-text-muted">Not provided</span>
+                        )}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'contact_email',
+                    label: 'Contact Email',
+                    value: (
+                      <>
+                        <span className="flex items-center">
+                          <Icon name="mail" size={20} className="text-text-subtle mr-2" />
+                          {booking.contact_email ? (
+                            <a
+                              href={`mailto:${booking.contact_email}`}
+                              className="text-primary hover:underline"
+                            >
+                              {booking.contact_email}
+                            </a>
+                          ) : (
+                            <span className="text-text-muted">Not provided</span>
+                          )}
+                        </span>
+                        {canEdit &&
+                          booking.contact_email &&
+                          (booking.status === 'confirmed' || booking.status === 'completed') && (
+                            <span className="mt-2 block">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                loading={sendingCalendarInvite}
+                                disabled={sendingCalendarInvite}
+                                onClick={handleResendCalendarInvite}
+                                icon={<Icon name="calendar" size={16} />}
+                              >
+                                Resend Calendar Invite
+                              </Button>
+                            </span>
+                          )}
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'source',
+                    label: 'Booking Source',
+                    value: (
+                      <span className="flex items-center">
+                        <Icon name="building" size={20} className="text-text-subtle mr-2" />
+                        {booking.source || "Direct"}
+                      </span>
+                    ),
+                  },
+                ]}
+              />
 
               {booking.balance_due_date && (
-                <div className="mt-6">
-                  <Alert
-                    tone="warning"
-                    title={`Balance & final details due by ${formatDateFull(booking.balance_due_date)}`}
-                  />
-                </div>
+                <Alert
+                  tone="warning"
+                  title={`Balance & final details due by ${formatDateFull(booking.balance_due_date)}`}
+                />
               )}
-            </Card>
-          </Section>
+            </CardBody>
+          </Card>
 
           {/* Booking Items Card */}
-          <Section
-            id="booking-items"
-            title="Booking Items"
-            actions={
-              canEdit ? (
-                <div className="flex items-center gap-3">
-                  {isReordering && (
-                    <span className="text-xs text-text-muted">Saving order…</span>
-                  )}
-                  <Button onClick={() => setShowAddItemModal(true)} size="sm">
-                    <Icon name="plus" size={16} className="mr-1" />
-                    Add Item
-                  </Button>
-                </div>
-              ) : null
-            }
-          >
-            <Card>
+          <Card>
+            <CardHeader
+              title="Booking Items"
+              action={
+                canEdit ? (
+                  <div className="flex items-center gap-3">
+                    {isReordering && (
+                      <span className="text-xs text-text-muted">Saving order…</span>
+                    )}
+                    <Button
+                      onClick={() => setShowAddItemModal(true)}
+                      size="sm"
+                      variant="primary"
+                      icon={<Icon name="plus" size={16} />}
+                    >
+                      Add Item
+                    </Button>
+                  </div>
+                ) : undefined
+              }
+            />
               {items.length === 0 ? (
-                <Empty icon={<Icon name="clipboardList" size={48} />}
+                <Empty
+                  size="sm"
+                  icon={<Icon name="clipboardList" size={48} />}
                   title="No items added yet"
                   description={
                     canEdit
@@ -2747,6 +2655,7 @@ export default function PrivateBookingDetailClient({
                   }
                 />
               ) : (
+                <CardBody>
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -2774,9 +2683,9 @@ export default function PrivateBookingDetailClient({
                     </div>
                   </SortableContext>
                 </DndContext>
+                </CardBody>
               )}
-            </Card>
-          </Section>
+          </Card>
 
           {/* Notes Section */}
           {(booking.customer_requests ||
@@ -2784,62 +2693,26 @@ export default function PrivateBookingDetailClient({
             booking.contract_note ||
             booking.special_requirements ||
             booking.accessibility_needs) && (
-            <Section id="notes-requirements" title="Notes & Requirements">
-              <Card>
-                <div className="space-y-4">
-                  {booking.customer_requests && (
-                    <div>
-                      <h3 className="text-sm font-medium text-text mb-1">
-                        Customer Requests
-                      </h3>
-                      <p className="text-sm text-text-muted whitespace-pre-wrap">
-                        {booking.customer_requests}
-                      </p>
-                    </div>
-                  )}
-                  {booking.special_requirements && (
-                    <div>
-                      <h3 className="text-sm font-medium text-text mb-1">
-                        Special Requirements
-                      </h3>
-                      <p className="text-sm text-text-muted whitespace-pre-wrap">
-                        {booking.special_requirements}
-                      </p>
-                    </div>
-                  )}
-                  {booking.accessibility_needs && (
-                    <div>
-                      <h3 className="text-sm font-medium text-text mb-1">
-                        Accessibility Needs
-                      </h3>
-                      <p className="text-sm text-text-muted whitespace-pre-wrap">
-                        {booking.accessibility_needs}
-                      </p>
-                    </div>
-                  )}
-                  {internalNotesForDisplay && (
-                    <div>
-                      <h3 className="text-sm font-medium text-text mb-1">
-                        Internal Notes
-                      </h3>
-                      <p className="text-sm text-text-muted whitespace-pre-wrap">
-                        {internalNotesForDisplay}
-                      </p>
-                    </div>
-                  )}
-                  {booking.contract_note && (
-                    <div>
-                      <h3 className="text-sm font-medium text-text mb-1">
-                        Contract Note
-                      </h3>
-                      <p className="text-sm text-text-muted whitespace-pre-wrap">
-                        {booking.contract_note}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </Card>
-            </Section>
+            <Card>
+              <CardHeader title="Notes & Requirements" />
+              <CardBody>
+                <DescriptionList
+                  columns={1}
+                  items={[
+                    { key: 'customer_requests', label: 'Customer Requests', value: booking.customer_requests },
+                    { key: 'special_requirements', label: 'Special Requirements', value: booking.special_requirements },
+                    { key: 'accessibility_needs', label: 'Accessibility Needs', value: booking.accessibility_needs },
+                    { key: 'internal_notes', label: 'Internal Notes', value: internalNotesForDisplay },
+                    { key: 'contract_note', label: 'Contract Note', value: booking.contract_note },
+                  ]
+                    .filter((note) => Boolean(note.value))
+                    .map((note) => ({
+                      ...note,
+                      value: <span className="whitespace-pre-wrap text-text-muted">{note.value}</span>,
+                    }))}
+                />
+              </CardBody>
+            </Card>
           )}
 
           <WaiverRiskPanel
@@ -2870,51 +2743,59 @@ export default function PrivateBookingDetailClient({
         </div>
 
         {/* Sidebar - Right 1/3 */}
-        <div className="space-y-4">
+        <div className="space-y-6">
           {canEdit && (
-            <Section id="quick-update" title="Quick Booking Update">
-              <Card>
-                <Form onSubmit={handleNoteSubmit} className="space-y-4">
+            <Card>
+              <CardHeader title="Quick Booking Update" />
+              <CardBody>
+                <form onSubmit={withSubmitErrorToast(handleNoteSubmit)} className="space-y-4">
                   <Textarea
                     value={noteText}
                     onChange={(event) => setNoteText(event.target.value)}
                     rows={4}
                     maxLength={NOTE_MAX_LENGTH}
+                    aria-label="Quick booking update"
                     placeholder="Capture quick updates, decisions, or follow-ups for the team."
                   />
-                  <div className="flex items-center justify-between text-xs text-text-muted">
-                    <span>
-                      {noteText.length}/{NOTE_MAX_LENGTH} characters
-                    </span>
+                  <FormFooter
+                    start={
+                      <span className="text-xs">
+                        {noteText.length}/{NOTE_MAX_LENGTH} characters
+                      </span>
+                    }
+                  >
                     <Button
                       type="submit"
                       size="sm"
+                      variant="primary"
                       loading={addingNote}
                       disabled={addingNote || noteText.trim().length === 0}
                     >
                       Save Note
                     </Button>
-                  </div>
-                </Form>
-              </Card>
-            </Section>
+                  </FormFooter>
+                </form>
+              </CardBody>
+            </Card>
           )}
           {/* Financial Summary Card */}
-          <Section
-            title="Financial Summary"
-            actions={
-              canEdit ? (
-                <Button
-                  type="button"
-                  variant="link"
-                  onClick={() => setShowDiscountModal(true)}
-                >
-                  Apply Discount
-                </Button>
-              ) : null
-            }
-          >
-            <Card>
+          <Card>
+            <CardHeader
+              title="Financial Summary"
+              action={
+                canEdit ? (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    onClick={() => setShowDiscountModal(true)}
+                  >
+                    Apply Discount
+                  </Button>
+                ) : undefined
+              }
+            />
+            <CardBody className="space-y-3">
               <div className="space-y-3">
                 {/* Always show original price and discounts */}
                 <div className="flex justify-between text-sm">
@@ -2971,7 +2852,7 @@ export default function PrivateBookingDetailClient({
                 {/* Show total savings if any discounts */}
                 {(calculateItemDiscounts() > 0 ||
                   (booking.discount_amount && booking.discount_amount > 0)) && (
-                  <div className="bg-success-soft border border-success-border p-2 rounded-lg">
+                  <div className="bg-success-soft border border-success-border p-2 rounded-default">
                     <div className="flex justify-between text-sm">
                       <span className="font-medium text-success-fg">
                         Total Savings
@@ -3010,7 +2891,7 @@ export default function PrivateBookingDetailClient({
               </div>
 
               <div className="space-y-3 pt-3 border-t border-border">
-                <div className="bg-info-soft border border-info-border p-3 rounded-lg">
+                <div className="bg-info-soft border border-info-border p-3 rounded-default">
                   <p className="text-xs font-medium text-info-fg mb-2">
                     {depositAppliedToInvoice ? "Deposit applied to invoice" : "Refundable Deposit"}
                   </p>
@@ -3068,10 +2949,8 @@ export default function PrivateBookingDetailClient({
                         </div>
                         {showDepositReductionReason && (
                           <div className="text-left">
-                            <label className="block text-xs font-medium text-text-muted mb-1">
-                              Reason for reduced deposit (GM discretion)
-                            </label>
                             <Textarea
+                              label="Reason for reduced deposit (GM discretion)"
                               value={depositEditReason}
                               onChange={(e) => setDepositEditReason(e.target.value)}
                               rows={2}
@@ -3154,7 +3033,7 @@ export default function PrivateBookingDetailClient({
                             disabled={isCopyingLink}
                             loading={isCopyingLink}
                           >
-                            Copy payment link
+                            Copy Payment Link
                           </Button>
                           {/* While the deposit is to be confirmed, Confirm deposit sends the link. */}
                           {!depositAwaitingConfirmation && (
@@ -3166,7 +3045,7 @@ export default function PrivateBookingDetailClient({
                               disabled={sendingDepositLink}
                               loading={sendingDepositLink}
                             >
-                              Send payment link
+                              Send Payment Link
                             </Button>
                           )}
                         </div>
@@ -3307,64 +3186,64 @@ export default function PrivateBookingDetailClient({
                   );
                 })()}
               </div>
-            </Card>
-          </Section>
+            </CardBody>
+          </Card>
 
           {/* Quick Actions Card */}
-          <Section id="quick-actions" title="Quick Actions">
-            <Card>
+          <Card>
+            <CardHeader title="Quick Actions" />
+            <CardBody>
               <div className="space-y-3">
                 {canSendSms && (
-                  <Link
+                  <LinkButton
                     href={`/private-bookings/${bookingId}/messages`}
-                    className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
+                    variant="secondary"
+                    className="w-full"
+                    icon={<Icon name="message" size={16} />}
+                    iconRight={<Icon name="chevronRight" size={16} />}
                   >
-                    <div className="flex items-center">
-                      <Icon name="message" size={20} className="mr-3 text-primary" />
-                      Send SMS Message
-                    </div>
-                    <Icon name="chevronRight" size={16} className="text-text-subtle" />
-                  </Link>
+                    <span className="flex-1 text-left">Send SMS Message</span>
+                  </LinkButton>
                 )}
 
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  className="w-full"
                   onClick={handleDownloadContract}
                   disabled={downloadingContract}
-                  className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                  icon={<Icon name="file" size={16} />}
+                  iconRight={<Icon name="download" size={16} />}
                 >
-                  <div className="flex items-center">
-                    <Icon name="file" size={20} className="mr-3 text-primary" />
-                    {downloadingContract ? 'Preparing contract…' : 'Download Contract'}
-                  </div>
-                  <Icon name="download" size={16} className="text-text-subtle" />
-                </button>
+                  <span className="flex-1 text-left">
+                    {downloadingContract ? 'Preparing Contract…' : 'Download Contract'}
+                  </span>
+                </Button>
 
-                <a
+                <LinkButton
                   href={`/api/private-bookings/event-sheet?bookingId=${bookingId}`}
                   target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
+                  variant="secondary"
+                  className="w-full"
+                  icon={<Icon name="clipboardList" size={16} />}
+                  iconRight={<Icon name="externalLink" size={16} />}
                 >
-                  <div className="flex items-center">
-                    <Icon name="clipboardList" size={20} className="mr-3 text-primary" />
-                    Staff event sheet
-                  </div>
-                  <Icon name="externalLink" size={16} className="text-text-subtle" />
-                </a>
+                  <span className="flex-1 text-left">Staff Event Sheet</span>
+                </LinkButton>
 
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  className="w-full"
                   onClick={handleSendContract}
                   disabled={sendingContract || !booking.contact_email}
-                  className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                  icon={<Icon name="file" size={16} />}
+                  iconRight={<Icon name="chevronRight" size={16} />}
                 >
-                  <div className="flex items-center">
-                    <Icon name="file" size={20} className="mr-3 text-primary" />
-                    {sendingContract ? 'Sending contract…' : 'Send Contract to Customer'}
-                  </div>
-                  <Icon name="chevronRight" size={16} className="text-text-subtle" />
-                </button>
+                  <span className="flex-1 text-left">
+                    {sendingContract ? 'Sending Contract…' : 'Send Contract to Customer'}
+                  </span>
+                </Button>
                 {booking.contract_sent_at ? (
                   <p className="text-xs text-text-muted px-1">
                     Contract sent {formatDateFull(booking.contract_sent_at)}
@@ -3398,7 +3277,7 @@ export default function PrivateBookingDetailClient({
 
                   if (alreadyInvoiced) {
                     return (
-                      <div className="rounded-lg bg-surface-2 px-3 py-2">
+                      <div className="rounded-default bg-surface-2 px-3 py-2">
                         <p className="text-sm font-medium text-text">
                           {booking.invoice_sent_at
                             ? `Invoice sent ${formatDateFull(booking.invoice_sent_at)}`
@@ -3414,29 +3293,32 @@ export default function PrivateBookingDetailClient({
                             href={`/invoices/${booking.invoice_id}`}
                             className="rounded-sm text-sm font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
                           >
-                            View invoice
+                            View Invoice
                           </Link>
                           {!booking.invoice_sent_at && (
-                            <button
+                            <Button
                               type="button"
+                              variant="link"
+                              size="sm"
                               onClick={handleRetryInvoiceEmail}
                               disabled={retryingInvoiceEmail}
-                              className="rounded-sm text-sm font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50"
                             >
-                              {retryingInvoiceEmail ? 'Sending…' : 'Retry sending'}
-                            </button>
+                              {retryingInvoiceEmail ? 'Sending…' : 'Retry Sending'}
+                            </Button>
                           )}
                           {/* The way back when the booked items change after
                               invoicing. Cancelling voids the invoice and
                               releases the booking, so the generate button
                               returns and can raise a corrected invoice. */}
-                          <button
+                          <Button
                             type="button"
+                            variant="link"
+                            size="sm"
+                            className="text-danger-fg"
                             onClick={() => setShowCancelInvoiceModal(true)}
-                            className="rounded-sm text-sm font-medium text-danger-fg hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
                           >
-                            Cancel invoice
-                          </button>
+                            Cancel Invoice
+                          </Button>
                         </div>
                       </div>
                     );
@@ -3444,18 +3326,17 @@ export default function PrivateBookingDetailClient({
 
                   return (
                     <div>
-                      <button
+                      <Button
                         type="button"
+                        variant="secondary"
+                        className="w-full"
                         onClick={handleOpenInvoiceModal}
                         disabled={Boolean(blockedReason)}
-                        className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                        icon={<Icon name="file" size={16} />}
+                        iconRight={<Icon name="chevronRight" size={16} />}
                       >
-                        <div className="flex items-center">
-                          <Icon name="file" size={20} className="mr-3 text-primary" />
-                          Generate and send invoice
-                        </div>
-                        <Icon name="chevronRight" size={16} className="text-text-subtle" />
-                      </button>
+                        <span className="flex-1 text-left">Generate and Send Invoice</span>
+                      </Button>
                       {blockedReason && (
                         <p className="mt-1 px-1 text-xs text-warning-fg">{blockedReason}</p>
                       )}
@@ -3464,50 +3345,26 @@ export default function PrivateBookingDetailClient({
                 })()}
 
               </div>
-            </Card>
-          </Section>
+            </CardBody>
+          </Card>
 
           {/* Booking Info Card */}
-          <Section id="booking-info" title="Booking Information">
-            <Card>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-text-muted">
-                    Booking ID
-                  </label>
-                  <p className="mt-1 text-sm text-text font-mono">
-                    {booking.id.slice(0, 8)}
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-text-muted">
-                    Created
-                  </label>
-                  <p className="mt-1 text-sm text-text">
-                    {formatDateFull(booking.created_at)}
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-text-muted">
-                    Last Updated
-                  </label>
-                  <p className="mt-1 text-sm text-text">
-                    {formatDateFull(booking.updated_at)}
-                  </p>
-                </div>
-                {booking.contract_version > 0 && (
-                  <div>
-                    <label className="block text-xs font-medium text-text-muted">
-                      Contract Version
-                    </label>
-                    <p className="mt-1 text-sm text-text">
-                      v{booking.contract_version}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </Card>
-          </Section>
+          <Card>
+            <CardHeader title="Booking Information" />
+            <CardBody>
+              <DescriptionList
+                columns={1}
+                items={[
+                  { key: 'id', label: 'Booking ID', value: <span className="font-mono">{booking.id.slice(0, 8)}</span> },
+                  { key: 'created', label: 'Created', value: formatDateFull(booking.created_at) },
+                  { key: 'updated', label: 'Last Updated', value: formatDateFull(booking.updated_at) },
+                  ...(booking.contract_version > 0
+                    ? [{ key: 'contract', label: 'Contract Version', value: `v${booking.contract_version}` }]
+                    : []),
+                ]}
+              />
+            </CardBody>
+          </Card>
 
           <RecordLockControl
             booking={booking}
@@ -3517,20 +3374,24 @@ export default function PrivateBookingDetailClient({
         </div>
       </div>
 
-      {booking.invoice_id && canViewPricing && <div className="mt-4 space-y-4">
-        <PrivateBookingBilling bookingId={bookingId} canIssue={canInvoice} canRecordPayments={canManageDeposits} canAddExtras={['confirmed', 'completed'].includes(booking.status)} onChanged={refreshBooking} />
-        <PrivateBookingReceiptPanel bookingId={bookingId} canGenerate={canInvoice} />
-      </div>}
+      {booking.invoice_id && canViewPricing && (
+        <>
+          <PrivateBookingBilling bookingId={bookingId} canIssue={canInvoice} canRecordPayments={canManageDeposits} canAddExtras={['confirmed', 'completed'].includes(booking.status)} onChanged={refreshBooking} />
+          <PrivateBookingReceiptPanel bookingId={bookingId} canGenerate={canInvoice} />
+        </>
+      )}
 
-      <Section id="audit-trail" title="Audit Trail" className="mt-4">
-        <Card>
+      <Card>
+        <CardHeader title="Audit Trail" />
           {auditTrail.length === 0 ? (
             <Empty
-              icon={<Icon name="clock" size={48} className="text-text-subtle" />}
+              size="sm"
+              icon={<Icon name="clock" size={48} />}
               title="No history yet"
               description="Updates and actions for this booking will appear here."
             />
           ) : (
+            <CardBody>
             <ul className="space-y-4">
               {auditTrail.map((entry) => {
                 const details = getAuditDetails(entry)
@@ -3559,19 +3420,19 @@ export default function PrivateBookingDetailClient({
                 )
               })}
             </ul>
+            </CardBody>
           )}
-        </Card>
-      </Section>
+      </Card>
 
       {/* Delete Confirmation */}
       <ConfirmDialog
         open={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
         onConfirm={() => deleteConfirm && handleDeleteItem(deleteConfirm)}
-        title="Delete Item"
+        title="Delete Item?"
         message="Are you sure you want to delete this item? This action cannot be undone."
-        confirmText="Delete"
-        confirmVariant="danger"
+        confirmLabel="Delete Item"
+        tone="danger"
       />
 
       {/* Modals */}
@@ -3665,10 +3526,10 @@ export default function PrivateBookingDetailClient({
             setCancelInvoiceReason('');
           }
         }}
-        title="Cancel this invoice"
+        title="Cancel This Invoice"
         mobileFullscreen
         footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <>
             <Button
               variant="secondary"
               onClick={() => {
@@ -3677,7 +3538,7 @@ export default function PrivateBookingDetailClient({
               }}
               disabled={cancellingInvoice}
             >
-              Keep invoice
+              Keep Invoice
             </Button>
             <Button
               variant="danger"
@@ -3685,9 +3546,9 @@ export default function PrivateBookingDetailClient({
               disabled={cancellingInvoice || !cancelInvoiceReason.trim()}
               loading={cancellingInvoice}
             >
-              Cancel invoice
+              Cancel Invoice
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-4">

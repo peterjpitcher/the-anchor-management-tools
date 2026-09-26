@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Drawer, DrawerActions } from '@/ds';
-import { FormSection } from '@/ds';
+import { Drawer, FormFooter, SHELL_MEDIA_QUERY } from '@/ds';
+import { Card, CardBody, CardHeader } from '@/ds';
 import { Field } from '@/ds';
 import { Input } from '@/ds';
 import { Select } from '@/ds';
@@ -116,7 +116,7 @@ export function RecipeDrawer({
   ingredients,
   onSaved,
 }: RecipeDrawerProps): React.ReactElement {
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  const isMobile = useMediaQuery(SHELL_MEDIA_QUERY);
   const isEditing = Boolean(recipe);
 
   // Form state
@@ -326,7 +326,6 @@ export function RecipeDrawer({
   // ---- Render ----
 
   const drawerTitle = isEditing ? (recipe?.name ?? 'Edit Recipe') : 'New Recipe';
-  const drawerDescription = isEditing ? undefined : 'Create a reusable prep recipe from ingredients';
 
   return (
     <>
@@ -335,180 +334,182 @@ export function RecipeDrawer({
         onClose={requestClose}
         size={isMobile ? 'full' : 'lg'}
         title={drawerTitle}
-        description={drawerDescription}
         footer={
-          <DrawerActions align="between">
-            <div className="flex items-center gap-2">
-              {isEditing && (
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  onClick={() => setShowDeleteConfirm(true)}
-                >
-                  Delete
-                </Button>
-              )}
-            </div>
-            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-              {/* Cost summary */}
-              <div className="text-sm text-text-muted">
-                <span className="font-medium">
-                  £{computedTotalCost.toFixed(2)} total
+          <FormFooter
+            className="w-full"
+            start={
+              <div className="flex flex-wrap items-center gap-3">
+                {isEditing && (
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setShowDeleteConfirm(true)}
+                  >
+                    Delete
+                  </Button>
+                )}
+                {/* Cost summary */}
+                <span>
+                  <span className="font-medium">
+                    £{computedTotalCost.toFixed(2)} total
+                  </span>
+                  {' / '}
+                  <span className="font-medium">
+                    £{computedPortionCost.toFixed(2)}
+                  </span>
+                  {' per '}
+                  {formState.yield_unit}
                 </span>
-                {' / '}
-                <span className="font-medium">
-                  £{computedPortionCost.toFixed(2)}
-                </span>
-                {' per '}
-                {formState.yield_unit}
               </div>
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="secondary" onClick={requestClose}>
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => void handleSave()}
-                  disabled={saving}
-                >
-                  {saving ? 'Saving...' : isEditing ? 'Update' : 'Create Recipe'}
-                </Button>
-              </div>
-            </div>
-          </DrawerActions>
+            }
+          >
+            <Button type="button" variant="secondary" onClick={requestClose}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => void handleSave()}
+              disabled={saving}
+            >
+              {saving ? 'Saving...' : isEditing ? 'Update' : 'Create Recipe'}
+            </Button>
+          </FormFooter>
         }
       >
-        {/* Server error */}
-        {serverError && (
-          <Alert
-            tone="danger"
-            title="Save Error"
-            closable
-            onClose={() => setServerError(null)}
-            className="mb-4"
-          >
-            {serverError}
-          </Alert>
-        )}
-
-        {/* Top zone: Recipe overview (fixed) */}
-        <FormSection title="Recipe Overview" description="Name, yield, and basic settings.">
-          <Field label="Name" required>
-            <Input
-              value={formState.name}
-              onChange={(e) => update({ name: e.target.value })}
-              required
-            />
-          </Field>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Yield quantity" required>
-              <Input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={formState.yield_quantity}
-                onChange={(e) => update({ yield_quantity: e.target.value })}
-                required
-              />
-            </Field>
-            <Field label="Yield unit" required>
-              <Select
-                value={formState.yield_unit}
-                onChange={(e) => update({ yield_unit: e.target.value })}
-              >
-                {UNITS.map((unit) => (
-                  <option key={unit.value} value={unit.value}>
-                    {unit.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-
-          <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
-            <Checkbox
-              label="Recipe is active"
-              checked={formState.is_active}
-              onChange={(checked) => update({ is_active: checked })}
-            />
-            <p className="text-xs text-text-muted">
-              Inactive recipes stay in the library but cannot be added to dishes.
-            </p>
-          </div>
-
-          {/* Collapsible textareas */}
-          <Button
-            type="button"
-            variant="link"
-            onClick={() => setShowTextareas((prev) => !prev)}
-          >
-            {showTextareas ? 'Hide description, instructions & notes' : 'Add description, instructions & notes'}
-          </Button>
-
-          {showTextareas && (
-            <div className="space-y-3">
-              <Field label="Description">
-                <Textarea
-                  rows={2}
-                  value={formState.description}
-                  onChange={(e) => update({ description: e.target.value })}
-                />
-              </Field>
-              <Field label="Instructions">
-                <Textarea
-                  rows={3}
-                  value={formState.instructions}
-                  onChange={(e) => update({ instructions: e.target.value })}
-                  placeholder="Explain prep steps, cooking temperatures, or holding notes."
-                />
-              </Field>
-              <Field label="Notes">
-                <Textarea
-                  rows={2}
-                  value={formState.notes}
-                  onChange={(e) => update({ notes: e.target.value })}
-                />
-              </Field>
-            </div>
+        <div className="space-y-6">
+          {/* Server error */}
+          {serverError && (
+            <Alert
+              tone="danger"
+              title="Save Error"
+              closable
+              onClose={() => setServerError(null)}
+            >
+              {serverError}
+            </Alert>
           )}
-        </FormSection>
 
-        {/* Bottom zone: Ingredients (scrollable) */}
-        <FormSection
-          title="Ingredients"
-          description="Add every ingredient used in the prep. Costs roll up automatically."
-          className="mt-6"
-        >
-          <div className="space-y-3">
-            {formIngredients.map((row, index) => (
-              <RecipeIngredientRow
-                key={`recipe-ingredient-${index}`}
-                row={row}
-                index={index}
-                ingredients={ingredients}
-                linkedIngredientIds={linkedIngredientIds}
-                canRemove={formIngredients.length > 1}
-                onChange={updateIngredientRow}
-                onRemove={removeIngredientRow}
+          {/* Top zone: Recipe overview (fixed) */}
+          <Card>
+            <CardHeader title="Recipe Overview" subtitle="Name, yield, and basic settings" />
+            <CardBody className="space-y-4">
+              <Field label="Name" required>
+                <Input
+                  value={formState.name}
+                  onChange={(e) => update({ name: e.target.value })}
+                  required
+                />
+              </Field>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Yield quantity" required>
+                  <Input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={formState.yield_quantity}
+                    onChange={(e) => update({ yield_quantity: e.target.value })}
+                    required
+                  />
+                </Field>
+                <Field label="Yield unit" required>
+                  <Select
+                    value={formState.yield_unit}
+                    onChange={(e) => update({ yield_unit: e.target.value })}
+                  >
+                    {UNITS.map((unit) => (
+                      <option key={unit.value} value={unit.value}>
+                        {unit.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+
+              <Checkbox
+                label="Recipe is active"
+                description="Inactive recipes stay in the library but cannot be added to dishes."
+                checked={formState.is_active}
+                onChange={(checked) => update({ is_active: checked })}
               />
-            ))}
-          </div>
 
-          <Button type="button" variant="secondary" size="sm" onClick={addIngredientRow}>
-            Add Ingredient
-          </Button>
-        </FormSection>
+              {/* Collapsible textareas */}
+              <Button
+                type="button"
+                variant="link"
+                onClick={() => setShowTextareas((prev) => !prev)}
+              >
+                {showTextareas ? 'Hide Description, Instructions & Notes' : 'Add Description, Instructions & Notes'}
+              </Button>
+
+              {showTextareas && (
+                <div className="space-y-4">
+                  <Field label="Description">
+                    <Textarea
+                      rows={2}
+                      value={formState.description}
+                      onChange={(e) => update({ description: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Instructions">
+                    <Textarea
+                      rows={3}
+                      value={formState.instructions}
+                      onChange={(e) => update({ instructions: e.target.value })}
+                      placeholder="Explain prep steps, cooking temperatures, or holding notes."
+                    />
+                  </Field>
+                  <Field label="Notes">
+                    <Textarea
+                      rows={2}
+                      value={formState.notes}
+                      onChange={(e) => update({ notes: e.target.value })}
+                    />
+                  </Field>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          {/* Bottom zone: Ingredients (scrollable) */}
+          <Card>
+            <CardHeader
+              title="Ingredients"
+              subtitle="Every ingredient used in the prep, with costs rolled up automatically"
+            />
+            <CardBody className="space-y-4">
+              <div className="space-y-3">
+                {formIngredients.map((row, index) => (
+                  <RecipeIngredientRow
+                    key={`recipe-ingredient-${index}`}
+                    row={row}
+                    index={index}
+                    ingredients={ingredients}
+                    linkedIngredientIds={linkedIngredientIds}
+                    canRemove={formIngredients.length > 1}
+                    onChange={updateIngredientRow}
+                    onRemove={removeIngredientRow}
+                  />
+                ))}
+              </div>
+
+              <Button type="button" variant="secondary" size="sm" onClick={addIngredientRow}>
+                Add Ingredient
+              </Button>
+            </CardBody>
+          </Card>
+        </div>
       </Drawer>
 
       {/* Unsaved changes confirmation */}
       <ConfirmDialog
         open={showUnsavedConfirm}
-        title="Unsaved changes"
+        title="Unsaved Changes"
         message="You have unsaved changes. Discard them and close?"
-        confirmText="Discard"
-        type="danger"
+        confirmLabel="Discard"
+        tone="danger"
         onClose={() => setShowUnsavedConfirm(false)}
         onConfirm={() => {
           setShowUnsavedConfirm(false);
@@ -519,16 +520,14 @@ export function RecipeDrawer({
       {/* Delete confirmation */}
       <ConfirmDialog
         open={showDeleteConfirm}
-        title="Delete recipe?"
+        title="Delete Recipe?"
         message={
           recipe
             ? `This removes ${recipe.name} from every dish that uses it.`
             : undefined
         }
-        confirmText="Delete"
-        type="danger"
-        confirmVariant="danger"
-        destructive
+        confirmLabel="Delete"
+        tone="danger"
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={() => {
           setShowDeleteConfirm(false);

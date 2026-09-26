@@ -9,27 +9,25 @@ import {
 import {
   DetailRow,
   GuestAlert,
+  GuestAmount,
   GuestBadge,
   GuestBlockedState,
   GuestButton,
   GuestCard,
   GuestField,
+  GuestInput,
+  GuestIntro,
   GuestShell,
+  GuestTextarea,
+  GUEST_BANNER_TONE,
+  GUEST_MUTED_CLASS,
   guestBadgeToneForStatus,
   guestFieldControlProps,
-  GUEST_H1_CLASS,
-  GUEST_INPUT_CLASS,
-  GUEST_INTRO_CLASS,
-  GUEST_KICKER_CLASS,
-  GUEST_LEAD_CLASS,
-  GUEST_TEXTAREA_CLASS,
 } from '@/components/features/guest'
 import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 import { GuestCancelBooking } from '@/components/features/shared/GuestCancelBooking'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { logger } from '@/lib/logger'
-import { cn } from '@/lib/utils'
-import { GUEST_SUBMIT_PRIMARY_CLASS } from './formStyles'
 import { loadBookerPreorderView, type BookerPreorderView } from './preorder-data'
 import { PreorderSection } from './PreorderSection'
 
@@ -147,13 +145,6 @@ function preorderMessage(preorder?: string): { tone: 'green' | 'amber' | 'red'; 
   }
 }
 
-/** The banner tones these pages have always used, in the design system's vocabulary. */
-function alertTone(tone: 'green' | 'amber' | 'red'): 'success' | 'notice' | 'problem' {
-  if (tone === 'green') return 'success'
-  if (tone === 'amber') return 'notice'
-  return 'problem'
-}
-
 export default async function TableManageBookingPage({
   params,
   searchParams
@@ -176,7 +167,7 @@ export default async function TableManageBookingPage({
 
   if (!throttle.allowed) {
     return (
-      <GuestShell maxWidthClassName="max-w-2xl">
+      <GuestShell width="wide">
         <GuestBlockedState
           kicker={KICKER}
           heading="Manage booking unavailable"
@@ -196,7 +187,7 @@ export default async function TableManageBookingPage({
 
   if (preview.state !== 'ready') {
     return (
-      <GuestShell maxWidthClassName="max-w-2xl">
+      <GuestShell width="wide">
         <GuestBlockedState
           kicker={KICKER}
           heading="Manage booking unavailable"
@@ -246,46 +237,37 @@ export default async function TableManageBookingPage({
   const statusLabel = humanizeStatus(preview.status)
 
   return (
-    <GuestShell maxWidthClassName="max-w-2xl">
-      <section className="flex w-full flex-col gap-5">
-        <div className={GUEST_INTRO_CLASS}>
-          <p className={GUEST_KICKER_CLASS}>{KICKER}</p>
-          <h1 className={GUEST_H1_CLASS}>Manage table booking</h1>
-          <p className={GUEST_LEAD_CLASS}>
-            {formatGuestGreeting(guestFirstName, 'your booking details are below.')}
-          </p>
-        </div>
+    <GuestShell width="wide">
+      <GuestIntro
+        kicker={KICKER}
+        title="Manage table booking"
+        lead={formatGuestGreeting(guestFirstName, 'your booking details are below.')}
+      />
 
-        {/* `role="alert"` on both banners is what this page has always sent. Kept verbatim. */}
-        {banner && (
-          <GuestAlert tone={alertTone(banner.tone)} role="alert">
-            {banner.text}
-          </GuestAlert>
-        )}
+      {/* `role="alert"` on both banners is what this page has always sent. Kept verbatim. */}
+      {banner && (
+        <GuestAlert tone={GUEST_BANNER_TONE[banner.tone]} role="alert">
+          {banner.text}
+        </GuestAlert>
+      )}
 
-        {preorderBanner && (
-          <GuestAlert tone={alertTone(preorderBanner.tone)} role="alert">
-            {preorderBanner.text}
-          </GuestAlert>
-        )}
+      {preorderBanner && (
+        <GuestAlert tone={GUEST_BANNER_TONE[preorderBanner.tone]} role="alert">
+          {preorderBanner.text}
+        </GuestAlert>
+      )}
 
-        <GuestCard variant="accent">
+      <GuestCard variant="accent">
+        <div className="flex flex-col gap-guest-md">
           <div className="flex items-start justify-between gap-4">
-            <div className="flex min-w-0 flex-col gap-[3px]">
-              <span className="font-anchor-body text-meta font-semibold uppercase leading-none tracking-[0.1em] text-guest-text-muted">
-                Booking
-              </span>
-              <span className="break-words font-anchor-display text-[26px] font-normal leading-[1.15] text-guest-text-strong">
-                {bookingReference}
-              </span>
-            </div>
+            <GuestAmount label="Booking" value={bookingReference} size="title" />
 
             <GuestBadge tone={guestBadgeToneForStatus(statusLabel)} dot className="mt-1">
               {statusLabel}
             </GuestBadge>
           </div>
 
-          <div className="mt-4">
+          <div>
             <DetailRow label="Time" value={formatDateTime(preview.start_datetime)} />
             <DetailRow
               label="Table"
@@ -293,90 +275,86 @@ export default async function TableManageBookingPage({
             />
             <DetailRow label="Party size" value={preview.party_size || 1} />
           </div>
+        </div>
+      </GuestCard>
+
+      {!preview.can_edit ? (
+        <GuestCard>
+          <p className={GUEST_MUTED_CLASS}>
+            Booking changes are no longer available. Please call to make any changes.
+          </p>
         </GuestCard>
+      ) : (
+        <GuestCard>
+          <form method="post" action={actionUrl} className="flex flex-col gap-guest-lg">
+            <input type="hidden" name="action" value="update" />
 
-        {!preview.can_edit ? (
-          <GuestCard>
-            <p className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
-              Booking changes are no longer available. Please call to make any changes.
-            </p>
-          </GuestCard>
-        ) : (
-          <GuestCard>
-            <form method="post" action={actionUrl} className="flex flex-col gap-5">
-              <input type="hidden" name="action" value="update" />
+            <GuestField id="party_size" label="Party size" required>
+              <GuestInput
+                {...guestFieldControlProps({ id: 'party_size', required: true })}
+                name="party_size"
+                type="number"
+                min="1"
+                max="20"
+                defaultValue={String(preview.party_size || 1)}
+              />
+            </GuestField>
 
-              <GuestField id="party_size" label="Party size" required>
-                <input
-                  {...guestFieldControlProps({ id: 'party_size', required: true })}
-                  name="party_size"
-                  type="number"
-                  min="1"
-                  max="20"
-                  defaultValue={String(preview.party_size || 1)}
-                  className={GUEST_INPUT_CLASS}
-                />
-              </GuestField>
+            <GuestField id="notes" label="Special requirements" hint={NOTES_HINT}>
+              <GuestTextarea
+                {...guestFieldControlProps({ id: 'notes', hint: NOTES_HINT })}
+                name="notes"
+                rows={3}
+                defaultValue={preview.special_requirements || ''}
+                placeholder="Allergies, dietary needs, accessibility requirements, etc."
+              />
+            </GuestField>
 
-              <GuestField id="notes" label="Special requirements" hint={NOTES_HINT}>
-                <textarea
-                  {...guestFieldControlProps({ id: 'notes', hint: NOTES_HINT })}
-                  name="notes"
-                  rows={3}
-                  defaultValue={preview.special_requirements || ''}
-                  placeholder="Allergies, dietary needs, accessibility requirements, etc."
-                  className={cn(GUEST_INPUT_CLASS, GUEST_TEXTAREA_CLASS)}
-                />
-              </GuestField>
+            <div>
+              <GuestSubmitButton loadingText="Saving...">Save changes</GuestSubmitButton>
+            </div>
+          </form>
+        </GuestCard>
+      )}
 
-              <div>
-                <GuestSubmitButton className={GUEST_SUBMIT_PRIMARY_CLASS} loadingText="Saving...">
-                  Save changes
-                </GuestSubmitButton>
-              </div>
-            </form>
-          </GuestCard>
-        )}
+      {preorderLoadFailed && (
+        <GuestAlert
+          tone="problem"
+          title="We could not load your food choices"
+          action={
+            <GuestButton as="a" href={GUEST_CONTACT.telHref} variant="outline" size="sm">
+              Call {GUEST_CONTACT.phoneDisplay}
+            </GuestButton>
+          }
+        >
+          Your booking itself is fine, and you can still change or cancel it on this page. Please
+          ring us and we will take your food choices over the phone.
+        </GuestAlert>
+      )}
 
-        {preorderLoadFailed && (
-          <GuestAlert
-            tone="problem"
-            title="We could not load your food choices"
-            action={
-              <GuestButton as="a" href={GUEST_CONTACT.telHref} variant="outline" size="sm">
-                Call {GUEST_CONTACT.phoneDisplay}
-              </GuestButton>
-            }
-          >
-            Your booking itself is fine, and you can still change or cancel it on this page. Please
-            ring us and we will take your food choices over the phone.
-          </GuestAlert>
-        )}
+      {preorderView && (
+        <PreorderSection
+          {...preorderView}
+          actionUrl={actionUrl}
+          errorSeat={Number.isFinite(errorSeat) && errorSeat > 0 ? errorSeat : null}
+        />
+      )}
 
-        {preorderView && (
-          <PreorderSection
-            {...preorderView}
-            actionUrl={actionUrl}
-            errorSeat={Number.isFinite(errorSeat) && errorSeat > 0 ? errorSeat : null}
-          />
-        )}
-
-        {preview.can_cancel && (
-          <GuestCancelBooking
-            actionUrl={actionUrl}
-            confirmCancel={confirmCancel}
-            manageUrl={manageUrl}
-            // Read only at the confirmation step, which is the one place a guest is deciding
-            // whether the money comes back. Cancelling here now refunds the deposit, so the terms
-            // belong in front of them before they press the button.
-            refundNotice={
-              confirmCancel && preview.table_booking_id
-                ? await getGuestCancellationRefundNotice(supabase, preview.table_booking_id)
-                : null
-            }
-          />
-        )}
-      </section>
+      {preview.can_cancel && (
+        <GuestCancelBooking
+          actionUrl={actionUrl}
+          confirmCancel={confirmCancel}
+          manageUrl={manageUrl}
+          // Read only at the confirmation step, which is the one place a guest is deciding
+          // whether the money comes back. Cancelling here now refunds the deposit, so the terms
+          // belong in front of them before they press the button.
+          refundNotice={
+            confirmCancel && preview.table_booking_id
+              ? await getGuestCancellationRefundNotice(supabase, preview.table_booking_id)
+              : null
+          }
+        />
+      )}
     </GuestShell>
   )
 }

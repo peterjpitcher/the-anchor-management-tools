@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Modal, Button, Field, Input, Select, Alert, toast } from '@/ds'
+import { Modal, Button, Card, Field, Input, Select, Alert, toast } from '@/ds'
 import { createShortLink, updateShortLink } from '@/app/actions/short-links'
 import { applyUtmParams } from './utm-url'
 import type { ShortLink } from '@/types/short-links'
@@ -81,7 +81,7 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
     e.preventDefault()
 
     // The footer submit button sits outside the <form>, so the input's own
-    // type="url" validation never runs — validate here instead.
+    // type="url" validation never runs, so validate here instead.
     try {
       new URL(destinationUrl)
     } catch {
@@ -123,7 +123,7 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
             await navigator.clipboard.writeText(result.data.full_url)
             successMessage = 'Link created and copied!'
           } catch {
-            // Clipboard access is best-effort — the link was still created
+            // Clipboard access is best-effort: the link was still created
           }
         }
         toast.success(successMessage)
@@ -196,20 +196,22 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
             size="sm"
             onClick={() => setShowUtm(!showUtm)}
           >
-            {showUtm ? 'Hide UTM parameters' : 'Add UTM parameters'}
+            {showUtm ? 'Hide UTM Parameters' : 'Add UTM Parameters'}
           </Button>
           {showUtm && (
-            <div className="mt-3 space-y-3 p-3 bg-surface-2 rounded-lg">
-              <Field label="UTM Source">
-                <Input value={utmSource} onChange={(e) => setUtmSource(e.target.value)} placeholder="e.g. facebook" />
-              </Field>
-              <Field label="UTM Medium">
-                <Input value={utmMedium} onChange={(e) => setUtmMedium(e.target.value)} placeholder="e.g. social" />
-              </Field>
-              <Field label="UTM Campaign">
-                <Input value={utmCampaign} onChange={(e) => setUtmCampaign(e.target.value)} placeholder="e.g. summer-promo" />
-              </Field>
-            </div>
+            <Card variant="secondary" padding="sm" className="mt-3">
+              <div className="space-y-3">
+                <Field label="UTM Source">
+                  <Input value={utmSource} onChange={(e) => setUtmSource(e.target.value)} placeholder="e.g. facebook" />
+                </Field>
+                <Field label="UTM Medium">
+                  <Input value={utmMedium} onChange={(e) => setUtmMedium(e.target.value)} placeholder="e.g. social" />
+                </Field>
+                <Field label="UTM Campaign">
+                  <Input value={utmCampaign} onChange={(e) => setUtmCampaign(e.target.value)} placeholder="e.g. summer-promo" />
+                </Field>
+              </div>
+            </Card>
           )}
         </div>
 

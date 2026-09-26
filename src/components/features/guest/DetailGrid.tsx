@@ -1,4 +1,5 @@
-import { cn } from '@/lib/utils'
+import { clsx } from 'clsx'
+import { GUEST_LABEL_CLASS } from './styles'
 
 type DetailGridItem = {
   label: React.ReactNode
@@ -7,25 +8,28 @@ type DetailGridItem = {
 
 type DetailGridProps = {
   items: DetailGridItem[]
-  className?: string
+  /** `single` keeps one column at every width, for free text that needs the room. */
+  columns?: 'auto' | 'single'
+}
+
+const COLUMNS_CLASS: Record<NonNullable<DetailGridProps['columns']>, string> = {
+  auto: 'grid-cols-1 guest-narrow:grid-cols-2',
+  single: 'grid-cols-1',
 }
 
 /**
  * Two-column detail grid, dropping to one column below 380px so the smallest
  * phones still fit a registration or a reference on one line.
  *
- * Used where the pages currently render a `<dl>` grid: parking and the booking
- * portal.
+ * Used where the pages render a `<dl>`-style grid: parking and the booking portal.
  */
-export function DetailGrid({ items, className }: DetailGridProps): React.JSX.Element {
+export function DetailGrid({ items, columns = 'auto' }: DetailGridProps): React.JSX.Element {
   return (
-    <div className={cn('grid grid-cols-1 gap-[15px] min-[380px]:grid-cols-2', className)}>
+    <div className={clsx('grid gap-guest-md', COLUMNS_CLASS[columns])}>
       {items.map((item, index) => (
-        <div key={index} className="flex min-w-0 flex-col gap-[3px]">
-          <span className="font-anchor-body text-meta font-semibold uppercase leading-none tracking-[0.1em] text-guest-text-muted">
-            {item.label}
-          </span>
-          <span className="font-anchor-body text-sm font-semibold leading-[1.4] text-guest-text">
+        <div key={index} className="flex min-w-0 flex-col gap-guest-3xs">
+          <span className={GUEST_LABEL_CLASS}>{item.label}</span>
+          <span className="font-anchor-body text-guest-body font-semibold leading-guest-snug text-guest-text">
             {item.value}
           </span>
         </div>

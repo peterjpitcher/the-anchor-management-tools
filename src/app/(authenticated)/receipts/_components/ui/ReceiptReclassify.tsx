@@ -38,9 +38,9 @@ export function ReceiptReclassify() {
       variant="secondary"
       size="sm"
       onClick={handleRequeue}
-      disabled={isPending}
+      loading={isPending}
     >
-      {isPending ? 'Queueing...' : 'Re-classify untagged'}
+      Re-classify Untagged
     </Button>
   )
 }

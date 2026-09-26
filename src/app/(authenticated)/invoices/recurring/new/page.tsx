@@ -5,18 +5,27 @@ import { useRouter } from 'next/navigation'
 import { createRecurringInvoice } from '@/app/actions/recurring-invoices'
 import { getVendors } from '@/app/actions/vendors'
 import { getLineItemCatalog } from '@/app/actions/invoices'
-import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Field } from '@/ds'
-import { Alert } from '@/ds'
-import { toast } from '@/ds'
+import {
+  PageLayout,
+  Icon,
+  Card,
+  CardHeader,
+  CardBody,
+  Button,
+  IconButton,
+  Input,
+  Select,
+  Textarea,
+  Field,
+  Alert,
+  DescriptionList,
+  FormFooter,
+  toast,
+} from '@/ds'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import type { InvoiceVendor, InvoiceLineItemInput, RecurringFrequency, LineItemCatalogItem } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { BACK_TO_RECURRING } from '../../_shared/nav'
 
 export default function NewRecurringInvoicePage() {
   const router = useRouter()
@@ -183,16 +192,14 @@ export default function NewRecurringInvoicePage() {
     }
   }
 
+  const layoutProps = {
+    title: 'New Recurring Invoice',
+    subtitle: 'Set up automated invoice generation',
+    backButton: BACK_TO_RECURRING,
+  }
+
   if (permissionsLoading || loading) {
-    return (
-      <PageLayout
-        title="New Recurring Invoice"
-        subtitle="Set up automated invoice generation"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        loading
-        loadingLabel="Loading recurring setup..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading recurring setup" />
   }
 
   if (!canCreate) {
@@ -202,26 +209,16 @@ export default function NewRecurringInvoicePage() {
   const { subtotal, invoiceDiscountAmount, totalVat, total } = calculateTotals()
 
   return (
-    <PageLayout
-      title="New Recurring Invoice"
-      subtitle="Set up automated invoice generation"
-      breadcrumbs={[
-        { label: 'Invoices', href: '/invoices' },
-        { label: 'Recurring', href: '/invoices/recurring' }
-      ]}
-      backButton={{ label: 'Back to Recurring', href: '/invoices/recurring' }}
-    >
-      <div className="space-y-6">
-        {error && (
-          <Alert tone="danger">{error}</Alert>
-        )}
+    <PageLayout {...layoutProps}>
+      {error && (
+        <Alert tone="danger">{error}</Alert>
+      )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
         <Card>
-          <h2 className="text-xl font-semibold mb-4">Recurring Details</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <CardHeader title="Recurring Details" />
+          <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Vendor" required>
               <Select
                 value={vendorId}
@@ -268,7 +265,7 @@ export default function NewRecurringInvoicePage() {
             <Field
               label="Next Invoice Date"
               required
-              help="Controls when the next invoice will be generated. This can be adjusted without changing the start date."
+              hint="Controls when the next invoice will be generated. This can be adjusted without changing the start date."
             >
               <Input
                 type="date"
@@ -291,7 +288,7 @@ export default function NewRecurringInvoicePage() {
               />
             </Field>
 
-            <Field label="Days Before Due" required help="Number of days after invoice date until payment is due">
+            <Field label="Days Before Due" required hint="Number of days after invoice date until payment is due">
               <Input
                 type="number"
                 value={daysBefore}
@@ -310,20 +307,33 @@ export default function NewRecurringInvoicePage() {
                 placeholder="PO number or reference"
               />
             </Field>
-          </div>
+          </CardBody>
         </Card>
 
         {/* Line Items */}
         <Card>
-          <h2 className="text-xl font-semibold mb-4">Line Items</h2>
-          
-          <div className="space-y-4">
+          <CardHeader
+            title="Line Items"
+            action={
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={addLineItem}
+                leftIcon={<Icon name="plus" size={16} />}
+              >
+                Add Line Item
+              </Button>
+            }
+          />
+          <CardBody className="space-y-4">
             {lineItems.map((item, index) => (
-              <div key={index} className="border border-border rounded-lg p-4">
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                  <div className="md:col-span-6">
-                    <div className="flex gap-2 mb-2">
+              <Card key={index}>
+                <CardBody className="grid grid-cols-1 gap-4 md:grid-cols-6">
+                  <div className="space-y-2 md:col-span-6">
+                    <div className="flex gap-2">
                       <Select
+                        aria-label="Catalog item"
                         value={item.catalog_item_id || ''}
                         onChange={(e) => {
                           const catalogId = e.target.value
@@ -350,16 +360,15 @@ export default function NewRecurringInvoicePage() {
                           </option>
                         ))}
                       </Select>
-                      <Button
+                      <IconButton
                         type="button"
                         variant="secondary"
                         size="sm"
                         onClick={() => router.push('/invoices/catalog')}
                         title="Manage Catalog"
-                        iconOnly
-                      >
-                        <Icon name="package" size={16} />
-                      </Button>
+                        label="Manage Catalog"
+                        icon={<Icon name="package" size={16} />}
+                      />
                     </div>
                     <Field label="Description" required>
                       <Input
@@ -415,127 +424,120 @@ export default function NewRecurringInvoicePage() {
                     </Select>
                   </Field>
 
-                  <div className="md:col-span-2 flex items-end justify-between">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Line Total</label>
-                      <p className="text-lg font-medium">
-                        £{((item.quantity * item.unit_price) * (1 - item.discount_percentage / 100)).toFixed(2)}
-                      </p>
-                    </div>
+                  <div className="flex items-end justify-between md:col-span-2">
+                    <DescriptionList
+                      columns={1}
+                      items={[{
+                        key: 'line_total',
+                        label: 'Line Total',
+                        value: (
+                          <span className="text-lg font-medium">
+                            £{((item.quantity * item.unit_price) * (1 - item.discount_percentage / 100)).toFixed(2)}
+                          </span>
+                        ),
+                      }]}
+                    />
                     {lineItems.length > 1 && (
-                      <Button
+                      <IconButton
                         type="button"
                         variant="danger"
                         size="sm"
                         onClick={() => removeLineItem(index)}
-                        iconOnly
-                        aria-label="Remove line item"
-                      >
-                        <Icon name="trash" size={16} />
-                      </Button>
+                        label="Remove line item"
+                        icon={<Icon name="trash" size={16} />}
+                      />
                     )}
                   </div>
-                </div>
-              </div>
+                </CardBody>
+              </Card>
             ))}
-          </div>
-
-          <Button type="button"
-            variant="secondary"
-            onClick={addLineItem}
-            className="mt-4"
-            leftIcon={<Icon name="plus" size={16} />}
-          >
-            Add Line Item
-          </Button>
+          </CardBody>
         </Card>
 
         {/* Invoice Settings */}
         <Card>
-          <h2 className="text-xl font-semibold mb-4">Invoice Settings</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Invoice Discount %" help="Discount applied to entire invoice after line discounts">
-              <Input
-                type="number"
-                value={invoiceDiscount}
-                onChange={(e) => setInvoiceDiscount(parseFloat(e.target.value) || 0)}
-                step="0.01"
-                min="0"
-                max="100"
-              />
-            </Field>
-          </div>
+          <CardHeader title="Invoice Settings" />
+          <CardBody className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Invoice Discount %" hint="Discount applied to entire invoice after line discounts">
+                <Input
+                  type="number"
+                  value={invoiceDiscount}
+                  onChange={(e) => setInvoiceDiscount(parseFloat(e.target.value) || 0)}
+                  step="0.01"
+                  min="0"
+                  max="100"
+                />
+              </Field>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <Field label="Notes (Visible on Invoice)">
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={3}
-              />
-            </Field>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Notes (Visible on Invoice)">
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                />
+              </Field>
 
-            <Field label="Internal Notes">
-              <Textarea
-                value={internalNotes}
-                onChange={(e) => setInternalNotes(e.target.value)}
-                rows={3}
-              />
-            </Field>
-          </div>
+              <Field label="Internal Notes">
+                <Textarea
+                  value={internalNotes}
+                  onChange={(e) => setInternalNotes(e.target.value)}
+                  rows={3}
+                />
+              </Field>
+            </div>
+          </CardBody>
         </Card>
 
         {/* Summary */}
         <Card>
-          <h2 className="text-xl font-semibold mb-4">Summary (Per Invoice)</h2>
-          
-          <div className="max-w-xs ml-auto space-y-2">
-            <div className="flex justify-between">
-              <span>Subtotal:</span>
-              <span className="font-medium">£{subtotal.toFixed(2)}</span>
-            </div>
-            
-            {invoiceDiscount > 0 && (
-              <div className="flex justify-between text-danger">
-                <span>Invoice Discount ({invoiceDiscount}%):</span>
-                <span>-£{invoiceDiscountAmount.toFixed(2)}</span>
+          <CardHeader title="Summary (Per Invoice)" />
+          <CardBody>
+            <div className="ml-auto max-w-xs space-y-2">
+              <div className="flex justify-between">
+                <span>Subtotal:</span>
+                <span className="font-medium">£{subtotal.toFixed(2)}</span>
               </div>
-            )}
-            
-            <div className="flex justify-between">
-              <span>VAT:</span>
-              <span className="font-medium">£{totalVat.toFixed(2)}</span>
+
+              {invoiceDiscount > 0 && (
+                <div className="flex justify-between text-danger-fg">
+                  <span>Invoice Discount ({invoiceDiscount}%):</span>
+                  <span>-£{invoiceDiscountAmount.toFixed(2)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between">
+                <span>VAT:</span>
+                <span className="font-medium">£{totalVat.toFixed(2)}</span>
+              </div>
+
+              <div className="flex justify-between border-t border-border pt-2 text-lg font-bold">
+                <span>Total:</span>
+                <span>£{total.toFixed(2)}</span>
+              </div>
             </div>
-            
-            <div className="flex justify-between text-lg font-bold border-t border-border pt-2">
-              <span>Total:</span>
-              <span>£{total.toFixed(2)}</span>
-            </div>
-          </div>
+          </CardBody>
         </Card>
 
-        {/* Actions */}
-        <div className="flex flex-col justify-end gap-3 sm:flex-row sm:gap-4">
+        <FormFooter>
           <Button
             type="button"
             variant="secondary"
             onClick={() => router.push('/invoices/recurring')}
-            className="w-full sm:w-auto"
           >
             Cancel
           </Button>
-          <Button
+          <Button variant="primary"
             type="submit"
             disabled={submitting || !vendorId || lineItems.length === 0 || !canCreate}
             loading={submitting}
-            className="w-full sm:w-auto"
           >
             {submitting ? 'Creating...' : 'Create Recurring Invoice'}
           </Button>
-        </div>
-        </form>
-      </div>
+        </FormFooter>
+      </form>
     </PageLayout>
   )
 }

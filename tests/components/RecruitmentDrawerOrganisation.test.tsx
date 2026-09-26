@@ -146,7 +146,7 @@ describe('recruitment candidate drawer organisation', () => {
     // fifth tab, under a heading called "Admin".
     openDrawer(makeInitialData({ status: 'offered' }))
 
-    const hire = screen.getByRole('button', { name: 'Create employee invite' })
+    const hire = screen.getByRole('button', { name: 'Create Employee Invite' })
     expect(hire).toBeInTheDocument()
 
     fireEvent.click(hire)
@@ -191,13 +191,13 @@ describe('recruitment candidate drawer organisation', () => {
     fireEvent.click(screen.getByRole('tab', { name: /^Notes/ }))
 
     expect(await screen.findByText('Rang her, keen on weekends')).toBeInTheDocument()
-    expect(screen.getByText(/Show system activity/)).toBeInTheDocument()
+    expect(screen.getByText(/Show System Activity/)).toBeInTheDocument()
   })
 
   it('keeps the candidate profile editable from the Candidate tab', () => {
     openDrawer(makeInitialData())
 
-    expect(screen.getByText('Edit candidate details')).toBeInTheDocument()
+    expect(screen.getByText('Edit Candidate Details')).toBeInTheDocument()
     expect(screen.getByLabelText(/Right to work checked at/i)).toBeInTheDocument()
   })
 })

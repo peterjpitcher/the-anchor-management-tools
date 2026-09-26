@@ -2,22 +2,29 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
-  PageHeader, SectionNav, Tabs,
-  Card, CardHeader, CardBody, RevenueChart,
+  PageLayout, Segmented,
+  Card, CardHeader, CardBody, RevenueChart, Empty, StatGrid,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/ds'
-import { Stat, Badge, Button, Select, Alert } from '@/ds'
+import { Stat, Badge, Button } from '@/ds'
 import { getShortLinkVolumeAdvanced } from '@/app/actions/short-links'
-import { SHORT_LINKS_NAV } from '../../nav'
+import { SHORT_LINKS_NAV, SHORT_LINKS_TITLE } from '../../_shared/nav'
 import { groupLinksIntoCampaigns } from '@/lib/short-links/insights-grouping'
 import type { AnalyticsLinkRow } from '@/types/short-links'
 import { getErrorMessage } from '@/lib/errors'
 
+/** The time window: a view of the same links, so a Segmented header action. */
 const TIME_OPTIONS = [
-  { value: '7', label: 'Last 7 days' },
-  { value: '14', label: 'Last 14 days' },
-  { value: '30', label: 'Last 30 days' },
-  { value: '90', label: 'Last 90 days' },
+  { id: '7', label: '7 days' },
+  { id: '14', label: '14 days' },
+  { id: '30', label: '30 days' },
+  { id: '90', label: '90 days' },
+]
+
+/** Every link, or the links grouped into campaigns with their channel variants. */
+const VIEW_OPTIONS = [
+  { id: 'all', label: 'All Links' },
+  { id: 'campaigns', label: 'Campaigns' },
 ]
 
 function toNumber(v: unknown): number {
@@ -116,57 +123,60 @@ export function InsightsClient() {
   const totalClicks = analyticsData.reduce((sum, l) => sum + l.totalClicks, 0)
   const totalUnique = analyticsData.reduce((sum, l) => sum + l.uniqueVisitors, 0)
 
+  const linkTable = (rows: AnalyticsLinkRow[]) => (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Link</TableHead>
+          <TableHead>Name</TableHead>
+          <TableHead align="right">Clicks</TableHead>
+          <TableHead align="right">Unique</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((link) => (
+          <TableRow key={link.id}>
+            <TableCell>
+              <code className="text-xs font-mono">/{link.shortCode}</code>
+            </TableCell>
+            <TableCell className="text-text-muted">{link.name || '-'}</TableCell>
+            <TableCell align="right" className="font-mono font-bold">{link.totalClicks}</TableCell>
+            <TableCell align="right" className="font-mono text-text-muted">{link.uniqueVisitors}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+
   return (
-    <div>
-      <PageHeader title="Short Links" subtitle="Analytics and insights for l.the-anchor.pub" />
-      <SectionNav items={SHORT_LINKS_NAV} activeId="insights" className="mb-6" />
-
-      {/* Controls */}
-      <div className="flex items-center gap-3 mb-6">
-        <Select
-          options={TIME_OPTIONS}
-          value={days}
-          onChange={(e) => setDays(e.target.value)}
-          className="w-48"
-        />
-        <Button variant="secondary" size="sm" onClick={loadData} loading={loading}>
-          Refresh
-        </Button>
-      </div>
-
-      {error && (
-        <Alert tone="danger" title="Could not load insights" className="mb-6">
-          {error}
-        </Alert>
-      )}
-
+    <PageLayout
+      title={SHORT_LINKS_TITLE}
+      subtitle="Analytics and insights for l.the-anchor.pub"
+      navItems={SHORT_LINKS_NAV}
+      headerActions={
+        <>
+          <Segmented options={VIEW_OPTIONS} value={activeTab} onChange={setActiveTab} />
+          <Segmented options={TIME_OPTIONS} value={days} onChange={setDays} />
+          <Button variant="secondary" size="sm" onClick={loadData} loading={loading}>
+            Refresh
+          </Button>
+        </>
+      }
+      loading={loading}
+      loadingLabel="Loading analytics"
+      error={error}
+      onRetry={loadData}
+    >
       {/* Summary stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card><CardBody><Stat label="Active Links" value={analyticsData.length} /></CardBody></Card>
-        <Card><CardBody><Stat label="Human Clicks" value={totalClicks.toLocaleString('en-GB')} /></CardBody></Card>
-        <Card><CardBody><Stat label="Unique Visitors" value={totalUnique.toLocaleString('en-GB')} /></CardBody></Card>
-        <Card><CardBody><Stat label="Campaigns" value={grouped.campaigns.length} /></CardBody></Card>
-      </div>
+      <StatGrid columns={4}>
+        <Stat label="Active Links" value={analyticsData.length} />
+        <Stat label="Human Clicks" value={totalClicks.toLocaleString('en-GB')} />
+        <Stat label="Unique Visitors" value={totalUnique.toLocaleString('en-GB')} />
+        <Stat label="Campaigns" value={grouped.campaigns.length} />
+      </StatGrid>
 
-      {/* Tabs */}
-      <Tabs
-        tabs={[
-          { id: 'all', label: 'All Links' },
-          { id: 'campaigns', label: 'Campaigns' },
-        ]}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        className="mb-6"
-      />
-
-      {loading ? (
-        <Card>
-          <CardBody>
-            <div className="py-12 text-center text-text-muted">Loading analytics...</div>
-          </CardBody>
-        </Card>
-      ) : activeTab === 'all' ? (
-        <div className="space-y-6">
+      {activeTab === 'all' ? (
+        <>
           {/* Volume chart */}
           <Card>
             <CardHeader title="Click Volume" subtitle={`Last ${days} days`} />
@@ -174,7 +184,7 @@ export function InsightsClient() {
               {chartData.length > 0 ? (
                 <RevenueChart data={chartData} valueFormatter={(value) => value.toLocaleString('en-GB')} />
               ) : (
-                <p className="text-text-muted text-center py-8">No data for this period</p>
+                <Empty size="sm" icon="chart" title="No data for this period" />
               )}
             </CardBody>
           </Card>
@@ -182,71 +192,51 @@ export function InsightsClient() {
           {/* Top performing links */}
           <Card>
             <CardHeader title="Top Performing Links" />
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Link</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead align="right">Clicks</TableHead>
-                  <TableHead align="right">Unique</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {topLinks.map((link) => (
-                  <TableRow key={link.id}>
-                    <TableCell>
-                      <code className="text-xs font-mono">/{link.shortCode}</code>
-                    </TableCell>
-                    <TableCell className="text-text-muted">{link.name || '-'}</TableCell>
-                    <TableCell align="right" className="font-mono font-bold">{link.totalClicks}</TableCell>
-                    <TableCell align="right" className="font-mono text-text-muted">{link.uniqueVisitors}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            {topLinks.length === 0 ? (
+              <CardBody>
+                <Empty size="sm" title="No clicks on any link in this period" />
+              </CardBody>
+            ) : (
+              linkTable(topLinks)
+            )}
           </Card>
-        </div>
+        </>
       ) : (
-        <div className="space-y-6">
+        <>
           {/* Channel breakdown */}
           {grouped.channelTotals.length > 0 && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatGrid columns={4}>
               {grouped.channelTotals.slice(0, 4).map((ch) => (
-                <Card key={ch.channel}>
-                  <CardBody>
-                    <Stat
-                      label={ch.label}
-                      value={ch.clicks.toLocaleString('en-GB')}
-                      hint={ch.type}
-                    />
-                  </CardBody>
-                </Card>
+                <Stat
+                  key={ch.channel}
+                  label={ch.label}
+                  value={ch.clicks.toLocaleString('en-GB')}
+                  hint={ch.type}
+                />
               ))}
-            </div>
+            </StatGrid>
           )}
 
           {/* Campaign table */}
           <Card>
             <CardHeader title="Campaign Performance" />
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Campaign</TableHead>
-                  <TableHead align="right">Clicks</TableHead>
-                  <TableHead align="right">Unique</TableHead>
-                  <TableHead>Top Channel</TableHead>
-                  <TableHead align="right">Variants</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {grouped.campaigns.length === 0 ? (
+            {grouped.campaigns.length === 0 ? (
+              <CardBody>
+                <Empty size="sm" title="No campaigns found" />
+              </CardBody>
+            ) : (
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-text-muted py-8" align="center">
-                      No campaigns found
-                    </TableCell>
+                    <TableHead>Campaign</TableHead>
+                    <TableHead align="right">Clicks</TableHead>
+                    <TableHead align="right">Unique</TableHead>
+                    <TableHead>Top Channel</TableHead>
+                    <TableHead align="right">Variants</TableHead>
                   </TableRow>
-                ) : (
-                  grouped.campaigns.map((campaign) => (
+                </TableHeader>
+                <TableBody>
+                  {grouped.campaigns.map((campaign) => (
                     <TableRow key={campaign.parent.id}>
                       <TableCell className="font-medium">
                         {campaign.parent.name || `/${campaign.parent.shortCode}`}
@@ -260,42 +250,21 @@ export function InsightsClient() {
                       </TableCell>
                       <TableCell align="right">{campaign.variants.length}</TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </Card>
 
           {/* Standalone links */}
           {grouped.standalone.length > 0 && (
             <Card>
               <CardHeader title="Standalone Links" subtitle="Links without campaign variants" />
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Link</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead align="right">Clicks</TableHead>
-                    <TableHead align="right">Unique</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {grouped.standalone.slice(0, 10).map((link) => (
-                    <TableRow key={link.id}>
-                      <TableCell>
-                        <code className="text-xs font-mono">/{link.shortCode}</code>
-                      </TableCell>
-                      <TableCell className="text-text-muted">{link.name || '-'}</TableCell>
-                      <TableCell align="right" className="font-mono font-bold">{link.totalClicks}</TableCell>
-                      <TableCell align="right" className="font-mono text-text-muted">{link.uniqueVisitors}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              {linkTable(grouped.standalone.slice(0, 10))}
             </Card>
           )}
-        </div>
+        </>
       )}
-    </div>
+    </PageLayout>
   )
 }

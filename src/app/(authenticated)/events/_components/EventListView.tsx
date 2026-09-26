@@ -2,7 +2,7 @@
 
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TablePagination,
-  Badge, Checkbox, Button, ConfirmDialog, Dropdown, DropdownItem,
+  Badge, Card, Checkbox, Button, ConfirmDialog, Dropdown, DropdownItem, Empty,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { BarMini } from './BarMini'
@@ -81,7 +81,7 @@ export function EventListView({
   )
 
   return (
-    <div>
+    <Card padding="none">
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 px-4 py-2 bg-primary-soft border-b border-border">
@@ -92,7 +92,7 @@ export function EventListView({
             type="button"
             variant="link"
             onClick={() => setConfirmDeleteOpen(true)}
-            className="text-danger"
+            className="text-danger-fg"
           >
             Delete Selected
           </Button>
@@ -123,16 +123,16 @@ export function EventListView({
         </TableHeader>
         <TableBody>
           {events.length === 0 ? (
-            <tr>
-              <td colSpan={9} className="px-4 py-12 text-center text-sm text-text-muted">
-                No events found
-              </td>
-            </tr>
+            <TableRow>
+              <TableCell colSpan={9}>
+                <Empty size="sm" title="No Events Found" />
+              </TableCell>
+            </TableRow>
           ) : (
             events.map((event) => {
               const capacity = resolveEventCapacity(event)
               const booked = (event as Event & { booked_count?: number }).booked_count ?? 0
-              const bookedRatio = capacity !== null && capacity > 0 ? Math.round((booked / capacity) * 100) : 0
+              const bookedRatio = capacity !== null && capacity > 0 ? booked / capacity : 0
               const linkClicks = (event as Event & { link_clicks?: number }).link_clicks ?? 0
               return (
                 <TableRow key={event.id} onClick={() => onEventClick(event)}>
@@ -189,10 +189,10 @@ export function EventListView({
                         }
                       >
                         <DropdownItem onClick={() => onEventClick(event)} icon={<Icon name="externalLink" size={14} />}>
-                          Open details
+                          Open Details
                         </DropdownItem>
                         <DropdownItem onClick={() => onEditEvent(event)} icon={<Icon name="edit" size={14} />}>
-                          Edit event
+                          Edit Event
                         </DropdownItem>
                       </Dropdown>
                     </div>
@@ -206,18 +206,19 @@ export function EventListView({
       </div>
 
       {/* Mobile card list */}
-      <div className="block md:hidden divide-y divide-border">
+      <div className="block md:hidden divide-y divide-border px-pad-card">
         {events.length === 0 ? (
-          <div className="px-4 py-12 text-center text-sm text-text-muted">No events found</div>
+          <Empty size="sm" title="No Events Found" />
         ) : (
           events.map((event) => {
             const capacity = resolveEventCapacity(event)
             const booked = (event as Event & { booked_count?: number }).booked_count ?? 0
-            const bookedRatio = capacity !== null && capacity > 0 ? Math.round((booked / capacity) * 100) : 0
+            const bookedRatio = capacity !== null && capacity > 0 ? booked / capacity : 0
             const linkClicks = (event as Event & { link_clicks?: number }).link_clicks ?? 0
             return (
               <div key={event.id} className="py-4">
                 <div className="flex items-start gap-2">
+                  {/* Not a field label: it widens the area that ticks the 16px DS checkbox to 44px. */}
                   <label className="-my-1.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center">
                     <Checkbox
                       aria-label={selectEventLabel(event)}
@@ -225,14 +226,11 @@ export function EventListView({
                       onChange={() => toggleOne(event.id)}
                     />
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => onEventClick(event)}
-                    className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:shadow-ring"
-                  >
+                  {/* The Open button below opens the event. */}
+                  <div className="min-w-0 flex-1">
                     <div className="font-medium text-text-strong">{event.name}</div>
                     <div className="text-xs text-text-muted">{event.id.slice(0, 8)}</div>
-                  </button>
+                  </div>
                   <Badge tone={eventStatusTone(event.event_status)} dot>
                     {eventStatusLabel(event.event_status)}
                   </Badge>
@@ -323,6 +321,6 @@ export function EventListView({
         confirmLabel="Delete"
         tone="danger"
       />
-    </div>
+    </Card>
   )
 }

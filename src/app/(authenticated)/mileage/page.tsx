@@ -1,36 +1,16 @@
 import { redirect } from 'next/navigation'
-import { Alert, PageHeader, SectionNav } from '@/ds'
+import { Alert, PageLayout } from '@/ds'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getDestinations, getTripDateRange, getTripStats, listMileageTrips } from '@/app/actions/mileage'
 import { getMileageDrivers } from '@/app/actions/mileage-drivers'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { MILEAGE_LIST_PAGE_SIZE, parseMileageListQuery, serialiseMileageListQuery } from '@/lib/mileage/list-query'
 import { buildPeriodPresets } from '@/lib/mileage/period-presets'
+import { MILEAGE_TRIPS_LAYOUT } from './_shared/nav'
 import { MileageClient } from './_components/MileageClient'
-
-const MILEAGE_SECTION_NAV = [
-  { id: 'trips', label: 'Trips', href: '/mileage' },
-  { id: 'destinations', label: 'Destinations', href: '/mileage/destinations' },
-  { id: 'insights', label: 'Insights', href: '/mileage/insights' },
-]
 
 interface MileagePageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>
-}
-
-function PageFrame({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        breadcrumbs={[{ label: 'Finance' }, { label: 'Mileage' }]}
-        title="Mileage"
-        subtitle="Business trip log with HMRC-rate reimbursement"
-        className="mb-0"
-      />
-      <SectionNav items={MILEAGE_SECTION_NAV} activeId="trips" />
-      {children}
-    </div>
-  )
 }
 
 /** The trips page (spec 7.1): the address holds the filters, sort and page, and this page loads what it asks for. */
@@ -53,11 +33,11 @@ export default async function MileagePage({ searchParams }: MileagePageProps): P
   const loadError = tripsResult.error ?? statsResult.error ?? destsResult.error ?? driversResult.error ?? rangeResult.error
   if (loadError || !tripsResult.data || !statsResult.data) {
     return (
-      <PageFrame>
+      <PageLayout {...MILEAGE_TRIPS_LAYOUT}>
         <Alert tone="danger" title="Couldn't load mileage">
           {loadError ?? 'Mileage totals are unavailable'}
         </Alert>
-      </PageFrame>
+      </PageLayout>
     )
   }
 
@@ -69,23 +49,22 @@ export default async function MileagePage({ searchParams }: MileagePageProps): P
   }
 
   const today = getTodayIsoDate()
+  // MileageClient renders the PageLayout, so New Trip, Export CSV and Download Report sit in the header.
   return (
-    <PageFrame>
-      <MileageClient
-        query={query}
-        warnings={warnings}
-        trips={tripsResult.data}
-        stats={statsResult.data}
-        destinations={destsResult.data ?? []}
-        drivers={driversResult.data ?? []}
-        presets={buildPeriodPresets({
-          today,
-          firstTripDate: rangeResult.data?.first ?? null,
-          lastTripDate: rangeResult.data?.last ?? null,
-        })}
-        today={today}
-        canManage={canManage}
-      />
-    </PageFrame>
+    <MileageClient
+      query={query}
+      warnings={warnings}
+      trips={tripsResult.data}
+      stats={statsResult.data}
+      destinations={destsResult.data ?? []}
+      drivers={driversResult.data ?? []}
+      presets={buildPeriodPresets({
+        today,
+        firstTripDate: rangeResult.data?.first ?? null,
+        lastTripDate: rangeResult.data?.last ?? null,
+      })}
+      today={today}
+      canManage={canManage}
+    />
   )
 }

@@ -33,7 +33,7 @@ describe('A-117 remaining polish source guards', () => {
     const source = read('src/app/(staff-portal)/portal/shifts/OpenShiftRequestButton.tsx')
 
     expect(source).toContain('Confirm you want to ask to work this shift.')
-    expect(source).toContain('Confirm request')
+    expect(source).toContain('Confirm Request')
   })
 
   it('rate-limits employee onboarding token routes before invite validation', () => {

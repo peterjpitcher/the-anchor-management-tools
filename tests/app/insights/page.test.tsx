@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { InsightsReportView } from '@/app/(authenticated)/insights/_components/InsightsReportView'
+import { INSIGHT_STATUS_WORD } from '@/app/(authenticated)/insights/_shared/status-ui'
+import { insightSectionTitle } from '@/app/(authenticated)/insights/_shared/title'
 import { buildFixtureReport } from '../../lib/insights/helpers/report-fixture'
 
 const mocks = vi.hoisted(() => ({
@@ -46,7 +48,7 @@ describe('Insights page access', () => {
     const signal = new AbortController().signal
     options.createDb(signal)
     expect(mocks.admin).toHaveBeenCalledWith({ signal })
-    expect(renderToStaticMarkup(element)).toContain('Manager actions this week')
+    expect(renderToStaticMarkup(element)).toContain('Manager Actions This Week')
   })
 
   it('shows an error, not an empty report, when the build fails', async () => {
@@ -55,7 +57,16 @@ describe('Insights page access', () => {
     const InsightsPage = await loadPage()
     const html = renderToStaticMarkup(await InsightsPage())
     expect(html).toContain('Insights are unavailable')
-    expect(html).not.toContain('Manager actions this week')
+    expect(html).not.toContain('Manager Actions This Week')
+  })
+})
+
+describe('insightSectionTitle', () => {
+  it('shows a stored sentence-case section title in Title Case, small words lower case', () => {
+    expect(insightSectionTitle('Hosted events')).toBe('Hosted Events')
+    expect(insightSectionTitle('Employees and compliance')).toBe('Employees and Compliance')
+    expect(insightSectionTitle('Rota, shifts and leave')).toBe('Rota, Shifts and Leave')
+    expect(insightSectionTitle('Maintenance')).toBe('Maintenance')
   })
 })
 
@@ -68,7 +79,11 @@ describe('InsightsReportView', () => {
     for (const section of report.sections) {
       expect(html).toContain(`id="${section.key}"`)
       expect(html).toContain(`href="#${section.key}"`)
-      expect(html).toContain(`: ${section.title}</span></h2>`)
+      // The card title is the section's heading, in Title Case like every card title; the
+      // section is named with its status word.
+      const title = insightSectionTitle(section.title)
+      expect(html).toMatch(new RegExp(`<h3[^>]*>${title}</h3>`))
+      expect(html).toContain(`aria-label="${title}: ${INSIGHT_STATUS_WORD[section.status]}"`)
     }
     expect(html).toContain('Not checked')
     expect(html).toContain('id="actions"')

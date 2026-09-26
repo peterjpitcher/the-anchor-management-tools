@@ -1,9 +1,7 @@
 import { redirect } from 'next/navigation'
 import { WeeklyScheduleClient } from './WeeklyScheduleClient'
-import { SpecialHoursClientWrapper } from './SpecialHoursClientWrapper' // Import the new client wrapper
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
+import { SpecialHoursClientWrapper } from './SpecialHoursClientWrapper'
+import { Alert, Card, CardBody, CardHeader } from '@/ds'
 import { checkUserPermission } from '@/app/actions/rbac'
 import {
   getBusinessHours,
@@ -11,8 +9,6 @@ import {
   getServiceStatusOverrides,
   listHoursVersions,
 } from '@/app/actions/business-hours'
-import { Alert } from '@/ds'
-
 
 export default async function BusinessHoursPage() {
   const canManage = await checkUserPermission('settings', 'manage')
@@ -42,40 +38,28 @@ export default async function BusinessHoursPage() {
   const specialHoursError = specialHoursResult.error
 
   return (
-    <PageLayout
-      title="Business Hours"
-      subtitle="Manage your regular opening hours and special dates"
-      backButton={{ label: 'Back to Settings', href: '/settings' }}
-    >
-      <div className="space-y-6">
-        <Section title="Regular Weekly Schedule">
-          <Card>
-            {businessHoursError ? (
-              <div className="p-4">
-                <Alert tone="danger">
-                  {businessHoursError}
-                </Alert>
-              </div>
-            ) : (
-              <WeeklyScheduleClient
-                canManage={canManage}
-                versions={versions}
-                activeVersionId={activeVersion?.id ?? null}
-                activeRows={businessHours}
-              />
-            )}
-          </Card>
-        </Section>
-
-        <SpecialHoursClientWrapper
-          canManage={canManage}
-          initialSpecialHours={specialHours}
-          specialHoursError={specialHoursError}
-          initialOverrides={serviceStatusOverrides}
-        />
-      </div>
-    </PageLayout>
+    <SpecialHoursClientWrapper
+      canManage={canManage}
+      initialSpecialHours={specialHours}
+      specialHoursError={specialHoursError}
+      initialOverrides={serviceStatusOverrides}
+      weeklySchedule={
+        <Card>
+          <CardHeader title="Regular Weekly Schedule" />
+          {businessHoursError ? (
+            <CardBody>
+              <Alert tone="danger">{businessHoursError}</Alert>
+            </CardBody>
+          ) : (
+            <WeeklyScheduleClient
+              canManage={canManage}
+              versions={versions}
+              activeVersionId={activeVersion?.id ?? null}
+              activeRows={businessHours}
+            />
+          )}
+        </Card>
+      }
+    />
   )
 }
-
-

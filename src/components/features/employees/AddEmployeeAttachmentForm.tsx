@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { addEmployeeAttachment } from '@/app/actions/employeeActions'
 import type { AttachmentFormState } from '@/types/actions'
 import type { AttachmentCategory } from '@/types/database'
-import { Button, Select, Textarea, toast } from '@/ds'
+import { Alert, Button, Field, FormFooter, Input, Select, Textarea, toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 
 const ATTACHMENT_ALLOWED_MIME_TYPES = [
@@ -26,7 +26,7 @@ interface AddEmployeeAttachmentFormProps {
 
 function SubmitAttachmentButton({ disabled, pending }: { disabled?: boolean; pending: boolean }) {
   return (
-    <Button type="submit" variant="primary" size="md" disabled={pending || disabled}>
+    <Button type="submit" variant="primary" disabled={pending || disabled}>
       {pending ? 'Uploading…' : 'Upload Attachment'}
     </Button>
   )
@@ -85,118 +85,103 @@ export default function AddEmployeeAttachmentForm({
     <form
       onSubmit={handleSubmit}
       ref={formRef}
-      className="space-y-6"
+      className="space-y-4"
     >
       <input type="hidden" name="employee_id" value={employeeId} />
 
-      <div>
-        <label htmlFor="attachment_file" className="block text-sm font-medium leading-6 text-text">
-          File
-        </label>
-        <div className="mt-2">
-          <input
-            id="attachment_file"
-            name="attachment_file"
-            type="file"
-            ref={fileInputRef}
-            accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.doc,.docx,.txt"
-            required
-            className="block w-full text-sm text-text border border-border-strong rounded-lg cursor-pointer bg-surface-2 outline-hidden focus-visible:border-border-focus focus-visible:shadow-ring file:mr-4 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-soft file:text-primary hover:file:bg-primary-soft/80 disabled:cursor-not-allowed"
-            disabled={!hasCategories || isUploading}
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (!file) {
-                setSelectedFile(null)
-                return
-              }
+      <Field
+        label="File"
+        hint="Accepted: PDF, Word, JPG, PNG, TIFF, TXT (max 10 MB)."
+        error={state?.errors?.attachment_file?.join(' ') || undefined}
+      >
+        {/* The DS Input as a single-file picker, as on the new employee page: it can be disabled,
+            takes its label from the Field, stays in the tab order and is cleared through the ref
+            after an upload. */}
+        <Input
+          id="attachment_file"
+          name="attachment_file"
+          type="file"
+          ref={fileInputRef}
+          accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.doc,.docx,.txt"
+          required
+          disabled={!hasCategories || isUploading}
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (!file) {
+              setSelectedFile(null)
+              return
+            }
 
-              if (!ATTACHMENT_ALLOWED_MIME_TYPES.includes(file.type as (typeof ATTACHMENT_ALLOWED_MIME_TYPES)[number])) {
-                toast.error('Invalid file type. Only PDF, Word, JPG, PNG, TIFF, and TXT files are allowed.')
-                event.target.value = ''
-                setSelectedFile(null)
-                return
-              }
+            if (!ATTACHMENT_ALLOWED_MIME_TYPES.includes(file.type as (typeof ATTACHMENT_ALLOWED_MIME_TYPES)[number])) {
+              toast.error('Invalid file type. Only PDF, Word, JPG, PNG, TIFF, and TXT files are allowed.')
+              event.target.value = ''
+              setSelectedFile(null)
+              return
+            }
 
-              if (file.size >= MAX_FILE_SIZE) {
-                toast.error('File size must be less than 10MB.')
-                event.target.value = ''
-                setSelectedFile(null)
-                return
-              }
+            if (file.size >= MAX_FILE_SIZE) {
+              toast.error('File size must be less than 10MB.')
+              event.target.value = ''
+              setSelectedFile(null)
+              return
+            }
 
-              setSelectedFile(file)
-            }}
-          />
-        </div>
-        <p className="mt-2 text-xs text-text-muted">
-          Accepted: PDF, Word, JPG, PNG, TIFF, TXT (max 10&nbsp;MB).
-        </p>
-        {state?.errors?.attachment_file && (
-          <p className="mt-1 text-sm text-danger-fg">{state.errors.attachment_file}</p>
-        )}
-      </div>
+            setSelectedFile(file)
+          }}
+        />
+      </Field>
 
-      <div>
-        <label htmlFor="category_id" className="block text-sm font-medium leading-6 text-text">
-          Category
-        </label>
-        <div className="mt-2">
-          <Select
-            id="category_id"
-            name="category_id"
-            defaultValue={hasCategories ? '' : 'no-category'}
-            required
-            disabled={!hasCategories}
-          >
-            <option value="" disabled>
-              Select a category
+      <Field label="Category">
+        <Select
+          id="category_id"
+          name="category_id"
+          defaultValue={hasCategories ? '' : 'no-category'}
+          required
+          disabled={!hasCategories}
+          error={state?.errors?.category_id?.join(' ') || undefined}
+        >
+          <option value="" disabled>
+            Select a category
+          </option>
+          {!hasCategories && (
+            <option value="no-category" disabled>
+              No categories available
             </option>
-            {!hasCategories && (
-              <option value="no-category" disabled>
-                No categories available
-              </option>
-            )}
-            {categories.map((category) => (
-              <option key={category.category_id} value={category.category_id}>
-                {category.category_name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        {state?.errors?.category_id && <p className="mt-1 text-sm text-danger-fg">{state.errors.category_id}</p>}
-      </div>
+          )}
+          {categories.map((category) => (
+            <option key={category.category_id} value={category.category_id}>
+              {category.category_name}
+            </option>
+          ))}
+        </Select>
+      </Field>
 
-      <div>
-        <label htmlFor="description" className="block text-sm font-medium leading-6 text-text">
-          Description (Optional)
-        </label>
-        <div className="mt-2">
-          <Textarea
-            id="description"
-            name="description"
-            rows={2}
-            defaultValue=""
-          />
-        </div>
-        {state?.errors?.description && <p className="mt-1 text-sm text-danger-fg">{state.errors.description}</p>}
-      </div>
+      <Field label="Description (Optional)">
+        <Textarea
+          id="description"
+          name="description"
+          rows={2}
+          defaultValue=""
+          error={state?.errors?.description?.join(' ') || undefined}
+        />
+      </Field>
 
       {state?.type === 'error' && state.errors?.general && (
-        <p className="mt-1 text-sm text-danger-fg">{state.errors.general}</p>
+        <Alert tone="danger" size="sm">{state.errors.general.join(' ')}</Alert>
       )}
       {state?.type === 'error' && state.message && !state.errors && (
-        <p className="mt-1 text-sm text-danger-fg">{state.message}</p>
+        <Alert tone="danger" size="sm">{state.message}</Alert>
       )}
-
-      <div className="flex justify-end">
-        <SubmitAttachmentButton disabled={!hasCategories} pending={isUploading} />
-      </div>
 
       {!hasCategories && (
-        <p className="text-sm text-text-muted">
+        <Alert tone="warning" size="sm">
           Create at least one attachment category in Settings before uploading documents.
-        </p>
+        </Alert>
       )}
+
+      <FormFooter>
+        <SubmitAttachmentButton disabled={!hasCategories} pending={isUploading} />
+      </FormFooter>
     </form>
   )
 }

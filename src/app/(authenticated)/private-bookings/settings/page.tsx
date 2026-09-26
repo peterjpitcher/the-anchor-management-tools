@@ -1,8 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
-import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { LinkButton } from '@/ds'
+import { Card, CardBody, CardHeader, Icon, LinkButton, PageLayout, type IconName } from '@/ds'
+import { PB_BACK_TO_LIST, PB_SETTINGS_NAV } from '../_shared/nav'
 
 export default async function PrivateBookingsSettingsPage() {
   const permissionsResult = await getCurrentUserModuleActions('private_bookings')
@@ -25,98 +24,72 @@ export default async function PrivateBookingsSettingsPage() {
     redirect('/unauthorized')
   }
 
-  const navItems = [
-    { label: 'General', href: '/private-bookings/settings' },
-    { label: 'Catering', href: '/private-bookings/settings/catering' },
-    { label: 'Vendors', href: '/private-bookings/settings/vendors' },
-    { label: 'Spaces', href: '/private-bookings/settings/spaces' },
-  ];
+  const settingsCards: Array<{
+    title: string
+    description: string
+    icon: IconName
+    href: string
+    action: string
+    enabled: boolean
+  }> = [
+    {
+      title: 'Venue Spaces',
+      description: 'Configure spaces available for private hire',
+      icon: 'mapPin',
+      href: '/private-bookings/settings/spaces',
+      action: 'Manage Spaces',
+      enabled: canManageSpaces,
+    },
+    {
+      title: 'Catering Packages',
+      description: 'Manage food and drink options for events',
+      icon: 'sparkles',
+      href: '/private-bookings/settings/catering',
+      action: 'Manage Catering',
+      enabled: canManageCatering,
+    },
+    {
+      title: 'Vendors',
+      description: 'Maintain your preferred vendor list',
+      icon: 'users',
+      href: '/private-bookings/settings/vendors',
+      action: 'Manage Vendors',
+      enabled: canManageVendors,
+    },
+    {
+      title: 'SMS Queue',
+      description: 'Approve and send queued SMS messages',
+      icon: 'message',
+      href: '/private-bookings/sms-queue',
+      action: 'View SMS Queue',
+      enabled: canViewSmsQueue,
+    },
+  ]
 
   return (
     <PageLayout
       title="Private Bookings Settings"
       subtitle="Manage spaces, catering, vendors, and SMS approvals"
-      backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-      navItems={navItems}
+      backButton={PB_BACK_TO_LIST}
+      navItems={PB_SETTINGS_NAV}
     >
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card>
-            <div className="flex items-start gap-4">
-              <Icon name="mapPin" size={24} className="text-text-muted" />
-              <div className="flex-1">
-                <div className="text-lg font-semibold text-text">Venue Spaces</div>
-                <div className="mt-1 text-sm text-text-muted">Configure spaces available for private hire.</div>
-                <div className="mt-4">
-                  <LinkButton
-                    href="/private-bookings/settings/spaces"
-                    variant="secondary"
-                    disabled={!canManageSpaces}
-                  >
-                    Manage Spaces
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {settingsCards.map((card) => (
+          <Card key={card.href}>
+            <CardHeader title={card.title} />
+            <CardBody>
+              <div className="flex items-start gap-4">
+                <Icon name={card.icon} size={24} className="text-text-muted" />
+                <div className="flex-1 space-y-4">
+                  <p className="text-sm text-text-muted">{card.description}</p>
+                  <LinkButton href={card.href} variant="secondary" disabled={!card.enabled}>
+                    {card.action}
                   </LinkButton>
                 </div>
               </div>
-            </div>
+            </CardBody>
           </Card>
-
-          <Card>
-            <div className="flex items-start gap-4">
-              <Icon name="sparkles" size={24} className="text-text-muted" />
-              <div className="flex-1">
-                <div className="text-lg font-semibold text-text">Catering Packages</div>
-                <div className="mt-1 text-sm text-text-muted">Manage food and drink options for events.</div>
-                <div className="mt-4">
-                  <LinkButton
-                    href="/private-bookings/settings/catering"
-                    variant="secondary"
-                    disabled={!canManageCatering}
-                  >
-                    Manage Catering
-                  </LinkButton>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-start gap-4">
-              <Icon name="users" size={24} className="text-text-muted" />
-              <div className="flex-1">
-                <div className="text-lg font-semibold text-text">Vendors</div>
-                <div className="mt-1 text-sm text-text-muted">Maintain your preferred vendor list.</div>
-                <div className="mt-4">
-                  <LinkButton
-                    href="/private-bookings/settings/vendors"
-                    variant="secondary"
-                    disabled={!canManageVendors}
-                  >
-                    Manage Vendors
-                  </LinkButton>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-start gap-4">
-              <Icon name="message" size={24} className="text-text-muted" />
-              <div className="flex-1">
-                <div className="text-lg font-semibold text-text">SMS Queue</div>
-                <div className="mt-1 text-sm text-text-muted">Approve and send queued SMS messages.</div>
-                <div className="mt-4">
-                  <LinkButton
-                    href="/private-bookings/sms-queue"
-                    variant="secondary"
-                    disabled={!canViewSmsQueue}
-                  >
-                    View SMS Queue
-                  </LinkButton>
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
+        ))}
       </div>
     </PageLayout>
   )

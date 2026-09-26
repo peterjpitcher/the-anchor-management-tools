@@ -1,13 +1,12 @@
 import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
-import { PageLayout } from '@/ds';
-import { Card } from '@/ds';
-import { Section } from '@/ds';
+import { Alert, Card, Empty, PageLayout, Section } from '@/ds';
 import { createClient } from '@/lib/supabase/server';
 import { getLeaveRequests, getHolidayUsage } from '@/app/actions/leave';
 import LeaveManagerClient from './LeaveManagerClient';
 import { rotaNavItems } from '../nav';
 import { displayName } from '@/lib/employees/display-name';
+import { PartialLoadAlert } from '../_shared/PartialLoadAlert';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +21,7 @@ export default async function LeaveManagementPage() {
   const supabase = await createClient();
 
   // Fetch requests and employees in parallel
-  const [requestsResult, { data: employees }] = await Promise.all([
+  const [requestsResult, { data: employees, error: employeesError }] = await Promise.all([
     getLeaveRequests(),
     supabase
       .from('employees')
@@ -30,6 +29,7 @@ export default async function LeaveManagementPage() {
       .order('first_name'),
   ]);
 
+  // A failed load shows the error, never an empty list.
   const requests = requestsResult.success ? requestsResult.data : [];
 
   // Build name lookup
@@ -61,25 +61,31 @@ export default async function LeaveManagementPage() {
       subtitle={pendingCount > 0 ? `${pendingCount} pending approval` : 'All holiday requests'}
       navItems={rotaNavItems}
     >
+      <PartialLoadAlert
+        missing={requestsResult.success && employeesError ? ['staff names'] : []}
+        consequence="requests may show as Unknown employee"
+      />
       <Section
         title="Holiday Requests"
         description="Review and approve employee holiday requests. Approved leave appears as an overlay on the weekly rota."
       >
-        <Card>
-          {requests.length === 0 ? (
-            <p className="text-sm text-text-soft italic py-4 text-center">
-              No leave requests submitted yet.
-            </p>
-          ) : (
-            <LeaveManagerClient
-              initialRequests={requests}
-              employeeMap={employeeMap}
-              canApprove={canApprove}
-              canEdit={canEdit}
-              usageMap={usageMap}
-            />
-          )}
-        </Card>
+        {!requestsResult.success ? (
+          <Alert tone="danger" title="Could not load leave requests">
+            {requestsResult.error}
+          </Alert>
+        ) : requests.length === 0 ? (
+          <Card padding="none">
+            <Empty size="sm" icon="calendar" title="No leave requests submitted yet" />
+          </Card>
+        ) : (
+          <LeaveManagerClient
+            initialRequests={requests}
+            employeeMap={employeeMap}
+            canApprove={canApprove}
+            canEdit={canEdit}
+            usageMap={usageMap}
+          />
+        )}
       </Section>
     </PageLayout>
   );

@@ -8,7 +8,8 @@ import {
   Button,
   Card,
   CardHeader,
-  CardBody,
+  Empty,
+  PageLayout,
   Switch,
   Table,
   TableHeader,
@@ -23,6 +24,7 @@ import {
   setTemplateActive,
 } from '@/app/actions/checklists-admin'
 import type { AdminChecklist, AdminTemplate } from '@/app/actions/checklists-admin'
+import { CHECKLISTS_MANAGE_LAYOUT } from '../../_shared/nav'
 import { ChecklistModal } from './ChecklistModal'
 import { TemplateModal } from './TemplateModal'
 import { departmentLabel } from './format'
@@ -103,31 +105,39 @@ export function SetupClient({ checklists, error }: SetupClientProps) {
 
   if (error) {
     return (
-      <Alert tone="danger" title="Could not load checklists">
-        {error}
-      </Alert>
+      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+        <Alert tone="danger" title="Could not load checklists">
+          {error}
+        </Alert>
+      </PageLayout>
     )
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-text-muted">
-          {checklists.length} checklist{checklists.length === 1 ? '' : 's'}
-        </p>
+    <PageLayout
+      {...CHECKLISTS_MANAGE_LAYOUT}
+      headerActions={
         <Button
           type="button"
+          size="sm"
           variant="primary"
           onClick={() => setChecklistModal({ open: true })}
         >
-          New checklist
+          New Checklist
         </Button>
-      </div>
+      }
+    >
+      <p className="text-sm text-text-muted">
+        {checklists.length} checklist{checklists.length === 1 ? '' : 's'}
+      </p>
 
       {checklists.length === 0 && (
-        <Alert tone="info" title="No checklists yet">
-          Create the first checklist to start adding tasks.
-        </Alert>
+        <Card>
+          <Empty
+            title="No checklists yet"
+            description="Create the first checklist to start adding tasks."
+          />
+        </Card>
       )}
 
       {checklists.map((checklist) => (
@@ -163,89 +173,85 @@ export function SetupClient({ checklists, error }: SetupClientProps) {
                     })
                   }
                 >
-                  New task
+                  New Task
                 </Button>
               </div>
             }
           />
-          <CardBody className="p-0">
-            {checklist.templates.length === 0 ? (
-              <p className="px-pad-card py-4 text-sm text-text-muted">
-                No tasks yet.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Task</TableHead>
-                    <TableHead>Cadence</TableHead>
-                    <TableHead>Value</TableHead>
-                    <TableHead align="center">Spot check</TableHead>
-                    <TableHead align="center">Active</TableHead>
-                    <TableHead align="right">Actions</TableHead>
+          {checklist.templates.length === 0 ? (
+            <Empty size="sm" title="No tasks yet" />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Task</TableHead>
+                  <TableHead>Cadence</TableHead>
+                  <TableHead>Value</TableHead>
+                  <TableHead align="center">Spot check</TableHead>
+                  <TableHead align="center">Active</TableHead>
+                  <TableHead align="right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {checklist.templates.map((template) => (
+                  <TableRow key={template.id}>
+                    <TableCell className="whitespace-normal">
+                      <div className="font-medium text-text">{template.title}</div>
+                      {template.department && (
+                        <div className="text-xs text-text-muted">
+                          {departmentLabel(template.department)}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="whitespace-normal text-text-muted">
+                      {cadenceSummary(template)}
+                    </TableCell>
+                    <TableCell>
+                      {template.requiresValue ? (
+                        <Badge tone="info">
+                          {template.valueMin ?? '-'} to {template.valueMax ?? '-'} {template.valueUnit ?? ''}
+                        </Badge>
+                      ) : (
+                        <span className="text-text-soft">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell align="center">
+                      {template.isSpotCheckable ? (
+                        <Badge tone="neutral">Yes</Badge>
+                      ) : (
+                        <span className="text-text-soft">No</span>
+                      )}
+                    </TableCell>
+                    <TableCell align="center">
+                      <Switch
+                        aria-label={`${template.title} active`}
+                        checked={template.isActive}
+                        disabled={busyId === template.id}
+                        onChange={(v) => toggleTemplate(template, v)}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() =>
+                          setTemplateModal({
+                            open: true,
+                            checklistId: checklist.id,
+                            checklistName: checklist.name,
+                            template,
+                          })
+                        }
+                      >
+                        Edit
+                      </Button>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {checklist.templates.map((template) => (
-                    <TableRow key={template.id}>
-                      <TableCell className="whitespace-normal">
-                        <div className="font-medium text-text">{template.title}</div>
-                        {template.department && (
-                          <div className="text-xs text-text-muted">
-                            {departmentLabel(template.department)}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="whitespace-normal text-text-muted">
-                        {cadenceSummary(template)}
-                      </TableCell>
-                      <TableCell>
-                        {template.requiresValue ? (
-                          <Badge tone="info">
-                            {template.valueMin ?? '-'} to {template.valueMax ?? '-'} {template.valueUnit ?? ''}
-                          </Badge>
-                        ) : (
-                          <span className="text-text-subtle">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
-                        {template.isSpotCheckable ? (
-                          <Badge tone="neutral">Yes</Badge>
-                        ) : (
-                          <span className="text-text-soft">No</span>
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
-                        <Switch
-                          aria-label={`${template.title} active`}
-                          checked={template.isActive}
-                          disabled={busyId === template.id}
-                          onChange={(v) => toggleTemplate(template, v)}
-                        />
-                      </TableCell>
-                      <TableCell align="right">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          onClick={() =>
-                            setTemplateModal({
-                              open: true,
-                              checklistId: checklist.id,
-                              checklistName: checklist.name,
-                              template,
-                            })
-                          }
-                        >
-                          Edit
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardBody>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </Card>
       ))}
 
@@ -263,6 +269,6 @@ export function SetupClient({ checklists, error }: SetupClientProps) {
           setTemplateModal({ open: false, checklistId: '', checklistName: '' })
         }
       />
-    </div>
+    </PageLayout>
   )
 }

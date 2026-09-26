@@ -1,10 +1,10 @@
 'use client';
 
-import { Badge } from '@/ds';
+import { Badge, Card, CardBody, CardHeader, DescriptionList, Empty, Stat } from '@/ds';
+import { RELIABILITY_LOW_SAMPLE_TONE, reliabilityEventTone } from '@/app/(authenticated)/employees/_shared/status-ui';
 import {
   eventTypeLabel,
   type EmployeeReliabilityEvent,
-  type ReliabilityEventType,
   type ReliabilityScoreBreakdown,
 } from '@/lib/employee-reliability-scoring';
 import type { EmployeeReliabilityData } from '@/services/employee-reliability';
@@ -26,57 +26,41 @@ function formatPercent(value: number | null): string {
   return value === null ? '--' : `${value}%`;
 }
 
-function eventTone(eventType: ReliabilityEventType): 'success' | 'warning' | 'danger' | 'info' | 'neutral' {
-  if (eventType === 'shift_accepted') return 'success';
-  if (eventType === 'shift_auto_accepted' || eventType === 'holiday_requested' || eventType === 'holiday_approved') return 'info';
-  if (eventType === 'late_holiday' || eventType === 'holiday_conflict') return 'warning';
-  if (eventType === 'shift_rejected' || eventType === 'late_shift_rejection_attempt' || eventType === 'couldnt_work') return 'danger';
-  return 'neutral';
-}
-
-function ScorePanel({ title, score }: { title: string; score: ReliabilityScoreBreakdown }) {
+function ScoreCard({ title, score }: { title: string; score: ReliabilityScoreBreakdown }) {
   return (
-    <div className="rounded-lg border border-border p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-text-muted">{title}</p>
-          <p className="mt-1 text-3xl font-semibold text-text">{score.score}</p>
-        </div>
-        {score.isLowSample && <Badge tone="warning">Low sample</Badge>}
-      </div>
-      <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-        <Metric label="Acceptance" value={`${score.components.acceptance}/45`} />
-        <Metric label="Response speed" value={`${score.components.responseSpeed}/10`} />
-        <Metric label="Discipline" value={`${score.components.disruptionDiscipline}/35`} />
-        <Metric label="Holidays" value={`${score.components.holidayNoticeImpact}/10`} />
-      </div>
-    </div>
+    <Card>
+      <CardHeader
+        title={title}
+        action={score.isLowSample ? <Badge tone={RELIABILITY_LOW_SAMPLE_TONE}>Low sample</Badge> : undefined}
+      />
+      <CardBody className="space-y-4">
+        <Stat label="Score" value={score.score} />
+        <DescriptionList
+          items={[
+            { key: 'acceptance', label: 'Acceptance', value: `${score.components.acceptance}/45` },
+            { key: 'response-speed', label: 'Response speed', value: `${score.components.responseSpeed}/10` },
+            { key: 'discipline', label: 'Discipline', value: `${score.components.disruptionDiscipline}/35` },
+            { key: 'holidays', label: 'Holidays', value: `${score.components.holidayNoticeImpact}/10` },
+          ]}
+        />
+      </CardBody>
+    </Card>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div>
-      <p className="text-xs text-text-muted">{label}</p>
-      <p className="mt-0.5 font-semibold text-text">{value}</p>
-    </div>
-  );
-}
-
-function CountsGrid({ score }: { score: ReliabilityScoreBreakdown }) {
+function countItems(score: ReliabilityScoreBreakdown) {
   const counts = score.counts;
-  return (
-    <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-      <Metric label="Manual accepts" value={counts.manualAccepts} />
-      <Metric label="Auto-accepts" value={counts.autoAccepts} />
-      <Metric label="Rejections" value={counts.rejections} />
-      <Metric label="Couldn't Work" value={counts.couldntWork} />
-      <Metric label="Late rejection attempts" value={counts.lateRejectionAttempts} />
-      <Metric label="Late holidays" value={counts.lateHolidays} />
-      <Metric label="Holiday conflicts" value={counts.holidayConflicts} />
-      <Metric label="Manual accept rate" value={formatPercent(score.rates.manualAcceptRate)} />
-    </div>
-  );
+  // String values, so a zero count shows as 0 rather than the empty-value dash.
+  return [
+    { key: 'manual-accepts', label: 'Manual accepts', value: String(counts.manualAccepts) },
+    { key: 'auto-accepts', label: 'Auto-accepts', value: String(counts.autoAccepts) },
+    { key: 'rejections', label: 'Rejections', value: String(counts.rejections) },
+    { key: 'couldnt-work', label: "Couldn't Work", value: String(counts.couldntWork) },
+    { key: 'late-rejections', label: 'Late rejection attempts', value: String(counts.lateRejectionAttempts) },
+    { key: 'late-holidays', label: 'Late holidays', value: String(counts.lateHolidays) },
+    { key: 'holiday-conflicts', label: 'Holiday conflicts', value: String(counts.holidayConflicts) },
+    { key: 'manual-accept-rate', label: 'Manual accept rate', value: formatPercent(score.rates.manualAcceptRate) },
+  ];
 }
 
 function eventDetail(event: EmployeeReliabilityEvent): string {
@@ -111,48 +95,43 @@ function eventDetail(event: EmployeeReliabilityEvent): string {
 export default function EmployeeReliabilityTab({ reliability }: EmployeeReliabilityTabProps) {
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-text">Business reliability</h3>
-        <p className="mt-1 text-sm text-text-muted">
-          Scores active acceptance, rota disruption, Couldn&apos;t Work records, and late or conflicting holidays.
-        </p>
+      <p className="text-sm text-text-muted">
+        Business reliability scores active acceptance, rota disruption, Couldn&apos;t Work records, and late or conflicting holidays.
+      </p>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ScoreCard title="Last 90 Days" score={reliability.recent} />
+        <ScoreCard title="All Time" score={reliability.allTime} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ScorePanel title="Last 90 days" score={reliability.recent} />
-        <ScorePanel title="All time" score={reliability.allTime} />
-      </div>
+      <Card>
+        <CardHeader title="Last 90 Days Breakdown" />
+        <CardBody>
+          <DescriptionList columns={3} items={countItems(reliability.recent)} />
+        </CardBody>
+      </Card>
 
-      <div className="rounded-lg border border-border p-4">
-        <h4 className="text-sm font-semibold text-text">Last 90 days breakdown</h4>
-        <div className="mt-4">
-          <CountsGrid score={reliability.recent} />
-        </div>
-      </div>
-
-      <div>
-        <h4 className="text-sm font-semibold text-text">Reliability events</h4>
+      <Card>
+        <CardHeader title="Reliability Events" />
         {reliability.events.length === 0 ? (
-          <p className="mt-4 text-sm text-text-muted">No reliability events recorded.</p>
+          <Empty size="sm" title="No reliability events recorded" />
         ) : (
-          <div className="mt-3 divide-y divide-border">
+          <ul className="divide-y divide-border">
             {reliability.events.map(event => (
-              <div key={event.id} className="flex items-start justify-between gap-4 py-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={eventTone(event.event_type)}>{eventTypeLabel(event.event_type)}</Badge>
-                    <p className="text-sm font-medium text-text">{formatDateTime(event.event_at)}</p>
-                  </div>
-                  {eventDetail(event) && (
-                    <p className="mt-1 text-sm text-text-muted">{eventDetail(event)}</p>
-                  )}
-                  <p className="mt-1 text-xs text-text-soft">{event.source}</p>
+              <li key={event.id} className="px-pad-card py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={reliabilityEventTone(event.event_type)}>{eventTypeLabel(event.event_type)}</Badge>
+                  <p className="text-sm font-medium text-text">{formatDateTime(event.event_at)}</p>
                 </div>
-              </div>
+                {eventDetail(event) && (
+                  <p className="mt-1 text-sm text-text-muted">{eventDetail(event)}</p>
+                )}
+                <p className="mt-1 text-xs text-text-soft">{event.source}</p>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

@@ -4,14 +4,17 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuote, convertQuoteToInvoice } from '@/app/actions/quotes'
 import type { QuoteWithDetails } from '@/types/invoices'
-// UI v2 components
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
-import { Button } from '@/ds'
-import { Alert } from '@/ds'
-import { Spinner } from '@/ds'
-import { toast } from '@/ds'
+import {
+  PageLayout,
+  Card,
+  CardHeader,
+  CardBody,
+  Button,
+  Alert,
+  DescriptionList,
+  FormFooter,
+  toast,
+} from '@/ds'
 
 import { usePermissions } from '@/contexts/PermissionContext'
 
@@ -113,16 +116,15 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
     }
   }
 
+  const layoutProps = {
+    title: 'Convert Quote to Invoice',
+    subtitle: 'Review the quote details before converting',
+    backButton: { label: 'Back to Quote', href: quoteId ? `/quotes/${quoteId}` : '/quotes' },
+    containerSize: 'md' as const,
+  }
+
   if (permissionsLoading) {
-    return (
-      <PageLayout
-        title="Convert Quote"
-        subtitle="Loading quote details..."
-        backButton={{ label: 'Back to Quotes', href: '/quotes' }}
-        loading
-        loadingLabel="Loading quote..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading quote" />
   }
 
   if (!canCreate) {
@@ -130,91 +132,51 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
   }
 
   if (loading) {
-    return (
-      <PageLayout
-        title="Convert Quote"
-        subtitle="Loading quote details..."
-        backButton={{ label: 'Back to Quotes', href: '/quotes' }}
-        loading
-        loadingLabel="Loading quote..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading quote" />
   }
 
   if (!quote) {
-    return (
-      <PageLayout
-        title="Convert Quote"
-        subtitle="Quote not found"
-        backButton={{ label: 'Back to Quotes', href: '/quotes' }}
-        error={error || 'Quote not found'}
-      />
-    )
+    return <PageLayout {...layoutProps} error={error || 'Quote not found'} />
   }
 
   return (
-    <PageLayout
-      title="Convert Quote to Invoice"
-      subtitle="Review the quote details before converting"
-      backButton={{ label: 'Back to Quote', href: `/quotes/${quoteId}` }}
-    >
-      <div className="space-y-6">
+    <PageLayout {...layoutProps}>
       {error && (
         <Alert tone="danger" title="Error">{error}</Alert>
       )}
 
-      <Section title="Quote Details">
-        <Card>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-text-muted">Quote Number:</span>
-              <span className="font-medium">{quote.quote_number}</span>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-text-muted">Vendor:</span>
-              <span className="font-medium">{quote.vendor?.name || '-'}</span>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-text-muted">Quote Date:</span>
-              <span className="font-medium">
-                {new Date(quote.quote_date).toLocaleDateString('en-GB')}
-              </span>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-text-muted">Valid Until:</span>
-              <span className="font-medium">
-                {new Date(quote.valid_until).toLocaleDateString('en-GB')}
-              </span>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-text-muted">Total Amount:</span>
-              <span className="font-bold text-lg">{formatCurrency(quote.total_amount)}</span>
-            </div>
-          </div>
-        </Card>
-      </Section>
+      <Card>
+        <CardHeader title="Quote Details" />
+        <CardBody>
+          <DescriptionList
+            items={[
+              { key: 'number', label: 'Quote Number', value: <span className="font-medium">{quote.quote_number}</span> },
+              { key: 'vendor', label: 'Vendor', value: <span className="font-medium">{quote.vendor?.name || '-'}</span> },
+              {
+                key: 'quote_date',
+                label: 'Quote Date',
+                value: <span className="font-medium">{new Date(quote.quote_date).toLocaleDateString('en-GB')}</span>,
+              },
+              {
+                key: 'valid_until',
+                label: 'Valid Until',
+                value: <span className="font-medium">{new Date(quote.valid_until).toLocaleDateString('en-GB')}</span>,
+              },
+              {
+                key: 'total',
+                label: 'Total Amount',
+                value: <span className="text-lg font-bold">{formatCurrency(quote.total_amount)}</span>,
+              },
+            ]}
+          />
+        </CardBody>
+      </Card>
 
-      <Alert tone="info"
-        title="What happens next?"
-      >
+      <Alert tone="info" title="What happens next?" role="status">
         {"A new invoice will be created with the same details as this quote. The invoice will have status 'Draft' and can be edited if needed. The invoice date will be today's date with payment due in 30 days. This quote will be marked as converted."}
       </Alert>
 
-      <div className="flex gap-4">
-        <Button
-          onClick={handleConvert}
-          loading={converting}
-          disabled={converting || !canCreate}
-          title={!canCreate ? 'You need invoice create permission to convert quotes.' : undefined}
-          className="flex-1"
-        >
-          Convert to Invoice
-        </Button>
-        
+      <FormFooter>
         <Button
           variant="secondary"
           onClick={() => router.push(`/quotes/${quoteId}`)}
@@ -222,8 +184,15 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
         >
           Cancel
         </Button>
-      </div>
-      </div>
+        <Button variant="primary"
+          onClick={handleConvert}
+          loading={converting}
+          disabled={converting || !canCreate}
+          title={!canCreate ? 'You need invoice create permission to convert quotes.' : undefined}
+        >
+          Convert to Invoice
+        </Button>
+      </FormFooter>
     </PageLayout>
   )
 }

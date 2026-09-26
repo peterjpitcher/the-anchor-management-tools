@@ -61,7 +61,7 @@ describe('User management UI gating', () => {
   it('shows the manage roles action when permitted', () => {
     render(<UsersContent users={[sampleUser]} roles={sampleRoles} canManageRoles />)
 
-    expect(screen.getByRole('button', { name: 'Manage roles' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Manage Roles' })).toBeInTheDocument()
   })
 
   it('renders the modal in read-only mode without fetching roles', async () => {

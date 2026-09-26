@@ -1,10 +1,14 @@
 import { useState } from 'react'
 import Papa from 'papaparse'
-import { DataTable, Icon } from '@/ds'
+import { Badge, Button, Card, CardBody, CardHeader, DataTable, Empty, FormFooter, Icon, toast } from '@/ds'
 import { Customer } from '@/types/database'
-import { toast } from '@/ds'
-import { Badge, Button } from '@/ds'
-import { formatPhoneForStorage } from '@/lib/utils'
+import { cn, formatPhoneForStorage } from '@/lib/utils'
+import {
+  CUSTOMER_IMPORT_ROW_LABEL,
+  CUSTOMER_IMPORT_ROW_TINT,
+  CUSTOMER_IMPORT_ROW_TONE,
+  type CustomerImportRowStatus,
+} from '@/app/(authenticated)/customers/_shared/status-ui'
 
 /** What the parent actually managed to do with the rows we handed it. */
 export interface CustomerImportOutcome {
@@ -32,6 +36,11 @@ interface ParsedCustomer {
   isValid: boolean
   isDuplicate?: boolean
   errors: string[]
+}
+
+function rowStatus(row: ParsedCustomer): CustomerImportRowStatus {
+  if (row.isValid) return 'valid'
+  return row.isDuplicate ? 'duplicate' : 'invalid'
 }
 
 export function CustomerImport({ onImportComplete, onCancel, existingCustomers }: CustomerImportProps) {
@@ -256,112 +265,109 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
     onCancel()
   }
 
+  const validCount = parsedData.filter(c => c.isValid).length
+
+  const statusBadge = (c: ParsedCustomer) => {
+    const status = rowStatus(c)
+    return (
+      <Badge tone={CUSTOMER_IMPORT_ROW_TONE[status]} title={status === 'valid' ? undefined : (c.errors || []).join(', ')}>
+        {CUSTOMER_IMPORT_ROW_LABEL[status]}
+      </Badge>
+    )
+  }
+
+  // A fragment, so the card and the footer are separate blocks in the page's own spacing.
   return (
-    <div className="py-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold">Import Customers</h2>
-        <div className="space-x-4 flex items-center">
-          <Button
-            variant="secondary"
-            onClick={downloadTemplate}
-          >
-            <Icon name="download" size={20} className="-ml-1 mr-2" />
-            Download Template
-          </Button>
-          {!isPreviewMode && (
-            // A label rather than a DS Button: clicking it opens the file input inside. The
-            // classes are DS Button primary (md), so it matches the button beside it. The input
-            // is sr-only, not hidden, so the Tab key still reaches it; the label then draws
-            // the DS focus ring for it.
-            <label
-              htmlFor="csv-upload"
-              className="relative inline-flex h-btn-h max-shell:min-h-touch items-center justify-center gap-1.5 whitespace-nowrap rounded-default border border-primary bg-primary px-3 text-ui font-semibold text-primary-fg shadow-xs transition-[background,border-color] duration-[120ms] hover:border-primary-hover hover:bg-primary-hover cursor-pointer has-[:focus-visible]:outline-hidden has-[:focus-visible]:shadow-ring"
-            >
-              <Icon name="upload" size={16} />
-              <span>Upload CSV</span>
-              <input
-                id="csv-upload"
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                className="sr-only"
-              />
-            </label>
-          )}
-        </div>
-      </div>
-
-      {isPreviewMode ? (
-        <>
-          <div className="mb-4">
-            <h3 className="text-lg font-medium">Preview Import</h3>
-            <p className="text-sm text-text-muted">
-              Review the data before importing. Invalid records will be skipped.
-            </p>
-          </div>
-
-          <div className="mb-6">
-            <DataTable<ParsedCustomer>
-              data={parsedData}
-              getRowKey={(row: ParsedCustomer) => parsedData.indexOf(row)}
-              emptyMessage="No rows to preview"
-              columns={[
-                { key: 'first_name', header: 'First Name', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.first_name}</span> },
-                { key: 'last_name', header: 'Last Name', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.last_name || '-'}</span> },
-                { key: 'email', header: 'Email', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.email || '-'}</span> },
-                { key: 'mobile_number', header: 'Mobile Number', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.mobile_number}</span> },
-                { key: 'status', header: 'Status', cell: (c: ParsedCustomer) => (
-                  c.isValid ? (
-                    <Badge tone="success">Valid</Badge>
-                  ) : c.isDuplicate ? (
-                    <Badge tone="warning" title={(c.errors||[]).join(', ')}>Duplicate</Badge>
-                  ) : (
-                    <Badge tone="danger" title={(c.errors||[]).join(', ')}>Invalid</Badge>
-                  )
-                ) },
-              ]}
-              renderMobileCard={(c: ParsedCustomer) => (
-                <div className={`${c.isDuplicate ? 'bg-warning-soft' : !c.isValid ? 'bg-danger-soft' : ''} p-3` }>
-                  <div className="font-medium text-sm">{c.first_name} {c.last_name || '-'}</div>
-                  <div className="text-sm text-text-muted">{c.mobile_number}</div>
-                  {c.email && <div className="text-sm text-text-muted">{c.email}</div>}
-                  <div className="mt-2">
-                    {c.isValid ? (
-                      <Badge tone="success">Valid</Badge>
-                    ) : c.isDuplicate ? (
-                      <Badge tone="warning" title={(c.errors||[]).join(', ')}>Duplicate</Badge>
-                    ) : (
-                      <Badge tone="danger" title={(c.errors||[]).join(', ')}>Invalid</Badge>
-                    )}
-                  </div>
-                </div>
+    <>
+      <Card>
+        <CardHeader
+          title={isPreviewMode ? 'Preview Import' : 'CSV File'}
+          subtitle={
+            isPreviewMode
+              ? 'Review the data before importing. Invalid records will be skipped'
+              : 'Columns: first_name, last_name, email, mobile_number'
+          }
+          action={
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button variant="secondary" size="sm" icon={<Icon name="download" size={14} />} onClick={downloadTemplate}>
+                Download Template
+              </Button>
+              {!isPreviewMode && (
+                // A label rather than a DS Button: clicking it opens the file input inside. The
+                // classes are DS Button primary (sm), so it matches the button beside it. The input
+                // is sr-only, not hidden, so the Tab key still reaches it; the label then draws
+                // the DS focus ring for it. DS FileUpload does not fit here: it is a full-width
+                // drag-and-drop panel rather than a button beside Download Template, and its
+                // file input carries no label, so the control would lose its "Upload CSV" name.
+                <label
+                  htmlFor="csv-upload"
+                  className="relative inline-flex h-btn-h-sm max-shell:min-h-touch items-center justify-center gap-1.5 whitespace-nowrap rounded-sm border border-primary bg-primary px-2.5 text-xs font-semibold text-primary-fg shadow-xs transition-[background,border-color] duration-[120ms] hover:border-primary-hover hover:bg-primary-hover cursor-pointer has-[:focus-visible]:outline-hidden has-[:focus-visible]:shadow-ring"
+                >
+                  <Icon name="upload" size={14} />
+                  <span>Upload CSV</span>
+                  <input
+                    id="csv-upload"
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileUpload}
+                    className="sr-only"
+                  />
+                </label>
               )}
+            </div>
+          }
+        />
+
+        {isPreviewMode ? (
+          <DataTable<ParsedCustomer>
+            data={parsedData}
+            getRowKey={(row: ParsedCustomer) => parsedData.indexOf(row)}
+            emptyMessage="No rows to preview"
+            bordered={false}
+            className="max-shell:p-4"
+            columns={[
+              { key: 'first_name', header: 'First Name', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.first_name}</span> },
+              { key: 'last_name', header: 'Last Name', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.last_name || '-'}</span> },
+              { key: 'email', header: 'Email', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.email || '-'}</span> },
+              { key: 'mobile_number', header: 'Mobile Number', cell: (c: ParsedCustomer) => <span className="text-sm text-text">{c.mobile_number}</span> },
+              { key: 'status', header: 'Status', cell: statusBadge },
+            ]}
+            renderMobileCard={(c: ParsedCustomer) => (
+              <div className={cn('p-3', CUSTOMER_IMPORT_ROW_TINT[rowStatus(c)])}>
+                <div className="font-medium text-sm">{c.first_name} {c.last_name || '-'}</div>
+                <div className="text-sm text-text-muted">{c.mobile_number}</div>
+                {c.email && <div className="text-sm text-text-muted">{c.email}</div>}
+                <div className="mt-2">{statusBadge(c)}</div>
+              </div>
+            )}
+          />
+        ) : (
+          <CardBody>
+            <Empty
+              size="sm"
+              icon="document"
+              title="No file uploaded"
+              description="Upload a CSV file to begin importing customers."
             />
-          </div>
-          
-          <div className="flex justify-end space-x-3">
-             <Button
-              variant="secondary"
-              onClick={handleClose}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleImport}
-              disabled={parsedData.filter(c => c.isValid).length === 0 || isImporting}
-              loading={isImporting}
-            >
-              {isImporting ? 'Importing...' : `Import ${parsedData.filter(c => c.isValid).length} Customers`}
-            </Button>
-          </div>
-        </>
-      ) : (
-        <div className="text-center py-12">
-            <p className="text-text-muted">
-                Upload a CSV file to begin importing customers.
-            </p>
-        </div>
+          </CardBody>
+        )}
+      </Card>
+
+      {isPreviewMode && (
+        <FormFooter>
+          <Button variant="secondary" onClick={handleClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleImport}
+            disabled={validCount === 0 || isImporting}
+            loading={isImporting}
+          >
+            {isImporting ? 'Importing...' : `Import ${validCount} Customers`}
+          </Button>
+        </FormFooter>
       )}
-    </div>
+    </>
   )
-} 
+}

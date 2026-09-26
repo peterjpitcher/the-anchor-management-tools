@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import {
+  Alert,
   Avatar,
   Badge,
   Button,
@@ -11,7 +12,7 @@ import {
   DropdownItem,
   Empty,
   IconButton,
-  Spinner,
+  PageLoading,
   Textarea,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
@@ -19,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { toLocalIsoDate } from '@/lib/dateUtils'
 import { getReplyEligibility } from '@/lib/messages/replyEligibility'
 import type { CustomerCommunication } from '@/types/communications'
+import { MESSAGE_CHANNEL_BADGE_TONE, REPLY_BLOCK_TONE } from '../_shared/status-ui'
 
 import {
   channelLabel,
@@ -288,7 +290,7 @@ export function ConversationThread({
           />
         )}
         <Avatar name={name} size="md" className="flex-shrink-0" />
-        <div ref={headingRef} tabIndex={-1} className="min-w-0 flex-1 focus:outline-hidden">
+        <div ref={headingRef} tabIndex={-1} className="min-w-0 flex-1 rounded-sm focus-visible:outline-hidden focus-visible:shadow-ring">
           <CustomerLink
             customerId={customerId}
             name={name}
@@ -314,11 +316,11 @@ export function ConversationThread({
             }
           >
             <DropdownItem onClick={onViewProfile} icon={<Icon name="user" size={14} />}>
-              View full profile
+              View Full Profile
             </DropdownItem>
             {canWriteReadState && (
               <DropdownItem onClick={onMarkUnread} icon={<Icon name="mail" size={14} />}>
-                {markingUnread ? 'Marking unread...' : 'Mark whole conversation unread'}
+                {markingUnread ? 'Marking unread...' : 'Mark Whole Conversation Unread'}
               </DropdownItem>
             )}
           </Dropdown>
@@ -337,23 +339,17 @@ export function ConversationThread({
           className="h-full overflow-y-auto bg-surface-2 px-3 py-4 sm:px-4"
         >
           {error ? (
-            <div className="flex h-full items-center justify-center">
-              <Empty
-                size="sm"
-                icon={<Icon name="alertTriangle" size={40} className="text-warning" />}
-                title="Could not load this conversation"
-                description={error}
-                action={
-                  <Button variant="secondary" size="md" onClick={onRetry}>
-                    Try again
-                  </Button>
-                }
-              />
-            </div>
+            // A failure is an Alert, not an empty state: it must never look like a quiet thread.
+            <Alert tone="danger" title="Could not load this conversation">
+              {error}
+              <div className="mt-3">
+                <Button variant="secondary" size="sm" onClick={onRetry}>
+                  Try again
+                </Button>
+              </div>
+            </Alert>
           ) : loading && messages.length === 0 ? (
-            <div className="flex h-full items-center justify-center">
-              <Spinner />
-            </div>
+            <PageLoading inline label="Loading conversation" className="h-full" />
           ) : messages.length === 0 ? (
             <div className="flex h-full items-center justify-center">
               <Empty
@@ -367,7 +363,7 @@ export function ConversationThread({
               {hasOlder && (
                 <div className="mb-3 flex justify-center">
                   <Button variant="secondary" size="sm" onClick={onLoadOlder} loading={loadingOlder}>
-                    Load older messages
+                    Load Older Messages
                   </Button>
                 </div>
               )}
@@ -377,9 +373,9 @@ export function ConversationThread({
                   {/* Not sticky: an opaque pill pinned to the top of the scroller
                       sat over the first bubble of the group and clipped its text. */}
                   <div className="mb-3 flex justify-center">
-                    <span className="rounded-pill border border-border bg-surface px-3 py-0.5 text-meta font-medium text-text-muted shadow-sm">
+                    <Badge size="sm">
                       {date === 'unknown' ? 'Date unknown' : formatThreadDateHeading(date)}
-                    </span>
+                    </Badge>
                   </div>
 
                   {buildRuns(dateMessages).map((run) => {
@@ -396,7 +392,7 @@ export function ConversationThread({
                         className={cn('mb-3 flex flex-col', run.isOutbound ? 'items-end' : 'items-start')}
                       >
                         {showChannel && (
-                          <Badge tone="neutral" className="mb-1">
+                          <Badge tone={MESSAGE_CHANNEL_BADGE_TONE} className="mb-1">
                             {channelLabel(run.channel)}
                           </Badge>
                         )}
@@ -421,7 +417,7 @@ export function ConversationThread({
                                     ? 'bg-primary text-primary-fg'
                                     : 'border border-border bg-surface text-text',
                                   isLastInRun && (run.isOutbound ? 'rounded-br-sm' : 'rounded-bl-sm'),
-                                  isFailed(message) && 'ring-2 ring-danger/50',
+                                  isFailed(message) && 'ring-2 ring-danger-border',
                                 )}
                               >
                                 {/* Direction is otherwise carried only by colour
@@ -563,33 +559,17 @@ export function ConversationThread({
           </div>
         </div>
       ) : (
-        <div
-          className={cn(
-            'flex-shrink-0 border-t border-border px-4 py-3',
-            eligibility.reason === 'opted_out' ? 'bg-danger-soft' : 'bg-warning-soft',
-          )}
-        >
-          <p
-            className={cn(
-              'text-xs font-semibold',
-              eligibility.reason === 'opted_out' ? 'text-danger-fg' : 'text-warning-fg',
-            )}
-          >
-            {eligibility.title}
-          </p>
-          <p
-            className={cn(
-              'mt-0.5 text-xs',
-              eligibility.reason === 'opted_out' ? 'text-danger-fg' : 'text-warning-fg',
-            )}
-          >
+        <div className="flex-shrink-0 border-t border-border p-3">
+          <Alert tone={REPLY_BLOCK_TONE[eligibility.reason]} size="sm" title={eligibility.title} role="status">
             {eligibility.detail}
-          </p>
-          {eligibility.reason !== 'no_permission' && (
-            <Button variant="secondary" size="sm" className="mt-2" onClick={onViewProfile}>
-              Open customer profile
-            </Button>
-          )}
+            {eligibility.reason !== 'no_permission' && (
+              <div className="mt-2">
+                <Button variant="secondary" size="sm" onClick={onViewProfile}>
+                  Open Customer Profile
+                </Button>
+              </div>
+            )}
+          </Alert>
         </div>
       )}
     </div>

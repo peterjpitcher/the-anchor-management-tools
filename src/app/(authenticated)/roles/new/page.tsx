@@ -11,12 +11,10 @@ export default async function NewRolePage() {
 
   return (
     <PageLayout
-      title="Create New Role"
+      title="New Role"
       subtitle="Define a new role with a unique name and description"
-      backButton={{
-        label: "Back to Roles",
-        href: "/roles"
-      }}
+      backButton={{ label: 'Back to Roles', href: '/roles' }}
+      containerSize="md"
     >
       <RoleForm action={createRole} />
     </PageLayout>

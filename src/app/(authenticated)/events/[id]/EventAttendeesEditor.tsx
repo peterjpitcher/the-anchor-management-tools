@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button, Input, Select } from '@/ds'
+import { Alert, Button, FormFooter, Input, Select } from '@/ds'
 import { updateEventAttendees } from '@/app/actions/event-attendees'
 import type { StoredEventAttendee } from '@/lib/events/booking-questions'
 
@@ -29,16 +29,19 @@ export function EventAttendeesEditor({ bookingId, seats, attendees, canEdit }: {
     finally { setSaving(false) }
   }
   return <section className="space-y-4" aria-label="Guest details">
-    <div className="flex items-center justify-between gap-3"><h3 className="font-semibold">Guest details ({seats})</h3>
-      {canEdit && !editing && <Button variant="secondary" size="sm" onClick={() => { setGuests(attendees); setEditing(true) }}>Edit details</Button>}
+    <div className="flex items-center justify-between gap-3"><p className="font-semibold text-text-strong">Guest details ({seats})</p>
+      {canEdit && !editing && <Button variant="secondary" size="sm" onClick={() => { setGuests(attendees); setEditing(true) }}>Edit Details</Button>}
     </div>
-    {guests.map((guest, index) => <div key={guest.id} className="rounded-lg border border-border p-4 space-y-3">
-      {editing ? <label className="block text-sm">Guest {index + 1} name<Input value={guest.name} maxLength={120} required onChange={event => setGuests(previous => previous.map(item => item.id === guest.id ? { ...item, name: event.target.value } : item))} /></label> : <h4 className="font-medium">{guest.name}</h4>}
+    {guests.map((guest, index) => <div key={guest.id} className="rounded-default border border-border p-4 space-y-3">
+      {editing ? <Input label={`Guest ${index + 1} name`} value={guest.name} maxLength={120} required onChange={event => setGuests(previous => previous.map(item => item.id === guest.id ? { ...item, name: event.target.value } : item))} /> : <p className="font-medium text-text">{guest.name}</p>}
       {guest.answers.map(answer => <div key={answer.question_id} className="text-sm">
-        {editing ? <label className="block">{answer.label}{answer.type === 'yes_no' || (answer.type === 'choice' && answer.options) ? <Select value={answer.value} required={answer.required} onChange={event => changeAnswer(guest.id, answer.question_id, event.target.value)}><option value="">Choose an answer</option>{(answer.type === 'yes_no' ? ['yes', 'no'] : answer.options ?? []).map(option => <option key={option} value={option}>{option === 'yes' ? 'Yes' : option === 'no' ? 'No' : option}</option>)}</Select> : <Input value={answer.value} maxLength={2000} required={answer.required} onChange={event => changeAnswer(guest.id, answer.question_id, event.target.value)} />}</label> : <><p className="text-text-muted">{answer.label}</p><p className="whitespace-pre-wrap">{answer.value === 'yes' ? 'Yes' : answer.value === 'no' ? 'No' : answer.value || 'Not provided'}</p></>}
+        {editing ? (answer.type === 'yes_no' || (answer.type === 'choice' && answer.options) ? <Select label={answer.label} value={answer.value} required={answer.required} onChange={event => changeAnswer(guest.id, answer.question_id, event.target.value)}><option value="">Choose an answer</option>{(answer.type === 'yes_no' ? ['yes', 'no'] : answer.options ?? []).map(option => <option key={option} value={option}>{option === 'yes' ? 'Yes' : option === 'no' ? 'No' : option}</option>)}</Select> : <Input label={answer.label} value={answer.value} maxLength={2000} required={answer.required} onChange={event => changeAnswer(guest.id, answer.question_id, event.target.value)} />) : <><p className="text-text-muted">{answer.label}</p><p className="whitespace-pre-wrap">{answer.value === 'yes' ? 'Yes' : answer.value === 'no' ? 'No' : answer.value || 'Not provided'}</p></>}
       </div>)}
     </div>)}
-    {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-    {editing && <div className="flex gap-2"><Button onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save guest details'}</Button><Button variant="secondary" disabled={saving} onClick={() => { setGuests(attendees); setEditing(false); setError(null) }}>Cancel</Button></div>}
+    {error && <Alert tone="danger" size="sm">{error}</Alert>}
+    {editing && <FormFooter>
+      <Button variant="secondary" disabled={saving} onClick={() => { setGuests(attendees); setEditing(false); setError(null) }}>Cancel</Button>
+      <Button variant="primary" onClick={save} loading={saving}>Save Guest Details</Button>
+    </FormFooter>}
   </section>
 }

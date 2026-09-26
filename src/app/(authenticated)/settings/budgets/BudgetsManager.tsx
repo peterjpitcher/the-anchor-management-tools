@@ -1,10 +1,24 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Button, IconButton, toast, Icon } from '@/ds';
-import { cn } from '@/lib/utils';
-import { Input } from '@/ds';
-import { Field } from '@/ds';
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  CardFooter,
+  ConfirmDialog,
+  Empty,
+  Field,
+  FormFooter,
+  Icon,
+  IconButton,
+  Input,
+  PageLayout,
+  Section,
+  Segmented,
+  toast,
+} from '@/ds';
 import { upsertDepartmentBudget, addDepartment, deleteDepartment, type DepartmentBudget, type Department } from '@/app/actions/budgets';
 import { deriveBudgetTargets } from '@/lib/rota/budget-utils';
 
@@ -13,7 +27,15 @@ interface BudgetsManagerProps {
   initialBudgets: DepartmentBudget[];
   initialDepartments: Department[];
   currentYear: number;
+  /** Set when the budgets or departments could not be loaded. */
+  loadError?: string | null;
 }
+
+const layoutProps = {
+  title: 'Department Budgets',
+  subtitle: 'Annual payroll budgets per department',
+  backButton: { label: 'Back to Settings', href: '/settings' },
+};
 
 function BudgetRow({
   department,
@@ -35,6 +57,7 @@ function BudgetRow({
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
   const [deletePending, startDelete] = useTransition();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const targets = budget ? deriveBudgetTargets(budget.annual_hours) : null;
 
@@ -55,7 +78,6 @@ function BudgetRow({
   };
 
   const handleDelete = () => {
-    if (!confirm(`Delete "${label}" department? This cannot be undone.`)) return;
     startDelete(async () => {
       const result = await deleteDepartment(department);
       if (!result.success) {
@@ -68,7 +90,7 @@ function BudgetRow({
   };
 
   return (
-    <div className="py-5 sm:grid sm:grid-cols-4 sm:gap-4 sm:items-start border-b border-border last:border-0">
+    <div className="py-5 sm:grid sm:grid-cols-4 sm:gap-4 sm:items-start">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-sm font-medium text-text">{label}</p>
@@ -78,7 +100,7 @@ function BudgetRow({
           <IconButton
             type="button"
             size="sm"
-            onClick={handleDelete}
+            onClick={() => setConfirmingDelete(true)}
             disabled={deletePending}
             label="Delete department"
             title="Delete department"
@@ -90,9 +112,8 @@ function BudgetRow({
 
       {editing ? (
         <div className="mt-2 sm:mt-0 sm:col-span-3">
-          {error && <p className="text-xs text-danger mb-2">{error}</p>}
-          <div className="flex items-end gap-3">
-            <Field label="Annual hours" htmlFor={`budget-${department}`} className="flex-1 max-w-xs">
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="Annual hours" htmlFor={`budget-${department}`} error={error || undefined} className="flex-1 max-w-xs">
               <Input
                 id={`budget-${department}`}
                 type="number"
@@ -104,11 +125,11 @@ function BudgetRow({
               />
             </Field>
             <div className="flex gap-2 pb-0.5">
-              <Button type="button" size="sm" onClick={handleSave} disabled={isPending}>
-                {isPending ? 'Saving…' : 'Save'}
-              </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => { setEditing(false); setError(''); }}>
+              <Button type="button" size="sm" variant="secondary" onClick={() => { setEditing(false); setError(''); }}>
                 Cancel
+              </Button>
+              <Button type="button" size="sm" variant="primary" onClick={handleSave} disabled={isPending}>
+                {isPending ? 'Saving…' : 'Save'}
               </Button>
             </div>
           </div>
@@ -135,16 +156,32 @@ function BudgetRow({
           )}
           {canManage && (
             <Button type="button" size="sm" variant="secondary" onClick={() => setEditing(true)}>
-              {budget ? 'Edit' : 'Set budget'}
+              {budget ? 'Edit' : 'Set Budget'}
             </Button>
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        onConfirm={handleDelete}
+        tone="danger"
+        title="Delete Department"
+        message={`Delete "${label}" department? This cannot be undone.`}
+        confirmLabel="Delete"
+      />
     </div>
   );
 }
 
-function AddDepartmentForm({ onAdded }: { onAdded: (dept: Department) => void }) {
+function AddDepartmentForm({
+  onAdded,
+  onCancel,
+}: {
+  onAdded: (dept: Department) => void;
+  onCancel: () => void;
+}) {
   const [label, setLabel] = useState('');
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
@@ -169,30 +206,35 @@ function AddDepartmentForm({ onAdded }: { onAdded: (dept: Department) => void })
   };
 
   return (
-    <div className="pt-4 border-t border-border">
-      {error && <p className="text-xs text-danger mb-2">{error}</p>}
-      <div className="flex items-end gap-3">
-        <Field label="New department name" htmlFor="new-dept" className="flex-1 max-w-xs">
-          <Input
-            id="new-dept"
-            placeholder='e.g. "Runner"'
-            value={label}
-            onChange={e => setLabel(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
-          />
-        </Field>
-        <div className="pb-0.5">
-          <Button type="button" size="sm" onClick={handleAdd} disabled={isPending} leftIcon={<Icon name="plus" size={16} />}>
-            {isPending ? 'Adding…' : 'Add department'}
-          </Button>
-        </div>
-      </div>
-      <p className="text-xs text-text-soft mt-1">The name will be used as-is in department dropdowns across the rota.</p>
+    <div className="space-y-4">
+      <Field
+        label="New department name"
+        htmlFor="new-dept"
+        error={error || undefined}
+        hint="The name will be used as-is in department dropdowns across the rota."
+        className="max-w-xs"
+      >
+        <Input
+          id="new-dept"
+          placeholder='e.g. "Runner"'
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
+        />
+      </Field>
+      <FormFooter>
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="button" variant="primary" onClick={handleAdd} disabled={isPending} icon={<Icon name="plus" size={16} />}>
+          {isPending ? 'Adding…' : 'Add Department'}
+        </Button>
+      </FormFooter>
     </div>
   );
 }
 
-export default function BudgetsManager({ canManage, initialBudgets, initialDepartments, currentYear }: BudgetsManagerProps) {
+export default function BudgetsManager({ canManage, initialBudgets, initialDepartments, currentYear, loadError = null }: BudgetsManagerProps) {
   const [year, setYear] = useState(currentYear);
   const [departments, setDepartments] = useState(initialDepartments);
   const [budgets, setBudgets] = useState(initialBudgets);
@@ -204,72 +246,86 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
     new Set([currentYear, currentYear + 1, ...budgets.map(b => b.budget_year)]),
   ).sort((a, b) => b - a);
 
+  if (loadError) {
+    return (
+      <PageLayout {...layoutProps}>
+        <Alert tone="danger" title="Failed to load budgets">{loadError}</Alert>
+      </PageLayout>
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <p className="text-sm text-text-muted">Budget year:</p>
-        <div className="flex gap-1">
-          {years.map(y => (
-            <button
-              key={y}
+    <PageLayout
+      {...layoutProps}
+      headerActions={
+        <>
+          <div role="group" aria-label="Budget year">
+            <Segmented
+              options={years.map(y => ({ id: String(y), label: String(y) }))}
+              value={String(year)}
+              onChange={id => setYear(Number(id))}
+            />
+          </div>
+          {canManage && !showAddForm && (
+            <Button
               type="button"
-              onClick={() => setYear(y)}
-              className={cn(
-                'px-3 py-1 rounded-sm text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:shadow-ring',
-                y === year
-                  ? 'bg-primary text-primary-fg'
-                  : 'bg-surface-hover text-text hover:bg-border',
-              )}
+              variant="primary"
+              size="sm"
+              onClick={() => setShowAddForm(true)}
+              icon={<Icon name="plus" size={16} />}
             >
-              {y}
-            </button>
-          ))}
-        </div>
-      </div>
+              New Department
+            </Button>
+          )}
+        </>
+      }
+    >
+      <Section
+        title="Annual Budgets"
+        description="Set an annual payroll budget per department. Monthly and weekly targets are derived automatically."
+      >
+        <Card>
+          {departments.length === 0 ? (
+            <Empty size="sm" title="No departments yet" />
+          ) : (
+            <CardBody className="py-0">
+              <div className="divide-y divide-border">
+                {departments.map(({ name, label }) => (
+                  <BudgetRow
+                    key={name}
+                    department={name}
+                    label={label}
+                    budget={budgetsByDept.get(name)}
+                    year={year}
+                    canManage={canManage}
+                    onDelete={() => setDepartments(prev => prev.filter(d => d.name !== name))}
+                  />
+                ))}
+              </div>
+            </CardBody>
+          )}
 
-      <div className="divide-y divide-border">
-        {departments.map(({ name, label }) => (
-          <BudgetRow
-            key={name}
-            department={name}
-            label={label}
-            budget={budgetsByDept.get(name)}
-            year={year}
-            canManage={canManage}
-            onDelete={() => setDepartments(prev => prev.filter(d => d.name !== name))}
-          />
-        ))}
-      </div>
+          {canManage && showAddForm && (
+            <CardBody className="border-t border-border">
+              <AddDepartmentForm
+                onAdded={dept => {
+                  setDepartments(prev => [...prev, dept]);
+                  setShowAddForm(false);
+                }}
+                onCancel={() => setShowAddForm(false)}
+              />
+            </CardBody>
+          )}
 
-      {canManage && (
-        showAddForm ? (
-          <AddDepartmentForm
-            onAdded={dept => {
-              setDepartments(prev => [...prev, dept]);
-              setShowAddForm(false);
-            }}
-          />
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowAddForm(true)}
-            icon={<Icon name="plus" size={16} />}
-            className="text-text-muted hover:text-text"
-          >
-            Add department
-          </Button>
-        )
-      )}
-
-      <div className="bg-surface-2 rounded-lg p-4">
-        <p className="text-xs text-text-muted">
-          Monthly target = annual ÷ 12. Weekly target = annual ÷ 52.
-          These hour targets are used in the rota budget bar and the labour dashboard.
-          Only hourly staff count toward scheduled hours — salaried staff are excluded.
-        </p>
-      </div>
-    </div>
+          <CardFooter>
+            <p className="text-xs text-text-muted">
+              Monthly target = annual ÷ 12. Weekly target = annual ÷ 52.
+              These hour targets are used in the rota budget bar and the labour dashboard.
+              Only hourly staff count toward scheduled hours; salaried staff are excluded.
+            </p>
+          </CardFooter>
+        </Card>
+      </Section>
+    </PageLayout>
   );
 }

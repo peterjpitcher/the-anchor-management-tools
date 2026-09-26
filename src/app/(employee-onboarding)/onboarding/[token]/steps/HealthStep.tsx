@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Checkbox, Field, Input, Textarea } from '@/ds';
+import { Alert, Button, Checkbox, Field, Input, Textarea } from '@/ds';
+import { StepFooter, StepSection } from './StepParts';
 import { saveOnboardingSection } from '@/app/actions/employeeInvite';
 
 interface HealthData {
@@ -30,9 +31,10 @@ interface HealthStepProps {
   token: string;
   initialData?: Partial<HealthData>;
   onSuccess: (data: HealthData) => void;
+  onBack?: () => void;
 }
 
-export default function HealthStep({ token, initialData, onSuccess }: HealthStepProps) {
+export default function HealthStep({ token, initialData, onSuccess, onBack }: HealthStepProps) {
   const [data, setData] = useState<HealthData>({
     doctor_name: initialData?.doctor_name ?? '',
     doctor_address: initialData?.doctor_address ?? '',
@@ -132,24 +134,21 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-text">GP Details</h3>
+      <StepSection title="GP Details">
         {textField('doctor_name', "Doctor's Name")}
         {textareaField('doctor_address', "Doctor's Address")}
-      </div>
+      </StepSection>
 
       <hr className="border-border" />
 
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-text">Allergies</h3>
+      <StepSection title="Allergies">
         {checkField('has_allergies', 'I have allergies')}
         {data.has_allergies && textareaField('allergies', 'Please describe your allergies')}
-      </div>
+      </StepSection>
 
       <hr className="border-border" />
 
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-text">Medical History</h3>
+      <StepSection title="Medical History">
         {checkField('had_absence_over_2_weeks_last_3_years', 'I have had absence over 2 weeks in the last 3 years')}
         {checkField('had_outpatient_treatment_over_3_months_last_3_years', 'I have had outpatient treatment for over 3 months in the last 3 years')}
         {(data.had_absence_over_2_weeks_last_3_years || data.had_outpatient_treatment_over_3_months_last_3_years) && (
@@ -157,24 +156,22 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
         )}
         {textareaField('illness_history', 'Illness history (optional)')}
         {textareaField('recent_treatment', 'Recent treatment (optional)')}
-      </div>
+      </StepSection>
 
       <hr className="border-border" />
 
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-text">Conditions</h3>
+      <StepSection title="Conditions">
         {checkField('has_diabetes', 'Diabetes')}
         {checkField('has_epilepsy', 'Epilepsy')}
         {checkField('has_skin_condition', 'Skin condition')}
         {checkField('has_depressive_illness', 'Depressive illness')}
         {checkField('has_bowel_problems', 'Bowel problems')}
         {checkField('has_ear_problems', 'Ear problems')}
-      </div>
+      </StepSection>
 
       <hr className="border-border" />
 
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-text">Disability</h3>
+      <StepSection title="Disability">
         {checkField('is_registered_disabled', 'I am registered disabled')}
         {data.is_registered_disabled && (
           <>
@@ -183,13 +180,15 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
             {textareaField('disability_details', 'Disability details')}
           </>
         )}
-      </div>
+      </StepSection>
 
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <Button type="submit" variant="primary" className="w-full" disabled={loading}>
-        {loading ? 'Saving...' : 'Save & Continue'}
-      </Button>
+      <StepFooter onBack={onBack}>
+        <Button type="submit" variant="primary" disabled={loading}>
+          {loading ? 'Saving...' : 'Save & Continue'}
+        </Button>
+      </StepFooter>
     </form>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Role, Permission } from '@/types/rbac';
 import RoleCard from './RoleCard';
 import RolePermissionsModal from './RolePermissionsModal';
+import { Card, Empty } from '@/ds';
 
 interface RoleListProps {
   roles: Role[];
@@ -19,6 +20,14 @@ export default function RoleList({ roles, permissions, canManage }: RoleListProp
     setSelectedRole(role);
     setIsPermissionsModalOpen(true);
   };
+
+  if (roles.length === 0) {
+    return (
+      <Card>
+        <Empty size="sm" icon="users" title="No roles yet" />
+      </Card>
+    );
+  }
 
   return (
     <>

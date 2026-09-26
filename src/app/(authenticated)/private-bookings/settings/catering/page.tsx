@@ -1,7 +1,5 @@
 import { redirect } from 'next/navigation'
 import { getCateringPackagesForManagement } from '@/app/actions/privateBookingActions'
-import { PageLayout } from '@/ds'
-import { Alert } from '@/ds'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { CateringManager } from '@/components/features/catering/CateringManager'
 
@@ -29,22 +27,7 @@ export default async function CateringPackagesPage({
   const packagesResult = await getCateringPackagesForManagement()
 
   if ('error' in packagesResult) {
-    const navItems = [
-      { label: 'General', href: '/private-bookings/settings' },
-      { label: 'Catering', href: '/private-bookings/settings/catering' },
-      { label: 'Vendors', href: '/private-bookings/settings/vendors' },
-      { label: 'Spaces', href: '/private-bookings/settings/spaces' },
-    ];
-
-    return (
-      <PageLayout
-        title="Catering Packages"
-        subtitle="Manage food and drink options for private events"
-        backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-        navItems={navItems}
-        error={packagesResult.error}
-      />
-    )
+    return <CateringManager initialPackages={[]} loadError={packagesResult.error} />
   }
 
   const packages = packagesResult.data ?? []
@@ -52,32 +35,5 @@ export default async function CateringPackagesPage({
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const errorMessage = typeof resolvedSearchParams?.error === 'string' ? resolvedSearchParams.error : null
 
-  const navItems = [
-    { label: 'General', href: '/private-bookings/settings' },
-    { label: 'Catering', href: '/private-bookings/settings/catering' },
-    { label: 'Vendors', href: '/private-bookings/settings/vendors' },
-    { label: 'Spaces', href: '/private-bookings/settings/spaces' },
-  ];
-
-  return (
-    <PageLayout
-      title="Catering Packages"
-      subtitle="Manage food and drink options for private events"
-      backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-      navItems={navItems}
-    >
-      <div className="space-y-6">
-        {errorMessage && (
-          <Alert
-            tone="danger"
-            title="Error"
-          >
-            {errorMessage}
-          </Alert>
-        )}
-
-        <CateringManager initialPackages={packages} />
-      </div>
-    </PageLayout>
-  )
+  return <CateringManager initialPackages={packages} errorMessage={errorMessage} />
 }

@@ -74,7 +74,7 @@ export default function MarkSickModal({
       width="md"
       footer={
         <>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
           <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>

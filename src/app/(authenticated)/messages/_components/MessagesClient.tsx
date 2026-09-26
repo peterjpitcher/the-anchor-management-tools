@@ -12,7 +12,8 @@ import {
   Drawer,
   Dropdown,
   DropdownItem,
-  PageHeader,
+  PageLayout,
+  SHELL_MEDIA_QUERY,
   toast,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
@@ -34,6 +35,7 @@ import type { CustomerCommunication } from '@/types/communications'
 import { ContactPanel } from './ContactPanel'
 import { ConversationList, formatUnreadCount, type ChannelFilter } from './ConversationList'
 import { ConversationThread } from './ConversationThread'
+import { useFillToViewportBottom } from './useFillToViewportBottom'
 
 // Each tick re-reads the conversation list plus the open thread's newest page.
 // At 15s a single tab left open all shift was hammering the inbox queries for no
@@ -43,8 +45,8 @@ const REFRESH_INTERVAL = 30000
 const MAX_REFRESH_INTERVAL = 300000
 const SEARCH_DEBOUNCE_MS = 350
 const SEARCH_MIN_LENGTH = 2
-/** Matches --breakpoint-shell in globals.css, where the app chrome swaps over. */
-const WIDE_LAYOUT_QUERY = '(min-width: 821px)'
+/** Below the inbox card the page scrolls rather than crushing the three panes. */
+const INBOX_MIN_HEIGHT = 360
 
 const QUERY_PARAM = 'customer'
 
@@ -75,8 +77,9 @@ export function MessagesClient() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-    const query = window.matchMedia(WIDE_LAYOUT_QUERY)
-    const apply = () => setIsWideLayout(query.matches)
+    // The phone shell query, so the inbox splits where the app chrome swaps over (821px).
+    const query = window.matchMedia(SHELL_MEDIA_QUERY)
+    const apply = () => setIsWideLayout(!query.matches)
     apply()
     query.addEventListener('change', apply)
     return () => query.removeEventListener('change', apply)
@@ -532,6 +535,9 @@ export function MessagesClient() {
 
   /* ---- Render ---- */
 
+  const inboxRef = useRef<HTMLDivElement>(null)
+  const inboxHeight = useFillToViewportBottom(inboxRef, INBOX_MIN_HEIGHT, [hasMoreUnread])
+
   const unreadLabel = formatUnreadCount(totalUnreadCount, unreadIsCapped)
 
   const overflowActions = (
@@ -554,7 +560,7 @@ export function MessagesClient() {
             onClick={() => router.push('/messages/holding')}
             icon={<Icon name="alertCircle" size={14} />}
           >
-            Holding queue ({unmatchedCount})
+            Holding Queue ({unmatchedCount})
           </DropdownItem>
         </div>
       )}
@@ -563,7 +569,7 @@ export function MessagesClient() {
       </DropdownItem>
       {canWriteReadState && totalUnreadCount > 0 && (
         <DropdownItem onClick={() => setConfirmMarkAllOpen(true)} icon={<Icon name="check" size={14} />}>
-          {markingAll ? 'Marking all read...' : 'Mark all read'}
+          {markingAll ? 'Marking all read...' : 'Mark All Read'}
         </DropdownItem>
       )}
       {canManageTemplates && (
@@ -571,72 +577,57 @@ export function MessagesClient() {
           onClick={() => router.push('/settings/message-templates')}
           icon={<Icon name="file" size={14} />}
         >
-          Message templates
+          Message Templates
         </DropdownItem>
       )}
     </Dropdown>
   )
 
   return (
-    /*
-     * Height model. Below the shell breakpoint `<main>` is `flex-1` inside a
-     * `h-[100dvh]` shell, so its height is already definite and `h-full` is
-     * exact. At and above it there is no topbar and `<main>` is content-sized,
-     * so the page subtracts the shell's own vertical padding, which now lives
-     * in `--spacing-page-shell-pad-y` beside the other layout tokens rather
-     * than being copied into this file.
-     *
-     * `100dvh`, never `100vh`: vh is the large viewport, so it over-measures by
-     * roughly 100px whenever mobile browser chrome is showing. That is what
-     * pushed the composer below the fold before.
-     *
-     * PageHeader is a shrink-0 row and the inbox takes the rest, so the number
-     * of action buttons can no longer change how tall the inbox is.
-     *
-     * The inbox keeps a 360px floor and the page scrolls rather than clipping.
-     * At 200% zoom on a short window there is barely any room left after the
-     * chrome, and without the floor the whole inbox compressed to a header row.
-     */
-    <div className="flex h-full flex-col overflow-y-auto shell:h-[calc(100dvh-var(--spacing-page-shell-pad-y))]">
-      <PageHeader
-        className="flex-shrink-0 mb-3 pb-3"
-        breadcrumbs={[{ label: 'Messages' }]}
-        title="Messages"
-        subtitle={
-          totalUnreadCount > 0
-            ? `${unreadLabel} unread message${totalUnreadCount === 1 && !unreadIsCapped ? '' : 's'}`
-            : 'All caught up'
-        }
-        actions={
-          <div className="flex items-center gap-2">
-            {canSendBulk && (
-              <Button variant="primary" size="sm" onClick={() => router.push('/messages/bulk')}>
-                Bulk message
-              </Button>
-            )}
-            {unmatchedCount > 0 && (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="hidden shell:inline-flex"
-                onClick={() => router.push('/messages/holding')}
-              >
-                Holding queue ({unmatchedCount})
-              </Button>
-            )}
-            {overflowActions}
-          </div>
-        }
-      />
-
+    <PageLayout
+      title="Messages"
+      subtitle={
+        totalUnreadCount > 0
+          ? `${unreadLabel} unread message${totalUnreadCount === 1 && !unreadIsCapped ? '' : 's'}`
+          : 'All caught up'
+      }
+      headerActions={
+        <>
+          {overflowActions}
+          {unmatchedCount > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="hidden shell:inline-flex"
+              onClick={() => router.push('/messages/holding')}
+            >
+              Holding Queue ({unmatchedCount})
+            </Button>
+          )}
+          {canSendBulk && (
+            <Button variant="primary" size="sm" onClick={() => router.push('/messages/bulk')}>
+              Bulk Message
+            </Button>
+          )}
+        </>
+      }
+    >
       {hasMoreUnread && (
-        <Alert tone="warning" className="mb-3 flex-shrink-0">
+        <Alert tone="warning">
           There are more than {totalUnreadCount} unread messages, so the count above is a lower bound.
           Search for a customer, or open their profile, to reach older unread messages.
         </Alert>
       )}
 
-      <Card className="flex min-h-[360px] flex-1 flex-col overflow-hidden">
+      {/*
+        Height model. The inbox is a full-height screen: the card takes the room left between
+        its top edge and the bottom of the window (useFillToViewportBottom), so the three panes
+        scroll inside it and the composer stays on screen. It keeps a 360px floor and the page
+        scrolls rather than clipping: at 200% zoom on a short window there is barely any room
+        left after the chrome, and without the floor the inbox compressed to a header row.
+      */}
+      <div ref={inboxRef} style={inboxHeight ? { height: inboxHeight } : undefined} className="flex min-h-[360px] flex-col">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <CardBody className="flex min-h-0 flex-1 flex-col p-0">
           {/*
             One pane below 821px, two from 821px, three from 1280px. The split
@@ -726,6 +717,7 @@ export function MessagesClient() {
           </div>
         </CardBody>
       </Card>
+      </div>
 
       {/* Below xl the contact details live in a drawer, so a phone or an iPad
           can still reach the customer's number without leaving the thread. A
@@ -733,7 +725,7 @@ export function MessagesClient() {
       <Drawer
         open={detailsOpen && Boolean(selectedCustomer)}
         onClose={() => setDetailsOpen(false)}
-        title="Contact details"
+        title="Contact Details"
         side={isWideLayout ? 'right' : 'bottom'}
         width="min(380px, 100vw)"
       >
@@ -754,11 +746,11 @@ export function MessagesClient() {
         open={confirmMarkAllOpen}
         onClose={() => setConfirmMarkAllOpen(false)}
         onConfirm={() => void handleMarkAllAsRead()}
-        title="Mark every conversation as read?"
+        title="Mark Every Conversation as Read?"
         message="This clears the unread flag on every inbound message for the whole team, including conversations that are not shown here. It cannot be undone in bulk."
-        confirmLabel="Mark all read"
+        confirmLabel="Mark All Read"
         tone="warning"
       />
-    </div>
+    </PageLayout>
   )
 }

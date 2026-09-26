@@ -9,7 +9,20 @@
 
 import { useState, useTransition } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Alert, Button, ConfirmDialog, Empty, Stat, TablePagination, toast, Icon } from '@/ds'
+import {
+  Alert,
+  Button,
+  Card,
+  ConfirmDialog,
+  Empty,
+  Icon,
+  PageLayout,
+  PageLoading,
+  Stat,
+  StatGrid,
+  TablePagination,
+  toast,
+} from '@/ds'
 import {
   deleteTrip,
   exportMileageListCsv,
@@ -38,6 +51,7 @@ import { MileageReportDialog } from './MileageReportDialog'
 import { MileageTripCard } from './MileageTripCard'
 import { MileageTripTable } from './MileageTripTable'
 import { TripForm } from './TripForm'
+import { MILEAGE_TRIPS_LAYOUT } from '../_shared/nav'
 
 interface MileageClientProps {
   query: MileageListQuery
@@ -164,9 +178,38 @@ export function MileageClient({
   }
 
   return (
-    <div className="space-y-6">
+    <PageLayout
+      {...MILEAGE_TRIPS_LAYOUT}
+      headerActions={
+        <>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Icon name="download" size={16} />}
+            onClick={() => void handleExport()}
+            loading={isExporting}
+            disabled={isExporting}
+          >
+            Export CSV
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Icon name="download" size={16} />}
+            onClick={() => setShowReportDialog(true)}
+          >
+            Download Report
+          </Button>
+          {canManage && (
+            <Button variant="primary" size="sm" icon={<Icon name="plus" size={16} />} onClick={openNewTrip}>
+              New Trip
+            </Button>
+          )}
+        </>
+      }
+    >
       {/* Headline cards: never filtered (spec 7.1) */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <StatGrid columns={4}>
         <Stat label="This quarter" value={`${formatMilesText(stats.quarter.milesTenths)} mi`} hint={formatPoundsText(stats.quarter.amountPence)} />
         <Stat
           label="This financial year"
@@ -175,33 +218,7 @@ export function MileageClient({
         />
         <Stat label="This tax year" value={`${formatMilesText(stats.taxYear.milesTenths)} mi`} hint={formatPoundsText(stats.taxYear.amountPence)} />
         <Stat label="Miles left before 25p" value={describeMilesLeft(stats.drivers)} hint="Per person, this tax year" />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {canManage && (
-          <Button variant="primary" size="sm" icon={<Icon name="plus" size={16} />} onClick={openNewTrip}>
-            New Trip
-          </Button>
-        )}
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<Icon name="download" size={16} />}
-          onClick={() => void handleExport()}
-          loading={isExporting}
-          disabled={isExporting}
-        >
-          Export CSV
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<Icon name="download" size={16} />}
-          onClick={() => setShowReportDialog(true)}
-        >
-          Download report
-        </Button>
-      </div>
+      </StatGrid>
 
       {warnings.map((warning) => (
         <Alert key={warning} tone="warning">
@@ -211,40 +228,49 @@ export function MileageClient({
 
       <MileageFilters query={query} presets={presets} places={places} drivers={drivers} onChange={navigate} />
 
-      <p className="text-sm text-text-muted" aria-live="polite">
-        {isPending ? 'Loading trips' : describeResults(trips.totals)}
-      </p>
-
-      {trips.rows.length === 0 ? (
-        <Empty
-          icon={<Icon name="mapPin" size={48} />}
-          title={filtered ? 'No trips match these filters' : 'No trips recorded'}
-          description={filtered ? 'Change or clear the filters to see more trips.' : 'Add your first trip to start tracking mileage.'}
-        />
+      {isPending ? (
+        <PageLoading inline label="Loading trips" />
       ) : (
-        <div className={isPending ? 'opacity-60' : undefined} aria-busy={isPending}>
-          <div className="hidden md:block">
-            <MileageTripTable
-              trips={trips.rows}
-              sort={query.sort}
-              dir={query.dir}
-              onSort={(column) => navigate(nextSort(query, column))}
-              {...rowActions}
-            />
-          </div>
-          <div className="space-y-2 md:hidden">
-            {trips.rows.map((trip) => (
-              <MileageTripCard key={trip.id} trip={trip} {...rowActions} />
-            ))}
-          </div>
-          <TablePagination
-            page={query.page}
-            totalPages={totalPages}
-            totalItems={trips.totalCount}
-            pageSize={MILEAGE_LIST_PAGE_SIZE}
-            onPageChange={(page) => navigate({ ...query, page })}
-          />
-        </div>
+        <>
+          <p className="text-sm text-text-muted" aria-live="polite">
+            {describeResults(trips.totals)}
+          </p>
+
+          {trips.rows.length === 0 ? (
+            <Card>
+              <Empty
+                size="sm"
+                icon={<Icon name="mapPin" size={48} />}
+                title={filtered ? 'No trips match these filters' : 'No trips recorded'}
+                description={filtered ? 'Change or clear the filters to see more trips.' : 'Add your first trip to start tracking mileage.'}
+              />
+            </Card>
+          ) : (
+            <Card padding="none">
+              <div className="hidden md:block">
+                <MileageTripTable
+                  trips={trips.rows}
+                  sort={query.sort}
+                  dir={query.dir}
+                  onSort={(column) => navigate(nextSort(query, column))}
+                  {...rowActions}
+                />
+              </div>
+              <div className="space-y-2 p-3 md:hidden">
+                {trips.rows.map((trip) => (
+                  <MileageTripCard key={trip.id} trip={trip} {...rowActions} />
+                ))}
+              </div>
+              <TablePagination
+                page={query.page}
+                totalPages={totalPages}
+                totalItems={trips.totalCount}
+                pageSize={MILEAGE_LIST_PAGE_SIZE}
+                onPageChange={(page) => navigate({ ...query, page })}
+              />
+            </Card>
+          )}
+        </>
       )}
 
       <TripForm
@@ -280,6 +306,6 @@ export function MileageClient({
           ignoredFilters={ignoredReportFilters(query)}
         />
       )}
-    </div>
+    </PageLayout>
   )
 }

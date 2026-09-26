@@ -3,16 +3,16 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { ScheduleCalendar } from '@/components/schedule-calendar'
 
-// Mock useMediaQuery to simulate mobile (always match max-width queries)
+// Mock useMediaQuery to simulate a phone: the shell's phone query always matches.
 vi.mock('@/hooks/use-media-query', () => ({
-    useMediaQuery: (q: string) => q.includes('max-width') && q.includes('639'),
+    useMediaQuery: (q: string) => q.includes('max-width') && q.includes('820'),
 }))
 
 describe('ScheduleCalendar mobile', () => {
-    it('renders list view on <640px regardless of selected view', () => {
+    it('renders list view in the phone shell regardless of selected view', () => {
         render(<ScheduleCalendar entries={[]} view="month" onViewChange={() => {}} />)
         // Mobile should render the list view landmark (Today heading)
-        expect(screen.getByRole('heading', { name: /Today/ })).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: 'Today' })).toBeInTheDocument()
     })
 
     it('hides the view switcher on mobile', () => {

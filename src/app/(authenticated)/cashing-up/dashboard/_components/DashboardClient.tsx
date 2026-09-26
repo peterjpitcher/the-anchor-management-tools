@@ -3,8 +3,10 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
-import { Card, CardHeader, CardBody, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/ds'
-import { Stat, Badge, ProgressBar, Select, Input } from '@/ds'
+import { Card, CardHeader, CardBody, PageLayout, StatGrid, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/ds'
+import { Alert, Stat, Badge, Empty, ProgressBar, Select, Input } from '@/ds'
+import { cashingUpLayout } from '../../_shared/nav'
+import { cashVarianceTextClass, targetPerformanceRowClass, targetPerformanceTone, weeklyProgressTone } from '../../_shared/status-ui'
 
 interface DashboardData {
   kpis: {
@@ -71,20 +73,6 @@ function pctChange(current: number, previous: number): number | undefined {
   return Math.round(((current - previous) / previous) * 100)
 }
 
-function performanceTone(percent: number | null): 'success' | 'warning' | 'danger' | 'neutral' {
-  if (percent === null) return 'neutral'
-  if (percent >= 100) return 'success'
-  if (percent >= 90) return 'warning'
-  return 'danger'
-}
-
-function performanceRowClass(percent: number | null): string | undefined {
-  if (percent === null) return undefined
-  if (percent >= 100) return 'bg-success-soft hover:bg-success-soft'
-  if (percent >= 90) return 'bg-warning-soft hover:bg-warning-soft'
-  return 'bg-danger-soft hover:bg-danger-soft'
-}
-
 function formatPerformancePercent(percent: number | null): string {
   if (percent === null) return 'No target'
   return `${percent.toFixed(1)}%`
@@ -130,88 +118,76 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
     )
   }, [sessionSearch, varianceRows])
 
-  if (error || !dashboardData) {
+  const layoutProps = cashingUpLayout('Takings, targets and variance by year')
+
+  if (error) {
     return (
-      <Card>
-        <CardBody>
-          <p className="text-text-muted text-center py-8">{error || 'No dashboard data available.'}</p>
-        </CardBody>
-      </Card>
+      <PageLayout {...layoutProps}>
+        <Alert tone="danger">{error}</Alert>
+      </PageLayout>
+    )
+  }
+
+  if (!dashboardData) {
+    return (
+      <PageLayout {...layoutProps}>
+        <Card>
+          <Empty size="sm" title="No dashboard data available" />
+        </Card>
+      </PageLayout>
     )
   }
 
   const { kpis } = dashboardData
   const comp = comparisonData?.kpis
-  const varianceIsPositive = kpis.totalVariance >= 0
 
   return (
-    <div className="space-y-6">
+    <PageLayout {...layoutProps}>
       {/* Year selectors */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-text-muted">Year:</span>
-          <Select
-            value={String(selectedYear)}
-            onChange={(e) => handleYearChange(e.target.value)}
-            options={YEAR_OPTIONS}
-            className="w-28"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-text-muted">Compare to:</span>
-          <Select
-            value={compareYear ? String(compareYear) : ''}
-            onChange={(e) => handleCompareChange(e.target.value)}
-            options={compareOptions}
-            className="w-28"
-          />
-        </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <Select
+          label="Year"
+          value={String(selectedYear)}
+          onChange={(e) => handleYearChange(e.target.value)}
+          options={YEAR_OPTIONS}
+          className="w-28"
+        />
+        <Select
+          label="Compare to"
+          value={compareYear ? String(compareYear) : ''}
+          onChange={(e) => handleCompareChange(e.target.value)}
+          options={compareOptions}
+          className="w-28"
+        />
       </div>
 
       {/* Stat tiles */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardBody>
-            <Stat
-              label="Total Takings"
-              value={`£${fmt(kpis.totalTakings)}`}
-              delta={comp ? pctChange(kpis.totalTakings, comp.totalTakings) : undefined}
-              hint={comp ? `vs £${fmt(comp.totalTakings)} (${compareYear})` : `Target: £${fmt(kpis.totalTarget)}`}
-            />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody>
-            <Stat
-              label="Total Variance"
-              value={`£${fmt(kpis.totalVariance)}`}
-              delta={comp ? pctChange(kpis.totalVariance, comp.totalVariance) : undefined}
-              hint={comp ? `vs £${fmt(comp.totalVariance)} (${compareYear})` : undefined}
-              className={varianceIsPositive ? 'text-success-fg' : 'text-danger-fg'}
-            />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody>
-            <Stat
-              label="Sessions Submitted"
-              value={kpis.daysWithSubmittedSessions}
-              delta={comp ? pctChange(kpis.daysWithSubmittedSessions, comp.daysWithSubmittedSessions) : undefined}
-              hint={comp ? `vs ${comp.daysWithSubmittedSessions} (${compareYear})` : undefined}
-            />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody>
-            <Stat
-              label="Avg Daily Takings"
-              value={`£${fmt(kpis.averageDailyTakings)}`}
-              delta={comp ? pctChange(kpis.averageDailyTakings, comp.averageDailyTakings) : undefined}
-              hint={comp ? `vs £${fmt(comp.averageDailyTakings)} (${compareYear})` : undefined}
-            />
-          </CardBody>
-        </Card>
-      </div>
+      <StatGrid columns={4}>
+        <Stat
+          label="Total Takings"
+          value={`£${fmt(kpis.totalTakings)}`}
+          delta={comp ? pctChange(kpis.totalTakings, comp.totalTakings) : undefined}
+          hint={comp ? `vs £${fmt(comp.totalTakings)} (${compareYear})` : `Target: £${fmt(kpis.totalTarget)}`}
+        />
+        <Stat
+          label="Total Variance"
+          value={`£${fmt(kpis.totalVariance)}`}
+          delta={comp ? pctChange(kpis.totalVariance, comp.totalVariance) : undefined}
+          hint={comp ? `vs £${fmt(comp.totalVariance)} (${compareYear})` : undefined}
+        />
+        <Stat
+          label="Sessions Submitted"
+          value={kpis.daysWithSubmittedSessions}
+          delta={comp ? pctChange(kpis.daysWithSubmittedSessions, comp.daysWithSubmittedSessions) : undefined}
+          hint={comp ? `vs ${comp.daysWithSubmittedSessions} (${compareYear})` : undefined}
+        />
+        <Stat
+          label="Avg Daily Takings"
+          value={`£${fmt(kpis.averageDailyTakings)}`}
+          delta={comp ? pctChange(kpis.averageDailyTakings, comp.averageDailyTakings) : undefined}
+          hint={comp ? `vs £${fmt(comp.averageDailyTakings)} (${compareYear})` : undefined}
+        />
+      </StatGrid>
 
       {/* Weekly progress */}
       {weeklyProgress && weeklyProgress.dailyProgress.length > 0 && (() => {
@@ -224,8 +200,9 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
             <CardBody>
               <ProgressBar
                 value={Math.min(pct, 100)}
-                tone={pct >= 100 ? 'success' : 'primary'}
+                tone={weeklyProgressTone(pct)}
                 size="md"
+                label="Weekly target progress"
               />
               <p className="text-xs text-text-muted mt-2">{pct.toFixed(1)}% of weekly target</p>
             </CardBody>
@@ -261,15 +238,15 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
           <TableBody>
             {visibleVarianceRows.length === 0 ? (
               <TableRow>
-                <TableCell className="text-center py-8 text-text-muted" align="center">
-                  {sessionSearch ? 'No sessions match your search' : 'No records found'}
+                <TableCell colSpan={8}>
+                  <Empty size="sm" title={sessionSearch ? 'No sessions match your search' : 'No records found'} />
                 </TableCell>
               </TableRow>
             ) : (
               visibleVarianceRows.map((row, idx) => {
-                const targetTone = performanceTone(row.targetPerformancePercent)
+                const targetTone = targetPerformanceTone(row.targetPerformancePercent)
                 return (
-                  <TableRow key={idx} className={performanceRowClass(row.targetPerformancePercent)}>
+                  <TableRow key={idx} className={targetPerformanceRowClass(row.targetPerformancePercent)}>
                     <TableCell>
                       <a
                         href={`/cashing-up/daily?date=${row.sessionDate}&siteId=${row.siteId}`}
@@ -294,7 +271,7 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
                         )}
                       </div>
                     </TableCell>
-                    <TableCell align="right" className={`font-mono font-bold ${Number((row.variance ?? 0).toFixed(2)) === 0 ? 'text-text-muted' : row.variance < 0 ? 'text-danger-fg' : 'text-warning-fg'}`}>
+                    <TableCell align="right" className={`font-mono font-bold ${cashVarianceTextClass(row.variance ?? 0)}`}>
                       {'£'}{fmt(row.variance)}
                     </TableCell>
                     <TableCell className="text-text-muted italic">{row.notes || '-'}</TableCell>
@@ -305,6 +282,6 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
           </TableBody>
         </Table>
       </Card>
-    </div>
+    </PageLayout>
   )
 }

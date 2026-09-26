@@ -2,8 +2,24 @@
 
 import { useEffect, useMemo, useState, useTransition, FormEvent, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button, Checkbox, ConfirmDialog, Input, SearchInput, Select, Card, Badge, Spinner, toast } from '@/ds'
-import { Accordion } from '@/ds'
+import {
+  Accordion,
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  ConfirmDialog,
+  Empty,
+  FormFooter,
+  Input,
+  SearchInput,
+  Select,
+  TablePagination,
+  toast,
+} from '@/ds'
 import {
   toggleReceiptRule,
   createReceiptRule,
@@ -20,7 +36,8 @@ import {
 import { receiptExpenseCategorySchema, receiptRuleKindSchema } from '@/lib/validation'
 import { useRetroRuleRunner } from '@/hooks/useRetroRuleRunner'
 import { usePermissions } from '@/contexts/PermissionContext'
-import type { ReceiptRule, ReceiptRuleConflict, ReceiptRuleSuggestion, ReceiptTransaction } from '@/types/database'
+import type { ReceiptRule, ReceiptRuleConflict, ReceiptRuleSuggestion } from '@/types/database'
+import { RECEIPT_RULE_STATE_TONE, RECEIPT_STATUS_LABEL } from '@/app/(authenticated)/receipts/_shared/status-ui'
 
 interface ReceiptRulesProps {
   rules: ReceiptRule[]
@@ -55,13 +72,7 @@ function suggestionPreviewCount(suggestion: ReceiptRuleSuggestion): number | nul
 
 const expenseCategoryOptions = receiptExpenseCategorySchema.options
 const ruleKindOptions = receiptRuleKindSchema.options
-const statusLabels: Record<ReceiptTransaction['status'], string> = {
-  pending: 'Pending',
-  completed: 'Completed',
-  auto_completed: 'Auto completed',
-  no_receipt_required: 'No receipt required',
-  cant_find: "Can't find",
-}
+const statusLabels = RECEIPT_STATUS_LABEL
 
 const kindLabels: Record<ReceiptRule['kind'], string> = {
   standard: 'Standard',
@@ -84,17 +95,14 @@ function MatchDescriptionTokenPreview({ value }: { value: string }) {
   return (
     <div className="mt-1 flex flex-wrap gap-1">
       {tokens.map((token, index) => (
-        <span
-          key={index}
-          className="inline-flex items-center rounded-full border border-info-border bg-info-soft px-2 py-0.5 text-xs font-medium text-info-fg"
-        >
+        <Badge key={index} tone="info">
           {token}
-        </span>
+        </Badge>
       ))}
       {hasEmpty && (
-        <span className="inline-flex items-center rounded-full border border-danger-border bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger-fg">
-          empty token — remove double commas
-        </span>
+        <Badge tone="danger">
+          empty token: remove double commas
+        </Badge>
       )}
     </div>
   )
@@ -102,8 +110,8 @@ function MatchDescriptionTokenPreview({ value }: { value: string }) {
 
 function RulePreviewPanel({ preview }: { preview: RulePreviewResult }) {
   return (
-    <div className="rounded-md border border-info-border bg-info-soft p-3 text-xs text-info-fg space-y-2">
-      <p className="font-semibold">Rule preview (every transaction)</p>
+    <Alert tone="info" size="sm" role="status" title="Rule preview (every transaction)">
+      <div className="space-y-2">
       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
         <span>Total matching</span><span className="font-medium">{preview.totalMatching}</span>
         <span>Pending matching</span><span className="font-medium">{preview.pendingMatching}</span>
@@ -116,12 +124,13 @@ function RulePreviewPanel({ preview }: { preview: RulePreviewResult }) {
           <p className="font-medium text-warning-fg">Overlapping rules:</p>
           {preview.overlappingRules.map((r) => (
             <p key={r.id} className="text-warning-fg">
-              {r.name} — {r.overlapCount} overlap{r.overlapCount !== 1 ? 's' : ''}
+              {r.name}: {r.overlapCount} overlap{r.overlapCount !== 1 ? 's' : ''}
             </p>
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </Alert>
   )
 }
 
@@ -157,6 +166,9 @@ export function ReceiptRules({
   const [isPreviewVisible, setIsPreviewVisible] = useState(false)
   const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null)
   const newRuleFormRef = useRef<HTMLFormElement | null>(null)
+  // Controlled, so clearing the form after a rule is created clears the tick too: the DS
+  // Checkbox draws its own tick, which a native form reset does not reach.
+  const [newRuleReviewed, setNewRuleReviewed] = useState(false)
 
   // Suggestions: server count + paging. Seed the loaded page from props; fetch more pages
   // via getReceiptRuleSuggestionsPage. The selection drives the bulk "Approve selected".
@@ -289,7 +301,7 @@ export function ReceiptRules({
       matchDescriptionInput.value = suggestion.matchDescription ?? ''
     }
 
-    // Suggestions are description-only now — never prefill a bank transaction type.
+    // Suggestions are description-only now: never prefill a bank transaction type.
     const matchTypeInput = getInput<HTMLInputElement>('match_transaction_type')
     if (matchTypeInput) matchTypeInput.value = ''
 
@@ -459,208 +471,195 @@ export function ReceiptRules({
         setRetroScope('pending')
       }
       setEditingRuleId(null)
-      if (!ruleId) formElement.reset()
+      if (!ruleId) {
+        formElement.reset()
+        setNewRuleReviewed(false)
+      }
       router.refresh()
       setActiveRuleId(null)
     })
   }
 
+  const pendingBusy = (id: string) => isRulePending && activeRuleId === id
+
   return (
     <Card className="hidden md:block">
-      <div className="flex items-start justify-between gap-4 p-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-text-strong">Automation rules</h2>
+      <CardHeader
+        title="Automation Rules"
+        subtitle="Automatically tick off known transactions (e.g. card settlements)"
+        action={
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {pendingSuggestion && <Badge tone="success">Suggestion</Badge>}
             {suggestionsTotal > 0 && <Badge tone="success">{suggestionsTotal} pending suggestions</Badge>}
             {ruleConflicts.length > 0 && <Badge tone="warning">{ruleConflicts.length} conflicts</Badge>}
+            <Badge tone="neutral">{rules.length} rules</Badge>
+            <Button
+              variant="secondary"
+              size="sm"
+              aria-expanded={isSectionOpen}
+              onClick={() => setIsSectionOpen((current) => !current)}
+            >
+              {isSectionOpen ? 'Hide' : 'Show'}
+            </Button>
           </div>
-          <p className="text-sm text-text-muted">Automatically tick off known transactions (e.g. card settlements).</p>
-        </div>
-
-        <div className="flex flex-shrink-0 items-center gap-2">
-          <Badge tone="neutral">{rules.length} rules</Badge>
-          <Button
-            variant="secondary"
-            size="sm"
-            aria-expanded={isSectionOpen}
-            onClick={() => setIsSectionOpen((current) => !current)}
-          >
-            {isSectionOpen ? 'Hide' : 'Show'}
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {isSectionOpen && (
-        <>
-          <div className="border-t border-border" />
-          <div className="p-4">
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card>
-                <h3 className="text-base font-semibold text-text-strong mb-3">New rule</h3>
+        <CardBody>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader title="New Rule" />
+              <CardBody className="space-y-4">
                 {pendingSuggestion && (
-                  <div className="mb-3 rounded-md border border-success-border bg-success-soft p-3 text-xs text-success-fg">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-medium text-success-fg">
-                        Suggestion ready for {pendingSuggestion.setVendorName ?? pendingSuggestion.setExpenseCategory}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => applySuggestion(pendingSuggestion)}
-                        >
-                          Apply
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={onDismissSuggestion}>
-                          Dismiss
-                        </Button>
-                      </div>
+                  <Alert
+                    tone="success"
+                    size="sm"
+                    role="status"
+                    title={`Suggestion ready for ${pendingSuggestion.setVendorName ?? pendingSuggestion.setExpenseCategory}`}
+                  >
+                    <p>Prefill the form to auto-tag similar transactions next time.</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Button size="sm" variant="ghost" onClick={onDismissSuggestion}>
+                        Dismiss
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => applySuggestion(pendingSuggestion)}>
+                        Apply
+                      </Button>
                     </div>
-                    <p className="mt-1">Prefill the form to auto-tag similar transactions next time.</p>
-                  </div>
+                  </Alert>
                 )}
                 {suggestionsTotal > 0 && (
-                  <div className="mb-3 space-y-2 rounded-md border border-warning-border bg-warning-soft p-3 text-xs text-warning-fg">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-semibold">System suggestions ({suggestionsTotal})</p>
+                  <Alert tone="warning" size="sm" role="status" title={`System suggestions (${suggestionsTotal})`}>
+                    <div className="space-y-2">
                       {canGovernRules && suggestions.length > 0 && (
-                        <label className="flex items-center gap-1.5 text-warning-fg">
-                          <Checkbox
-                            checked={allSuggestionsSelected}
-                            onChange={toggleSelectAllSuggestions}
-                            disabled={isSuggestionsPending}
-                            aria-label="Select all suggestions on this page"
-                          />
-                          Select all on page
-                        </label>
+                        <Checkbox
+                          label="Select all on page"
+                          checked={allSuggestionsSelected}
+                          onChange={toggleSelectAllSuggestions}
+                          disabled={isSuggestionsPending}
+                        />
                       )}
-                    </div>
 
-                    {canGovernRules && selectedSuggestionIds.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2 rounded-md bg-warning-soft px-2 py-1.5">
-                        <span className="font-medium text-warning-fg">{selectedSuggestionIds.length} selected</span>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          disabled={isBulkApproving}
-                          onClick={() => handleApproveSelected(true)}
-                        >
-                          {isBulkApproving && <Spinner className="mr-2 h-3 w-3" />}Approve selected
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={isBulkApproving}
-                          onClick={() => handleApproveSelected(false)}
-                        >
-                          Approve selected as disabled
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={isBulkApproving}
-                          onClick={() => setSelectedSuggestionIds([])}
-                        >
-                          Clear
-                        </Button>
-                      </div>
-                    )}
+                      {canGovernRules && selectedSuggestionIds.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{selectedSuggestionIds.length} selected</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={isBulkApproving}
+                            onClick={() => setSelectedSuggestionIds([])}
+                          >
+                            Clear
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={isBulkApproving}
+                            onClick={() => handleApproveSelected(false)}
+                          >
+                            Approve Selected as Disabled
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            loading={isBulkApproving}
+                            onClick={() => handleApproveSelected(true)}
+                          >
+                            Approve Selected
+                          </Button>
+                        </div>
+                      )}
 
-                    {suggestions.map((suggestion) => {
-                      const evidenceCount = suggestionEvidenceCount(suggestion)
-                      const aiConfidence = suggestionAiConfidence(suggestion)
-                      const previewCount = suggestionPreviewCount(suggestion)
-                      return (
-                        <div key={suggestion.id} className="flex flex-wrap items-start justify-between gap-2 border-t border-border pt-2 first:border-t-0 first:pt-0">
-                          <div className="flex min-w-0 items-start gap-2">
-                            {canGovernRules && (
-                              <Checkbox
-                                checked={selectedSuggestionIds.includes(suggestion.id)}
-                                onChange={() => toggleSuggestionSelected(suggestion.id)}
-                                aria-label={`Select suggestion ${suggestion.suggested_name}`}
-                              />
-                            )}
-                            <div className="min-w-0">
-                              <p className="font-medium text-warning-fg">{suggestion.suggested_name}</p>
-                              <p>
-                                Match {suggestion.match_description ?? 'rule evidence'}; set {suggestion.set_vendor_name ?? suggestion.set_expense_category ?? 'classification'}.
-                              </p>
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                <Badge tone="neutral">{evidenceCount} evidence</Badge>
-                                {aiConfidence != null && <Badge tone="info">AI {aiConfidence}%</Badge>}
-                                {previewCount != null && (
-                                  <Badge tone="warning">would match {previewCount} transaction{previewCount === 1 ? '' : 's'}</Badge>
-                                )}
+                      {suggestions.map((suggestion) => {
+                        const evidenceCount = suggestionEvidenceCount(suggestion)
+                        const aiConfidence = suggestionAiConfidence(suggestion)
+                        const previewCount = suggestionPreviewCount(suggestion)
+                        const busy = !canGovernRules || pendingBusy(suggestion.id)
+                        return (
+                          <div key={suggestion.id} className="flex flex-wrap items-start justify-between gap-2 border-t border-warning-border pt-2 first:border-t-0 first:pt-0">
+                            <div className="flex min-w-0 items-start gap-2">
+                              {canGovernRules && (
+                                <Checkbox
+                                  checked={selectedSuggestionIds.includes(suggestion.id)}
+                                  onChange={() => toggleSuggestionSelected(suggestion.id)}
+                                  aria-label={`Select suggestion ${suggestion.suggested_name}`}
+                                />
+                              )}
+                              <div className="min-w-0">
+                                <p className="font-medium">{suggestion.suggested_name}</p>
+                                <p>
+                                  Match {suggestion.match_description ?? 'rule evidence'}; set {suggestion.set_vendor_name ?? suggestion.set_expense_category ?? 'classification'}.
+                                </p>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  <Badge tone="neutral">{evidenceCount} evidence</Badge>
+                                  {aiConfidence != null && <Badge tone="info">AI {aiConfidence}%</Badge>}
+                                  {previewCount != null && (
+                                    <Badge tone="warning">would match {previewCount} transaction{previewCount === 1 ? '' : 's'}</Badge>
+                                  )}
+                                </div>
                               </div>
                             </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={busy}
+                                onClick={() => handleDeclineSuggestion(suggestion.id)}
+                              >
+                                Decline
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={busy}
+                                onClick={() => handleApproveSuggestion(suggestion.id, false)}
+                              >
+                                Approve Disabled
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={busy}
+                                onClick={() => handleApproveSuggestion(suggestion.id, true)}
+                              >
+                                Approve
+                              </Button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              disabled={!canGovernRules || (isRulePending && activeRuleId === suggestion.id)}
-                              onClick={() => handleApproveSuggestion(suggestion.id, true)}
-                            >
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={!canGovernRules || (isRulePending && activeRuleId === suggestion.id)}
-                              onClick={() => handleApproveSuggestion(suggestion.id, false)}
-                            >
-                              Approve disabled
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={!canGovernRules || (isRulePending && activeRuleId === suggestion.id)}
-                              onClick={() => handleDeclineSuggestion(suggestion.id)}
-                            >
-                              Decline
-                            </Button>
-                          </div>
-                        </div>
-                      )
-                    })}
+                        )
+                      })}
 
-                    {totalSuggestionPages > 1 && (
-                      <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={suggestionPage <= 1 || isSuggestionsPending}
-                          onClick={() => loadSuggestionsPage(suggestionPage - 1)}
-                        >
-                          Previous
-                        </Button>
-                        <span className="text-warning-fg">
-                          {isSuggestionsPending ? 'Loading…' : `Page ${suggestionPage} of ${totalSuggestionPages}`}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={suggestionPage >= totalSuggestionPages || isSuggestionsPending}
-                          onClick={() => loadSuggestionsPage(suggestionPage + 1)}
-                        >
-                          Next
-                        </Button>
-                      </div>
-                    )}
+                      {totalSuggestionPages > 1 && (
+                        <TablePagination
+                          page={suggestionPage}
+                          totalPages={totalSuggestionPages}
+                          pageSize={SUGGESTIONS_PAGE_SIZE}
+                          totalItems={suggestionsTotal}
+                          onPageChange={(nextPage) => {
+                            if (!isSuggestionsPending) loadSuggestionsPage(nextPage)
+                          }}
+                          className="px-0"
+                        />
+                      )}
 
-                    {!canGovernRules && (
-                      <p>Super admin approval is required before a suggestion can become a rule.</p>
-                    )}
-                  </div>
+                      {!canGovernRules && (
+                        <p>Super admin approval is required before a suggestion can become a rule.</p>
+                      )}
+                    </div>
+                  </Alert>
                 )}
                 {retroPrompt && (
-                  <div className="mb-3 rounded-md border border-info-border bg-info-soft p-3 text-xs text-info-fg">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-medium text-info-fg">
-                        Run rule “{retroPrompt.name}” on {retroScope === 'all' ? 'all transactions' : 'pending transactions'}?
-                      </p>
+                  <Alert
+                    tone="info"
+                    size="sm"
+                    role="status"
+                    title={`Run rule \u201c${retroPrompt.name}\u201d on ${retroScope === 'all' ? 'all transactions' : 'pending transactions'}?`}
+                  >
+                    <p>We can re-check historical records without reopening completed items.</p>
+                    <div className="mt-2 flex flex-wrap items-end gap-2">
                       <Select
+                        aria-label="Which transactions to run the rule on"
                         value={retroScope}
                         onChange={(event) => setRetroScope(event.target.value as 'pending' | 'all')}
                         className="w-44"
@@ -669,16 +668,6 @@ export function ReceiptRules({
                           { value: 'all', label: 'All historical' },
                         ]}
                       />
-                    </div>
-                    <div className="mt-3 flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleRetroRun(retroPrompt.id, retroScope)}
-                        disabled={isRetroPending}
-                      >
-                        {isRetroPending && <Spinner className="mr-2 h-3 w-3" />}Run now
-                      </Button>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -689,291 +678,308 @@ export function ReceiptRules({
                       >
                         Later
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleRetroRun(retroPrompt.id, retroScope)}
+                        loading={isRetroPending}
+                      >
+                        Run Now
+                      </Button>
                     </div>
-                    <p className="mt-1">We can re-check historical records without reopening completed items.</p>
-                  </div>
+                  </Alert>
                 )}
-                <form ref={newRuleFormRef} onSubmit={(event) => handleRuleSubmit(event)} className="space-y-3">
-                  <Input name="name" placeholder="Rule name" required />
+                <form ref={newRuleFormRef} onSubmit={(event) => handleRuleSubmit(event)} className="space-y-4">
+                  <Input label="Rule name" name="name" placeholder="Rule name" required />
                   {canGovernRules && (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input name="priority" placeholder="Priority" type="number" min={0} step={1} defaultValue={1000} />
-                        <Select name="kind" defaultValue="standard" options={ruleKindOptions.map((option) => ({
+                    <div className="space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Input label="Priority" name="priority" placeholder="Priority" type="number" min={0} step={1} defaultValue={1000} />
+                        <Select label="Kind" name="kind" defaultValue="standard" options={ruleKindOptions.map((option) => ({
                           value: option,
                           label: kindLabels[option],
                         }))} />
                       </div>
-                      {/* A native tick, not the DS Checkbox: this form is reset after a rule is
-                          created, and the DS Checkbox keeps its own ticked state, so it would
-                          still show ticked over a cleared input. Native ticks get the brand
-                          colour from the base layer in globals.css. */}
-                      <label className="flex cursor-pointer items-start gap-3 text-ui text-text">
-                        <input type="checkbox" name="reviewed" className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer" />
-                        Mark reviewed
-                      </label>
+                      <Checkbox
+                        name="reviewed"
+                        label="Mark reviewed"
+                        checked={newRuleReviewed}
+                        onChange={setNewRuleReviewed}
+                      />
                     </div>
                   )}
                   <div>
                     <Input
+                      label="Match description"
                       name="match_description"
-                      placeholder="Match description (comma separated keywords)"
+                      placeholder="Comma separated keywords"
+                      hint="Matches transactions if ANY of these words appear in the description (comma-separated)"
                       value={newMatchDescription}
                       onChange={(e) => { setNewMatchDescription(e.target.value); setIsPreviewVisible(false) }}
                     />
-                    <p className="mt-1 text-xs text-text-muted">
-                      Matches transactions if ANY of these words appear in the description (comma-separated)
-                    </p>
                     <MatchDescriptionTokenPreview value={newMatchDescription} />
                   </div>
-                  <Input name="match_transaction_type" placeholder="Match transaction type" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input name="match_min_amount" placeholder="Min amount" type="number" step="0.01" />
-                    <Input name="match_max_amount" placeholder="Max amount" type="number" step="0.01" />
+                  <Input label="Match transaction type" name="match_transaction_type" placeholder="Match transaction type" />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Input label="Min amount" name="match_min_amount" placeholder="Min amount" type="number" step="0.01" />
+                    <Input label="Max amount" name="match_max_amount" placeholder="Max amount" type="number" step="0.01" />
                   </div>
-                  <Select name="match_direction" defaultValue="both" options={[
+                  <Select label="Direction" name="match_direction" defaultValue="both" options={[
                     { value: 'both', label: 'Any direction' },
                     { value: 'out', label: 'Money out' },
                     { value: 'in', label: 'Money in' },
                   ]} />
-                  <Select name="auto_status" defaultValue="no_receipt_required" options={[
+                  <Select label="Outcome" name="auto_status" defaultValue="no_receipt_required" options={[
                     { value: 'no_receipt_required', label: 'Mark as not required' },
                     { value: 'auto_completed', label: 'Mark as auto completed' },
                     { value: 'completed', label: 'Mark as completed' },
                     { value: 'pending', label: 'Leave pending' },
                   ]} />
-                  <Input name="set_vendor_name" placeholder="Set vendor name (optional)" />
-                  <Select name="set_expense_category" defaultValue="" options={[
+                  <Input label="Set vendor name" name="set_vendor_name" placeholder="Set vendor name (optional)" />
+                  <Select label="Set expense" name="set_expense_category" defaultValue="" options={[
                     { value: '', label: 'Leave expense unset' },
                     ...expenseCategoryOptions.map((option) => ({ value: option, label: option })),
                   ]} />
                   {isPreviewVisible && rulePreview && (
                     <RulePreviewPanel preview={rulePreview} />
                   )}
-                  <div className="flex items-center gap-2">
-                    <Button type="submit" disabled={!canManageReceipts || (isRulePending && activeRuleId === 'new')}>
-                      {isRulePending && activeRuleId === 'new' && <Spinner className="mr-2 h-4 w-4" />}Create rule
-                    </Button>
+                  <FormFooter>
                     <Button
                       type="button"
                       variant="secondary"
-                      disabled={isPreviewPending || !canManageReceipts}
+                      disabled={!canManageReceipts}
+                      loading={isPreviewPending}
                       onClick={() => handlePreviewRule(newRuleFormRef)}
                     >
-                      {isPreviewPending ? <><Spinner className="mr-2 h-4 w-4" />Previewing…</> : 'Preview'}
+                      Preview
                     </Button>
-                  </div>
+                    <Button type="submit" variant="primary" disabled={!canManageReceipts} loading={pendingBusy('new')}>
+                      Create Rule
+                    </Button>
+                  </FormFooter>
                 </form>
-              </Card>
+              </CardBody>
+            </Card>
 
-              <div className="space-y-3">
-                <SearchInput
-                  value={ruleSearch}
-                  onChange={setRuleSearch}
-                  placeholder="Search rules..."
-                />
+            <div className="space-y-4">
+              <SearchInput
+                value={ruleSearch}
+                onChange={setRuleSearch}
+                placeholder="Search rules..."
+              />
 
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-xs text-text-muted">
-                    {ruleSearch.trim()
-                      ? <>Showing {filteredRules.length} of {rules.length} rules</>
-                      : <>{rules.length} rules</>}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={collapseAllVisibleRules}
-                      disabled={expandedVisibleRuleCount === 0}
-                    >
-                      Collapse all
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={expandAllVisibleRules}
-                      disabled={filteredRules.length === 0 || expandedVisibleRuleCount === filteredRules.length}
-                    >
-                      Expand all
-                    </Button>
-                  </div>
-                </div>
-
-                {rules.length === 0 ? (
-                  <p className="text-sm text-text-muted">No automation rules yet. Start by adding keywords for things like card settlements.</p>
-                ) : filteredRules.length === 0 ? (
-                  <p className="text-sm text-text-muted">No rules match &quot;{ruleSearch.trim()}&quot;.</p>
-                ) : (
-                  <Accordion
-                    multiple
-                    variant="bordered"
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-xs text-text-muted">
+                  {ruleSearch.trim()
+                    ? <>Showing {filteredRules.length} of {rules.length} rules</>
+                    : <>{rules.length} rules</>}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
                     size="sm"
-                    activeKeys={expandedRuleKeys}
-                    onChange={setExpandedRuleKeys}
-                    items={filteredRules.map((rule) => ({
-                      key: rule.id,
-                      title: (
-                        <>
-                          <span className="block truncate text-sm font-semibold text-text-strong">{rule.name}</span>
-                          <span className="mt-0.5 block truncate text-xs font-normal text-text-muted">
-                            {rule.description ?? `Matches: ${rule.match_description ?? 'any'}`}
-                          </span>
-                        </>
-                      ),
-                      extra: (
-                        <div className="flex items-center gap-2">
-                          {conflictsByRule.get(rule.id)?.length ? (
-                            <Badge tone="warning">Conflict</Badge>
-                          ) : null}
-                          <Badge tone={rule.is_active ? 'success' : 'neutral'}>
-                            {rule.is_active ? 'Active' : 'Disabled'}
-                          </Badge>
-                          <Badge tone="neutral">
-                            P{rule.priority ?? 1000}
-                          </Badge>
-                          <Badge tone="info">
-                            {formatRuleKind(rule.kind)}
-                          </Badge>
-                          <Badge tone="neutral">
-                            {statusLabels[rule.auto_status]}
-                          </Badge>
-                        </div>
-                      ),
-                      content: (
-                        <div className="space-y-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => setEditingRuleId((current) => current === rule.id ? null : rule.id)}
-                              disabled={(isRulePending && activeRuleId === rule.id) || !canManageReceipts}
-                            >
-                              {editingRuleId === rule.id ? 'Close editor' : 'Edit'}
-                            </Button>
-                            {retroConfirmRuleId === rule.id ? (
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Select
-                                  value={retroConfirmScope}
-                                  onChange={(e) => setRetroConfirmScope(e.target.value as 'pending' | 'all')}
-                                  className="w-40"
-                                  options={[
-                                    { value: 'pending', label: 'Pending only' },
-                                    { value: 'all', label: 'All historical' },
-                                  ]}
-                                />
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => { setRetroConfirmRuleId(null); handleRetroRun(rule.id, retroConfirmScope) }}
-                                  disabled={isRetroPending}
-                                >
-                                  {isRetroPending && retroRuleId === rule.id ? <><Spinner className="mr-1 h-4 w-4" />Running…</> : 'Run now'}
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => setRetroConfirmRuleId(null)}>Cancel</Button>
-                              </div>
-                            ) : (
+                    variant="ghost"
+                    onClick={collapseAllVisibleRules}
+                    disabled={expandedVisibleRuleCount === 0}
+                  >
+                    Collapse All
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={expandAllVisibleRules}
+                    disabled={filteredRules.length === 0 || expandedVisibleRuleCount === filteredRules.length}
+                  >
+                    Expand All
+                  </Button>
+                </div>
+              </div>
+
+              {rules.length === 0 ? (
+                <Empty
+                  size="sm"
+                  title="No automation rules yet"
+                  description="Start by adding keywords for things like card settlements."
+                />
+              ) : filteredRules.length === 0 ? (
+                <Empty size="sm" title={`No rules match "${ruleSearch.trim()}"`} />
+              ) : (
+                <Accordion
+                  multiple
+                  variant="bordered"
+                  size="sm"
+                  activeKeys={expandedRuleKeys}
+                  onChange={setExpandedRuleKeys}
+                  items={filteredRules.map((rule) => ({
+                    key: rule.id,
+                    title: (
+                      <>
+                        <span className="block truncate text-sm font-semibold text-text-strong">{rule.name}</span>
+                        <span className="mt-0.5 block truncate text-xs font-normal text-text-muted">
+                          {rule.description ?? `Matches: ${rule.match_description ?? 'any'}`}
+                        </span>
+                      </>
+                    ),
+                    extra: (
+                      <div className="flex items-center gap-2">
+                        {conflictsByRule.get(rule.id)?.length ? (
+                          <Badge tone="warning">Conflict</Badge>
+                        ) : null}
+                        <Badge tone={RECEIPT_RULE_STATE_TONE[rule.is_active ? 'active' : 'disabled']}>
+                          {rule.is_active ? 'Active' : 'Disabled'}
+                        </Badge>
+                        <Badge tone="neutral">
+                          P{rule.priority ?? 1000}
+                        </Badge>
+                        <Badge tone="info">
+                          {formatRuleKind(rule.kind)}
+                        </Badge>
+                        <Badge tone="neutral">
+                          {statusLabels[rule.auto_status]}
+                        </Badge>
+                      </div>
+                    ),
+                    content: (
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setEditingRuleId((current) => current === rule.id ? null : rule.id)}
+                            disabled={pendingBusy(rule.id) || !canManageReceipts}
+                          >
+                            {editingRuleId === rule.id ? 'Close Editor' : 'Edit'}
+                          </Button>
+                          {retroConfirmRuleId === rule.id ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Select
+                                aria-label="Which transactions to run the rule on"
+                                value={retroConfirmScope}
+                                onChange={(e) => setRetroConfirmScope(e.target.value as 'pending' | 'all')}
+                                className="w-40"
+                                options={[
+                                  { value: 'pending', label: 'Pending only' },
+                                  { value: 'all', label: 'All historical' },
+                                ]}
+                              />
+                              <Button size="sm" variant="ghost" onClick={() => setRetroConfirmRuleId(null)}>Cancel</Button>
                               <Button
-                                variant="ghost"
                                 size="sm"
-                                onClick={() => { setRetroConfirmRuleId(rule.id); setRetroConfirmScope('all') }}
-                                disabled={!rule.is_active || isRetroPending || !canManageReceipts}
-                                title={rule.is_active ? 'Run this rule across historical transactions' : 'Enable the rule before running it'}
+                                variant="secondary"
+                                onClick={() => { setRetroConfirmRuleId(null); handleRetroRun(rule.id, retroConfirmScope) }}
+                                loading={isRetroPending && retroRuleId === rule.id}
+                                disabled={isRetroPending}
                               >
-                                Run historical
+                                Run Now
                               </Button>
-                            )}
-                            <Button
-                              variant={rule.is_active ? 'primary' : 'ghost'}
-                              size="sm"
-                              onClick={() => handleRuleToggle(rule)}
-                              disabled={(isRulePending && activeRuleId === rule.id) || !canManageReceipts}
-                            >
-                              {isRulePending && activeRuleId === rule.id ? <Spinner className="h-4 w-4" /> : rule.is_active ? 'Disable' : 'Enable'}
-                            </Button>
+                            </div>
+                          ) : (
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => setDeleteRuleId(rule.id)}
-                              disabled={(isRulePending && activeRuleId === rule.id) || !canManageReceipts}
+                              onClick={() => { setRetroConfirmRuleId(rule.id); setRetroConfirmScope('all') }}
+                              disabled={!rule.is_active || isRetroPending || !canManageReceipts}
+                              title={rule.is_active ? 'Run this rule across historical transactions' : 'Enable the rule before running it'}
                             >
-                              Deactivate
+                              Run Historical
                             </Button>
-                          </div>
-
-                          {editingRuleId === rule.id ? (
-                            <form onSubmit={(event) => handleRuleSubmit(event, rule.id)} className="space-y-3">
-                              <Input name="name" defaultValue={rule.name} required />
-                              {canGovernRules && (
-                                <div className="space-y-2">
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <Input name="priority" type="number" min={0} step={1} defaultValue={rule.priority ?? 1000} />
-                                    <Select name="kind" defaultValue={rule.kind ?? 'standard'} options={ruleKindOptions.map((option) => ({
-                                      value: option,
-                                      label: kindLabels[option],
-                                    }))} />
-                                  </div>
-                                  <Checkbox name="reviewed" label="Mark reviewed" defaultChecked={Boolean(rule.reviewed_at)} />
-                                </div>
-                              )}
-                              <Input name="match_description" defaultValue={rule.match_description ?? ''} />
-                              <Input name="match_transaction_type" defaultValue={rule.match_transaction_type ?? ''} />
-                              <div className="grid grid-cols-2 gap-2">
-                                <Input name="match_min_amount" type="number" step="0.01" defaultValue={rule.match_min_amount ?? ''} />
-                                <Input name="match_max_amount" type="number" step="0.01" defaultValue={rule.match_max_amount ?? ''} />
-                              </div>
-                              <Select name="match_direction" defaultValue={rule.match_direction} options={[
-                                { value: 'both', label: 'Any direction' },
-                                { value: 'out', label: 'Money out' },
-                                { value: 'in', label: 'Money in' },
-                              ]} />
-                              <Select name="auto_status" defaultValue={rule.auto_status} options={[
-                                { value: 'no_receipt_required', label: 'Mark as not required' },
-                                { value: 'auto_completed', label: 'Mark as auto completed' },
-                                { value: 'completed', label: 'Mark as completed' },
-                                { value: 'pending', label: 'Leave pending' },
-                              ]} />
-                              <Input name="set_vendor_name" defaultValue={rule.set_vendor_name ?? ''} placeholder="Set vendor name (optional)" />
-                              <Select name="set_expense_category" defaultValue={rule.set_expense_category ?? ''} options={[
-                                { value: '', label: 'Leave expense unset' },
-                                ...expenseCategoryOptions.map((option) => ({ value: option, label: option })),
-                              ]} />
-                              <Button type="submit" disabled={isRulePending && activeRuleId === rule.id}>
-                                {isRulePending && activeRuleId === rule.id && <Spinner className="mr-2 h-4 w-4" />}Save changes
-                              </Button>
-                            </form>
-                          ) : (
-                            <div className="space-y-1 text-xs text-text-muted">
-                              <p>Priority: {rule.priority ?? 1000}</p>
-                              <p>Kind: {formatRuleKind(rule.kind)}</p>
-                              <p>Direction: {rule.match_direction}</p>
-                              {rule.match_min_amount != null && <p>Min amount: £{rule.match_min_amount.toFixed(2)}</p>}
-                              {rule.match_max_amount != null && <p>Max amount: £{rule.match_max_amount.toFixed(2)}</p>}
-                              <p>Outcome: {statusLabels[rule.auto_status]}</p>
-                              {rule.set_vendor_name && <p>Sets vendor: {rule.set_vendor_name}</p>}
-                              {rule.set_expense_category && <p>Sets expense: {rule.set_expense_category}</p>}
-                              {conflictsByRule.get(rule.id)?.map((conflict) => (
-                                <p key={conflict.id} className="text-warning-fg">
-                                  Conflict warning: overlaps {conflict.overlap_count} sampled transaction{conflict.overlap_count === 1 ? '' : 's'}.
-                                </p>
-                              ))}
-                            </div>
                           )}
+                          <Button
+                            variant={rule.is_active ? 'primary' : 'ghost'}
+                            size="sm"
+                            onClick={() => handleRuleToggle(rule)}
+                            loading={pendingBusy(rule.id)}
+                            disabled={!canManageReceipts}
+                          >
+                            {rule.is_active ? 'Disable' : 'Enable'}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeleteRuleId(rule.id)}
+                            disabled={pendingBusy(rule.id) || !canManageReceipts}
+                          >
+                            Deactivate
+                          </Button>
                         </div>
-                      ),
-                    }))}
-                  />
-                )}
-              </div>
+
+                        {editingRuleId === rule.id ? (
+                          <form onSubmit={(event) => handleRuleSubmit(event, rule.id)} className="space-y-4">
+                            <Input label="Rule name" name="name" defaultValue={rule.name} required />
+                            {canGovernRules && (
+                              <div className="space-y-4">
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                  <Input label="Priority" name="priority" type="number" min={0} step={1} defaultValue={rule.priority ?? 1000} />
+                                  <Select label="Kind" name="kind" defaultValue={rule.kind ?? 'standard'} options={ruleKindOptions.map((option) => ({
+                                    value: option,
+                                    label: kindLabels[option],
+                                  }))} />
+                                </div>
+                                <Checkbox name="reviewed" label="Mark reviewed" defaultChecked={Boolean(rule.reviewed_at)} />
+                              </div>
+                            )}
+                            <Input label="Match description" name="match_description" defaultValue={rule.match_description ?? ''} />
+                            <Input label="Match transaction type" name="match_transaction_type" defaultValue={rule.match_transaction_type ?? ''} />
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <Input label="Min amount" name="match_min_amount" type="number" step="0.01" defaultValue={rule.match_min_amount ?? ''} />
+                              <Input label="Max amount" name="match_max_amount" type="number" step="0.01" defaultValue={rule.match_max_amount ?? ''} />
+                            </div>
+                            <Select label="Direction" name="match_direction" defaultValue={rule.match_direction} options={[
+                              { value: 'both', label: 'Any direction' },
+                              { value: 'out', label: 'Money out' },
+                              { value: 'in', label: 'Money in' },
+                            ]} />
+                            <Select label="Outcome" name="auto_status" defaultValue={rule.auto_status} options={[
+                              { value: 'no_receipt_required', label: 'Mark as not required' },
+                              { value: 'auto_completed', label: 'Mark as auto completed' },
+                              { value: 'completed', label: 'Mark as completed' },
+                              { value: 'pending', label: 'Leave pending' },
+                            ]} />
+                            <Input label="Set vendor name" name="set_vendor_name" defaultValue={rule.set_vendor_name ?? ''} placeholder="Set vendor name (optional)" />
+                            <Select label="Set expense" name="set_expense_category" defaultValue={rule.set_expense_category ?? ''} options={[
+                              { value: '', label: 'Leave expense unset' },
+                              ...expenseCategoryOptions.map((option) => ({ value: option, label: option })),
+                            ]} />
+                            <FormFooter>
+                              <Button type="button" variant="secondary" onClick={() => setEditingRuleId(null)}>
+                                Cancel
+                              </Button>
+                              <Button type="submit" variant="primary" loading={pendingBusy(rule.id)}>
+                                Save Changes
+                              </Button>
+                            </FormFooter>
+                          </form>
+                        ) : (
+                          <div className="space-y-1 text-xs text-text-muted">
+                            <p>Priority: {rule.priority ?? 1000}</p>
+                            <p>Kind: {formatRuleKind(rule.kind)}</p>
+                            <p>Direction: {rule.match_direction}</p>
+                            {rule.match_min_amount != null && <p>Min amount: £{rule.match_min_amount.toFixed(2)}</p>}
+                            {rule.match_max_amount != null && <p>Max amount: £{rule.match_max_amount.toFixed(2)}</p>}
+                            <p>Outcome: {statusLabels[rule.auto_status]}</p>
+                            {rule.set_vendor_name && <p>Sets vendor: {rule.set_vendor_name}</p>}
+                            {rule.set_expense_category && <p>Sets expense: {rule.set_expense_category}</p>}
+                            {conflictsByRule.get(rule.id)?.map((conflict) => (
+                              <p key={conflict.id} className="text-warning-fg">
+                                Conflict warning: overlaps {conflict.overlap_count} sampled transaction{conflict.overlap_count === 1 ? '' : 's'}.
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ),
+                  }))}
+                />
+              )}
             </div>
           </div>
-        </>
+        </CardBody>
       )}
 
       <ConfirmDialog
         open={Boolean(deleteRuleId)}
         onClose={() => setDeleteRuleId(null)}
         onConfirm={() => deleteRuleId ? handleRuleDelete(deleteRuleId) : undefined}
-        title="Deactivate rule"
+        title="Deactivate Rule"
         message="This rule will stop matching new transactions. Transactions it has already classified are left as they are."
         confirmLabel="Deactivate"
         tone="danger"

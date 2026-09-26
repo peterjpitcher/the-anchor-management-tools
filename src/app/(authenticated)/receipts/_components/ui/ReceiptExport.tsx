@@ -1,7 +1,7 @@
 'use client'
 
 import { FormEvent } from 'react'
-import { Button, Select, Card, CardBody, CardHeader, toast, Icon } from '@/ds'
+import { Button, Select, Card, CardBody, CardHeader, FormFooter, toast, Icon } from '@/ds'
 import { getLastCompletedQuarter } from '@/lib/receipts/export/default-period'
 
 export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
@@ -25,11 +25,12 @@ export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
 
   return (
     <Card>
-      <CardHeader title="Quarterly export" subtitle="Download PDF summary and receipts as ZIP." />
+      <CardHeader title="Quarterly Export" subtitle="Download PDF summary and receipts as ZIP" />
       <CardBody>
-        <form onSubmit={handleExportSubmit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
+        <form onSubmit={handleExportSubmit} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Select
+              label="Year"
               name="year"
               defaultValue={String(defaultPeriod.year)}
               options={[
@@ -41,6 +42,7 @@ export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
               ]}
             />
             <Select
+              label="Quarter"
               name="quarter"
               defaultValue={String(defaultPeriod.quarter)}
               options={[
@@ -52,10 +54,11 @@ export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
               ]}
             />
           </div>
-          <Button type="submit" size="sm" className="w-full">
-            <Icon name="download" size={16} className="mr-2" />
-            Download bundle
-          </Button>
+          <FormFooter>
+            <Button type="submit" icon={<Icon name="download" size={16} />}>
+              Download Bundle
+            </Button>
+          </FormFooter>
         </form>
       </CardBody>
     </Card>

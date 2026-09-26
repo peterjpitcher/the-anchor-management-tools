@@ -2,25 +2,28 @@
 'use client';
 
 import { useMemo } from 'react';
+import { Icon, Stat, StatGrid } from '@/ds';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { computeCycleStats } from './payrollCycleStats';
 import type { PayrollRow } from '@/lib/rota/excel-export';
+import {
+  PAYROLL_VARIANCE_ICON,
+  PAYROLL_VARIANCE_TONE,
+  ROTA_TONE_ICON_CLASSES,
+  payrollVarianceState,
+} from '../_shared/status-ui';
 
 interface PayrollSummaryBarProps {
   rows: PayrollRow[];
-}
-
-function varianceTileClasses(variance: number): string {
-  // green if >= 0, amber if > -10 and < 0, red if <= -10
-  if (variance >= 0) return 'bg-success-soft border-success-border text-success-fg';
-  if (variance > -10) return 'bg-warning-soft border-warning-border text-warning-fg';
-  return 'bg-danger-soft border-danger-border text-danger-fg';
 }
 
 function varianceSubLabel(variance: number): string {
   if (variance >= 0) return 'ahead of plan';
   return 'under planned';
 }
+
+/** Placeholder while no row has reached today's cut-off yet. */
+const NO_VALUE = '–';
 
 export function PayrollSummaryBar({ rows }: PayrollSummaryBarProps) {
   const today = getTodayIsoDate();
@@ -31,56 +34,44 @@ export function PayrollSummaryBar({ rows }: PayrollSummaryBarProps) {
   );
 
   const variance = stats.actualToDate - stats.plannedToDate;
-  const dash = '—';
+  const varianceState = payrollVarianceState(variance);
 
+  // A Stat has no tone of its own, so the variance carries its state (ahead, a little under,
+  // well under) as an icon in the tone's colour.
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      {/* Planned to date */}
-      <div className="text-center bg-surface-2 border border-border rounded-lg p-3">
-        <p className="text-xl font-bold text-text-strong">
-          {stats.hasCutoffRows ? `${stats.plannedToDate.toFixed(1)}h` : dash}
-        </p>
-        <p className="text-xs text-text-muted mt-0.5">Planned to date</p>
-        {stats.hasCutoffRows && stats.totalPlannedFullCycle > stats.plannedToDate && (
-          <p className="text-xs text-text-soft mt-0.5">
-            of {stats.totalPlannedFullCycle.toFixed(1)}h total
-          </p>
-        )}
-      </div>
-
-      {/* Actual to date */}
-      <div className="text-center bg-surface-2 border border-border rounded-lg p-3">
-        <p className="text-xl font-bold text-text-strong">
-          {stats.hasCutoffRows ? `${stats.actualToDate.toFixed(1)}h` : dash}
-        </p>
-        <p className="text-xs text-text-muted mt-0.5">Actual to date</p>
-      </div>
-
-      {/* Variance */}
-      <div
-        className={`text-center border rounded-lg p-3 ${
-          stats.hasCutoffRows
-            ? varianceTileClasses(variance)
-            : 'bg-surface-2 border-border text-text-strong'
-        }`}
-      >
-        <p className="text-xl font-bold">
-          {stats.hasCutoffRows
-            ? `${variance >= 0 ? '+' : ''}${variance.toFixed(1)}h`
-            : dash}
-        </p>
-        <p className="text-xs mt-0.5 opacity-70">
-          {stats.hasCutoffRows ? varianceSubLabel(variance) : 'Variance'}
-        </p>
-      </div>
-
-      {/* Earned to date */}
-      <div className="text-center bg-success-soft border border-success-border rounded-lg p-3">
-        <p className="text-xl font-bold text-success-fg">
-          {stats.hasCutoffRows ? `£${stats.earnedToDate.toFixed(2)}` : dash}
-        </p>
-        <p className="text-xs text-text-muted mt-0.5">Earned to date</p>
-      </div>
-    </div>
+    <StatGrid columns={4}>
+      <Stat
+        label="Planned to date"
+        value={stats.hasCutoffRows ? `${stats.plannedToDate.toFixed(1)}h` : NO_VALUE}
+        hint={
+          stats.hasCutoffRows && stats.totalPlannedFullCycle > stats.plannedToDate
+            ? `of ${stats.totalPlannedFullCycle.toFixed(1)}h total`
+            : undefined
+        }
+      />
+      <Stat
+        label="Actual to date"
+        value={stats.hasCutoffRows ? `${stats.actualToDate.toFixed(1)}h` : NO_VALUE}
+      />
+      <Stat
+        label="Variance"
+        value={stats.hasCutoffRows ? `${variance >= 0 ? '+' : ''}${variance.toFixed(1)}h` : NO_VALUE}
+        hint={stats.hasCutoffRows ? varianceSubLabel(variance) : undefined}
+        icon={
+          stats.hasCutoffRows ? (
+            <Icon
+              name={PAYROLL_VARIANCE_ICON[varianceState]}
+              size={20}
+              label={varianceSubLabel(variance)}
+              className={ROTA_TONE_ICON_CLASSES[PAYROLL_VARIANCE_TONE[varianceState]]}
+            />
+          ) : undefined
+        }
+      />
+      <Stat
+        label="Earned to date"
+        value={stats.hasCutoffRows ? `£${stats.earnedToDate.toFixed(2)}` : NO_VALUE}
+      />
+    </StatGrid>
   );
 }

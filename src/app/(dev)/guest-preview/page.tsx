@@ -1,30 +1,35 @@
 import { notFound } from 'next/navigation'
-import { Icon, type IconName } from '@/ds/icons'
+import type { IconName } from '@/ds/icons'
 import {
   DetailGrid,
   DetailRow,
   GuestAlert,
   GuestAmount,
   GuestBadge,
+  GuestBlockedState,
   GuestButton,
   GuestCard,
+  GuestCardHeader,
+  GuestChoice,
   GuestField,
+  GuestHelpLine,
+  GuestInput,
+  GuestIntro,
+  GuestLink,
+  GuestPhoneLink,
+  GuestSection,
+  GuestSelect,
   GuestShell,
-  GUEST_CHOICE_ROW_CLASS,
-  GUEST_H1_CLASS,
-  GUEST_INPUT_CLASS,
-  GUEST_INPUT_INVALID_CLASS,
-  GUEST_INTRO_CLASS,
-  GUEST_KICKER_CLASS,
-  GUEST_LEAD_CLASS,
+  GuestStatusMark,
+  GuestTextarea,
+  GUEST_BODY_CLASS,
+  GUEST_MESSAGE_CLASS,
+  GUEST_NOTE_CLASS,
   GUEST_SUNK_BOX_CLASS,
-  GUEST_TEXTAREA_CLASS,
-  GuestBlockedState,
   guestBadgeToneForStatus,
   guestFieldControlProps,
   TrustLine,
 } from '@/components/features/guest'
-import { cn } from '@/lib/utils'
 
 /**
  * Fixture harness for the guest design system.
@@ -58,22 +63,11 @@ const BADGE_FIXTURES = [
   'Awaiting kitchen sign off',
 ]
 
-function Group({
-  title,
-  children,
-}: {
-  title: string
-  children: React.ReactNode
-}): React.JSX.Element {
-  return (
-    <section className="flex flex-col gap-3 border-t border-guest-border-strong pt-5">
-      <h2 className="font-anchor-display text-[22px] font-normal tracking-[-0.02em] text-guest-text-strong">
-        {title}
-      </h2>
-      {children}
-    </section>
-  )
-}
+const ASSURANCE_FIXTURES: Array<{ icon: IconName; title: string; sub: string }> = [
+  { icon: 'check', title: 'Secure booking', sub: 'Your details are encrypted.' },
+  { icon: 'bell', title: 'Confirmation', sub: 'We text you when it is done.' },
+  { icon: 'clock', title: 'Support', sub: 'Call us any time we are open.' },
+]
 
 export default function GuestPreviewPage(): React.JSX.Element {
   if (process.env.NODE_ENV === 'production') {
@@ -82,26 +76,38 @@ export default function GuestPreviewPage(): React.JSX.Element {
 
   return (
     <GuestShell>
-      <div className={GUEST_INTRO_CLASS}>
-        <p className={GUEST_KICKER_CLASS}>The Anchor</p>
-        <h1 className={GUEST_H1_CLASS}>Guest primitives</h1>
-        <p className={GUEST_LEAD_CLASS}>
-          Every shared component and variant, rendered from synthetic fixtures.
-        </p>
-      </div>
+      <GuestIntro
+        kicker="The Anchor"
+        title="Guest primitives"
+        lead="Every shared component and variant, rendered from synthetic fixtures."
+      />
 
-      <Group title="Cards">
+      <GuestSection title="Cards" titleId="preview-cards">
         <GuestCard variant="accent">
-          <p className="text-sm leading-[1.6]">
+          <p className={GUEST_BODY_CLASS}>
             Accent card. Exactly one per page, on the thing the page exists to do.
           </p>
         </GuestCard>
         <GuestCard>
-          <p className="text-sm leading-[1.6]">Plain card. Everything else.</p>
+          <GuestCardHeader title="Titled card" description="A card title and one line under it." />
+          <p className={GUEST_BODY_CLASS}>Plain card. Everything else.</p>
         </GuestCard>
-      </Group>
+        <GuestCard variant="danger">
+          <p className={GUEST_BODY_CLASS}>Danger card. Holds the confirmation of something final.</p>
+        </GuestCard>
+      </GuestSection>
 
-      <Group title="Buttons">
+      <GuestSection title="Status marks" titleId="preview-marks">
+        <div className="flex flex-wrap items-center gap-3">
+          <GuestStatusMark tone="success" />
+          <GuestStatusMark tone="notice" />
+          <GuestStatusMark tone="problem" />
+          <GuestStatusMark tone="brand" icon="bell" size="sm" />
+          <GuestStatusMark tone="success" size="lg" />
+        </div>
+      </GuestSection>
+
+      <GuestSection title="Buttons" titleId="preview-buttons">
         <div className="flex flex-col gap-2.5">
           <GuestButton variant="primary" size="sm">
             Primary sm
@@ -112,12 +118,27 @@ export default function GuestPreviewPage(): React.JSX.Element {
           <GuestButton variant="primary" size="lg" fullWidth>
             Primary lg, full width
           </GuestButton>
+          <GuestButton variant="primary" fullWidth="mobile">
+            Primary, full width on a phone
+          </GuestButton>
           <GuestButton variant="primary" disabled>
             Primary disabled
+          </GuestButton>
+          <GuestButton variant="primary" loading loadingText="Saving...">
+            Primary loading
           </GuestButton>
           <GuestButton variant="outline">Outline</GuestButton>
           <GuestButton variant="ghost">Ghost</GuestButton>
           <GuestButton variant="danger">Danger</GuestButton>
+          <GuestButton variant="destructive">Destructive</GuestButton>
+          <GuestButton variant="link">Link action</GuestButton>
+          <GuestButton variant="choice" pressed>
+            <span className="font-semibold">Choice, chosen</span>
+            <span className={GUEST_NOTE_CLASS}>A hint under the answer</span>
+          </GuestButton>
+          <GuestButton variant="choice" pressed={false}>
+            <span className="font-semibold">Choice</span>
+          </GuestButton>
           <GuestButton as="a" href="https://www.the-anchor.pub" external variant="outline">
             Anchor, external
           </GuestButton>
@@ -125,9 +146,9 @@ export default function GuestPreviewPage(): React.JSX.Element {
             Next link, internal
           </GuestButton>
         </div>
-      </Group>
+      </GuestSection>
 
-      <Group title="Alerts">
+      <GuestSection title="Alerts" titleId="preview-alerts">
         <GuestAlert tone="success" title="Payment received">
           We have emailed your confirmation.
         </GuestAlert>
@@ -151,9 +172,9 @@ export default function GuestPreviewPage(): React.JSX.Element {
         <GuestAlert tone="success" live="polite">
           Untitled alert with a polite live region.
         </GuestAlert>
-      </Group>
+      </GuestSection>
 
-      <Group title="Badges">
+      <GuestSection title="Badges" titleId="preview-badges">
         <div className="flex flex-wrap gap-2">
           {BADGE_FIXTURES.map((status) => (
             <GuestBadge key={status} tone={guestBadgeToneForStatus(status)} dot>
@@ -167,18 +188,21 @@ export default function GuestPreviewPage(): React.JSX.Element {
           <GuestBadge tone="danger">No dot</GuestBadge>
           <GuestBadge tone="outline">No dot</GuestBadge>
         </div>
-      </Group>
+      </GuestSection>
 
-      <Group title="Amount">
+      <GuestSection title="Figures" titleId="preview-figures">
         <GuestCard variant="accent">
           <GuestAmount label="Deposit due now" value="£30.00" sub="£10 per person for 3 guests" />
         </GuestCard>
         <GuestCard>
+          <GuestAmount label="Booking" value="TB-2419" size="title" />
+        </GuestCard>
+        <GuestCard>
           <GuestAmount label="Balance remaining" value="£250.00" size="inline" />
         </GuestCard>
-      </Group>
+      </GuestSection>
 
-      <Group title="Detail rows and grid">
+      <GuestSection title="Detail rows and grid" titleId="preview-details">
         <GuestCard>
           <DetailRow label="Booking reference" value="TB-2419" />
           <DetailRow label="Covers" value="3" />
@@ -194,20 +218,26 @@ export default function GuestPreviewPage(): React.JSX.Element {
             ]}
           />
         </GuestCard>
-      </Group>
+      </GuestSection>
 
-      <Group title="Fields">
+      <GuestSection title="Fields" titleId="preview-fields">
         <GuestCard>
-          <div className="flex flex-col gap-[18px]">
+          <div className="flex flex-col gap-guest-lg">
             <GuestField id="preview-party-size" label="Party size" required>
-              <input
+              <GuestInput
                 {...guestFieldControlProps({ id: 'preview-party-size', required: true })}
                 type="number"
                 min={1}
                 max={20}
                 defaultValue={3}
-                className={GUEST_INPUT_CLASS}
               />
+            </GuestField>
+
+            <GuestField id="preview-course" label="Main course">
+              <GuestSelect {...guestFieldControlProps({ id: 'preview-course' })} defaultValue="">
+                <option value="">Please choose</option>
+                <option value="roast">Roast beef</option>
+              </GuestSelect>
             </GuestField>
 
             <GuestField
@@ -215,13 +245,12 @@ export default function GuestPreviewPage(): React.JSX.Element {
               label="Special requirements"
               hint="Tell us about allergies or access needs. We share this with the kitchen and the team on shift. We keep it only for this booking."
             >
-              <textarea
+              <GuestTextarea
                 {...guestFieldControlProps({
                   id: 'preview-requirements',
                   hint: 'present',
                 })}
                 rows={3}
-                className={cn(GUEST_INPUT_CLASS, GUEST_TEXTAREA_CLASS, 'min-h-[82px]')}
               />
             </GuestField>
 
@@ -230,56 +259,58 @@ export default function GuestPreviewPage(): React.JSX.Element {
               label="Email"
               error="Enter an email address we can reply to."
             >
-              <input
+              <GuestInput
                 {...guestFieldControlProps({
                   id: 'preview-email',
                   error: 'Enter an email address we can reply to.',
                 })}
                 type="email"
-                className={cn(GUEST_INPUT_CLASS, GUEST_INPUT_INVALID_CLASS)}
+                invalid
               />
             </GuestField>
 
-            <fieldset className="rounded-guest-field border border-guest-border bg-guest-sunk px-[14px] py-3">
-              <legend className="text-ui font-semibold">Add-ons</legend>
-              <label className={GUEST_CHOICE_ROW_CLASS}>
-                <input type="checkbox" name="preview-addon" value="cheese" />
-                Cheese board
-              </label>
-              <label className={GUEST_CHOICE_ROW_CLASS}>
-                <input type="radio" name="preview-choice" value="one" />
-                A radio, same 20px box
-              </label>
+            <fieldset className="rounded-guest-field border border-guest-border bg-guest-sunk px-guest-md py-3">
+              <legend className="px-1 font-anchor-body text-guest-small font-semibold">Add-ons</legend>
+              <GuestChoice type="checkbox" id="preview-addon" name="preview-addon" value="cheese" label="Cheese board" />
+              <GuestChoice type="radio" id="preview-choice" name="preview-choice" value="one" label="A radio, same 20px box" />
+              <GuestChoice
+                type="radio"
+                id="preview-choice-boxed"
+                name="preview-choice"
+                value="two"
+                boxed
+                label="A boxed radio, for an option with two lines"
+              />
             </fieldset>
           </div>
         </GuestCard>
-      </Group>
+      </GuestSection>
 
-      <Group title="Trust line and sunk box">
+      <GuestSection title="Links, help line and trust line" titleId="preview-links">
+        <p className={GUEST_MESSAGE_CLASS}>
+          An inline <GuestLink href="/privacy">guest link</GuestLink> in running copy.
+        </p>
+        <GuestHelpLine>
+          Need help? Call <GuestPhoneLink />.
+        </GuestHelpLine>
         <TrustLine />
         <TrustLine>Secure payment via PayPal</TrustLine>
         <div className={GUEST_SUNK_BOX_CLASS}>
           <div className="flex flex-col gap-3">
-            {([
-              { icon: 'check', title: 'Secure booking', sub: 'Your details are encrypted.' },
-              { icon: 'bell', title: 'Confirmation', sub: 'We text you when it is done.' },
-              { icon: 'clock', title: 'Support', sub: 'Call us any time we are open.' },
-            ] satisfies { icon: IconName; title: string; sub: string }[]).map(({ icon, title, sub }) => (
+            {ASSURANCE_FIXTURES.map(({ icon, title, sub }) => (
               <div key={title} className="flex items-center gap-3">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-anchor-green/10">
-                  <Icon name={icon} size={15} className="text-anchor-green" />
-                </span>
+                <GuestStatusMark tone="brand" icon={icon} size="sm" />
                 <span className="flex flex-col">
-                  <span className="text-ui font-semibold">{title}</span>
-                  <span className="text-xs text-guest-text-muted">{sub}</span>
+                  <span className="font-semibold">{title}</span>
+                  <span className={GUEST_NOTE_CLASS}>{sub}</span>
                 </span>
               </div>
             ))}
           </div>
         </div>
-      </Group>
+      </GuestSection>
 
-      <Group title="Blocked state">
+      <GuestSection title="Blocked state" titleId="preview-blocked">
         <GuestBlockedState
           kicker="Table booking"
           heading="Payment link unavailable"
@@ -288,7 +319,7 @@ export default function GuestPreviewPage(): React.JSX.Element {
           primaryAction={{ label: 'Call 01753 682707', href: 'tel:+441753682707' }}
           secondaryAction={{ label: 'Back to book a table', href: 'https://www.the-anchor.pub' }}
         />
-      </Group>
+      </GuestSection>
     </GuestShell>
   )
 }

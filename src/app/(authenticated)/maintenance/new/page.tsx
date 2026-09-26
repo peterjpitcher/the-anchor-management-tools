@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { Alert, LinkButton, PageHeader } from '@/ds'
+import { Alert, LinkButton, PageLayout } from '@/ds'
 import { currentUserCanUseMaintenance, getMaintenanceAreas } from '@/app/actions/maintenance'
 import { MaintenanceNewClient } from '../_components/MaintenanceNewClient'
 
@@ -13,23 +13,21 @@ export default async function NewMaintenanceItemPage(): Promise<React.JSX.Elemen
   // it, but nothing new can be logged against one.
   const areasResult = await getMaintenanceAreas()
 
-  const header = (
-    <PageHeader
-      breadcrumbs={[{ label: 'Maintenance', href: '/maintenance' }, { label: 'Log an issue' }]}
-      title="Log an issue or improvement"
-      subtitle="Four fields is enough. Photos and the rest come afterwards."
-      className="mb-0"
-    />
-  )
+  // One header for every state. A single form, so the page is medium width.
+  const layoutProps = {
+    title: 'Log an Issue or Improvement',
+    subtitle: 'Four fields is enough, photos and the rest come afterwards',
+    backButton: { label: 'Back to Maintenance', href: '/maintenance' },
+    containerSize: 'md',
+  } as const
 
   if (!areasResult.success) {
     return (
-      <div className="space-y-6">
-        {header}
+      <PageLayout {...layoutProps}>
         <Alert tone="danger" title="Could not load the areas">
           {areasResult.error ?? 'Please reload the page and try again.'}
         </Alert>
-      </div>
+      </PageLayout>
     )
   }
 
@@ -39,23 +37,25 @@ export default async function NewMaintenanceItemPage(): Promise<React.JSX.Elemen
   // a form that can only fail.
   if (areas.length === 0) {
     return (
-      <div className="space-y-6">
-        {header}
+      <PageLayout {...layoutProps}>
         <Alert
           tone="warning"
           title="There are no areas yet"
-          actions={<LinkButton href="/settings/maintenance">Manage areas</LinkButton>}
+          actions={
+            <LinkButton href="/settings/maintenance" size="sm">
+              Manage Areas
+            </LinkButton>
+          }
         >
           Add at least one area before logging anything.
         </Alert>
-      </div>
+      </PageLayout>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {header}
+    <PageLayout {...layoutProps}>
       <MaintenanceNewClient areas={areas} />
-    </div>
+    </PageLayout>
   )
 }

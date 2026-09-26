@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Modal, Card, CardBody, Sparkline } from '@/ds'
+import { Modal, Card, CardBody, CardHeader, Empty, PageLoading, Sparkline, StatGrid } from '@/ds'
 import { Stat, Badge } from '@/ds'
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -84,56 +84,36 @@ export function ShortLinkAnalyticsModal({ open, onClose, shortCode }: Props) {
   return (
     <Modal open={open} onClose={onClose} title="Link Analytics" width="xl">
       {loading ? (
-        <div className="py-12 text-center text-text-muted">Loading analytics...</div>
+        <PageLoading inline label="Loading analytics" />
       ) : data ? (
         <div className="space-y-4">
           {/* Summary stats */}
-          <div className="grid grid-cols-2 gap-4">
-            <Card>
-              <CardBody>
-                <Stat label="Total Clicks" value={data.totalClicks} />
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody>
-                <Stat label="Last Clicked" value={data.lastClickedAt ? formatDateInLondon(data.lastClickedAt) : 'Never'} />
-              </CardBody>
-            </Card>
-          </div>
+          <StatGrid columns={2}>
+            <Stat label="Total Clicks" value={data.totalClicks} />
+            <Stat label="Last Clicked" value={data.lastClickedAt ? formatDateInLondon(data.lastClickedAt) : 'Never'} />
+          </StatGrid>
 
           {/* Sparkline */}
           {data.chartData.length > 0 && (
             <Card>
+              <CardHeader title="Clicks" subtitle="Last 30 days" />
               <CardBody>
-                <p className="text-xs text-text-muted mb-2">Clicks (Last 30 days)</p>
                 <Sparkline data={data.chartData} />
               </CardBody>
             </Card>
           )}
 
           {/* Device breakdown */}
-          <div className="grid grid-cols-3 gap-3">
-            <Card>
-              <CardBody>
-                <Stat label="Mobile" value={data.devices.mobile} />
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody>
-                <Stat label="Desktop" value={data.devices.desktop} />
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody>
-                <Stat label="Tablet" value={data.devices.tablet} />
-              </CardBody>
-            </Card>
-          </div>
+          <StatGrid columns={3}>
+            <Stat label="Mobile" value={data.devices.mobile} />
+            <Stat label="Desktop" value={data.devices.desktop} />
+            <Stat label="Tablet" value={data.devices.tablet} />
+          </StatGrid>
 
           {/* Top referrers */}
           {data.referrers.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Top Referrers</p>
+            <Card>
+              <CardHeader title="Top Referrers" />
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -152,11 +132,11 @@ export function ShortLinkAnalyticsModal({ open, onClose, shortCode }: Props) {
                   ))}
                 </TableBody>
               </Table>
-            </div>
+            </Card>
           )}
         </div>
       ) : (
-        <div className="py-12 text-center text-text-muted">No analytics data available</div>
+        <Empty size="sm" icon="chart" title="No analytics data available" />
       )}
     </Modal>
   )

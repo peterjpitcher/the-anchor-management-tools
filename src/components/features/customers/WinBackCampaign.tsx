@@ -14,7 +14,7 @@
  */
 
 import { useState, useTransition } from 'react'
-import { Badge, Button, Textarea, Icon } from '@/ds'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, FormFooter, Textarea } from '@/ds'
 import { Select } from '@/ds'
 import { ConfirmDialog } from '@/ds'
 import { toast } from '@/ds'
@@ -91,64 +91,48 @@ export function WinBackCampaign() {
   const canSend = trimmedMessage.length > 0 && !isOverLimit && !isSending && !isPreviewing
 
   return (
-    <div className="rounded-lg border border-border bg-surface">
-      {/* Header — always visible */}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-lg px-4 py-3 text-left focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-        aria-expanded={open}
-      >
-        <div className="flex items-center gap-2">
-          <Icon name="megaphone" size={20} className="text-primary" />
-          <span className="text-sm font-semibold text-text">Win-Back Campaign</span>
-          {lastResult !== null && (
-            <Badge tone="success" size="sm">
-              Last sent: {lastResult.sent}/{lastResult.count}
-            </Badge>
-          )}
-        </div>
-        {open ? (
-          <Icon name="chevronUp" size={16} className="text-text-muted" />
-        ) : (
-          <Icon name="chevronDown" size={16} className="text-text-muted" />
-        )}
-      </button>
+    <Card>
+      <CardHeader
+        title="Win-Back Campaign"
+        subtitle="Send a targeted SMS to opted-in customers who haven't booked in a while"
+        action={
+          <div className="flex items-center gap-2">
+            {lastResult !== null && (
+              <Badge tone="success" size="sm">
+                Last sent: {lastResult.sent}/{lastResult.count}
+              </Badge>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+            >
+              {open ? 'Hide' : 'Set Up Campaign'}
+            </Button>
+          </div>
+        }
+      />
 
       {/* Collapsible body */}
       {open && (
-        <div className="border-t border-border px-4 pb-4 pt-3 space-y-4">
-          <p className="text-sm text-text-muted">
-            Send a targeted SMS to opted-in customers who haven&apos;t booked in a while.
-          </p>
-
+        <CardBody className="space-y-4">
           {/* Inactivity threshold */}
           <div className="max-w-xs">
-            <label className="block text-sm font-medium text-text mb-1">
-              Customers inactive for
-            </label>
             <Select
+              label="Customers inactive for"
               value={inactiveMonths}
               onChange={(e) => handleMonthsChange(e.target.value)}
               options={INACTIVE_OPTIONS}
             />
           </div>
 
-          {/* Message composer */}
+          {/* Message composer. The DS error slot prints the over-limit message under the field. */}
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label htmlFor="win-back-message" className="block text-sm font-medium text-text">
-                SMS message
-              </label>
-              <span
-                className={`text-xs ${isOverLimit ? 'text-danger font-semibold' : 'text-text-muted'}`}
-              >
-                {charCount}/{MAX_CHARS}
-              </span>
-            </div>
-            {/* The DS error slot prints the same words, styles and position as the old line. */}
             <Textarea
               id="win-back-message"
+              label="SMS message"
               value={message}
               onChange={handleMessageChange}
               rows={4}
@@ -156,23 +140,27 @@ export function WinBackCampaign() {
               error={isOverLimit ? 'Message must be 160 characters or fewer.' : undefined}
               placeholder="Type your SMS message here…"
             />
+            <p
+              className={`mt-1 text-right text-xs ${isOverLimit ? 'text-danger-fg font-semibold' : 'text-text-muted'}`}
+              aria-live="polite"
+            >
+              {charCount}/{MAX_CHARS}
+            </p>
           </div>
 
           {/* Preview result */}
           {previewCount !== null && (
-            <div className="rounded-md border border-info-border bg-info-soft px-3 py-2 text-sm text-info-fg">
+            <Alert tone="info" size="sm" role="status">
               This campaign will send to{' '}
               <strong>{previewCount} customer{previewCount === 1 ? '' : 's'}</strong>{' '}
               inactive for {inactiveMonths}+ months.
-            </div>
+            </Alert>
           )}
 
-          {/* Actions */}
-          <div className="flex flex-wrap gap-2">
+          <FormFooter>
             <Button
               type="button"
               variant="secondary"
-              size="sm"
               onClick={handlePreview}
               disabled={!canSend}
               loading={isPreviewing}
@@ -182,15 +170,14 @@ export function WinBackCampaign() {
             <Button
               type="button"
               variant="primary"
-              size="sm"
               onClick={() => setConfirmOpen(true)}
               disabled={!canSend}
               loading={isSending}
             >
               Send Campaign
             </Button>
-          </div>
-        </div>
+          </FormFooter>
+        </CardBody>
       )}
 
       {/* Confirm dialog */}
@@ -207,6 +194,6 @@ export function WinBackCampaign() {
         confirmText="Send Campaign"
         type="warning"
       />
-    </div>
+    </Card>
   )
 }

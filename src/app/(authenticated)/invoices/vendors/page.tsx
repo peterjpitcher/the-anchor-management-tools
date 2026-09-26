@@ -3,21 +3,30 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getVendors, createVendor, updateVendor, deleteVendor } from '@/app/actions/vendors'
-import { PageLayout, Icon } from '@/ds'
-import { Button } from '@/ds'
-import { Modal, ModalActions } from '@/ds'
-import { Input } from '@/ds'
-import { Textarea } from '@/ds'
-import { Field } from '@/ds'
-import { Card } from '@/ds'
-import { Checkbox } from '@/ds'
-import { Alert } from '@/ds'
-import { Badge } from '@/ds'
-import { Empty } from '@/ds'
-import { DataTable } from '@/ds'
+import {
+  PageLayout,
+  PageLoading,
+  Icon,
+  Button,
+  IconButton,
+  Modal,
+  Input,
+  Textarea,
+  Field,
+  Card,
+  Checkbox,
+  Alert,
+  Badge,
+  Empty,
+  DataTable,
+  ConfirmDialog,
+  FormFooter,
+} from '@/ds'
 import { getVendorContacts, createVendorContact, updateVendorContact, deleteVendorContact } from '@/app/actions/vendor-contacts'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { FINANCE_NAV } from '../_shared/nav'
+import { VENDOR_CONTACT_FLAG_TONE } from '../_shared/status-ui'
 
 function PrimaryContactCell({ vendor }: { vendor: InvoiceVendor }) {
   const supabase = useSupabase()
@@ -107,6 +116,8 @@ export default function VendorsPage() {
   const [contactsModalVendor, setContactsModalVendor] = useState<InvoiceVendor | null>(null)
   const [contacts, setContacts] = useState<VendorContact[]>([])
   const [contactsLoading, setContactsLoading] = useState(false)
+  // A failed contacts load is kept apart from a failed save, so it is never drawn as "No contacts yet".
+  const [contactsLoadError, setContactsLoadError] = useState<string | null>(null)
   const [contactForm, setContactForm] = useState<{ id?: string, name: string, email: string, phone: string, role: string, is_primary: boolean, receive_invoice_copy: boolean }>({
     name: '',
     email: '',
@@ -116,6 +127,9 @@ export default function VendorsPage() {
     receive_invoice_copy: false,
   })
   const [contactSaving, setContactSaving] = useState(false)
+  // A failed load is kept apart from a failed save or delete, so it is never drawn as an empty list.
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<InvoiceVendor | null>(null)
 
   useEffect(() => {
     if (permissionsLoading) {
@@ -144,8 +158,9 @@ export default function VendorsPage() {
       }
 
       setVendors(result.vendors)
+      setLoadError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load vendors')
+      setLoadError(err instanceof Error ? err.message : 'Failed to load vendors')
     } finally {
       setLoading(false)
     }
@@ -155,12 +170,13 @@ export default function VendorsPage() {
     setContactsModalVendor(vendor)
     setContactsLoading(true)
     setError(null)
+    setContactsLoadError(null)
     try {
       const res = await getVendorContacts(vendor.id)
       if (res.error) throw new Error(res.error)
       setContacts(res.contacts || [])
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load contacts')
+      setContactsLoadError(err instanceof Error ? err.message : 'Failed to load contacts')
     } finally {
       setContactsLoading(false)
     }
@@ -169,6 +185,7 @@ export default function VendorsPage() {
   function closeContacts() {
     setContactsModalVendor(null)
     setContacts([])
+    setContactsLoadError(null)
     setContactForm({ name: '', email: '', phone: '', role: '', is_primary: false, receive_invoice_copy: false })
     setError(null)
   }
@@ -197,7 +214,10 @@ export default function VendorsPage() {
       if (res.error) throw new Error(res.error)
       // refresh list
       const list = await getVendorContacts(contactsModalVendor.id)
-      if (!list.error) setContacts(list.contacts || [])
+      if (!list.error) {
+        setContacts(list.contacts || [])
+        setContactsLoadError(null)
+      }
       setContactForm({ name: '', email: '', phone: '', role: '', is_primary: false, receive_invoice_copy: false })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save contact')
@@ -218,7 +238,10 @@ export default function VendorsPage() {
       if (res.error) throw new Error(res.error)
       if (contactsModalVendor) {
         const list = await getVendorContacts(contactsModalVendor.id)
-        if (!list.error) setContacts(list.contacts || [])
+        if (!list.error) {
+          setContacts(list.contacts || [])
+          setContactsLoadError(null)
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete contact')
@@ -313,13 +336,17 @@ export default function VendorsPage() {
     }
   }
 
-  async function handleDelete(vendor: InvoiceVendor) {
+  function requestDelete(vendor: InvoiceVendor) {
     if (!canDelete) {
       setError('You do not have permission to delete vendors')
       return
     }
+    setDeleteTarget(vendor)
+  }
 
-    if (!confirm(`Are you sure you want to delete ${vendor.name}? This action cannot be undone.`)) {
+  async function handleDelete(vendor: InvoiceVendor) {
+    if (!canDelete) {
+      setError('You do not have permission to delete vendors')
       return
     }
 
@@ -339,41 +366,54 @@ export default function VendorsPage() {
     }
   }
 
+  const layoutProps = {
+    title: 'Vendors',
+    subtitle: 'Manage your invoice vendors',
+    navItems: FINANCE_NAV,
+  }
+
   if (permissionsLoading || loading) {
-    return (
-      <PageLayout
-        title="Vendors"
-        subtitle="Manage your invoice vendors"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        navItems={[
-          { label: 'Catalog', href: '/invoices/catalog' },
-          { label: 'Vendors', href: '/invoices/vendors' },
-          { label: 'Recurring', href: '/invoices/recurring' },
-        ]}
-        loading
-        loadingLabel="Loading vendors..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading vendors" />
   }
 
   if (!canView) {
     return null
   }
 
+  const editButton = (v: InvoiceVendor) => (
+    <IconButton
+      size="sm"
+      variant="secondary"
+      onClick={() => openForm(v)}
+      label="Edit vendor"
+      icon={<Icon name="edit" size={16} />}
+      disabled={!canEdit}
+      title={!canEdit ? 'You need invoice edit permission to update vendors.' : undefined}
+    />
+  )
+
+  const deleteButton = (v: InvoiceVendor) => (
+    <IconButton
+      size="sm"
+      variant="danger"
+      onClick={() => requestDelete(v)}
+      label="Delete vendor"
+      icon={<Icon name="trash" size={16} />}
+      disabled={!canDelete}
+      title={!canDelete ? 'You need invoice delete permission to remove vendors.' : undefined}
+    />
+  )
+
+  // While a dialog is open its own error banner shows the message, not the page behind it.
+  const dialogOpen = showForm || contactsModalVendor !== null
+
   return (
     <PageLayout
-      title="Vendors"
-      subtitle="Manage your invoice vendors"
-      backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-      navItems={[
-        { label: 'Catalog', href: '/invoices/catalog' },
-        { label: 'Vendors', href: '/invoices/vendors' },
-        { label: 'Recurring', href: '/invoices/recurring' },
-      ]}
+      {...layoutProps}
       headerActions={
         canCreate ? (
-          <Button
-            variant="primary"
+          <Button variant="primary"
+            size="sm"
             onClick={() => openForm()}
             leftIcon={<Icon name="plus" size={16} />}
           >
@@ -382,37 +422,23 @@ export default function VendorsPage() {
         ) : undefined
       }
     >
-      <div className="space-y-6">
       {isReadOnly && (
-        <Alert
-          tone="info"
-          className="mb-6"
-        >
+        <Alert tone="info">
           You have read-only access to vendors. Create, edit, delete, and contact management actions are disabled.
         </Alert>
       )}
-      {error && (
-        <Alert tone="danger" className="mb-6">{error}</Alert>
-      )}
+      {error && !dialogOpen && <Alert tone="danger">{error}</Alert>}
 
-      {vendors.length === 0 ? (
-        <Empty
-          title="No vendors found"
-          description="Add your first vendor to get started."
-          action={
-            canCreate ? (
-              <Button onClick={() => openForm()} leftIcon={<Icon name="plus" size={16} />}>
-                Add Your First Vendor
-              </Button>
-            ) : undefined
-          }
-        />
+      {loadError ? (
+        <Alert tone="danger" title="Could not load vendors">{loadError}</Alert>
       ) : (
-        <Card>
+        <Card padding="none">
           <DataTable<InvoiceVendor>
             data={vendors}
             getRowKey={(v) => v.id}
+            bordered={false}
             emptyMessage="No vendors found"
+            emptyDescription="Add your first vendor to get started."
             columns={[
               { key: 'name', header: 'Name', cell: (v: InvoiceVendor) => (
                 <div>
@@ -426,7 +452,7 @@ export default function VendorsPage() {
               { key: 'terms', header: 'Payment Terms', cell: (v: InvoiceVendor) => <span className="text-sm">{v.payment_terms} days</span> },
               { key: 'actions', header: 'Actions', align: 'right', cell: (v: InvoiceVendor) => (
                 <div className="flex justify-end gap-2">
-                  <Button
+                  <Button variant="secondary"
                     size="sm"
                     onClick={() => openContacts(v)}
                     aria-label="Manage contacts"
@@ -434,33 +460,13 @@ export default function VendorsPage() {
                   >
                     Contacts
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => openForm(v)}
-                    aria-label="Edit vendor"
-                    iconOnly
-                    disabled={!canEdit}
-                    title={!canEdit ? 'You need invoice edit permission to update vendors.' : undefined}
-                  >
-                    <Icon name="edit" size={16} />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => handleDelete(v)}
-                    aria-label="Delete vendor"
-                    iconOnly
-                    disabled={!canDelete}
-                    title={!canDelete ? 'You need invoice delete permission to remove vendors.' : undefined}
-                  >
-                    <Icon name="trash" size={16} />
-                  </Button>
+                  {editButton(v)}
+                  {deleteButton(v)}
                 </div>
               ) },
             ]}
             renderMobileCard={(v: InvoiceVendor) => (
-              <div className="space-y-3 p-3">
+              <div className="space-y-3 border-b border-border p-pad-card">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-medium">{v.name}</div>
@@ -470,31 +476,11 @@ export default function VendorsPage() {
                     <div className="mt-1 text-sm text-text-muted">Terms: {v.payment_terms} days</div>
                   </div>
                   <div className="flex shrink-0 gap-2">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => openForm(v)}
-                      aria-label="Edit vendor"
-                      iconOnly
-                      disabled={!canEdit}
-                      title={!canEdit ? 'You need invoice edit permission to update vendors.' : undefined}
-                    >
-                      <Icon name="edit" size={16} />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => handleDelete(v)}
-                      aria-label="Delete vendor"
-                      iconOnly
-                      disabled={!canDelete}
-                      title={!canDelete ? 'You need invoice delete permission to remove vendors.' : undefined}
-                    >
-                      <Icon name="trash" size={16} />
-                    </Button>
+                    {editButton(v)}
+                    {deleteButton(v)}
                   </div>
                 </div>
-                <Button
+                <Button variant="secondary"
                   size="sm"
                   fullWidth
                   onClick={() => openContacts(v)}
@@ -509,15 +495,13 @@ export default function VendorsPage() {
         </Card>
       )}
 
-      </div>
-
       <Modal
         open={showForm}
         onClose={closeForm}
         title={editingVendor ? 'Edit Vendor' : 'Add New Vendor'}
         size="lg"
         footer={
-          <ModalActions>
+          <>
             <Button
               type="button"
               variant="secondary"
@@ -526,7 +510,7 @@ export default function VendorsPage() {
             >
               Cancel
             </Button>
-            <Button
+            <Button variant="primary"
               type="submit"
               form="vendor-form"
               disabled={
@@ -537,97 +521,81 @@ export default function VendorsPage() {
             >
               {editingVendor ? 'Update' : 'Create'} Vendor
             </Button>
-          </ModalActions>
+          </>
         }
       >
-
         <form id="vendor-form" onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Company Name" required className="md:col-span-2">
-                  <Input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                  />
-                </Field>
+          {error && <Alert tone="danger">{error}</Alert>}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Company Name" required className="sm:col-span-2">
+              <Input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+              />
+            </Field>
 
-                <div className="md:col-span-2">
-                  <Alert tone="info" title="Contacts moved">
-                    Manage people and email recipients via the Contacts button above. The vendor’s default email remains visible in the list for legacy invoices.
-                  </Alert>
-                </div>
+            <div className="sm:col-span-2">
+              <Alert tone="info" title="Contacts moved">
+                Manage people and email recipients via the Contacts button above. The vendor’s default email remains visible in the list for legacy invoices.
+              </Alert>
+            </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Phone
-                  </label>
-                  <Input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  />
-                </div>
+            <Input
+              label="Phone"
+              type="tel"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+            />
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    VAT Number
-                  </label>
-                  <Input
-                    type="text"
-                    value={formData.vat_number}
-                    onChange={(e) => setFormData({ ...formData, vat_number: e.target.value })}
-                  />
-                </div>
+            <Input
+              label="VAT Number"
+              type="text"
+              value={formData.vat_number}
+              onChange={(e) => setFormData({ ...formData, vat_number: e.target.value })}
+            />
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Payment Terms (days)
-                  </label>
-                  <Input
-                    type="number"
-                    value={formData.payment_terms}
-                    onChange={(e) => {
-                      const nextValue = Number.isNaN(e.target.valueAsNumber) ? 0 : e.target.valueAsNumber
-                      setFormData({ ...formData, payment_terms: nextValue })
-                    }}
-                    min="0"
-                  />
-                </div>
+            <Input
+              label="Payment Terms (days)"
+              type="number"
+              value={formData.payment_terms}
+              onChange={(e) => {
+                const nextValue = Number.isNaN(e.target.valueAsNumber) ? 0 : e.target.valueAsNumber
+                setFormData({ ...formData, payment_terms: nextValue })
+              }}
+              min="0"
+            />
 
-                <div className="md:col-span-2">
-                  <Checkbox
-                    checked={formData.paypal_payments_enabled}
-                    onChange={(checked: boolean) =>
-                      setFormData({ ...formData, paypal_payments_enabled: checked })
-                    }
-                    label="Offer PayPal/card payment"
-                    description="Adds a secure online payment link to this vendor's invoice emails."
-                  />
-                </div>
+            <div className="sm:col-span-2">
+              <Checkbox
+                checked={formData.paypal_payments_enabled}
+                onChange={(checked: boolean) =>
+                  setFormData({ ...formData, paypal_payments_enabled: checked })
+                }
+                label="Offer PayPal/card payment"
+                description="Adds a secure online payment link to this vendor's invoice emails."
+              />
+            </div>
 
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium mb-1">
-                    Address
-                  </label>
-                  <Textarea
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    rows={3}
-                  />
-                </div>
+            <div className="sm:col-span-2">
+              <Textarea
+                label="Address"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                rows={3}
+              />
+            </div>
 
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium mb-1">
-                    Notes
-                  </label>
-                  <Textarea
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-              </div>
+            <div className="sm:col-span-2">
+              <Textarea
+                label="Notes"
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows={3}
+              />
+            </div>
+          </div>
         </form>
       </Modal>
 
@@ -635,85 +603,88 @@ export default function VendorsPage() {
       <Modal
         open={!!contactsModalVendor}
         onClose={closeContacts}
-        title={contactsModalVendor ? `Contacts — ${contactsModalVendor.name}` : 'Contacts'}
+        title={contactsModalVendor ? `Contacts for ${contactsModalVendor.name}` : 'Contacts'}
         size="lg"
       >
-        {error && (
-          <Alert tone="danger" className="mb-4">{error}</Alert>)
-        }
         {contactsLoading ? (
-          <div className="py-10 text-center text-text-muted">Loading contacts…</div>
+          <PageLoading inline label="Loading contacts" />
         ) : (
-          <div className="space-y-6">
-            <div className="border border-border rounded-md divide-y divide-border">
-              {contacts.length === 0 && (
-                <div className="p-4 text-sm text-text-muted">No contacts yet.</div>
-              )}
-              {contacts.map(c => (
-                <div key={c.id} className="p-4 flex items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">
-                      {c.name || '(No name)'}
-                      {c.is_primary && (
-                        <Badge tone="success" className="ml-2">
-                          Primary
-                        </Badge>
-                      )}
-                      {c.receive_invoice_copy && (
-                        <Badge tone="info" className="ml-2">
-                          Invoice CC
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-sm text-text break-all">{c.email}</div>
-                    {(c.phone || c.role) && (
-                      <div className="text-xs text-text-muted mt-1">
-                        {c.role ? <span className="mr-3">Role: {c.role}</span> : null}
-                        {c.phone ? <span>Phone: {c.phone}</span> : null}
+          <div className="space-y-4">
+            {error && <Alert tone="danger">{error}</Alert>}
+            {contactsLoadError ? (
+              <Alert tone="danger" title="Could not load contacts">{contactsLoadError}</Alert>
+            ) : (
+              <Card padding="none">
+                {contacts.length === 0 ? (
+                  <Empty size="sm" title="No contacts yet" />
+                ) : (
+                  <div className="divide-y divide-border">
+                    {contacts.map(c => (
+                      <div key={c.id} className="p-4 flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">
+                            {c.name || '(No name)'}
+                            {c.is_primary && (
+                              <Badge tone={VENDOR_CONTACT_FLAG_TONE.primary} className="ml-2">
+                                Primary
+                              </Badge>
+                            )}
+                            {c.receive_invoice_copy && (
+                              <Badge tone={VENDOR_CONTACT_FLAG_TONE.invoiceCc} className="ml-2">
+                                Invoice CC
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-sm text-text break-all">{c.email}</div>
+                          {(c.phone || c.role) && (
+                            <div className="text-xs text-text-muted mt-1">
+                              {c.role ? <span className="mr-3">Role: {c.role}</span> : null}
+                              {c.phone ? <span>Phone: {c.phone}</span> : null}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setContactForm({
+                              id: c.id,
+                              name: c.name || '',
+                              email: c.email || '',
+                              phone: c.phone || '',
+                              role: c.role || '',
+                              is_primary: c.is_primary,
+                              receive_invoice_copy: !!c.receive_invoice_copy,
+                            })}
+                            disabled={!canEdit}
+                            title={!canEdit ? 'You need invoice edit permission to modify contacts.' : undefined}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => removeContact(c.id)}
+                            disabled={!canEdit}
+                            title={!canEdit ? 'You need invoice edit permission to modify contacts.' : undefined}
+                          >
+                            Delete
+                          </Button>
+                        </div>
                       </div>
-                    )}
+                    ))}
                   </div>
-                  <div className="flex gap-2 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => setContactForm({
-                        id: c.id,
-                        name: c.name || '',
-                        email: c.email || '',
-                        phone: c.phone || '',
-                        role: c.role || '',
-                        is_primary: c.is_primary,
-                        receive_invoice_copy: !!c.receive_invoice_copy,
-                      })}
-                      disabled={!canEdit}
-                      title={!canEdit ? 'You need invoice edit permission to modify contacts.' : undefined}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => removeContact(c.id)}
-                      disabled={!canEdit}
-                      title={!canEdit ? 'You need invoice edit permission to modify contacts.' : undefined}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                )}
+              </Card>
+            )}
 
             {!canEdit && (
-              <Alert
-                tone="info"
-              >
+              <Alert tone="info">
                 You have read-only access to contacts. Editing and adding contacts is disabled.
               </Alert>
             )}
-            <form onSubmit={saveContact} className="space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <form onSubmit={saveContact} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Name">
                   <Input
                     value={contactForm.name}
@@ -744,7 +715,7 @@ export default function VendorsPage() {
                     disabled={!canEdit}
                   />
                 </Field>
-                <div className="md:col-span-2">
+                <div className="sm:col-span-2">
                   <Checkbox
                     checked={contactForm.is_primary}
                     onChange={(checked: boolean) => setContactForm({ ...contactForm, is_primary: checked })}
@@ -752,7 +723,7 @@ export default function VendorsPage() {
                     label="Set as primary contact"
                   />
                 </div>
-                <div className="md:col-span-2">
+                <div className="sm:col-span-2">
                   <Checkbox
                     checked={contactForm.receive_invoice_copy}
                     onChange={(checked: boolean) => setContactForm({ ...contactForm, receive_invoice_copy: checked })}
@@ -761,19 +732,31 @@ export default function VendorsPage() {
                   />
                 </div>
               </div>
-              <div className="flex justify-end">
-                <Button
+              <FormFooter>
+                <Button variant="primary"
                   type="submit"
                   loading={contactSaving}
                   disabled={!canEdit || contactSaving}
                 >
                   {contactForm.id ? 'Update Contact' : 'Add Contact'}
                 </Button>
-              </div>
+              </FormFooter>
             </form>
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={async () => {
+          if (deleteTarget) await handleDelete(deleteTarget)
+        }}
+        title="Delete Vendor"
+        message={deleteTarget ? `Are you sure you want to delete ${deleteTarget.name}? This action cannot be undone.` : undefined}
+        confirmLabel="Delete"
+        tone="danger"
+      />
     </PageLayout>
   )
 }

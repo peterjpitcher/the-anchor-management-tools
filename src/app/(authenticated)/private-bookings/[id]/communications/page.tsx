@@ -1,10 +1,9 @@
 import { notFound, redirect } from 'next/navigation'
-import Link from 'next/link'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { getPrivateBooking } from '@/app/actions/privateBookingActions'
 import { CommunicationsTabServer } from '@/components/private-bookings/CommunicationsTabServer'
 import { PageLayout } from '@/ds'
-import { Alert } from '@/ds'
+import { PB_BACK_TO_LIST, PB_DETAIL_NAV } from '../../_shared/nav'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,43 +49,22 @@ export default async function PrivateBookingCommunicationsPage({ params }: PageP
   }
 
   const booking = result?.data ?? null
-  const title = booking?.customer_full_name || booking?.customer_name || 'Private booking'
 
-  const navItems = [
-    { label: 'Overview', href: `/private-bookings/${bookingId}` },
-    { label: 'Items', href: `/private-bookings/${bookingId}/items` },
-    { label: 'Messages', href: `/private-bookings/${bookingId}/messages` },
-    { label: 'Communications', href: `/private-bookings/${bookingId}/communications` },
-    { label: 'Contract', href: `/private-bookings/${bookingId}/contract` },
-  ]
+  // One header for every state. Every tab of the booking shows the customer's name.
+  const layoutProps = {
+    title: booking?.customer_full_name || booking?.customer_name || 'Private Booking',
+    subtitle: 'Messages and emails sent, and reminders still to come',
+    backButton: PB_BACK_TO_LIST,
+    navItems: PB_DETAIL_NAV(bookingId),
+  }
+
+  if (!booking) {
+    return <PageLayout {...layoutProps} error={result?.error ?? "We couldn't load this booking."} />
+  }
 
   return (
-    <PageLayout
-      title={title}
-      subtitle="Communications"
-      breadcrumbs={[
-        { label: 'Private Bookings', href: '/private-bookings' },
-        { label: title, href: `/private-bookings/${bookingId}` },
-        { label: 'Communications', href: '' },
-      ]}
-      backButton={{ label: 'Back to booking', href: `/private-bookings/${bookingId}` }}
-      navItems={navItems}
-    >
-      {!booking ? (
-        <Alert
-          tone="danger"
-          title="We couldn’t load this booking"
-        >
-          <Link
-            href="/private-bookings"
-            className="text-sm font-medium text-primary hover:underline"
-          >
-            Back to private bookings
-          </Link>
-        </Alert>
-      ) : (
-        <CommunicationsTabServer bookingId={bookingId} />
-      )}
+    <PageLayout {...layoutProps}>
+      <CommunicationsTabServer bookingId={bookingId} />
     </PageLayout>
   )
 }

@@ -1,85 +1,43 @@
 'use client'
 
 import { useState } from 'react'
-import type { Role, UserSummaryWithRoles } from '@/types/rbac'
+import Link from 'next/link'
 import type { SiteSettings } from '@/app/actions/site-settings'
 import { updateSiteSettings, updateSiteToggle } from '@/app/actions/site-settings'
-
 import {
-  PageHeader,
-  SectionNav,
+  Alert,
+  Button,
   Card,
-  CardHeader,
   CardBody,
-  Empty,
+  CardHeader,
+  Field,
+  FormFooter,
+  Input,
+  PageLayout,
+  Section,
+  Switch,
   toast,
 } from '@/ds'
-import {
-  Button,
-  Field,
-  Input,
-  Switch,
-} from '@/ds'
 import { Icon } from '@/ds/icons'
-import Link from 'next/link'
-
-import { UsersContent } from '@/app/(authenticated)/users/_components/UsersContent'
-import { RolesContent } from '@/app/(authenticated)/users/_components/RolesContent'
-import { ProfileClient } from '@/app/(authenticated)/profile/_components/ProfileClient'
-
-type ActiveSection = 'general' | 'users' | 'roles' | 'profile'
+import type { SettingsTileGroup } from '../_shared/tiles'
 
 interface SettingsClientProps {
-  users: UserSummaryWithRoles[]
-  roles: Role[]
-  canManageRoles: boolean
+  /** The settings pages this user can open, already filtered on the server. */
+  tileGroups: SettingsTileGroup[]
   canManageSettings: boolean
   siteSettings: SiteSettings | null
-  /** Super-admin only, resolved on the server. The page behind it re-checks. */
-  canManageMaintenanceAreas: boolean
 }
 
-const SECTION_ITEMS = [
-  { id: 'general', label: 'General' },
-  { id: 'users', label: 'Users' },
-  { id: 'roles', label: 'Roles' },
-  { id: 'profile', label: 'Profile' },
-]
-
-const SETTINGS_LINKS = [
-  { href: '/settings/business-hours', title: 'Business Hours', description: 'Opening hours and special days', icon: 'calendar' },
-  { href: '/settings/table-bookings', title: 'Table Bookings', description: 'Tables, areas, groups, and pacing', icon: 'table' },
-  { href: '/settings/customer-labels', title: 'Customer Labels', description: 'Customer tags and automation rules', icon: 'users' },
-  { href: '/settings/event-categories', title: 'Event Categories', description: 'Defaults and marketing metadata', icon: 'calendar' },
-  { href: '/settings/api-keys', title: 'API Keys', description: 'External API access and revocation', icon: 'link' },
-  { href: '/settings/sms-failures', title: 'SMS Failures', description: 'Retry or dismiss failed messages', icon: 'message' },
-  { href: '/settings/pay-bands', title: 'Pay Bands', description: 'Age bands, rates, and overrides', icon: 'pound' },
-  { href: '/settings/gdpr', title: 'GDPR', description: 'Data export and deletion tools', icon: 'eyeOff' },
-] as const
-
-/**
- * Shown only to a super-admin. The maintenance tracker has no RBAC module on
- * purpose, so it cannot be listed alongside the tiles above, which are ungated.
- */
-const MAINTENANCE_AREAS_LINK = {
-  href: '/settings/maintenance',
-  title: 'Maintenance Areas',
-  description: 'Parts of the pub a maintenance item can belong to',
-  icon: 'alertTriangle',
-} as const
-
 /* ------------------------------------------------------------------ */
-/*  General Section                                                    */
+/*  General settings                                                   */
 /* ------------------------------------------------------------------ */
 
-function GeneralSection({
+function GeneralSettings({
   settings,
   canEdit,
-  canManageMaintenanceAreas,
 }: {
   settings: SiteSettings | null
   canEdit: boolean
-  canManageMaintenanceAreas: boolean
 }) {
   const [saving, setSaving] = useState(false)
   const [toggleSaving, setToggleSaving] = useState<string | null>(null)
@@ -108,7 +66,11 @@ function GeneralSection({
   })
 
   if (!settings) {
-    return <Empty title="Settings unavailable" description="Could not load site settings." />
+    return (
+      <Alert tone="danger" title="Settings unavailable">
+        Could not load site settings.
+      </Alert>
+    )
   }
 
   async function handleSave(e: React.FormEvent): Promise<void> {
@@ -151,12 +113,12 @@ function GeneralSection({
   const disabled = !canEdit
 
   return (
-    <div className="space-y-6">
+    <>
       {/* Business Profile */}
       <form onSubmit={handleSave}>
         <Card>
           <CardHeader title="Business Profile" subtitle="Your venue details" />
-          <CardBody>
+          <CardBody className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Business Name">
                 <Input
@@ -198,11 +160,11 @@ function GeneralSection({
               </div>
             </div>
             {canEdit && (
-              <div className="flex justify-end mt-4">
-                <Button type="submit" variant="primary" size="sm" loading={saving}>
+              <FormFooter>
+                <Button type="submit" variant="primary" loading={saving}>
                   Save Changes
                 </Button>
-              </div>
+              </FormFooter>
             )}
           </CardBody>
         </Card>
@@ -211,203 +173,180 @@ function GeneralSection({
       {/* Quick Toggles */}
       <Card>
         <CardHeader title="Quick Toggles" subtitle="Enable or disable key features" />
-        <CardBody>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-ui font-medium text-text-strong">Online Bookings</p>
-                <p className="text-xs text-text-muted">Accept table bookings from the website</p>
-              </div>
-              <Switch
-                aria-label="Online Bookings"
-                checked={toggles.online_bookings_enabled}
-                onChange={() => handleToggle('online_bookings_enabled')}
-                disabled={disabled || toggleSaving === 'online_bookings_enabled'}
-              />
+        <CardBody className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-ui font-medium text-text-strong">Online Bookings</p>
+              <p className="text-xs text-text-muted">Accept table bookings from the website</p>
             </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-ui font-medium text-text-strong">SMS Notifications</p>
-                <p className="text-xs text-text-muted">Send automatic SMS confirmations</p>
-              </div>
-              <Switch
-                aria-label="SMS Notifications"
-                checked={toggles.sms_notifications_enabled}
-                onChange={() => handleToggle('sms_notifications_enabled')}
-                disabled={disabled || toggleSaving === 'sms_notifications_enabled'}
-              />
+            <Switch
+              aria-label="Online Bookings"
+              checked={toggles.online_bookings_enabled}
+              onChange={() => handleToggle('online_bookings_enabled')}
+              disabled={disabled || toggleSaving === 'online_bookings_enabled'}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-ui font-medium text-text-strong">SMS Notifications</p>
+              <p className="text-xs text-text-muted">Send automatic SMS confirmations</p>
             </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-ui font-medium text-text-strong">Auto-Confirm Bookings</p>
-                <p className="text-xs text-text-muted">Automatically confirm new bookings</p>
-              </div>
-              <Switch
-                aria-label="Auto-Confirm Bookings"
-                checked={toggles.auto_confirm_bookings}
-                onChange={() => handleToggle('auto_confirm_bookings')}
-                disabled={disabled || toggleSaving === 'auto_confirm_bookings'}
-              />
+            <Switch
+              aria-label="SMS Notifications"
+              checked={toggles.sms_notifications_enabled}
+              onChange={() => handleToggle('sms_notifications_enabled')}
+              disabled={disabled || toggleSaving === 'sms_notifications_enabled'}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-ui font-medium text-text-strong">Auto-Confirm Bookings</p>
+              <p className="text-xs text-text-muted">Automatically confirm new bookings</p>
             </div>
+            <Switch
+              aria-label="Auto-Confirm Bookings"
+              checked={toggles.auto_confirm_bookings}
+              onChange={() => handleToggle('auto_confirm_bookings')}
+              disabled={disabled || toggleSaving === 'auto_confirm_bookings'}
+            />
           </div>
         </CardBody>
       </Card>
 
-      {/* Settings groups in 3-col grid */}
-      <form onSubmit={handleSave}>
+      {/* Settings groups in a 3-column grid, saved together */}
+      <form onSubmit={handleSave} className="space-y-6">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <Card>
             <CardHeader title="Booking Settings" />
-            <CardBody>
-              <div className="space-y-3">
-                <Field label="Default Party Size">
-                  <Input
-                    type="number"
-                    value={form.default_party_size}
-                    onChange={(e) => setForm({ ...form, default_party_size: e.target.value })}
-                    disabled={disabled}
-                  />
-                </Field>
-                <Field label="Booking Duration (mins)">
-                  <Input
-                    type="number"
-                    value={form.booking_duration_mins}
-                    onChange={(e) => setForm({ ...form, booking_duration_mins: e.target.value })}
-                    disabled={disabled}
-                  />
-                </Field>
-                <Field label="Advance Booking (days)">
-                  <Input
-                    type="number"
-                    value={form.advance_booking_days}
-                    onChange={(e) => setForm({ ...form, advance_booking_days: e.target.value })}
-                    disabled={disabled}
-                  />
-                </Field>
-              </div>
+            <CardBody className="space-y-4">
+              <Field label="Default Party Size">
+                <Input
+                  type="number"
+                  value={form.default_party_size}
+                  onChange={(e) => setForm({ ...form, default_party_size: e.target.value })}
+                  disabled={disabled}
+                />
+              </Field>
+              <Field label="Booking Duration (mins)">
+                <Input
+                  type="number"
+                  value={form.booking_duration_mins}
+                  onChange={(e) => setForm({ ...form, booking_duration_mins: e.target.value })}
+                  disabled={disabled}
+                />
+              </Field>
+              <Field label="Advance Booking (days)">
+                <Input
+                  type="number"
+                  value={form.advance_booking_days}
+                  onChange={(e) => setForm({ ...form, advance_booking_days: e.target.value })}
+                  disabled={disabled}
+                />
+              </Field>
             </CardBody>
           </Card>
 
           <Card>
             <CardHeader title="Payment Settings" />
-            <CardBody>
-              <div className="space-y-3">
-                <Field label="Deposit Amount">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={form.deposit_amount}
-                    onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })}
-                    disabled={disabled}
-                  />
-                </Field>
-                <Field label="Min Group Size for Deposit">
-                  <Input
-                    type="number"
-                    value={form.min_group_size_deposit}
-                    onChange={(e) => setForm({ ...form, min_group_size_deposit: e.target.value })}
-                    disabled={disabled}
-                  />
-                </Field>
-                <Field label="Currency">
-                  <Input value={form.currency} disabled />
-                </Field>
-              </div>
+            <CardBody className="space-y-4">
+              <Field label="Deposit Amount">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.deposit_amount}
+                  onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })}
+                  disabled={disabled}
+                />
+              </Field>
+              <Field label="Min Group Size for Deposit">
+                <Input
+                  type="number"
+                  value={form.min_group_size_deposit}
+                  onChange={(e) => setForm({ ...form, min_group_size_deposit: e.target.value })}
+                  disabled={disabled}
+                />
+              </Field>
+              <Field label="Currency">
+                <Input value={form.currency} disabled />
+              </Field>
             </CardBody>
           </Card>
 
           <Card>
             <CardHeader title="Notification Settings" />
-            <CardBody>
-              <div className="space-y-3">
-                <Field label="Reminder (hours before)">
-                  <Input
-                    type="number"
-                    value={form.reminder_hours_before}
-                    onChange={(e) => setForm({ ...form, reminder_hours_before: e.target.value })}
-                    disabled={disabled}
-                  />
-                </Field>
-                <Field label="Admin Email">
-                  <Input
-                    type="email"
-                    value={form.admin_email}
-                    onChange={(e) => setForm({ ...form, admin_email: e.target.value })}
-                    disabled={disabled}
-                  />
-                </Field>
-                <Field label="CC Email">
-                  <Input
-                    type="email"
-                    value={form.cc_email}
-                    onChange={(e) => setForm({ ...form, cc_email: e.target.value })}
-                    placeholder="Optional"
-                    disabled={disabled}
-                  />
-                </Field>
-              </div>
+            <CardBody className="space-y-4">
+              <Field label="Reminder (hours before)">
+                <Input
+                  type="number"
+                  value={form.reminder_hours_before}
+                  onChange={(e) => setForm({ ...form, reminder_hours_before: e.target.value })}
+                  disabled={disabled}
+                />
+              </Field>
+              <Field label="Admin Email">
+                <Input
+                  type="email"
+                  value={form.admin_email}
+                  onChange={(e) => setForm({ ...form, admin_email: e.target.value })}
+                  disabled={disabled}
+                />
+              </Field>
+              <Field label="CC Email">
+                <Input
+                  type="email"
+                  value={form.cc_email}
+                  onChange={(e) => setForm({ ...form, cc_email: e.target.value })}
+                  placeholder="Optional"
+                  disabled={disabled}
+                />
+              </Field>
             </CardBody>
           </Card>
         </div>
 
         {canEdit && (
-          <div className="flex justify-end mt-4">
-            <Button type="submit" variant="primary" size="sm" loading={saving}>
+          <FormFooter>
+            <Button type="submit" variant="primary" loading={saving}>
               Save All Settings
             </Button>
-          </div>
+          </FormFooter>
         )}
       </form>
+    </>
+  )
+}
 
-      <Card>
-        <CardHeader title="Settings Pages" subtitle="Specialised configuration areas" />
-        <CardBody>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              ...SETTINGS_LINKS,
-              ...(canManageMaintenanceAreas ? [MAINTENANCE_AREAS_LINK] : []),
-            ].map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-start gap-3 rounded-default border border-border p-3 hover:bg-surface-hover"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-default bg-primary-soft text-primary">
-                  <Icon name={item.icon} size={18} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-ui font-semibold text-text-strong">{item.title}</span>
-                  <span className="block text-xs leading-5 text-text-muted">{item.description}</span>
-                </span>
-              </Link>
-            ))}
-          </div>
-        </CardBody>
-      </Card>
+/* ------------------------------------------------------------------ */
+/*  Settings pages: one tile per page this user can open               */
+/* ------------------------------------------------------------------ */
 
-      {/* Developer Tools */}
-      <Card>
-        <CardHeader title="Developer Tools" subtitle="Internal tools and references" />
-        <CardBody>
-          <Link
-            href="/settings/design-system"
-            className="flex items-center gap-3 p-3 -m-1 rounded-default hover:bg-surface-hover transition-colors group"
-          >
-            <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary-soft">
-              <Icon name="palette" size={20} className="text-primary" />
+function SettingsTiles({ groups }: { groups: SettingsTileGroup[] }) {
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {groups.map((group) => (
+        <Card key={group.title}>
+          <CardHeader title={group.title} />
+          <CardBody>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {group.tiles.map((tile) => (
+                <Link
+                  key={tile.href}
+                  href={tile.href}
+                  className="flex items-start gap-3 rounded-default border border-border p-3 transition-colors hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-default bg-primary-soft text-primary">
+                    <Icon name={tile.icon} size={18} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-ui font-semibold text-text-strong">{tile.title}</span>
+                    <span className="block text-xs leading-5 text-text-muted">{tile.description}</span>
+                  </span>
+                </Link>
+              ))}
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-ui font-semibold text-text-strong group-hover:text-primary transition-colors">
-                Design System
-              </p>
-              <p className="text-xs text-text-muted">
-                Component library, colours, typography, and spacing reference
-              </p>
-            </div>
-            <Icon name="chevronRight" size={16} className="text-text-subtle" />
-          </Link>
-        </CardBody>
-      </Card>
+          </CardBody>
+        </Card>
+      ))}
     </div>
   )
 }
@@ -417,42 +356,21 @@ function GeneralSection({
 /* ------------------------------------------------------------------ */
 
 export function SettingsClient({
-  users,
-  roles,
-  canManageRoles,
+  tileGroups,
   canManageSettings,
   siteSettings,
-  canManageMaintenanceAreas,
 }: SettingsClientProps) {
-  const [activeSection, setActiveSection] = useState<ActiveSection>('general')
-
   return (
-    <div>
-      <PageHeader
-        breadcrumbs={[{ label: 'Settings' }]}
-        title="Settings"
-        subtitle="Manage application settings and configurations"
-      />
+    <PageLayout title="Settings" subtitle="Manage application settings and configurations">
+      <Section title="Settings Pages" description="Specialised configuration areas">
+        <SettingsTiles groups={tileGroups} />
+      </Section>
 
-      <SectionNav
-        items={SECTION_ITEMS}
-        activeId={activeSection}
-        onSelect={(id) => setActiveSection(id as ActiveSection)}
-        className="mb-6"
-      />
-
-      {activeSection === 'general' && (
-        <GeneralSection
-          settings={siteSettings}
-          canEdit={canManageSettings}
-          canManageMaintenanceAreas={canManageMaintenanceAreas}
-        />
-      )}
-      {activeSection === 'users' && (
-        <UsersContent users={users} roles={roles} canManageRoles={canManageRoles} />
-      )}
-      {activeSection === 'roles' && <RolesContent />}
-      {activeSection === 'profile' && <ProfileClient />}
-    </div>
+      <Section title="General" description="Venue details, booking defaults and feature switches">
+        <div className="space-y-6">
+          <GeneralSettings settings={siteSettings} canEdit={canManageSettings} />
+        </div>
+      </Section>
+    </PageLayout>
   )
 }

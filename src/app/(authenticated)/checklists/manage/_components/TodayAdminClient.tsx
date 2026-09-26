@@ -10,6 +10,9 @@ import {
   CardHeader,
   CardBody,
   Input,
+  PageLayout,
+  Stat,
+  StatGrid,
   Switch,
   toast,
 } from '@/ds'
@@ -19,6 +22,8 @@ import {
 } from '@/app/actions/checklists-admin'
 import type { ChecklistFlags } from '@/app/actions/checklists-admin'
 import type { TodayChecklistResult } from '@/app/actions/checklists'
+import { CHECKLISTS_MANAGE_LAYOUT } from '../../_shared/nav'
+import { CHECKLIST_GENERATION_STATUS } from '../../_shared/status-ui'
 
 type Settings = ChecklistFlags & { spotChecksPerDay: number }
 
@@ -30,17 +35,6 @@ const FLAG_LABELS: { key: FlagKey; label: string; hint: string }[] = [
   { key: 'promptsEnabled', label: 'Prompts enabled', hint: 'The mid-shift reminder modal (Phase 4).' },
   { key: 'emailsEnabled', label: 'Emails enabled', hint: 'Outbox rows are held, not sent, when off.' },
 ]
-
-const GENERATION_STATUS: Record<
-  TodayChecklistResult['generationStatus'],
-  { label: string; tone: 'success' | 'warning' | 'danger' | 'info' | 'neutral' }
-> = {
-  complete: { label: 'Complete', tone: 'success' },
-  running: { label: 'Running', tone: 'info' },
-  failed: { label: 'Failed', tone: 'danger' },
-  skipped_closed: { label: 'Closed today', tone: 'neutral' },
-  none: { label: 'Not generated', tone: 'warning' },
-}
 
 interface TodayAdminClientProps {
   settings?: Settings
@@ -111,51 +105,59 @@ export function TodayAdminClient({
     router.refresh()
   }
 
-  const status = today ? GENERATION_STATUS[today.generationStatus] : null
+  const status = today ? CHECKLIST_GENERATION_STATUS[today.generationStatus] : null
 
   return (
-    <div className="space-y-4">
+    <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
       {settingsError && (
         <Alert tone="danger" title="Could not load settings">
           {settingsError}
         </Alert>
       )}
 
-      {/* Generation status + counts */}
+      {/* Generation status, then today's counts */}
       <Card>
-        <CardHeader title="Today" subtitle={today?.businessDate} />
-        <CardBody className="space-y-4">
+        <CardHeader
+          title="Today"
+          subtitle={today?.businessDate}
+          action={
+            todayError ? undefined : (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={handleRegenerate}
+                loading={regenerating}
+              >
+                Regenerate Today
+              </Button>
+            )
+          }
+        />
+        <CardBody>
           {todayError ? (
             <Alert tone="danger" title="Could not load today's checklist">
               {todayError}
             </Alert>
           ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="text-sm text-text-muted">Generation status</span>
-                {status && <Badge tone={status.tone}>{status.label}</Badge>}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleRegenerate}
-                  loading={regenerating}
-                >
-                  Regenerate today
-                </Button>
-              </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                <Stat label="Outstanding" value={counts.pending} />
-                <Stat label="Done" value={counts.done} />
-                <Stat label="Missed" value={counts.missed} />
-                <Stat label="Skipped" value={counts.skipped} />
-                <Stat label="N/A" value={counts.not_applicable} />
-                <Stat label="Breaches" value={counts.breaches} />
-              </div>
-            </>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm text-text-muted">Generation status</span>
+              {status && <Badge tone={status.tone}>{status.label}</Badge>}
+            </div>
           )}
         </CardBody>
       </Card>
+
+      {!todayError && (
+        <StatGrid columns={3}>
+          <Stat label="Outstanding" value={counts.pending} />
+          <Stat label="Done" value={counts.done} />
+          <Stat label="Missed" value={counts.missed} />
+          <Stat label="Skipped" value={counts.skipped} />
+          <Stat label="N/A" value={counts.not_applicable} />
+          <Stat label="Breaches" value={counts.breaches} />
+        </StatGrid>
+      )}
 
       {/* Flags */}
       <Card>
@@ -199,15 +201,6 @@ export function TodayAdminClient({
           </div>
         </CardBody>
       </Card>
-    </div>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-default border border-border bg-surface px-3 py-2">
-      <div className="text-xs uppercase tracking-wider text-text-muted">{label}</div>
-      <div className="text-xl font-semibold text-text-strong">{value}</div>
-    </div>
+    </PageLayout>
   )
 }

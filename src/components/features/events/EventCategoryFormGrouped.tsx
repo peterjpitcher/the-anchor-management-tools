@@ -1,16 +1,11 @@
 'use client'
 
-import { useId, useState } from 'react'
+import { useState } from 'react'
 import { EventCategory } from '@/types/event-categories'
 import { KeywordStrategyCard } from './KeywordStrategyCard'
 import { FaqEditor } from './FaqEditor'
 import { parseKeywords, keywordsToDisplay } from '@/lib/keywords'
-import { Button, toast, Icon, type IconName } from '@/ds'
-import { Card } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Checkbox } from '@/ds'
+import { Accordion, Button, Checkbox, FormFooter, Icon, Input, Select, Switch, Textarea, toast } from '@/ds'
 import { cn } from '@/lib/utils'
 import { SquareImageUpload } from '@/components/features/shared/SquareImageUpload'
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '@/types/event-categories'
@@ -32,45 +27,20 @@ interface EventCategoryFormGroupedProps {
   onCancel: () => void
 }
 
-interface SectionProps {
-  title: string
-  description?: string
-  icon?: IconName
-  children: React.ReactNode
-  defaultOpen?: boolean
-}
-
-function CollapsibleSection({ title, description, icon, children, defaultOpen = true }: SectionProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen)
-  
+/** The heading of one collapsible group of the form, shown in its DS Accordion header. */
+function GroupTitle({ title, description }: { title: string; description?: string }): React.JSX.Element {
   return (
-    <Card padding="none">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-6 sm:p-8 flex items-center justify-between hover:bg-surface-hover transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-      >
-        <div className="flex items-center space-x-3">
-          {icon && <Icon name={icon} size={20} className="text-text-subtle" />}
-          <div className="text-left">
-            <h3 className="text-lg font-medium leading-6 text-text">{title}</h3>
-            {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
-          </div>
-        </div>
-        {isOpen ? (
-          <Icon name="chevronUp" size={20} className="text-text-subtle" />
-        ) : (
-          <Icon name="chevronDown" size={20} className="text-text-subtle" />
-        )}
-      </button>
-      {isOpen && (
-        <div className="border-t border-border px-4 py-6 sm:p-8">
-          {children}
-        </div>
-      )}
-    </Card>
+    <span className="block">
+      <span className="block text-base font-medium text-text">{title}</span>
+      {description && <span className="mt-1 block text-sm font-normal text-text-muted">{description}</span>}
+    </span>
   )
 }
+
+/** A named group of picker buttons, labelled like a DS field. */
+const PICKER_LEGEND = 'mb-1.5 text-xs font-medium uppercase tracking-wider text-text-muted'
+/** A caption over a run of fields inside a group. */
+const SUBGROUP_LABEL = 'text-xs font-semibold uppercase tracking-wider text-text-muted'
 
 export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: EventCategoryFormGroupedProps) {
   // Basic fields
@@ -78,7 +48,6 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
   const [description, setDescription] = useState(() => clamp(category?.description ?? '', MAX_DESCRIPTION_LENGTH))
   const [color, setColor] = useState(category?.color ?? CATEGORY_COLORS[0].value)
   const [icon, setIcon] = useState(category?.icon ?? CATEGORY_ICONS[0].value)
-  const pickerId = useId()
   const [isActive, setIsActive] = useState(category?.is_active ?? true)
   const [sortOrder, setSortOrder] = useState(category?.sort_order?.toString() ?? '0')
   const [imageUrl, setImageUrl] = useState(category?.default_image_url ?? '')
@@ -200,13 +169,19 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Basic Information Section */}
-      <CollapsibleSection 
-        title="Basic Information" 
-        description="Essential details about this event category"
-        icon="info"
-        defaultOpen={true}
-      >
+      {/* Three collapsible groups. Basic information starts open, as before. */}
+      <Accordion
+        variant="bordered"
+        multiple
+        iconPosition="end"
+        defaultActiveKeys={['basic']}
+        contentClassName="py-6 sm:px-6"
+        items={[
+          {
+            key: 'basic',
+            icon: <Icon name="info" size={20} className="text-text-subtle" />,
+            title: <GroupTitle title="Basic Information" description="Essential details about this event category" />,
+            content: (
         <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
           {/* Category Image */}
           <div className="col-span-full">
@@ -222,97 +197,79 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="sm:col-span-4">
-            <label htmlFor="name" className="block text-sm font-medium leading-6 text-text">
-              Category Name *
-            </label>
-            <div className="mt-2">
-              <Input
-                type="text"
-                id="name"
-                value={name}
-                onChange={(e) => setName(clamp(e.target.value, MAX_NAME_LENGTH))}
-                required
-                maxLength={MAX_NAME_LENGTH}
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-text-muted">{name.length}/{MAX_NAME_LENGTH} characters</p>
-            </div>
+            <Input
+              label="Category Name *"
+              type="text"
+              id="name"
+              value={name}
+              onChange={(e) => setName(clamp(e.target.value, MAX_NAME_LENGTH))}
+              required
+              maxLength={MAX_NAME_LENGTH}
+              hint={`${name.length}/${MAX_NAME_LENGTH} characters`}
+            />
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="sort_order" className="block text-sm font-medium leading-6 text-text">
-              Sort Order
-            </label>
-            <div className="mt-2">
-              <Input
-                type="number"
-                id="sort_order"
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value)}
-                min="0"
-                fullWidth
-              />
-            </div>
+            <Input
+              label="Sort Order"
+              type="number"
+              id="sort_order"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+              min="0"
+            />
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="description" className="block text-sm font-medium leading-6 text-text">
-              Description
-            </label>
-            <div className="mt-2">
-              <Textarea
-                id="description"
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(clamp(e.target.value, MAX_DESCRIPTION_LENGTH))}
-                maxLength={MAX_DESCRIPTION_LENGTH}
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-text-muted">{description.length}/{MAX_DESCRIPTION_LENGTH} characters</p>
-            </div>
+            <Textarea
+              label="Description"
+              id="description"
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(clamp(e.target.value, MAX_DESCRIPTION_LENGTH))}
+              maxLength={MAX_DESCRIPTION_LENGTH}
+              hint={`${description.length}/${MAX_DESCRIPTION_LENGTH} characters`}
+            />
           </div>
 
           {/* Appearance. Each picker is a named group and each option says whether it is the
               one chosen, which the ring and border alone only showed to sighted users. */}
-          <div className="sm:col-span-3">
-            <label id={`${pickerId}-color`} className="block text-sm font-medium leading-6 text-text">
-              Color
-            </label>
-            <div role="group" aria-labelledby={`${pickerId}-color`} className="mt-2 flex flex-wrap gap-2">
+          <fieldset className="min-w-0 sm:col-span-3">
+            <legend className={PICKER_LEGEND}>Color</legend>
+            <div className="flex flex-wrap gap-2">
               {CATEGORY_COLORS.map((colorOption) => (
+                // A raw button: a swatch filled with the saved colour, which a DS Button cannot
+                // be. The chosen one gets a primary border with a gap before the colour
+                // (padding plus a content-box fill), and focus the standard ring outside it.
                 <button
                   key={colorOption.value}
                   type="button"
                   aria-pressed={color === colorOption.value}
                   onClick={() => setColor(colorOption.value)}
-                  // The white ring offset paints over the focus ring, so it drops to 0 while
-                  // focused: otherwise keyboard focus shows as a 1px sliver, or not at all on
-                  // the selected swatch.
                   className={cn(
-                    'w-8 h-8 rounded-full ring-2 ring-offset-2 focus-visible:outline-hidden focus-visible:shadow-ring focus-visible:ring-offset-0',
-                    color === colorOption.value ? 'ring-primary' : 'ring-transparent'
+                    'h-8 w-8 rounded-full border-2 bg-clip-content p-0.5 focus-visible:outline-hidden focus-visible:shadow-ring',
+                    color === colorOption.value ? 'border-primary' : 'border-transparent'
                   )}
                   style={{ backgroundColor: colorOption.value }}
                   title={colorOption.label}
                 />
               ))}
             </div>
-          </div>
+          </fieldset>
 
-          <div className="sm:col-span-3">
-            <label id={`${pickerId}-icon`} className="block text-sm font-medium leading-6 text-text">
-              Icon
-            </label>
-            <div role="group" aria-labelledby={`${pickerId}-icon`} className="mt-2 flex flex-wrap gap-2">
+          <fieldset className="min-w-0 sm:col-span-3">
+            <legend className={PICKER_LEGEND}>Icon</legend>
+            <div className="flex flex-wrap gap-2">
               {CATEGORY_ICONS.map((iconOption) => {
                 return (
+                  // A raw button: one cell of the icon picker, drawn in the chosen colour.
                   <button
                     key={iconOption.value}
                     type="button"
                     aria-pressed={icon === iconOption.value}
                     onClick={() => setIcon(iconOption.value)}
                     className={cn(
-                      'p-2 rounded-md border-2 focus-visible:outline-hidden focus-visible:shadow-ring',
+                      'p-2 rounded-default border-2 focus-visible:outline-hidden focus-visible:shadow-ring',
                       icon === iconOption.value
                         ? 'border-primary bg-primary-soft'
                         : 'border-border-strong hover:bg-surface-hover'
@@ -324,30 +281,22 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 )
               })}
             </div>
-          </div>
+          </fieldset>
 
           <div className="sm:col-span-4">
-            <div className="relative flex items-start">
-              <div className="flex h-6 items-center">
-                <Checkbox
-                  id="is_active"
-                  checked={isActive}
-                  onChange={(checked) => setIsActive(checked)}
-                />
-              </div>
-              <div className="ml-3 text-sm leading-6">
-                <label htmlFor="is_active" className="font-medium text-text">
-                  Active
-                </label>
-                <p className="text-text-muted">This category will be available when creating events</p>
-              </div>
-            </div>
+            <Checkbox
+              id="is_active"
+              label="Active"
+              description="This category will be available when creating events"
+              checked={isActive}
+              onChange={(checked) => setIsActive(checked)}
+            />
           </div>
 
           {/* Preview */}
           <div className="col-span-full">
-            <h4 className="text-sm font-medium text-text mb-2">Preview</h4>
-            <div className="flex items-center space-x-3 p-4 bg-surface-2 rounded-lg">
+            <p className={cn(SUBGROUP_LABEL, 'mb-2')}>Preview</p>
+            <div className="flex items-center space-x-3 p-4 bg-surface-2 rounded-default">
               <div 
                 className="p-2 rounded-lg"
                 style={{ backgroundColor: `${color}20` }}
@@ -361,431 +310,307 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
             </div>
           </div>
         </div>
-      </CollapsibleSection>
-
-      {/* Event Defaults Section */}
-      <CollapsibleSection 
-        title="Event Defaults" 
-        description="Default settings for events in this category"
-        icon="calendar"
-        defaultOpen={false}
-      >
+            ),
+          },
+          {
+            key: 'defaults',
+            icon: <Icon name="calendar" size={20} className="text-text-subtle" />,
+            title: <GroupTitle title="Event Defaults" description="Default settings for events in this category" />,
+            content: (
         <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
           <div className="col-span-full">
-            <h4 className="text-sm font-medium text-text mb-4">Time</h4>
+            <p className={SUBGROUP_LABEL}>Time</p>
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_start_time" className="block text-sm font-medium leading-6 text-text">
-              Default Start Time
-            </label>
-            <div className="mt-2">
-              <Input
-                type="time"
-                id="default_start_time"
-                value={defaultStartTime}
-                onChange={(e) => setDefaultStartTime(e.target.value)}
-                fullWidth
-              />
-            </div>
+            <Input
+              label="Default Start Time"
+              type="time"
+              id="default_start_time"
+              value={defaultStartTime}
+              onChange={(e) => setDefaultStartTime(e.target.value)}
+            />
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_end_time" className="block text-sm font-medium leading-6 text-text">
-              Default End Time
-            </label>
-            <div className="mt-2">
-              <Input
-                type="time"
-                id="default_end_time"
-                value={defaultEndTime}
-                onChange={(e) => setDefaultEndTime(e.target.value)}
-                fullWidth
-              />
-            </div>
+            <Input
+              label="Default End Time"
+              type="time"
+              id="default_end_time"
+              value={defaultEndTime}
+              onChange={(e) => setDefaultEndTime(e.target.value)}
+            />
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_duration_minutes" className="block text-sm font-medium leading-6 text-text">
-              Duration (minutes)
-            </label>
-            <div className="mt-2">
-              <Input
-                type="number"
-                id="default_duration_minutes"
-                value={defaultDurationMinutes}
-                onChange={(e) => setDefaultDurationMinutes(e.target.value)}
-                min="1"
-                max="1440"
-                placeholder="e.g., 180"
-                fullWidth
-              />
-            </div>
+            <Input
+              label="Duration (minutes)"
+              type="number"
+              id="default_duration_minutes"
+              value={defaultDurationMinutes}
+              onChange={(e) => setDefaultDurationMinutes(e.target.value)}
+              min="1"
+              max="1440"
+              placeholder="e.g., 180"
+            />
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_doors_time" className="block text-sm font-medium leading-6 text-text">
-              Doors Time
-            </label>
-            <div className="mt-2">
-              <Input
-                type="time"
-                id="default_doors_time"
-                value={defaultDoorsTime}
-                onChange={(e) => setDefaultDoorsTime(e.target.value)}
-                fullWidth
-              />
-            </div>
+            <Input
+              label="Doors Time"
+              type="time"
+              id="default_doors_time"
+              value={defaultDoorsTime}
+              onChange={(e) => setDefaultDoorsTime(e.target.value)}
+            />
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_last_entry_time" className="block text-sm font-medium leading-6 text-text">
-              Last Entry Time
-            </label>
-            <div className="mt-2">
-              <Input
-                type="time"
-                id="default_last_entry_time"
-                value={defaultLastEntryTime}
-                onChange={(e) => setDefaultLastEntryTime(e.target.value)}
-                fullWidth
-              />
-            </div>
+            <Input
+              label="Last Entry Time"
+              type="time"
+              id="default_last_entry_time"
+              value={defaultLastEntryTime}
+              onChange={(e) => setDefaultLastEntryTime(e.target.value)}
+            />
           </div>
 
           <div className="col-span-full">
-            <h4 className="text-sm font-medium text-text mb-4 mt-6">Pricing & Booking</h4>
+            <p className={cn(SUBGROUP_LABEL, 'mt-6')}>Pricing & Booking</p>
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_price" className="block text-sm font-medium leading-6 text-text">
-              Default Price (£)
-            </label>
-            <div className="mt-2">
-              <Input
-                type="number"
-                id="default_price"
-                value={defaultPrice}
-                onChange={(e) => {
-                  const nextPrice = parseFloat(e.target.value) || 0
-                  setDefaultPrice(e.target.value)
-                  setDefaultIsFree(nextPrice === 0)
-                  if (nextPrice === 0) setDefaultPaymentMode('free')
-                  if (nextPrice > 0 && defaultPaymentMode === 'free') setDefaultPaymentMode('cash_only')
-                }}
-                min="0"
-                step="0.01"
-                fullWidth
-              />
-            </div>
+            <Input
+              label="Default Price (£)"
+              type="number"
+              id="default_price"
+              value={defaultPrice}
+              onChange={(e) => {
+                const nextPrice = parseFloat(e.target.value) || 0
+                setDefaultPrice(e.target.value)
+                setDefaultIsFree(nextPrice === 0)
+                if (nextPrice === 0) setDefaultPaymentMode('free')
+                if (nextPrice > 0 && defaultPaymentMode === 'free') setDefaultPaymentMode('cash_only')
+              }}
+              min="0"
+              step="0.01"
+            />
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_capacity" className="block text-sm font-medium leading-6 text-text">
-              Default Capacity
-            </label>
-            <div className="mt-2">
-              <Input
-                type="number"
-                id="default_capacity"
-                value={defaultCapacity}
-                onChange={(e) => setDefaultCapacity(e.target.value)}
-                min="1"
-                max="10000"
-                placeholder="Unlimited"
-                fullWidth
-              />
-            </div>
+            <Input
+              label="Default Capacity"
+              type="number"
+              id="default_capacity"
+              value={defaultCapacity}
+              onChange={(e) => setDefaultCapacity(e.target.value)}
+              min="1"
+              max="10000"
+              placeholder="Unlimited"
+            />
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_booking_mode" className="block text-sm font-medium leading-6 text-text">
-              Seating / Booking
-            </label>
-            <div className="mt-2">
-              <Select
-                id="default_booking_mode"
-                value={defaultBookingMode}
-                onChange={(e) => setDefaultBookingMode(e.target.value as EventCategory['default_booking_mode'])}
-                fullWidth
-              >
-                <option value="table">Table booking</option>
-                <option value="communal">Communal seating</option>
-                <option value="general">Individual tickets</option>
-                <option value="mixed">Mixed seating</option>
-              </Select>
-            </div>
+            <Select
+              label="Seating / Booking"
+              id="default_booking_mode"
+              value={defaultBookingMode}
+              onChange={(e) => setDefaultBookingMode(e.target.value as EventCategory['default_booking_mode'])}
+            >
+              <option value="table">Table booking</option>
+              <option value="communal">Communal seating</option>
+              <option value="general">Individual tickets</option>
+              <option value="mixed">Mixed seating</option>
+            </Select>
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_payment_mode" className="block text-sm font-medium leading-6 text-text">
-              Payment
-            </label>
-            <div className="mt-2">
-              <Select
-                id="default_payment_mode"
-                value={defaultPaymentMode}
-                onChange={(e) => {
-                  const value = e.target.value as EventCategory['default_payment_mode']
-                  setDefaultPaymentMode(value)
-                  setDefaultIsFree(value === 'free')
-                }}
-                fullWidth
-              >
-                <option value="free">Free</option>
-                <option value="cash_only">Cash on arrival</option>
-                <option value="prepaid">Prepaid ticket</option>
-              </Select>
-            </div>
+            <Select
+              label="Payment"
+              id="default_payment_mode"
+              value={defaultPaymentMode}
+              onChange={(e) => {
+                const value = e.target.value as EventCategory['default_payment_mode']
+                setDefaultPaymentMode(value)
+                setDefaultIsFree(value === 'free')
+              }}
+            >
+              <option value="free">Free</option>
+              <option value="cash_only">Cash on arrival</option>
+              <option value="prepaid">Prepaid ticket</option>
+            </Select>
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="default_booking_url" className="block text-sm font-medium leading-6 text-text">
-              Default Booking URL
-            </label>
-            <div className="mt-2">
-              <Input
-                type="url"
-                id="default_booking_url"
-                value={defaultBookingUrl}
-                onChange={(e) => setDefaultBookingUrl(e.target.value)}
-                placeholder="https://example.com/book"
-                fullWidth
-              />
-            </div>
+            <Input
+              label="Default Booking URL"
+              type="url"
+              id="default_booking_url"
+              value={defaultBookingUrl}
+              onChange={(e) => setDefaultBookingUrl(e.target.value)}
+              placeholder="https://example.com/book"
+            />
           </div>
 
-          <div className="col-span-full flex items-center justify-between pt-4 border-t border-border">
+          <div className="col-span-full flex items-center justify-between gap-4 pt-4 border-t border-border">
             <div>
-              <label htmlFor="default-promo-sms" className="text-sm font-medium text-text">
-                Default promotional SMS
-              </label>
+              <p className="text-sm font-medium text-text">Default promotional SMS</p>
               <p className="text-xs text-text-muted">New events in this category will inherit this setting</p>
             </div>
-            <button
-              id="default-promo-sms"
-              type="button"
-              role="switch"
-              aria-checked={defaultPromoSmsEnabled}
-              onClick={() => setDefaultPromoSmsEnabled(!defaultPromoSmsEnabled)}
-              className={cn(
-                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-pill border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-hidden focus-visible:shadow-ring',
-                defaultPromoSmsEnabled ? 'bg-primary' : 'bg-border-strong'
-              )}
-            >
-              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow-sm ring-0 transition duration-200 ease-in-out ${defaultPromoSmsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-            </button>
+            <Switch
+              aria-label="Default promotional SMS"
+              checked={defaultPromoSmsEnabled}
+              onChange={setDefaultPromoSmsEnabled}
+            />
           </div>
 
-          <div className="col-span-full flex items-center justify-between">
+          <div className="col-span-full flex items-center justify-between gap-4">
             <div>
-              <label htmlFor="default-bookings" className="text-sm font-medium text-text">
-                Default accept bookings
-              </label>
+              <p className="text-sm font-medium text-text">Default accept bookings</p>
               <p className="text-xs text-text-muted">New events in this category will inherit this setting</p>
             </div>
-            <button
-              id="default-bookings"
-              type="button"
-              role="switch"
-              aria-checked={defaultBookingsEnabled}
-              onClick={() => setDefaultBookingsEnabled(!defaultBookingsEnabled)}
-              className={cn(
-                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-pill border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-hidden focus-visible:shadow-ring',
-                defaultBookingsEnabled ? 'bg-primary' : 'bg-border-strong'
-              )}
-            >
-              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow-sm ring-0 transition duration-200 ease-in-out ${defaultBookingsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-            </button>
+            <Switch
+              aria-label="Default accept bookings"
+              checked={defaultBookingsEnabled}
+              onChange={setDefaultBookingsEnabled}
+            />
           </div>
 
           <div className="col-span-full">
-            <h4 className="text-sm font-medium text-text mb-4 mt-6">Performers & Reminders</h4>
+            <p className={cn(SUBGROUP_LABEL, 'mt-6')}>Performers & Reminders</p>
           </div>
 
           <div className="sm:col-span-3">
-            <label htmlFor="default_performer_name" className="block text-sm font-medium leading-6 text-text">
-              Default Performer Name
-            </label>
-            <div className="mt-2">
-              <Input
-                type="text"
-                id="default_performer_name"
-                value={defaultPerformerName}
-                onChange={(e) => setDefaultPerformerName(e.target.value)}
-                placeholder="e.g., DJ John, The Blues Band"
-                fullWidth
-              />
-            </div>
+            <Input
+              label="Default Performer Name"
+              type="text"
+              id="default_performer_name"
+              value={defaultPerformerName}
+              onChange={(e) => setDefaultPerformerName(e.target.value)}
+              placeholder="e.g., DJ John, The Blues Band"
+            />
           </div>
 
           <div className="sm:col-span-3">
-            <label htmlFor="default_performer_type" className="block text-sm font-medium leading-6 text-text">
-              Default Performer Type
-            </label>
-            <div className="mt-2">
-              <Select
-                id="default_performer_type"
-                value={defaultPerformerType}
-                onChange={(e) => setDefaultPerformerType(e.target.value)}
-                fullWidth
-              >
-                <option value="">Select type...</option>
-                <option value="MusicGroup">Music Group / Band</option>
-                <option value="Person">Solo Performer</option>
-                <option value="TheaterGroup">Theater Group</option>
-                <option value="DanceGroup">Dance Group</option>
-                <option value="ComedyGroup">Comedy Group</option>
-                <option value="Organization">Organization</option>
-              </Select>
-            </div>
+            <Select
+              label="Default Performer Type"
+              id="default_performer_type"
+              value={defaultPerformerType}
+              onChange={(e) => setDefaultPerformerType(e.target.value)}
+            >
+              <option value="">Select type...</option>
+              <option value="MusicGroup">Music Group / Band</option>
+              <option value="Person">Solo Performer</option>
+              <option value="TheaterGroup">Theater Group</option>
+              <option value="DanceGroup">Dance Group</option>
+              <option value="ComedyGroup">Comedy Group</option>
+              <option value="Organization">Organization</option>
+            </Select>
           </div>
 
           <div className="sm:col-span-2">
-            <label htmlFor="default_reminder_hours" className="block text-sm font-medium leading-6 text-text">
-              Reminder Hours Before
-            </label>
-            <div className="mt-2">
-              <Input
-                type="number"
-                id="default_reminder_hours"
-                value={defaultReminderHours}
-                onChange={(e) => setDefaultReminderHours(e.target.value)}
-                min="1"
-                max="168"
-                fullWidth
-              />
-            </div>
+            <Input
+              label="Reminder Hours Before"
+              type="number"
+              id="default_reminder_hours"
+              value={defaultReminderHours}
+              onChange={(e) => setDefaultReminderHours(e.target.value)}
+              min="1"
+              max="168"
+            />
           </div>
         </div>
-      </CollapsibleSection>
-
-      {/* SEO & Content Section */}
-      <CollapsibleSection 
-        title="SEO & Content" 
-        description="Search engine optimization and content details"
-        icon="megaphone"
-        defaultOpen={false}
-      >
+            ),
+          },
+          {
+            key: 'seo',
+            icon: <Icon name="megaphone" size={20} className="text-text-subtle" />,
+            title: <GroupTitle title="SEO & Content" description="Search engine optimization and content details" />,
+            content: (
         <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
           <div className="sm:col-span-3">
-            <label htmlFor="slug" className="block text-sm font-medium leading-6 text-text">
-              URL Slug
-            </label>
-            <div className="mt-2">
-              <Input
-                type="text"
-                id="slug"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-                placeholder="quiz-night"
-                fullWidth
-              />
-            </div>
+            <Input
+              label="URL Slug"
+              type="text"
+              id="slug"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+              placeholder="quiz-night"
+            />
           </div>
 
           <div className="sm:col-span-3">
-            <label htmlFor="meta_title" className="block text-sm font-medium leading-6 text-text">
-              Meta Title
-            </label>
-            <div className="mt-2">
-              <Input
-                type="text"
-                id="meta_title"
-                value={metaTitle}
-                onChange={(e) => setMetaTitle(clamp(e.target.value, MAX_META_TITLE_LENGTH))}
-                maxLength={MAX_META_TITLE_LENGTH}
-                placeholder="SEO page title"
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-text-muted">{metaTitle.length}/{MAX_META_TITLE_LENGTH} characters</p>
-            </div>
+            <Input
+              label="Meta Title"
+              type="text"
+              id="meta_title"
+              value={metaTitle}
+              onChange={(e) => setMetaTitle(clamp(e.target.value, MAX_META_TITLE_LENGTH))}
+              maxLength={MAX_META_TITLE_LENGTH}
+              placeholder="SEO page title"
+              hint={`${metaTitle.length}/${MAX_META_TITLE_LENGTH} characters`}
+            />
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="meta_description" className="block text-sm font-medium leading-6 text-text">
-              Meta Description
-            </label>
-            <div className="mt-2">
-              <Textarea
-                id="meta_description"
-                rows={2}
-                value={metaDescription}
-                onChange={(e) => setMetaDescription(clamp(e.target.value, MAX_META_DESCRIPTION_LENGTH))}
-                maxLength={MAX_META_DESCRIPTION_LENGTH}
-                placeholder="SEO page description"
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-text-muted">{metaDescription.length}/{MAX_META_DESCRIPTION_LENGTH} characters</p>
-            </div>
+            <Textarea
+              label="Meta Description"
+              id="meta_description"
+              rows={2}
+              value={metaDescription}
+              onChange={(e) => setMetaDescription(clamp(e.target.value, MAX_META_DESCRIPTION_LENGTH))}
+              maxLength={MAX_META_DESCRIPTION_LENGTH}
+              placeholder="SEO page description"
+              hint={`${metaDescription.length}/${MAX_META_DESCRIPTION_LENGTH} characters`}
+            />
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="short_description" className="block text-sm font-medium leading-6 text-text">
-              Short Description
-            </label>
-            <div className="mt-2">
-              <Textarea
-                id="short_description"
-                rows={2}
-                value={shortDescription}
-                onChange={(e) => setShortDescription(clamp(e.target.value, MAX_SHORT_DESCRIPTION_LENGTH))}
-                maxLength={MAX_SHORT_DESCRIPTION_LENGTH}
-                placeholder="Brief description for listings"
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-text-muted">{shortDescription.length}/{MAX_SHORT_DESCRIPTION_LENGTH} characters</p>
-            </div>
+            <Textarea
+              label="Short Description"
+              id="short_description"
+              rows={2}
+              value={shortDescription}
+              onChange={(e) => setShortDescription(clamp(e.target.value, MAX_SHORT_DESCRIPTION_LENGTH))}
+              maxLength={MAX_SHORT_DESCRIPTION_LENGTH}
+              placeholder="Brief description for listings"
+              hint={`${shortDescription.length}/${MAX_SHORT_DESCRIPTION_LENGTH} characters`}
+            />
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="long_description" className="block text-sm font-medium leading-6 text-text">
-              Long Description
-            </label>
-            <div className="mt-2">
-              <Textarea
-                id="long_description"
-                rows={6}
-                value={longDescription}
-                onChange={(e) => setLongDescription(e.target.value)}
-                placeholder="Detailed description for the category page"
-                fullWidth
-              />
-            </div>
+            <Textarea
+              label="Long Description"
+              id="long_description"
+              rows={6}
+              value={longDescription}
+              onChange={(e) => setLongDescription(e.target.value)}
+              placeholder="Detailed description for the category page"
+            />
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="highlights" className="block text-sm font-medium leading-6 text-text">
-              Highlights
-            </label>
-            <div className="mt-2">
-              <Input
-                type="text"
-                id="highlights"
-                value={highlights}
-                onChange={(e) => setHighlights(e.target.value)}
-                placeholder="Great prizes, Fun atmosphere, Weekly event"
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-text-muted">Separate multiple highlights with commas</p>
-            </div>
+            <Input
+              label="Highlights"
+              type="text"
+              id="highlights"
+              value={highlights}
+              onChange={(e) => setHighlights(e.target.value)}
+              placeholder="Great prizes, Fun atmosphere, Weekly event"
+              hint="Separate multiple highlights with commas"
+            />
           </div>
 
           <div className="col-span-full">
-            <label htmlFor="keywords" className="block text-sm font-medium leading-6 text-text">
-              Keywords
-            </label>
-            <div className="mt-2">
-              <Input
-                type="text"
-                id="keywords"
-                value={keywords}
-                onChange={(e) => setKeywords(e.target.value)}
-                placeholder="quiz, trivia, pub quiz, entertainment"
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-text-muted">Separate keywords with commas for better SEO</p>
-            </div>
+            <Input
+              label="Keywords"
+              type="text"
+              id="keywords"
+              value={keywords}
+              onChange={(e) => setKeywords(e.target.value)}
+              placeholder="quiz, trivia, pub quiz, entertainment"
+              hint="Separate keywords with commas for better SEO"
+            />
           </div>
 
           {/* Keyword Strategy */}
@@ -802,74 +627,60 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
 
           {/* Image Alt Text Default */}
           <div className="col-span-full">
-            <label htmlFor="image_alt_text" className="block text-sm font-medium leading-6 text-text">
-              Image Alt Text Default
-            </label>
-            <div className="mt-2">
-              <Input
-                type="text"
-                id="image_alt_text"
-                value={imageAltText}
-                onChange={(e) => setImageAltText(e.target.value)}
-                placeholder="e.g., Live music at The Anchor pub"
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-text-muted">Default alt text for event images in this category</p>
-            </div>
+            <Input
+              label="Image Alt Text Default"
+              type="text"
+              id="image_alt_text"
+              value={imageAltText}
+              onChange={(e) => setImageAltText(e.target.value)}
+              placeholder="e.g., Live music at The Anchor pub"
+              hint="Default alt text for event images in this category"
+            />
           </div>
 
           {/* Cancellation Policy Default */}
           <div className="col-span-full">
-            <label htmlFor="cancellation_policy" className="block text-sm font-medium leading-6 text-text">
-              Cancellation Policy Default
-            </label>
-            <div className="mt-2">
-              <Textarea
-                id="cancellation_policy"
-                rows={3}
-                value={cancellationPolicy}
-                onChange={(e) => setCancellationPolicy(e.target.value)}
-                placeholder="e.g., Tickets are non-refundable but may be transferred to another person."
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-text-muted">Default cancellation policy shown on event pages</p>
-            </div>
+            <Textarea
+              label="Cancellation Policy Default"
+              id="cancellation_policy"
+              rows={3}
+              value={cancellationPolicy}
+              onChange={(e) => setCancellationPolicy(e.target.value)}
+              placeholder="e.g., Tickets are non-refundable but may be transferred to another person."
+              hint="Default cancellation policy shown on event pages"
+            />
           </div>
 
           {/* Accessibility Notes Default */}
           <div className="col-span-full">
-            <label htmlFor="accessibility_notes" className="block text-sm font-medium leading-6 text-text">
-              Accessibility Notes Default
-            </label>
-            <div className="mt-2">
-              <Textarea
-                id="accessibility_notes"
-                rows={3}
-                value={accessibilityNotes}
-                onChange={(e) => setAccessibilityNotes(e.target.value)}
-                placeholder="e.g., Venue is wheelchair accessible. Hearing loop available."
-                fullWidth
-              />
-              <p className="mt-1 text-xs text-text-muted">Default accessibility information for events in this category</p>
-            </div>
+            <Textarea
+              label="Accessibility Notes Default"
+              id="accessibility_notes"
+              rows={3}
+              value={accessibilityNotes}
+              onChange={(e) => setAccessibilityNotes(e.target.value)}
+              placeholder="e.g., Venue is wheelchair accessible. Hearing loop available."
+              hint="Default accessibility information for events in this category"
+            />
           </div>
 
           <div className="col-span-full">
             <FaqEditor faqs={faqs} onChange={setFaqs} onModified={() => undefined} />
           </div>
         </div>
-      </CollapsibleSection>
+            ),
+          },
+        ]}
+      />
 
-
-      {/* Form Actions */}
-      <div className="flex items-center justify-end gap-x-6">
+      <FormFooter>
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Saving...' : category ? 'Update Category' : 'Create Category'}
+        <Button type="submit" variant="primary" loading={isSubmitting}>
+          {category ? 'Update Category' : 'Create Category'}
         </Button>
-      </div>
+      </FormFooter>
     </form>
   )
 }

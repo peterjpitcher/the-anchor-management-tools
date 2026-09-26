@@ -12,7 +12,7 @@ export default async function OJEntriesPage(): Promise<React.ReactElement> {
     getWorkTypes(),
     getOJClients(),
   ])
-  const entriesResult = entriesRes as { entries?: any[]; total?: number; page?: number; pageSize?: number }
+  const entriesResult = entriesRes as { entries?: any[]; total?: number; page?: number; pageSize?: number; error?: string }
   const initialEntries = Array.isArray(entriesResult.entries) ? entriesResult.entries : []
 
   return (
@@ -24,6 +24,7 @@ export default async function OJEntriesPage(): Promise<React.ReactElement> {
       initialTotal={entriesResult.total ?? initialEntries.length}
       initialPage={entriesResult.page ?? 1}
       pageSize={entriesResult.pageSize ?? pageSize}
+      loadError={entriesResult.error ?? projectsRes.error ?? workTypesRes.error ?? clientsRes.error}
     />
   )
 }

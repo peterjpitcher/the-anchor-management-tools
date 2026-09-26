@@ -2,7 +2,7 @@
 
 import { invoiceBalanceDue } from '@/lib/invoices/balance'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createCreditNote, getInvoice, updateInvoiceStatus, deleteInvoice, updateInvoiceDueDate } from '@/app/actions/invoices'
 import {
@@ -14,17 +14,34 @@ import {
   getInvoicePortalLink,
   sendInvoicePaymentLink,
 } from '@/app/actions/invoicePayPalActions'
-import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { Button } from '@/ds'
-import { Badge } from '@/ds'
-import { Alert } from '@/ds'
-import { DataTable } from '@/ds'
-import { toast } from '@/ds'
-import { ConfirmDialog } from '@/ds'
-import { Modal } from '@/ds'
-import { Input } from '@/ds'
-import { Textarea } from '@/ds'
+import {
+  PageLayout,
+  PageLoading,
+  Icon,
+  Card,
+  CardHeader,
+  CardBody,
+  CardFooter,
+  Button,
+  Badge,
+  Alert,
+  DataTable,
+  DescriptionList,
+  Empty,
+  StatGrid,
+  Stat,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  toast,
+  ConfirmDialog,
+  Modal,
+  Input,
+  Textarea,
+} from '@/ds'
 import dynamic from 'next/dynamic'
 
 const EmailInvoiceModal = dynamic(
@@ -40,6 +57,7 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
 import { downloadInvoicePdf } from '@/lib/invoices/download-pdf'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
+import { BACK_TO_INVOICES } from '../_shared/nav'
 
 interface InvoiceDetailClientProps {
   initialInvoice: InvoiceWithDetails
@@ -91,23 +109,13 @@ function PreviewSection({
   children: React.ReactNode
 }) {
   return (
-    <section className="space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-text">{title}</h3>
-        {typeof count === 'number' && (
-          <span className="text-xs font-medium text-text-muted">{count}</span>
-        )}
-      </div>
+    <Card>
+      <CardHeader
+        title={title}
+        action={typeof count === 'number' ? <Badge tone="neutral">{count}</Badge> : undefined}
+      />
       {children}
-    </section>
-  )
-}
-
-function EmptyPreviewMessage({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-md border border-dashed border-border bg-surface-2 px-3 py-4 text-sm text-text-muted">
-      {children}
-    </div>
+    </Card>
   )
 }
 
@@ -119,46 +127,44 @@ function EntryPreviewTable({
   showReason?: boolean
 }) {
   if (entries.length === 0) {
-    return <EmptyPreviewMessage>No entries</EmptyPreviewMessage>
+    return <Empty size="sm" title="No entries" />
   }
 
   return (
-    <div className="overflow-x-auto rounded-md border border-border">
-      <table className="min-w-full divide-y divide-border text-sm">
-        <thead className="bg-surface-2 text-xs uppercase text-text-muted">
-          <tr>
-            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Date</th>
-            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Project</th>
-            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Description</th>
-            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Type</th>
-            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">Qty</th>
-            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">Amount</th>
-            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Status</th>
-            {showReason && <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Reason</th>}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border bg-surface">
-          {entries.map((entry) => (
-            <tr key={entry.id}>
-              <td className="whitespace-nowrap px-3 py-2 text-text">{formatPreviewDate(entry.entry_date)}</td>
-              <td className="min-w-[180px] px-3 py-2">
-                <div className="font-medium text-text">{entry.project_name}</div>
-                {entry.project_code && <div className="text-xs text-text-muted">{entry.project_code}</div>}
-              </td>
-              <td className="min-w-[220px] px-3 py-2 text-text">{entry.description || '-'}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-text">{entry.entry_type}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right text-text">{entry.quantity_label}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-text">{formatMoney(entry.amount_ex_vat)}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-text">
-                {formatStatus(entry.status)}
-                {entry.invoice_number && <div className="text-xs text-text-muted">{entry.invoice_number}</div>}
-              </td>
-              {showReason && <td className="min-w-[180px] px-3 py-2 text-text">{entry.reason || '-'}</td>}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Date</TableHead>
+          <TableHead>Project</TableHead>
+          <TableHead>Description</TableHead>
+          <TableHead>Type</TableHead>
+          <TableHead align="right">Qty</TableHead>
+          <TableHead align="right">Amount</TableHead>
+          <TableHead>Status</TableHead>
+          {showReason && <TableHead>Reason</TableHead>}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {entries.map((entry) => (
+          <TableRow key={entry.id}>
+            <TableCell>{formatPreviewDate(entry.entry_date)}</TableCell>
+            <TableCell className="min-w-[180px] whitespace-normal">
+              <div className="font-medium">{entry.project_name}</div>
+              {entry.project_code && <div className="text-xs text-text-muted">{entry.project_code}</div>}
+            </TableCell>
+            <TableCell className="min-w-[220px] whitespace-normal">{entry.description || '-'}</TableCell>
+            <TableCell>{entry.entry_type}</TableCell>
+            <TableCell align="right">{entry.quantity_label}</TableCell>
+            <TableCell align="right" className="font-medium">{formatMoney(entry.amount_ex_vat)}</TableCell>
+            <TableCell>
+              {formatStatus(entry.status)}
+              {entry.invoice_number && <div className="text-xs text-text-muted">{entry.invoice_number}</div>}
+            </TableCell>
+            {showReason && <TableCell className="min-w-[180px] whitespace-normal">{entry.reason || '-'}</TableCell>}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   )
 }
 
@@ -170,69 +176,65 @@ function RecurringPreviewTable({
   showReason?: boolean
 }) {
   if (items.length === 0) {
-    return <EmptyPreviewMessage>No recurring charges</EmptyPreviewMessage>
+    return <Empty size="sm" title="No recurring charges" />
   }
 
   return (
-    <div className="overflow-x-auto rounded-md border border-border">
-      <table className="min-w-full divide-y divide-border text-sm">
-        <thead className="bg-surface-2 text-xs uppercase text-text-muted">
-          <tr>
-            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Description</th>
-            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Period</th>
-            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">Amount</th>
-            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">VAT</th>
-            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Status</th>
-            {showReason && <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Reason</th>}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border bg-surface">
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td className="min-w-[220px] px-3 py-2 font-medium text-text">
-                {item.description}
-                {item.is_virtual && <div className="text-xs text-text-muted">Will be created on reissue</div>}
-              </td>
-              <td className="whitespace-nowrap px-3 py-2 text-text">{item.period_yyyymm}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-text">{formatMoney(item.amount_ex_vat)}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right text-text">{item.vat_rate}%</td>
-              <td className="whitespace-nowrap px-3 py-2 text-text">
-                {formatStatus(item.status)}
-                {item.invoice_number && <div className="text-xs text-text-muted">{item.invoice_number}</div>}
-              </td>
-              {showReason && <td className="min-w-[180px] px-3 py-2 text-text">{item.reason || '-'}</td>}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Description</TableHead>
+          <TableHead>Period</TableHead>
+          <TableHead align="right">Amount</TableHead>
+          <TableHead align="right">VAT</TableHead>
+          <TableHead>Status</TableHead>
+          {showReason && <TableHead>Reason</TableHead>}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((item) => (
+          <TableRow key={item.id}>
+            <TableCell className="min-w-[220px] whitespace-normal font-medium">
+              {item.description}
+              {item.is_virtual && <div className="text-xs font-normal text-text-muted">Will be created on reissue</div>}
+            </TableCell>
+            <TableCell>{item.period_yyyymm}</TableCell>
+            <TableCell align="right" className="font-medium">{formatMoney(item.amount_ex_vat)}</TableCell>
+            <TableCell align="right">{item.vat_rate}%</TableCell>
+            <TableCell>
+              {formatStatus(item.status)}
+              {item.invoice_number && <div className="text-xs text-text-muted">{item.invoice_number}</div>}
+            </TableCell>
+            {showReason && <TableCell className="min-w-[180px] whitespace-normal">{item.reason || '-'}</TableCell>}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   )
 }
 
 function LineItemsPreviewTable({ lineItems }: { lineItems: InvoiceLineItemInput[] }) {
   return (
-    <div className="overflow-x-auto rounded-md border border-border">
-      <table className="min-w-full divide-y divide-border text-sm">
-        <thead className="bg-surface-2 text-xs uppercase text-text-muted">
-          <tr>
-            <th scope="col" className="px-3 py-2 text-left font-medium tracking-wider">Description</th>
-            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">Qty</th>
-            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">Unit price</th>
-            <th scope="col" className="px-3 py-2 text-right font-medium tracking-wider">VAT</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border bg-surface">
-          {lineItems.map((item, index) => (
-            <tr key={`${item.description}-${index}`}>
-              <td className="min-w-[260px] px-3 py-2 font-medium text-text">{item.description}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right text-text">{item.quantity}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right text-text">{formatMoney(item.unit_price)}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right text-text">{item.vat_rate}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Description</TableHead>
+          <TableHead align="right">Qty</TableHead>
+          <TableHead align="right">Unit price</TableHead>
+          <TableHead align="right">VAT</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {lineItems.map((item, index) => (
+          <TableRow key={`${item.description}-${index}`}>
+            <TableCell className="min-w-[260px] whitespace-normal font-medium">{item.description}</TableCell>
+            <TableCell align="right">{item.quantity}</TableCell>
+            <TableCell align="right">{formatMoney(item.unit_price)}</TableCell>
+            <TableCell align="right">{item.vat_rate}%</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   )
 }
 
@@ -270,6 +272,11 @@ export default function InvoiceDetailClient({
   const [savingDueDate, setSavingDueDate] = useState(false)
   const [copyingPayLink, setCopyingPayLink] = useState(false)
   const [sendingPayLink, setSendingPayLink] = useState(false)
+  const [showVoidConfirm, setShowVoidConfirm] = useState(false)
+  // Set when voiding was refused because the invoice has linked OJ Projects items: the second
+  // confirm step, which voids anyway and unbills them.
+  const [forceVoidMessage, setForceVoidMessage] = useState<string | null>(null)
+  const forceVoidConfirmedRef = useRef(false)
   
   const readOnly = !permissionsLoading && !canEdit && !canDelete
 
@@ -310,16 +317,23 @@ export default function InvoiceDetailClient({
     return { totals, lineTotals: lineTotalsMap }
   }, [invoice])
 
-  async function handleStatusChange(newStatus: InvoiceStatus) {
+  function requestStatusChange(newStatus: InvoiceStatus) {
+    if (newStatus === 'void') {
+      if (!canEdit) {
+        setError('You do not have permission to update invoices')
+        return
+      }
+      setShowVoidConfirm(true)
+      return
+    }
+    void handleStatusChange(newStatus)
+  }
+
+  async function handleStatusChange(newStatus: InvoiceStatus, options: { force?: boolean } = {}) {
     if (!invoice || actionLoading) return
     if (!canEdit) {
       setError('You do not have permission to update invoices')
       return
-    }
-
-    if (newStatus === 'void') {
-      const confirmed = window.confirm('Void this invoice?')
-      if (!confirmed) return
     }
 
     setActionLoading(true)
@@ -329,20 +343,16 @@ export default function InvoiceDetailClient({
       const formData = new FormData()
       formData.append('invoiceId', invoice.id)
       formData.append('status', newStatus)
+      if (options.force) {
+        formData.append('force', 'true')
+      }
 
-      let result: any = await updateInvoiceStatus(formData)
+      const result: any = await updateInvoiceStatus(formData)
 
-      if (newStatus === 'void' && result?.error && result?.code === 'OJ_LINKED_ITEMS') {
-        const force = window.confirm(`${result.error}\n\nVoid and unbill linked OJ Projects items?`)
-        if (!force) {
-          throw new Error(result.error)
-        }
-
-        const forceFormData = new FormData()
-        forceFormData.append('invoiceId', invoice.id)
-        forceFormData.append('status', newStatus)
-        forceFormData.append('force', 'true')
-        result = await updateInvoiceStatus(forceFormData)
+      if (newStatus === 'void' && !options.force && result?.error && result?.code === 'OJ_LINKED_ITEMS') {
+        // Ask again before voiding and unbilling the linked items (the second ConfirmDialog).
+        setForceVoidMessage(result.error)
+        return
       }
 
       if (result.error) {
@@ -629,21 +639,9 @@ export default function InvoiceDetailClient({
     }
   }
 
+  // Page-level actions: secondary first, the destructive delete next, the primary action last.
   const headerActions = (
-    <div className="flex flex-wrap items-center gap-2">
-      {showOjReissueAction && (
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => void handleOpenReissuePreview()}
-          disabled={actionLoading || reissueLoading || reissueSubmitting}
-          loading={reissueLoading}
-          leftIcon={<Icon name="refresh" size={16} />}
-        >
-          Reissue OJ Invoice
-        </Button>
-      )}
-
+    <>
       {canShowCreditNoteAction && (
         <Button
           variant="secondary"
@@ -736,104 +734,129 @@ export default function InvoiceDetailClient({
           Delete
         </Button>
       )}
-    </div>
+
+      {showOjReissueAction && (
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => void handleOpenReissuePreview()}
+          disabled={actionLoading || reissueLoading || reissueSubmitting}
+          loading={reissueLoading}
+          leftIcon={<Icon name="refresh" size={16} />}
+        >
+          Reissue OJ Invoice
+        </Button>
+      )}
+    </>
   )
 
   return (
     <PageLayout
       title={`Invoice ${invoice.invoice_number}`}
       subtitle={invoice.vendor?.name}
-      backButton={{
-        label: 'Back to Invoices',
-        href: '/invoices',
-      }}
+      backButton={BACK_TO_INVOICES}
       headerActions={headerActions}
     >
-      <div className="mb-6">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-          <Badge tone={invoiceStatusTone(invoice.status)} dot>
-            {invoiceStatusLabel(invoice.status)}
-          </Badge>
-          {invoice.reference && (
-            <span className="text-sm sm:text-base text-text-muted">
-              Reference: {invoice.reference}
-            </span>
-          )}
-        </div>
+      <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+        <Badge tone={invoiceStatusTone(invoice.status)} dot>
+          {invoiceStatusLabel(invoice.status)}
+        </Badge>
+        {invoice.reference && (
+          <span className="text-sm sm:text-base text-text-muted">
+            Reference: {invoice.reference}
+          </span>
+        )}
       </div>
 
       {error && (
-        <Alert tone="danger" className="mb-6">{error}</Alert>
+        <Alert tone="danger">{error}</Alert>
       )}
       {!error && readOnly && (
-        <Alert
-          tone="info"
-          className="mb-6"
-        >
+        <Alert tone="info">
           You have read-only access to invoices. Edit, delete, and payment actions are disabled for your role.
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-        <div className="lg:col-span-2 space-y-4 lg:space-y-6">
+      <StatGrid columns={3}>
+        <Stat label="Total Amount" value={`£${invoice.total_amount.toFixed(2)}`} />
+        <Stat label="Paid Amount" value={`£${invoice.paid_amount.toFixed(2)}`} />
+        <Stat
+          label="Outstanding"
+          value={`£${(invoiceBalanceDue(invoice)).toFixed(2)}`}
+          hint={invoice.status === 'overdue' ? 'Overdue' : undefined}
+        />
+      </StatGrid>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
           <Card>
-            <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-              <div>
-                <h3 className="font-medium text-sm text-text-muted mb-1">From</h3>
-                <p className="font-medium">Orange Jelly Limited</p>
-                <p className="text-sm text-text-muted">The Anchor, Horton Road</p>
-                <p className="text-sm text-text-muted">Stanwell Moor Village, Surrey</p>
-                <p className="text-sm text-text-muted">TW19 6AQ</p>
-                <p className="text-sm text-text-muted">VAT: GB315203647</p>
-              </div>
+            <CardHeader title="Invoice Details" />
+            <CardBody className="space-y-6">
+              <DescriptionList
+                items={[
+                  {
+                    key: 'from',
+                    label: 'From',
+                    value: (
+                      <>
+                        <span className="block font-medium">Orange Jelly Limited</span>
+                        <span className="block text-text-muted">The Anchor, Horton Road</span>
+                        <span className="block text-text-muted">Stanwell Moor Village, Surrey</span>
+                        <span className="block text-text-muted">TW19 6AQ</span>
+                        <span className="block text-text-muted">VAT: GB315203647</span>
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'to',
+                    label: 'To',
+                    value: invoice.vendor ? (
+                      <>
+                        <span className="block font-medium">{invoice.vendor.name}</span>
+                        {invoice.vendor.contact_name && (
+                          <span className="block text-text-muted">{invoice.vendor.contact_name}</span>
+                        )}
+                        {invoice.vendor.email && (
+                          <span className="block text-text-muted">{invoice.vendor.email}</span>
+                        )}
+                        {invoice.vendor.phone && (
+                          <span className="block text-text-muted">{invoice.vendor.phone}</span>
+                        )}
+                        {invoice.vendor.address && (
+                          <span className="block whitespace-pre-line text-text-muted">{invoice.vendor.address}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-text-muted">No vendor details</span>
+                    ),
+                  },
+                ]}
+              />
 
-              <div>
-                <h3 className="font-medium text-sm text-text-muted mb-1">To</h3>
-                {invoice.vendor ? (
-                  <>
-                    <p className="font-medium">{invoice.vendor.name}</p>
-                    {invoice.vendor.contact_name && (
-                      <p className="text-sm text-text-muted">{invoice.vendor.contact_name}</p>
-                    )}
-                    {invoice.vendor.email && (
-                      <p className="text-sm text-text-muted">{invoice.vendor.email}</p>
-                    )}
-                    {invoice.vendor.phone && (
-                      <p className="text-sm text-text-muted">{invoice.vendor.phone}</p>
-                    )}
-                    {invoice.vendor.address && (
-                      <p className="text-sm text-text-muted whitespace-pre-line">{invoice.vendor.address}</p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-text-muted">No vendor details</p>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 pt-6 border-t border-border">
-              <div>
-                <p className="text-sm text-text-muted">Invoice Date</p>
-                <p className="font-medium">
-                  {new Date(invoice.invoice_date).toLocaleDateString('en-GB')}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-text-muted">Due Date</p>
-                <p className="font-medium">
-                  {new Date(invoice.due_date).toLocaleDateString('en-GB')}
-                </p>
-              </div>
-            </div>
+              <DescriptionList
+                className="border-t border-border pt-6"
+                items={[
+                  {
+                    key: 'invoice_date',
+                    label: 'Invoice Date',
+                    value: <span className="font-medium">{new Date(invoice.invoice_date).toLocaleDateString('en-GB')}</span>,
+                  },
+                  {
+                    key: 'due_date',
+                    label: 'Due Date',
+                    value: <span className="font-medium">{new Date(invoice.due_date).toLocaleDateString('en-GB')}</span>,
+                  },
+                ]}
+              />
+            </CardBody>
           </Card>
 
           <Card>
-            <h2 className="text-lg font-semibold mb-4">Line Items</h2>
+            <CardHeader title="Line Items" />
             <DataTable<InvoiceLineItem>
               data={invoice.line_items || []}
               getRowKey={(it) => it.id}
+              bordered={false}
               columns={[
                 { key: 'description', header: 'Description', cell: (it) => <span className="text-sm">{it.description}</span> },
                 { key: 'quantity', header: 'Qty', align: 'right', cell: (it) => <span className="text-sm">{it.quantity}</span> },
@@ -851,7 +874,7 @@ export default function InvoiceDetailClient({
                 const breakdown = lineTotals.get(it.id)
                 const lineTotal = breakdown ? breakdown.total : 0
                 return (
-                  <div className="border border-border rounded-lg p-4 bg-surface-2">
+                  <div className="border-b border-border p-pad-card">
                     <div className="font-medium text-sm mb-3">{it.description}</div>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between"><span className="text-text-muted">Quantity:</span><span>{it.quantity}</span></div>
@@ -870,7 +893,7 @@ export default function InvoiceDetailClient({
               }}
             />
 
-            <div className="mt-6 pt-6 border-t border-border space-y-2">
+            <CardBody className="space-y-2 border-t border-border">
               <div className="flex justify-between text-sm">
                 <span>Subtotal:</span>
                 <span>£{invoiceTotals.subtotalBeforeInvoiceDiscount.toFixed(2)}</span>
@@ -889,77 +912,46 @@ export default function InvoiceDetailClient({
                 <span>Total:</span>
                 <span>£{invoiceTotals.totalAmount.toFixed(2)}</span>
               </div>
-            </div>
+            </CardBody>
           </Card>
 
           {(invoice.notes || invoice.internal_notes) && (
             <Card>
-              <h2 className="text-lg font-semibold mb-4">Notes</h2>
-              
-              {invoice.notes && (
-                <div className="mb-4">
-                  <h3 className="font-medium text-sm text-text-muted mb-1">Invoice Notes</h3>
-                  <p className="text-sm whitespace-pre-wrap">{invoice.notes}</p>
-                </div>
-              )}
-              
-              {invoice.internal_notes && (
-                <div>
-                  <h3 className="font-medium text-sm text-text-muted mb-1">Internal Notes</h3>
-                  <p className="text-sm whitespace-pre-wrap rounded-md border border-warning-border bg-warning-soft p-3 text-warning-fg">
-                    {invoice.internal_notes}
-                  </p>
-                </div>
-              )}
+              <CardHeader title="Notes" />
+              <CardBody>
+                <DescriptionList
+                  columns={1}
+                  items={[
+                    ...(invoice.notes
+                      ? [{
+                        key: 'notes',
+                        label: 'Invoice Notes',
+                        value: <span className="whitespace-pre-wrap">{invoice.notes}</span>,
+                      }]
+                      : []),
+                    ...(invoice.internal_notes
+                      ? [{
+                        key: 'internal_notes',
+                        label: 'Internal Notes',
+                        value: (
+                          <Alert tone="warning" role="status">
+                            <span className="whitespace-pre-wrap">{invoice.internal_notes}</span>
+                          </Alert>
+                        ),
+                      }]
+                      : []),
+                  ]}
+                />
+              </CardBody>
             </Card>
           )}
         </div>
 
-        <div className="space-y-4 lg:space-y-6">
-          <Card>
-            <h2 className="text-base sm:text-lg font-semibold mb-4">Payment Status</h2>
-            
-            <div className="space-y-3 sm:space-y-4">
-              <div>
-                <p className="text-sm text-text-muted">Total Amount</p>
-                <p className="text-xl sm:text-2xl font-bold">£{invoice.total_amount.toFixed(2)}</p>
-              </div>
-              
-              <div>
-                <p className="text-sm text-text-muted">Paid Amount</p>
-                <p className="text-lg sm:text-xl font-semibold text-success-fg">£{invoice.paid_amount.toFixed(2)}</p>
-              </div>
-              
-              <div>
-                <p className="text-sm text-text-muted">Outstanding</p>
-                {/* Red only once the invoice is overdue, the same rule as the invoice list. */}
-                <p className={`text-lg sm:text-xl font-semibold ${invoice.status === 'overdue' ? 'text-danger' : ''}`}>
-                  £{(invoiceBalanceDue(invoice)).toFixed(2)}
-                </p>
-              </div>
-
-              {invoice.status !== 'paid' && invoice.status !== 'void' && (
-                <Button
-                  fullWidth
-                  onClick={() => router.push(`/invoices/${invoice.id}/payment`)}
-                  disabled={!canEdit}
-                  title={
-                    !canEdit
-                      ? 'You need invoice edit permission to record payments.'
-                      : undefined
-                  }
-                >
-                  Record Payment
-                </Button>
-              )}
-            </div>
-          </Card>
-
+        <div className="space-y-6">
           {invoice.payments && invoice.payments.length > 0 && (
             <Card>
-              <h2 className="text-base sm:text-lg font-semibold mb-4">Payment History</h2>
-              
-              <div className="space-y-3">
+              <CardHeader title="Payment History" />
+              <CardBody className="space-y-3">
                 {invoice.payments.map((payment) => (
                   <div key={payment.id} className="border-b border-border pb-3 last:border-b-0">
                     <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
@@ -976,14 +968,28 @@ export default function InvoiceDetailClient({
                     </div>
                   </div>
                 ))}
-              </div>
+              </CardBody>
             </Card>
           )}
 
           <Card>
-            <h2 className="text-base sm:text-lg font-semibold mb-4">Actions</h2>
-            
-            <div className="space-y-2">
+            <CardHeader title="Actions" />
+            <CardBody className="space-y-2">
+              {invoice.status !== 'paid' && invoice.status !== 'void' && (
+                <Button variant="primary"
+                  fullWidth
+                  onClick={() => router.push(`/invoices/${invoice.id}/payment`)}
+                  disabled={!canEdit}
+                  title={
+                    !canEdit
+                      ? 'You need invoice edit permission to record payments.'
+                      : undefined
+                  }
+                >
+                  Record Payment
+                </Button>
+              )}
+
               <Button
                 variant="secondary"
                 fullWidth
@@ -1017,7 +1023,7 @@ export default function InvoiceDetailClient({
                   disabled={actionLoading || savingDueDate}
                   leftIcon={<Icon name="calendar" size={16} />}
                 >
-                  Change due date
+                  Change Due Date
                 </Button>
               )}
 
@@ -1031,7 +1037,7 @@ export default function InvoiceDetailClient({
                     loading={sendingPayLink}
                     leftIcon={<Icon name="creditCard" size={16} />}
                   >
-                    Email payment link
+                    Email Payment Link
                   </Button>
                   {/* Copies our own portal URL, never a raw PayPal one: PayPal
                       approval links die after a few hours and a stale link
@@ -1044,7 +1050,7 @@ export default function InvoiceDetailClient({
                     loading={copyingPayLink}
                     leftIcon={<Icon name="link" size={16} />}
                   >
-                    Copy payment link
+                    Copy Payment Link
                   </Button>
                 </>
               )}
@@ -1060,19 +1066,19 @@ export default function InvoiceDetailClient({
                   Issue Credit Note
                 </Button>
               )}
-              
+
               {invoice.status !== 'void' && invoice.status !== 'written_off' && canEdit && (
                 <Button
                   variant="secondary"
                   fullWidth
-                  onClick={() => handleStatusChange('void')}
+                  onClick={() => requestStatusChange('void')}
                   disabled={actionLoading}
                   loading={actionLoading}
                 >
                   Void Invoice
                 </Button>
               )}
-            </div>
+            </CardBody>
           </Card>
         </div>
       </div>
@@ -1082,10 +1088,10 @@ export default function InvoiceDetailClient({
         onClose={() => {
           if (!savingDueDate) setShowDueDateModal(false)
         }}
-        title="Change due date"
+        title="Change Due Date"
         width="md"
         footer={(
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <>
             <Button
               variant="secondary"
               onClick={() => setShowDueDateModal(false)}
@@ -1099,9 +1105,9 @@ export default function InvoiceDetailClient({
               disabled={savingDueDate || !newDueDate || newDueDate === invoice.due_date}
               loading={savingDueDate}
             >
-              Save due date
+              Save Due Date
             </Button>
-          </div>
+          </>
         )}
       >
         <div className="space-y-4">
@@ -1129,10 +1135,10 @@ export default function InvoiceDetailClient({
             disabled={savingDueDate}
           />
           {invoice.status === 'overdue' && newDueDate >= new Date().toISOString().slice(0, 10) && (
-            <p className="rounded-lg border border-info-border bg-info-soft px-4 py-3 text-sm text-info-fg">
+            <Alert tone="info" role="status">
               This invoice is marked overdue. Giving more time will also stop the
               overdue chasers.
-            </p>
+            </Alert>
           )}
         </div>
       </Modal>
@@ -1169,9 +1175,7 @@ export default function InvoiceDetailClient({
         )}
       >
         {reissueLoading && (
-          <div className="py-8 text-center text-sm text-text-muted">
-            Building OJ invoice reissue preview...
-          </div>
+          <PageLoading inline label="Building OJ invoice reissue preview" />
         )}
 
         {!reissueLoading && reissuePreview && !reissuePreview.eligible && (
@@ -1191,28 +1195,28 @@ export default function InvoiceDetailClient({
 
         {!reissueLoading && reissuePreview?.eligible && (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-md border border-border bg-surface-2 p-3">
-                <div className="text-xs font-semibold uppercase text-text-muted">Source</div>
-                <div className="mt-1 font-medium text-text">{reissuePreview.sourceInvoice.invoice_number}</div>
-                <div className="text-xs text-text-muted">{formatStatus(reissuePreview.sourceInvoice.status)}</div>
-              </div>
-              <div className="rounded-md border border-border bg-surface-2 p-3">
-                <div className="text-xs font-semibold uppercase text-text-muted">Client</div>
-                <div className="mt-1 font-medium text-text">{reissuePreview.sourceInvoice.vendor_name || 'Unknown client'}</div>
-                <div className="text-xs text-text-muted">{reissuePreview.period.label}</div>
-              </div>
-              <div className="rounded-md border border-border bg-surface-2 p-3">
-                <div className="text-xs font-semibold uppercase text-text-muted">Paid</div>
-                <div className="mt-1 font-medium text-text">{formatMoney(reissuePreview.sourceInvoice.paid_amount)}</div>
-                <div className="text-xs text-text-muted">No email will be sent</div>
-              </div>
-              <div className="rounded-md border border-border bg-surface-2 p-3">
-                <div className="text-xs font-semibold uppercase text-text-muted">Rebuilt Total</div>
-                <div className="mt-1 font-medium text-text">{formatMoney(reissuePreview.totals.totalAmount)}</div>
-                <div className="text-xs text-text-muted">{reissuePreview.actionLabel}</div>
-              </div>
-            </div>
+            <StatGrid columns={2}>
+              <Stat
+                label="Source"
+                value={reissuePreview.sourceInvoice.invoice_number}
+                hint={formatStatus(reissuePreview.sourceInvoice.status)}
+              />
+              <Stat
+                label="Client"
+                value={reissuePreview.sourceInvoice.vendor_name || 'Unknown client'}
+                hint={reissuePreview.period.label}
+              />
+              <Stat
+                label="Paid"
+                value={formatMoney(reissuePreview.sourceInvoice.paid_amount)}
+                hint="No email will be sent"
+              />
+              <Stat
+                label="Rebuilt Total"
+                value={formatMoney(reissuePreview.totals.totalAmount)}
+                hint={reissuePreview.actionLabel}
+              />
+            </StatGrid>
 
             {reissuePreview.warnings.length > 0 && (
               <Alert tone="warning">
@@ -1250,7 +1254,7 @@ export default function InvoiceDetailClient({
 
             <PreviewSection title="Replacement Line Items" count={reissuePreview.lineItems.length}>
               <LineItemsPreviewTable lineItems={reissuePreview.lineItems} />
-              <div className="mt-3 rounded-md border border-border bg-surface-2 p-3 text-sm">
+              <CardFooter className="space-y-1 text-sm">
                 <div className="flex justify-between gap-4">
                   <span className="text-text-muted">Subtotal</span>
                   <span className="font-medium">{formatMoney(reissuePreview.totals.subtotalBeforeInvoiceDiscount)}</span>
@@ -1269,7 +1273,7 @@ export default function InvoiceDetailClient({
                   <span>Total</span>
                   <span>{formatMoney(reissuePreview.totals.totalAmount)}</span>
                 </div>
-              </div>
+              </CardFooter>
             </PreviewSection>
           </div>
         )}
@@ -1304,64 +1308,56 @@ export default function InvoiceDetailClient({
         )}
       >
         <div className="space-y-4">
-          <Alert
-            tone="info"
-          >
+          <Alert tone="info">
             Use a credit note to record a refund or adjustment against a paid invoice.
           </Alert>
 
-          <div className="rounded-lg border border-border bg-surface-2 p-4 text-sm">
-            <div className="flex justify-between gap-4">
-              <span className="text-text-muted">Paid amount</span>
-              <span className="font-medium text-text-strong">{formatMoney(invoice.paid_amount)}</span>
-            </div>
-            <div className="mt-2 flex justify-between gap-4">
-              <span className="text-text-muted">Maximum credit ex VAT</span>
-              <span className="font-medium text-text-strong">{formatMoney(maxCreditNoteExVat)}</span>
-            </div>
-            <div className="mt-2 flex justify-between gap-4">
-              <span className="text-text-muted">Invoice VAT rate</span>
-              <span className="font-medium text-text-strong">{invoiceVatRate}%</span>
-            </div>
-          </div>
+          <Card variant="secondary">
+            <CardBody className="space-y-2 text-sm">
+              <div className="flex justify-between gap-4">
+                <span className="text-text-muted">Paid amount</span>
+                <span className="font-medium text-text-strong">{formatMoney(invoice.paid_amount)}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-text-muted">Maximum credit ex VAT</span>
+                <span className="font-medium text-text-strong">{formatMoney(maxCreditNoteExVat)}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-text-muted">Invoice VAT rate</span>
+                <span className="font-medium text-text-strong">{invoiceVatRate}%</span>
+              </div>
+            </CardBody>
+          </Card>
 
-          <div>
-            <label htmlFor="credit-note-amount" className="mb-1 block text-sm font-medium text-text">
-              Amount ex VAT
-            </label>
-            <Input
-              id="credit-note-amount"
-              type="number"
-              min="0.01"
-              max={maxCreditNoteExVat.toFixed(2)}
-              step="0.01"
-              value={creditNoteAmount}
-              onChange={(event) => setCreditNoteAmount(event.target.value)}
-            />
-            {creditNoteAmount && !creditNoteAmountValid && (
-              <p className="mt-1 text-xs text-danger">
-                Enter an amount between £0.01 and {formatMoney(maxCreditNoteExVat)}.
-              </p>
-            )}
-            {creditNoteAmountValid && (
-              <p className="mt-1 text-xs text-text-muted">
-                Estimated credit including VAT: {formatMoney(estimatedCreditNoteIncVat)}
-              </p>
-            )}
-          </div>
+          <Input
+            id="credit-note-amount"
+            label="Amount ex VAT"
+            type="number"
+            min="0.01"
+            max={maxCreditNoteExVat.toFixed(2)}
+            step="0.01"
+            value={creditNoteAmount}
+            onChange={(event) => setCreditNoteAmount(event.target.value)}
+            error={
+              creditNoteAmount && !creditNoteAmountValid
+                ? `Enter an amount between £0.01 and ${formatMoney(maxCreditNoteExVat)}.`
+                : undefined
+            }
+            hint={
+              creditNoteAmountValid
+                ? `Estimated credit including VAT: ${formatMoney(estimatedCreditNoteIncVat)}`
+                : undefined
+            }
+          />
 
-          <div>
-            <label htmlFor="credit-note-reason" className="mb-1 block text-sm font-medium text-text">
-              Reason
-            </label>
-            <Textarea
-              id="credit-note-reason"
-              value={creditNoteReason}
-              onChange={(event) => setCreditNoteReason(event.target.value)}
-              placeholder="Refund, discount, service adjustment..."
-              rows={3}
-            />
-          </div>
+          <Textarea
+            id="credit-note-reason"
+            label="Reason"
+            value={creditNoteReason}
+            onChange={(event) => setCreditNoteReason(event.target.value)}
+            placeholder="Refund, discount, service adjustment..."
+            rows={3}
+          />
         </div>
       </Modal>
 
@@ -1397,8 +1393,44 @@ export default function InvoiceDetailClient({
         onConfirm={handleDelete}
         title="Delete Invoice"
         message="Are you sure you want to delete this invoice? This action cannot be undone."
-        confirmText="Delete"
-        confirmVariant="danger"
+        confirmLabel="Delete"
+        tone="danger"
+      />
+
+      {/* Voiding is two steps, as the browser confirms were: first "Void this invoice?", then,
+          only if the invoice has linked OJ Projects items, a second confirm to void and unbill
+          them. Cancelling the second leaves the invoice as it was and shows why. */}
+      <ConfirmDialog
+        open={showVoidConfirm}
+        onClose={() => setShowVoidConfirm(false)}
+        onConfirm={() => handleStatusChange('void')}
+        title="Void Invoice"
+        message="Void this invoice?"
+        confirmLabel="Void Invoice"
+        tone="danger"
+      />
+      <ConfirmDialog
+        open={forceVoidMessage !== null}
+        onClose={() => {
+          if (!forceVoidConfirmedRef.current && forceVoidMessage) {
+            setError(forceVoidMessage)
+          }
+          forceVoidConfirmedRef.current = false
+          setForceVoidMessage(null)
+        }}
+        onConfirm={async () => {
+          forceVoidConfirmedRef.current = true
+          await handleStatusChange('void', { force: true })
+        }}
+        title="Void and Unbill OJ Projects Items"
+        message={
+          <>
+            <span className="block">{forceVoidMessage}</span>
+            <span className="mt-2 block">Void and unbill linked OJ Projects items?</span>
+          </>
+        }
+        confirmLabel="Void and Unbill"
+        tone="danger"
       />
     </PageLayout>
   )

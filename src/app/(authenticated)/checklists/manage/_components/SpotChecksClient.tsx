@@ -9,11 +9,15 @@ import {
   Card,
   CardHeader,
   CardBody,
+  Empty,
+  PageLayout,
   Textarea,
   toast,
 } from '@/ds'
 import { recordSpotCheck } from '@/app/actions/checklists-spotcheck'
 import type { SpotCheckView } from '@/app/actions/checklists-spotcheck'
+import { CHECKLISTS_MANAGE_LAYOUT } from '../../_shared/nav'
+import { CHECKLIST_SPOT_CHECK_STATUS } from '../../_shared/status-ui'
 
 interface SpotChecksClientProps {
   items: SpotCheckView[]
@@ -43,39 +47,39 @@ export function SpotChecksClient({ items, error }: SpotChecksClientProps) {
 
   if (error) {
     return (
-      <Alert tone="danger" title="Could not load spot checks">
-        {error}
-      </Alert>
+      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+        <Alert tone="danger" title="Could not load spot checks">
+          {error}
+        </Alert>
+      </PageLayout>
     )
   }
 
   if (items.length === 0) {
     return (
-      <Alert tone="info" title="Nothing to check yet">
-        No spot checks have been drawn today. A check can only be drawn once a spot-checkable
-        task has been completed. Open this tab again later in the day.
-      </Alert>
+      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+        <Card>
+          <Empty
+            title="Nothing to check yet"
+            description="No spot checks have been drawn today. A check can only be drawn once a spot-checkable task has been completed. Open this tab again later in the day."
+          />
+        </Card>
+      </PageLayout>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
       {items.map((item) => {
         const recorded = item.state === 'recorded'
+        const status =
+          CHECKLIST_SPOT_CHECK_STATUS[recorded ? (item.result === 'pass' ? 'pass' : 'fail') : 'awaiting']
         return (
           <Card key={item.id}>
             <CardHeader
               title={`Draw ${item.drawNumber}: ${item.taskTitle}`}
               subtitle={`${item.checklistName} · Completed by ${item.checkedEmployeeName}`}
-              action={
-                recorded ? (
-                  <Badge tone={item.result === 'pass' ? 'success' : 'danger'}>
-                    {item.result === 'pass' ? 'Pass' : 'Fail'}
-                  </Badge>
-                ) : (
-                  <Badge tone="warning">Awaiting check</Badge>
-                )
-              }
+              action={<Badge tone={status.tone}>{status.label}</Badge>}
             />
             <CardBody className="space-y-3">
               {recorded ? (
@@ -118,6 +122,6 @@ export function SpotChecksClient({ items, error }: SpotChecksClientProps) {
           </Card>
         )
       })}
-    </div>
+    </PageLayout>
   )
 }

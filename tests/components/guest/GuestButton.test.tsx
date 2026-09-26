@@ -41,7 +41,8 @@ describe('GuestButton', () => {
 
     const button = screen.getByRole('button', { name: 'Pay deposit' })
     expect(button.className).toContain('bg-anchor-gold-dark')
-    expect(button.className).toContain('text-white')
+    // White label text comes from the guest button-text token, never a raw colour.
+    expect(button.className).toContain('text-guest-button-text')
     expect(button.className).not.toContain('bg-anchor-gold ')
   })
 
@@ -62,10 +63,11 @@ describe('GuestButton', () => {
     )
 
     expect(screen.getAllByRole('button')).toHaveLength(4)
-    // Touch targets never drop below 44px on these pages.
-    expect(container.querySelector('.min-h-\\[44px\\]')).not.toBeNull()
-    expect(container.querySelector('.min-h-\\[48px\\]')).not.toBeNull()
-    expect(container.querySelector('.min-h-\\[56px\\]')).not.toBeNull()
+    // Touch targets never drop below 44px on these pages: the guest touch (44px),
+    // control (48px) and large control (56px) height tokens.
+    expect(container.querySelector('.min-h-guest-touch')).not.toBeNull()
+    expect(container.querySelector('.min-h-guest-control')).not.toBeNull()
+    expect(container.querySelector('.min-h-guest-control-lg')).not.toBeNull()
   })
 
   it('applies fullWidth explicitly rather than by breakpoint', () => {

@@ -1,6 +1,7 @@
 import { checkUserPermission } from '@/app/actions/rbac';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Card, PageLayout, Section } from '@/ds';
+import { Alert, Badge, Card, CardBody, CardHeader, Empty, PageLayout, ProgressBar, Section, Stat, StatGrid } from '@/ds';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDepartmentBudgets } from '@/app/actions/budgets';
@@ -26,6 +27,7 @@ import {
   shiftIsoDate,
 } from '@/lib/dateUtils';
 import { rotaNavItems } from '../nav';
+import { BUDGET_HOURS_TEXT_CLASSES, LABOUR_SHARE_LABEL, LABOUR_SHARE_TONE, budgetUsageTone } from '../_shared/status-ui';
 
 const gbpFormatter = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 });
 
@@ -214,31 +216,24 @@ function BudgetCard({
   const weekPct = targets && targets.weekly > 0 ? (weekHours / targets.weekly) * 100 : null;
   const monthPct = targets && targets.monthly > 0 ? (monthHours / targets.monthly) * 100 : null;
 
-  const barColour = (pct: number): string => (
-    pct > 100 ? 'bg-danger' : pct > 85 ? 'bg-warning' : 'bg-success'
-  );
-
   const row = (label: string, hours: number, target: number | null, pct: number | null) => (
     <div>
       <div className="flex items-center justify-between text-sm mb-1">
         <span className="text-text-muted">{label}</span>
-        <span className={`font-medium tabular-nums ${pct !== null && pct > 100 ? 'text-danger-fg' : 'text-text'}`}>
+        <span className={`font-medium tabular-nums ${BUDGET_HOURS_TEXT_CLASSES[pct !== null && pct > 100 ? 'over' : 'within']}`}>
           {hours.toFixed(0)}h{target !== null && target > 0 ? ` of ${target.toFixed(0)}h` : ''}
         </span>
       </div>
       {pct !== null && (
-        <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
-          <div className={`h-full rounded-full ${barColour(pct)}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-        </div>
+        <ProgressBar value={pct} tone={budgetUsageTone(pct)} size="md" label={`${label}: hours against budget`} />
       )}
     </div>
   );
 
   return (
     <Card>
-      <h3 className="text-base font-semibold text-text mb-4">{departmentLabel(name)}</h3>
-
-      <div className="space-y-4">
+      <CardHeader title={departmentLabel(name)} />
+      <CardBody className="space-y-4">
         {row('This week', weekHours, targets?.weekly ?? null, weekPct)}
         {row(`All of ${monthLabel}`, monthHours, targets?.monthly ?? null, monthPct)}
 
@@ -257,7 +252,7 @@ function BudgetCard({
             {cost.note && <p className="text-xs text-text-soft mt-1">{cost.note}</p>}
           </div>
         )}
-      </div>
+      </CardBody>
     </Card>
   );
 }
@@ -301,12 +296,18 @@ export default async function RotaDashboardPage() {
     canViewSpend ? getRotaSettings() : Promise.resolve(null),
   ]);
 
+  // One header for every state, so a failed load keeps the page's title and tabs.
+  const weekStartLabel = formatDateInLondon(`${weekStart}T12:00:00Z`, { day: 'numeric', month: 'long' });
+  const layoutProps = {
+    title: 'Labour Cost Dashboard',
+    subtitle: `Week beginning ${weekStartLabel}, and the whole of ${monthLabel}`,
+    navItems: rotaNavItems,
+  };
+
   if (shiftsResult.error) {
     return (
-      <PageLayout title="Labour Cost Dashboard" navItems={rotaNavItems}>
-        <Card>
-          <p className="text-sm text-danger-fg">Could not load the rota: {shiftsResult.error.message}</p>
-        </Card>
+      <PageLayout {...layoutProps}>
+        <Alert tone="danger" title="Could not load the rota">{shiftsResult.error.message}</Alert>
       </PageLayout>
     );
   }
@@ -480,8 +481,6 @@ export default async function RotaDashboardPage() {
   const hasTakings = weekTakings !== null && weekTakings > 0;
   const wagePercent = weekSummary.weekTotals.wagePercent;
 
-  const weekStartLabel = formatDateInLondon(`${weekStart}T12:00:00Z`, { day: 'numeric', month: 'long' });
-
   const stats: Array<{ label: string; value: string; note: string | null }> = [
     { label: 'Scheduled this week', value: `${weekHours.toFixed(0)}h`, note: 'Monday to Sunday, scheduled shifts only' },
   ];
@@ -497,112 +496,103 @@ export default async function RotaDashboardPage() {
     stats.push({ label: `Est. cost, all of ${monthLabel}`, value: monthCost.value, note: monthCost.note });
   }
 
+  const labourShareState = wagePercent !== null && wagePercent > targetPercent ? 'over' : 'within';
+
   return (
-    <PageLayout
-      title="Labour Cost Dashboard"
-      subtitle={`Week beginning ${weekStartLabel}, and the whole of ${monthLabel}`}
-      navItems={rotaNavItems}
-    >
+    <PageLayout {...layoutProps}>
       {/* Headline totals. Hours and cost describe the same shifts: only rows
           with status 'scheduled', across every department. */}
-      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 ${canViewSpend ? 'lg:grid-cols-4' : 'lg:grid-cols-2'}`}>
+      <StatGrid columns={canViewSpend ? 4 : 2}>
         {stats.map(stat => (
-          <Card key={stat.label}>
-            <p className="text-2xl font-bold text-text tabular-nums">{stat.value}</p>
-            <p className="text-xs text-text-muted mt-1">{stat.label}</p>
-            {stat.note && <p className="text-xs text-text-soft mt-1">{stat.note}</p>}
-          </Card>
+          <Stat key={stat.label} label={stat.label} value={stat.value} hint={stat.note ?? undefined} />
         ))}
-      </div>
+      </StatGrid>
 
       {canViewSpend && (
-        <Card className="mb-6">
-          <h2 className="text-sm font-semibold text-text mb-3">Labour against takings, this week</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <p className="text-xs text-text-muted">Total takings</p>
-              <p className="text-lg font-bold text-text mt-0.5 tabular-nums">
-                {!canViewTakings ? 'Not available' : hasTakings ? gbpFormatter.format(weekTakings) : 'No revenue data'}
-              </p>
-              <p className="text-xs text-text-soft">
-                {!canViewTakings
+        <Section
+          title="Labour Against Takings"
+          description="This week"
+          actions={
+            wagePercent !== null ? (
+              <Badge tone={LABOUR_SHARE_TONE[labourShareState]}>{LABOUR_SHARE_LABEL[labourShareState]}</Badge>
+            ) : undefined
+          }
+        >
+          <StatGrid columns={3}>
+            <Stat
+              label="Total takings"
+              value={!canViewTakings ? 'Not available' : hasTakings ? gbpFormatter.format(weekTakings) : 'No revenue data'}
+              hint={
+                !canViewTakings
                   ? 'Takings need cashing up access'
                   : hasTakings
                     ? describeRevenueSource(weekSummary, weekDays)
-                    : 'No cash-up and no sales target for this week'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-text-muted">Est. labour cost</p>
-              <p className="text-lg font-bold text-text mt-0.5 tabular-nums">{weekCost.value}</p>
-              <p className="text-xs text-text-soft">{weekCost.note ?? 'Scheduled shifts only'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-text-muted">Labour as a share of takings</p>
-              <p
-                className={`text-lg font-bold mt-0.5 tabular-nums ${
-                  wagePercent === null
-                    ? 'text-text-muted'
-                    : wagePercent > targetPercent
-                      ? 'text-danger-fg'
-                      : 'text-success-fg'
-                }`}
-              >
-                {wagePercent === null ? 'No revenue data' : `${wagePercent.toFixed(0)}%`}
-              </p>
-              <p className="text-xs text-text-soft">
-                {wagePercent === null
+                    : 'No cash-up and no sales target for this week'
+              }
+            />
+            <Stat
+              label="Est. labour cost"
+              value={weekCost.value}
+              hint={weekCost.note ?? 'Scheduled shifts only'}
+            />
+            <Stat
+              label="Labour as a share of takings"
+              value={wagePercent === null ? 'No revenue data' : `${wagePercent.toFixed(0)}%`}
+              hint={
+                wagePercent === null
                   ? 'Needs takings or a sales target before a ratio means anything'
-                  : `Target is ${targetPercent}% or below${weekCost.complete ? '' : ', on a partial cost'}`}
-              </p>
-            </div>
-          </div>
-        </Card>
+                  : `Target is ${targetPercent}% or below${weekCost.complete ? '' : ', on a partial cost'}`
+              }
+            />
+          </StatGrid>
+        </Section>
       )}
 
       <Section
-        title="Hours against budget"
+        title="Hours Against Budget"
         description={`Scheduled hours per department against the annual budget for ${month.year}. Absence and cancelled rows are shown on the rota but never counted here.`}
       >
-        {departmentCards.length === 0 ? (
-          <Card>
-            <p className="text-sm text-text-muted">No scheduled shifts and no budgets for this period.</p>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {departmentCards.map(card => (
-              <BudgetCard
-                key={card.name}
-                name={card.name}
-                weekHours={card.weekHours}
-                monthHours={card.monthHours}
-                targets={card.targets}
-                budgetYear={month.year}
-                monthLabel={monthLabel}
-                cost={card.cost}
-              />
-            ))}
-          </div>
-        )}
+        <div className="space-y-4">
+          {departmentCards.length === 0 ? (
+            <Card padding="none">
+              <Empty size="sm" title="No scheduled shifts and no budgets for this period" />
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {departmentCards.map(card => (
+                <BudgetCard
+                  key={card.name}
+                  name={card.name}
+                  weekHours={card.weekHours}
+                  monthHours={card.monthHours}
+                  targets={card.targets}
+                  budgetYear={month.year}
+                  monthLabel={monthLabel}
+                  cost={card.cost}
+                />
+              ))}
+            </div>
+          )}
 
-        {budgetsUnavailable ? (
-          <p className="text-sm text-text-muted mt-3">
-            Budget targets are not available to you, so these hours are shown without a comparison.
-          </p>
-        ) : budgets.length === 0 ? (
-          <p className="text-sm text-text-muted mt-3">
-            No budget targets set for {month.year}.{' '}
-            <a href="/settings/budgets" className="text-primary hover:underline">Set targets in Settings.</a>
-          </p>
-        ) : null}
+          {budgetsUnavailable ? (
+            <p className="text-sm text-text-muted">
+              Budget targets are not available to you, so these hours are shown without a comparison.
+            </p>
+          ) : budgets.length === 0 ? (
+            <p className="text-sm text-text-muted">
+              No budget targets set for {month.year}.{' '}
+              <Link href="/settings/budgets" className="text-primary hover:underline">Set targets in Settings.</Link>
+            </p>
+          ) : null}
+        </div>
       </Section>
 
-      <div className="mt-6 rounded-lg bg-surface-2 border border-border px-4 py-3">
+      <Card variant="secondary">
         <p className="text-sm text-text-muted">
           For individual rates and planned against actual hours,{' '}
-          <a href="/rota/payroll" className="text-primary font-medium hover:underline">open the Payroll page.</a>
+          <Link href="/rota/payroll" className="text-primary font-medium hover:underline">open the Payroll page.</Link>
         </p>
-      </div>
+      </Card>
     </PageLayout>
   );
 }

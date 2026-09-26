@@ -2,6 +2,8 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Field, Input, Select } from '@/ds';
+import { cn } from '@/lib/utils';
+import { StepFooter } from './StepParts';
 import { saveOnboardingTimeOff } from '@/app/actions/employeeInvite';
 import {
   getTimeOffDateBounds,
@@ -24,6 +26,7 @@ interface TimeOffStepProps {
   initialBlocks: Array<{ startDate: string; endDate: string; leaveType: string; note: string }>;
   initialSubmissionVersion: number;
   onSuccess: () => void;
+  onBack?: () => void;
 }
 
 const LEAVE_TYPE_OPTIONS = [
@@ -43,6 +46,7 @@ export default function TimeOffStep({
   initialBlocks,
   initialSubmissionVersion,
   onSuccess,
+  onBack,
 }: TimeOffStepProps) {
   const { minDate, maxDate } = useMemo(() => getTimeOffDateBounds(), []);
 
@@ -135,7 +139,7 @@ export default function TimeOffStep({
             <fieldset
               key={row.key}
               disabled={nothingBooked}
-              className={`rounded-lg border p-4 ${errorRow === index ? 'border-danger' : 'border-border'}`}
+              className={cn('rounded-lg border p-4', errorRow === index ? 'border-danger' : 'border-border')}
             >
               <legend className="px-1 text-sm font-medium text-text-strong">
                 Dates {index + 1}
@@ -188,7 +192,7 @@ export default function TimeOffStep({
               {rows.length > 1 && (
                 <div className="mt-3">
                   <Button type="button" variant="ghost" size="sm" onClick={() => removeRow(index)}>
-                    Remove these dates
+                    Remove These Dates
                   </Button>
                 </div>
               )}
@@ -199,15 +203,17 @@ export default function TimeOffStep({
         {rows.length < MAX_BLOCKS && (
           <div className="mt-3">
             <Button type="button" variant="secondary" size="sm" onClick={addRow} disabled={nothingBooked}>
-              Add more dates
+              Add More Dates
             </Button>
           </div>
         )}
       </div>
 
-      <Button type="submit" variant="primary" className="w-full" loading={loading}>
-        Save and continue
-      </Button>
+      <StepFooter onBack={onBack}>
+        <Button type="submit" variant="primary" loading={loading}>
+          Save & Continue
+        </Button>
+      </StepFooter>
     </form>
   );
 }

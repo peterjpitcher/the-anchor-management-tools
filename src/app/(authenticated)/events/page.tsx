@@ -79,42 +79,38 @@ export default async function EventsPage() {
   const canManageCalendarNotesResolved = canManageEvents || canManageCalendarNotes
 
   return (
-    <div className="p-6">
-      <div className="flex flex-col gap-6 xl:flex-row">
-        <div className="min-w-0 flex-1">
-          <EventsClient
-            initialEvents={eventsResult.data ?? []}
-            initialPagination={eventsResult.pagination}
-            categories={categoriesResult.data ?? []}
-            initialCalendarEvents={calEventsResult.data ?? []}
-            initialCalendarBookings={'data' in bookingsResult && bookingsResult.data ? bookingsResult.data as VenueCalendarBooking[] : []}
-            initialCalendarNotes={notesResult.data ?? []}
-            calendarNotesError={notesResult.error ?? null}
-            initialCalendarParking={'data' in parkingResult && parkingResult.data ? parkingResult.data as VenueCalendarParking[] : []}
-            canManageCalendarNotes={canManageCalendarNotesResolved}
-            initialSpecialHours={specialHoursResult.data}
-            initialBirthdays={birthdaysResult.data}
-            initialBalanceDues={balanceDuesResult.data}
-            initialDailyOps={dailyOpsResult.data[0] ?? null}
-            initialMarketingSends={marketingSendsResult.data}
-            calendarDatasetWarnings={[
-              specialHoursResult.status === 'failed' ? specialHoursResult.message : null,
-              birthdaysResult.status === 'failed' ? birthdaysResult.message : null,
-              balanceDuesResult.status === 'failed' ? balanceDuesResult.message : null,
-              dailyOpsResult.status === 'failed' ? dailyOpsResult.message : null,
-              marketingSendsResult.status === 'failed' ? marketingSendsResult.message : null,
-            ].filter((message): message is string => Boolean(message))}
-          />
-        </div>
-        <aside className="xl:w-80 xl:shrink-0">
-          <EventTodosWidget
-            initialTodos={todosResult.items ?? []}
-            canManage={canManageEvents}
-            todayIso={getTodayIsoDate()}
-            loadError={todosResult.success ? null : todosResult.error ?? 'Unable to load outstanding todos'}
-          />
-        </aside>
-      </div>
-    </div>
+    <EventsClient
+      initialEvents={eventsResult.data ?? []}
+      initialEventsError={eventsResult.data ? null : eventsResult.error ?? null}
+      initialPagination={eventsResult.pagination}
+      categories={categoriesResult.data ?? []}
+      initialCalendarEvents={calEventsResult.data ?? []}
+      initialCalendarEventsError={calEventsResult.data ? null : calEventsResult.error ?? null}
+      initialCalendarBookings={'data' in bookingsResult && bookingsResult.data ? bookingsResult.data as VenueCalendarBooking[] : []}
+      initialCalendarNotes={notesResult.data ?? []}
+      calendarNotesError={notesResult.error ?? null}
+      initialCalendarParking={'data' in parkingResult && parkingResult.data ? parkingResult.data as VenueCalendarParking[] : []}
+      canManageCalendarNotes={canManageCalendarNotesResolved}
+      initialSpecialHours={specialHoursResult.data}
+      initialBirthdays={birthdaysResult.data}
+      initialBalanceDues={balanceDuesResult.data}
+      initialDailyOps={dailyOpsResult.data[0] ?? null}
+      initialMarketingSends={marketingSendsResult.data}
+      calendarDatasetWarnings={[
+        specialHoursResult.status === 'failed' ? specialHoursResult.message : null,
+        birthdaysResult.status === 'failed' ? birthdaysResult.message : null,
+        balanceDuesResult.status === 'failed' ? balanceDuesResult.message : null,
+        dailyOpsResult.status === 'failed' ? dailyOpsResult.message : null,
+        marketingSendsResult.status === 'failed' ? marketingSendsResult.message : null,
+      ].filter((message): message is string => Boolean(message))}
+      todosPanel={
+        <EventTodosWidget
+          initialTodos={todosResult.items ?? []}
+          canManage={canManageEvents}
+          todayIso={getTodayIsoDate()}
+          loadError={todosResult.success ? null : todosResult.error ?? 'Unable to load outstanding todos'}
+        />
+      }
+    />
   )
 }

@@ -3,13 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { saveHoursVersionDraft, updateBusinessHours } from '@/app/actions/business-hours'
 import { BusinessHours, DAY_NAMES } from '@/types/business-hours'
-import { Button, toast } from '@/ds'
+import { Button, Card, CardFooter, Checkbox, DataTable, FormFooter, Input, toast } from '@/ds'
 import { FoodServiceEditor } from './FoodServiceEditor'
 import { validateServiceWindows, readServiceWindows } from '@/lib/business-hours/service-windows'
-import { Input } from '@/ds'
-import { Checkbox } from '@/ds'
-import { Card } from '@/ds'
-import { DataTable } from '@/ds'
 
 interface BusinessHoursManagerProps {
   canManage: boolean
@@ -207,10 +203,11 @@ export function BusinessHoursManager({
   )
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit}>
       <DataTable
         data={reorderedHours}
         getRowKey={(h) => h.day_of_week}
+        bordered={false}
         columns={[
           { key: 'day', header: 'Day', cell: (h: any) => <span className="text-sm font-medium text-text">{DAY_NAMES[h.day_of_week]}</span> },
           // The table has no visible label beside each control, so each carries the column
@@ -279,7 +276,7 @@ export function BusinessHoursManager({
                 disabled={!editable || h.is_closed}
                 placeholder="-"
               />
-            ) : <span className="text-text-subtle text-center block">-</span>
+            ) : <span className="text-text-soft text-center block">-</span>
           ) },
           { key: 'slcloses', header: 'Sun Lunch End', cell: (h: any) => (
              h.day_of_week === 0 ? (
@@ -291,13 +288,13 @@ export function BusinessHoursManager({
                 disabled={!editable || h.is_closed}
                 placeholder="-"
               />
-            ) : <span className="text-text-subtle text-center block">-</span>
+            ) : <span className="text-text-soft text-center block">-</span>
           ) },
         ]}
         renderMobileCard={(h: any) => (
           <Card padding="sm">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-text">{DAY_NAMES[h.day_of_week]}</h3>
+              <p className="text-sm font-medium text-text-strong">{DAY_NAMES[h.day_of_week]}</p>
               <Checkbox
                 label="Closed"
                 checked={h.is_closed}
@@ -357,11 +354,13 @@ export function BusinessHoursManager({
 
       <FoodServiceEditor hours={hours} editable={editable} onChange={handleScheduleChange} />
 
-      <div className="flex justify-end pt-4">
-        <Button type="submit" loading={isSaving} disabled={!editable || isSaving}>
-          {isSaving ? 'Saving...' : 'Save Changes'}
-        </Button>
-      </div>
+      <CardFooter>
+        <FormFooter>
+          <Button type="submit" variant="primary" loading={isSaving} disabled={!editable || isSaving}>
+            {isSaving ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </FormFooter>
+      </CardFooter>
     </form>
   )
 }

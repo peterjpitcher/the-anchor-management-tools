@@ -17,7 +17,7 @@ describe('UnsubscribeEmailCard', () => {
   it('explains that only marketing email is stopped', () => {
     render(<UnsubscribeEmailCard />)
 
-    expect(screen.getByText('Unsubscribe an email address')).toBeInTheDocument()
+    expect(screen.getByText('Unsubscribe an Email Address')).toBeInTheDocument()
     expect(
       screen.getByText('Marketing only. Booking confirmations and reminders will still be sent.'),
     ).toBeInTheDocument()

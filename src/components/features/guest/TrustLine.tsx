@@ -1,8 +1,5 @@
-import { cn } from '@/lib/utils'
-
 type TrustLineProps = {
   children?: string
-  className?: string
 }
 
 /**
@@ -10,18 +7,10 @@ type TrustLineProps = {
  * guest is about to pay: table-payment, event-payment, the booking-portal
  * deposit and parking.
  */
-export function TrustLine({ children, className }: TrustLineProps): React.JSX.Element {
+export function TrustLine({ children }: TrustLineProps): React.JSX.Element {
   return (
-    <p
-      className={cn(
-        'flex items-center justify-center gap-[7px] font-anchor-body text-xs leading-[1.5] text-guest-text-muted',
-        className
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className="h-1.5 w-1.5 shrink-0 rounded-full bg-anchor-green-light"
-      />
+    <p className="flex items-center justify-center gap-guest-xs font-anchor-body text-guest-note text-guest-text-muted">
+      <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-anchor-green-light" />
       {children ?? 'Secure payment via PayPal'}
     </p>
   )

@@ -6,6 +6,9 @@ import {
   Card,
   CardHeader,
   CardBody,
+  PageLayout,
+  Section,
+  StatGrid,
   Badge,
   Button,
   Modal,
@@ -22,6 +25,8 @@ import {
   TableRow,
   TableHead,
   TableCell,
+  Icon,
+  RowActions,
 } from '@/ds'
 import { toast } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
@@ -37,20 +42,12 @@ import {
 } from '@/app/actions/mgd'
 import type { MgdCollection, MgdReturn } from '@/app/actions/mgd'
 import { useSort } from '@/hooks/useSort'
+import { MGD_COLLECTIONS_LAYOUT } from '../_shared/nav'
+import { MGD_RETURN_STATUS_TONE, mgdReturnStatusLabel } from '../_shared/status-ui'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function statusBadgeTone(
-  status: MgdReturn['status']
-): 'success' | 'warning' | 'info' {
-  switch (status) {
-    case 'open': return 'info'
-    case 'submitted': return 'warning'
-    case 'paid': return 'success'
-  }
-}
 
 function periodLabel(periodStart: string, periodEnd: string): string {
   const fmt = (d: string): string => {
@@ -61,7 +58,7 @@ function periodLabel(periodStart: string, periodEnd: string): string {
     ]
     return `${months[parseInt(m, 10)]} ${y}`
   }
-  return `${fmt(periodStart)} — ${fmt(periodEnd)}`
+  return `${fmt(periodStart)} to ${fmt(periodEnd)}`
 }
 
 function isLocked(ret: MgdReturn | null): boolean {
@@ -99,6 +96,8 @@ function downloadCsv(filename: string, rows: Array<Record<string, string | numbe
 interface MgdClientProps {
   initialReturn: MgdReturn | null
   initialCollections: MgdCollection[]
+  /** Why the current period's collections could not be loaded, if they could not. */
+  initialCollectionsError?: string | null
   initialReturns: MgdReturn[]
 }
 
@@ -109,6 +108,7 @@ interface MgdClientProps {
 export function MgdClient({
   initialReturn,
   initialCollections,
+  initialCollectionsError = null,
   initialReturns,
 }: MgdClientProps): React.ReactElement {
   const searchParams = useSearchParams()
@@ -116,6 +116,7 @@ export function MgdClient({
   // State
   const [currentReturn, setCurrentReturn] = useState<MgdReturn | null>(initialReturn)
   const [collections, setCollections] = useState<MgdCollection[]>(initialCollections)
+  const [collectionsError, setCollectionsError] = useState<string | null>(initialCollectionsError)
   const [allReturns, setAllReturns] = useState<MgdReturn[]>(initialReturns)
   const [selectedPeriod, setSelectedPeriod] = useState<{
     periodStart: string
@@ -234,15 +235,25 @@ export function MgdClient({
 
     if (period) {
       const colResult = await getCollections(period.periodStart, period.periodEnd)
-      if (!('error' in colResult)) setCollections(colResult.data ?? [])
+      applyCollectionsResult(colResult)
     }
   }, [selectedPeriod])
+
+  // A failed read is shown as a failure, never as a period with no collections.
+  function applyCollectionsResult(result: Awaited<ReturnType<typeof getCollections>>): void {
+    if ('error' in result) {
+      setCollectionsError(result.error)
+      return
+    }
+    setCollections(result.data ?? [])
+    setCollectionsError(null)
+  }
 
   // Period switching
   async function switchPeriod(periodStart: string, periodEnd: string): Promise<void> {
     setSelectedPeriod({ periodStart, periodEnd })
     const result = await getCollections(periodStart, periodEnd)
-    if (!('error' in result)) setCollections(result.data ?? [])
+    applyCollectionsResult(result)
   }
 
   useEffect(() => {
@@ -335,9 +346,25 @@ export function MgdClient({
     )
   }
 
+  const recordCollectionButton = locked ? (
+    <Tooltip content={`Return is ${viewingReturn?.status}. Reopen to add collections.`}>
+      <Button variant="primary" size="sm" disabled>
+        Record Collection
+      </Button>
+    </Tooltip>
+  ) : (
+    <Button
+      variant="primary"
+      size="sm"
+      onClick={() => { setEditingCollection(undefined); setShowForm(true) }}
+    >
+      Record Collection
+    </Button>
+  )
+
   // Render
   return (
-    <div className="space-y-6">
+    <PageLayout {...MGD_COLLECTIONS_LAYOUT} headerActions={recordCollectionButton}>
       {/* Info alert */}
       <Alert tone="info" title="How it works">
         MGD is charged on <strong>net takings</strong> (cash in minus prizes paid out) per dutiable machine.
@@ -346,108 +373,86 @@ export function MgdClient({
       </Alert>
 
       {/* Current Return Period */}
-      <Card>
-        <CardBody>
-          {viewingReturn ? (
-            <>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-text-strong">
-                    {periodLabel(viewingReturn.period_start, viewingReturn.period_end)}
-                  </h2>
-                  <Badge tone={statusBadgeTone(viewingReturn.status)} className="mt-1">
-                    {viewingReturn.status.charAt(0).toUpperCase() + viewingReturn.status.slice(1)}
-                  </Badge>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => setShowHmrcFormat(true)}>
-                    HMRC Format
-                  </Button>
-                  {viewingReturn.status === 'open' && (
-                    <Button variant="primary" size="sm" onClick={handleSubmitReturn} loading={submitting}>
-                      Mark as Submitted
-                    </Button>
-                  )}
-                  {viewingReturn.status === 'submitted' && (
-                    <>
-                      <Button variant="primary" size="sm" onClick={() => setShowPayDialog(true)}>
-                        Mark as Paid
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setShowReopenConfirm(true)}>
-                        Reopen
-                      </Button>
-                    </>
-                  )}
-                  {viewingReturn.status === 'paid' && (
-                    <Button variant="ghost" size="sm" onClick={() => setShowReopenConfirm(true)}>
-                      Reopen
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Stat label="Net Takings" value={formatCurrency(viewingReturn.total_net_take ?? 0)} />
-                <Stat label="MGD Due (20%)" value={formatCurrency(viewingReturn.total_mgd ?? 0)} />
-                <Stat label="VAT on Supplier" value={formatCurrency(viewingReturn.total_vat_on_supplier ?? 0)} />
-              </div>
-              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Stat label="Collections in Period" value={String(viewingReturn.collection_count ?? collections.length)} />
-                <MachineCountField viewingReturn={viewingReturn} locked={locked} onSaved={refreshData} />
-              </div>
-            </>
-          ) : (
-            <Empty
-              title="No return period yet"
-              description="Record your first collection to create a return for the current quarter."
-            />
-          )}
-        </CardBody>
-      </Card>
+      {viewingReturn ? (
+        <Section
+          title={periodLabel(viewingReturn.period_start, viewingReturn.period_end)}
+          actions={
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Badge tone={MGD_RETURN_STATUS_TONE[viewingReturn.status]}>
+                {mgdReturnStatusLabel(viewingReturn.status)}
+              </Badge>
+              <Button variant="secondary" size="sm" onClick={() => setShowHmrcFormat(true)}>
+                HMRC Format
+              </Button>
+              {viewingReturn.status !== 'open' && (
+                <Button variant="secondary" size="sm" onClick={() => setShowReopenConfirm(true)}>
+                  Reopen
+                </Button>
+              )}
+              {viewingReturn.status === 'open' && (
+                <Button variant="primary" size="sm" onClick={handleSubmitReturn} loading={submitting}>
+                  Mark as Submitted
+                </Button>
+              )}
+              {viewingReturn.status === 'submitted' && (
+                <Button variant="primary" size="sm" onClick={() => setShowPayDialog(true)}>
+                  Mark as Paid
+                </Button>
+              )}
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <StatGrid columns={3}>
+              <Stat label="Net Takings" value={formatCurrency(viewingReturn.total_net_take ?? 0)} />
+              <Stat label="MGD Due (20%)" value={formatCurrency(viewingReturn.total_mgd ?? 0)} />
+              <Stat label="VAT on Supplier" value={formatCurrency(viewingReturn.total_vat_on_supplier ?? 0)} />
+            </StatGrid>
+            <StatGrid columns={2}>
+              <Stat label="Collections in Period" value={String(viewingReturn.collection_count ?? collections.length)} />
+              <MachineCountField viewingReturn={viewingReturn} locked={locked} onSaved={refreshData} />
+            </StatGrid>
+          </div>
+        </Section>
+      ) : (
+        <Card>
+          <Empty
+            size="sm"
+            title="No return period yet"
+            description="Record your first collection to create a return for the current quarter."
+          />
+        </Card>
+      )}
 
       {/* Collections List */}
       <Card>
         <CardHeader
           title="Collections"
           action={
-            locked ? (
-              <Tooltip content={`Return is ${viewingReturn?.status}. Reopen to add collections.`}>
-                <Button variant="primary" size="sm" disabled>
-                  Record Collection
-                </Button>
-              </Tooltip>
-            ) : (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => { setEditingCollection(undefined); setShowForm(true) }}
-              >
-                Record Collection
-              </Button>
-            )
+            <Button variant="secondary" size="sm" onClick={exportCollections} disabled={visibleCollections.length === 0 || Boolean(collectionsError)}>
+              Export CSV
+            </Button>
           }
         />
         <CardBody>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Input
-              value={collectionSearch}
-              onChange={(event) => setCollectionSearch(event.target.value)}
-              placeholder="Search collections..."
-              aria-label="Search collections"
-              className="sm:max-w-xs"
-            />
-            <Button variant="secondary" size="sm" onClick={exportCollections} disabled={visibleCollections.length === 0}>
-              Export CSV
-            </Button>
-          </div>
+          <Input
+            value={collectionSearch}
+            onChange={(event) => setCollectionSearch(event.target.value)}
+            placeholder="Search collections..."
+            aria-label="Search collections"
+            className="sm:max-w-xs"
+          />
         </CardBody>
-        {visibleCollections.length === 0 ? (
+        {collectionsError ? (
           <CardBody>
-            <Empty
-              title={collectionSearch ? 'No collections match your search' : 'No collections'}
-              description={collectionSearch ? 'Try a different search.' : 'No machine game collections recorded for this period.'}
-            />
+            <Alert tone="danger" title="Couldn't load collections">{collectionsError}</Alert>
           </CardBody>
+        ) : visibleCollections.length === 0 ? (
+          <Empty
+            size="sm"
+            title={collectionSearch ? 'No collections match your search' : 'No collections'}
+            description={collectionSearch ? 'Try a different search.' : 'No machine game collections recorded for this period.'}
+          />
         ) : (
           <Table>
             <TableHeader>
@@ -499,14 +504,24 @@ export function MgdClient({
                     {locked ? (
                       <span className="text-xs text-text-muted">Locked</span>
                     ) : (
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => { setEditingCollection(c); setShowForm(true) }}>
-                          Edit
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => { setDeletingId(c.id); setShowDeleteConfirm(true) }}>
-                          Delete
-                        </Button>
-                      </div>
+                      <RowActions
+                        className="justify-end"
+                        actions={[
+                          {
+                            key: 'edit',
+                            label: 'Edit',
+                            icon: <Icon name="edit" size={16} />,
+                            onSelect: () => { setEditingCollection(c); setShowForm(true) },
+                          },
+                          {
+                            key: 'delete',
+                            label: 'Delete',
+                            icon: <Icon name="trash" size={16} />,
+                            tone: 'danger',
+                            onSelect: () => { setDeletingId(c.id); setShowDeleteConfirm(true) },
+                          },
+                        ]}
+                      />
                     )}
                   </TableCell>
                 </TableRow>
@@ -518,28 +533,29 @@ export function MgdClient({
 
       {/* Return History */}
       <Card>
-        <CardHeader title="Return History" />
-        <CardBody>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Input
-              value={returnSearch}
-              onChange={(event) => setReturnSearch(event.target.value)}
-              placeholder="Search returns..."
-              aria-label="Search returns"
-              className="sm:max-w-xs"
-            />
+        <CardHeader
+          title="Return History"
+          action={
             <Button variant="secondary" size="sm" onClick={exportReturns} disabled={visibleReturns.length === 0}>
               Export CSV
             </Button>
-          </div>
+          }
+        />
+        <CardBody>
+          <Input
+            value={returnSearch}
+            onChange={(event) => setReturnSearch(event.target.value)}
+            placeholder="Search returns..."
+            aria-label="Search returns"
+            className="sm:max-w-xs"
+          />
         </CardBody>
         {visibleReturns.length === 0 ? (
-          <CardBody>
-            <Empty
-              title={returnSearch ? 'No returns match your search' : 'No returns'}
-              description={returnSearch ? 'Try a different search.' : 'Returns are created automatically when you record collections.'}
-            />
-          </CardBody>
+          <Empty
+            size="sm"
+            title={returnSearch ? 'No returns match your search' : 'No returns'}
+            description={returnSearch ? 'Try a different search.' : 'Returns are created automatically when you record collections.'}
+          />
         ) : (
           <Table>
             <TableHeader>
@@ -599,14 +615,14 @@ export function MgdClient({
                     <TableCell align="right" className="tabular-nums">{formatCurrency(r.total_net_take ?? 0)}</TableCell>
                     <TableCell align="right" className="tabular-nums">{formatCurrency(r.total_mgd ?? 0)}</TableCell>
                     <TableCell align="center">
-                      <Badge tone={statusBadgeTone(r.status)}>
-                        {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                      <Badge tone={MGD_RETURN_STATUS_TONE[r.status]}>
+                        {mgdReturnStatusLabel(r.status)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-text-muted">
                       {r.date_paid
                         ? formatDateInLondon(r.date_paid, { day: 'numeric', month: 'short', year: 'numeric' })
-                        : '—'}
+                        : '-'}
                     </TableCell>
                   </TableRow>
                 )
@@ -659,18 +675,18 @@ export function MgdClient({
         open={showPayDialog}
         onClose={() => { setShowPayDialog(false); setDatePaid('') }}
         title="Mark Return as Paid"
-      >
-        <div className="space-y-4">
-          <Field label="Date Paid">
-            <Input type="date" value={datePaid} onChange={(e) => setDatePaid(e.target.value)} />
-          </Field>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => { setShowPayDialog(false); setDatePaid('') }}>Cancel</Button>
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setShowPayDialog(false); setDatePaid('') }}>Cancel</Button>
             <Button variant="primary" onClick={handleMarkPaid} loading={submitting} disabled={!datePaid || submitting}>
               Confirm Payment
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      >
+        <Field label="Date Paid">
+          <Input type="date" value={datePaid} onChange={(e) => setDatePaid(e.target.value)} />
+        </Field>
       </Modal>
 
       {/* HMRC Format Modal */}
@@ -681,7 +697,7 @@ export function MgdClient({
       >
         {viewingReturn && <HmrcFormatContent viewingReturn={viewingReturn} />}
       </Modal>
-    </div>
+    </PageLayout>
   )
 }
 
@@ -734,30 +750,26 @@ function MachineCountField({
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-text-muted uppercase tracking-wider">
-        Machines (at period end)
-      </span>
-      <div className="flex items-center gap-2">
-        <Input
-          type="number"
-          min="0"
-          step="1"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          aria-label="Number of machines available for play at the end of the period"
-          className="max-w-[7rem]"
-        />
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleSave}
-          loading={saving}
-          disabled={saving || !isValid || !isDirty}
-        >
-          Save
-        </Button>
-      </div>
+    <div className="flex items-end gap-2">
+      <Input
+        label="Machines (at period end)"
+        type="number"
+        min="0"
+        step="1"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        aria-label="Number of machines available for play at the end of the period"
+        className="max-w-[7rem]"
+      />
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={handleSave}
+        loading={saving}
+        disabled={saving || !isValid || !isDirty}
+      >
+        Save
+      </Button>
     </div>
   )
 }
@@ -777,7 +789,7 @@ function HmrcFormatContent({ viewingReturn }: { viewingReturn: MgdReturn }) {
       {lines.map((line) => (
         <div key={line.box} className="flex items-baseline gap-2 py-1 border-b border-border last:border-0">
           <span className="text-sm font-medium text-text-muted whitespace-nowrap">Box {line.box}</span>
-          <span className="text-sm text-text-subtle">-</span>
+          <span className="text-sm text-text-soft" aria-hidden="true">-</span>
           <span className="text-sm text-text flex-1">{line.label}:</span>
           <span className="text-sm font-semibold text-text-strong font-mono">{line.value}</span>
         </div>

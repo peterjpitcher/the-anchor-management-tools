@@ -6,17 +6,22 @@ import { getQuote, updateQuoteStatus, convertQuoteToInvoice, deleteQuote } from 
 import { getEmailConfigStatus } from '@/app/actions/email'
 import { EmailQuoteModal } from '@/components/modals/EmailQuoteModal'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
-// UI v2 components
-import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
-import { Button } from '@/ds'
-import { LinkButton } from '@/ds'
-import { Badge } from '@/ds'
-import { Alert } from '@/ds'
-import { toast } from '@/ds'
-import { ConfirmDialog } from '@/ds'
-import { DataTable } from '@/ds'
+import {
+  PageLayout,
+  Icon,
+  Card,
+  CardHeader,
+  CardBody,
+  Button,
+  LinkButton,
+  Badge,
+  Alert,
+  DataTable,
+  DescriptionList,
+  ConfirmDialog,
+  toast,
+} from '@/ds'
+import { BACK_TO_QUOTES } from '@/app/(authenticated)/invoices/_shared/nav'
 
 import { usePermissions } from '@/contexts/PermissionContext'
 import { quoteStatusLabel, quoteStatusTone } from '@/lib/invoices/status-ui'
@@ -210,15 +215,11 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   const layoutProps = {
     title: quote ? `Quote ${quote.quote_number}` : 'Quote',
     subtitle: quote?.reference ? `Reference: ${quote.reference}` : undefined,
-    backButton: { label: 'Back to Quotes', href: '/quotes' },
+    backButton: BACK_TO_QUOTES,
   }
 
   if (permissionsLoading || loading) {
-    return (
-      <PageLayout {...layoutProps} loading loadingLabel="Loading quote...">
-        {null}
-      </PageLayout>
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading quote" />
   }
 
   if (!canView) {
@@ -234,18 +235,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   if (!quote) {
-    return (
-      <PageLayout {...layoutProps}>
-        <Card>
-          <div className="py-8 text-center">
-            <p className="mb-4 text-danger">Quote not found</p>
-            <Button variant="secondary" onClick={() => router.push('/quotes')}>
-              Back to Quotes
-            </Button>
-          </div>
-        </Card>
-      </PageLayout>
-    )
+    return <PageLayout {...layoutProps} error="Quote not found" />
   }
 
   const isExpired = quote.status === 'expired' || 
@@ -269,8 +259,9 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
     return acc + (itemAfterQuoteDiscount * (item.vat_rate / 100))
   }, 0) || 0
 
+  // Page-level actions: secondary first, the destructive delete next, the primary action last.
   const headerActions = (
-    <div className="flex items-center gap-2 flex-wrap">
+    <>
       {quote.status === 'draft' && (
         <Button
           variant="secondary"
@@ -324,20 +315,6 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
         </Button>
       )}
 
-      {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleConvertToInvoice}
-          disabled={processing || !canCreate}
-          title={!canCreate ? 'You need invoice create permission to convert quotes.' : undefined}
-          leftIcon={<Icon name="fileText" size={16} />}
-        >
-          <span className="hidden sm:inline">Convert to Invoice</span>
-          <span className="sm:hidden">Convert</span>
-        </Button>
-      )}
-
       {emailConfigured && (
         <Button
           variant="secondary"
@@ -375,12 +352,36 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           Delete
         </Button>
       )}
-    </div>
+
+      {quote.status === 'accepted' && !quote.converted_to_invoice_id && (
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleConvertToInvoice}
+          disabled={processing || !canCreate}
+          title={!canCreate ? 'You need invoice create permission to convert quotes.' : undefined}
+          leftIcon={<Icon name="fileText" size={16} />}
+        >
+          <span className="hidden sm:inline">Convert to Invoice</span>
+          <span className="sm:hidden">Convert</span>
+        </Button>
+      )}
+    </>
   )
+
+  const lineTotal = (it: { quantity: number; unit_price: number; discount_percentage: number; vat_rate: number }) => {
+    const lineSubtotal = it.quantity * it.unit_price
+    const lineDiscount = lineSubtotal * (it.discount_percentage / 100)
+    const lineAfterDiscount = lineSubtotal - lineDiscount
+    const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
+    const lineAfterQuoteDiscount = lineAfterDiscount - (quoteDiscount * itemShare)
+    const lineVat = lineAfterQuoteDiscount * (it.vat_rate / 100)
+    return lineAfterQuoteDiscount + lineVat
+  }
 
   return (
     <PageLayout {...layoutProps} headerActions={headerActions}>
-      <div className="mb-2">
+      <div>
         <Badge tone={quoteStatusTone(quote.status)} dot>
           {quoteStatusLabel(quote.status)}
         </Badge>
@@ -390,111 +391,105 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
         <Alert tone="danger" title="Error">{error}</Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Section title="Quote Details">
-            <Card>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-              <div>
-                <h3 className="font-medium text-xs sm:text-sm text-text-muted mb-1">From</h3>
-                <p className="font-medium text-sm sm:text-base">Orange Jelly Limited</p>
-                <p className="text-xs sm:text-sm text-text-muted">The Anchor, Horton Road</p>
-                <p className="text-xs sm:text-sm text-text-muted">Stanwell Moor Village, Surrey</p>
-                <p className="text-xs sm:text-sm text-text-muted">TW19 6AQ</p>
-                <p className="text-xs sm:text-sm text-text-muted">VAT: GB315203647</p>
-              </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Card>
+            <CardHeader title="Quote Details" />
+            <CardBody className="space-y-6">
+              <DescriptionList
+                items={[
+                  {
+                    key: 'from',
+                    label: 'From',
+                    value: (
+                      <>
+                        <span className="block font-medium">Orange Jelly Limited</span>
+                        <span className="block text-text-muted">The Anchor, Horton Road</span>
+                        <span className="block text-text-muted">Stanwell Moor Village, Surrey</span>
+                        <span className="block text-text-muted">TW19 6AQ</span>
+                        <span className="block text-text-muted">VAT: GB315203647</span>
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'to',
+                    label: 'To',
+                    value: quote.vendor ? (
+                      <>
+                        <span className="block font-medium">{quote.vendor.name}</span>
+                        {quote.vendor.contact_name && (
+                          <span className="block text-text-muted">{quote.vendor.contact_name}</span>
+                        )}
+                        {quote.vendor.email && (
+                          <span className="block break-all text-text-muted">{quote.vendor.email}</span>
+                        )}
+                        {quote.vendor.phone && (
+                          <span className="block text-text-muted">{quote.vendor.phone}</span>
+                        )}
+                        {quote.vendor.address && (
+                          <span className="block whitespace-pre-line text-text-muted">{quote.vendor.address}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-text-muted">No vendor details</span>
+                    ),
+                  },
+                ]}
+              />
 
-              <div>
-                <h3 className="font-medium text-xs sm:text-sm text-text-muted mb-1">To</h3>
-                {quote.vendor ? (
-                  <>
-                    <p className="font-medium text-sm sm:text-base">{quote.vendor.name}</p>
-                    {quote.vendor.contact_name && (
-                      <p className="text-xs sm:text-sm text-text-muted">{quote.vendor.contact_name}</p>
-                    )}
-                    {quote.vendor.email && (
-                      <p className="text-xs sm:text-sm text-text-muted break-all">{quote.vendor.email}</p>
-                    )}
-                    {quote.vendor.phone && (
-                      <p className="text-xs sm:text-sm text-text-muted">{quote.vendor.phone}</p>
-                    )}
-                    {quote.vendor.address && (
-                      <p className="text-xs sm:text-sm text-text-muted whitespace-pre-line">{quote.vendor.address}</p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-text-muted">No vendor details</p>
-                )}
-              </div>
-            </div>
+              <DescriptionList
+                className="border-t border-border pt-6"
+                items={[
+                  {
+                    key: 'quote_date',
+                    label: 'Quote Date',
+                    value: <span className="font-medium">{new Date(quote.quote_date).toLocaleDateString('en-GB')}</span>,
+                  },
+                  {
+                    key: 'valid_until',
+                    label: 'Valid Until',
+                    value: <span className="font-medium">{new Date(quote.valid_until).toLocaleDateString('en-GB')}</span>,
+                  },
+                ]}
+              />
+            </CardBody>
+          </Card>
 
-            <div className="grid grid-cols-2 gap-4 sm:gap-6 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-border">
-              <div>
-                <p className="text-xs sm:text-sm text-text-muted">Quote Date</p>
-                <p className="font-medium text-sm sm:text-base">
-                  {new Date(quote.quote_date).toLocaleDateString('en-GB')}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-text-muted">Valid Until</p>
-                <p className="font-medium text-sm sm:text-base">
-                  {new Date(quote.valid_until).toLocaleDateString('en-GB')}
-                </p>
-              </div>
-            </div>
-            </Card>
-          </Section>
-
-          <Section title="Line Items">
-            <Card>
+          <Card>
+            <CardHeader title="Line Items" />
             <DataTable<any>
               data={quote.line_items || []}
               getRowKey={(it) => it.id}
               emptyMessage="No line items"
+              bordered={false}
               columns={[
                 { key: 'description', header: 'Description', cell: (it) => <span className="text-sm">{it.description}</span> },
                 { key: 'quantity', header: 'Qty', align: 'right', cell: (it) => <span className="text-sm">{it.quantity}</span> },
                 { key: 'unit_price', header: 'Unit Price', align: 'right', cell: (it) => <span className="text-sm">£{it.unit_price.toFixed(2)}</span> },
                 { key: 'discount', header: 'Discount', align: 'right', cell: (it) => <span className="text-sm text-success-fg">{it.discount_percentage > 0 ? `-${it.discount_percentage}%` : ''}</span> },
                 { key: 'vat', header: 'VAT', align: 'right', cell: (it) => <span className="text-sm">{it.vat_rate}%</span> },
-                { key: 'total', header: 'Total', align: 'right', cell: (it) => {
-                  const lineSubtotal = it.quantity * it.unit_price
-                  const lineDiscount = lineSubtotal * (it.discount_percentage / 100)
-                  const lineAfterDiscount = lineSubtotal - lineDiscount
-                  const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
-                  const lineAfterQuoteDiscount = lineAfterDiscount - (quoteDiscount * itemShare)
-                  const lineVat = lineAfterQuoteDiscount * (it.vat_rate / 100)
-                  const lineTotal = lineAfterQuoteDiscount + lineVat
-                  return <span className="text-sm font-medium">£{lineTotal.toFixed(2)}</span>
-                } },
+                { key: 'total', header: 'Total', align: 'right', cell: (it) => (
+                  <span className="text-sm font-medium">£{lineTotal(it).toFixed(2)}</span>
+                ) },
               ]}
-              renderMobileCard={(it) => {
-                const lineSubtotal = it.quantity * it.unit_price
-                const lineDiscount = lineSubtotal * (it.discount_percentage / 100)
-                const lineAfterDiscount = lineSubtotal - lineDiscount
-                const itemShare = subtotal > 0 ? lineAfterDiscount / subtotal : 0
-                const lineAfterQuoteDiscount = lineAfterDiscount - (quoteDiscount * itemShare)
-                const lineVat = lineAfterQuoteDiscount * (it.vat_rate / 100)
-                const lineTotal = lineAfterQuoteDiscount + lineVat
-                return (
-                  <div className="border border-border rounded-lg p-3">
-                    <p className="font-medium text-sm mb-2">{it.description}</p>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div><span className="text-text-muted">Qty:</span> {it.quantity}</div>
-                      <div><span className="text-text-muted">Unit Price:</span> £{it.unit_price.toFixed(2)}</div>
-                      <div><span className="text-text-muted">Discount:</span> {it.discount_percentage > 0 ? (<span className="text-success-fg"> -{it.discount_percentage}%</span>) : (<span>-</span>)}</div>
-                      <div><span className="text-text-muted">VAT:</span> {it.vat_rate}%</div>
-                    </div>
-                    <div className="mt-2 pt-2 border-t border-border flex justify-between">
-                      <span className="text-sm font-medium">Total:</span>
-                      <span className="text-sm font-medium">£{lineTotal.toFixed(2)}</span>
-                    </div>
+              renderMobileCard={(it) => (
+                <div className="border-b border-border p-pad-card">
+                  <p className="font-medium text-sm mb-2">{it.description}</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div><span className="text-text-muted">Qty:</span> {it.quantity}</div>
+                    <div><span className="text-text-muted">Unit Price:</span> £{it.unit_price.toFixed(2)}</div>
+                    <div><span className="text-text-muted">Discount:</span> {it.discount_percentage > 0 ? (<span className="text-success-fg"> -{it.discount_percentage}%</span>) : (<span>-</span>)}</div>
+                    <div><span className="text-text-muted">VAT:</span> {it.vat_rate}%</div>
                   </div>
-                )
-              }}
+                  <div className="mt-2 pt-2 border-t border-border flex justify-between">
+                    <span className="text-sm font-medium">Total:</span>
+                    <span className="text-sm font-medium">£{lineTotal(it).toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
             />
 
-            <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-border space-y-2">
+            <CardBody className="space-y-2 border-t border-border">
               <div className="flex justify-between text-xs sm:text-sm">
                 <span>Subtotal:</span>
                 <span>£{subtotal.toFixed(2)}</span>
@@ -513,68 +508,85 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                 <span>Total:</span>
                 <span>{formatCurrency(quote.total_amount)}</span>
               </div>
-            </div>
-            </Card>
-          </Section>
+            </CardBody>
+          </Card>
 
           {(quote.notes || quote.internal_notes) && (
-            <Section title="Notes">
-              <Card>
-              {quote.notes && (
-                <div className="mb-4">
-                  <h3 className="font-medium text-xs sm:text-sm text-text-muted mb-1">Quote Notes</h3>
-                  <p className="text-xs sm:text-sm whitespace-pre-wrap">{quote.notes}</p>
-                </div>
-              )}
-              
-              {quote.internal_notes && (
-                <div>
-                  <h3 className="font-medium text-xs sm:text-sm text-text-muted mb-1">Internal Notes</h3>
-                  <p className="text-xs sm:text-sm whitespace-pre-wrap rounded-md border border-warning-border bg-warning-soft p-2 sm:p-3 text-warning-fg">
-                    {quote.internal_notes}
-                  </p>
-                </div>
-              )}
-              </Card>
-            </Section>
+            <Card>
+              <CardHeader title="Notes" />
+              <CardBody>
+                <DescriptionList
+                  columns={1}
+                  items={[
+                    ...(quote.notes
+                      ? [{
+                        key: 'notes',
+                        label: 'Quote Notes',
+                        value: <span className="whitespace-pre-wrap">{quote.notes}</span>,
+                      }]
+                      : []),
+                    ...(quote.internal_notes
+                      ? [{
+                        key: 'internal_notes',
+                        label: 'Internal Notes',
+                        value: (
+                          <Alert tone="warning" role="status">
+                            <span className="whitespace-pre-wrap">{quote.internal_notes}</span>
+                          </Alert>
+                        ),
+                      }]
+                      : []),
+                  ]}
+                />
+              </CardBody>
+            </Card>
           )}
         </div>
 
         <div className="space-y-6">
-          <Section title="Quote Status">
-            <Card>
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs sm:text-sm text-text-muted">Total Amount</p>
-                <p className="text-xl sm:text-2xl font-bold">{formatCurrency(quote.total_amount)}</p>
-              </div>
-              
-              <div>
-                <p className="text-xs sm:text-sm text-text-muted">Status</p>
-                <Badge tone={quoteStatusTone(quote.status)} dot>
-                  {quoteStatusLabel(quote.status)}
-                </Badge>
-              </div>
-              
-              {quote.converted_to_invoice_id && (
-                <div>
-                  <p className="text-xs sm:text-sm text-text-muted">Converted to Invoice</p>
-                  <p className="text-xs sm:text-sm font-medium text-success-fg">
-                    {quote.converted_invoice?.invoice_number}
-                  </p>
-                </div>
-              )}
+          <Card>
+            <CardHeader title="Quote Status" />
+            <CardBody className="space-y-4">
+              <DescriptionList
+                columns={1}
+                items={[
+                  {
+                    key: 'total',
+                    label: 'Total Amount',
+                    value: <span className="text-xl font-bold sm:text-2xl">{formatCurrency(quote.total_amount)}</span>,
+                  },
+                  {
+                    key: 'status',
+                    label: 'Status',
+                    value: (
+                      <Badge tone={quoteStatusTone(quote.status)} dot>
+                        {quoteStatusLabel(quote.status)}
+                      </Badge>
+                    ),
+                  },
+                  ...(quote.converted_to_invoice_id
+                    ? [{
+                      key: 'converted',
+                      label: 'Converted to Invoice',
+                      value: (
+                        <span className="font-medium text-success-fg">
+                          {quote.converted_invoice?.invoice_number}
+                        </span>
+                      ),
+                    }]
+                    : []),
+                ]}
+              />
 
               {isExpired && quote.status === 'sent' && (
                 <Alert tone="warning">This quote has expired</Alert>
               )}
-            </div>
-            </Card>
-          </Section>
+            </CardBody>
+          </Card>
 
-          <Section title="Actions">
-            <Card>
-            <div className="space-y-2">
+          <Card>
+            <CardHeader title="Actions" />
+            <CardBody className="space-y-2">
               <Button
                 variant="secondary"
                 fullWidth
@@ -586,7 +598,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               >
                 Copy Link
               </Button>
-              
+
               {quote.status === 'sent' && !isExpired && (
                 <Button
                   variant="secondary"
@@ -597,9 +609,8 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                   Mark as Expired
                 </Button>
               )}
-            </div>
-            </Card>
-          </Section>
+            </CardBody>
+          </Card>
         </div>
       </div>
 
@@ -623,7 +634,8 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
             onConfirm={handleDelete}
             title="Delete Quote"
             message="Are you sure you want to delete this quote? This action cannot be undone."
-            confirmText="Delete"
+            confirmLabel="Delete"
+            tone="danger"
           />
         </>
       )}

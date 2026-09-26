@@ -4,6 +4,16 @@ import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 
+/*
+ * Why this is not the DS Dropdown. The short-link actions menu opens from a row of a table that
+ * scrolls sideways inside a Card, and both clip anything that overflows them. DS Dropdown draws
+ * its menu absolutely inside the trigger's box, so here it was cut off at the table edge. This
+ * menu is portalled to <body> with fixed positioning, flips upwards near the bottom of the
+ * window, and supports section headings and entries that keep it open (the UTM and QR
+ * sub-lists), none of which Dropdown offers. Retire it once Dropdown can portal (Headless UI's
+ * `anchor` prop) and take section headings.
+ */
+
 type PortalMenuRenderTrigger = (props: {
   ref: Ref<HTMLButtonElement>
   open: boolean
@@ -63,7 +73,7 @@ export function PortalMenu({ trigger, entries, width = 224, maxHeight = 420, dis
       if (event.key === 'Escape') close()
     }
     // Capture phase so scrolls inside nested overflow wrappers (e.g. the
-    // horizontally scrolling table) also close the menu — but ignore the
+    // horizontally scrolling table) also close the menu, but ignore the
     // menu's own internal scrolling.
     const handleScroll = (event: Event) => {
       if (event.target instanceof Node && menuRef.current?.contains(event.target)) return
@@ -118,6 +128,8 @@ export function PortalMenu({ trigger, entries, width = 224, maxHeight = 420, dis
               )
             }
 
+            // Plain buttons: they are the items of this portalled menu, which DS Dropdown's
+            // MenuItem cannot render outside its own (clipped) panel.
             return (
               <button
                 key={entry.key}
@@ -125,7 +137,7 @@ export function PortalMenu({ trigger, entries, width = 224, maxHeight = 420, dis
                 className={cn(
                   // Inset ring: the menu scrolls, which would clip an outer one.
                   'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset',
-                  entry.danger ? 'text-danger' : 'text-text',
+                  entry.danger ? 'text-danger-fg' : 'text-text',
                   entry.disabled && 'opacity-50'
                 )}
                 disabled={entry.disabled}

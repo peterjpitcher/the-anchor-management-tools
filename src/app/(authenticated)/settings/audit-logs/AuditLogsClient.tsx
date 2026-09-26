@@ -5,21 +5,25 @@ import type { AuditLog } from '@/types/database'
 import type { AuditLogUser } from '@/app/actions/auditLogs'
 import { listAuditLogs } from '@/app/actions/auditLogs'
 import { formatDate } from '@/lib/dateUtils'
-import { PageLayout } from '@/ds'
-import { Section } from '@/ds'
-import { Card } from '@/ds'
-import { Field } from '@/ds'
-import { Select } from '@/ds'
-import { Input } from '@/ds'
-import { Button } from '@/ds'
-import { Badge } from '@/ds'
-import { DataTable } from '@/ds'
-import { Empty } from '@/ds'
-import { Spinner } from '@/ds'
-import { Alert } from '@/ds'
-import { Pagination } from '@/ds'
-import { DescriptionList } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  DataTable,
+  DescriptionList,
+  Empty,
+  Field,
+  Input,
+  PageLayout,
+  PageLoading,
+  Select,
+  TablePagination,
+} from '@/ds'
 import type { DescriptionListItem } from '@/ds/composites/DescriptionList'
+import { auditLogStatusTone } from '../_shared/status-ui'
 
 type FiltersState = {
   operationType: string
@@ -95,10 +99,6 @@ function getOperationIcon(type: string) {
     default:
       return '📝'
   }
-}
-
-function getStatusTone(status: string): 'success' | 'danger' {
-  return status === 'success' ? 'success' : 'danger'
 }
 
 function escapeCsvCell(value: string | null | undefined): string {
@@ -208,11 +208,6 @@ export default function AuditLogsClient({
     fetchLogs(cleared, 1)
   }
 
-  const breadcrumbs = [
-    { label: 'Settings', href: '/settings' },
-    { label: 'Audit Logs' },
-  ]
-
   const hasActiveFilters =
     filters.operationType ||
     filters.resourceType ||
@@ -226,262 +221,259 @@ export default function AuditLogsClient({
     <PageLayout
       title="Audit Logs"
       subtitle="View system activity and security events"
-      breadcrumbs={breadcrumbs}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
+      headerActions={
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => downloadCsv(logs)}
+          disabled={isRefreshing || logs.length === 0}
+          type="button"
+        >
+          Export CSV
+        </Button>
+      }
     >
-      <div className="space-y-6">
-        {error && <Alert tone="danger" title="Error">{error}</Alert>}
+      {error && <Alert tone="danger" title="Error">{error}</Alert>}
 
-        <Section id="filters" title="Filters">
-          <Card>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              <Field label="Operation">
-                <Select
-                  value={filters.operationType}
-                  onChange={(event) => handleFilterChange({ operationType: event.target.value })}
-                  disabled={isRefreshing}
-                >
-                  {OPERATION_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+      <Card padding="none">
+        <CardHeader title="Audit Log Entries" />
+        <CardBody className="flex flex-wrap items-end gap-3 border-b border-border">
+          <Field label="Operation" className="w-full sm:w-44">
+            <Select
+              value={filters.operationType}
+              onChange={(event) => handleFilterChange({ operationType: event.target.value })}
+              disabled={isRefreshing}
+            >
+              {OPERATION_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
 
-              <Field label="Resource">
-                <Select
-                  value={filters.resourceType}
-                  onChange={(event) => handleFilterChange({ resourceType: event.target.value })}
-                  disabled={isRefreshing}
-                >
-                  {RESOURCE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+          <Field label="Resource" className="w-full sm:w-44">
+            <Select
+              value={filters.resourceType}
+              onChange={(event) => handleFilterChange({ resourceType: event.target.value })}
+              disabled={isRefreshing}
+            >
+              {RESOURCE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
 
-              <Field label="Status">
-                <Select
-                  value={filters.status}
-                  onChange={(event) => handleFilterChange({ status: event.target.value })}
-                  disabled={isRefreshing}
-                >
-                  {STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+          <Field label="Status" className="w-full sm:w-40">
+            <Select
+              value={filters.status}
+              onChange={(event) => handleFilterChange({ status: event.target.value })}
+              disabled={isRefreshing}
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
 
-              <Field label="User">
-                <Select
-                  value={filters.userId}
-                  onChange={(event) => handleFilterChange({ userId: event.target.value })}
-                  disabled={isRefreshing}
-                >
-                  <option value="">All Users</option>
-                  {availableUsers.map((u) => (
-                    <option key={u.user_id} value={u.user_id}>
-                      {u.user_email ?? u.user_id}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+          <Field label="User" className="w-full sm:w-56">
+            <Select
+              value={filters.userId}
+              onChange={(event) => handleFilterChange({ userId: event.target.value })}
+              disabled={isRefreshing}
+            >
+              <option value="">All Users</option>
+              {availableUsers.map((u) => (
+                <option key={u.user_id} value={u.user_id}>
+                  {u.user_email ?? u.user_id}
+                </option>
+              ))}
+            </Select>
+          </Field>
 
-              <Field label="From date">
-                <Input
-                  type="date"
-                  value={filters.dateFrom}
-                  onChange={(event) => handleFilterChange({ dateFrom: event.target.value })}
-                  disabled={isRefreshing}
-                />
-              </Field>
+          <Field label="From date" className="w-full sm:w-40">
+            <Input
+              type="date"
+              value={filters.dateFrom}
+              onChange={(event) => handleFilterChange({ dateFrom: event.target.value })}
+              disabled={isRefreshing}
+            />
+          </Field>
 
-              <Field label="To date">
-                <Input
-                  type="date"
-                  value={filters.dateTo}
-                  onChange={(event) => handleFilterChange({ dateTo: event.target.value })}
-                  disabled={isRefreshing}
-                />
-              </Field>
+          <Field label="To date" className="w-full sm:w-40">
+            <Input
+              type="date"
+              value={filters.dateTo}
+              onChange={(event) => handleFilterChange({ dateTo: event.target.value })}
+              disabled={isRefreshing}
+            />
+          </Field>
 
-              <Field label="Resource ID">
-                <Input
-                  type="text"
-                  placeholder="Search resource ID…"
-                  value={filters.resourceId}
-                  onChange={(event) => handleFilterChange({ resourceId: event.target.value })}
-                  disabled={isRefreshing}
-                />
-              </Field>
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => downloadCsv(logs)}
-                disabled={isRefreshing || logs.length === 0}
-                type="button"
-              >
-                Export CSV
-              </Button>
-              <Button variant="secondary" onClick={handleClearFilters} disabled={isRefreshing} type="button">
-                Clear Filters
-              </Button>
-            </div>
-          </Card>
-        </Section>
+          <Field label="Resource ID" className="w-full sm:w-56">
+            <Input
+              type="text"
+              placeholder="Search resource ID…"
+              value={filters.resourceId}
+              onChange={(event) => handleFilterChange({ resourceId: event.target.value })}
+              disabled={isRefreshing}
+            />
+          </Field>
 
-        <Section id="logs" title="Audit Log Entries">
-          <Card>
-            {isRefreshing ? (
-              <div className="flex items-center justify-center py-8">
-                <Spinner size="lg" />
-              </div>
-            ) : logs.length === 0 ? (
-              <Empty
-                title="No audit logs found"
-                description="No audit logs match your current filters."
-                action={
-                  hasActiveFilters && (
-                    <Button variant="secondary" onClick={handleClearFilters} disabled={isRefreshing}>
-                      Clear Filters
-                    </Button>
-                  )
-                }
-              />
-            ) : (
-              <DataTable
-                data={logs}
-                getRowKey={(log) => log.id}
-                columns={[
-                  {
-                    key: 'created_at',
-                    header: 'Time',
-                    cell: (log: AuditLog) => (
-                      <div>
-                        <div className="text-sm text-text">{formatDate(log.created_at)}</div>
-                        <div className="text-xs text-text-muted">
-                          {new Date(log.created_at).toLocaleTimeString()}
-                        </div>
-                      </div>
-                    ),
-                  },
-                  {
-                    key: 'user_email',
-                    header: 'User',
-                    cell: (log: AuditLog) => log.user_email || 'System',
-                  },
-                  {
-                    key: 'operation_type',
-                    header: 'Operation',
-                    cell: (log: AuditLog) => (
-                      <span>
-                        <span className="mr-2">{getOperationIcon(log.operation_type)}</span>
-                        {log.operation_type}
-                      </span>
-                    ),
-                  },
-                  {
-                    key: 'resource_type',
-                    header: 'Resource',
-                    cell: (log: AuditLog) => (
-                      <div>
-                        <div className="text-sm">{log.resource_type}</div>
-                        {log.resource_id && (
-                          <div className="text-xs text-text-muted">ID: {log.resource_id.slice(0, 8)}...</div>
-                        )}
-                      </div>
-                    ),
-                  },
-                  {
-                    key: 'operation_status',
-                    header: 'Status',
-                    cell: (log: AuditLog) => (
-                      <div>
-                        <Badge tone={getStatusTone(log.operation_status)} size="sm">
-                          {log.operation_status}
-                        </Badge>
-                        {log.error_message && (
-                          <div className="text-xs text-danger mt-1">{log.error_message}</div>
-                        )}
-                      </div>
-                    ),
-                  },
-                  {
-                    key: 'ip_address',
-                    header: 'IP Address',
-                    cell: (log: AuditLog) => log.ip_address || '-',
-                  },
-                  {
-                    key: 'actions',
-                    header: '',
-                    cell: (log: AuditLog) => (
-                      <Button
-                        onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
-                        variant="secondary"
-                        size="sm"
-                        type="button"
-                      >
-                        {expandedLog === log.id ? 'Hide' : 'Details'}
-                      </Button>
-                    ),
-                  },
-                ]}
-              />
-            )}
-          </Card>
-        </Section>
+          <Button variant="secondary" onClick={handleClearFilters} disabled={isRefreshing} type="button">
+            Clear Filters
+          </Button>
+        </CardBody>
 
-        {expandedLog && (() => {
-          const log = logs.find((entry) => entry.id === expandedLog)
-          if (!log) {
-            return null
-          }
-
-          const jsonBlock = (value: unknown) => (
-            <pre className="max-w-full overflow-x-auto rounded-sm bg-surface-hover p-2 text-xs sm:text-sm">
-              {JSON.stringify(value, null, 2)}
-            </pre>
+        {isRefreshing ? (
+          <PageLoading inline label="Loading audit logs" />
+        ) : logs.length === 0 ? (
+          // A failed load is reported by the error above, never shown as an empty list.
+          error ? null : (
+            <Empty
+              size="sm"
+              title="No audit logs found"
+              description="No audit logs match your current filters."
+              action={
+                hasActiveFilters && (
+                  <Button variant="secondary" onClick={handleClearFilters} disabled={isRefreshing}>
+                    Clear Filters
+                  </Button>
+                )
+              }
+            />
           )
-          const detailItems: DescriptionListItem[] = [
-            { key: 'id', label: 'Log ID', value: log.id },
-            { key: 'timestamp', label: 'Timestamp', value: new Date(log.created_at).toLocaleString() },
-          ]
-          if (log.old_values) {
-            detailItems.push({ key: 'old_values', label: 'Old Values', value: jsonBlock(log.old_values), span: 2 })
-          }
-          if (log.new_values) {
-            detailItems.push({ key: 'new_values', label: 'New Values', value: jsonBlock(log.new_values), span: 2 })
-          }
-          if (log.additional_info) {
-            detailItems.push({ key: 'additional_info', label: 'Additional Info', value: jsonBlock(log.additional_info), span: 2 })
-          }
-
-          return (
-            <Section title="Log Details">
-              <Card>
-                <DescriptionList items={detailItems} />
-              </Card>
-            </Section>
-          )
-        })()}
-
-        {totalPages > 1 && (
-          <Pagination
-            currentPage={page}
-            totalPages={totalPages}
-            totalItems={totalCount}
-            itemsPerPage={pageSize}
-            onPageChange={handlePageChange}
-            position="end"
+        ) : (
+          <DataTable
+            data={logs}
+            getRowKey={(log) => log.id}
+            bordered={false}
+            columns={[
+              {
+                key: 'created_at',
+                header: 'Time',
+                cell: (log: AuditLog) => (
+                  <div>
+                    <div className="text-sm text-text">{formatDate(log.created_at)}</div>
+                    <div className="text-xs text-text-muted">
+                      {new Date(log.created_at).toLocaleTimeString()}
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: 'user_email',
+                header: 'User',
+                cell: (log: AuditLog) => log.user_email || 'System',
+              },
+              {
+                key: 'operation_type',
+                header: 'Operation',
+                cell: (log: AuditLog) => (
+                  <span>
+                    <span className="mr-2">{getOperationIcon(log.operation_type)}</span>
+                    {log.operation_type}
+                  </span>
+                ),
+              },
+              {
+                key: 'resource_type',
+                header: 'Resource',
+                cell: (log: AuditLog) => (
+                  <div>
+                    <div className="text-sm">{log.resource_type}</div>
+                    {log.resource_id && (
+                      <div className="text-xs text-text-muted">ID: {log.resource_id.slice(0, 8)}...</div>
+                    )}
+                  </div>
+                ),
+              },
+              {
+                key: 'operation_status',
+                header: 'Status',
+                cell: (log: AuditLog) => (
+                  <div>
+                    <Badge tone={auditLogStatusTone(log.operation_status)} size="sm">
+                      {log.operation_status}
+                    </Badge>
+                    {log.error_message && (
+                      <div className="text-xs text-danger-fg mt-1">{log.error_message}</div>
+                    )}
+                  </div>
+                ),
+              },
+              {
+                key: 'ip_address',
+                header: 'IP Address',
+                cell: (log: AuditLog) => log.ip_address || '-',
+              },
+              {
+                key: 'actions',
+                header: '',
+                cell: (log: AuditLog) => (
+                  <Button
+                    onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
+                    variant="secondary"
+                    size="sm"
+                    type="button"
+                  >
+                    {expandedLog === log.id ? 'Hide' : 'Details'}
+                  </Button>
+                ),
+              },
+            ]}
           />
         )}
-      </div>
+
+        {totalPages > 1 && (
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={pageSize}
+            onPageChange={handlePageChange}
+          />
+        )}
+      </Card>
+
+      {expandedLog && (() => {
+        const log = logs.find((entry) => entry.id === expandedLog)
+        if (!log) {
+          return null
+        }
+
+        const jsonBlock = (value: unknown) => (
+          <pre className="max-w-full overflow-x-auto rounded-sm bg-surface-hover p-2 text-xs sm:text-sm">
+            {JSON.stringify(value, null, 2)}
+          </pre>
+        )
+        const detailItems: DescriptionListItem[] = [
+          { key: 'id', label: 'Log ID', value: log.id },
+          { key: 'timestamp', label: 'Timestamp', value: new Date(log.created_at).toLocaleString() },
+        ]
+        if (log.old_values) {
+          detailItems.push({ key: 'old_values', label: 'Old Values', value: jsonBlock(log.old_values), span: 2 })
+        }
+        if (log.new_values) {
+          detailItems.push({ key: 'new_values', label: 'New Values', value: jsonBlock(log.new_values), span: 2 })
+        }
+        if (log.additional_info) {
+          detailItems.push({ key: 'additional_info', label: 'Additional Info', value: jsonBlock(log.additional_info), span: 2 })
+        }
+
+        return (
+          <Card>
+            <CardHeader title="Log Details" />
+            <CardBody>
+              <DescriptionList items={detailItems} />
+            </CardBody>
+          </Card>
+        )
+      })()}
     </PageLayout>
   )
 }

@@ -47,11 +47,20 @@ export default async function ShortLinksPage() {
       ? listResult.linkTotal
       : initialTotal
 
+  // A failed read is passed on rather than shown as an empty list of links.
+  const initialError =
+    !listResult
+      ? 'Failed to load short links'
+      : 'error' in listResult && listResult.error
+        ? listResult.error
+        : null
+
   return (
     <ShortLinksClient
       initialLinks={initialLinks}
       initialTotal={initialTotal}
       initialLinkTotal={initialLinkTotal}
+      initialError={initialError}
       volume={volumeResult?.data ?? null}
       previousVolume={previousVolumeResult?.data ?? null}
       canManage={!!canManage}

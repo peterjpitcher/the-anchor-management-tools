@@ -1,5 +1,6 @@
 import { getOnboardingSnapshot, validateInviteToken } from '@/app/actions/employeeInvite'
-import { Icon, LinkButton } from '@/ds'
+import { LinkButton } from '@/ds'
+import { AuthCard } from '@/app/auth/_components/AuthCard'
 import OnboardingClient from './_components/OnboardingClient'
 
 interface OnboardingPageProps {
@@ -13,62 +14,40 @@ export default async function OnboardingPage({ params }: OnboardingPageProps) {
 
   if (tokenData.expired) {
     return (
-      <div className="auth">
-        <div className="auth__card">
-          <div className="flex justify-center mb-4">
-            <div className="w-14 h-14 rounded-full bg-warning/10 flex items-center justify-center">
-              <Icon name="alertCircle" size={28} className="text-warning" />
-            </div>
-          </div>
-          <h1 className="auth__h1 text-center">This link has expired</h1>
-          <p className="auth__lead text-center">
-            Your invite link is no longer valid. Please contact your manager to request a new one.
-          </p>
-        </div>
-      </div>
+      <AuthCard
+        title="This Link Has Expired"
+        lead="Your invite link is no longer valid. Please contact your manager to request a new one."
+        icon={{ name: 'alertCircle', tone: 'warning' }}
+      />
     )
   }
 
   if (tokenData.completed) {
+    const portalAccess = tokenData.inviteType === 'portal_access'
     return (
-      <div className="auth">
-        <div className="auth__card">
-          <div className="flex justify-center mb-4">
-            <div className="w-14 h-14 rounded-full bg-success/10 flex items-center justify-center">
-              <Icon name="check" size={28} className="text-success" />
-            </div>
-          </div>
-          <h1 className="auth__h1 text-center">
-            {tokenData.inviteType === 'portal_access' ? 'Portal access already set up' : 'Profile already complete'}
-          </h1>
-          <p className="auth__lead text-center">
-            {tokenData.inviteType === 'portal_access'
-              ? 'Your staff portal access has already been set up.'
-              : 'Your employee profile has already been completed.'}
-          </p>
-          <LinkButton href="/auth/login" variant="primary" size="lg" className="w-full">
-            Sign in here
-          </LinkButton>
-        </div>
-      </div>
+      <AuthCard
+        title={portalAccess ? 'Portal Access Already Set Up' : 'Profile Already Complete'}
+        lead={
+          portalAccess
+            ? 'Your staff portal access has already been set up.'
+            : 'Your employee profile has already been completed.'
+        }
+        icon={{ name: 'check', tone: 'success' }}
+      >
+        <LinkButton href="/auth/login" variant="primary" size="lg" className="w-full">
+          Sign In Here
+        </LinkButton>
+      </AuthCard>
     )
   }
 
   if (!tokenData.valid || !tokenData.employee_id || !tokenData.email) {
     return (
-      <div className="auth">
-        <div className="auth__card">
-          <div className="flex justify-center mb-4">
-            <div className="w-14 h-14 rounded-full bg-danger/10 flex items-center justify-center">
-              <Icon name="alertCircle" size={28} className="text-danger" />
-            </div>
-          </div>
-          <h1 className="auth__h1 text-center">Invalid link</h1>
-          <p className="auth__lead text-center">
-            This invite link is not valid. Please contact your manager.
-          </p>
-        </div>
-      </div>
+      <AuthCard
+        title="Invalid Link"
+        lead="This invite link is not valid. Please contact your manager."
+        icon={{ name: 'alertCircle', tone: 'danger' }}
+      />
     )
   }
 

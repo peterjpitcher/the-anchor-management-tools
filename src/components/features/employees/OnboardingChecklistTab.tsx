@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { updateOnboardingChecklist, getOnboardingProgress } from '@/app/actions/employeeActions'
-import { ProgressBar, Spinner, toast, Icon } from '@/ds'
+import { Alert, Card, CardBody, CardHeader, Checkbox, Empty, PageLoading, ProgressBar, Spinner, toast } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 
 interface OnboardingChecklistTabProps {
@@ -72,126 +72,94 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <Spinner size="lg" />
-      </div>
+      <Card>
+        <CardHeader title="Onboarding Checklist" />
+        <PageLoading inline label="Loading onboarding checklist" />
+      </Card>
     )
   }
 
   if (error) {
     return (
-      <div className="bg-surface shadow-sm rounded-lg p-6">
-        <h3 className="text-lg font-medium text-text mb-4">Onboarding Checklist</h3>
-        <p className="text-text-muted">{error}</p>
-      </div>
+      <Card>
+        <CardHeader title="Onboarding Checklist" />
+        <CardBody>
+          <Alert tone="danger" size="sm">{error}</Alert>
+        </CardBody>
+      </Card>
     )
   }
 
   if (!progress || !progress.items || progress.items.length === 0) {
     return (
-      <div className="bg-surface shadow-sm rounded-lg p-6">
-        <h3 className="text-lg font-medium text-text mb-4">Onboarding Checklist</h3>
-        <p className="text-text-muted">No onboarding tasks found. The checklist will appear here once configured.</p>
-      </div>
+      <Card>
+        <CardHeader title="Onboarding Checklist" />
+        <Empty
+          size="sm"
+          title="No onboarding tasks found"
+          description="The checklist will appear here once configured."
+        />
+      </Card>
     )
   }
 
   return (
     <div className="space-y-6">
-      {/* Progress Overview */}
-      <div className="bg-surface shadow-sm rounded-lg p-6">
-        <h3 className="text-lg font-medium text-text mb-4">Onboarding Progress</h3>
-        
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-2">
+      <Card>
+        <CardHeader title="Onboarding Progress" />
+        <CardBody className="space-y-2">
+          <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-text">Overall Progress</span>
             <span className="text-sm font-medium text-text">{progress.percentage}%</span>
           </div>
           <ProgressBar value={progress.percentage} tone="success" size="md" label="Onboarding progress" />
-          <p className="mt-2 text-sm text-text-muted">
+          <p className="text-sm text-text-muted">
             {progress.completed} of {progress.total} tasks completed
           </p>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
 
-      {/* Checklist Items */}
-      <div className="bg-surface shadow-sm rounded-lg">
-        <div className="px-6 py-4 border-b border-border">
-          <h3 className="text-lg font-medium text-text">Onboarding Tasks</h3>
-          <p className="mt-1 text-sm text-text-muted">
-            Check off each task as it&apos;s completed. Dates will be automatically recorded.
-          </p>
-        </div>
-        
+      <Card>
+        <CardHeader
+          title="Onboarding Tasks"
+          subtitle="Check off each task as it's completed; the date is recorded automatically"
+        />
         <ul className="divide-y divide-border">
           {progress.items.map((item) => {
             const date = item.date
             const isUpdating = updating === item.field
-            
+
             return (
-              <li key={item.field} className="px-6 py-4">
-                <div className="flex items-start">
-                  <button type="button"
-                    onClick={() => handleToggle(item.field, item.completed)}
-                    disabled={isUpdating || !canEdit}
-                    aria-label={item.label}
-                    className="flex-shrink-0 mt-0.5 rounded-full focus-visible:outline-hidden focus-visible:shadow-ring"
-                  >
-                    {isUpdating ? (
-                      <Spinner size="md" />
-                    ) : item.completed ? (
-                      <Icon name="checkCircle" size={20} className="block text-success" />
-                    ) : (
-                      <Icon name="circle" size={20} className="block text-text-subtle hover:text-text-muted" />
-                    )}
-                  </button>
-                  
-                  <div className="ml-3 flex-1">
-                    <label
-                      htmlFor={item.field}
-                      className={`text-sm font-medium ${
-                        item.completed ? 'text-text line-through' : 'text-text'
-                      }`}
-                    >
-                      {item.label}
-                    </label>
-                    {item.completed && date && (
-                      <p className="text-sm text-text-muted">
-                        Completed on {formatDateInLondon(date)}
-                      </p>
-                    )}
-                  </div>
-                </div>
+              <li key={item.field} className="flex items-start gap-2 px-pad-card py-4">
+                <Checkbox
+                  id={item.field}
+                  checked={item.completed}
+                  onChange={() => handleToggle(item.field, item.completed)}
+                  disabled={isUpdating || !canEdit}
+                  label={item.label}
+                  description={item.completed && date ? `Completed on ${formatDateInLondon(date)}` : undefined}
+                  className="flex-1"
+                />
+                {isUpdating && <Spinner size="sm" />}
               </li>
             )
           })}
         </ul>
-      </div>
+      </Card>
 
-      {/* Additional Information */}
-      <div className="bg-info-soft border border-info-border rounded-lg p-4">
-        <h4 className="text-sm font-medium text-info-fg mb-2">Important Notes</h4>
-        <ul className="text-sm text-info-fg space-y-1">
-          <li>• WhatsApp groups are for shift coordination and team communication</li>
-          <li>• Till system access requires manager approval</li>
-          <li>• Flow training must be completed within probation period</li>
-          <li>• Employment agreement must be signed before first shift</li>
+      <Alert tone="info" title="Important Notes">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>WhatsApp groups are for shift coordination and team communication</li>
+          <li>Till system access requires manager approval</li>
+          <li>Flow training must be completed within probation period</li>
+          <li>Employment agreement must be signed before first shift</li>
         </ul>
-      </div>
+      </Alert>
 
-      {/* Special handling for Prospective employees */}
       {progress.completed === progress.total && (
-        <div className="bg-success-soft border border-success-border rounded-lg p-4">
-          <div className="flex">
-            <Icon name="checkCircle" size={20} className="text-success flex-shrink-0" />
-            <div className="ml-3">
-              <h4 className="text-sm font-medium text-success-fg">Onboarding Complete!</h4>
-              <p className="text-sm text-success-fg mt-1">
-                All onboarding tasks have been completed. This employee is ready to start work.
-              </p>
-            </div>
-          </div>
-        </div>
+        <Alert tone="success" role="status" title="Onboarding Complete!">
+          All onboarding tasks have been completed. This employee is ready to start work.
+        </Alert>
       )}
     </div>
   )

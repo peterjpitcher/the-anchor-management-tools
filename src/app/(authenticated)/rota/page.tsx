@@ -3,9 +3,10 @@ import { redirect } from 'next/navigation';
 import { generateRotaFeedToken } from '@/lib/portal/calendar-token';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { PageLayout, Icon } from '@/ds';
-import { LinkButton } from '@/ds';
+import { PageLayout, Icon, LinkButton } from '@/ds';
 import RotaFeedButton from './RotaFeedButton';
+import { DownloadLink } from './_shared/DownloadLink';
+import { PartialLoadAlert } from './_shared/PartialLoadAlert';
 import {
   getOrCreateRotaWeek,
   getWeekShifts,
@@ -159,10 +160,12 @@ async function countWeeksNeedingPublishing(
 }
 
 function formatWeekRange(start: string, end: string): string {
-  const s = new Date(start + 'T00:00:00Z'); // Z = UTC, avoids BST off-by-one
+  // Both dates are UTC midnights, so they are formatted in UTC: the label never moves a day
+  // with the server's zone.
+  const s = new Date(start + 'T00:00:00Z');
   const e = new Date(end + 'T00:00:00Z');
-  const startStr = s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
-  const endStr = e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const startStr = s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const endStr = e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
   return `${startStr} – ${endStr}`;
 }
 
@@ -264,11 +267,16 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     getRotaOpeningExceptions(weekStart, weekEnd),
   ]);
 
+  // One header for every state, so a failed load keeps the page's title and week.
+  const layoutProps = {
+    title: 'Rota',
+    subtitle: formatWeekRange(weekStart, weekEnd),
+  };
+
   if (!weekResult.success) {
     return (
       <PageLayout
-        title="Rota"
-        subtitle="Weekly rota planning"
+        {...layoutProps}
         navItems={buildRotaNavItems(0, navPermissions)}
         error={weekResult.error ?? 'Failed to load rota data. Please try again.'}
       />
@@ -278,8 +286,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   if (!shiftsResult.success) {
     return (
       <PageLayout
-        title="Rota"
-        subtitle="Weekly rota planning"
+        {...layoutProps}
         navItems={buildRotaNavItems(0, navPermissions)}
         error={shiftsResult.error ?? 'Failed to load shifts. Please try again.'}
       />
@@ -287,6 +294,14 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   }
 
   const week = weekResult.data;
+  // These loads still leave a usable rota when they fail, so the page says what is missing
+  // rather than showing an empty staff list or palette as if there were nothing to show.
+  const partialLoadFailures = [
+    !employeesResult.success ? 'staff list' : null,
+    !templatesResult.success ? 'shift templates' : null,
+    !leaveDaysResult.success ? 'holidays' : null,
+    !deptResult.success ? 'departments' : null,
+  ].filter((name): name is string => Boolean(name));
   const employees = employeesResult.success ? employeesResult.data : [];
   const shifts = shiftsResult.data;
   const templates = templatesResult.success ? templatesResult.data.filter(t => t.is_active) : [];
@@ -431,14 +446,10 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
 
   return (
     <PageLayout
-      title="Weekly Rota"
-      compactHeader
-      headerClassName="mb-1"
-      subtitle={formatWeekRange(weekStart, weekEnd)}
+      {...layoutProps}
       navItems={buildRotaNavItems(unfilledShiftCount, { ...navPermissions, weeksNeedingPublishing })}
       headerActions={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <RotaPublishStatus week={week} shifts={shifts} publishedShifts={publishedShifts} canPublish={canPublish} />
+        <>
           <RotaFeedButton feedUrl={feedUrl} showCalendarSync={Boolean(process.env.GOOGLE_CALENDAR_ROTA_ID)} />
           <LinkButton href="/rota/templates" size="sm" variant="secondary" icon={<Icon name="copy" size={16} />}>
             Templates
@@ -450,9 +461,15 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
               <LinkButton href="/settings/budgets" variant="secondary" size="sm" icon={<Icon name="barChart" size={16} />}>Budgets</LinkButton>
             </>
           )}
-        </div>
+          <DownloadLink href={`/api/rota/pdf?week=${weekStart}`} icon="printer" title="Download rota as PDF">
+            Download PDF
+          </DownloadLink>
+          {/* The week's publish status and, for publishers, the primary Publish action, last. */}
+          <RotaPublishStatus week={week} shifts={shifts} publishedShifts={publishedShifts} canPublish={canPublish} />
+        </>
       }
     >
+      <PartialLoadAlert missing={partialLoadFailures} consequence="the rota below may be incomplete" />
       <RotaGrid
         key={weekStart}
         week={week}

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Field, Input } from '@/ds';
+import { Alert, Button, Field, Input } from '@/ds';
+import { StepFooter, StepSection } from './StepParts';
 import { saveOnboardingSection } from '@/app/actions/employeeInvite';
 
 interface ContactData {
@@ -21,6 +22,7 @@ interface EmergencyContactsStepProps {
   token: string;
   initialData?: EmergencyContactsData;
   onSuccess: (data: EmergencyContactsData) => void;
+  onBack?: () => void;
 }
 
 const emptyContact = (): ContactData => ({
@@ -31,7 +33,7 @@ const emptyContact = (): ContactData => ({
   address: '',
 });
 
-export default function EmergencyContactsStep({ token, initialData, onSuccess }: EmergencyContactsStepProps) {
+export default function EmergencyContactsStep({ token, initialData, onSuccess, onBack }: EmergencyContactsStepProps) {
   const [data, setData] = useState<EmergencyContactsData>({
     primary: initialData?.primary ?? emptyContact(),
     secondary: initialData?.secondary ?? emptyContact(),
@@ -89,10 +91,7 @@ export default function EmergencyContactsStep({ token, initialData, onSuccess }:
     onChange: (field: keyof ContactData, value: string) => void,
     required = false
   ) => (
-    <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-text">
-        {label}{required && <span className="text-danger ml-1">*</span>}
-      </h3>
+    <StepSection title={label} required={required}>
       {(['name', 'relationship', 'phone_number', 'mobile_number', 'address'] as (keyof ContactData)[]).map((field) => (
         <Field key={field} label={field.replace(/_/g, ' ')} required={field === 'name' && required}>
           <Input
@@ -103,7 +102,7 @@ export default function EmergencyContactsStep({ token, initialData, onSuccess }:
           />
         </Field>
       ))}
-    </div>
+    </StepSection>
   );
 
   return (
@@ -124,11 +123,13 @@ export default function EmergencyContactsStep({ token, initialData, onSuccess }:
         false
       )}
 
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <Button type="submit" variant="primary" className="w-full" disabled={loading}>
-        {loading ? 'Saving...' : 'Save & Continue'}
-      </Button>
+      <StepFooter onBack={onBack}>
+        <Button type="submit" variant="primary" disabled={loading}>
+          {loading ? 'Saving...' : 'Save & Continue'}
+        </Button>
+      </StepFooter>
     </form>
   );
 }

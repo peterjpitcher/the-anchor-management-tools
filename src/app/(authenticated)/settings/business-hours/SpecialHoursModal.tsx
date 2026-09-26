@@ -1,10 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Modal, ModalActions, ConfirmDialog, toast, Icon } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Checkbox } from '@/ds'
+import { Button, Card, Checkbox, ConfirmDialog, FormFooter, Icon, Input, Modal, toast } from '@/ds'
 import { createSpecialHours, updateSpecialHours, deleteSpecialHours, getBusinessHoursByDay } from '@/app/actions/business-hours'
 import { SpecialHours, ScheduleConfigItem } from '@/types/business-hours'
 import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
@@ -359,34 +356,35 @@ export function SpecialHoursModal({
       title={`Edit Hours: ${formatDateInLondon(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`}
       size="lg"
       footer={
-        <ModalActions align="between">
-          <div>
-            {initialData && (
+        <FormFooter
+          className="w-full"
+          start={
+            initialData ? (
               <Button
                 type="button"
                 variant="danger"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={loading || !canManage}
+                icon={<Icon name="trash" size={16} />}
               >
-                <Icon name="trash" size={16} className="mr-2" />
                 Revert to Regular
               </Button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
-              Cancel
-            </Button>
-            <Button type="submit" onClick={handleSubmit} disabled={loading || !canManage} loading={loading}>
-              Save Changes
-            </Button>
-          </div>
-        </ModalActions>
+            ) : undefined
+          }
+        >
+          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" onClick={handleSubmit} disabled={loading || !canManage} loading={loading}>
+            Save Changes
+          </Button>
+        </FormFooter>
       }
     >
       <div className="space-y-6">
         {/* Main Status Toggles */}
-        <div className="flex flex-wrap gap-6 bg-surface-2 p-4 rounded-lg border border-border">
+        <Card variant="secondary">
+          <div className="flex flex-wrap gap-6">
           <Checkbox
             label="Venue Closed"
             checked={isClosed}
@@ -413,13 +411,14 @@ export function SpecialHoursModal({
                disabled={!canManage || isClosed}
              />
           )}
-        </div>
+          </div>
+        </Card>
 
         {/* Venue Hours */}
         {!isClosed && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
              <div>
-                <h4 className="text-sm font-medium text-text mb-2">Venue Hours</h4>
+                <p className="text-sm font-medium text-text-strong mb-2">Venue Hours</p>
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Input
@@ -443,7 +442,7 @@ export function SpecialHoursModal({
              </div>
 
              <div>
-                <h4 className="text-sm font-medium text-text mb-2">Kitchen Hours</h4>
+                <p className="text-sm font-medium text-text-strong mb-2">Kitchen Hours</p>
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Input
@@ -470,8 +469,8 @@ export function SpecialHoursModal({
 
         {/* Sunday Lunch Hours (Only show if Sunday) */}
         {!isClosed && isSunday && (
-          <div className="rounded-lg border border-cat-5/20 bg-cat-5-soft p-4">
-             <h4 className="text-sm font-medium text-cat-5-fg mb-2">Sunday Lunch Service</h4>
+          <Card className="bg-cat-5-soft">
+             <p className="text-sm font-medium text-cat-5-fg mb-2">Sunday Lunch Service</p>
              <div className="flex gap-4 items-end">
                 <div className="flex-1">
                   <Input
@@ -495,7 +494,7 @@ export function SpecialHoursModal({
              <p className="text-xs text-cat-5-fg mt-2">
                Controls the &quot;Sunday Lunch&quot; booking slot availability.
              </p>
-          </div>
+          </Card>
         )}
 
         {/* Note */}

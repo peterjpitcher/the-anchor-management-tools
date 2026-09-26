@@ -10,10 +10,10 @@ export function InsightsToolbar(): React.JSX.Element {
   const [refreshing, startRefresh] = useTransition()
   return (
     <div className="flex gap-2 print:hidden">
-      <Button variant="secondary" onClick={() => startRefresh(() => router.refresh())} disabled={refreshing}>
+      <Button variant="secondary" size="sm" onClick={() => startRefresh(() => router.refresh())} disabled={refreshing}>
         {refreshing ? 'Refreshing…' : 'Refresh'}
       </Button>
-      <Button variant="primary" onClick={() => window.print()}>
+      <Button variant="primary" size="sm" onClick={() => window.print()}>
         Print
       </Button>
     </div>

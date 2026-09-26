@@ -5,6 +5,11 @@ vi.mock('@/app/actions/cashing-up', () => ({
   getInsightsDataAction: vi.fn(),
 }))
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => '/cashing-up/insights',
+}))
+
 import { InsightsClient } from '@/app/(authenticated)/cashing-up/insights/_components/InsightsClient'
 import type { CashupInsightsData } from '@/types/cashing-up'
 

@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import Image from 'next/image'
-import { Alert, Button, Input } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, Input } from '@/ds'
+import { KioskShell } from '@/components/shells/KioskShell'
+import { cn } from '@/lib/utils'
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils'
 import {
   lookupEventGuest,
@@ -24,6 +25,24 @@ type EventRecord = {
 }
 
 type FlowStep = 'lookup' | 'known' | 'unknown' | 'already' | 'success'
+
+const STEP_TITLE: Record<FlowStep, string> = {
+  lookup: 'Enter Mobile Number',
+  known: 'Confirm Your Check-In',
+  unknown: 'Add Your Details',
+  already: 'Checked In',
+  success: 'Checked In',
+}
+
+/**
+ * The message panels on the check-in card. A greeting or an attendance count is the soft primary
+ * highlight; being eligible for the Cash Bingo snowball is the one thing staff must notice, so it
+ * is the warning tone.
+ */
+const CHECK_IN_PANEL_CLASSES = {
+  greeting: 'rounded-default bg-primary-soft text-center text-primary-soft-fg',
+  snowball: 'rounded-default border border-warning-border bg-warning-soft text-center text-warning-fg',
+} as const
 
 export default function EventCheckInClient({ event }: { event: EventRecord }) {
   const [step, setStep] = useState<FlowStep>('lookup')
@@ -174,9 +193,9 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
 
     return (
       <div className="space-y-5">
-        <div className="rounded-default border border-brand-200 bg-brand-50 p-4 text-center">
-          <p className="text-lg font-semibold text-brand-900">Hello {name}</p>
-          <p className="mt-2 text-sm text-brand-800">
+        <div className={cn(CHECK_IN_PANEL_CLASSES.greeting, 'p-4')}>
+          <p className="text-lg font-semibold text-text-strong">Hello {name}</p>
+          <p className="mt-2 text-sm">
             {knownGuest.booking
               ? `We have you down for ${seats} ticket${seats === 1 ? '' : 's'}.`
               : 'We could not see an active booking, so we will add one now.'}
@@ -248,13 +267,13 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
 
     if (attendanceSummary.snowball?.eligible) {
       return (
-        <div className="rounded-default border border-warning-border bg-warning-soft p-5 text-center">
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-warning-fg">Snowball eligible</p>
-          <h3 className="mt-2 text-2xl font-bold text-warning-fg">Congratulations</h3>
-          <p className="mt-3 text-sm leading-6 text-warning-fg">
+        <div className={cn(CHECK_IN_PANEL_CLASSES.snowball, 'p-5')}>
+          <p className="text-sm font-semibold uppercase tracking-[0.16em]">Snowball eligible</p>
+          <p className="mt-2 text-2xl font-bold">Congratulations</p>
+          <p className="mt-3 text-sm leading-6">
             You have been to the last 3 Cash Bingo events, so you are eligible for tonight&apos;s snowball.
           </p>
-          <p className="mt-4 rounded-default bg-surface px-4 py-3 text-base font-semibold text-warning-fg">
+          <p className="mt-4 rounded-default bg-surface px-4 py-3 text-base font-semibold">
             Please hand this phone back to the team. We&apos;ve marked you as snowball eligible.
           </p>
         </div>
@@ -263,15 +282,15 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
 
     if (attendanceSummary.isCashBingo && attendanceSummary.snowball) {
       return (
-        <div className="rounded-default border border-brand-200 bg-brand-50 p-5 text-center">
-          <p className="text-lg font-semibold text-brand-900">
+        <div className={cn(CHECK_IN_PANEL_CLASSES.greeting, 'p-5')}>
+          <p className="text-lg font-semibold text-text-strong">
             You&apos;ve attended {previousCount} previous Cash Bingo {previousLabel}.
           </p>
-          <p className="mt-3 text-sm leading-6 text-brand-800">
+          <p className="mt-3 text-sm leading-6">
             To be snowball eligible, you need to have been to the last 3 Cash Bingo events.
             Keep coming along and we&apos;ll track it for you.
           </p>
-          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.12em] text-brand-700">
+          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.12em]">
             Last 3 attended: {attendanceSummary.snowball.checkedLastThreeCount} of 3
           </p>
         </div>
@@ -279,8 +298,8 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
     }
 
     return (
-      <div className="rounded-default border border-brand-200 bg-brand-50 p-4 text-center">
-        <p className="text-sm font-semibold text-brand-900">
+      <div className={cn(CHECK_IN_PANEL_CLASSES.greeting, 'p-4')}>
+        <p className="text-sm font-semibold text-text-strong">
           You&apos;ve attended {previousCount} previous {categoryName} {previousLabel}.
         </p>
       </div>
@@ -290,8 +309,8 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
   const renderCompletion = () => (
     <div className="space-y-4">
       {message && (
-        <div className="rounded-default border border-brand-200 bg-brand-50 p-4 text-center">
-          <p className="text-lg font-semibold text-brand-900">{message}</p>
+        <div className={cn(CHECK_IN_PANEL_CLASSES.greeting, 'p-4')}>
+          <p className="text-lg font-semibold text-text-strong">{message}</p>
         </div>
       )}
       {renderAttendanceMessage()}
@@ -302,52 +321,26 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
   )
 
   return (
-    <main className="min-h-screen bg-brand-700 px-4 py-6 text-on-dark sm:px-6">
-      <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-xl flex-col justify-center">
-        <header className="mb-6 text-center">
-          <div className="mx-auto mb-5 w-40 sm:w-52">
-            <Image
-              src="/logo.png"
-              alt="The Anchor"
-              width={256}
-              height={256}
-              priority
-              className="h-auto w-full"
-            />
-          </div>
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-brand-100">
-            {eventDate} · {formatTime12Hour(event.time)}
-          </p>
-          <h1 className="mt-3 text-3xl font-bold leading-tight text-on-dark sm:text-4xl">{event.name}</h1>
-        </header>
+    <KioskShell
+      title={event.name}
+      eyebrow={`${eventDate} · ${formatTime12Hour(event.time)}`}
+      width="narrow"
+    >
+      <Card>
+        <CardHeader title={STEP_TITLE[step]} />
+        <CardBody className="space-y-4">
+          {step === 'lookup' && (
+            <p className="text-sm text-text-muted">Please enter your mobile number to sign in for this event.</p>
+          )}
+          {error && <Alert tone="danger" title="Check-in failed">{error}</Alert>}
+          {!isCompleteStep && message && <Alert tone="success" title="Done">{message}</Alert>}
 
-        <section className="rounded-default bg-surface p-5 text-text-strong shadow-lg sm:p-6">
-          <div className="mb-5 text-center">
-            <h2 className="text-xl font-semibold">
-              {step === 'lookup'
-                ? 'Enter Mobile Number'
-                : step === 'known'
-                  ? 'Confirm Your Check-In'
-                  : step === 'unknown'
-                    ? 'Add Your Details'
-                    : 'Checked In'}
-            </h2>
-            {step === 'lookup' && (
-              <p className="mt-2 text-sm text-text-muted">Please enter your mobile number to sign in for this event.</p>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            {error && <Alert tone="danger" title="Check-in failed">{error}</Alert>}
-            {!isCompleteStep && message && <Alert tone="success" title="Done">{message}</Alert>}
-
-            {step === 'lookup' && renderLookup()}
-            {step === 'known' && renderKnown()}
-            {step === 'unknown' && renderUnknown()}
-            {isCompleteStep && renderCompletion()}
-          </div>
-        </section>
-      </div>
-    </main>
+          {step === 'lookup' && renderLookup()}
+          {step === 'known' && renderKnown()}
+          {step === 'unknown' && renderUnknown()}
+          {isCompleteStep && renderCompletion()}
+        </CardBody>
+      </Card>
+    </KioskShell>
   )
 }

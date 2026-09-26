@@ -4,12 +4,10 @@ import { getAllBirthdays } from '@/app/actions/employee-birthdays'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { displayName } from '@/lib/employees/display-name'
 import { formatDateInLondon, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils'
-import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { Badge } from '@/ds'
-import { Alert } from '@/ds'
-import { Empty } from '@/ds'
+import { Alert, Badge, Card, CardHeader, Empty, Icon, PageLayout } from '@/ds'
 import SendBirthdayRemindersButton from '@/components/features/employees/SendBirthdayRemindersButton'
+import { EMPLOYEES_NAV } from '../_shared/nav'
+import { birthdayCountdownTone } from '../_shared/status-ui'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,8 +41,6 @@ export default async function EmployeeBirthdaysPage() {
   const result = await getAllBirthdays()
 
   if (result.error) {
-    // In a server component we can't use toast directly.
-    // We'll just render the empty state or an error message.
     console.error('[EmployeeBirthdaysPage] Error:', result.error)
   }
 
@@ -64,13 +60,6 @@ export default async function EmployeeBirthdaysPage() {
     if (days <= 7) return `In ${days} days`;
     if (days <= 30) return `In ${Math.floor(days / 7)} week${Math.floor(days / 7) !== 1 ? 's' : ''}`;
     return `In ${Math.floor(days / 30)} month${Math.floor(days / 30) !== 1 ? 's' : ''}`;
-  };
-
-  const getCountdownBadgeTone = (days: number): 'danger' | 'warning' | 'info' | 'neutral' => {
-    if (days === 0) return 'danger';
-    if (days <= 7) return 'warning';
-    if (days <= 30) return 'info';
-    return 'neutral';
   };
 
   // Group birthdays by month
@@ -103,88 +92,74 @@ export default async function EmployeeBirthdaysPage() {
 
   return (
     <PageLayout
-      title="Employee Birthdays"
+      title="Birthdays"
       subtitle="All employee birthdays throughout the year"
-      navItems={[
-        { label: 'Employees', href: '/employees' },
-        { label: 'Birthdays', href: '/employees/birthdays' },
-      ]}
+      navItems={EMPLOYEES_NAV}
       headerActions={headerActions}
     >
-      <section id="overview" className="space-y-4">
-        <Alert tone="info" icon={<Icon name="alertTriangle" size={16} className="sm:h-5 sm:w-5" />}>
-          <div>
-            <h3 className="text-xs sm:text-sm font-medium">Automatic Birthday Reminders</h3>
-            <p className="mt-1 sm:mt-2 text-xs sm:text-sm">
-              Birthday reminders are automatically sent to manager@the-anchor.pub every morning at 8 AM for employees with birthdays exactly 1 week away.
-            </p>
-          </div>
-        </Alert>
-      </section>
+      <Alert tone="info" title="Automatic Birthday Reminders" icon={<Icon name="alertTriangle" size={16} />}>
+        Birthday reminders are automatically sent to manager@the-anchor.pub every morning at 8 AM for employees with birthdays exactly 1 week away.
+      </Alert>
 
-      <section id="birthdays">
-        {birthdays.length === 0 ? (
-          <Card>
-            <Empty
-              icon={<Icon name="cake" size={48} />}
-              title="No birthdays found"
-              description="No active employees have birthdays recorded."
+      {/* A failed load says so; it is never shown as an empty list. */}
+      {result.error ? (
+        <Alert tone="danger" title="Could not load birthdays">
+          {result.error}
+        </Alert>
+      ) : birthdays.length === 0 ? (
+        <Card>
+          <Empty
+            size="sm"
+            icon={<Icon name="cake" size={40} />}
+            title="No birthdays found"
+            description="No active employees have birthdays recorded."
+          />
+        </Card>
+      ) : (
+        sortedMonths.map(([monthName, { birthdays: monthBirthdays }]) => (
+          <Card key={monthName}>
+            <CardHeader
+              title={monthName}
+              subtitle={`${monthBirthdays.length} birthday${monthBirthdays.length !== 1 ? 's' : ''}`}
             />
-          </Card>
-        ) : (
-          <div className="space-y-6">
-            {sortedMonths.map(([monthName, { birthdays: monthBirthdays }]) => (
-              <Card key={monthName}>
-                <div className="bg-surface-2 px-3 sm:px-4 py-2 sm:py-3 border-b border-border -m-6 mb-6">
-                  <h2 className="text-base sm:text-lg font-medium text-text flex flex-wrap items-center">
-                    <Icon name="calendar" size={16} className="sm:h-5 sm:w-5 mr-1.5 sm:mr-2 text-text-subtle" />
-                    <span>{monthName}</span>
-                    <span className="ml-2 text-xs sm:text-sm text-text-muted">({monthBirthdays.length} birthday{monthBirthdays.length !== 1 ? 's' : ''})</span>
-                  </h2>
-                </div>
-                <ul className="divide-y divide-border">
-                  {monthBirthdays.map((birthday) => (
-                    <li key={birthday.employee_id} className="px-3 sm:px-4 py-3 sm:py-4 hover:bg-surface-hover">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
-                        <div className="flex-1">
-                          <div className="flex items-center">
-                            <Link
-                              href={`/employees/${birthday.employee_id}`}
-                              className="text-sm font-medium text-primary hover:underline truncate"
-                            >
-                              {displayName(birthday)}
-                            </Link>
-                            {birthday.days_until_birthday === 0 && (
-                              <span className="ml-1.5 sm:ml-2 text-base sm:text-xl">🎉</span>
-                            )}
-                          </div>
-                          <p className="text-xs sm:text-sm text-text-muted truncate">{birthday.job_title || 'No title'}</p>
-                        </div>
-                        <div className="flex sm:block items-center justify-between sm:text-right sm:ml-4">
-                          <div className="flex items-center sm:justify-end space-x-1.5 sm:space-x-2">
-                            <span className="text-xs sm:text-sm font-medium text-text">
-                              {formatDateInLondon(birthday.date_of_birth, { month: 'short', day: 'numeric' }, 'en-US')}
-                            </span>
-                            <Badge
-                              tone={getCountdownBadgeTone(birthday.days_until_birthday)}
-                              className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1"
-                            >
-                              {getCountdownText(birthday.days_until_birthday)}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-text-muted sm:mt-1">
-                            Turning {birthday.turning_age}
-                          </p>
-                        </div>
+            <ul className="divide-y divide-border">
+              {monthBirthdays.map((birthday) => (
+                <li key={birthday.employee_id} className="px-pad-card py-3 hover:bg-surface-hover">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Link
+                          href={`/employees/${birthday.employee_id}`}
+                          className="truncate text-sm font-medium text-primary hover:underline"
+                        >
+                          {displayName(birthday)}
+                        </Link>
+                        {birthday.days_until_birthday === 0 && (
+                          <span className="text-base" aria-hidden="true">🎉</span>
+                        )}
                       </div>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            ))}
-          </div>
-        )}
-      </section>
+                      <p className="truncate text-xs text-text-muted sm:text-sm">{birthday.job_title || 'No title'}</p>
+                    </div>
+                    <div className="flex items-center justify-between sm:block sm:text-right">
+                      <div className="flex items-center gap-2 sm:justify-end">
+                        <span className="text-xs font-medium text-text sm:text-sm">
+                          {formatDateInLondon(birthday.date_of_birth, { month: 'short', day: 'numeric' }, 'en-US')}
+                        </span>
+                        <Badge tone={birthdayCountdownTone(birthday.days_until_birthday)}>
+                          {getCountdownText(birthday.days_until_birthday)}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-text-muted sm:mt-1">
+                        Turning {birthday.turning_age}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ))
+      )}
     </PageLayout>
   );
 }

@@ -9,21 +9,27 @@ import {
   applyLabelsRetroactively,
   type CustomerLabel,
 } from '@/app/actions/customer-labels';
-import { PageLayout, Icon, type IconName } from '@/ds';
-import { Card } from '@/ds';
-import { Button, IconButton } from '@/ds';
-import { Modal } from '@/ds';
-import { Form } from '@/ds';
-import { Field } from '@/ds';
-import { Input } from '@/ds';
-import { Textarea } from '@/ds';
-import { toast } from '@/ds';
-import { Spinner } from '@/ds';
-import { Empty } from '@/ds';
-import { Alert } from '@/ds';
-import { ConfirmDialog } from '@/ds';
+import {
+  Alert,
+  Button,
+  Card,
+  ConfirmDialog,
+  Empty,
+  Field,
+  FormFooter,
+  Icon,
+  IconButton,
+  Input,
+  Modal,
+  PageLayout,
+  PageLoading,
+  Textarea,
+  toast,
+  type IconName,
+} from '@/ds';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { CUSTOMER_LABELS_LAYOUT } from '../_shared/layouts';
 
 // Colours staff pick and store on each label: data, not styling tokens. New labels start on the
 // first option, so the default can never drift from the list.
@@ -67,6 +73,8 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
   const [applyingRetroactively, setApplyingRetroactively] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<CustomerLabel | null>(null);
   const [retroactiveConfirm, setRetroactiveConfirm] = useState(false);
+  // A reload that fails is shown as an error, never as "no labels yet".
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -87,12 +95,13 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
     try {
       const result = await getCustomerLabels();
       if (result.error) {
-        toast.error(result.error);
+        setLoadError(result.error);
       } else if (result.data) {
+        setLoadError(null);
         setLabels(result.data);
       }
     } catch {
-      toast.error('Failed to load customer labels');
+      setLoadError('Failed to load customer labels');
     } finally {
       setLoading(false);
     }
@@ -214,57 +223,57 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
 
   return (
     <PageLayout
-      title="Customer Labels"
-      subtitle="Organise customers with labels for better targeting and management"
+      {...CUSTOMER_LABELS_LAYOUT}
       headerActions={
         canManageUI && (
-          <div className="flex flex-wrap gap-3">
+          <>
             <Button
-              onClick={() => setShowForm(true)}
-              leftIcon={<Icon name="plus" size={20} />}
-            >
-              New Label
-            </Button>
-            <Button
-              onClick={() => setRetroactiveConfirm(true)}
-              leftIcon={<Icon name="sparkles" size={20} />}
+              size="sm"
               variant="secondary"
+              onClick={() => setRetroactiveConfirm(true)}
+              icon={<Icon name="sparkles" size={16} />}
               loading={applyingRetroactively}
             >
               Apply Retroactively
             </Button>
-          </div>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => setShowForm(true)}
+              icon={<Icon name="plus" size={16} />}
+            >
+              New Label
+            </Button>
+          </>
         )
       }
-      backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
       {!canManageUI && (
-        <Card className="mb-4">
-          <Alert
-            tone="info"
-            title="Read-only access"
-          >
-            You can view customer labels but need the customers:manage permission to create, edit, or delete them.
-          </Alert>
-        </Card>
+        <Alert tone="info" title="Read-only access">
+          You can view customer labels but need the customers:manage permission to create, edit, or delete them.
+        </Alert>
       )}
 
       {loading ? (
-        <div className="flex justify-center py-12">
-          <Spinner size="lg" />
-        </div>
+        <PageLoading inline label="Loading customer labels" />
+      ) : loadError && labels.length === 0 ? (
+        <Alert tone="danger" title="Could not load customer labels">{loadError}</Alert>
       ) : labels.length === 0 ? (
-        <Empty
-          icon={<Icon name="tag" size={48} />}
-          title="No customer labels yet"
-          description="Create labels to segment and target your customers more effectively."
-        >
-          {canManageUI && (
-            <Button onClick={() => setShowForm(true)} leftIcon={<Icon name="plus" size={20} />}>
-              Create your first label
-            </Button>
-          )}
-        </Empty>
+        <Card>
+          <Empty
+            size="sm"
+            icon={<Icon name="tag" size={48} />}
+            title="No customer labels yet"
+            description="Create labels to segment and target your customers more effectively."
+            action={
+              canManageUI ? (
+                <Button variant="primary" onClick={() => setShowForm(true)} icon={<Icon name="plus" size={16} />}>
+                  Create Your First Label
+                </Button>
+              ) : undefined
+            }
+          />
+        </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {labels.map((label) => (
@@ -273,7 +282,7 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
                 <div>
                   <div className="flex items-center space-x-2">
                     <span
-                      className="h-8 w-8 flex items-center justify-center rounded-full text-white"
+                      className="h-8 w-8 flex items-center justify-center rounded-full text-primary-fg"
                       style={{ backgroundColor: label.color }}
                     >
                       <CustomerLabelIcon icon={label.icon} size={16} />
@@ -318,60 +327,63 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
           onClose={resetForm}
           title={editingLabel ? 'Edit Customer Label' : 'Create Customer Label'}
         >
-          <Form onSubmit={handleSubmit}>
-            <Field label="Label Details">
-              <Input
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                disabled={!canManageUI}
-              />
-              <Textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                disabled={!canManageUI}
-              />
-            </Field>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Input
+              label="Name"
+              required
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              disabled={!canManageUI}
+            />
+            <Textarea
+              label="Description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              disabled={!canManageUI}
+            />
 
-            <Field label="Color">
-              <div role="group" aria-label="Color" className="grid grid-cols-4 gap-2">
-                {PRESET_COLORS.map((color) => (
-                  <button
-                    key={color.value}
-                    type="button"
-                    aria-pressed={formData.color === color.value}
-                    className={cn(
-                      'h-9 rounded-md border focus-visible:outline-hidden focus-visible:shadow-ring disabled:cursor-not-allowed disabled:opacity-50',
-                      formData.color === color.value && 'ring-2 ring-primary ring-offset-2',
-                    )}
-                    style={{ backgroundColor: color.value }}
-                    onClick={() => {
-                      if (!canManageUI) {
-                        toast.error('You do not have permission to update customer labels.');
-                        return;
-                      }
-                      setFormData({ ...formData, color: color.value });
-                    }}
-                    disabled={!canManageUI}
-                  >
-                    <span className="sr-only">{color.name}</span>
-                  </button>
-                ))}
+            <Field label="Colour">
+              <div role="group" aria-label="Colour" className="grid grid-cols-4 gap-2">
+                {PRESET_COLORS.map((color) => {
+                  const selected = formData.color === color.value;
+                  return (
+                    <Button
+                      key={color.value}
+                      type="button"
+                      variant="ghost"
+                      aria-pressed={selected}
+                      // The swatch is the saved colour itself (data, not a token), so it is set inline.
+                      style={{ backgroundColor: color.value }}
+                      className={cn('h-9 w-full', selected ? 'border-2 border-text-strong' : 'border-border')}
+                      onClick={() => {
+                        if (!canManageUI) {
+                          toast.error('You do not have permission to update customer labels.');
+                          return;
+                        }
+                        setFormData({ ...formData, color: color.value });
+                      }}
+                      disabled={!canManageUI}
+                    >
+                      {selected && <Icon name="check" size={16} className="text-primary-fg" />}
+                      <span className="sr-only">{color.name}</span>
+                    </Button>
+                  );
+                })}
               </div>
             </Field>
 
             <Field label="Icon">
               <div role="group" aria-label="Icon" className="grid grid-cols-3 gap-2">
                 {PRESET_ICONS.map((icon) => {
+                  const selected = formData.icon === icon.value;
                   return (
-                    <button
+                    <Button
                       key={icon.value}
                       type="button"
-                      aria-pressed={formData.icon === icon.value}
-                      className={cn(
-                        'flex h-10 items-center justify-center gap-2 rounded-md border text-sm focus-visible:outline-hidden focus-visible:shadow-ring disabled:cursor-not-allowed disabled:opacity-50',
-                        formData.icon === icon.value ? 'border-primary bg-primary-soft text-primary-soft-fg' : 'border-border',
-                      )}
+                      variant="secondary"
+                      aria-pressed={selected}
+                      className={cn('h-10 w-full', selected && 'border-primary bg-primary-soft text-primary-soft-fg')}
+                      icon={<Icon name={icon.icon} size={16} />}
                       onClick={() => {
                         if (!canManageUI) {
                           toast.error('You do not have permission to update customer labels.');
@@ -381,30 +393,29 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
                       }}
                       disabled={!canManageUI}
                     >
-                      <Icon name={icon.icon} size={16} />
                       {icon.name}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
             </Field>
 
-            <div className="flex justify-end space-x-2">
+            <FormFooter>
               <Button type="button" variant="secondary" onClick={resetForm}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={!canManageUI}>
+              <Button type="submit" variant="primary" disabled={!canManageUI}>
                 {editingLabel ? 'Update Label' : 'Create Label'}
               </Button>
-            </div>
-          </Form>
+            </FormFooter>
+          </form>
         </Modal>
       )}
 
       {deleteConfirm && (
         <ConfirmDialog
           open
-          title="Delete label"
+          title="Delete Label"
           message={`Are you sure you want to delete "${deleteConfirm.name}"? This action cannot be undone.`}
           confirmText="Delete"
           confirmVariant="danger"
@@ -418,9 +429,9 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
       {retroactiveConfirm && (
         <ConfirmDialog
           open
-          title="Apply labels retroactively"
+          title="Apply Labels Retroactively"
           message="This scans customer activity and applies labels where the rules match. It also removes the New Customer label from anyone who is no longer new, so some customers will lose that label. Continue?"
-          confirmText="Apply and tidy labels"
+          confirmText="Apply and Tidy Labels"
           confirmVariant="primary"
           onClose={() => setRetroactiveConfirm(false)}
           onConfirm={() => void handleApplyRetroactively()}

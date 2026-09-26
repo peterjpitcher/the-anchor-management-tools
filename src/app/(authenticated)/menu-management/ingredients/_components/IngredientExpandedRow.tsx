@@ -1,6 +1,8 @@
 'use client';
 
-import { Badge } from '@/ds';
+import { Badge, Card, Empty } from '@/ds';
+import { cn } from '@/lib/utils';
+import { GP_TARGET_UI, menuAssignmentTone } from '../../_shared/status-ui';
 import type { MenuPurchaseDepartment } from '@/lib/menu/purchase-departments';
 
 interface DishAssignmentSummary {
@@ -62,13 +64,13 @@ interface IngredientExpandedRowProps {
 
 export function IngredientExpandedRow({ ingredient }: IngredientExpandedRowProps): React.ReactElement {
   if (!ingredient.dishes.length) {
-    return <p className="text-sm text-text-muted">This ingredient is not used in any dishes yet.</p>;
+    return <Empty size="sm" title="This ingredient is not used in any dishes yet" />;
   }
 
   return (
     <div className="space-y-3">
       {ingredient.dishes.map((dish) => (
-        <div key={dish.dish_id} className="rounded-lg border border-border bg-surface p-3 shadow-sm">
+        <Card key={dish.dish_id} padding="sm">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="font-medium text-text">{dish.dish_name}</div>
@@ -80,7 +82,7 @@ export function IngredientExpandedRow({ ingredient }: IngredientExpandedRowProps
             <div className="flex flex-col items-start sm:items-end text-xs text-text-muted">
               <span>Price: £{dish.dish_selling_price.toFixed(2)}</span>
               <span>Portion cost: £{dish.dish_portion_cost.toFixed(2)}</span>
-              <span className={dish.dish_is_gp_alert ? 'text-danger font-semibold' : ''}>
+              <span className={cn(dish.dish_is_gp_alert && GP_TARGET_UI.below.text, dish.dish_is_gp_alert && 'font-semibold')}>
                 GP: {dish.dish_gp_pct !== null ? `${Math.round(dish.dish_gp_pct * 100)}%` : '\u2014'}
               </span>
             </div>
@@ -90,7 +92,7 @@ export function IngredientExpandedRow({ ingredient }: IngredientExpandedRowProps
               {dish.assignments.map((assignment, idx) => (
                 <Badge
                   key={`${dish.dish_id}-${assignment.menu_code}-${assignment.category_code}-${idx}`}
-                  tone={assignment.is_special ? 'warning' : 'neutral'}
+                  tone={menuAssignmentTone(assignment.is_special)}
                 >
                   {assignment.menu_code}/{assignment.category_name || assignment.category_code}
                 </Badge>
@@ -100,7 +102,7 @@ export function IngredientExpandedRow({ ingredient }: IngredientExpandedRowProps
           {dish.notes && (
             <div className="mt-2 text-xs text-text-muted">Notes: {dish.notes}</div>
           )}
-        </div>
+        </Card>
       ))}
     </div>
   );

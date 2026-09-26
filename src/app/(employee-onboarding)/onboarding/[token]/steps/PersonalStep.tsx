@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Field, Input, Textarea } from '@/ds';
+import { Alert, Button, Field, Input, Textarea } from '@/ds';
+import { StepFooter } from './StepParts';
 import { checkPreferredNameAvailability, saveOnboardingSection } from '@/app/actions/employeeInvite';
 
 interface PersonalData {
@@ -23,9 +24,10 @@ interface PersonalStepProps {
   token: string;
   initialData?: Partial<PersonalData>;
   onSuccess: (data: PersonalData) => void;
+  onBack?: () => void;
 }
 
-export default function PersonalStep({ token, initialData, onSuccess }: PersonalStepProps) {
+export default function PersonalStep({ token, initialData, onSuccess, onBack }: PersonalStepProps) {
   const [data, setData] = useState<PersonalData>({
     first_name: initialData?.first_name ?? '',
     last_name: initialData?.last_name ?? '',
@@ -152,11 +154,13 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
       {field('phone_number', 'Phone Number', 'tel')}
       {field('mobile_number', 'Mobile Number', 'tel')}
 
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <Button type="submit" variant="primary" className="w-full" disabled={loading}>
-        {loading ? 'Saving...' : 'Save & Continue'}
-      </Button>
+      <StepFooter onBack={onBack}>
+        <Button type="submit" variant="primary" disabled={loading}>
+          {loading ? 'Saving...' : 'Save & Continue'}
+        </Button>
+      </StepFooter>
     </form>
   );
 }

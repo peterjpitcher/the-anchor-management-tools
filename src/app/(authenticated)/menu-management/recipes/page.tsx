@@ -3,19 +3,20 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageLayout } from '@/ds';
-import { Section } from '@/ds';
 import { Card } from '@/ds';
 import { Button } from '@/ds';
 import { DataTable, type Column } from '@/ds';
 import { Badge } from '@/ds';
-import { FilterPanel, type FilterDefinition } from '@/ds';
-import { Pagination } from '@/ds';
+import { TablePagination } from '@/ds';
 import { Empty } from '@/ds';
 import { ConfirmDialog } from '@/ds';
 import { toast } from '@/ds';
 import { LinkButton } from '@/ds';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { useTablePipeline } from '../_components/useTablePipeline';
+import { MenuTableFilters, type MenuFilterDefinition } from '../_components/MenuTableFilters';
+import { MENU_NAV, MENU_TITLE } from '../_shared/nav';
+import { menuActiveLabel, menuActiveTone } from '../_shared/status-ui';
 import { StatusToggleCell } from '../_components/StatusToggleCell';
 import { RecipeExpandedRow, type RecipeListItem } from './_components/RecipeExpandedRow';
 import { RecipeDrawer } from './_components/RecipeDrawer';
@@ -97,8 +98,8 @@ const USAGE_OPTIONS = [
   { value: 'unused', label: 'Not used in dishes' },
 ];
 
-const filterDefinitions: FilterDefinition[] = [
-  { id: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS, pinned: true },
+const filterDefinitions: MenuFilterDefinition[] = [
+  { id: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS },
   { id: 'usage', label: 'Used in dishes', type: 'select', options: USAGE_OPTIONS },
 ];
 
@@ -315,8 +316,8 @@ export default function MenuRecipesPage(): React.ReactElement {
               onToggled={() => void loadData()}
             />
           ) : (
-            <Badge tone={recipe.is_active ? 'success' : 'neutral'}>
-              {recipe.is_active ? 'Active' : 'Inactive'}
+            <Badge tone={menuActiveTone(recipe.is_active)}>
+              {menuActiveLabel(recipe.is_active)}
             </Badge>
           );
         },
@@ -345,16 +346,14 @@ export default function MenuRecipesPage(): React.ReactElement {
 
   // ---- Header actions ----
 
-  const headerActions = (
-    <div className="flex items-center gap-2">
-      {canManage && <Button onClick={openCreate}>Add Recipe</Button>}
-      {canManage && (
-        <LinkButton href="/settings/menu-target" variant="secondary" size="sm">
-          Menu Target
-        </LinkButton>
-      )}
-    </div>
-  );
+  const headerActions = canManage ? (
+    <>
+      <LinkButton href="/settings/menu-target" variant="secondary" size="sm">
+        Menu Target
+      </LinkButton>
+      <Button variant="primary" size="sm" onClick={openCreate}>Add Recipe</Button>
+    </>
+  ) : undefined;
 
   // ---- Ingredient options for drawer ----
 
@@ -372,83 +371,73 @@ export default function MenuRecipesPage(): React.ReactElement {
 
   // ---- Render ----
 
+  // One set of header props for every state, so the title, tabs and actions never move.
+  const layoutProps = {
+    title: MENU_TITLE,
+    subtitle: 'Recipes: prep built once from ingredients, reused across dishes',
+    navItems: MENU_NAV,
+    headerActions,
+  };
+
   return (
     <PageLayout
-      title="Menu Recipes"
-      subtitle="Build prep recipes from ingredients once, then reuse them across multiple dishes."
-      backButton={{ label: 'Back to Menu Management', href: '/menu-management' }}
-      navItems={[
-        { label: 'Overview', href: '/menu-management' },
-        { label: 'Dishes', href: '/menu-management/dishes' },
-        { label: 'Recipes', href: '/menu-management/recipes' },
-        { label: 'Ingredients', href: '/menu-management/ingredients' },
-      ]}
-      headerActions={headerActions}
+      {...layoutProps}
       loading={loading}
-      loadingLabel="Loading recipes..."
+      loadingLabel="Loading recipes"
       error={error}
       onRetry={loadData}
     >
-      <Section>
-        {/* Filter panel with integrated search */}
-        <FilterPanel
-          filters={filterDefinitions}
-          values={pipeline.filters}
-          onChange={pipeline.setFilters}
-          showSearch
-          searchValue={pipeline.searchQuery}
-          onSearchChange={pipeline.setSearchQuery}
-          searchPlaceholder="Search recipes..."
-          layout="horizontal"
-          onReset={pipeline.clearFilters}
-        />
+      <MenuTableFilters
+        filters={filterDefinitions}
+        values={pipeline.filters}
+        onChange={pipeline.setFilters}
+        searchValue={pipeline.searchQuery}
+        onSearchChange={pipeline.setSearchQuery}
+        searchPlaceholder="Search recipes..."
+        onClear={pipeline.clearFilters}
+      />
 
-        {/* Data table */}
-        <Card className="mt-4">
-          {!loading && recipes.length === 0 ? (
-            <Empty
-              title="No recipes yet"
-              description="Create a recipe to combine ingredients into reusable prep items."
-              icon="inbox"
-              action={
-                canManage ? (
-                  <Button onClick={openCreate}>Add Recipe</Button>
-                ) : undefined
-              }
-            />
-          ) : (
-            <DataTable
-              data={pipeline.pageData}
-              columns={columns}
-              getRowKey={(row) => (row as unknown as RecipeListItem).id}
-              emptyMessage={
-                pipeline.searchQuery || Object.keys(pipeline.filters).length > 0
-                  ? 'No recipes match your filters'
-                  : 'No recipes configured yet'
-              }
-              expandable
-              renderExpandedContent={(row) => (
-                <RecipeExpandedRow recipe={row as unknown as RecipeListItem} />
-              )}
-            />
-          )}
-        </Card>
-
-        {/* Pagination */}
-        {pipeline.totalPages > 1 && (
-          <Pagination
-            currentPage={pipeline.currentPage}
-            totalPages={pipeline.totalPages}
-            totalItems={pipeline.totalItems}
-            itemsPerPage={pipeline.itemsPerPage}
-            onPageChange={pipeline.setCurrentPage}
-            onItemsPerPageChange={pipeline.setItemsPerPage}
-            showItemsPerPage
-            showItemCount
-            className="mt-2"
+      <Card padding="none">
+        {!loading && recipes.length === 0 ? (
+          <Empty
+            size="sm"
+            title="No recipes yet"
+            description="Create a recipe to combine ingredients into reusable prep items."
+            icon="inbox"
+            action={
+              canManage ? (
+                <Button variant="primary" size="sm" onClick={openCreate}>Add Recipe</Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <DataTable
+            data={pipeline.pageData}
+            columns={columns}
+            getRowKey={(row) => (row as unknown as RecipeListItem).id}
+            bordered={false}
+            emptyMessage={
+              pipeline.searchQuery || Object.keys(pipeline.filters).length > 0
+                ? 'No recipes match your filters'
+                : 'No recipes configured yet'
+            }
+            expandable
+            renderExpandedContent={(row) => (
+              <RecipeExpandedRow recipe={row as unknown as RecipeListItem} />
+            )}
           />
         )}
-      </Section>
+
+        {pipeline.totalPages > 1 && (
+          <TablePagination
+            page={pipeline.currentPage}
+            totalPages={pipeline.totalPages}
+            onPageChange={pipeline.setCurrentPage}
+            pageSize={pipeline.itemsPerPage}
+            totalItems={pipeline.totalItems}
+          />
+        )}
+      </Card>
 
       {/* Recipe drawer (create / edit) */}
       <RecipeDrawer
@@ -465,16 +454,14 @@ export default function MenuRecipesPage(): React.ReactElement {
       {/* Delete confirmation */}
       <ConfirmDialog
         open={Boolean(recipeToDelete)}
-        title="Delete recipe?"
+        title="Delete Recipe?"
         message={
           recipeToDelete
             ? `This removes ${recipeToDelete.name} from every dish that uses it.`
             : undefined
         }
-        confirmText="Delete"
-        type="danger"
-        confirmVariant="danger"
-        destructive
+        confirmLabel="Delete"
+        tone="danger"
         onClose={() => setRecipeToDelete(null)}
         onConfirm={handleDelete}
       />

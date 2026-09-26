@@ -1,8 +1,6 @@
 import { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import ApiKeysManager from './ApiKeysManager'
-import { PageLayout } from '@/ds'
-import { Alert } from '@/ds'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getApiKeys } from './actions'
 
@@ -25,17 +23,5 @@ export default async function ApiKeysPage() {
   const errorMessage = 'error' in apiKeysResult ? apiKeysResult.error : null
   const apiKeys = 'data' in apiKeysResult ? apiKeysResult.data : []
 
-  return (
-    <PageLayout
-      title="API Key Management"
-      subtitle="Manage API keys for external integrations"
-      backButton={{ label: 'Back to Settings', href: '/settings' }}
-    >
-      {errorMessage ? (
-        <Alert tone="danger" title="Failed to load API keys">{errorMessage}</Alert>
-      ) : (
-        <ApiKeysManager initialKeys={apiKeys} canManage={!!canManage} />
-      )}
-    </PageLayout>
-  )
+  return <ApiKeysManager initialKeys={apiKeys} canManage={!!canManage} loadError={errorMessage} />
 }

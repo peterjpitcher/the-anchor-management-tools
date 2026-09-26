@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: vi.fn() }))
@@ -8,7 +8,8 @@ vi.mock('@/app/actions/marketing-campaigns', () => ({
   getMarketingSettings: vi.fn(),
   getMarketingCampaignStats: vi.fn(),
 }))
-vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
+const push = vi.hoisted(() => vi.fn())
+vi.mock('next/navigation', () => ({ redirect: vi.fn(), useRouter: () => ({ push }) }))
 vi.mock('../UnsubscribeEmailCard', () => ({ UnsubscribeEmailCard: () => null }))
 
 // Keep semantic HTML while isolating this server page from app-shell providers.
@@ -28,6 +29,14 @@ vi.mock('@/ds', () => ({
   TableRow: ({ children }: { children: ReactNode }) => <tr>{children}</tr>,
   TableHead: ({ children }: { children: ReactNode }) => <th>{children}</th>,
   TableCell: ({ children }: { children: ReactNode }) => <td>{children}</td>,
+  // The DS pager, reduced to its two step buttons and its page line.
+  TablePagination: ({ page, totalPages, onPageChange }: { page: number; totalPages: number; onPageChange: (page: number) => void }) => (
+    <div>
+      <button type="button" onClick={() => onPageChange(page - 1)}>Previous</button>
+      <span>Page {page} of {totalPages}</span>
+      <button type="button" onClick={() => onPageChange(page + 1)}>Next</button>
+    </div>
+  ),
 }))
 
 import { redirect } from 'next/navigation'
@@ -88,13 +97,16 @@ describe('marketing campaign list page', () => {
     expect(screen.getByLabelText('Status')).toHaveValue('all')
   })
 
-  it('preserves search, audience, status and sort on both pagination links', async () => {
+  it('preserves search, audience, status and sort when paging either way', async () => {
     vi.mocked(listMarketingCampaigns).mockResolvedValue({ data: { campaigns: [], total: 125 } })
     await renderPage({ status: 'completed', search: 'Food & drink', audience: 'business', sort: 'oldest', page: '2' })
     for (const [name, page] of [['Previous', '1'], ['Next', '3']]) {
-      const href = screen.getByRole('link', { name }).getAttribute('href')!
-      const query = new URL(href, 'https://example.test').searchParams
-      expect(Object.fromEntries(query)).toEqual({ status: 'completed', sort: 'oldest', page, search: 'Food & drink', audience: 'business' })
+      push.mockClear()
+      fireEvent.click(screen.getByRole('button', { name }))
+      const href = push.mock.calls[0][0] as string
+      const url = new URL(href, 'https://example.test')
+      expect(url.pathname).toBe('/marketing')
+      expect(Object.fromEntries(url.searchParams)).toEqual({ status: 'completed', sort: 'oldest', page, search: 'Food & drink', audience: 'business' })
     }
     expect(screen.getByText('Page 2 of 3')).toBeInTheDocument()
   })

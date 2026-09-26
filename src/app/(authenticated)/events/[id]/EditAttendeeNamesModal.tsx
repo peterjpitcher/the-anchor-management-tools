@@ -86,7 +86,7 @@ export function EditAttendeeNamesModal({ booking, onClose, onSaved }: EditAttend
     >
       <div className="space-y-3">
         <p className="text-sm text-text-muted">
-          One name per ticket — blanks are fine and will simply be left unnamed.
+          One name per ticket. Blanks are fine and will simply be left unnamed.
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           {Array.from({ length: seatCount }).map((_, index) => (
@@ -109,7 +109,7 @@ export function EditAttendeeNamesModal({ booking, onClose, onSaved }: EditAttend
           ))}
         </div>
         {error && (
-          <p className="text-sm text-danger" role="alert">
+          <p className="text-sm text-danger-fg" role="alert">
             {error}
           </p>
         )}

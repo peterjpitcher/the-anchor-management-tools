@@ -1,8 +1,5 @@
 import { checkUserPermission } from '@/app/actions/rbac';
 import { redirect } from 'next/navigation';
-import { PageLayout } from '@/ds';
-import { Card } from '@/ds';
-import { Section } from '@/ds';
 import { getDepartmentBudgets, getDepartments } from '@/app/actions/budgets';
 import BudgetsManager from './BudgetsManager';
 
@@ -19,26 +16,19 @@ export default async function BudgetsPage() {
   ]);
   const budgets = result.success ? result.data : [];
   const departments = deptResult.success ? deptResult.data : [];
+  const loadError = !result.success
+    ? result.error
+    : !deptResult.success
+      ? deptResult.error
+      : null;
 
   return (
-    <PageLayout
-      title="Department Budgets"
-      subtitle="Annual payroll budgets per department"
-      backButton={{ label: 'Back to Settings', href: '/settings' }}
-    >
-      <Section
-        title="Annual Budgets"
-        description="Set an annual payroll budget per department. Monthly and weekly targets are derived automatically."
-      >
-        <Card>
-          <BudgetsManager
-            canManage={canManage}
-            initialBudgets={budgets}
-            initialDepartments={departments}
-            currentYear={currentYear}
-          />
-        </Card>
-      </Section>
-    </PageLayout>
+    <BudgetsManager
+      canManage={canManage}
+      initialBudgets={budgets}
+      initialDepartments={departments}
+      currentYear={currentYear}
+      loadError={loadError}
+    />
   );
 }

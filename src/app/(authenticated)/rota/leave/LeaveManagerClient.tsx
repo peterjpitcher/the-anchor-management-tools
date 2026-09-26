@@ -1,9 +1,29 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Badge, Button, ConfirmDialog, IconButton, Input, ProgressBar, toast, Icon } from '@/ds';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  DescriptionList,
+  Empty,
+  FormFooter,
+  IconButton,
+  Input,
+  ProgressBar,
+  Segmented,
+  toast,
+  Icon,
+} from '@/ds';
 import { deleteLeaveRequest, reviewLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave';
 import type { LeaveRequest } from '@/app/actions/leave';
+import {
+  LEAVE_ALLOWANCE_TEXT_CLASSES,
+  LEAVE_ALLOWANCE_TONE,
+  type LeaveAllowanceState,
+} from '../_shared/status-ui';
 
 interface LeaveManagerClientProps {
   initialRequests: LeaveRequest[];
@@ -13,11 +33,21 @@ interface LeaveManagerClientProps {
   usageMap: Record<string, { count: number; allowance: number }>; // `${emp_id}:${year}` -> usage
 }
 
-const STATUS_BADGE: Record<string, 'warning' | 'success' | 'danger'> = {
+// The same tones as the holiday dialog on the rota (HolidayDetailModal STATUS_TONES), keyed and
+// typed the same way: approved success, waiting warning, declined danger.
+const STATUS_BADGE: Record<LeaveRequest['status'], 'warning' | 'success' | 'danger'> = {
   pending: 'warning',
   approved: 'success',
   declined: 'danger',
 };
+
+const STATUS_LABEL: Record<LeaveRequest['status'], string> = {
+  pending: 'Pending',
+  approved: 'Approved',
+  declined: 'Declined',
+};
+
+type LeaveFilter = 'all' | 'pending' | 'approved' | 'declined';
 
 function daysBetween(start: string, end: string): number {
   const ms = new Date(end + 'T00:00:00').getTime() - new Date(start + 'T00:00:00').getTime();
@@ -35,8 +65,9 @@ function getUsageProgress(usage: { count: number; allowance: number }) {
   const count = Number.isFinite(usage.count) ? Math.max(0, usage.count) : 0;
   const isOverAllowance = allowance > 0 && count >= allowance;
   const percent = allowance > 0 ? Math.min(100, Math.round((count / allowance) * 100)) : 0;
+  const state: LeaveAllowanceState = isOverAllowance ? 'over' : 'within';
 
-  return { allowance, count, isOverAllowance, percent };
+  return { allowance, count, isOverAllowance, percent, state };
 }
 
 function LeaveRequestRow({
@@ -103,16 +134,18 @@ function LeaveRequestRow({
     onDeleted(request.id);
   };
 
+  const holidayYear = `${request.holiday_year}/${String(request.holiday_year + 1).slice(2)}`;
+
   return (
     // The weekly Insights report links straight to a pending request as /rota/leave#leave-<id>.
-    <div id={`leave-${request.id}`} className="scroll-mt-4 border border-border rounded-lg overflow-hidden target:ring-2 target:ring-primary">
+    <li id={`leave-${request.id}`} className="scroll-mt-4 target:ring-2 target:ring-inset target:ring-primary">
       <div
-        className="flex items-center justify-between px-4 py-3 bg-surface cursor-pointer hover:bg-surface-2 transition-colors"
+        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-surface-hover transition-colors"
         onClick={() => setExpanded(v => !v)}
       >
         <div className="flex items-center gap-3 min-w-0">
           <Badge tone={STATUS_BADGE[request.status] ?? 'neutral'} size="sm">
-            {request.status}
+            {STATUS_LABEL[request.status] ?? request.status}
           </Badge>
           <div className="min-w-0">
             <p className="text-sm font-medium text-text-strong truncate">{empName}</p>
@@ -177,66 +210,49 @@ function LeaveRequestRow({
       </div>
 
       {expanded && (
-        <div className="px-4 pb-4 bg-surface-2 border-t border-border space-y-3">
-          <dl className="grid grid-cols-2 gap-2 mt-3 text-sm">
-            <div>
-              <dt className="text-text-muted text-xs">Submitted</dt>
-              <dd className="text-text-strong">{formatDate(request.created_at)}</dd>
-            </div>
-            <div>
-              <dt className="text-text-muted text-xs">Holiday year</dt>
-              <dd className="text-text-strong">{request.holiday_year}/{String(request.holiday_year + 1).slice(2)}</dd>
-            </div>
-            {usageProgress && (
-              <div className="col-span-2">
-                <dt className="text-text-muted text-xs mb-1">
-                  Allowance used ({request.holiday_year}/{String(request.holiday_year + 1).slice(2)})
-                </dt>
-                <dd>
-                  <div className="flex items-center gap-2">
-                    <ProgressBar
-                      value={usageProgress.percent}
-                      tone={usageProgress.isOverAllowance ? 'danger' : 'success'}
-                      className="flex-1"
-                    />
-                    <span className={`text-xs font-medium ${usageProgress.isOverAllowance ? 'text-danger-fg' : 'text-text'}`}>
-                      {usageProgress.count} / {usageProgress.allowance} days
-                    </span>
-                  </div>
-                </dd>
-              </div>
-            )}
-            {request.note && (
-              <div className="col-span-2">
-                <dt className="text-text-muted text-xs">Employee note</dt>
-                <dd className="text-text-strong italic">&ldquo;{request.note}&rdquo;</dd>
-              </div>
-            )}
-            {request.manager_note && (
-              <div className="col-span-2">
-                <dt className="text-text-muted text-xs">Manager note</dt>
-                <dd className="text-text-strong">{request.manager_note}</dd>
-              </div>
-            )}
-          </dl>
+        <div className="space-y-4 border-t border-border bg-surface-2 px-4 py-4">
+          <DescriptionList
+            columns={2}
+            items={[
+              { key: 'submitted', label: 'Submitted', value: formatDate(request.created_at) },
+              { key: 'year', label: 'Holiday year', value: holidayYear },
+              ...(usageProgress
+                ? [{
+                    key: 'allowance',
+                    label: `Allowance used (${holidayYear})`,
+                    span: 2 as const,
+                    value: (
+                      <div className="flex items-center gap-2">
+                        <ProgressBar
+                          value={usageProgress.percent}
+                          tone={LEAVE_ALLOWANCE_TONE[usageProgress.state]}
+                          className="flex-1"
+                        />
+                        <span className={`text-xs font-medium ${LEAVE_ALLOWANCE_TEXT_CLASSES[usageProgress.state]}`}>
+                          {usageProgress.count} / {usageProgress.allowance} days
+                        </span>
+                      </div>
+                    ),
+                  }]
+                : []),
+              ...(request.note
+                ? [{ key: 'note', label: 'Employee note', span: 2 as const, value: <span className="italic">&ldquo;{request.note}&rdquo;</span> }]
+                : []),
+              ...(request.manager_note
+                ? [{ key: 'manager-note', label: 'Manager note', span: 2 as const, value: request.manager_note }]
+                : []),
+            ]}
+          />
 
           {canApprove && request.status === 'pending' && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Input
-                placeholder="Manager note (optional)"
+                label="Manager note"
+                placeholder="Optional"
                 value={managerNote}
                 onChange={e => setManagerNote(e.target.value)}
               />
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="primary"
-                  onClick={() => setConfirmDecision('approved')}
-                  disabled={isPending}
-                >
-                  {isPending ? 'Saving…' : 'Approve'}
-                </Button>
+              <FormFooter>
                 <Button
                   type="button"
                   size="sm"
@@ -247,63 +263,66 @@ function LeaveRequestRow({
                 >
                   Decline
                 </Button>
-              </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  onClick={() => setConfirmDecision('approved')}
+                  disabled={isPending}
+                >
+                  {isPending ? 'Saving…' : 'Approve'}
+                </Button>
+              </FormFooter>
             </div>
           )}
 
           {canEdit && (
-            <div className="rounded-lg border border-border bg-surface p-3">
-              {!isEditing ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" size="sm" variant="secondary" onClick={() => setIsEditing(true)}>
-                    Edit dates
-                  </Button>
-                  <Button type="button" size="sm" variant="danger" onClick={() => setConfirmDelete(true)}>
-                    Delete request
-                  </Button>
+            !isEditing ? (
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="secondary" onClick={() => setIsEditing(true)}>
+                  Edit Dates
+                </Button>
+                <Button type="button" size="sm" variant="danger" onClick={() => setConfirmDelete(true)}>
+                  Delete Request
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Input
+                    type="date"
+                    label="Start date"
+                    value={editStartDate}
+                    onChange={e => setEditStartDate(e.target.value)}
+                  />
+                  <Input
+                    type="date"
+                    label="End date"
+                    value={editEndDate}
+                    onChange={e => setEditEndDate(e.target.value)}
+                  />
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label className="space-y-1 text-xs font-medium text-text-muted">
-                      Start date
-                      <Input
-                        type="date"
-                        value={editStartDate}
-                        onChange={e => setEditStartDate(e.target.value)}
-                      />
-                    </label>
-                    <label className="space-y-1 text-xs font-medium text-text-muted">
-                      End date
-                      <Input
-                        type="date"
-                        value={editEndDate}
-                        onChange={e => setEditEndDate(e.target.value)}
-                      />
-                    </label>
-                  </div>
-                  {editError && <p role="alert" className="text-xs text-danger-fg">{editError}</p>}
-                  <div className="flex gap-2">
-                    <Button type="button" size="sm" variant="primary" onClick={handleSaveDates} disabled={isPending}>
-                      {isPending ? 'Saving…' : 'Save dates'}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        setEditStartDate(request.start_date);
-                        setEditEndDate(request.end_date);
-                        setEditError('');
-                        setIsEditing(false);
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
+                {editError && <Alert tone="danger">{editError}</Alert>}
+                <FormFooter>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setEditStartDate(request.start_date);
+                      setEditEndDate(request.end_date);
+                      setEditError('');
+                      setIsEditing(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="button" size="sm" variant="primary" onClick={handleSaveDates} disabled={isPending}>
+                    {isPending ? 'Saving…' : 'Save Dates'}
+                  </Button>
+                </FormFooter>
+              </div>
+            )
           )}
         </div>
       )}
@@ -316,7 +335,7 @@ function LeaveRequestRow({
           await runReview(confirmDecision);
           setConfirmDecision(null);
         }}
-        title={confirmDecision === 'approved' ? 'Approve holiday request?' : 'Decline holiday request?'}
+        title={confirmDecision === 'approved' ? 'Approve Holiday Request?' : 'Decline Holiday Request?'}
         message={
           confirmDecision === 'approved'
             ? `Approve ${empName}'s holiday request for ${formatDate(request.start_date)} to ${formatDate(request.end_date)}?`
@@ -333,12 +352,12 @@ function LeaveRequestRow({
           await runDelete();
           setConfirmDelete(false);
         }}
-        title="Delete holiday request?"
+        title="Delete Holiday Request?"
         message={`Delete ${empName}'s holiday request for ${formatDate(request.start_date)} to ${formatDate(request.end_date)}?`}
         confirmLabel="Delete"
         tone="danger"
       />
-    </div>
+    </li>
   );
 }
 
@@ -350,7 +369,7 @@ export default function LeaveManagerClient({
   usageMap,
 }: LeaveManagerClientProps) {
   const [requests, setRequests] = useState(initialRequests);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'declined'>('pending');
+  const [filter, setFilter] = useState<LeaveFilter>('pending');
 
   const handleUpdated = (updated: LeaveRequest) => {
     setRequests(prev => prev.map(r => r.id === updated.id ? updated : r));
@@ -362,51 +381,42 @@ export default function LeaveManagerClient({
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter);
   const pendingCount = requests.filter(r => r.status === 'pending').length;
 
+  const filterOptions: Array<{ id: LeaveFilter; label: string }> = [
+    { id: 'pending', label: pendingCount > 0 ? `Pending (${pendingCount})` : 'Pending' },
+    { id: 'approved', label: 'Approved' },
+    { id: 'declined', label: 'Declined' },
+    { id: 'all', label: 'All' },
+  ];
+
   return (
     <div className="space-y-4">
-      {/* Filter tabs */}
-      <div className="flex gap-1 border border-border rounded-lg p-1 w-fit">
-        {(['pending', 'approved', 'declined', 'all'] as const).map(f => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFilter(f)}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-              filter === f
-                ? 'bg-primary text-primary-fg'
-                : 'text-text-muted hover:text-text-strong hover:bg-surface-hover'
-            }`}
-          >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-            {f === 'pending' && pendingCount > 0 && (
-              <span className="ml-1 bg-warning text-warning-fg rounded-full px-1 text-2xs">
-                {pendingCount}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* A status filter over the same list: a view switch, so Segmented. */}
+      <Segmented
+        options={filterOptions}
+        value={filter}
+        onChange={id => setFilter(id as LeaveFilter)}
+      />
 
-      {filtered.length === 0 ? (
-        <p className="text-sm text-text-soft italic py-6 text-center">
-          No {filter === 'all' ? '' : filter} requests.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {filtered.map(req => (
-            <LeaveRequestRow
-              key={req.id}
-              request={req}
-              empName={employeeMap[req.employee_id] ?? 'Unknown employee'}
-              canApprove={canApprove}
-              canEdit={canEdit}
-              onUpdated={handleUpdated}
-              onDeleted={handleDeleted}
-              usage={usageMap[`${req.employee_id}:${req.holiday_year}`]}
-            />
-          ))}
-        </div>
-      )}
+      <Card padding="none">
+        {filtered.length === 0 ? (
+          <Empty size="sm" icon="calendar" title={`No ${filter === 'all' ? '' : `${filter} `}requests`} />
+        ) : (
+          <ul className="divide-y divide-border">
+            {filtered.map(req => (
+              <LeaveRequestRow
+                key={req.id}
+                request={req}
+                empName={employeeMap[req.employee_id] ?? 'Unknown employee'}
+                canApprove={canApprove}
+                canEdit={canEdit}
+                onUpdated={handleUpdated}
+                onDeleted={handleDeleted}
+                usage={usageMap[`${req.employee_id}:${req.holiday_year}`]}
+              />
+            ))}
+          </ul>
+        )}
+      </Card>
     </div>
   );
 }

@@ -229,6 +229,11 @@ describe('table-payment success, client-completed path', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Payment was not completed. Your table is still reserved if you pay before the hold expiry time below.'
     )
+    // The page leads with its h1, as every guest page does; the notice sits between it and the card.
+    expect(
+      screen.getByRole('heading', { level: 1 }).compareDocumentPosition(screen.getByRole('alert')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
     unmount()
 
     render(

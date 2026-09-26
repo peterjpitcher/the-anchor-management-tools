@@ -1,6 +1,8 @@
 'use client'
 
 import { useMemo } from 'react'
+import { Card, ProgressBar } from '@/ds'
+import { seoHealthStyles } from '@/app/(authenticated)/events/_shared/status-ui'
 import {
   containsKeyword,
   keywordCoverage,
@@ -147,65 +149,30 @@ export function SeoHealthIndicator({
     [checks]
   )
 
-  type ColourKey = 'red' | 'amber' | 'green'
-
-  const { colour, label: scoreLabel } = useMemo((): { colour: ColourKey; label: string } => {
-    if (score <= 40) return { colour: 'red', label: 'Poor' }
-    if (score <= 70) return { colour: 'amber', label: 'Fair' }
-    return { colour: 'green', label: 'Good' }
-  }, [score])
-
-  // The score is words, so it takes the dark -fg shade to stay readable on white; the
-  // bar and the tick and cross marks are fills and glyphs, so they take the base colour.
-  const colourMap: Record<ColourKey, { score: string; bar: string; tick: string; cross: string }> = {
-    red: {
-      score: 'text-danger-fg',
-      bar: 'bg-danger',
-      tick: 'text-success',
-      cross: 'text-danger',
-    },
-    amber: {
-      score: 'text-warning-fg',
-      bar: 'bg-warning',
-      tick: 'text-success',
-      cross: 'text-warning',
-    },
-    green: {
-      score: 'text-success-fg',
-      bar: 'bg-success',
-      tick: 'text-success',
-      cross: 'text-text-subtle',
-    },
-  }
-
-  const colourClasses = colourMap[colour]
+  const colourClasses = seoHealthStyles(score)
+  const scoreLabel = colourClasses.label
 
   return (
-    <div className="rounded-lg border border-border bg-surface/50 p-3">
+    <Card padding="sm">
       {/* Header */}
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
           SEO Health
         </span>
         <span className={`text-sm font-bold ${colourClasses.score}`}>
-          {score}/100 &mdash; {scoreLabel}
+          {score}/100 · {scoreLabel}
         </span>
       </div>
 
       {/* Progress bar */}
-      <div className="mb-3 h-[2px] w-full rounded-full bg-surface-hover">
-        <div
-          className={`h-[2px] rounded-full transition-all duration-300 ${colourClasses.bar}`}
-          style={{ width: `${score}%` }}
-          role="progressbar"
-          aria-valuenow={score}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label={`SEO score: ${score} out of 100`}
-        />
-      </div>
+      <ProgressBar
+        value={score}
+        tone={colourClasses.tone}
+        label={`SEO score: ${score} out of 100`}
+        className="mb-3"
+      />
 
-      {/* Checklist — stacks on mobile, 2-column grid from sm up */}
+      {/* Checklist: stacks on mobile, 2-column grid from sm up */}
       <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
         {checks.map((check) => (
           <div key={check.label} className="flex items-start gap-1.5">
@@ -221,6 +188,6 @@ export function SeoHealthIndicator({
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   )
 }

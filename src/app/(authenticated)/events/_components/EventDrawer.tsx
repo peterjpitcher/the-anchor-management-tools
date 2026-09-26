@@ -4,8 +4,8 @@ import { useState, useEffect, useRef, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  Drawer, Button, Input, Select, Textarea, DateTimePicker,
-  Checkbox, Spinner, toast, Switch,
+  Alert, Drawer, Button, Field, Input, Select, Textarea, DateTimePicker,
+  Checkbox, ConfirmDialog, Empty, FormFooter, PageLoading, Spinner, toast, Switch,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { createEvent, updateEvent } from '@/app/actions/events'
@@ -21,6 +21,7 @@ import type { EventCategory } from '@/types/event-categories'
 import type { EventChecklistItem } from '@/lib/event-checklist'
 import { resolveEventPaymentMode, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { utcIsoToLondonLocalInput } from '@/lib/dateUtils'
+import { eventPreflightIssueTextClass } from '../_shared/status-ui'
 
 type GenerationPhase = 'checking' | 'drafting' | null
 
@@ -121,6 +122,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
   // in place and upload whatever artwork was queued before it existed.
   const [createdEventId, setCreatedEventId] = useState<string | null>(null)
   const [queuedImageCount, setQueuedImageCount] = useState(0)
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false)
   const imagePanelRef = useRef<EventImagePanelHandle>(null)
   const activeEventId = event?.id ?? createdEventId
 
@@ -260,6 +262,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
     if (!open) {
       setCreatedEventId(null)
       setQueuedImageCount(0)
+      setConfirmCloseOpen(false)
     }
   }, [open])
 
@@ -527,7 +530,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
     // Soft warnings
     if (!time) {
-      issues.push({ type: 'warning', message: 'No event time — timing details will be omitted' })
+      issues.push({ type: 'warning', message: 'No event time, so timing details will be omitted' })
     }
 
     return issues
@@ -590,7 +593,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
         return
       }
 
-      // Only update fields on success — never overwrite existing content on failure
+      // Only update fields on success; never overwrite existing content on failure
       const d = result.data
       if (d.metaTitle) setMetaTitle(d.metaTitle)
       if (d.metaDescription) setMetaDescription(d.metaDescription)
@@ -606,7 +609,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       if (d.cancellationPolicy) setCancellationPolicy(d.cancellationPolicy)
       if (d.accessibilityNotes) setAccessibilityNotes(d.accessibilityNotes)
       setPreflightIssues([])
-      toast.success('SEO content drafted — check the health score below')
+      toast.success('SEO content drafted. Check the health score below')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'SEO generation failed unexpectedly'
       toast.error(message)
@@ -620,14 +623,12 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
   // reloading the page loses it. There was no guard here at all before.
   function requestClose() {
     if (queuedImageCount > 0) {
-      const noun = queuedImageCount === 1 ? 'image' : 'images'
-      const confirmed = window.confirm(
-        `${queuedImageCount} ${noun} ${queuedImageCount === 1 ? 'has' : 'have'} not been uploaded yet. Close and lose ${queuedImageCount === 1 ? 'it' : 'them'}?`
-      )
-      if (!confirmed) return
+      setConfirmCloseOpen(true)
+      return
     }
     onClose()
   }
+  const queuedImageNoun = queuedImageCount === 1 ? 'image' : 'images'
 
   return (
     <Drawer
@@ -638,18 +639,21 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
     >
       <div className="flex flex-col gap-6">
         {Object.keys(fieldErrors).length > 0 && (
-          <div ref={errorSummaryRef} tabIndex={-1} role="alert" className="text-danger text-sm">
-            <p>Please correct the following fields and save again:</p>
-            <ul>
-              {Object.entries(fieldErrors).map(([field, message]) => (
-                <li key={field}>{field.replace(/_/g, ' ')}: {message}</li>
-              ))}
-            </ul>
+          // Focused after a failed save, so the summary is read out first.
+          <div ref={errorSummaryRef} tabIndex={-1} className="rounded-default focus-visible:outline-hidden focus-visible:shadow-ring">
+            <Alert tone="danger">
+              <p>Please correct the following fields and save again:</p>
+              <ul>
+                {Object.entries(fieldErrors).map(([field, message]) => (
+                  <li key={field}>{field.replace(/_/g, ' ')}: {message}</li>
+                ))}
+              </ul>
+            </Alert>
           </div>
         )}
 
         {/* ── Basic Info ── */}
-        <Section title="Basic Info">
+        <FieldGroup title="Basic Info">
           <div className="flex flex-col gap-3">
             <Input
               label="Event Name *"
@@ -665,12 +669,13 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               onChange={(e) => handleCategoryChange(e.target.value)}
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <DateTimePicker
-                type="date"
-                value={date}
-                onChange={setDate}
-                aria-label="Event date"
-              />
+              <Field label="Event date">
+                <DateTimePicker
+                  type="date"
+                  value={date}
+                  onChange={setDate}
+                />
+              </Field>
               <Select
                 label="Status"
                 options={STATUS_OPTIONS}
@@ -724,37 +729,41 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               rows={4}
             />
           </div>
-        </Section>
+        </FieldGroup>
 
         {/* ── Time & Schedule ── */}
-        <Section title="Time & Schedule">
+        <FieldGroup title="Time & Schedule">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <DateTimePicker
-              type="time"
-              value={time}
-              onChange={setTime}
-              aria-label="Start time"
-            />
-            <DateTimePicker
-              type="time"
-              value={endTime}
-              onChange={setEndTime}
-              aria-label="End time"
-            />
+            <Field label="Start time">
+              <DateTimePicker
+                type="time"
+                value={time}
+                onChange={setTime}
+              />
+            </Field>
+            <Field label="End time">
+              <DateTimePicker
+                type="time"
+                value={endTime}
+                onChange={setEndTime}
+              />
+            </Field>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-            <DateTimePicker
-              type="time"
-              value={doorsTime}
-              onChange={setDoorsTime}
-              aria-label="Doors time"
-            />
-            <DateTimePicker
-              type="time"
-              value={lastEntryTime}
-              onChange={setLastEntryTime}
-              aria-label="Last entry time"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="Doors time">
+              <DateTimePicker
+                type="time"
+                value={doorsTime}
+                onChange={setDoorsTime}
+              />
+            </Field>
+            <Field label="Last entry time">
+              <DateTimePicker
+                type="time"
+                value={lastEntryTime}
+                onChange={setLastEntryTime}
+              />
+            </Field>
             <Input
               label="Duration (mins)"
               type="number"
@@ -763,13 +772,10 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               placeholder="e.g. 180"
             />
           </div>
-          <p className="text-xs text-text-muted mt-1">
-            Start · End · Doors · Last Entry · Duration
-          </p>
-        </Section>
+        </FieldGroup>
 
         {/* ── Performer ── */}
-        <Section title="Performer">
+        <FieldGroup title="Performer">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Performer Name"
@@ -784,18 +790,17 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               onChange={(e) => setPerformerType(e.target.value)}
             />
           </div>
-        </Section>
+        </FieldGroup>
 
         {/* ── Pricing & Booking ── */}
-        <Section title="Pricing & Booking">
+        <FieldGroup title="Pricing & Booking">
           {existingPaid && event ? (
-            <div className="mb-4 rounded-default border border-border p-4">
-              <p className="font-medium text-text-strong">Paid event</p>
-              <p className="mt-1 text-sm text-text-muted">Ticket prices, online discounts and guest questions are managed together in Tickets.</p>
-              <Link className="mt-3 inline-block text-sm font-semibold text-primary underline" href={`/events/${event.id}?tab=tickets`} onClick={onClose}>Manage tickets and guest questions</Link>
-            </div>
+            <Alert tone="info" role="status" title="Paid Event">
+              <p>Ticket prices, online discounts and guest questions are managed together in Tickets.</p>
+              <Link className="mt-2 inline-block rounded-sm font-semibold text-primary underline focus-visible:outline-hidden focus-visible:shadow-ring" href={`/events/${event.id}?tab=tickets`} onClick={onClose}>Manage tickets and guest questions</Link>
+            </Alert>
           ) : (
-            <div className="mb-4 space-y-3">
+            <div className="space-y-3">
               <Select label="Entry" value={paymentMode === 'free' ? 'free' : 'paid'} options={[{ value: 'free', label: 'Free entry' }, { value: 'paid', label: 'Paid tickets' }]} onChange={e => {
                 const free = e.target.value === 'free'
                 setPaymentMode(free ? 'free' : 'cash_only')
@@ -808,7 +813,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               </>}
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
               label="Booking Mode"
               options={event?.booking_mode === 'mixed' ? [...BOOKING_MODE_OPTIONS, { value: 'mixed', label: 'Mixed (existing event)' }] : BOOKING_MODE_OPTIONS}
@@ -821,9 +826,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             value={bookingUrl}
             onChange={(e) => setBookingUrl(e.target.value)}
             placeholder="https://example.com/book"
-            className="mt-3"
           />
-          <div className="flex flex-col gap-3 mt-4">
+          <div className="flex flex-col gap-3">
             <Switch
               label="Accept bookings"
               checked={bookingsEnabled}
@@ -841,19 +845,16 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             value={bookingCutoffAt}
             onChange={(e) => setBookingCutoffAt(e.target.value)}
             hint="Online ticket sales stop at this time. Staff can still add bookings after it. Leave blank to keep sales open until the event starts."
-            className="mt-3"
           />
-        </Section>
+        </FieldGroup>
 
-        {/* ── Checklist — only for existing events ── */}
+        {/* ── Checklist, only for existing events ── */}
         {isEdit && (
-          <Section title="Checklist">
+          <FieldGroup title="Checklist">
             {checklistLoading ? (
-              <div className="flex justify-center py-4">
-                <Spinner />
-              </div>
+              <PageLoading inline label="Loading checklist" className="py-4" />
             ) : checklistItems.length === 0 ? (
-              <p className="text-sm text-text-muted">No checklist items</p>
+              <Empty size="sm" title="No Checklist Items" />
             ) : (
               <div className="flex flex-col gap-2">
                 {checklistItems.map((item) => (
@@ -866,24 +867,22 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
                 ))}
               </div>
             )}
-          </Section>
+          </FieldGroup>
         )}
 
         {/* ── Keyword Strategy ── */}
-        <Section title="Keyword Strategy">
-          <KeywordStrategyCard
-            primaryKeywords={primaryKeywords}
-            secondaryKeywords={secondaryKeywords}
-            localSeoKeywords={localSeoKeywords}
-            onPrimaryChange={setPrimaryKeywords}
-            onSecondaryChange={setSecondaryKeywords}
-            onLocalChange={setLocalSeoKeywords}
-          />
-        </Section>
+        <KeywordStrategyCard
+          primaryKeywords={primaryKeywords}
+          secondaryKeywords={secondaryKeywords}
+          localSeoKeywords={localSeoKeywords}
+          onPrimaryChange={setPrimaryKeywords}
+          onSecondaryChange={setSecondaryKeywords}
+          onLocalChange={setLocalSeoKeywords}
+        />
 
         {/* ── SEO & Content ── */}
-        <Section title="SEO & Content">
-          <div className="flex items-center justify-between mb-3">
+        <FieldGroup title="SEO & Content">
+          <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-text-muted">
               Generate optimised copy from your event details and brief.
             </p>
@@ -891,8 +890,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               variant="secondary"
               size="sm"
               onClick={handleGenerateSeo}
-              disabled={aiLoading}
-              icon={aiLoading ? <Spinner className="h-3.5 w-3.5" /> : <Icon name="edit" size={14} />}
+              loading={aiLoading}
+              icon={<Icon name="edit" size={14} />}
             >
               {aiLoading ? 'Generating...' : 'Generate All'}
             </Button>
@@ -900,7 +899,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
           {/* Generation phase feedback */}
           {aiLoading && generationPhase && (
-            <div className="flex items-center gap-2 text-sm text-text-muted mb-3">
+            <div className="flex items-center gap-2 text-sm text-text-muted">
               <Spinner size="sm" />
               <span>
                 {generationPhase === 'checking' && 'Checking event details...'}
@@ -915,9 +914,9 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
           {/* Preflight issues */}
           {preflightIssues.length > 0 && !aiLoading && (
-            <div className="mb-3 space-y-1">
+            <div className="space-y-1">
               {preflightIssues.map((issue, i) => (
-                <p key={i} className={`text-xs ${issue.type === 'error' ? 'text-danger' : 'text-warning-fg'}`}>
+                <p key={i} className={`text-xs ${eventPreflightIssueTextClass(issue.type)}`}>
                   {issue.type === 'error' ? '✗ ' : '⚠ '}{issue.message}
                 </p>
               ))}
@@ -948,7 +947,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             value={metaDescription}
             onChange={(e) => { setMetaDescription(e.target.value); clearFieldError('meta_description') } }
             rows={2}
-            className="mt-3"
             placeholder="SEO page description"
           />
 
@@ -959,7 +957,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             value={shortDescription}
             onChange={(e) => { setShortDescription(e.target.value); clearFieldError('short_description') } }
             rows={2}
-            className="mt-3"
             placeholder="Brief description for listings"
           />
           <Textarea
@@ -968,7 +965,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             value={longDescription}
             onChange={(e) => { setLongDescription(e.target.value); clearFieldError('long_description') } }
             rows={4}
-            className="mt-3"
             placeholder="Detailed description for the event page"
           />
           <Input
@@ -977,9 +973,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             value={highlights}
             onChange={(e) => { setHighlights(e.target.value); clearFieldError('highlights') } }
             placeholder="Great prizes, Fun atmosphere, Live music"
-            className="mt-3"
+            hint="Separate with commas"
           />
-          <p className="text-xs text-text-muted mt-0.5">Separate with commas</p>
 
           {/* Image & accessibility */}
           <Input
@@ -988,7 +983,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             value={imageAltText}
             onChange={(e) => { setImageAltText(e.target.value); clearFieldError('image_alt_text') } }
             placeholder="Descriptive alt text for the event image"
-            className="mt-3"
           />
           <Textarea
             label="Cancellation Policy"
@@ -997,7 +991,6 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             value={cancellationPolicy}
             onChange={(e) => { setCancellationPolicy(e.target.value); clearFieldError('cancellation_policy') } }
             rows={2}
-            className="mt-3"
             placeholder="Cancellation and refund policy..."
           />
           <Textarea
@@ -1007,22 +1000,19 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             value={accessibilityNotes}
             onChange={(e) => { setAccessibilityNotes(e.target.value); clearFieldError('accessibility_notes') } }
             rows={2}
-            className="mt-3"
             placeholder="Wheelchair access, hearing loop, accessible parking..."
           />
 
           {/* FAQs */}
-          <div className="mt-4">
-            <FaqEditor
-              faqs={faqs}
-              onChange={setFaqs}
-              onModified={() => setFaqsModified(true)}
-            />
-          </div>
+          <FaqEditor
+            faqs={faqs}
+            onChange={setFaqs}
+            onModified={() => setFaqsModified(true)}
+          />
 
-          {/* SEO Health Score — shown when SEO content exists */}
+          {/* SEO Health Score, shown when SEO content exists */}
           {(metaTitle || metaDescription || longDescription) && (
-            <div className="mt-4">
+            <div>
               <SeoHealthIndicator
                 metaTitle={metaTitle}
                 metaDescription={metaDescription}
@@ -1039,28 +1029,43 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               />
             </div>
           )}
-        </Section>
+        </FieldGroup>
 
         {/* ── Footer actions ── */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
-          <Button variant="ghost" onClick={requestClose} disabled={isPending}>
+        <FormFooter className="border-t border-border pt-4">
+          <Button variant="secondary" onClick={requestClose} disabled={isPending}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSave} loading={isPending}>
             {isEdit ? 'Save Changes' : 'Create Event'}
           </Button>
-        </div>
+        </FormFooter>
       </div>
+
+      {/* Rendered inside the drawer so it stacks above it as a nested dialog. */}
+      <ConfirmDialog
+        open={confirmCloseOpen}
+        onClose={() => setConfirmCloseOpen(false)}
+        onConfirm={() => {
+          setConfirmCloseOpen(false)
+          onClose()
+        }}
+        title="Close Without Uploading"
+        message={`${queuedImageCount} ${queuedImageNoun} ${queuedImageCount === 1 ? 'has' : 'have'} not been uploaded yet. Close and lose ${queuedImageCount === 1 ? 'it' : 'them'}?`}
+        confirmLabel="Close and Discard"
+        cancelLabel="Keep Editing"
+        tone="danger"
+      />
     </Drawer>
   )
 }
 
-/* ── Section heading helper ── */
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/* ── A titled group of fields in the drawer ── */
+function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section>
-      <h3 className="text-sm font-semibold text-text-strong mb-3">{title}</h3>
-      {children}
-    </section>
+    <fieldset className="min-w-0">
+      <legend className="mb-3 text-sm font-semibold text-text-strong">{title}</legend>
+      <div className="space-y-3">{children}</div>
+    </fieldset>
   )
 }

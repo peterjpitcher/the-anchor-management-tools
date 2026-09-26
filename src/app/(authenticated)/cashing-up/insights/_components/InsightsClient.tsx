@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { Card, CardHeader, CardBody, RevenueChart } from '@/ds'
-import { Select, Stat } from '@/ds'
+import { Card, CardHeader, CardBody, PageLayout, RevenueChart, StatGrid } from '@/ds'
+import { Alert, Empty, PageLoading, Select, Stat } from '@/ds'
 import { getInsightsDataAction } from '@/app/actions/cashing-up'
 import {
   Bar,
@@ -16,6 +16,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { CashupInsightsData, CashupInsightsPeriod } from '@/types/cashing-up'
+import { cashingUpLayout } from '../../_shared/nav'
 
 type InsightsData = CashupInsightsData
 type PeriodSelectValue = `period:${CashupInsightsPeriod}` | `year:${number}`
@@ -84,7 +85,7 @@ function SalesMixTooltip({ active, payload, label }: {
   const percentEntries = payload.filter((entry) => entry.dataKey?.endsWith('Percentage'))
 
   return (
-    <div className="bg-surface border border-border rounded-md px-3 py-2 shadow-lg text-xs min-w-[180px]">
+    <div className="bg-surface border border-border rounded-default px-3 py-2 shadow-lg text-xs min-w-[180px]">
       <p className="text-text-muted mb-2">{label}</p>
       <div className="space-y-1.5">
         {salesEntries.map((entry) => (
@@ -191,6 +192,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
   const [data, setData] = useState<InsightsData | null>(initialData)
   const [periodValue, setPeriodValue] = useState<PeriodSelectValue>(initialPeriodValue)
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | undefined>(error)
 
   const handlePeriodChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const nextValue = e.target.value as PeriodSelectValue
@@ -200,18 +202,46 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
     try {
       const res = await getInsightsDataAction(undefined, nextPeriod.year, nextPeriod.period)
       setData(res.data ?? null)
+      // A failed read is shown as a failure, never as "no data".
+      setLoadError(res.data ? undefined : res.error)
+    } catch {
+      setData(null)
+      setLoadError('Could not load insights for that period. Try again.')
     } finally {
       setLoading(false)
     }
   }, [])
 
-  if (error || !data) {
+  const layoutProps = cashingUpLayout('Trends in takings, sales mix and payment methods')
+
+  // The period picker stays above every state, so a failed period can be swapped for another.
+  const periodPicker = (
+    <div className="flex flex-wrap items-end gap-3">
+      <Select
+        label="Period"
+        options={periodOptions}
+        value={periodValue}
+        onChange={handlePeriodChange}
+        disabled={loading}
+        className="w-52"
+      />
+    </div>
+  )
+
+  if (loading || loadError || !data) {
     return (
-      <Card>
-        <CardBody>
-          <p className="text-text-muted text-center py-8">{error || 'No insights data available.'}</p>
-        </CardBody>
-      </Card>
+      <PageLayout {...layoutProps}>
+        {periodPicker}
+        {loading ? (
+          <PageLoading inline label="Loading insights" />
+        ) : loadError ? (
+          <Alert tone="danger">{loadError}</Alert>
+        ) : (
+          <Card>
+            <Empty size="sm" title="No insights data available" />
+          </Card>
+        )}
+      </PageLayout>
     )
   }
 
@@ -230,18 +260,8 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
   const totalAvgTakings = data.dayOfWeek.reduce((sum, d) => sum + d.avgTakings, 0)
 
   return (
-    <div className="space-y-6">
-      {/* Year picker */}
-      <div className="flex items-center gap-3">
-        <Select
-          label="Period"
-          options={periodOptions}
-          value={periodValue}
-          onChange={handlePeriodChange}
-          disabled={loading}
-          className="w-52"
-        />
-      </div>
+    <PageLayout {...layoutProps}>
+      {periodPicker}
 
       {/* Monthly trend chart */}
       <Card>
@@ -250,7 +270,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
           {chartData.length > 0 ? (
             <RevenueChart data={chartData} />
           ) : (
-            <p className="text-text-muted text-center py-8">No data available</p>
+            <Empty size="sm" title="No data available" />
           )}
         </CardBody>
       </Card>
@@ -263,7 +283,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
               <SalesMixTrendChart data={salesMixMonthly} />
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {salesMix.map((mix) => (
-                  <div key={mix.label} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                  <div key={mix.label} className="flex items-center justify-between rounded-default border border-border px-3 py-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <span
                         className="w-3 h-3 rounded-full shrink-0"
@@ -282,7 +302,7 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
               </div>
             </div>
           ) : (
-            <p className="text-text-muted text-center py-8">No sales mix data available</p>
+            <Empty size="sm" title="No sales mix data available" />
           )}
         </CardBody>
       </Card>
@@ -340,23 +360,11 @@ export function InsightsClient({ initialData, selectedYear, selectedPeriod = '12
       </div>
 
       {/* Year-over-year stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardBody>
-            <Stat label="Best Day" value={bestDay?.dayName.substring(0, 3) || '-'} hint={bestDay ? `Avg £${bestDay.avgTakings.toFixed(0)}` : undefined} />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody>
-            <Stat label="Avg Daily Takings" value={`£${(totalAvgTakings / (data.dayOfWeek.length || 1)).toFixed(0)}`} />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody>
-            <Stat label="Payment Methods" value={data.paymentMix.length} />
-          </CardBody>
-        </Card>
-      </div>
-    </div>
+      <StatGrid columns={3}>
+        <Stat label="Best Day" value={bestDay?.dayName.substring(0, 3) || '-'} hint={bestDay ? `Avg £${bestDay.avgTakings.toFixed(0)}` : undefined} />
+        <Stat label="Avg Daily Takings" value={`£${(totalAvgTakings / (data.dayOfWeek.length || 1)).toFixed(0)}`} />
+        <Stat label="Payment Methods" value={data.paymentMix.length} />
+      </StatGrid>
+    </PageLayout>
   )
 }

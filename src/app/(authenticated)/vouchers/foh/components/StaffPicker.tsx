@@ -19,38 +19,34 @@ export function StaffPicker({ staff, value, onChange, id = 'foh-voucher-staff' }
   const others = staff.filter((member) => !member.clockedIn)
 
   return (
-    <div>
-      <label htmlFor={id} className="mb-1 block text-sm font-medium text-text">
-        Your name
-      </label>
-      <Select
-        id={id}
-        value={value ?? ''}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-12 text-base"
-      >
-        <option value="" disabled>
-          Choose who is doing this
-        </option>
-        {clockedIn.length > 0 && (
-          <optgroup label="Clocked in">
-            {clockedIn.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        {others.length > 0 && (
-          <optgroup label={clockedIn.length > 0 ? 'Other staff' : 'Staff'}>
-            {others.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-      </Select>
-    </div>
+    <Select
+      id={id}
+      label="Your name"
+      value={value ?? ''}
+      onChange={(event) => onChange(event.target.value)}
+      className="h-12 text-base"
+    >
+      <option value="" disabled>
+        Choose who is doing this
+      </option>
+      {clockedIn.length > 0 && (
+        <optgroup label="Clocked in">
+          {clockedIn.map((member) => (
+            <option key={member.id} value={member.id}>
+              {member.name}
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {others.length > 0 && (
+        <optgroup label={clockedIn.length > 0 ? 'Other staff' : 'Staff'}>
+          {others.map((member) => (
+            <option key={member.id} value={member.id}>
+              {member.name}
+            </option>
+          ))}
+        </optgroup>
+      )}
+    </Select>
   )
 }

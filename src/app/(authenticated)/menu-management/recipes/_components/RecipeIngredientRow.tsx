@@ -5,6 +5,7 @@ import { Input, Icon } from '@/ds';
 import { Select } from '@/ds';
 import { Field } from '@/ds';
 import { IconButton } from '@/ds';
+import { Card } from '@/ds';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -99,7 +100,7 @@ export function RecipeIngredientRow({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-3 shadow-sm">
+    <Card padding="sm">
       {/* Compact row: ingredient, quantity, unit, expand/remove */}
       <div className="flex flex-wrap items-end gap-2">
         <Field label="Ingredient" required className="min-w-0 flex-1">
@@ -212,6 +213,6 @@ export function RecipeIngredientRow({
           </Field>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

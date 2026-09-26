@@ -19,6 +19,7 @@ import { displayName } from '@/lib/employees/display-name';
 import { ROTA_HOURS_SERIES_COLOURS } from '@/lib/rota/status-ui';
 import { PageLayout } from '@/ds';
 import { rotaNavItems } from '../nav';
+import { DownloadLink } from '../_shared/DownloadLink';
 import HoursByEmployeeClient, {
   type HoursEmployeeOption,
   type HolidayEmployeeSummary,
@@ -310,11 +311,25 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
     }))
     .filter(summary => summary.sickDays > 0);
 
+  // The report as filtered, for the header's download. It follows the applied filters, not
+  // the ones still being edited on the page.
+  const pdfParams = new URLSearchParams();
+  pdfParams.set('from', fromDate);
+  pdfParams.set('to', toDate);
+  for (const employeeId of selectedEmployeeIds) {
+    pdfParams.append('employee', employeeId);
+  }
+
   return (
     <PageLayout
-      title="Hours by employee"
+      title="Hours by Employee"
       subtitle="Actual timeclock hours, future planned hours, holidays, and Couldn't Work days grouped by employee"
       navItems={rotaNavItems}
+      headerActions={
+        <DownloadLink href={`/api/rota/hours/pdf?${pdfParams.toString()}`} disabled={series.length === 0}>
+          Download PDF
+        </DownloadLink>
+      }
     >
       <HoursByEmployeeClient
         employees={employeeOptions}

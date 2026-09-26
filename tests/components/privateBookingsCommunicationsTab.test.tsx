@@ -54,6 +54,12 @@ describe('CommunicationsTab', () => {
     expect(screen.getByText('No messages sent yet')).toBeInTheDocument()
   })
 
+  it('shows a failed history read as an error, never as no messages', () => {
+    render(<CommunicationsTab history={[]} scheduled={[]} isDateTbd={false} historyError="permission denied" />)
+    expect(screen.getByText('Messages could not be loaded: permission denied')).toBeInTheDocument()
+    expect(screen.queryByText('No messages sent yet')).not.toBeInTheDocument()
+  })
+
   it('renders scheduled list with resolved preview bodies', () => {
     const scheduled: ScheduledSmsPreview[] = [
       scheduledItem({

@@ -3,18 +3,23 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getRecurringInvoices, deleteRecurringInvoice, generateInvoiceFromRecurring, toggleRecurringInvoiceStatus } from '@/app/actions/recurring-invoices'
-import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { Button } from '@/ds'
-import { Badge } from '@/ds'
-import { Empty } from '@/ds'
-import { DataTable } from '@/ds'
-import { toast } from '@/ds'
-import { ConfirmDialog } from '@/ds'
+import {
+  PageLayout,
+  Icon,
+  Card,
+  IconButton,
+  LinkButton,
+  Badge,
+  DataTable,
+  toast,
+  ConfirmDialog,
+  Alert,
+} from '@/ds'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
-import { Alert } from '@/ds'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { FINANCE_NAV } from '../_shared/nav'
+import { recurringScheduleLabel, recurringScheduleTone } from '../_shared/status-ui'
 
 type GenerateInvoiceActionResult = Awaited<ReturnType<typeof generateInvoiceFromRecurring>>
 
@@ -31,6 +36,10 @@ export default function RecurringInvoicesPage() {
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  const [generateTarget, setGenerateTarget] = useState<string | null>(null)
+  const [toggleTarget, setToggleTarget] = useState<{ id: string; isActive: boolean } | null>(null)
+  // A failed load is shown as a failure, never as an empty list of schedules.
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     if (permissionsLoading) {
@@ -55,9 +64,13 @@ export default function RecurringInvoicesPage() {
       const result = await getRecurringInvoices()
       if (result.recurringInvoices) {
         setRecurringInvoices(result.recurringInvoices)
+        setLoadError(null)
+      } else {
+        setLoadError(result.error || 'Failed to load recurring invoices')
       }
     } catch (error) {
       console.error('Error loading recurring invoices:', error)
+      setLoadError('Failed to load recurring invoices')
     } finally {
       setLoading(false)
     }
@@ -90,13 +103,17 @@ export default function RecurringInvoicesPage() {
     }
   }
 
-  async function handleGenerateNow(id: string) {
+  function requestGenerateNow(id: string) {
     if (!canCreate) {
       toast.error('You do not have permission to generate invoices')
       return
     }
+    setGenerateTarget(id)
+  }
 
-    if (!confirm('Generate invoice now? This will create a new invoice immediately.')) {
+  async function handleGenerateNow(id: string) {
+    if (!canCreate) {
+      toast.error('You do not have permission to generate invoices')
       return
     }
 
@@ -120,6 +137,14 @@ export default function RecurringInvoicesPage() {
     }
   }
 
+  function requestToggleStatus(id: string, currentStatus: boolean) {
+    if (!canEdit) {
+      toast.error('You do not have permission to update recurring invoices')
+      return
+    }
+    setToggleTarget({ id, isActive: currentStatus })
+  }
+
   async function handleToggleStatus(id: string, currentStatus: boolean) {
     if (!canEdit) {
       toast.error('You do not have permission to update recurring invoices')
@@ -127,9 +152,6 @@ export default function RecurringInvoicesPage() {
     }
 
     const action = currentStatus ? 'deactivate' : 'activate'
-    if (!confirm(`Are you sure you want to ${action} this recurring invoice?`)) {
-      return
-    }
 
     setProcessing(id)
     try {
@@ -174,71 +196,121 @@ export default function RecurringInvoicesPage() {
     }
   }
 
+  const layoutProps = {
+    title: 'Recurring Invoices',
+    subtitle: 'Manage automated invoice generation',
+    navItems: FINANCE_NAV,
+  }
+
   if (permissionsLoading || loading) {
-    return (
-      <PageLayout
-        title="Recurring Invoices"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        loading
-        loadingLabel="Loading recurring schedules..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading recurring schedules" />
   }
 
   if (!canView) {
     return null
   }
 
+  const statusBadge = (r: RecurringInvoiceWithDetails, className?: string) => (
+    <Badge
+      tone={recurringScheduleTone(r.is_active)}
+      icon={<Icon name={r.is_active ? 'play' : 'pause'} size={12} />}
+      className={className}
+    >
+      {recurringScheduleLabel(r.is_active)}
+    </Badge>
+  )
+
+  const rowActions = (r: RecurringInvoiceWithDetails) => (
+    <>
+      <IconButton
+        variant="secondary"
+        size="sm"
+        onClick={() => requestToggleStatus(r.id, r.is_active)}
+        disabled={processing === r.id || !canEdit}
+        loading={processing === r.id}
+        title={
+          !canEdit
+            ? 'You need invoice edit permission to change status.'
+            : r.is_active
+              ? 'Deactivate recurring invoice'
+              : 'Activate recurring invoice'
+        }
+        label={r.is_active ? 'Deactivate recurring invoice' : 'Activate recurring invoice'}
+        icon={<Icon name={r.is_active ? 'pause' : 'play'} size={16} />}
+      />
+      <IconButton
+        variant="secondary"
+        size="sm"
+        onClick={() => requestGenerateNow(r.id)}
+        disabled={processing === r.id || !r.is_active || !canCreate}
+        loading={processing === r.id}
+        title={
+          !canCreate
+            ? 'You need invoice create permission to generate invoices.'
+            : !r.is_active
+              ? 'Activate the schedule before generating.'
+              : 'Generate invoice now'
+        }
+        label="Generate invoice now"
+        icon={<Icon name="calendar" size={16} />}
+      />
+      <IconButton
+        variant="secondary"
+        size="sm"
+        onClick={() => router.push(`/invoices/recurring/${r.id}`)}
+        disabled={processing === r.id}
+        title="View details"
+        label="View details"
+        icon={<Icon name="edit" size={16} />}
+      />
+      <IconButton
+        variant="danger"
+        size="sm"
+        onClick={() => setShowDeleteConfirm(r.id)}
+        disabled={processing === r.id || !canDelete}
+        loading={processing === r.id}
+        title={
+          !canDelete
+            ? 'You need invoice delete permission to remove recurring invoices.'
+            : undefined
+        }
+        label="Delete recurring invoice"
+        icon={<Icon name="trash" size={16} />}
+      />
+    </>
+  )
+
   return (
     <PageLayout
-      title="Recurring Invoices"
-      subtitle="Manage automated invoice generation"
-      breadcrumbs={[{ label: 'Invoices', href: '/invoices' }]}
-      navItems={[
-        { label: 'Catalog', href: '/invoices/catalog' },
-        { label: 'Vendors', href: '/invoices/vendors' },
-        { label: 'Recurring', href: '/invoices/recurring' },
-      ]}
+      {...layoutProps}
       headerActions={
         canCreate ? (
-          <Button
+          <LinkButton
+            href="/invoices/recurring/new"
             variant="primary"
-            onClick={() => router.push('/invoices/recurring/new')}
-            leftIcon={<Icon name="plus" size={16} />}
+            size="sm"
+            icon={<Icon name="plus" size={16} />}
           >
             New Recurring Invoice
-          </Button>
+          </LinkButton>
         ) : undefined
       }
     >
-      <div className="space-y-6">
-        {isReadOnly && (
-          <Alert
-            tone="info"
-          >
-            You have read-only access to recurring invoices; creation and management actions are disabled.
-          </Alert>
-        )}
+      {isReadOnly && (
+        <Alert tone="info">
+          You have read-only access to recurring invoices; creation and management actions are disabled.
+        </Alert>
+      )}
 
-        {recurringInvoices.length === 0 ? (
-          <Empty
-            icon={<Icon name="calendar" size={48} />}
-            title="No recurring invoices"
-            description="Create recurring invoices to automate your billing"
-            action={
-              canCreate ? (
-                <Button onClick={() => router.push('/invoices/recurring/new')} leftIcon={<Icon name="plus" size={16} />}>
-                  Create schedule
-                </Button>
-              ) : undefined
-            }
-          />
-        ) : (
-          <Card>
-            <DataTable
-              data={recurringInvoices}
-              getRowKey={(r) => r.id}
-              columns={[
+      {loadError ? (
+        <Alert tone="danger" title="Could not load recurring invoices">{loadError}</Alert>
+      ) : (
+        <Card padding="none">
+          <DataTable
+            data={recurringInvoices}
+            getRowKey={(r) => r.id}
+            bordered={false}
+            columns={[
               {
                 key: 'vendor',
                 header: 'Vendor',
@@ -274,199 +346,87 @@ export default function RecurringInvoicesPage() {
               {
                 key: 'status',
                 header: 'Status',
-                cell: (r) => r.is_active ? (
-                  <Badge tone="success" icon={<Icon name="play" size={12} />}>Active</Badge>
-                ) : (
-                  <Badge tone="neutral" icon={<Icon name="pause" size={12} />}>Inactive</Badge>
-                )
+                cell: (r) => statusBadge(r)
               },
               {
                 key: 'actions',
                 header: 'Actions',
                 align: 'right',
-                cell: (r) => (
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleToggleStatus(r.id, r.is_active)}
-                      disabled={processing === r.id || !canEdit}
-                      loading={processing === r.id}
-                      title={
-                        !canEdit
-                          ? 'You need invoice edit permission to change status.'
-                          : r.is_active
-                            ? 'Deactivate recurring invoice'
-                            : 'Activate recurring invoice'
-                      }
-                      iconOnly
-                    >
-                      {r.is_active ? (
-                        <Icon name="pause" size={16} />
-                      ) : (
-                        <Icon name="play" size={16} />
-                      )}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleGenerateNow(r.id)}
-                      disabled={processing === r.id || !r.is_active || !canCreate}
-                      loading={processing === r.id}
-                      title={
-                        !canCreate
-                          ? 'You need invoice create permission to generate invoices.'
-                          : !r.is_active
-                            ? 'Activate the schedule before generating.'
-                            : 'Generate invoice now'
-                      }
-                      iconOnly
-                    >
-                      <Icon name="calendar" size={16} />
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => router.push(`/invoices/recurring/${r.id}`)}
-                      disabled={processing === r.id}
-                      title="View details"
-                      iconOnly
-                    >
-                      <Icon name="edit" size={16} />
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => setShowDeleteConfirm(r.id)}
-                      disabled={processing === r.id || !canDelete}
-                      loading={processing === r.id}
-                      title={
-                        !canDelete
-                          ? 'You need invoice delete permission to remove recurring invoices.'
-                          : undefined
-                      }
-                      iconOnly
-                    >
-                      <Icon name="trash" size={16} />
-                    </Button>
-                  </div>
-                )
+                cell: (r) => <div className="flex justify-end gap-2">{rowActions(r)}</div>
               },
             ]}
-              renderMobileCard={(r) => (
-                <div className="space-y-3 rounded-lg border border-border bg-surface p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-medium text-text">{r.vendor?.name || 'Unknown Vendor'}</div>
-                      {r.vendor?.contact_name && (
-                        <div className="text-sm text-text-muted">{r.vendor.contact_name}</div>
-                      )}
-                    </div>
-                    {r.is_active ? (
-                      <Badge tone="success" icon={<Icon name="play" size={12} />} className="shrink-0">Active</Badge>
-                    ) : (
-                      <Badge tone="neutral" icon={<Icon name="pause" size={12} />} className="shrink-0">Inactive</Badge>
+            renderMobileCard={(r) => (
+              <div className="space-y-3 border-b border-border p-pad-card">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium text-text">{r.vendor?.name || 'Unknown Vendor'}</div>
+                    {r.vendor?.contact_name && (
+                      <div className="text-sm text-text-muted">{r.vendor.contact_name}</div>
                     )}
                   </div>
-                  <dl className="grid gap-2 text-sm">
-                    <div className="flex items-center justify-between gap-4">
-                      <dt className="text-text-muted">Frequency</dt>
-                      <dd className="text-text">{getFrequencyLabel(r.frequency)}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-4">
-                      <dt className="text-text-muted">Next Invoice</dt>
-                      <dd className="text-right text-text">
-                        <div>{getNextInvoiceLabel(r.next_invoice_date)}</div>
-                        <div className="text-xs text-text-muted">{formatDateInLondon(r.next_invoice_date)}</div>
-                      </dd>
-                    </div>
-                    <div className="flex items-center justify-between gap-4">
-                      <dt className="text-text-muted">Reference</dt>
-                      <dd className="min-w-0 break-words text-right text-text">{r.reference || '-'}</dd>
-                    </div>
-                  </dl>
-                  <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-3">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleToggleStatus(r.id, r.is_active)}
-                      disabled={processing === r.id || !canEdit}
-                      loading={processing === r.id}
-                      title={
-                        !canEdit
-                          ? 'You need invoice edit permission to change status.'
-                          : r.is_active
-                            ? 'Deactivate recurring invoice'
-                            : 'Activate recurring invoice'
-                      }
-                      aria-label={r.is_active ? 'Deactivate recurring invoice' : 'Activate recurring invoice'}
-                      iconOnly
-                    >
-                      {r.is_active ? <Icon name="pause" size={16} /> : <Icon name="play" size={16} />}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleGenerateNow(r.id)}
-                      disabled={processing === r.id || !r.is_active || !canCreate}
-                      loading={processing === r.id}
-                      title={
-                        !canCreate
-                          ? 'You need invoice create permission to generate invoices.'
-                          : !r.is_active
-                            ? 'Activate the schedule before generating.'
-                            : 'Generate invoice now'
-                      }
-                      aria-label="Generate invoice now"
-                      iconOnly
-                    >
-                      <Icon name="calendar" size={16} />
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => router.push(`/invoices/recurring/${r.id}`)}
-                      disabled={processing === r.id}
-                      title="View details"
-                      aria-label="View details"
-                      iconOnly
-                    >
-                      <Icon name="edit" size={16} />
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => setShowDeleteConfirm(r.id)}
-                      disabled={processing === r.id || !canDelete}
-                      loading={processing === r.id}
-                      title={
-                        !canDelete
-                          ? 'You need invoice delete permission to remove recurring invoices.'
-                          : undefined
-                      }
-                      aria-label="Delete recurring invoice"
-                      iconOnly
-                    >
-                      <Icon name="trash" size={16} />
-                    </Button>
-                  </div>
+                  {statusBadge(r, 'shrink-0')}
                 </div>
-              )}
-              emptyMessage="No recurring invoices"
-            />
-          </Card>
-        )}
+                <dl className="grid gap-2 text-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-text-muted">Frequency</dt>
+                    <dd className="text-text">{getFrequencyLabel(r.frequency)}</dd>
+                  </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <dt className="text-text-muted">Next Invoice</dt>
+                    <dd className="text-right text-text">
+                      <div>{getNextInvoiceLabel(r.next_invoice_date)}</div>
+                      <div className="text-xs text-text-muted">{formatDateInLondon(r.next_invoice_date)}</div>
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-text-muted">Reference</dt>
+                    <dd className="min-w-0 break-words text-right text-text">{r.reference || '-'}</dd>
+                  </div>
+                </dl>
+                <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-3">
+                  {rowActions(r)}
+                </div>
+              </div>
+            )}
+            emptyMessage="No recurring invoices"
+            emptyDescription="Create recurring invoices to automate your billing"
+          />
+        </Card>
+      )}
 
-        <ConfirmDialog
-          open={showDeleteConfirm !== null}
-          onClose={() => setShowDeleteConfirm(null)}
-          onConfirm={() => showDeleteConfirm && handleDelete(showDeleteConfirm)}
-          title="Delete Recurring Invoice"
-          message="Are you sure you want to delete this recurring invoice? This action cannot be undone."
-          confirmText="Delete"
-          confirmVariant="danger"
-        />
-      </div>
+      <ConfirmDialog
+        open={showDeleteConfirm !== null}
+        onClose={() => setShowDeleteConfirm(null)}
+        onConfirm={() => showDeleteConfirm && handleDelete(showDeleteConfirm)}
+        title="Delete Recurring Invoice"
+        message="Are you sure you want to delete this recurring invoice? This action cannot be undone."
+        confirmLabel="Delete"
+        tone="danger"
+      />
+
+      <ConfirmDialog
+        open={generateTarget !== null}
+        onClose={() => setGenerateTarget(null)}
+        onConfirm={async () => {
+          if (generateTarget) await handleGenerateNow(generateTarget)
+        }}
+        title="Generate Invoice Now"
+        message="Generate invoice now? This will create a new invoice immediately."
+        confirmLabel="Generate Invoice"
+        tone="warning"
+      />
+
+      <ConfirmDialog
+        open={toggleTarget !== null}
+        onClose={() => setToggleTarget(null)}
+        onConfirm={async () => {
+          if (toggleTarget) await handleToggleStatus(toggleTarget.id, toggleTarget.isActive)
+        }}
+        title={toggleTarget?.isActive ? 'Deactivate Recurring Invoice' : 'Activate Recurring Invoice'}
+        message={`Are you sure you want to ${toggleTarget?.isActive ? 'deactivate' : 'activate'} this recurring invoice?`}
+        confirmLabel={toggleTarget?.isActive ? 'Deactivate' : 'Activate'}
+        tone="warning"
+      />
     </PageLayout>
   )
 }

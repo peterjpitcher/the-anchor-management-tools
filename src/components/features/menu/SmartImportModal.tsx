@@ -7,6 +7,7 @@ import { Textarea } from '@/ds';
 import { Alert } from '@/ds';
 import { toast } from '@/ds';
 import { Badge } from '@/ds';
+import { FormFooter } from '@/ds';
 import type { MenuPurchaseDepartment } from '@/lib/menu/purchase-departments';
 
 interface AiParsedIngredient {
@@ -76,7 +77,22 @@ export function SmartImportModal({ open, onClose, onImport }: SmartImportModalPr
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Smart Ingredient Import" size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Smart Ingredient Import"
+      size="lg"
+      footer={
+        <FormFooter className="w-full">
+          <Button variant="secondary" onClick={onClose} disabled={parsing}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={handleParse} disabled={parsing || !input.trim()}>
+            {parsing ? 'Analyzing...' : 'Analyze & Import'}
+          </Button>
+        </FormFooter>
+      }
+    >
       <div className="space-y-4">
         <Alert tone="info">
           <div className="space-y-2">
@@ -93,6 +109,7 @@ export function SmartImportModal({ open, onClose, onImport }: SmartImportModalPr
         </Alert>
 
         <Textarea
+          label="Product Details"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Paste product details here..."
@@ -106,15 +123,6 @@ export function SmartImportModal({ open, onClose, onImport }: SmartImportModalPr
             {error}
           </Alert>
         )}
-
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={parsing}>
-            Cancel
-          </Button>
-          <Button onClick={handleParse} disabled={parsing || !input.trim()}>
-            {parsing ? 'Analyzing...' : 'Analyze & Import'}
-          </Button>
-        </div>
       </div>
     </Modal>
   );

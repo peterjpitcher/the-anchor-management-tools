@@ -1,11 +1,10 @@
 'use client'
 
-import { useState } from 'react'
 import type { Role, UserSummaryWithRoles } from '@/types/rbac'
 
-import { PageHeader, SectionNav } from '@/ds'
+import { PageLayout } from '@/ds'
 import { UsersContent } from './UsersContent'
-import { RolesContent } from './RolesContent'
+import { USERS_LAYOUT } from '../_shared/layout'
 
 interface UsersClientProps {
   users: UserSummaryWithRoles[]
@@ -13,33 +12,11 @@ interface UsersClientProps {
   canManageRoles: boolean
 }
 
-const SECTION_ITEMS = [
-  { id: 'users', label: 'Users' },
-  { id: 'roles', label: 'Roles' },
-]
-
-export function UsersClient({ users, roles, canManageRoles }: UsersClientProps) {
-  const [activeSection, setActiveSection] = useState('users')
-
+// Roles are edited on /roles only (owner decision, 26 September 2026), so this page shows users.
+export function UsersClient({ users, roles, canManageRoles }: UsersClientProps): React.JSX.Element {
   return (
-    <div>
-      <PageHeader
-        breadcrumbs={[{ label: 'Settings', href: '/settings' }, { label: 'Users' }]}
-        title="User Management"
-        subtitle="Manage users, roles, and permissions"
-      />
-
-      <SectionNav
-        items={SECTION_ITEMS}
-        activeId={activeSection}
-        onSelect={setActiveSection}
-        className="mb-6"
-      />
-
-      {activeSection === 'users' && (
-        <UsersContent users={users} roles={roles} canManageRoles={canManageRoles} />
-      )}
-      {activeSection === 'roles' && <RolesContent />}
-    </div>
+    <PageLayout {...USERS_LAYOUT}>
+      <UsersContent users={users} roles={roles} canManageRoles={canManageRoles} />
+    </PageLayout>
   )
 }

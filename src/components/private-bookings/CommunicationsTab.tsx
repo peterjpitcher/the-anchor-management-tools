@@ -1,12 +1,9 @@
 'use client'
 
 import type { ScheduledSmsPreview, ScheduledSmsSuppressionReason } from '@/services/private-bookings/scheduled-sms'
-import { Card, Icon } from '@/ds'
-import { Section } from '@/ds'
-import { Badge } from '@/ds'
-import { Empty } from '@/ds'
-import { Alert } from '@/ds'
+import { Alert, Badge, Card, CardBody, CardHeader, Empty, Icon } from '@/ds'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
+import { SCHEDULED_REMINDER_TONE } from '@/app/(authenticated)/private-bookings/_shared/status-ui'
 
 export type CommunicationsHistoryRow = {
   id: string
@@ -86,28 +83,37 @@ export function CommunicationsTab({
   isDateTbd,
   emails = [],
   emailsError = null,
+  historyError = null,
 }: {
   history: CommunicationsHistoryRow[]
   scheduled: ScheduledSmsPreview[]
   isDateTbd: boolean
   emails?: CommunicationsEmailRow[]
   emailsError?: string | null
+  /** A failed read of the SMS history: shown as an error, never as "no messages". */
+  historyError?: string | null
 }) {
+  // Three cards, passed straight to the page's PageLayout, which spaces them.
   return (
-    <div className="space-y-8">
-      <Section
-        id="sms-history"
-        title="History"
-        description="Messages already sent or queued for this booking (most recent first)."
-      >
-        <Card>
-          {history.length === 0 ? (
+    <>
+      <Card>
+        <CardHeader
+          title="History"
+          subtitle="Messages already sent or queued for this booking (most recent first)."
+        />
+          {historyError ? (
+            <CardBody>
+              <Alert tone="danger">{`Messages could not be loaded: ${historyError}`}</Alert>
+            </CardBody>
+          ) : history.length === 0 ? (
             <Empty
+              size="sm"
               icon={<Icon name="message" size={40} />}
               title="No messages sent yet"
               description="Once a message is queued or sent, it will appear here."
             />
           ) : (
+            <CardBody>
             <ul className="divide-y divide-border" aria-label="SMS message history">
               {history.map((row) => (
                 <li key={row.id} className="py-4 first:pt-0 last:pb-0">
@@ -140,25 +146,28 @@ export function CommunicationsTab({
                 </li>
               ))}
             </ul>
+            </CardBody>
           )}
-        </Card>
-      </Section>
+      </Card>
 
-      <Section
-        id="email-history"
-        title="Emails"
-        description="Emails sent about this booking (most recent first), with their delivery status."
-      >
-        <Card>
+      <Card>
+        <CardHeader
+          title="Emails"
+          subtitle="Emails sent about this booking (most recent first), with their delivery status."
+        />
           {emailsError ? (
-            <Alert tone="danger">{`Emails could not be loaded: ${emailsError}`}</Alert>
+            <CardBody>
+              <Alert tone="danger">{`Emails could not be loaded: ${emailsError}`}</Alert>
+            </CardBody>
           ) : emails.length === 0 ? (
             <Empty
+              size="sm"
               icon={<Icon name="mail" size={40} />}
               title="No emails sent yet"
               description="Emails about this booking will appear here."
             />
           ) : (
+            <CardBody>
             <ul className="divide-y divide-border" aria-label="Email history">
               {emails.map((email) => (
                 <li key={email.id} className="py-4 first:pt-0 last:pb-0">
@@ -183,18 +192,18 @@ export function CommunicationsTab({
                 </li>
               ))}
             </ul>
+            </CardBody>
           )}
-        </Card>
-      </Section>
+      </Card>
 
-      <Section
-        id="sms-scheduled"
-        title="Scheduled"
-        description="Automated reminders that would fire for this booking based on current eligibility."
-      >
-        <Card>
+      <Card>
+        <CardHeader
+          title="Scheduled"
+          subtitle="Automated reminders that would fire for this booking based on current eligibility."
+        />
           {scheduled.length === 0 ? (
             <Empty
+              size="sm"
               icon={<Icon name="clock" size={40} />}
               title={
                 isDateTbd
@@ -208,6 +217,7 @@ export function CommunicationsTab({
               }
             />
           ) : (
+            <CardBody>
             <ul className="divide-y divide-border" aria-label="Scheduled SMS reminders">
               {scheduled.map((item) => {
                 const suppressed = Boolean(item.suppression_reason)
@@ -222,9 +232,9 @@ export function CommunicationsTab({
                           {item.trigger_type}
                         </span>
                         {suppressed ? (
-                          <Badge tone="warning" size="sm">Suppressed</Badge>
+                          <Badge tone={SCHEDULED_REMINDER_TONE.suppressed} size="sm">Suppressed</Badge>
                         ) : (
-                          <Badge tone="info" size="sm">Eligible</Badge>
+                          <Badge tone={SCHEDULED_REMINDER_TONE.eligible} size="sm">Eligible</Badge>
                         )}
                       </div>
                       <span className="text-xs text-text-muted">
@@ -248,9 +258,9 @@ export function CommunicationsTab({
                 )
               })}
             </ul>
+            </CardBody>
           )}
-        </Card>
-      </Section>
-    </div>
+      </Card>
+    </>
   )
 }

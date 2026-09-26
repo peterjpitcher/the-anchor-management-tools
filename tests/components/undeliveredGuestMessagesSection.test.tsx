@@ -31,7 +31,7 @@ describe('Undelivered guest messages list', () => {
 
   it('says so when there is nothing undelivered', () => {
     render(<UndeliveredGuestMessagesSection rows={[]} error={null} />)
-    expect(screen.getByText('No undelivered guest messages for this window.')).toBeInTheDocument()
+    expect(screen.getByText('No undelivered guest messages for this window')).toBeInTheDocument()
   })
 
   it('shows a load error instead of an empty list', () => {

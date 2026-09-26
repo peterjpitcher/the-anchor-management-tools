@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, type FormEvent, type DragEvent } from 'react'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { Alert, Button, Checkbox, Field, IconButton, Input, Textarea, Icon } from '@/ds'
+import { Alert, Button, Checkbox, ConfirmDialog, Field, FormFooter, IconButton, Input, Textarea, Icon } from '@/ds'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -81,6 +81,7 @@ export function ExpenseForm({
   const [error, setError] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
+  const [filePendingDelete, setFilePendingDelete] = useState<ExistingFile | null>(null)
 
   const handleFilesSelected = useCallback((files: FileList | File[]) => {
     const validFiles: File[] = []
@@ -90,7 +91,7 @@ export function ExpenseForm({
     const currentTotal = existingFiles.length + pendingFiles.length
     if (currentTotal + fileArray.length > MAX_FILES_PER_EXPENSE) {
       setFileError(
-        `Maximum ${MAX_FILES_PER_EXPENSE} files per expense. You already have ${currentTotal} — can only add ${Math.max(0, MAX_FILES_PER_EXPENSE - currentTotal)} more.`
+        `Maximum ${MAX_FILES_PER_EXPENSE} files per expense. You already have ${currentTotal}, so you can only add ${Math.max(0, MAX_FILES_PER_EXPENSE - currentTotal)} more.`
       )
       return
     }
@@ -142,7 +143,6 @@ export function ExpenseForm({
   const handleDeleteExistingFile = useCallback(
     async (fileId: string) => {
       if (!onDeleteFile) return
-      if (!confirm('Delete this receipt file?')) return
 
       setDeletingFileId(fileId)
       try {
@@ -192,18 +192,18 @@ export function ExpenseForm({
         return
       }
 
-      // Upload pending files if any — pass createdId directly to avoid stale closure
+      // Upload pending files if any: pass createdId directly to avoid stale closure
       if (pendingFiles.length > 0 && onUploadFiles) {
         setUploading(true)
         const uploadResult = await onUploadFiles(pendingFiles, result.createdId)
         if (uploadResult.error) {
           setFileError(uploadResult.error)
-          // Don't return — expense was already saved
+          // Don't return: the expense was already saved
         }
         setUploading(false)
       }
 
-      // Success — parent handles closing
+      // Success: the parent handles closing
     } finally {
       setSubmitting(false)
     }
@@ -315,7 +315,7 @@ export function ExpenseForm({
             {existingFiles.map((file) => (
               <div
                 key={file.id}
-                className="group relative flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm"
+                className="group relative flex items-center gap-2 rounded-default border border-border bg-surface-2 px-3 py-2 text-sm"
               >
                 {file.mime_type.startsWith('image/') && file.signed_url ? (
                   <img
@@ -335,7 +335,7 @@ export function ExpenseForm({
                     size="sm"
                     disabled={deletingFileId === file.id}
                     loading={deletingFileId === file.id}
-                    onClick={() => handleDeleteExistingFile(file.id)}
+                    onClick={() => setFilePendingDelete(file)}
                     label={`Delete ${file.file_name}`}
                     icon={<Icon name="x" size={16} />}
                     className="ml-1 text-danger hover:text-danger-fg"
@@ -371,7 +371,7 @@ export function ExpenseForm({
             Drag and drop receipt images here, or click to browse
           </p>
           <p className="mt-1 text-xs text-text-soft">
-            JPEG, PNG, WebP, HEIC, PDF — max {MAX_FILE_SIZE_MB}MB each
+            JPEG, PNG, WebP, HEIC or PDF, up to {MAX_FILE_SIZE_MB}MB each
           </p>
           <input
             ref={fileInputRef}
@@ -394,7 +394,7 @@ export function ExpenseForm({
             {pendingFiles.map((file, idx) => (
               <div
                 key={`${file.name}-${idx}`}
-                className="flex items-center justify-between rounded-md bg-surface-2 px-3 py-2 text-sm"
+                className="flex items-center justify-between rounded-default bg-surface-2 px-3 py-2 text-sm"
               >
                 <span className="truncate">{file.name}</span>
                 <IconButton
@@ -411,12 +411,11 @@ export function ExpenseForm({
         )}
 
         {fileError && (
-          <p className="mt-2 text-sm text-danger">{fileError}</p>
+          <Alert tone="danger" size="sm" className="mt-2">{fileError}</Alert>
         )}
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
+      <FormFooter>
         <Button type="button" variant="secondary" onClick={onCancel} disabled={isLoading}>
           Cancel
         </Button>
@@ -429,7 +428,19 @@ export function ExpenseForm({
               ? 'Update Expense'
               : 'Create Expense'}
         </Button>
-      </div>
+      </FormFooter>
+
+      <ConfirmDialog
+        open={filePendingDelete !== null}
+        title="Delete Receipt File"
+        message="Delete this receipt file?"
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={async () => {
+          if (filePendingDelete) await handleDeleteExistingFile(filePendingDelete.id)
+        }}
+        onClose={() => setFilePendingDelete(null)}
+      />
     </form>
   )
 }

@@ -11,15 +11,16 @@ import {
   GuestBlockedState,
   GuestButton,
   GuestCard,
+  GuestHelpLine,
+  GuestIntro,
+  GuestPhoneLink,
   GuestShell,
-  GUEST_H1_CLASS,
-  GUEST_INTRO_CLASS,
-  GUEST_KICKER_CLASS,
-  GUEST_LEAD_CLASS,
+  GuestStatusMark,
+  GUEST_MESSAGE_CLASS,
+  GUEST_MUTED_CLASS,
 } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { EventPayPalPaymentClient } from './EventPayPalPaymentClient'
-import { Icon } from '@/ds'
 
 type EventPaymentPageProps = {
   params: Promise<{ token: string }>
@@ -81,23 +82,6 @@ function blockedReasonMessage(reason: string | undefined): string {
   }
 }
 
-/** The closing "Need help?" line every payment page ends on. */
-function HelpLine(): React.JSX.Element {
-  return (
-    <p className="text-center font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
-      Need help? Call{' '}
-      <a
-        href={GUEST_CONTACT.telHref}
-        referrerPolicy="no-referrer"
-        className="font-semibold text-guest-accent-text underline underline-offset-[3px]"
-      >
-        {GUEST_CONTACT.phoneDisplay}
-      </a>
-      .
-    </p>
-  )
-}
-
 /**
  * The shared unavailable screen: used for `state=blocked`, for a throttled
  * view and for any preview that does not come back ready.
@@ -129,40 +113,31 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
   if (state === 'success') {
     return (
       <GuestShell>
-        <section className="flex flex-col gap-[18px]">
-          <div className={GUEST_INTRO_CLASS}>
-            <p className={GUEST_KICKER_CLASS}>{KICKER}</p>
-            <h1 className={GUEST_H1_CLASS}>Payment received</h1>
-            <p className={GUEST_LEAD_CLASS}>
-              {formatGuestGreeting(null, 'your payment has been received.')}
+        <GuestIntro
+          kicker={KICKER}
+          title="Payment received"
+          lead={formatGuestGreeting(null, 'your payment has been received.')}
+        />
+
+        <GuestCard variant="accent">
+          <div className="flex flex-col gap-guest-md">
+            <div className="flex items-center gap-3">
+              <GuestStatusMark tone="success" />
+              <GuestBadge tone="success">Paid</GuestBadge>
+            </div>
+
+            <p className={GUEST_MESSAGE_CLASS}>
+              Thanks. We are confirming your booking now. You will receive a text confirmation shortly.
+            </p>
+            <p className={GUEST_MUTED_CLASS}>
+              If you do not receive confirmation, call {GUEST_CONTACT.phoneDisplay}.
             </p>
           </div>
+        </GuestCard>
 
-          <GuestCard variant="accent">
-            <div className="flex flex-col gap-[14px]">
-              <div className="flex items-center gap-3">
-                <span
-                  aria-hidden="true"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-anchor-success/[0.12]"
-                >
-                  <Icon name="check" size={16} className="text-anchor-success" />
-                </span>
-                <GuestBadge tone="success">Paid</GuestBadge>
-              </div>
-
-              <p className="font-anchor-body text-guest-lead leading-[1.65] text-guest-text">
-                Thanks. We are confirming your booking now. You will receive a text confirmation shortly.
-              </p>
-              <p className="font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
-                If you do not receive confirmation, call {GUEST_CONTACT.phoneDisplay}.
-              </p>
-            </div>
-          </GuestCard>
-
-          <GuestButton as="a" href={WHATS_ON_URL} variant="outline" fullWidth>
-            Back to The Anchor
-          </GuestButton>
-        </section>
+        <GuestButton as="a" href={WHATS_ON_URL} variant="outline" fullWidth>
+          Back to The Anchor
+        </GuestButton>
       </GuestShell>
     )
   }
@@ -197,56 +172,54 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
 
   return (
     <GuestShell>
-      <section className="flex flex-col gap-[18px]">
-        <div className={GUEST_INTRO_CLASS}>
-          <p className={GUEST_KICKER_CLASS}>{KICKER}</p>
-          <h1 className={GUEST_H1_CLASS}>Complete your payment</h1>
-          <p className={GUEST_LEAD_CLASS}>
-            {formatGuestGreeting(guestFirstName, 'your booking and payment details are below.')}
+      <GuestIntro
+        kicker={KICKER}
+        title="Complete your payment"
+        lead={formatGuestGreeting(guestFirstName, 'your booking and payment details are below.')}
+      />
+
+      {state === 'cancelled' && (
+        <GuestAlert tone="notice" icon="clock">
+          Payment was not completed. Your seats are still reserved if you pay before the hold expiry time below.
+        </GuestAlert>
+      )}
+
+      <GuestCard variant="accent">
+        <div className="flex flex-col gap-guest-md">
+          <GuestAmount
+            label="Total due"
+            value={formatMoney(preview.totalAmount, preview.currency)}
+          />
+
+          <p className={GUEST_MUTED_CLASS}>
+            You are booking{' '}
+            <span className="font-semibold text-guest-text">
+              {preview.seats} {seatWord}
+            </span>{' '}
+            for <span className="font-semibold text-guest-text">{preview.eventName}</span>.
           </p>
-        </div>
 
-        {state === 'cancelled' && (
-          <GuestAlert tone="notice" icon="clock">
-            Payment was not completed. Your seats are still reserved if you pay before the hold expiry time below.
-          </GuestAlert>
-        )}
-
-        <GuestCard variant="accent">
-          <div className="flex flex-col gap-4">
-            <GuestAmount
-              label="Total due"
-              value={formatMoney(preview.totalAmount, preview.currency)}
-            />
-
-            <p className="font-anchor-body text-sm leading-[1.55] text-guest-text-muted">
-              You are booking{' '}
-              <span className="font-semibold text-guest-text">
-                {preview.seats} {seatWord}
-              </span>{' '}
-              for <span className="font-semibold text-guest-text">{preview.eventName}</span>.
-            </p>
-
-            <div>
-              <DetailRow
-                label="Hold expires"
-                value={formatLondonDateTime(preview.holdExpiresAt)}
-                emphasis="deadline"
-              />
-            </div>
-
-            <EventPayPalPaymentClient
-              token={token}
-              paypalClientId={paypalClientId}
-              paypalEnvironment={paypalEnvironment}
-              currency={preview.currency}
-              fallbackUrl={`/g/${token}/event-payment`}
+          <div>
+            <DetailRow
+              label="Hold expires"
+              value={formatLondonDateTime(preview.holdExpiresAt)}
+              emphasis="deadline"
             />
           </div>
-        </GuestCard>
 
-        <HelpLine />
-      </section>
+          <EventPayPalPaymentClient
+            token={token}
+            paypalClientId={paypalClientId}
+            paypalEnvironment={paypalEnvironment}
+            currency={preview.currency}
+            fallbackUrl={`/g/${token}/event-payment`}
+          />
+        </div>
+      </GuestCard>
+
+      <GuestHelpLine>
+        Need help? Call <GuestPhoneLink />.
+      </GuestHelpLine>
     </GuestShell>
   )
 }

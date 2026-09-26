@@ -1,7 +1,20 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Card, Checkbox, Input, Section, Textarea, toast } from '@/ds'
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  FormFooter,
+  Input,
+  PageLoading,
+  Section,
+  Textarea,
+  toast,
+} from '@/ds'
 
 /**
  * Everything that decides how tables are handed out.
@@ -53,6 +66,9 @@ export function AllocationSettings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<SectionKey | null>(null)
   const [draft, setDraft] = useState<Record<string, string | boolean>>({})
+  // Settings that failed to load must never show as the defaults: saving those would overwrite
+  // the real values.
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -63,8 +79,9 @@ export function AllocationSettings() {
       setBag(json.data?.settings || {})
       setRevisions(json.data?.revisions || {})
       setDraft({})
+      setLoadError(null)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not load allocation settings')
+      setLoadError(error instanceof Error ? error.message : 'Could not load allocation settings')
     } finally {
       setLoading(false)
     }
@@ -127,8 +144,35 @@ export function AllocationSettings() {
     }
   }
 
+  const sectionProps = {
+    title: 'Table Allocation',
+    description: 'Everything that decides how tables are handed out. Each card saves on its own.',
+  }
+
   if (loading) {
-    return <Section title="Table allocation"><p className="text-sm text-text-muted">Loading…</p></Section>
+    return (
+      <Section {...sectionProps}>
+        <PageLoading inline label="Loading allocation settings" />
+      </Section>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <Section {...sectionProps}>
+        <Alert
+          tone="danger"
+          title="Could not load allocation settings"
+          actions={
+            <Button size="sm" variant="secondary" onClick={() => void load()}>
+              Try Again
+            </Button>
+          }
+        >
+          {loadError}
+        </Alert>
+      </Section>
+    )
   }
 
   const paceRegular = Number(valueFor('kitchen_pace_covers_regular', String(numberOf(bag, 'kitchen_pace_covers_regular', 25))))
@@ -161,174 +205,171 @@ export function AllocationSettings() {
   )
 
   const saveButton = (section: SectionKey, keys: string[]) => (
-    <Button onClick={() => void save(section, keys)} loading={saving === section} className="mt-4">
-      Save
-    </Button>
+    <FormFooter>
+      <Button variant="primary" onClick={() => void save(section, keys)} loading={saving === section}>
+        Save
+      </Button>
+    </FormFooter>
   )
 
   return (
-    <div className="space-y-6">
-      {/* ---------------------------------------------------------------- */}
-      <Section
-        title="How long a table is held"
-        description="How long each party keeps their table, and how long it stays unsellable afterwards."
-      >
+    <Section {...sectionProps}>
+      <div className="space-y-6">
+        {/* ---------------------------------------------------------------- */}
         <Card>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {numberField('turn_time_minutes_1_2', 'Party of 1 to 2 (minutes)', 90)}
-            {numberField('turn_time_minutes_3_4', 'Party of 3 to 4 (minutes)', 105)}
-            {numberField('turn_time_minutes_5_6', 'Party of 5 to 6 (minutes)', 120)}
-            {numberField('turn_time_minutes_7_plus', 'Party of 7 or more (minutes)', 150)}
-            {numberField('turn_time_sunday_uplift_minutes', 'Added on Sundays (minutes)', 15,
-              `Sundays become ${90 + sundayUplift}, ${105 + sundayUplift}, ${120 + sundayUplift} and ${150 + sundayUplift} minutes.`)}
-            {numberField('turnaround_gap_minutes', 'Turnaround gap (minutes)', 15,
-              'Added to the table, never to the time quoted to the guest. Fifteen minutes is the trade norm.')}
-          </div>
-          <div className="mt-4">
-            {toggleField('turn_times_enabled', 'Use these turn times', false,
-              'Off means the old flat 2 hours for food and 90 minutes for drinks.')}
-          </div>
-          {saveButton('turn_times', [
-            'turn_time_minutes_1_2','turn_time_minutes_3_4','turn_time_minutes_5_6',
-            'turn_time_minutes_7_plus','turn_time_sunday_uplift_minutes','turnaround_gap_minutes',
-            'turn_times_enabled',
-          ])}
+          <CardHeader title="How Long a Table Is Held" />
+          <CardBody className="space-y-4">
+            <p className="text-sm text-text-muted">How long each party keeps their table, and how long it stays unsellable afterwards.</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {numberField('turn_time_minutes_1_2', 'Party of 1 to 2 (minutes)', 90)}
+              {numberField('turn_time_minutes_3_4', 'Party of 3 to 4 (minutes)', 105)}
+              {numberField('turn_time_minutes_5_6', 'Party of 5 to 6 (minutes)', 120)}
+              {numberField('turn_time_minutes_7_plus', 'Party of 7 or more (minutes)', 150)}
+              {numberField('turn_time_sunday_uplift_minutes', 'Added on Sundays (minutes)', 15,
+                `Sundays become ${90 + sundayUplift}, ${105 + sundayUplift}, ${120 + sundayUplift} and ${150 + sundayUplift} minutes.`)}
+              {numberField('turnaround_gap_minutes', 'Turnaround gap (minutes)', 15,
+                'Added to the table, never to the time quoted to the guest. Fifteen minutes is the trade norm.')}
+            </div>
+            <div>
+              {toggleField('turn_times_enabled', 'Use these turn times', false,
+                'Off means the old flat 2 hours for food and 90 minutes for drinks.')}
+            </div>
+            {saveButton('turn_times', [
+              'turn_time_minutes_1_2','turn_time_minutes_3_4','turn_time_minutes_5_6',
+              'turn_time_minutes_7_plus','turn_time_sunday_uplift_minutes','turnaround_gap_minutes',
+              'turn_times_enabled',
+            ])}
+          </CardBody>
         </Card>
-      </Section>
 
-      {/* ---------------------------------------------------------------- */}
-      <Section
-        title="Kitchen pacing (arrivals)"
-        description="A cap on how many covers ARRIVE in each window. It limits orders hitting the pass, not people still eating."
-      >
+        {/* ---------------------------------------------------------------- */}
         <Card>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {numberField('kitchen_pace_covers_regular', 'Weekday covers per window', 25)}
-            {numberField('kitchen_walk_in_reserve_regular', 'Weekday held back for walk-ins', 6)}
-            {numberField('kitchen_pace_covers_sunday', 'Sunday covers per window', 20)}
-            {numberField('kitchen_walk_in_reserve_sunday', 'Sunday held back for walk-ins', 6)}
-            {numberField('kitchen_pacing_window_minutes', 'Window (minutes)', 30)}
-          </div>
+          <CardHeader title="Kitchen Pacing (Arrivals)" />
+          <CardBody className="space-y-4">
+            <p className="text-sm text-text-muted">A cap on how many covers ARRIVE in each window. It limits orders hitting the pass, not people still eating.</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {numberField('kitchen_pace_covers_regular', 'Weekday covers per window', 25)}
+              {numberField('kitchen_walk_in_reserve_regular', 'Weekday held back for walk-ins', 6)}
+              {numberField('kitchen_pace_covers_sunday', 'Sunday covers per window', 20)}
+              {numberField('kitchen_walk_in_reserve_sunday', 'Sunday held back for walk-ins', 6)}
+              {numberField('kitchen_pacing_window_minutes', 'Window (minutes)', 30)}
+            </div>
 
-          {/* The two numbers on their own are easy to confuse. Showing the result they
-              produce is the difference between a setting and a guess. */}
-          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm">
-            <p className="font-medium text-text">Bookable online per window</p>
-            <p className="mt-1 text-text">
+            {/* The two numbers on their own are easy to confuse. Showing the result they
+                produce is the difference between a setting and a guess. */}
+            <Alert tone="info" role="status" title="Bookable online per window">
               Weekdays: <strong>{Math.max(0, paceRegular - reserveRegular)}</strong> covers.{' '}
               Sundays: <strong>{Math.max(0, paceSunday - reserveSunday)}</strong> covers.
-            </p>
+            </Alert>
             {(paceRegular - reserveRegular <= 0 || paceSunday - reserveSunday <= 0) && (
-              <p className="mt-1 text-danger-fg">
+              <Alert tone="danger">
                 That closes online booking completely. The reserve must be smaller than the pace.
-              </p>
+              </Alert>
             )}
-          </div>
 
-          <div className="mt-4">
-            {toggleField('kitchen_pacing_enabled', 'Cap kitchen arrivals', true)}
-          </div>
-          {saveButton('kitchen_pacing', [
-            'kitchen_pace_covers_regular','kitchen_walk_in_reserve_regular',
-            'kitchen_pace_covers_sunday','kitchen_walk_in_reserve_sunday',
-            'kitchen_pacing_window_minutes','kitchen_pacing_enabled',
-          ])}
+            <div>
+              {toggleField('kitchen_pacing_enabled', 'Cap kitchen arrivals', true)}
+            </div>
+            {saveButton('kitchen_pacing', [
+              'kitchen_pace_covers_regular','kitchen_walk_in_reserve_regular',
+              'kitchen_pace_covers_sunday','kitchen_walk_in_reserve_sunday',
+              'kitchen_pacing_window_minutes','kitchen_pacing_enabled',
+            ])}
+          </CardBody>
         </Card>
-      </Section>
 
-      {/* ---------------------------------------------------------------- */}
-      <Section
-        title="Outside seating"
-        description="Garden tables are capped but never individually assigned."
-      >
+        {/* ---------------------------------------------------------------- */}
         <Card>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {numberField('outside_table_count', 'Number of outside tables', 5)}
-            {numberField('outside_table_capacity', 'Seats per outside table', 8)}
-          </div>
-          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm text-text">
-            <strong>{outsideCount * outsideCapacity}</strong> outside seats in total.
-          </div>
-          <p className="mt-3 text-xs text-text-muted">
-            Reducing the seats per table is refused here, because bookings already taken were
-            costed at the old size and reducing it would quietly oversell the garden. Ask for the
-            re-costing step when you are ready to change it.
-          </p>
-          {saveButton('outside', ['outside_table_count','outside_table_capacity'])}
+          <CardHeader title="Outside Seating" />
+          <CardBody className="space-y-4">
+            <p className="text-sm text-text-muted">Garden tables are capped but never individually assigned.</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {numberField('outside_table_count', 'Number of outside tables', 5)}
+              {numberField('outside_table_capacity', 'Seats per outside table', 8)}
+            </div>
+            <Alert tone="info" role="status">
+              <strong>{outsideCount * outsideCapacity}</strong> outside seats in total.
+            </Alert>
+            <p className="text-xs text-text-muted">
+              Reducing the seats per table is refused here, because bookings already taken were
+              costed at the old size and reducing it would quietly oversell the garden. Ask for the
+              re-costing step when you are ready to change it.
+            </p>
+            {saveButton('outside', ['outside_table_count','outside_table_capacity'])}
+          </CardBody>
         </Card>
-      </Section>
 
-      {/* ---------------------------------------------------------------- */}
-      <Section
-        title="Drinks bookings"
-        description="Drinks fill the bar first and overflow into the dining room only when the bar is full."
-      >
+        {/* ---------------------------------------------------------------- */}
         <Card>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {numberField('drinks_arrivals_ceiling', 'Drinks covers arriving per window', 40)}
-            {numberField('drinks_bump_protection_minutes', 'Never move a booking within (minutes)', 60,
-              'A guest about to walk in is never moved, even if it means refusing a food booking.')}
-          </div>
-          <div className="mt-4">
-            {toggleField('drinks_bump_enabled', 'Let a food booking move a drinks booking', false,
-              'Only ever to a table that suits it. If there is nowhere to move it, the food booking is refused instead.')}
-          </div>
-          {saveButton('drinks', ['drinks_arrivals_ceiling','drinks_bump_protection_minutes','drinks_bump_enabled'])}
+          <CardHeader title="Drinks Bookings" />
+          <CardBody className="space-y-4">
+            <p className="text-sm text-text-muted">Drinks fill the bar first and overflow into the dining room only when the bar is full.</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {numberField('drinks_arrivals_ceiling', 'Drinks covers arriving per window', 40)}
+              {numberField('drinks_bump_protection_minutes', 'Never move a booking within (minutes)', 60,
+                'A guest about to walk in is never moved, even if it means refusing a food booking.')}
+            </div>
+            <div>
+              {toggleField('drinks_bump_enabled', 'Let a food booking move a drinks booking', false,
+                'Only ever to a table that suits it. If there is nowhere to move it, the food booking is refused instead.')}
+            </div>
+            {saveButton('drinks', ['drinks_arrivals_ceiling','drinks_bump_protection_minutes','drinks_bump_enabled'])}
+          </CardBody>
         </Card>
-      </Section>
 
-      {/* ---------------------------------------------------------------- */}
-      <Section title="Party size limits" description="Above the online limit, customers are sent to a private booking.">
+        {/* ---------------------------------------------------------------- */}
         <Card>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {numberField('table_booking_max_party_online', 'Largest party the website takes', 20)}
-            {numberField('table_booking_max_party_staff', 'Largest party staff can take', 40,
-              'A typo guard, not a physical limit: the dining room joins to 26, and above that staff use tables that are not next to each other.')}
-          </div>
-          {saveButton('party_limits', ['table_booking_max_party_online','table_booking_max_party_staff'])}
+          <CardHeader title="Party Size Limits" />
+          <CardBody className="space-y-4">
+            <p className="text-sm text-text-muted">Above the online limit, customers are sent to a private booking.</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {numberField('table_booking_max_party_online', 'Largest party the website takes', 20)}
+              {numberField('table_booking_max_party_staff', 'Largest party staff can take', 40,
+                'A typo guard, not a physical limit: the dining room joins to 26, and above that staff use tables that are not next to each other.')}
+            </div>
+            {saveButton('party_limits', ['table_booking_max_party_online','table_booking_max_party_staff'])}
+          </CardBody>
         </Card>
-      </Section>
 
-      {/* ---------------------------------------------------------------- */}
-      <Section
-        title="Holds"
-        description="Tables held back from online booking, and the minimum party sizes, both lapse close to the sitting."
-      >
+        {/* ---------------------------------------------------------------- */}
         <Card>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {numberField('hold_release_lead_hours', 'Release this many hours before', 24,
-              'So a couple is never turned away on the night to protect a large party who is not coming.')}
-          </div>
-          <div className="mt-4">
-            {toggleField('table_holds_enabled', 'Honour held and blocked tables', false)}
-          </div>
-          {saveButton('holds', ['hold_release_lead_hours','table_holds_enabled'])}
+          <CardHeader title="Holds" />
+          <CardBody className="space-y-4">
+            <p className="text-sm text-text-muted">Tables held back from online booking, and the minimum party sizes, both lapse close to the sitting.</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {numberField('hold_release_lead_hours', 'Release this many hours before', 24,
+                'So a couple is never turned away on the night to protect a large party who is not coming.')}
+            </div>
+            <div>
+              {toggleField('table_holds_enabled', 'Honour held and blocked tables', false)}
+            </div>
+            {saveButton('holds', ['hold_release_lead_hours','table_holds_enabled'])}
+          </CardBody>
         </Card>
-      </Section>
 
-      {/* ---------------------------------------------------------------- */}
-      <Section
-        title="What the customer is told"
-        description="Shown on the website when a time is unavailable. Plain text, 200 characters."
-      >
+        {/* ---------------------------------------------------------------- */}
         <Card>
-          <div className="space-y-4">
-            {PUBLIC_REASONS.map((reason) => (
-              <Textarea
-                key={reason.key}
-                id={`booking_message_${reason.key}`}
-                label={reason.label}
-                hint={'hint' in reason ? reason.hint : undefined}
-                rows={2}
-                maxLength={200}
-                value={String(valueFor(`booking_message_${reason.key}`, textOf(bag, `booking_message_${reason.key}`)))}
-                onChange={(e) => set(`booking_message_${reason.key}`, e.target.value)}
-              />
-            ))}
-          </div>
-          {saveButton('messages', PUBLIC_REASONS.map((r) => `booking_message_${r.key}`))}
+          <CardHeader title="What the Customer Is Told" />
+          <CardBody className="space-y-4">
+            <p className="text-sm text-text-muted">Shown on the website when a time is unavailable. Plain text, 200 characters.</p>
+            <div className="space-y-4">
+              {PUBLIC_REASONS.map((reason) => (
+                <Textarea
+                  key={reason.key}
+                  id={`booking_message_${reason.key}`}
+                  label={reason.label}
+                  hint={'hint' in reason ? reason.hint : undefined}
+                  rows={2}
+                  maxLength={200}
+                  value={String(valueFor(`booking_message_${reason.key}`, textOf(bag, `booking_message_${reason.key}`)))}
+                  onChange={(e) => set(`booking_message_${reason.key}`, e.target.value)}
+                />
+              ))}
+            </div>
+            {saveButton('messages', PUBLIC_REASONS.map((r) => `booking_message_${r.key}`))}
+          </CardBody>
         </Card>
-      </Section>
-    </div>
+      </div>
+    </Section>
   )
 }

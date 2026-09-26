@@ -44,7 +44,7 @@ describe('MaintenanceNewClient', () => {
     render(<MaintenanceNewClient areas={areas} />)
 
     fireEvent.change(screen.getByLabelText('Area'), { target: { value: areas[0].id } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save and open' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save and Open' }))
 
     await waitFor(() => {
       expect(screen.getByText('Give this a short title')).toBeInTheDocument()
@@ -64,7 +64,7 @@ describe('MaintenanceNewClient', () => {
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Gents tap dripping' } })
     fireEvent.change(screen.getByLabelText('Area'), { target: { value: areas[0].id } })
     fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'low' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save and open' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save and Open' }))
 
     await waitFor(() => expect(createMaintenanceItemMock).toHaveBeenCalledTimes(1))
     expect(createMaintenanceItemMock).toHaveBeenCalledWith({
@@ -94,7 +94,7 @@ describe('MaintenanceNewClient', () => {
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Gents tap dripping' } })
     fireEvent.change(screen.getByLabelText('Area'), { target: { value: areas[0].id } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save and open' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save and Open' }))
 
     await waitFor(() => expect(screen.getByText('Could not save that item.')).toBeInTheDocument())
     expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Gents tap dripping')
@@ -110,18 +110,18 @@ describe('MaintenanceNewClient', () => {
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Gents tap dripping' } })
     fireEvent.change(screen.getByLabelText('Area'), { target: { value: areas[0].id } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add more detail' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add More Detail' }))
     fireEvent.change(screen.getByLabelText('Description'), {
       target: { value: 'Been dripping since the weekend.' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Save and open' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save and Open' }))
 
     await waitFor(() =>
       expect(
         screen.getByText('Could not save. Check your connection and try again.')
       ).toBeInTheDocument()
     )
-    expect(screen.getByRole('button', { name: 'Save and open' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save and Open' })).not.toBeDisabled()
     expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Gents tap dripping')
     expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe(
       'Been dripping since the weekend.'
@@ -133,7 +133,7 @@ describe('MaintenanceNewClient', () => {
       success: true,
       data: { id: '22222222-2222-4222-8222-222222222222', reference: 'MNT-0007' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Save and open' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save and Open' }))
     await waitFor(() => expect(createMaintenanceItemMock).toHaveBeenCalledTimes(2))
   })
 })

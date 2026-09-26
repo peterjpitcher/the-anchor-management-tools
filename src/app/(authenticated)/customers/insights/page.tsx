@@ -1,20 +1,19 @@
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import {
   loadCustomerInsightsSnapshot,
   resolveCustomerInsightsWindow,
   type CustomerInsightsSnapshot,
-  type CustomerInsightsWindow,
-  type StrategicSignal
+  type CustomerInsightsWindow
 } from '@/lib/analytics/customer-insights'
 import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { Stat, StatGroup } from '@/ds'
-import { Badge } from '@/ds'
+import { Alert, Badge, Card, CardBody, CardHeader, Empty, Section, Stat, StatGrid } from '@/ds'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ds'
 import { BarChart } from '@/components/charts/BarChart'
 import { WinBackCampaign } from '@/components/features/customers/WinBackCampaign'
+import { CUSTOMERS_NAV } from '../_shared/nav'
+import { STRATEGIC_SIGNAL_TONE } from '../_shared/status-ui'
+import { InsightsWindowPicker } from './_components/InsightsWindowPicker'
 
 const WINDOW_OPTIONS: Array<{ key: CustomerInsightsWindow; label: string }> = [
   { key: '30d', label: '30 days' },
@@ -51,13 +50,6 @@ function formatGeneratedAt(iso: string): string {
   }).format(new Date(iso))
 }
 
-function signalBadgeTone(signal: StrategicSignal): 'success' | 'warning' | 'danger' | 'info' {
-  if (signal.severity === 'positive') return 'success'
-  if (signal.severity === 'watch') return 'warning'
-  if (signal.severity === 'risk') return 'danger'
-  return 'info'
-}
-
 type CustomerInsightsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
@@ -85,20 +77,17 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
     errorMessage = 'Failed to load customer insights'
   }
 
-  const navItems = [
-    { label: 'Overview', href: '/customers' },
-    { label: 'Insights', href: '/customers/insights' },
-  ]
+  const layoutProps = {
+    title: 'Customers',
+    subtitle: 'Strategy-focused customer intelligence',
+    navItems: CUSTOMERS_NAV,
+    headerActions: (
+      <InsightsWindowPicker options={WINDOW_OPTIONS} value={snapshot?.selected_window.key ?? selectedWindow} />
+    ),
+  }
 
   if (!snapshot) {
-    return (
-      <PageLayout
-        title="Customers"
-        subtitle="Strategy-focused customer intelligence"
-        navItems={navItems}
-        error={errorMessage || 'Failed to load customer insights'}
-      />
-    )
+    return <PageLayout {...layoutProps} error={errorMessage || 'Failed to load customer insights'} />
   }
 
   // Chart tokens (the canvas BarChart resolves var() colours). Each booking type keeps a
@@ -123,145 +112,114 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
     snapshot.win_back_candidates.length > 0
 
   return (
-    <PageLayout
-      title="Customers"
-      subtitle="Strategy-focused customer intelligence"
-      navItems={navItems}
-    >
-      <div className="space-y-6">
+    <PageLayout {...layoutProps}>
+      {snapshot.data_warnings.length > 0 ? (
+        <Alert tone="warning">{snapshot.data_warnings.join(' ')}</Alert>
+      ) : null}
+
+      {!hasMeaningfulData ? (
         <Card>
-          <div className="space-y-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-text-muted">
-                Generated: <span className="font-medium text-text">{formatGeneratedAt(snapshot.generated_at)}</span>
-              </p>
-              <p className="text-sm text-text-muted">
-                Window: <span className="font-medium text-text">{snapshot.selected_window.label}</span>
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {WINDOW_OPTIONS.map((option) => {
-                const isActive = option.key === snapshot.selected_window.key
-                return (
-                  <Link
-                    key={option.key}
-                    href={`/customers/insights?window=${option.key}`}
-                    aria-current={isActive ? 'true' : undefined}
-                    className={`rounded-md border px-3 py-1.5 text-xs font-medium transition focus-visible:outline-hidden focus-visible:shadow-ring ${
-                      isActive
-                        ? 'border-primary bg-primary-soft text-primary-soft-fg'
-                        : 'border-border-strong bg-surface text-text-muted hover:bg-surface-hover hover:text-text'
-                    }`}
-                  >
-                    {option.label}
-                  </Link>
-                )
-              })}
-            </div>
-
-            {snapshot.data_warnings.length > 0 ? (
-              <div className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning-fg">
-                {snapshot.data_warnings.join(' ')}
-              </div>
-            ) : null}
-          </div>
+          <CardBody>
+            <Empty
+              size="sm"
+              icon="chart"
+              title="No customer insight data yet"
+              description="Once customers and bookings are active, strategy signals will appear here."
+            />
+          </CardBody>
         </Card>
-
-        {!hasMeaningfulData ? (
-          <Card>
-            <div className="px-4 py-6 text-sm text-text-muted">
-              No customer insight data is available yet. Once customers and bookings are active, strategy signals will appear here.
-            </div>
-          </Card>
-        ) : (
-          <>
-            <Card>
-              <StatGroup columns={4}>
+      ) : (
+        <>
+          <Section
+            title="Key Figures"
+            description={`Last ${snapshot.selected_window.label}, generated ${formatGeneratedAt(snapshot.generated_at)}`}
+          >
+            <div className="space-y-4">
+              <StatGrid columns={4}>
                 <Stat
                   label="Total Customers"
                   value={formatNumber(snapshot.kpis.total_customers)}
                   icon={<Icon name="users" size={20} />}
-                  variant="bordered"
                 />
                 <Stat
                   label="New Customers"
                   value={formatNumber(snapshot.kpis.new_customers)}
                   delta={snapshot.kpis.new_customer_growth_percent}
                   icon={<Icon name="userPlus" size={20} />}
-                  variant="bordered"
                 />
                 <Stat
                   label="Active Customers"
                   value={formatNumber(snapshot.kpis.active_customers)}
-                  description={`${formatNumber(snapshot.kpis.repeat_active_customers)} repeat in-window`}
+                  hint={`${formatNumber(snapshot.kpis.repeat_active_customers)} repeat in-window`}
                   icon={<Icon name="users" size={20} />}
-                  variant="bordered"
                 />
                 <Stat
                   label="Repeat Rate"
                   value={formatPercent(snapshot.kpis.repeat_rate_percent)}
                   icon={<Icon name="refresh" size={20} />}
-                  variant="bordered"
                 />
-              </StatGroup>
+              </StatGrid>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <StatGrid columns={2}>
                 <Stat
                   label="Dormant Customers (90d+)"
                   value={formatNumber(snapshot.kpis.dormant_customers_90d)}
                   icon={<Icon name="userMinus" size={20} className="text-warning" />}
-                  variant="bordered"
                 />
                 <Stat
                   label="Dormant High-Value Customers"
                   value={formatNumber(snapshot.kpis.dormant_high_value_customers_90d)}
                   icon={<Icon name="alertTriangle" size={20} className="text-danger" />}
-                  variant="bordered"
                 />
-              </div>
-            </Card>
+              </StatGrid>
+            </div>
+          </Section>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card>
-                <h3 className="text-base font-semibold text-text">Booking Mix</h3>
-                <p className="mt-1 text-sm text-text-muted">
-                  Total bookings in window: {formatNumber(snapshot.booking_mix.total_bookings)}
-                </p>
-                <div className="mt-4 h-[280px] rounded-lg border border-border bg-surface-2 p-3">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader
+                title="Booking Mix"
+                subtitle={`Total bookings in window: ${formatNumber(snapshot.booking_mix.total_bookings)}`}
+              />
+              <CardBody className="space-y-4">
+                <div className="h-[280px]">
                   <BarChart
                     data={bookingMixChartData}
                     height={250}
                     formatType="number"
                   />
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-text-muted">
+                <div className="grid grid-cols-2 gap-2 text-sm text-text-muted">
                   <p>Event: {formatPercent(snapshot.booking_mix.shares_percent.event)}</p>
                   <p>Table: {formatPercent(snapshot.booking_mix.shares_percent.table)}</p>
                   <p>Private: {formatPercent(snapshot.booking_mix.shares_percent.private)}</p>
                   <p>Parking: {formatPercent(snapshot.booking_mix.shares_percent.parking)}</p>
                 </div>
-              </Card>
+              </CardBody>
+            </Card>
 
-              <Card>
-                <h3 className="text-base font-semibold text-text">Top Interest Categories</h3>
-                <p className="mt-1 text-sm text-text-muted">
-                  Unique-customer interest concentration by category
-                </p>
+            <Card>
+              <CardHeader
+                title="Top Interest Categories"
+                subtitle="Unique-customer interest concentration by category"
+              />
+              <CardBody>
                 {categoryChartData.length === 0 ? (
-                  <p className="mt-6 text-sm text-text-muted">No category-preference data available.</p>
+                  <Empty size="sm" title="No category-preference data available" />
                 ) : (
-                  <div className="mt-4 h-[280px] rounded-lg border border-border bg-surface-2 p-3">
+                  <div className="h-[280px]">
                     <BarChart data={categoryChartData} height={250} formatType="number" />
                   </div>
                 )}
-              </Card>
-            </div>
+              </CardBody>
+            </Card>
+          </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card>
-                <h3 className="text-base font-semibold text-text">SMS Health Summary</h3>
-                <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader title="SMS Health Summary" />
+              <CardBody className="space-y-4">
+                <dl className="grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <dt className="text-text-muted">Opted-in Customers</dt>
                     <dd className="font-semibold text-text">{formatNumber(snapshot.sms_health.opted_in_customers)}</dd>
@@ -280,14 +238,14 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                   </div>
                 </dl>
 
-                <div className="mt-4">
-                  <h4 className="text-sm font-medium text-text">Top Failure Reasons</h4>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-text-muted">Top Failure Reasons</p>
                   {snapshot.sms_health.top_failure_reasons.length === 0 ? (
                     <p className="mt-2 text-sm text-text-muted">No dominant failure reason detected.</p>
                   ) : (
-                    <ul className="mt-2 space-y-1 text-sm text-text">
+                    <ul className="mt-2 divide-y divide-border text-sm text-text">
                       {snapshot.sms_health.top_failure_reasons.map((item) => (
-                        <li key={item.reason} className="flex items-center justify-between rounded-sm border border-border px-3 py-1.5">
+                        <li key={item.reason} className="flex items-center justify-between py-1.5">
                           <span>{item.reason}</span>
                           <span className="font-medium">{formatNumber(item.count)}</span>
                         </li>
@@ -295,37 +253,44 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                     </ul>
                   )}
                 </div>
-              </Card>
+              </CardBody>
+            </Card>
 
-              <Card>
-                <h3 className="text-base font-semibold text-text">Strategic Signals</h3>
-                <div className="mt-3 space-y-3">
+            <Card>
+              <CardHeader title="Strategic Signals" />
+              {snapshot.strategic_signals.length === 0 ? (
+                <CardBody>
+                  <Empty size="sm" title="No strategic signals" />
+                </CardBody>
+              ) : (
+                <ul className="divide-y divide-border">
                   {snapshot.strategic_signals.map((signal) => (
-                    <div key={signal.key} className="rounded-lg border border-border p-3">
+                    <li key={signal.key} className="px-pad-card py-3">
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-medium text-text">{signal.title}</p>
-                        <Badge tone={signalBadgeTone(signal)} size="sm">
+                        <Badge tone={STRATEGIC_SIGNAL_TONE[signal.severity]} size="sm">
                           {signal.severity}
                         </Badge>
                       </div>
                       <p className="mt-1 text-sm text-text">{signal.detail}</p>
                       <p className="mt-1 text-sm text-text-muted">{signal.recommendation}</p>
-                    </div>
+                    </li>
                   ))}
-                </div>
-              </Card>
-            </div>
+                </ul>
+              )}
+            </Card>
+          </div>
 
-            <Card>
-              <h3 className="text-base font-semibold text-text">Win-back Candidates</h3>
-              <p className="mt-1 text-sm text-text-muted">
-                High-value customers dormant for 90+ days
-              </p>
+          <Card>
+            <CardHeader title="Win-back Candidates" subtitle="High-value customers dormant for 90+ days" />
 
-              {snapshot.win_back_candidates.length === 0 ? (
-                <p className="mt-4 text-sm text-text-muted">No dormant high-value candidates detected in current scoring data.</p>
-              ) : (
-                <div className="mt-4 hidden md:block">
+            {snapshot.win_back_candidates.length === 0 ? (
+              <CardBody>
+                <Empty size="sm" title="No dormant high-value candidates detected in current scoring data" />
+              </CardBody>
+            ) : (
+              <>
+                <div className="hidden md:block">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -357,12 +322,10 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                     </TableBody>
                   </Table>
                 </div>
-              )}
 
-              {snapshot.win_back_candidates.length > 0 ? (
-                <div className="mt-4 space-y-3 md:hidden">
+                <ul className="divide-y divide-border md:hidden">
                   {snapshot.win_back_candidates.map((candidate) => (
-                    <div key={candidate.customer_id} className="rounded-lg border border-border p-3">
+                    <li key={candidate.customer_id} className="px-pad-card py-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="font-medium text-text">{candidate.name}</p>
@@ -391,21 +354,16 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                           </dd>
                         </div>
                       </dl>
-                    </div>
+                    </li>
                   ))}
-                </div>
-              ) : null}
-            </Card>
-
-            {canManageCustomers && (
-              <Card>
-                <h3 className="text-base font-semibold text-text mb-3">Campaigns</h3>
-                <WinBackCampaign />
-              </Card>
+                </ul>
+              </>
             )}
-          </>
-        )}
-      </div>
+          </Card>
+
+          {canManageCustomers && <WinBackCampaign />}
+        </>
+      )}
     </PageLayout>
   )
 }

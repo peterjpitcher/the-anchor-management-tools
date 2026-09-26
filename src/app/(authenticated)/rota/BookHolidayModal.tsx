@@ -52,7 +52,7 @@ export default function BookHolidayModal({
         note: note || null,
       });
       if (!result.success) { setError(result.error); return; }
-      toast.success(`Holiday booked — ${days} day${days !== 1 ? 's' : ''}`);
+      toast.success(`Holiday booked, ${days} day${days !== 1 ? 's' : ''}`);
       onBooked(result.leaveDays);
     });
   };
@@ -65,11 +65,11 @@ export default function BookHolidayModal({
       width="sm"
       footer={
         <>
-          <Button type="button" variant="ghost" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending || days === 0}>
-            {isPending ? 'Booking…' : 'Book holiday'}
+            {isPending ? 'Booking…' : 'Book Holiday'}
           </Button>
         </>
       }

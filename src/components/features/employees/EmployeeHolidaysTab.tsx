@@ -1,7 +1,12 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Alert, Badge, Button, Field, Input, ProgressBar, Segmented, toast, Icon } from '@/ds';
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, Field, FormFooter, Icon, Input, ProgressBar, Segmented, toast } from '@/ds';
+import {
+  HOLIDAY_ALLOWANCE_TEXT_CLASSES,
+  holidayAllowanceTone,
+  leaveStatusTone,
+} from '@/app/(authenticated)/employees/_shared/status-ui';
 import { bookApprovedHoliday, type LeaveRequest } from '@/app/actions/leave';
 import type { EmployeePaySettings } from '@/app/actions/pay-bands';
 import type { RotaSettings } from '@/app/actions/rota-settings';
@@ -25,6 +30,8 @@ interface EmployeeHolidaysTabProps {
   leaveDays: EmployeeLeaveDay[];
   paySettings: EmployeePaySettings | null;
   rotaSettings: Pick<RotaSettings, 'holidayYearStartMonth' | 'holidayYearStartDay' | 'defaultHolidayDays'>;
+  /** Why the leave or the allowance could not be loaded. The tab then says so. */
+  loadError?: string | null;
 }
 
 function formatDate(iso: string) {
@@ -35,12 +42,6 @@ function yearLabel(year: number) {
   return `${year}/${String(year + 1).slice(2)}`;
 }
 
-function statusTone(status: LeaveRequest['status']): 'success' | 'warning' | 'danger' {
-  if (status === 'approved') return 'success';
-  if (status === 'pending') return 'warning';
-  return 'danger';
-}
-
 export default function EmployeeHolidaysTab({
   employeeId,
   canCreateLeave,
@@ -48,6 +49,7 @@ export default function EmployeeHolidaysTab({
   leaveDays,
   paySettings,
   rotaSettings,
+  loadError,
 }: EmployeeHolidaysTabProps) {
   const { holidayYearStartMonth, holidayYearStartDay, defaultHolidayDays } = rotaSettings;
   const allowance = paySettings?.holiday_allowance_days ?? defaultHolidayDays;
@@ -110,123 +112,140 @@ export default function EmployeeHolidaysTab({
     });
   };
 
+  const allowanceTone = holidayAllowanceTone(overAllowance);
+
+  // A failed load says so rather than showing no days used and no requests.
+  if (loadError) {
+    return (
+      <Card>
+        <CardHeader title="Holidays" subtitle="Holiday allowance and leave requests" />
+        <CardBody>
+          <Alert tone="danger" title="Could not load holidays">{loadError}</Alert>
+        </CardBody>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-medium text-text">Holidays</h3>
-          <p className="mt-1 text-sm text-text-muted">
-            Holiday allowance and leave requests.
-          </p>
-        </div>
-        {canCreateLeave && !showBookForm && (
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            leftIcon={<Icon name="plus" size={16} />}
-            onClick={() => setShowBookForm(true)}
-          >
-            Book holiday
-          </Button>
+      <Card>
+        <CardHeader
+          title="Holidays"
+          subtitle="Holiday allowance and leave requests"
+          action={canCreateLeave && !showBookForm && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              icon={<Icon name="plus" size={16} />}
+              onClick={() => setShowBookForm(true)}
+            >
+              Book Holiday
+            </Button>
+          )}
+        />
+
+        {/* Book holiday form */}
+        {showBookForm && canCreateLeave && (
+          <CardBody className="space-y-4 border-b border-border">
+            <p className="text-sm font-medium text-text">Book approved holiday</p>
+            {bookError && <Alert tone="danger" size="sm">{bookError}</Alert>}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Start date" required>
+                <Input
+                  id="book-start"
+                  type="date"
+                  value={bookStart}
+                  onChange={e => setBookStart(e.target.value)}
+                />
+              </Field>
+              <Field label="End date" required>
+                <Input
+                  id="book-end"
+                  type="date"
+                  value={bookEnd}
+                  onChange={e => setBookEnd(e.target.value)}
+                />
+              </Field>
+            </div>
+            <Field label="Note (optional)">
+              <Input
+                id="book-note"
+                placeholder="e.g. Annual leave"
+                value={bookNote}
+                onChange={e => setBookNote(e.target.value)}
+              />
+            </Field>
+            <FormFooter>
+              <Button type="button" variant="secondary" onClick={() => { setShowBookForm(false); setBookError(''); }}>
+                Cancel
+              </Button>
+              <Button type="button" variant="primary" onClick={handleBook} disabled={bookIsPending}>
+                {bookIsPending ? 'Saving…' : 'Confirm Booking'}
+              </Button>
+            </FormFooter>
+          </CardBody>
         )}
-      </div>
 
-      {/* Book holiday form */}
-      {showBookForm && canCreateLeave && (
-        <div className="p-4 bg-surface-2 rounded-lg border border-border space-y-4">
-          <p className="text-sm font-medium text-text">Book approved holiday</p>
-          {bookError && <Alert tone="danger">{bookError}</Alert>}
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Start date" htmlFor="book-start" required>
-              <Input
-                id="book-start"
-                type="date"
-                value={bookStart}
-                onChange={e => setBookStart(e.target.value)}
-              />
-            </Field>
-            <Field label="End date" htmlFor="book-end" required>
-              <Input
-                id="book-end"
-                type="date"
-                value={bookEnd}
-                onChange={e => setBookEnd(e.target.value)}
-              />
-            </Field>
-          </div>
-          <Field label="Note (optional)" htmlFor="book-note">
-            <Input
-              id="book-note"
-              placeholder="e.g. Annual leave"
-              value={bookNote}
-              onChange={e => setBookNote(e.target.value)}
+        <CardBody className="space-y-4">
+          {/* Year selector: the same figures for another holiday year */}
+          <div className="max-w-full overflow-x-auto">
+            <Segmented
+              options={availableYears.map(y => ({ id: String(y), label: yearLabel(y) }))}
+              value={String(selectedYear)}
+              onChange={id => setSelectedYear(Number(id))}
             />
-          </Field>
-          <div className="flex gap-2">
-            <Button type="button" variant="primary" onClick={handleBook} disabled={bookIsPending}>
-              {bookIsPending ? 'Saving…' : 'Confirm booking'}
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => { setShowBookForm(false); setBookError(''); }}>
-              Cancel
-            </Button>
           </div>
-        </div>
-      )}
 
-      {/* Year selector */}
-      <Segmented
-        options={availableYears.map(y => ({ id: String(y), label: yearLabel(y) }))}
-        value={String(selectedYear)}
-        onChange={id => setSelectedYear(Number(id))}
-      />
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-text">Holiday year {yearLabel(selectedYear)}</p>
+              <span className={`text-sm font-semibold ${HOLIDAY_ALLOWANCE_TEXT_CLASSES[allowanceTone]}`}>
+                {approvedDays} / {allowance} days
+              </span>
+            </div>
+            <ProgressBar value={progressPct} tone={allowanceTone} size="md" label="Holiday allowance used" />
+            <div className="flex gap-4 text-xs text-text-muted">
+              <span>{allowance - approvedDays > 0 ? `${allowance - approvedDays} days remaining` : `${approvedDays - allowance} days over allowance`}</span>
+              {pendingDays > 0 && <span className="text-warning-fg">{pendingDays} pending</span>}
+            </div>
+          </div>
+        </CardBody>
+      </Card>
 
-      {/* Allowance progress */}
-      <div className="rounded-lg border border-border p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-text">Holiday year {yearLabel(selectedYear)}</p>
-          <span className={`text-sm font-semibold ${overAllowance ? 'text-danger-fg' : 'text-text'}`}>
-            {approvedDays} / {allowance} days
-          </span>
-        </div>
-        <ProgressBar value={progressPct} tone={overAllowance ? 'danger' : 'success'} size="md" label="Holiday allowance used" />
-        <div className="flex gap-4 text-xs text-text-muted">
-          <span>{allowance - approvedDays > 0 ? `${allowance - approvedDays} days remaining` : `${approvedDays - allowance} days over allowance`}</span>
-          {pendingDays > 0 && <span className="text-warning-fg">{pendingDays} pending</span>}
-        </div>
-      </div>
-
-      {/* Leave request list */}
-      {yearRequests.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-8 text-center text-sm text-text-soft">
-          <Icon name="calendar" size={32} className="mb-2 text-text-subtle" />
-          No leave requests for {yearLabel(selectedYear)}.
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {yearRequests.map(r => {
-            const days = countRequestDays(r.start_date, r.end_date);
-            return (
-              <div key={r.id} className="flex items-center justify-between py-2.5 border-b border-border last:border-0">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-text">
-                    {formatDate(r.start_date)}
-                    {r.start_date !== r.end_date && <> – {formatDate(r.end_date)}</>}
-                  </p>
-                  <p className="text-xs text-text-muted">
-                    {days} {days === 1 ? 'day' : 'days'}
-                    {r.note && ` · ${r.note}`}
-                  </p>
-                </div>
-                <Badge tone={statusTone(r.status)} size="sm">
-                  {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
-                </Badge>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <Card>
+        <CardHeader title="Leave Requests" subtitle={`Holiday year ${yearLabel(selectedYear)}`} />
+        {yearRequests.length === 0 ? (
+          <Empty
+            size="sm"
+            icon={<Icon name="calendar" size={32} />}
+            title={`No leave requests for ${yearLabel(selectedYear)}`}
+          />
+        ) : (
+          <ul className="divide-y divide-border">
+            {yearRequests.map(r => {
+              const days = countRequestDays(r.start_date, r.end_date);
+              return (
+                <li key={r.id} className="flex items-center justify-between gap-3 px-pad-card py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-text">
+                      {formatDate(r.start_date)}
+                      {r.start_date !== r.end_date && <> – {formatDate(r.end_date)}</>}
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      {days} {days === 1 ? 'day' : 'days'}
+                      {r.note && ` · ${r.note}`}
+                    </p>
+                  </div>
+                  <Badge tone={leaveStatusTone(r.status)} size="sm">
+                    {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                  </Badge>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
     </div>
   );
 }

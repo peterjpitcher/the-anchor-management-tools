@@ -16,28 +16,43 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Section,
-  Card,
+  Alert,
+  Badge,
   Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Empty,
+  Field,
+  FileUpload,
+  FormFooter,
+  Icon,
   IconButton,
   Input,
+  Modal,
+  PageLoading,
   Select,
   Textarea,
-  Badge,
-  Modal,
-  Field,
-  Form,
-  Empty,
   toast,
-  Icon,
 } from '@/ds'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
 import type {
   PrivateBookingWithDetails,
-  WaiverStatus,
   RiskStatus,
 } from '@/types/private-bookings'
+import {
+  COMPLAINT_STATUS_TONE,
+  DEDUCTION_STATUS_TONE,
+  FINAL_DETAILS_STATUS_TONE,
+  POST_EVENT_STATUS_TONE,
+  RECORD_LOCKED_TONE,
+  RISK_STATUS_TONE,
+  SUPPLIER_ROW_STATUS_TONE,
+  SUPPLIER_STATUS_TONE,
+  WAIVER_STATUS_TONE,
+  type PrivateBookingBadgeTone,
+} from '@/app/(authenticated)/private-bookings/_shared/status-ui'
 import {
   listDeductions,
   proposeDeduction,
@@ -65,91 +80,14 @@ import {
 } from '@/app/actions/privateBookingWorkflow'
 
 // ---------------------------------------------------------------------------
-// Shared badge helpers
+// Shared helpers. Badge tones come from the named maps in the private bookings status-ui file.
 // ---------------------------------------------------------------------------
-
-type BadgeTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 
 const humanise = (value: string): string =>
   value
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
-
-function StatusBadge({
-  tone,
-  children,
-}: {
-  tone: BadgeTone
-  children: React.ReactNode
-}) {
-  return <Badge tone={tone}>{children}</Badge>
-}
-
-const WAIVER_TONE: Record<WaiverStatus, BadgeTone> = {
-  not_required: 'neutral',
-  required: 'danger',
-  sent: 'warning',
-  signed: 'success',
-  overdue: 'danger',
-}
-
-const RISK_TONE: Record<RiskStatus, BadgeTone> = {
-  low: 'success',
-  normal: 'neutral',
-  high: 'danger',
-  gm_approval_required: 'warning',
-  approved: 'success',
-  rejected: 'danger',
-}
-
-const SUPPLIER_BOOKING_TONE: Record<string, BadgeTone> = {
-  not_applicable: 'neutral',
-  requested: 'warning',
-  incomplete: 'warning',
-  approved: 'success',
-  rejected: 'danger',
-}
-
-const SUPPLIER_ROW_TONE: Record<WorkflowSupplierStatus, BadgeTone> = {
-  requested: 'warning',
-  incomplete: 'warning',
-  approved: 'success',
-  rejected: 'danger',
-}
-
-const FINAL_DETAILS_TONE: Record<string, BadgeTone> = {
-  not_requested: 'neutral',
-  requested: 'warning',
-  complete: 'success',
-  incomplete: 'warning',
-  overdue: 'danger',
-  manager_reviewed: 'success',
-}
-
-const POST_EVENT_TONE: Record<string, BadgeTone> = {
-  awaiting_inspection: 'warning',
-  inspection_complete: 'info',
-  deduction_discussion: 'warning',
-  refund_processed: 'info',
-  complete: 'success',
-}
-
-const DEDUCTION_TONE: Record<DeductionStatus, BadgeTone> = {
-  proposed: 'warning',
-  discussed: 'info',
-  approved: 'success',
-  rejected: 'danger',
-  applied: 'info',
-}
-
-const COMPLAINT_TONE: Record<ComplaintStatus, BadgeTone> = {
-  open: 'danger',
-  acknowledged: 'warning',
-  responded: 'info',
-  resolved: 'success',
-  closed: 'neutral',
-}
 
 // ---------------------------------------------------------------------------
 // 2. Workflow status panel
@@ -167,21 +105,21 @@ export function WorkflowStatusPanel({
   const postEvent = booking.post_event_status
   const isLocked = !!booking.locked_at
 
-  const rows: { label: string; tone: BadgeTone; text: string }[] = []
+  const rows: { label: string; tone: PrivateBookingBadgeTone; text: string }[] = []
   if (waiver && waiver !== 'not_required') {
-    rows.push({ label: 'Self-catering waiver', tone: WAIVER_TONE[waiver], text: humanise(waiver) })
+    rows.push({ label: 'Self-catering waiver', tone: WAIVER_STATUS_TONE[waiver], text: humanise(waiver) })
   }
   if (supplier && supplier !== 'not_applicable') {
-    rows.push({ label: 'Suppliers', tone: SUPPLIER_BOOKING_TONE[supplier] ?? 'neutral', text: humanise(supplier) })
+    rows.push({ label: 'Suppliers', tone: SUPPLIER_STATUS_TONE[supplier] ?? 'neutral', text: humanise(supplier) })
   }
   if (risk && risk !== 'normal') {
-    rows.push({ label: 'Risk review', tone: RISK_TONE[risk] ?? 'neutral', text: humanise(risk) })
+    rows.push({ label: 'Risk review', tone: RISK_STATUS_TONE[risk] ?? 'neutral', text: humanise(risk) })
   }
   if (finalDetails) {
-    rows.push({ label: 'Final details', tone: FINAL_DETAILS_TONE[finalDetails] ?? 'neutral', text: humanise(finalDetails) })
+    rows.push({ label: 'Final details', tone: FINAL_DETAILS_STATUS_TONE[finalDetails] ?? 'neutral', text: humanise(finalDetails) })
   }
   if (postEvent) {
-    rows.push({ label: 'Post-event', tone: POST_EVENT_TONE[postEvent] ?? 'neutral', text: humanise(postEvent) })
+    rows.push({ label: 'Post-event', tone: POST_EVENT_STATUS_TONE[postEvent] ?? 'neutral', text: humanise(postEvent) })
   }
 
   if (rows.length === 0 && !isLocked) {
@@ -189,12 +127,13 @@ export function WorkflowStatusPanel({
   }
 
   return (
-    <Section id="workflow-status" title="Workflow Status">
-      <Card>
+    <Card>
+      <CardHeader title="Workflow Status" />
+      <CardBody className="space-y-3">
         {isLocked && (
-          <div className="mb-3 flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <Icon name="lock" size={16} className="text-danger" />
-            <StatusBadge tone="danger">Record locked</StatusBadge>
+            <Badge tone={RECORD_LOCKED_TONE}>Record locked</Badge>
           </div>
         )}
         {rows.length === 0 ? (
@@ -205,14 +144,14 @@ export function WorkflowStatusPanel({
               <div key={row.label} className="flex items-center justify-between gap-3">
                 <dt className="text-sm text-text-muted">{row.label}</dt>
                 <dd>
-                  <StatusBadge tone={row.tone}>{row.text}</StatusBadge>
+                  <Badge tone={row.tone}>{row.text}</Badge>
                 </dd>
               </div>
             ))}
           </dl>
         )}
-      </Card>
-    </Section>
+      </CardBody>
+    </Card>
   )
 }
 
@@ -223,17 +162,9 @@ export function WorkflowStatusPanel({
 export function RecordLockBanner({ booking }: { booking: PrivateBookingWithDetails }) {
   if (!booking.locked_at) return null
   return (
-    <div className="mb-6 rounded-lg border border-danger-soft bg-danger-soft p-4">
-      <div className="flex items-start gap-2">
-        <Icon name="lock" size={20} className="mt-0.5 shrink-0 text-danger-fg" />
-        <div>
-          <p className="text-sm font-medium text-danger-fg">Record locked</p>
-          <p className="text-sm text-danger-fg">
-            {booking.locked_reason || 'No reason recorded'}. Deletion and edits are restricted.
-          </p>
-        </div>
-      </div>
-    </div>
+    <Alert tone="danger" title="Record locked" icon={<Icon name="lock" size={20} />}>
+      {booking.locked_reason || 'No reason recorded'}. Deletion and edits are restricted.
+    </Alert>
   )
 }
 
@@ -283,21 +214,28 @@ export function RecordLockControl({
   }
 
   return (
-    <Section id="record-lock" title="Record Lock">
-      <Card>
+    <Card>
+      <CardHeader title="Record Lock" />
+      <CardBody>
         {isLocked ? (
           <div className="space-y-3">
             <p className="text-sm text-text-muted">
               This record is locked ({booking.locked_reason || 'no reason recorded'}).
             </p>
-            <Button type="button" variant="secondary" onClick={handleUnlock} loading={busy} disabled={busy}>
-              <Icon name="lockOpen" size={16} className="mr-1.5" />
-              Unlock record
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleUnlock}
+              loading={busy}
+              disabled={busy}
+              icon={<Icon name="lockOpen" size={16} />}
+            >
+              Unlock Record
             </Button>
           </div>
         ) : (
           <div className="space-y-3">
-            <Field label="Reason for locking" help="Locking restricts deletion and edits (SOP §27).">
+            <Field label="Reason for locking" hint="Locking restricts deletion and edits (SOP §27).">
               <Textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
@@ -305,14 +243,20 @@ export function RecordLockControl({
                 placeholder="e.g. Dispute under investigation"
               />
             </Field>
-            <Button type="button" variant="secondary" onClick={handleLock} loading={busy} disabled={busy}>
-              <Icon name="lock" size={16} className="mr-1.5" />
-              Lock record
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleLock}
+              loading={busy}
+              disabled={busy}
+              icon={<Icon name="lock" size={16} />}
+            >
+              Lock Record
             </Button>
           </div>
         )}
-      </Card>
-    </Section>
+      </CardBody>
+    </Card>
   )
 }
 
@@ -394,34 +338,38 @@ export function WaiverRiskPanel({
   if (!waiverApplies && risk === 'normal' && !canManage) return null
 
   return (
-    <Section id="waiver-risk" title="Waiver & Risk">
-      <Card>
-        <div className="space-y-6">
+    <Card>
+      <CardHeader title="Waiver & Risk" />
+      <CardBody>
+        <div className="space-y-4">
           {waiverApplies && (
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-medium text-text">Self-catering waiver</h3>
-                <StatusBadge tone={WAIVER_TONE[waiver]}>{humanise(waiver)}</StatusBadge>
+                <p className="text-sm font-semibold text-text-strong">Self-catering waiver</p>
+                <Badge tone={WAIVER_STATUS_TONE[waiver]}>{humanise(waiver)}</Badge>
               </div>
               {canManage && (
                 <>
-                  <Field label="Upload signed waiver" help="PDF or image (JPEG, PNG, WebP, HEIC), max 10 MB.">
-                    <input
-                      type="file"
+                  <Field label="Upload signed waiver">
+                    <FileUpload
                       accept="application/pdf,image/jpeg,image/png,image/webp,image/heic"
-                      onChange={(e) => setWaiverFile(e.target.files?.[0] ?? null)}
-                      className="block w-full text-sm text-text file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-2 file:text-sm file:font-medium file:text-text hover:file:bg-surface-hover"
+                      onFiles={(files) => setWaiverFile(files[0] ?? null)}
+                      hint="PDF or image (JPEG, PNG, WebP, HEIC), max 10 MB."
                     />
                   </Field>
+                  {waiverFile && (
+                    <p className="text-xs text-text-muted">Selected: {waiverFile.name}</p>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
                       size="sm"
+                      variant="primary"
                       onClick={handleUploadWaiver}
                       loading={uploadingWaiver}
                       disabled={uploadingWaiver || !waiverFile}
                     >
-                      Upload signed waiver
+                      Upload Signed Waiver
                     </Button>
                     {waiver !== 'sent' && (
                       <Button
@@ -432,7 +380,7 @@ export function WaiverRiskPanel({
                         loading={settingWaiver}
                         disabled={settingWaiver}
                       >
-                        Mark as sent
+                        Mark as Sent
                       </Button>
                     )}
                     {waiver !== 'required' && (
@@ -444,7 +392,7 @@ export function WaiverRiskPanel({
                         loading={settingWaiver}
                         disabled={settingWaiver}
                       >
-                        Mark as required
+                        Mark as Required
                       </Button>
                     )}
                   </div>
@@ -455,8 +403,8 @@ export function WaiverRiskPanel({
 
           <div className="space-y-3 border-t border-border pt-4">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-medium text-text">Risk review</h3>
-              <StatusBadge tone={RISK_TONE[risk]}>{humanise(risk)}</StatusBadge>
+              <p className="text-sm font-semibold text-text-strong">Risk review</p>
+              <Badge tone={RISK_STATUS_TONE[risk]}>{humanise(risk)}</Badge>
             </div>
             {canManage && (
               <div className="space-y-3">
@@ -472,7 +420,7 @@ export function WaiverRiskPanel({
                     ]}
                   />
                 </Field>
-                <Field label="Reason" help="Recorded against the booking. Approving or rejecting is a GM decision.">
+                <Field label="Reason" hint="Recorded against the booking. Approving or rejecting is a GM decision.">
                   <Textarea
                     value={riskReason}
                     onChange={(e) => setRiskReason(e.target.value)}
@@ -483,19 +431,20 @@ export function WaiverRiskPanel({
                 <Button
                   type="button"
                   size="sm"
+                  variant="primary"
                   onClick={handleSetRisk}
                   loading={settingRisk}
                   disabled={settingRisk}
+                  icon={<Icon name="shieldCheck" size={16} />}
                 >
-                  <Icon name="shieldCheck" size={16} className="mr-1.5" />
-                  Update risk status
+                  Update Risk Status
                 </Button>
               </div>
             )}
           </div>
         </div>
-      </Card>
-    </Section>
+      </CardBody>
+    </Card>
   )
 }
 
@@ -572,6 +521,16 @@ function SupplierModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    try {
+      await saveSupplier()
+    } catch (error) {
+      // The old compat Form showed a thrown action (a dropped connection); keep the user told.
+      setSaving(false)
+      toast.error(error instanceof Error ? error.message : 'An unexpected error occurred')
+    }
+  }
+
+  const saveSupplier = async () => {
     if (!form.name.trim()) {
       toast.error('Supplier name is required')
       return
@@ -602,7 +561,7 @@ function SupplierModal({
 
   return (
     <Modal open={open} onClose={onClose} title={supplier ? 'Edit Supplier' : 'Add Supplier'} size="lg">
-      <Form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Name" required>
           <Input value={form.name} onChange={(e) => update('name', e.target.value)} required placeholder="e.g. Sound & Light Co." />
         </Field>
@@ -624,22 +583,22 @@ function SupplierModal({
           <Input value={form.powerRequirements} onChange={(e) => update('powerRequirements', e.target.value)} placeholder="e.g. 2x 13A sockets" />
         </Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Documents required" help="Comma-separated (e.g. PLI, PAT).">
+          <Field label="Documents required" hint="Comma-separated (e.g. PLI, PAT).">
             <Input value={form.documentsRequired} onChange={(e) => update('documentsRequired', e.target.value)} placeholder="PLI, PAT certificate" />
           </Field>
-          <Field label="Documents received" help="Comma-separated.">
+          <Field label="Documents received" hint="Comma-separated.">
             <Input value={form.documentsReceived} onChange={(e) => update('documentsReceived', e.target.value)} placeholder="PLI" />
           </Field>
         </div>
-        <div className="flex justify-end gap-3 pt-2">
+        <FormFooter>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" loading={saving} disabled={saving}>
-            {supplier ? 'Save changes' : 'Add supplier'}
+          <Button type="submit" variant="primary" loading={saving} disabled={saving}>
+            {supplier ? 'Save Changes' : 'Add Supplier'}
           </Button>
-        </div>
-      </Form>
+        </FormFooter>
+      </form>
     </Modal>
   )
 }
@@ -659,6 +618,8 @@ export function SuppliersPanel({
 }) {
   const [suppliers, setSuppliers] = useState<PrivateBookingSupplier[]>([])
   const [loading, setLoading] = useState(true)
+  // A failed load shows the error, never "No suppliers yet".
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<PrivateBookingSupplier | null>(null)
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null)
@@ -668,7 +629,9 @@ export function SuppliersPanel({
     const result = await listBookingSuppliers(bookingId)
     if (result.error) {
       toast.error(result.error)
+      setLoadError(result.error)
     } else {
+      setLoadError(null)
       setSuppliers(result.data ?? [])
     }
     setLoading(false)
@@ -692,35 +655,41 @@ export function SuppliersPanel({
   }
 
   return (
-    <Section
-      id="suppliers"
-      title="Suppliers"
-      actions={
-        canEdit ? (
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => {
-              setEditing(null)
-              setModalOpen(true)
-            }}
-          >
-            <Icon name="plus" size={16} className="mr-1" />
-            Add supplier
-          </Button>
-        ) : null
-      }
-    >
-      <Card>
+    <Card>
+      <CardHeader
+        title="Suppliers"
+        action={
+          canEdit ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              onClick={() => {
+                setEditing(null)
+                setModalOpen(true)
+              }}
+              icon={<Icon name="plus" size={16} />}
+            >
+              Add Supplier
+            </Button>
+          ) : undefined
+        }
+      />
         {loading ? (
-          <p className="text-sm text-text-muted">Loading suppliers…</p>
+          <PageLoading inline label="Loading suppliers…" />
+        ) : loadError ? (
+          <CardBody>
+            <Alert tone="danger">{`Suppliers could not be loaded: ${loadError}`}</Alert>
+          </CardBody>
         ) : suppliers.length === 0 ? (
           <Empty
-            icon={<Icon name="truck" size={48} className="text-text-subtle" />}
+            size="sm"
+            icon={<Icon name="truck" size={48} />}
             title="No suppliers yet"
             description={canEdit ? 'Add each supplier attending the event (SOP §20).' : 'Suppliers will appear here once added.'}
           />
         ) : (
+          <CardBody>
           <ul className="divide-y divide-border">
             {suppliers.map((supplier) => (
               <li key={supplier.id} className="py-3 first:pt-0 last:pb-0">
@@ -728,7 +697,7 @@ export function SuppliersPanel({
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-medium text-text">{supplier.name}</p>
-                      <StatusBadge tone={SUPPLIER_ROW_TONE[supplier.status]}>{humanise(supplier.status)}</StatusBadge>
+                      <Badge tone={SUPPLIER_ROW_STATUS_TONE[supplier.status]}>{humanise(supplier.status)}</Badge>
                     </div>
                     <div className="mt-1 space-y-0.5 text-xs text-text-muted">
                       {supplier.supplier_type && <p>Type: {supplier.supplier_type}</p>}
@@ -774,7 +743,7 @@ export function SuppliersPanel({
                         loading={statusBusyId === supplier.id}
                         disabled={statusBusyId === supplier.id}
                       >
-                        Mark incomplete
+                        Mark Incomplete
                       </Button>
                     )}
                     {canManage && supplier.status !== 'approved' && (
@@ -806,8 +775,8 @@ export function SuppliersPanel({
               </li>
             ))}
           </ul>
+          </CardBody>
         )}
-      </Card>
 
       {canEdit && (
         <SupplierModal
@@ -821,7 +790,7 @@ export function SuppliersPanel({
           }}
         />
       )}
-    </Section>
+    </Card>
   )
 }
 
@@ -840,6 +809,8 @@ export function DeductionsPanel({
 }) {
   const [deductions, setDeductions] = useState<PrivateBookingDeduction[]>([])
   const [loading, setLoading] = useState(true)
+  // A failed load shows the error, never "No deductions proposed".
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   const [proposing, setProposing] = useState(false)
@@ -851,7 +822,9 @@ export function DeductionsPanel({
     const result = await listDeductions(bookingId)
     if (result.error) {
       toast.error(result.error)
+      setLoadError(result.error)
     } else {
+      setLoadError(null)
       setDeductions(result.data ?? [])
     }
     setLoading(false)
@@ -919,29 +892,33 @@ export function DeductionsPanel({
   }
 
   return (
-    <Section id="deductions" title="Deposit Deductions">
-      <Card>
-        <p className="mb-4 text-xs text-text-muted">
+    <Card>
+      <CardHeader title="Deposit Deductions" />
+      <CardBody className="space-y-4">
+        <p className="text-xs text-text-muted">
           Records the deduction decision only (SOP §25). Money is moved via the existing refund flow, never here.
         </p>
 
         {loading ? (
-          <p className="text-sm text-text-muted">Loading deductions…</p>
+          <PageLoading inline label="Loading deductions…" />
+        ) : loadError ? (
+          <Alert tone="danger">{`Deductions could not be loaded: ${loadError}`}</Alert>
         ) : deductions.length === 0 ? (
           <Empty
-            icon={<Icon name="cash" size={48} className="text-text-subtle" />}
+            size="sm"
+            icon={<Icon name="cash" size={48} />}
             title="No deductions proposed"
             description="Damage or extra-cost deductions from the deposit will appear here."
           />
         ) : (
-          <ul className="space-y-4">
+          <ul className="divide-y divide-border">
             {deductions.map((deduction) => {
               const decided =
                 deduction.status === 'approved' ||
                 deduction.status === 'rejected' ||
                 deduction.status === 'applied'
               return (
-                <li key={deduction.id} className="rounded-lg border border-border p-3">
+                <li key={deduction.id} className="py-3 first:pt-0 last:pb-0">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-text">{formatCurrency(deduction.amount)}</p>
@@ -952,7 +929,7 @@ export function DeductionsPanel({
                         </p>
                       )}
                     </div>
-                    <StatusBadge tone={DEDUCTION_TONE[deduction.status]}>{humanise(deduction.status)}</StatusBadge>
+                    <Badge tone={DEDUCTION_STATUS_TONE[deduction.status]}>{humanise(deduction.status)}</Badge>
                   </div>
 
                   {!decided && canManage && (
@@ -976,11 +953,12 @@ export function DeductionsPanel({
                           loading={busyId === deduction.id}
                           disabled={busyId === deduction.id}
                         >
-                          Record discussion
+                          Record Discussion
                         </Button>
                         <Button
                           type="button"
                           size="sm"
+                          variant="primary"
                           onClick={() => handleDecide(deduction.id, 'approved')}
                           loading={busyId === deduction.id}
                           disabled={busyId === deduction.id}
@@ -1007,8 +985,8 @@ export function DeductionsPanel({
         )}
 
         {canManage && (
-          <div className="mt-4 space-y-3 border-t border-border pt-4">
-            <h3 className="text-sm font-medium text-text">Propose a deduction</h3>
+          <div className="space-y-3 border-t border-border pt-4">
+            <p className="text-sm font-semibold text-text-strong">Propose a deduction</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Field label="Amount (£)">
                 <Input
@@ -1030,13 +1008,13 @@ export function DeductionsPanel({
                 </Field>
               </div>
             </div>
-            <Button type="button" size="sm" onClick={handlePropose} loading={proposing} disabled={proposing}>
-              Propose deduction
+            <Button type="button" size="sm" variant="primary" onClick={handlePropose} loading={proposing} disabled={proposing}>
+              Propose Deduction
             </Button>
           </div>
         )}
-      </Card>
-    </Section>
+      </CardBody>
+    </Card>
   )
 }
 
@@ -1088,7 +1066,7 @@ function ComplaintRow({
   }
 
   return (
-    <li className="rounded-lg border border-border p-3">
+    <li className="py-3 first:pt-0 last:pb-0">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-text whitespace-pre-wrap">{complaint.summary}</p>
@@ -1097,7 +1075,7 @@ function ComplaintRow({
             Received {formatDateTime12Hour(complaint.received_at)}
           </p>
         </div>
-        <StatusBadge tone={COMPLAINT_TONE[complaint.status]}>{humanise(complaint.status)}</StatusBadge>
+        <Badge tone={COMPLAINT_STATUS_TONE[complaint.status]}>{humanise(complaint.status)}</Badge>
       </div>
 
       <div className="mt-3 space-y-3 border-t border-border pt-3">
@@ -1114,7 +1092,7 @@ function ComplaintRow({
           </Field>
         </div>
         <Button type="button" size="sm" variant="secondary" onClick={handleSave} loading={saving} disabled={saving}>
-          Save complaint
+          Save Complaint
         </Button>
         {!canManage && (
           <p className="text-xs text-text-muted">Resolving or closing a complaint is a manager decision.</p>
@@ -1135,6 +1113,8 @@ export function ComplaintsPanel({
 }) {
   const [complaints, setComplaints] = useState<PrivateBookingComplaint[]>([])
   const [loading, setLoading] = useState(true)
+  // A failed load shows the error, never "No complaints logged".
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [channel, setChannel] = useState('')
   const [summary, setSummary] = useState('')
   const [logging, setLogging] = useState(false)
@@ -1144,7 +1124,9 @@ export function ComplaintsPanel({
     const result = await listComplaints({ bookingId })
     if (result.error) {
       toast.error(result.error)
+      setLoadError(result.error)
     } else {
+      setLoadError(null)
       setComplaints(result.data ?? [])
     }
     setLoading(false)
@@ -1173,22 +1155,26 @@ export function ComplaintsPanel({
   }
 
   return (
-    <Section id="complaints" title="Complaints">
-      <Card>
-        <p className="mb-4 text-xs text-text-muted">
+    <Card>
+      <CardHeader title="Complaints" />
+      <CardBody className="space-y-4">
+        <p className="text-xs text-text-muted">
           Acknowledge within 3 working days and respond within 10 working days (SOP §26).
         </p>
 
         {loading ? (
-          <p className="text-sm text-text-muted">Loading complaints…</p>
+          <PageLoading inline label="Loading complaints…" />
+        ) : loadError ? (
+          <Alert tone="danger">{`Complaints could not be loaded: ${loadError}`}</Alert>
         ) : complaints.length === 0 ? (
           <Empty
-            icon={<Icon name="message" size={48} className="text-text-subtle" />}
+            size="sm"
+            icon={<Icon name="message" size={48} />}
             title="No complaints logged"
             description="Any complaint about this booking will appear here."
           />
         ) : (
-          <ul className="space-y-4">
+          <ul className="divide-y divide-border">
             {complaints.map((complaint) => (
               <ComplaintRow
                 key={complaint.id}
@@ -1200,8 +1186,8 @@ export function ComplaintsPanel({
           </ul>
         )}
 
-        <div className="mt-4 space-y-3 border-t border-border pt-4">
-          <h3 className="text-sm font-medium text-text">Log a complaint</h3>
+        <div className="space-y-3 border-t border-border pt-4">
+          <p className="text-sm font-semibold text-text-strong">Log a complaint</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Channel">
               <Select value={channel} onChange={(e) => setChannel(e.target.value)} options={COMPLAINT_CHANNEL_OPTIONS} />
@@ -1212,11 +1198,11 @@ export function ComplaintsPanel({
               </Field>
             </div>
           </div>
-          <Button type="button" size="sm" onClick={handleLog} loading={logging} disabled={logging}>
-            Log complaint
+          <Button type="button" size="sm" variant="primary" onClick={handleLog} loading={logging} disabled={logging}>
+            Log Complaint
           </Button>
         </div>
-      </Card>
-    </Section>
+      </CardBody>
+    </Card>
   )
 }

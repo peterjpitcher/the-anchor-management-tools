@@ -9,7 +9,7 @@ import {
   type CustomerLabel,
   type CustomerLabelAssignment
 } from '@/app/actions/customer-labels'
-import { Button, Spinner, toast, Icon } from '@/ds'
+import { Button, PageLoading, toast, Icon } from '@/ds'
 
 interface CustomerLabelSelectorProps {
   customerId: string
@@ -107,12 +107,7 @@ export function CustomerLabelSelector({
   }, [customerId, initialAssignments, initialLabels, loadData, onLabelsChange])
 
   if (loading) {
-    return (
-      <div className="flex items-center space-x-2">
-        <Spinner size="sm" />
-        <span className="text-sm text-text-muted">Loading labels...</span>
-      </div>
-    )
+    return <PageLoading inline label="Loading labels" className="py-4" />
   }
 
   return (
@@ -138,6 +133,9 @@ export function CustomerLabelSelector({
                 <span className="ml-1 text-xs opacity-70">(auto)</span>
               )}
               {canEdit && !assignment.auto_assigned && (
+                // A plain button: it is the remove control inside a chip drawn in the label's
+                // saved colour. The DS has no removable Badge, and a DS button carries the 44px
+                // phone touch floor, which would burst the chip.
                 <button type="button"
                   onClick={() => handleRemoveLabel(label.id)}
                   aria-label={`Remove ${label.name}`}
@@ -158,38 +156,37 @@ export function CustomerLabelSelector({
             variant="secondary"
             onClick={() => setShowSelector(!showSelector)}
             icon={<Icon name="tag" size={12} />}
+            aria-expanded={showSelector}
           >
             Add Label
           </Button>
         )}
       </div>
 
-      {/* Label Selector Dropdown */}
+      {/* The labels that can be added, shown in place rather than in a floating menu: the
+          selector sits at the foot of a Card, which clips anything that overflows it. */}
       {showSelector && canEdit && (
-        <div className="relative">
-          <div className="absolute z-10 mt-1 w-64 overflow-hidden rounded-md border border-border bg-surface shadow-lg">
-            <div className="py-1">
-              {availableLabels.map((label) => (
-                <button type="button"
-                  key={label.id}
-                  onClick={() => handleAssignLabel(label.id)}
-                  disabled={assigningLabel === label.id}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset disabled:opacity-50 flex items-center justify-between"
-                >
-                  <div className="flex items-center">
-                    <div
-                      className="h-4 w-4 rounded-full mr-2"
-                      style={{ backgroundColor: label.color }}
-                    />
-                    <span>{label.name}</span>
-                  </div>
-                  {assigningLabel === label.id && (
-                    <Spinner size="sm" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="flex flex-wrap gap-2">
+          {availableLabels.map((label) => (
+            <Button
+              key={label.id}
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => handleAssignLabel(label.id)}
+              disabled={assigningLabel !== null}
+              loading={assigningLabel === label.id}
+              icon={
+                <span
+                  aria-hidden="true"
+                  className="h-3 w-3 rounded-full"
+                  style={{ backgroundColor: label.color }}
+                />
+              }
+            >
+              {label.name}
+            </Button>
+          ))}
         </div>
       )}
     </div>

@@ -131,9 +131,10 @@ describe('MileagePage', () => {
     expect(screen.getByText('This financial year').parentElement).toHaveTextContent('57.0 mi')
     expect(screen.getByText('This tax year').parentElement).toHaveTextContent('£29.48')
     expect(screen.getByText('Miles left before 25p').parentElement).toHaveTextContent('No drivers set up')
-    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Download report' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'New Trip' })).toBeInTheDocument()
+    // Header actions: PageLayout renders them in the desktop header and the phone nav row.
+    expect(screen.getAllByRole('button', { name: 'Export CSV' })[0]).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Download Report' })[0]).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'New Trip' })[0]).toBeInTheDocument()
   })
 
   it('warns and shows all dates when the dates in the address are invalid', async () => {
@@ -168,7 +169,7 @@ describe('MileagePage', () => {
     render(await page({ from: '2026-04-01', to: '2026-06-30', q: 'shop', driver: driverB.id }))
 
     expect(screen.queryByLabelText('Period type')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Download report' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Download Report' })[0])
 
     expect(await screen.findByLabelText('Period type')).toHaveValue('quarter')
     // The filter bar and the dialog each have Period and Driver selects; the dialog renders last.

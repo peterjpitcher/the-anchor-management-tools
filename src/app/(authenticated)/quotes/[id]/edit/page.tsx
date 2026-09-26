@@ -5,18 +5,22 @@ import { useRouter } from 'next/navigation'
 import { getQuote, updateQuote } from '@/app/actions/quotes'
 import { getVendors } from '@/app/actions/vendors'
 import type { InvoiceVendor, InvoiceLineItemInput, QuoteWithDetails } from '@/types/invoices'
-// UI v2 components
-import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Field } from '@/ds'
-import { Alert } from '@/ds'
-import { Spinner } from '@/ds'
-import { toast } from '@/ds'
+import {
+  PageLayout,
+  Icon,
+  Card,
+  CardHeader,
+  CardBody,
+  Button,
+  IconButton,
+  Input,
+  Select,
+  Textarea,
+  Field,
+  Alert,
+  FormFooter,
+  toast,
+} from '@/ds'
 
 import { usePermissions } from '@/contexts/PermissionContext'
 export default function EditQuotePage({ params }: { params: Promise<{ id: string }> }) {
@@ -245,12 +249,14 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
 
   const { subtotal, quoteDiscountAmount, totalVat, total } = calculateTotals()
 
+  const layoutProps = {
+    title: 'Edit Quote',
+    subtitle: 'Update quote details',
+    backButton: { label: 'Back to Quote', href: quoteId ? `/quotes/${quoteId}` : '/quotes' },
+  }
+
   if (permissionsLoading) {
-    return (
-      <PageLayout title="Loading..." loading>
-        {null}
-      </PageLayout>
-    )
+    return <PageLayout {...layoutProps} loading />
   }
 
   if (!canEdit) {
@@ -258,195 +264,171 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
   }
 
   if (loading) {
-    return (
-      <PageLayout title="Loading..." loading loadingLabel="Loading quote details...">
-        {null}
-      </PageLayout>
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading quote details" />
   }
 
   if (!quote) {
-    return (
-      <PageLayout title="Quote Not Found" error={error || 'Quote not found'}>
-        <Card>
-          <div className="text-center py-8">
-            <p className="text-danger mb-4">{error || 'Quote not found'}</p>
-            <Button
-              variant="secondary"
-              onClick={() => router.push('/quotes')}
-            >
-              Back to Quotes
-            </Button>
-          </div>
-        </Card>
-      </PageLayout>
-    )
+    return <PageLayout {...layoutProps} error={error || 'Quote not found'} />
   }
 
   return (
-    <PageLayout
-      title={`Edit Quote ${quote.quote_number}`}
-      subtitle="Update quote details"
-      backButton={{ label: 'Back to Quote', href: `/quotes/${quoteId}` }}
-    >
-      <div className="space-y-6">
-        {error && (
-          <Alert tone="danger" title="Error">{error}</Alert>
-        )}
+    <PageLayout {...layoutProps}>
+      {error && (
+        <Alert tone="danger" title="Error">{error}</Alert>
+      )}
 
-        <form onSubmit={handleSubmit} className="space-y-8">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {/* Quote Details */}
-        <Section title="Quote Details">
-          <Card>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Vendor" required>
-                <Select
-                  value={selectedVendor}
-                  onChange={(e) => setSelectedVendor(e.target.value)}
-                  required
-                >
-                  <option value="">Select a vendor</option>
-                  {vendors.map((vendor) => (
-                    <option key={vendor.id} value={vendor.id}>
-                      {vendor.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+        <Card>
+          <CardHeader title="Quote Details" subtitle={quote.quote_number} />
+          <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Vendor" required>
+              <Select
+                value={selectedVendor}
+                onChange={(e) => setSelectedVendor(e.target.value)}
+                required
+              >
+                <option value="">Select a vendor</option>
+                {vendors.map((vendor) => (
+                  <option key={vendor.id} value={vendor.id}>
+                    {vendor.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
 
-              <Field label="Reference/PO Number">
-                <Input
-                  type="text"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  placeholder="Optional reference"
-                />
-              </Field>
+            <Field label="Reference/PO Number">
+              <Input
+                type="text"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="Optional reference"
+              />
+            </Field>
 
-              <Field label="Quote Date" required>
-                <Input
-                  type="date"
-                  value={quoteDate}
-                  onChange={(e) => setQuoteDate(e.target.value)}
-                  required
-                />
-              </Field>
+            <Field label="Quote Date" required>
+              <Input
+                type="date"
+                value={quoteDate}
+                onChange={(e) => setQuoteDate(e.target.value)}
+                required
+              />
+            </Field>
 
-              <Field label="Valid Until" required>
-                <Input
-                  type="date"
-                  value={validUntil}
-                  onChange={(e) => setValidUntil(e.target.value)}
-                  required
-                />
-              </Field>
-            </div>
-          </Card>
-        </Section>
+            <Field label="Valid Until" required>
+              <Input
+                type="date"
+                value={validUntil}
+                onChange={(e) => setValidUntil(e.target.value)}
+                required
+              />
+            </Field>
+          </CardBody>
+        </Card>
 
         {/* Line Items */}
-        <Section 
-          title="Line Items"
-          actions={
-            <Button type="button" onClick={addLineItem} size="sm" leftIcon={<Icon name="plus" size={16} />}>
-              Add Item
-            </Button>
-          }
-        >
-          <Card>
-            <div className="space-y-4">
-              {lineItems.map((item, index) => (
-                <div key={index} className="border border-border rounded-lg p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                    <div className="md:col-span-3">
-                      <Field label="Description" required>
-                        <Input
-                          type="text"
-                          value={item.description}
-                          onChange={(e) => updateLineItem(index, { description: e.target.value })}
-                          required
-                        />
-                      </Field>
-                    </div>
-
-                    <div>
-                      <Field label="Qty" required>
-                        <Input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => updateLineItem(index, { quantity: parseFloat(e.target.value) || 0 })}
-                          min="0.001"
-                          step="0.001"
-                          required
-                        />
-                      </Field>
-                    </div>
-
-                    <div>
-                      <Field label="Unit Price" required>
-                        <Input
-                          type="number"
-                          value={item.unit_price}
-                          onChange={(e) => updateLineItem(index, { unit_price: parseFloat(e.target.value) || 0 })}
-                          min="0"
-                          step="0.01"
-                          required
-                        />
-                      </Field>
-                    </div>
-
-                    <div>
-                      <Field label="Discount %">
-                        <Input
-                          type="number"
-                          value={item.discount_percentage}
-                          onChange={(e) => updateLineItem(index, { discount_percentage: parseFloat(e.target.value) || 0 })}
-                          min="0"
-                          max="100"
-                          step="0.01"
-                        />
-                      </Field>
-                    </div>
-
-                    <div>
-                      <Field label="VAT %">
-                        <Select
-                          value={item.vat_rate}
-                          onChange={(e) => updateLineItem(index, { vat_rate: parseFloat(e.target.value) })}
-                        >
-                          <option value="0">0%</option>
-                          <option value="5">5%</option>
-                          <option value="20">20%</option>
-                        </Select>
-                      </Field>
-                    </div>
-
-                    {lineItems.length > 1 && (
-                      <div className="flex items-end">
-                        <Button
-                          type="button"
-                          variant="danger"
-                          size="sm"
-                          onClick={() => removeLineItem(index)}
-                          iconOnly
-                          leftIcon={<Icon name="trash" size={16} />}
-                        />
-                      </div>
-                    )}
+        <Card>
+          <CardHeader
+            title="Line Items"
+            action={
+              <Button variant="secondary" type="button" onClick={addLineItem} size="sm" leftIcon={<Icon name="plus" size={16} />}>
+                Add Item
+              </Button>
+            }
+          />
+          <CardBody className="space-y-4">
+            {lineItems.map((item, index) => (
+              <Card key={index}>
+                <CardBody className="grid grid-cols-1 gap-4 md:grid-cols-6">
+                  <div className="md:col-span-3">
+                    <Field label="Description" required>
+                      <Input
+                        type="text"
+                        value={item.description}
+                        onChange={(e) => updateLineItem(index, { description: e.target.value })}
+                        required
+                      />
+                    </Field>
                   </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </Section>
+
+                  <div>
+                    <Field label="Qty" required>
+                      <Input
+                        type="number"
+                        value={item.quantity}
+                        onChange={(e) => updateLineItem(index, { quantity: parseFloat(e.target.value) || 0 })}
+                        min="0.001"
+                        step="0.001"
+                        required
+                      />
+                    </Field>
+                  </div>
+
+                  <div>
+                    <Field label="Unit Price" required>
+                      <Input
+                        type="number"
+                        value={item.unit_price}
+                        onChange={(e) => updateLineItem(index, { unit_price: parseFloat(e.target.value) || 0 })}
+                        min="0"
+                        step="0.01"
+                        required
+                      />
+                    </Field>
+                  </div>
+
+                  <div>
+                    <Field label="Discount %">
+                      <Input
+                        type="number"
+                        value={item.discount_percentage}
+                        onChange={(e) => updateLineItem(index, { discount_percentage: parseFloat(e.target.value) || 0 })}
+                        min="0"
+                        max="100"
+                        step="0.01"
+                      />
+                    </Field>
+                  </div>
+
+                  <div>
+                    <Field label="VAT %">
+                      <Select
+                        value={item.vat_rate}
+                        onChange={(e) => updateLineItem(index, { vat_rate: parseFloat(e.target.value) })}
+                      >
+                        <option value="0">0%</option>
+                        <option value="5">5%</option>
+                        <option value="20">20%</option>
+                      </Select>
+                    </Field>
+                  </div>
+
+                  {lineItems.length > 1 && (
+                    <div className="flex items-end">
+                      <IconButton
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        onClick={() => removeLineItem(index)}
+                        label="Remove line item"
+                        icon={<Icon name="trash" size={16} />}
+                      />
+                    </div>
+                  )}
+                </CardBody>
+              </Card>
+            ))}
+          </CardBody>
+        </Card>
 
         {/* Quote-level Discount and Notes */}
-        <Section title="Discount & Notes">
-          <Card>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field 
+        <Card>
+          <CardHeader title="Discount & Notes" />
+          <CardBody className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field
                 label="Quote Discount %"
-                help="Applied to subtotal after line item discounts"
+                hint="Applied to subtotal after line item discounts"
               >
                 <Input
                   type="number"
@@ -459,71 +441,55 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
               </Field>
             </div>
 
-            <div className="mt-4">
-              <Field label="Notes (visible on quote)">
-                <Textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
-                  placeholder="Any notes to include on the quote..."
-                />
-              </Field>
-            </div>
+            <Field label="Notes (visible on quote)">
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                placeholder="Any notes to include on the quote..."
+              />
+            </Field>
 
-            <div className="mt-4">
-              <Field label="Internal Notes (not visible on quote)">
-                <Textarea
-                  value={internalNotes}
-                  onChange={(e) => setInternalNotes(e.target.value)}
-                  rows={3}
-                  placeholder="Internal notes for your reference..."
-                />
-              </Field>
-            </div>
-          </Card>
-        </Section>
+            <Field label="Internal Notes (not visible on quote)">
+              <Textarea
+                value={internalNotes}
+                onChange={(e) => setInternalNotes(e.target.value)}
+                rows={3}
+                placeholder="Internal notes for your reference..."
+              />
+            </Field>
+          </CardBody>
+        </Card>
 
         {/* Totals Summary */}
-        <Section title="Summary">
-          <Card>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-text-muted">Subtotal:</span>
-                <span className="font-medium">£{subtotal.toFixed(2)}</span>
-              </div>
-              
-              {quoteDiscountAmount > 0 && (
-                <div className="flex justify-between text-danger">
-                  <span>Quote Discount ({quoteDiscount}%):</span>
-                  <span>-£{quoteDiscountAmount.toFixed(2)}</span>
-                </div>
-              )}
-              
-              <div className="flex justify-between">
-                <span className="text-text-muted">VAT:</span>
-                <span className="font-medium">£{totalVat.toFixed(2)}</span>
-              </div>
-              
-              <div className="flex justify-between text-lg font-bold border-t border-border pt-2">
-                <span>Total:</span>
-                <span>£{total.toFixed(2)}</span>
-              </div>
+        <Card>
+          <CardHeader title="Summary" />
+          <CardBody className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-text-muted">Subtotal:</span>
+              <span className="font-medium">£{subtotal.toFixed(2)}</span>
             </div>
-          </Card>
-        </Section>
 
-        {/* Submit Buttons */}
-        <div className="flex gap-4">
-          <Button
-            type="submit"
-            loading={submitting}
-            disabled={submitting || !canEdit}
-            title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
-            className="flex-1"
-          >
-            Update Quote
-          </Button>
-          
+            {quoteDiscountAmount > 0 && (
+              <div className="flex justify-between text-danger-fg">
+                <span>Quote Discount ({quoteDiscount}%):</span>
+                <span>-£{quoteDiscountAmount.toFixed(2)}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between">
+              <span className="text-text-muted">VAT:</span>
+              <span className="font-medium">£{totalVat.toFixed(2)}</span>
+            </div>
+
+            <div className="flex justify-between border-t border-border pt-2 text-lg font-bold">
+              <span>Total:</span>
+              <span>£{total.toFixed(2)}</span>
+            </div>
+          </CardBody>
+        </Card>
+
+        <FormFooter>
           <Button
             type="button"
             variant="secondary"
@@ -531,10 +497,17 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
             disabled={submitting}
           >
             Cancel
-            </Button>
-          </div>
-        </form>
-      </div>
+          </Button>
+          <Button variant="primary"
+            type="submit"
+            loading={submitting}
+            disabled={submitting || !canEdit}
+            title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
+          >
+            Update Quote
+          </Button>
+        </FormFooter>
+      </form>
     </PageLayout>
   )
 }

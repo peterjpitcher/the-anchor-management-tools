@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { GuestShell } from '@/components/features/guest'
 import LegacyLinkClient from './LegacyLinkClient'
 
 const FALLBACK_REDIRECT_URL = 'https://www.the-anchor.pub'
@@ -82,11 +83,14 @@ export default async function LegacyLinkPage({ params, searchParams }: PageProps
     }
   }
 
+  // The shell stays on the server so the guest webfonts never enter the client bundle.
   return (
-    <LegacyLinkClient
-      shortCode={shortCode}
-      destinationUrl={finalDestination}
-      staffMode={firstParam(query.staff) === '1'}
-    />
+    <GuestShell width="wide">
+      <LegacyLinkClient
+        shortCode={shortCode}
+        destinationUrl={finalDestination}
+        staffMode={firstParam(query.staff) === '1'}
+      />
+    </GuestShell>
   )
 }

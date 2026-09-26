@@ -9,29 +9,10 @@ import { eventStatusLabel, eventStatusTone } from '../_shared/status-ui'
 interface EventCardProps {
   event: Event
   onClick?: () => void
-  compact?: boolean
 }
 
-export function EventCard({ event, onClick, compact = false }: EventCardProps) {
-  if (compact) {
-    // Compact mode for calendar cells: single line
-    return (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          onClick?.()
-        }}
-        className="w-full text-left px-1.5 py-0.5 rounded-sm text-meta bg-primary-soft text-primary-soft-fg truncate hover:opacity-80 transition-opacity focus-visible:outline-hidden focus-visible:shadow-ring"
-      >
-        <span className="font-medium">{event.time || ''}</span>
-        {event.time && ' '}
-        <span>{event.name}</span>
-      </button>
-    )
-  }
-
-  // Normal mode for board columns
+/** One event on the board view: a clickable tile in a stage column. */
+export function EventCard({ event, onClick }: EventCardProps) {
   return (
     <div
       className={cn(

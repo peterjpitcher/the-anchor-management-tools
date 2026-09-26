@@ -5,6 +5,7 @@ import { getReassignmentQueue } from '@/app/actions/rota-reassign';
 import { getActiveEmployeesForRota } from '@/app/actions/rota';
 import { buildRotaNavItems } from '../nav';
 import ReassignQueueClient from './ReassignQueueClient';
+import { PartialLoadAlert } from '../_shared/PartialLoadAlert';
 import { displayName } from '@/lib/employees/display-name';
 
 export const dynamic = 'force-dynamic';
@@ -22,10 +23,13 @@ export default async function RotaReassignPage() {
     getActiveEmployeesForRota(),
   ]);
 
+  // One header for every state. The subtitle and the tab badge follow the queue once it loads.
+  const layoutProps = { title: 'Reassign' };
+
   if (!queueResult.success) {
     return (
       <PageLayout
-        title="Reassign"
+        {...layoutProps}
         subtitle="Shifts that still need somebody"
         navItems={buildRotaNavItems(0)}
         error={queueResult.error}
@@ -45,7 +49,7 @@ export default async function RotaReassignPage() {
 
   return (
     <PageLayout
-      title="Reassign"
+      {...layoutProps}
       subtitle={
         outstanding === 0
           ? 'Every shift is covered'
@@ -53,6 +57,11 @@ export default async function RotaReassignPage() {
       }
       navItems={buildRotaNavItems(outstanding)}
     >
+      {/* The staff list only feeds the assign picker, which only editors see. */}
+      <PartialLoadAlert
+        missing={employeesResult.success || !canEdit ? [] : ['staff list']}
+        consequence="nobody can be picked to assign a shift"
+      />
       <ReassignQueueClient
         queue={queue}
         employees={employees}

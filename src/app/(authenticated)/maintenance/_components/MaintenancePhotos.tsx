@@ -9,6 +9,7 @@ import {
   CardHeader,
   Empty,
   Modal,
+  PageLoading,
   Spinner,
   Textarea,
   toast,
@@ -282,9 +283,9 @@ export function MaintenancePhotos({
     <Card>
       <CardHeader
         title="Photos"
-        subtitle="Photos are resized on your device before they are uploaded."
+        subtitle="Photos are resized on your device before they are uploaded"
       />
-      <CardBody>
+      <CardBody className="space-y-4">
         {canUpload ? (
           <div className="flex flex-wrap gap-2">
             {/*
@@ -296,19 +297,24 @@ export function MaintenancePhotos({
               variant="primary"
               onClick={() => cameraInputRef.current?.click()}
             >
-              Take photo
+              Take Photo
             </Button>
             <Button
               type="button"
               variant="secondary"
               onClick={() => libraryInputRef.current?.click()}
             >
-              Choose existing photo
+              Choose Existing Photo
             </Button>
 
             {/*
               HEIC is deliberately absent from accept. It also stops Safari 17+
               turning a JPEG into HEIC on the way out of the picker.
+
+              The two native file inputs stay: they are the hidden pickers behind the
+              DS buttons above (out of the tab order and hidden from screen readers).
+              The DS FileUpload is a drop zone, which would replace the camera and
+              library buttons, and cannot carry capture="environment".
             */}
             <input
               ref={cameraInputRef}
@@ -339,7 +345,7 @@ export function MaintenancePhotos({
         </p>
 
         {tasks.length > 0 ? (
-          <ul className="mt-4 space-y-2">
+          <ul className="space-y-2">
             {tasks.map((task) => (
               <li key={task.id}>
                 {task.stage === 'failed' ? (
@@ -363,43 +369,35 @@ export function MaintenancePhotos({
         ) : null}
 
         {loadError ? (
-          <div className="mt-4">
-            <Alert tone="danger" title="The photos could not be loaded">
-              <div className="space-y-2">
-                <p>{loadError}</p>
-                <Button type="button" size="sm" variant="secondary" onClick={() => void refresh()}>
-                  Try again
-                </Button>
-              </div>
-            </Alert>
-          </div>
+          <Alert tone="danger" title="The photos could not be loaded">
+            <div className="space-y-2">
+              <p>{loadError}</p>
+              <Button type="button" size="sm" variant="secondary" onClick={() => void refresh()}>
+                Try Again
+              </Button>
+            </div>
+          </Alert>
         ) : null}
 
-        {loading ? (
-          <p className="mt-4 flex items-center gap-2 text-sm text-text-muted">
-            <Spinner size="sm" />
-            Loading photos
-          </p>
-        ) : null}
+        {loading ? <PageLoading inline label="Loading photos" /> : null}
 
         {!loading && !loadError && photos.length === 0 ? (
-          <div className="mt-4">
-            <Empty
-              title="No photos yet"
-              description="Add a photo so the problem is easy to recognise later."
-            />
-          </div>
+          <Empty
+            size="sm"
+            title="No photos yet"
+            description="Add a photo so the problem is easy to recognise later."
+          />
         ) : null}
 
         {photos.length > 0 ? (
-          <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {photos.map((photo, index) => (
               <li key={photo.id} className="space-y-1">
                 <a
                   href={photo.signedUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block overflow-hidden rounded-md border border-border focus-visible:outline-hidden focus-visible:shadow-ring"
+                  className="block overflow-hidden rounded-default border border-border focus-visible:outline-hidden focus-visible:shadow-ring"
                 >
                   {/*
                     A plain img, not next/image. The optimiser rejects a signed
@@ -447,9 +445,9 @@ export function MaintenancePhotos({
         <Modal
           open={redactTarget !== null}
           onClose={closeRedact}
-          title="Remove this photo"
+          title="Remove This Photo"
           footer={
-            <div className="flex justify-end gap-2">
+            <>
               <Button type="button" variant="secondary" onClick={closeRedact} disabled={redacting}>
                 Cancel
               </Button>
@@ -460,9 +458,9 @@ export function MaintenancePhotos({
                 loading={redacting}
                 disabled={redacting}
               >
-                Remove photo
+                Remove Photo
               </Button>
-            </div>
+            </>
           }
         >
           <div className="space-y-3">

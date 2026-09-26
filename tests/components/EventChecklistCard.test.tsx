@@ -98,7 +98,7 @@ describe('EventChecklistCard updates', () => {
     await act(async () => first.resolve({ success: true }))
 
     expect(reopenButton('First task')).toBeEnabled()
-    expect(screen.getByText('All caught up')).toBeVisible()
+    expect(screen.getByText('All Caught Up')).toBeVisible()
     expect(getEventChecklist).toHaveBeenCalledTimes(1)
   })
 

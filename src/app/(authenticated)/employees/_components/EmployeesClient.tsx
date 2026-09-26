@@ -15,16 +15,17 @@ import { displayName, displayNameWithLegal } from '@/lib/employees/display-name'
 import InviteEmployeeModal from '@/components/features/employees/InviteEmployeeModal'
 
 import {
-  PageHeader,
+  PageLayout,
   Card,
-  CardBody,
   Stat,
+  StatGrid,
   Badge,
   Button,
+  LinkButton,
   Avatar,
   SearchInput,
+  Segmented,
   Empty,
-  Tabs,
   Dropdown,
   DropdownItem,
   Table,
@@ -34,9 +35,10 @@ import {
   TableHead,
   TableCell,
   TablePagination,
+  Icon,
 } from '@/ds'
-
-import { Icon } from '@/ds/icons'
+import { EMPLOYEES_NAV } from '../_shared/nav'
+import { employmentStatusTone } from '../_shared/status-ui'
 
 type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation'
 
@@ -44,15 +46,6 @@ interface EmployeesClientProps {
   initialData: EmployeeRosterResult
   initialError?: string | null
   permissions: { canCreate: boolean; canExport: boolean; canEdit: boolean }
-}
-
-function statusBadgeTone(status: string): 'success' | 'info' | 'warning' | 'neutral' {
-  switch (status) {
-    case 'Active': return 'success'
-    case 'Onboarding': return 'info'
-    case 'Started Separation': return 'warning'
-    default: return 'neutral'
-  }
 }
 
 // Onboarding rows have no name on them yet, so the email address stays the fallback.
@@ -91,7 +84,7 @@ function PortalInviteButton({ employeeId }: { employeeId: string }) {
   if (sent) return <span className="text-xs text-success-fg">Invite sent</span>
   return (
     <Button type="button" variant="link" size="sm" onClick={handleClick} disabled={pending}>
-      {pending ? 'Sending...' : 'Send portal invite'}
+      {pending ? 'Sending...' : 'Send Portal Invite'}
     </Button>
   )
 }
@@ -145,150 +138,141 @@ export default function EmployeesClient({ initialData, initialError, permissions
     } catch { toast.error('Failed to export.') }
   }, [permissions.canExport, roster.employees.length, selectedStatus])
 
+  const headerActions = (
+    <>
+      {canManageSettings && (
+        <LinkButton href="/settings/pay-bands" variant="secondary" size="sm">Pay Bands</LinkButton>
+      )}
+      {permissions.canExport && (
+        <Dropdown
+          trigger={<Button variant="secondary" size="sm" icon={<Icon name="download" size={15} />}>Export</Button>}
+        >
+          <DropdownItem onClick={() => handleExport('csv')}>Export as CSV</DropdownItem>
+          <DropdownItem onClick={() => handleExport('json')}>Export as JSON</DropdownItem>
+        </Dropdown>
+      )}
+      {permissions.canCreate && (
+        <>
+          <Button variant="secondary" size="sm" icon={<Icon name="mail" size={15} />} onClick={() => setShowInviteModal(true)}>
+            Invite
+          </Button>
+          <LinkButton href="/employees/new" variant="primary" size="sm" icon={<Icon name="plus" size={15} />}>
+            New Employee
+          </LinkButton>
+        </>
+      )}
+    </>
+  )
+
   return (
     <>
-      <div className="flex flex-col gap-5">
-        <PageHeader
-          breadcrumbs={[{ label: 'Employees' }]}
-          title="Employees"
-          className="mb-0"
-          actions={
-            <div className="flex items-center gap-2">
-              <Link href="/employees/birthdays">
-                <Button variant="secondary" size="sm">Birthdays</Button>
-              </Link>
-              <Link href="/employees/reliability">
-                <Button variant="secondary" size="sm">Reliability</Button>
-              </Link>
-              {permissions.canExport && (
-                <Dropdown
-                  trigger={<Button variant="secondary" size="sm" icon={<Icon name="download" size={15} />}>Export</Button>}
-                >
-                  <DropdownItem onClick={() => handleExport('csv')}>Export as CSV</DropdownItem>
-                  <DropdownItem onClick={() => handleExport('json')}>Export as JSON</DropdownItem>
-                </Dropdown>
-              )}
-              {permissions.canCreate && (
-                <>
-                  <Button variant="secondary" size="sm" icon={<Icon name="mail" size={15} />} onClick={() => setShowInviteModal(true)}>
-                    Invite
-                  </Button>
-                  <Link href="/employees/new">
-                    <Button variant="primary" size="sm" icon={<Icon name="plus" size={15} />}>Add employee</Button>
-                  </Link>
-                </>
-              )}
-              {canManageSettings && (
-                <Link href="/settings/pay-bands">
-                  <Button variant="secondary" size="sm">Pay Bands</Button>
-                </Link>
-              )}
-            </div>
-          }
-        />
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <PageLayout
+        title="Employees"
+        navItems={EMPLOYEES_NAV}
+        headerActions={headerActions}
+        // A failed load keeps the header and says so, rather than showing an empty roster.
+        error={initialError ?? null}
+        onRetry={() => router.refresh()}
+      >
+        <StatGrid columns={4}>
           <Stat label="Active" value={String(roster.statusCounts.active)} />
           <Stat label="Onboarding" value={String(roster.statusCounts.onboarding)} />
           <Stat label="Former" value={String(roster.statusCounts.former)} />
           <Stat label="Total" value={String(roster.statusCounts.all)} />
+        </StatGrid>
+
+        {/* Filters: status and search, directly above the list they filter */}
+        <div className="flex flex-wrap items-end gap-3">
+          {/* Five options with counts are wider than a phone, so the switch scrolls sideways
+              rather than pushing the page wider than the screen. */}
+          <div className="max-w-full overflow-x-auto">
+            <Segmented
+              options={[
+                { id: 'all', label: `All (${roster.statusCounts.all})` },
+                { id: 'Active', label: `Active (${roster.statusCounts.active})` },
+                { id: 'Onboarding', label: `Onboarding (${roster.statusCounts.onboarding})` },
+                { id: 'Started Separation', label: `On Notice (${roster.statusCounts.startedSeparation})` },
+                { id: 'Former', label: `Former (${roster.statusCounts.former})` },
+              ]}
+              value={selectedStatus}
+              onChange={(status) => updateFilters({ status: status as EmployeeStatus })}
+            />
+          </div>
+          <SearchInput
+            value={searchTerm}
+            onChange={(v) => updateFilters({ search: v })}
+            debounceDelay={350}
+            placeholder="Search by name, role..."
+            className="w-full sm:w-60"
+          />
+          <span className="ml-auto self-center text-xs text-text-muted">{currentEmployees.length} employees</span>
         </div>
 
-        {/* Tabs */}
-        <Tabs
-          tabs={[
-            { id: 'all', label: `All (${roster.statusCounts.all})` },
-            { id: 'Active', label: `Active (${roster.statusCounts.active})` },
-            { id: 'Onboarding', label: `Onboarding (${roster.statusCounts.onboarding})` },
-            { id: 'Started Separation', label: `On Notice (${roster.statusCounts.startedSeparation})` },
-            { id: 'Former', label: `Former (${roster.statusCounts.former})` },
-          ]}
-          activeTab={selectedStatus}
-          onTabChange={(tab) => updateFilters({ status: tab as EmployeeStatus })}
-        />
-
-        {initialError && (
-          <div className="p-3 bg-danger-soft text-danger-fg rounded-lg text-sm">{initialError}</div>
-        )}
-
-        <div>
-          <Card>
-            <div className="flex items-center gap-2 p-3 border-b border-border">
-              <SearchInput
-                value={searchTerm}
-                onChange={(v) => updateFilters({ search: v })}
-                debounceDelay={350}
-                placeholder="Search by name, role..."
-                className="w-60"
-              />
-              <div className="flex-1" />
-              <span className="text-xs text-text-muted">{currentEmployees.length} employees</span>
-            </div>
-
-            {currentEmployees.length === 0 ? (
-              <CardBody>
-                <Empty title="No employees found" description={searchTerm ? `No results for "${searchTerm}"` : 'Add your first employee.'} />
-              </CardBody>
-            ) : (
-              <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Employee</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Start Date</TableHead>
-                      <TableHead>Holiday</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {currentEmployees.map(emp => (
-                      <TableRow
-                        key={emp.employee_id}
-                        onClick={() => router.push(`/employees/${emp.employee_id}`)}
-                      >
-                        <TableCell>
-                          <div className="flex items-center gap-2.5">
-                            <Avatar name={employeeDisplayName(emp)} size="md" />
-                            <div>
-                              <Link href={`/employees/${emp.employee_id}`} className="text-ui font-semibold text-text-strong hover:text-primary">
-                                {employeeListName(emp)}
-                              </Link>
-                              {!emp.first_name && <span className="text-meta text-text-soft ml-1">(pending)</span>}
-                            </div>
+        <Card padding="none">
+          {currentEmployees.length === 0 ? (
+            <Empty
+              size="sm"
+              title="No employees found"
+              description={searchTerm ? `No results for "${searchTerm}"` : 'Add your first employee.'}
+            />
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Employee</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Start Date</TableHead>
+                    <TableHead>Holiday</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {currentEmployees.map(emp => (
+                    <TableRow
+                      key={emp.employee_id}
+                      onClick={() => router.push(`/employees/${emp.employee_id}`)}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={employeeDisplayName(emp)} size="md" />
+                          <div>
+                            <Link href={`/employees/${emp.employee_id}`} className="text-ui font-semibold text-text-strong hover:text-primary">
+                              {employeeListName(emp)}
+                            </Link>
+                            {!emp.first_name && <span className="text-meta text-text-soft ml-1">(pending)</span>}
                           </div>
-                        </TableCell>
-                        <TableCell className="text-ui">{emp.job_title || '--'}</TableCell>
-                        <TableCell>
-                          <div className="text-ui">{emp.employment_start_date ? formatDate(emp.employment_start_date) : '--'}</div>
-                          <div className="text-meta text-text-soft">{calculateLengthOfService(emp.employment_start_date)}</div>
-                        </TableCell>
-                        <TableCell className="text-ui">{emp.holiday_days_current_year ?? 0} days</TableCell>
-                        <TableCell>
-                          <Badge tone={statusBadgeTone(emp.status)} dot>{emp.status}</Badge>
-                          {!emp.auth_user_id && permissions.canEdit && ['Active', 'Started Separation'].includes(emp.status) && (
-                            <div className="mt-1"><PortalInviteButton employeeId={emp.employee_id} /></div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                {roster.pagination.totalPages > 1 && (
-                  <TablePagination
-                    page={currentPage}
-                    totalPages={roster.pagination.totalPages}
-                    totalItems={roster.pagination.totalCount}
-                    pageSize={pageSize}
-                    onPageChange={(page) => updateFilters({ page })}
-                  />
-                )}
-              </>
-            )}
-          </Card>
-        </div>
-      </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-ui">{emp.job_title || '--'}</TableCell>
+                      <TableCell>
+                        <div className="text-ui">{emp.employment_start_date ? formatDate(emp.employment_start_date) : '--'}</div>
+                        <div className="text-meta text-text-soft">{calculateLengthOfService(emp.employment_start_date)}</div>
+                      </TableCell>
+                      <TableCell className="text-ui">{emp.holiday_days_current_year ?? 0} days</TableCell>
+                      <TableCell>
+                        <Badge tone={employmentStatusTone(emp.status)} dot>{emp.status}</Badge>
+                        {!emp.auth_user_id && permissions.canEdit && ['Active', 'Started Separation'].includes(emp.status) && (
+                          <div className="mt-1"><PortalInviteButton employeeId={emp.employee_id} /></div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {roster.pagination.totalPages > 1 && (
+                <TablePagination
+                  page={currentPage}
+                  totalPages={roster.pagination.totalPages}
+                  totalItems={roster.pagination.totalCount}
+                  pageSize={pageSize}
+                  onPageChange={(page) => updateFilters({ page })}
+                />
+              )}
+            </>
+          )}
+        </Card>
+      </PageLayout>
 
       {showInviteModal && (
         <InviteEmployeeModal

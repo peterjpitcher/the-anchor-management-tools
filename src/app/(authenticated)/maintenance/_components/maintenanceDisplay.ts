@@ -1,9 +1,8 @@
 // Presentation helpers shared by the maintenance list, new and detail screens.
 //
 // Labels come from @/types/maintenance and are never restated here. This module
-// only decides how a value is drawn: which badge tone carries it, and how money
-// and dates are written. Every badge still carries its text label, so status is
-// never conveyed by colour alone.
+// only decides how a value is written: money, dates and the history trail. Badge
+// tones live in ../_shared/status-ui.ts.
 
 import { formatDateInLondon } from '@/lib/dateUtils'
 import {
@@ -14,36 +13,6 @@ import {
   type MaintenanceResponsibility,
   type MaintenanceStatus,
 } from '@/types/maintenance'
-
-export type MaintenanceBadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
-
-export const MAINTENANCE_STATUS_TONES: Record<MaintenanceStatus, MaintenanceBadgeTone> = {
-  reported: 'info',
-  quoting: 'info',
-  awaiting_landlord: 'warning',
-  with_third_party: 'warning',
-  scheduled: 'primary',
-  in_progress: 'primary',
-  on_hold: 'warning',
-  done: 'success',
-  cancelled: 'neutral',
-}
-
-export const MAINTENANCE_PRIORITY_TONES: Record<MaintenancePriority, MaintenanceBadgeTone> = {
-  critical: 'danger',
-  high: 'warning',
-  medium: 'info',
-  low: 'neutral',
-}
-
-export const MAINTENANCE_RESPONSIBILITY_TONES: Record<
-  MaintenanceResponsibility,
-  MaintenanceBadgeTone
-> = {
-  us: 'primary',
-  greene_king: 'info',
-  to_confirm: 'warning',
-}
 
 const poundsFormatter = new Intl.NumberFormat('en-GB', {
   style: 'currency',

@@ -4,6 +4,7 @@ import { Avatar, Badge, Button } from '@/ds'
 import { cn } from '@/lib/utils'
 import { getSmsConsentState, SMS_CONSENT_LABEL } from '@/lib/messages/replyEligibility'
 import type { CommunicationChannel } from '@/types/communications'
+import { SMS_CONSENT_TONE, WHATSAPP_OPT_IN_TONE } from '../_shared/status-ui'
 
 import {
   channelLabel,
@@ -31,14 +32,6 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
   )
 }
 
-const CONSENT_TONE = {
-  opted_in: 'success',
-  opted_out: 'danger',
-  // Amber, not green. "We never asked" is not consent, and the server rejects a
-  // send in this state, so the panel must not imply the customer is contactable.
-  not_recorded: 'warning',
-} as const
-
 export function ContactPanel({
   customer,
   channels,
@@ -53,7 +46,9 @@ export function ContactPanel({
     <div className={cn('p-4', className)}>
       <div className="flex flex-col items-center text-center">
         <Avatar name={name} size="xl" />
-        <h3 className="mt-3 text-sm font-semibold text-text-strong">{name}</h3>
+        {/* Not a heading: the drawer's title names the panel, and in the rail the thread
+            header beside it already carries the customer's name. */}
+        <p className="mt-3 text-sm font-semibold text-text-strong">{name}</p>
         {channels.length > 0 && (
           <p className="mt-0.5 text-xs text-text-muted">{channels.map(channelLabel).join(' · ')}</p>
         )}
@@ -81,13 +76,13 @@ export function ContactPanel({
           )}
         </DetailRow>
         <DetailRow label="SMS">
-          <Badge tone={CONSENT_TONE[consent]}>{SMS_CONSENT_LABEL[consent]}</Badge>
+          <Badge tone={SMS_CONSENT_TONE[consent]}>{SMS_CONSENT_LABEL[consent]}</Badge>
         </DetailRow>
         <DetailRow label="WhatsApp">
           {customer.whatsapp_opt_in ? (
-            <Badge tone="success">{customer.whatsapp_status ?? 'Active'}</Badge>
+            <Badge tone={WHATSAPP_OPT_IN_TONE.opted_in}>{customer.whatsapp_status ?? 'Active'}</Badge>
           ) : (
-            <Badge tone="neutral">Not opted in</Badge>
+            <Badge tone={WHATSAPP_OPT_IN_TONE.not_opted_in}>Not opted in</Badge>
           )}
         </DetailRow>
         {lastMessageAt && (
@@ -96,7 +91,7 @@ export function ContactPanel({
       </dl>
 
       <Button variant="secondary" size="md" className="mt-4 w-full justify-center" onClick={onViewProfile}>
-        View full profile
+        View Full Profile
       </Button>
     </div>
   )

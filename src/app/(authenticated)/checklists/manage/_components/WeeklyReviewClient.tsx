@@ -2,7 +2,23 @@
 
 import { useMemo, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Alert, Badge, Button, Modal, Select } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Empty,
+  Modal,
+  PageLayout,
+  Select,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/ds'
+import { cn } from '@/lib/utils'
 import type {
   CellState,
   DayPart,
@@ -10,6 +26,11 @@ import type {
   ReviewRow,
   WeeklyReview,
 } from '@/types/checklists-review'
+import { CHECKLISTS_MANAGE_LAYOUT } from '../../_shared/nav'
+import {
+  CHECKLIST_REVIEW_CELL_CLASSES,
+  type ChecklistReviewDisplayState,
+} from '../../_shared/status-ui'
 
 interface WeeklyReviewClientProps {
   data?: WeeklyReview
@@ -27,8 +48,8 @@ const DAY_PART_LABEL: Record<DayPart, string> = {
 
 // A render-time presentation state. 'future' is derived from the date, never stored on the
 // payload (the shared CellState type is not widened): a day later than today has not happened
-// yet, so an absent cell is upcoming, not a data gap.
-type DisplayState = CellState | 'future'
+// yet, so an absent cell is upcoming, not a data gap. Colours live in checklists/_shared/status-ui.
+type DisplayState = ChecklistReviewDisplayState
 
 // The seven real states, in legend order. 'future' is deliberately excluded from the legend.
 const LEGEND_STATES: CellState[] = [
@@ -40,18 +61,6 @@ const LEGEND_STATES: CellState[] = [
   'not_due',
   'no_data',
 ]
-
-// Static, complete Tailwind class names per state (no dynamic construction, design tokens only).
-const STATE_STYLE: Record<DisplayState, string> = {
-  done: 'bg-success-soft text-success-fg',
-  missed: 'bg-danger-soft text-danger-fg',
-  skipped: 'bg-warning-soft text-warning-fg',
-  not_applicable: 'bg-surface-2 text-text-muted',
-  pending: 'bg-info-soft text-info-fg',
-  not_due: 'bg-surface text-text-subtle',
-  no_data: 'bg-warning-soft text-warning-fg',
-  future: 'bg-surface text-text-subtle',
-}
 
 // Short visible glyph for each state. Never the only signal: paired with an aria-label
 // and, for done cells, the name of whoever ticked it.
@@ -227,25 +236,29 @@ export function WeeklyReviewClient({ data, error }: WeeklyReviewClientProps) {
 
   if (error) {
     return (
-      <Alert
-        tone="danger"
-        title="Could not load the weekly review"
-        actions={
-          <Button type="button" variant="secondary" onClick={() => router.refresh()}>
-            Retry
-          </Button>
-        }
-      >
-        {error}
-      </Alert>
+      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+        <Alert
+          tone="danger"
+          title="Could not load the weekly review"
+          actions={
+            <Button type="button" variant="secondary" onClick={() => router.refresh()}>
+              Retry
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
+      </PageLayout>
     )
   }
 
   if (!data) {
     return (
-      <Alert tone="warning" title="Super admins only">
-        The weekly review is only available to super admins.
-      </Alert>
+      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+        <Alert tone="warning" title="Super admins only">
+          The weekly review is only available to super admins.
+        </Alert>
+      </PageLayout>
     )
   }
 
@@ -278,84 +291,84 @@ export function WeeklyReviewClient({ data, error }: WeeklyReviewClientProps) {
   ]
 
   return (
-    <div className="space-y-4">
-      {/* Week navigation + freshness */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => navigateWeek(addDaysIso(weekStart, -7))}
-          >
-            Previous
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => navigateWeek(thisWeekStart)}
-          >
-            This week
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={nextDisabled}
-            onClick={() => navigateWeek(addDaysIso(weekStart, 7))}
-          >
-            Next
-          </Button>
+    <PageLayout
+      {...CHECKLISTS_MANAGE_LAYOUT}
+      headerActions={
+        <Button type="button" variant="secondary" size="sm" onClick={() => router.refresh()}>
+          Refresh
+        </Button>
+      }
+    >
+      {/* Which week, and which rows: the controls sit directly above the grid they drive. */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => navigateWeek(addDaysIso(weekStart, -7))}
+            >
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => navigateWeek(thisWeekStart)}
+            >
+              This Week
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={nextDisabled}
+              onClick={() => navigateWeek(addDaysIso(weekStart, 7))}
+            >
+              Next
+            </Button>
+          </div>
+          <div className="w-48">
+            <Select
+              label="Department"
+              value={departmentFilter}
+              onChange={(e) => setDepartmentFilter(e.target.value)}
+              options={departmentOptions}
+            />
+          </div>
+          <div className="w-48">
+            <Select
+              label="Day-part"
+              value={dayPartFilter}
+              onChange={(e) => setDayPartFilter(e.target.value as 'all' | DayPart)}
+              options={dayPartOptions}
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-text-muted">
-            Updated {formatLondonDateTime(data.updatedAt)} (London)
-          </span>
-          <Button type="button" variant="secondary" size="sm" onClick={() => router.refresh()}>
-            Refresh
-          </Button>
-        </div>
+        <p className="text-sm text-text-muted">
+          Week of {dayLabelShort(weekStart)} to {dayLabelShort(weekEnd)}. Updated{' '}
+          {formatLondonDateTime(data.updatedAt)} (London).
+        </p>
       </div>
 
-      <p className="text-sm text-text-muted">
-        Week of {dayLabelShort(weekStart)} to {dayLabelShort(weekEnd)}.
-      </p>
-
-      {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="w-48">
-          <Select
-            label="Department"
-            value={departmentFilter}
-            onChange={(e) => setDepartmentFilter(e.target.value)}
-            options={departmentOptions}
-          />
-        </div>
-        <div className="w-48">
-          <Select
-            label="Day-part"
-            value={dayPartFilter}
-            onChange={(e) => setDayPartFilter(e.target.value as 'all' | DayPart)}
-            options={dayPartOptions}
-          />
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-2" aria-label="Legend">
+      {/* Legend: a swatch of each cell colour, with its glyph and its name. */}
+      <ul className="flex flex-wrap gap-x-4 gap-y-2" aria-label="Legend">
         {LEGEND_STATES.map((state) => (
-          <span
-            key={state}
-            className={`inline-flex items-center gap-1.5 rounded-pill border border-border px-2 py-0.5 text-xs ${STATE_STYLE[state]}`}
-          >
-            <span aria-hidden="true" className="font-semibold">
+          <li key={state} className="inline-flex items-center gap-1.5 text-xs text-text-muted">
+            <span
+              aria-hidden="true"
+              className={cn(
+                'inline-flex h-5 min-w-5 items-center justify-center rounded-sm border border-border px-1 font-semibold',
+                CHECKLIST_REVIEW_CELL_CLASSES[state],
+              )}
+            >
               {STATE_GLYPH[state]}
             </span>
             {STATE_LABEL[state]}
-          </span>
+          </li>
         ))}
-      </div>
+      </ul>
 
       {/* Incomplete-data banner: never present a not-complete day as a clean blank. */}
       {incompleteDates.length > 0 && (
@@ -366,47 +379,44 @@ export function WeeklyReviewClient({ data, error }: WeeklyReviewClientProps) {
       )}
 
       {groups.length === 0 ? (
-        <Alert tone="info" title="Nothing to show">
-          No checklist data was generated for this week.
-        </Alert>
+        <Card>
+          <Empty title="Nothing to show" description="No checklist data was generated for this week." />
+        </Card>
       ) : (
-        <div className="overflow-x-auto rounded-default border border-border">
-          <table className="w-full min-w-[720px] border-collapse text-sm">
+        <Card padding="none">
+          <Table className="[&>table]:min-w-[720px]">
             <caption className="px-3 py-2 text-left text-sm text-text-muted">
               Weekly checklist review from {dayLabelShort(weekStart)} to {dayLabelShort(weekEnd)}.
               Each cell shows a task outcome for that day. Select a cell for full detail.
             </caption>
-            <thead>
+            <TableHeader>
               <tr>
-                <th
-                  scope="col"
-                  className="sticky left-0 top-0 z-30 min-w-[200px] border-b border-border bg-surface-2 px-3 py-2 text-left font-semibold text-text"
-                >
+                <TableHead className="sticky left-0 top-0 z-30 min-w-[200px] border-b border-border bg-surface-2 px-3">
                   Task
-                </th>
+                </TableHead>
                 {data.weekDates.map((date) => {
                   const { weekday, dayMonth } = dayHeader(date)
                   const incomplete = incompleteDates.includes(date)
                   return (
-                    <th
+                    <TableHead
                       key={date}
-                      scope="col"
-                      className="sticky top-0 z-20 min-w-[64px] border-b border-l border-border bg-surface-2 px-2 py-2 text-center font-semibold text-text"
+                      align="center"
+                      className="sticky top-0 z-20 min-w-[64px] border-b border-l border-border bg-surface-2 px-2"
                     >
                       <span className="block">{weekday}</span>
-                      <span className="block text-xs font-normal text-text-muted">{dayMonth}</span>
+                      <span className="block font-normal">{dayMonth}</span>
                       {incomplete && (
                         <span className="mt-0.5 block text-xs font-medium text-warning-fg">
                           <span aria-hidden="true">!</span>
                           <span className="sr-only">incomplete data</span>
                         </span>
                       )}
-                    </th>
+                    </TableHead>
                   )
                 })}
               </tr>
-            </thead>
-            <tbody>
+            </TableHeader>
+            <TableBody>
               {groups.map((group) => {
                 const departments = Array.from(new Set(group.rows.map((r) => r.department)))
                 const showDept = departments.length > 1
@@ -422,13 +432,13 @@ export function WeeklyReviewClient({ data, error }: WeeklyReviewClientProps) {
                   />
                 )
               })}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </Card>
       )}
 
       <CellDetailModal selected={selected} onClose={() => setSelected(null)} />
-    </div>
+    </PageLayout>
   )
 }
 
@@ -461,7 +471,7 @@ function FragmentGroup({
         </td>
       </tr>
       {rows.map((row) => (
-        <tr key={`${row.templateId}-${row.slot}`}>
+        <TableRow key={`${row.templateId}-${row.slot}`}>
           <th
             scope="row"
             className="sticky left-0 z-10 min-w-[200px] max-w-[280px] border-b border-border bg-surface px-3 py-2 text-left align-top font-medium text-text"
@@ -474,9 +484,10 @@ function FragmentGroup({
             )}
           </th>
           {row.cells.map((cell) => (
-            <td
+            <TableCell
               key={cell.date}
-              className="border-b border-l border-border p-0 text-center align-middle"
+              align="center"
+              className="border-b border-l border-border p-0 align-middle"
             >
               <CellButton
                 row={row}
@@ -484,9 +495,9 @@ function FragmentGroup({
                 todayBusiness={todayBusiness}
                 onSelect={onSelect}
               />
-            </td>
+            </TableCell>
           ))}
-        </tr>
+        </TableRow>
       ))}
     </>
   )
@@ -510,6 +521,8 @@ function CellButton({ row, cell, todayBusiness, onSelect }: CellButtonProps) {
     display === 'done' && cell.completedByName ? cell.completedByName : STATE_GLYPH[display]
 
   return (
+    // A raw button on purpose: it is one cell of the week grid, filling the cell edge to edge
+    // in the state's colour, which a DS Button cannot do.
     <button
       type="button"
       onClick={() => onSelect(row, cell, display)}
@@ -517,7 +530,10 @@ function CellButton({ row, cell, todayBusiness, onSelect }: CellButtonProps) {
       // Names truncate in the cell, so hover carries the full detail. Screen readers
       // ignore title when aria-label is set, so this adds nothing for them to repeat.
       title={cellAccessibleName(row, cell, display)}
-      className={`relative flex h-11 w-full items-center justify-center px-1 text-xs font-semibold transition-colors focus:z-10 focus-visible:outline-hidden focus-visible:shadow-ring hover:brightness-95 ${STATE_STYLE[display]}`}
+      className={cn(
+        'relative flex h-11 w-full items-center justify-center px-1 text-xs font-semibold transition-colors focus:z-10 focus-visible:outline-hidden focus-visible:shadow-ring hover:brightness-95',
+        CHECKLIST_REVIEW_CELL_CLASSES[display],
+      )}
     >
       {/* max-w caps what this cell contributes to the column's intrinsic width, so a
           long name ellipsises instead of stretching the day column across the grid. */}
@@ -559,7 +575,7 @@ function CellDetailModal({ selected, onClose }: CellDetailModalProps) {
     <Modal
       open={selected != null}
       onClose={onClose}
-      title={row?.title ?? 'Task detail'}
+      title={row?.title ?? 'Task Detail'}
       footer={
         <Button type="button" variant="secondary" onClick={onClose}>
           Close

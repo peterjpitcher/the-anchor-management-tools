@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition, useCallback } from 'react'
-import { Alert, Badge, Button, Input, Modal, Select, Icon } from '@/ds'
+import { Alert, Badge, Button, Card, Field, IconButton, Input, Modal, Select, Icon } from '@/ds'
 import {
   createTrip,
   updateTrip,
@@ -298,17 +298,17 @@ export function TripForm({
       title={editingTrip ? 'Edit Trip' : 'New Trip'}
       width="lg"
       footer={
-        <div className="flex justify-end gap-3 mt-6">
-          <Button variant="secondary" size="sm" onClick={onClose} disabled={isPending}>
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" onClick={handleSubmit} loading={isPending} disabled={isLockedShape}>
+          <Button variant="primary" onClick={handleSubmit} loading={isPending} disabled={isLockedShape}>
             {editingTrip ? 'Save Changes' : 'Save Trip'}
           </Button>
-        </div>
+        </>
       }
     >
-      <div className="space-y-5">
+      <div className="space-y-4">
         {error && <Alert tone="danger">{error}</Alert>}
 
         {isLockedShape && (
@@ -321,10 +321,7 @@ export function TripForm({
         )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div>
-            <label htmlFor="trip-date" className="mb-1 block text-sm font-medium text-text">
-              Trip date <span aria-hidden="true">*</span>
-            </label>
+          <Field label="Trip date" required>
             <Input
               id="trip-date"
               type="date"
@@ -333,11 +330,8 @@ export function TripForm({
               onChange={(e) => setTripDate(e.target.value)}
               disabled={isLockedShape}
             />
-          </div>
-          <div>
-            <label htmlFor="trip-driver" className="mb-1 block text-sm font-medium text-text">
-              Who drove <span aria-hidden="true">*</span>
-            </label>
+          </Field>
+          <Field label="Who drove" required>
             <Select
               id="trip-driver"
               className="w-full"
@@ -352,11 +346,8 @@ export function TripForm({
                 </option>
               ))}
             </Select>
-          </div>
-          <div>
-            <label htmlFor="trip-desc" className="mb-1 block text-sm font-medium text-text">
-              Reason for trip <span aria-hidden="true">*</span>
-            </label>
+          </Field>
+          <Field label="Reason for trip" required>
             <Input
               id="trip-desc"
               value={description}
@@ -365,11 +356,11 @@ export function TripForm({
               placeholder="e.g. Collect wholesale order"
               disabled={isLockedShape}
             />
-          </div>
+          </Field>
         </div>
 
-        <div>
-          <h4 className="text-sm font-medium text-text mb-3">Route</h4>
+        <fieldset>
+          <legend className="mb-3 text-xs font-medium uppercase tracking-wider text-text-muted">Route</legend>
 
           <div className="flex items-center gap-2 mb-3 text-sm text-text-muted">
             <Badge tone="success">Start</Badge>
@@ -417,11 +408,10 @@ export function TripForm({
                       aria-label={`Miles from ${fromName} to ${toName}`}
                     />
                     {stops.length > 1 && (
-                      <Button
-                        variant="ghost"
+                      <IconButton
                         size="sm"
                         icon={<Icon name="trash" size={16} className="text-danger" />}
-                        aria-label={`Remove stop ${index + 1}`}
+                        label={`Remove stop ${index + 1}`}
                         onClick={() => removeStop(index)}
                       />
                     )}
@@ -432,7 +422,7 @@ export function TripForm({
                     </p>
                   )}
                   {stopErrors.has(index) && (
-                    <p className="mt-1 ml-6 text-xs text-danger">{stopErrors.get(index)}</p>
+                    <p className="mt-1 ml-6 text-xs text-danger-fg" role="alert">{stopErrors.get(index)}</p>
                   )}
                 </div>
               )
@@ -474,12 +464,12 @@ export function TripForm({
               </p>
             )}
             {returnMilesError && (
-              <p className="mt-1 ml-6 text-xs text-danger">{returnMilesError}</p>
+              <p className="mt-1 ml-6 text-xs text-danger-fg" role="alert">{returnMilesError}</p>
             )}
           </div>
-        </div>
+        </fieldset>
 
-        <div className="rounded-lg border border-border bg-surface-2 p-4">
+        <Card variant="secondary">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium text-text">Total Miles</span>
             <span className="text-lg font-semibold text-text">
@@ -514,7 +504,7 @@ export function TripForm({
               )}
             </div>
           )}
-        </div>
+        </Card>
       </div>
     </Modal>
   )

@@ -2,13 +2,20 @@
 
 import { useState, useEffect } from 'react'
 import { CateringPackage } from '@/types/private-bookings'
-import { Modal, ModalActions, Icon } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Field } from '@/ds'
-import { Checkbox } from '@/ds'
+import {
+    Alert,
+    Button,
+    Checkbox,
+    ConfirmDialog,
+    Field,
+    FormFooter,
+    Icon,
+    Input,
+    Modal,
+    Section,
+    Select,
+    Textarea,
+} from '@/ds'
 import { createCateringPackage, updateCateringPackage, deleteCateringPackage } from '@/app/actions/privateBookingActions'
 
 interface CateringPackageModalProps {
@@ -26,6 +33,7 @@ export function CateringPackageModal({
 }: CateringPackageModalProps) {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
+    const [confirmingDelete, setConfirmingDelete] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [selectedPricingModel, setSelectedPricingModel] = useState<string>('per_head')
 
@@ -117,7 +125,7 @@ export function CateringPackageModal({
     }
 
     const handleDelete = async () => {
-        if (!packageToEdit || !confirm('Are you sure you want to delete this package? This cannot be undone.')) return
+        if (!packageToEdit) return
 
         setIsDeleting(true)
         try {
@@ -171,9 +179,9 @@ export function CateringPackageModal({
         >
             <form action={handleSubmit} className="space-y-6">
                 {error && (
-                    <div className="bg-danger-soft text-danger-fg border border-danger-border p-3 rounded-md text-sm">
+                    <Alert tone="danger" size="sm">
                         {error}
-                    </div>
+                    </Alert>
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -243,7 +251,7 @@ export function CateringPackageModal({
                         />
                     </Field>
 
-                    <Field label="VAT Rate (%)" help="Stored prices are net; VAT is applied on top at this rate">
+                    <Field label="VAT Rate (%)" hint="Stored prices are net; VAT is applied on top at this rate">
                         <Input
                             type="number"
                             name="vat_rate"
@@ -263,9 +271,8 @@ export function CateringPackageModal({
                     </div>
                 </div>
 
-                <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-text uppercase tracking-wider">Compliance</h3>
-
+                <Section title="Compliance">
+                    <div className="space-y-4">
                     <Checkbox
                         name="requires_waiver"
                         label="Requires self-catering waiver"
@@ -286,12 +293,12 @@ export function CateringPackageModal({
                         description="This package is only available during certain times of the year"
                         defaultChecked={packageToEdit?.seasonal ?? false}
                     />
-                </div>
+                    </div>
+                </Section>
 
-                <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-text uppercase tracking-wider">Package Details</h3>
-
-                    <Field label="Summary" help="One-line overview shown to staff">
+                <Section title="Package Details">
+                    <div className="space-y-4">
+                    <Field label="Summary" hint="One-line overview shown to staff">
                         <Textarea
                             name="summary"
                             defaultValue={packageToEdit?.summary || ''}
@@ -300,7 +307,7 @@ export function CateringPackageModal({
                         />
                     </Field>
 
-                    <Field label="Includes" help="What guests receive">
+                    <Field label="Includes" hint="What guests receive">
                         <Textarea
                             name="includes"
                             defaultValue={packageToEdit?.includes || ''}
@@ -309,7 +316,7 @@ export function CateringPackageModal({
                         />
                     </Field>
 
-                    <Field label="Served" help="How the food is presented or served">
+                    <Field label="Served" hint="How the food is presented or served">
                         <Textarea
                             name="served"
                             defaultValue={packageToEdit?.served || ''}
@@ -318,7 +325,7 @@ export function CateringPackageModal({
                         />
                     </Field>
 
-                    <Field label="Good to Know" help="Dietary options, advance notice requirements, etc.">
+                    <Field label="Good to Know" hint="Dietary options, advance notice requirements, etc.">
                         <Textarea
                             name="good_to_know"
                             defaultValue={packageToEdit?.good_to_know || ''}
@@ -327,7 +334,7 @@ export function CateringPackageModal({
                         />
                     </Field>
 
-                    <Field label="Guest-Friendly Description" help="Shown to customers on the booking form">
+                    <Field label="Guest-Friendly Description" hint="Shown to customers on the booking form">
                         <Textarea
                             name="guest_description"
                             defaultValue={packageToEdit?.guest_description || ''}
@@ -336,7 +343,7 @@ export function CateringPackageModal({
                         />
                     </Field>
 
-                    <Field label="Dietary Notes" help="Allergen information or dietary flags for the kitchen">
+                    <Field label="Dietary Notes" hint="Allergen information or dietary flags for the kitchen">
                         <Textarea
                             name="dietary_notes"
                             defaultValue={packageToEdit?.dietary_notes || ''}
@@ -344,33 +351,42 @@ export function CateringPackageModal({
                             placeholder="e.g. Contains gluten, dairy. Vegan option available on request."
                         />
                     </Field>
-                </div>
-
-                <ModalActions align="between">
-                    {isEditing ? (
-                        <Button
-                            type="button"
-                            variant="danger"
-                            onClick={handleDelete}
-                            disabled={isSubmitting || isDeleting}
-                            leftIcon={<Icon name="trash" size={16} />}
-                        >
-                            Delete
-                        </Button>
-                    ) : (
-                        <div /> /* Spacer */
-                    )}
-
-                    <div className="flex gap-3">
-                        <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting || isDeleting}>
-                            Cancel
-                        </Button>
-                        <Button type="submit" loading={isSubmitting} disabled={isSubmitting || isDeleting}>
-                            {isEditing ? 'Save Changes' : 'Create Package'}
-                        </Button>
                     </div>
-                </ModalActions>
+                </Section>
+
+                <FormFooter
+                    start={
+                        isEditing ? (
+                            <Button
+                                type="button"
+                                variant="danger"
+                                onClick={() => setConfirmingDelete(true)}
+                                disabled={isSubmitting || isDeleting}
+                                icon={<Icon name="trash" size={16} />}
+                            >
+                                Delete
+                            </Button>
+                        ) : undefined
+                    }
+                >
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting || isDeleting}>
+                        Cancel
+                    </Button>
+                    <Button type="submit" variant="primary" loading={isSubmitting} disabled={isSubmitting || isDeleting}>
+                        {isEditing ? 'Save Changes' : 'Create Package'}
+                    </Button>
+                </FormFooter>
             </form>
+
+            <ConfirmDialog
+                open={confirmingDelete}
+                onClose={() => setConfirmingDelete(false)}
+                onConfirm={handleDelete}
+                title="Delete Package?"
+                message="Are you sure you want to delete this package? This cannot be undone."
+                confirmLabel="Delete Package"
+                tone="danger"
+            />
         </Modal>
     )
 }

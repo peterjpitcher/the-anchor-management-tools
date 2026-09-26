@@ -27,10 +27,11 @@ import type { MarketingCampaignStats, MarketingCampaignStatus } from '@/types/ma
 
 import {
   CampaignStatusBadge,
-  MARKETING_SECTION_NAV,
   formatCountWithRate,
   formatDateTimeInLondon,
 } from './_shared/marketing-ui'
+import { marketingLayout } from './_shared/nav'
+import { UrlTablePagination } from './_components/UrlTablePagination'
 import { UnsubscribeEmailCard } from './UnsubscribeEmailCard'
 
 export const dynamic = 'force-dynamic'
@@ -54,12 +55,12 @@ export default async function MarketingCampaignsPage({ searchParams }: { searchP
   const sort = SORTS.find(value => value === firstValue(params.sort)) ?? 'scheduled_asc'
   const pageNumber = Number(firstValue(params.page))
   const page = Number.isSafeInteger(pageNumber) && pageNumber > 0 ? Math.min(pageNumber, 1000000) : 1
-  const pageHref = (nextPage: number) => {
-    const query = new URLSearchParams({ status, sort, page: String(nextPage) })
-    if (search) query.set('search', search)
-    if (audience) query.set('audience', audience)
-    return `/marketing?${query}`
-  }
+  // The filters in force, kept on every page link so paging never drops a search.
+  const filterQuery: Record<string, string> = { status, sort }
+  if (search) filterQuery.search = search
+  if (audience) filterQuery.audience = audience
+  const pageHref = (nextPage: number) => `/marketing?${new URLSearchParams({ ...filterQuery, page: String(nextPage) })}`
+  const layoutProps = marketingLayout('campaigns')
 
   const [canCreate, canEdit] = await Promise.all([
     checkUserPermission('marketing', 'create'),
@@ -76,7 +77,7 @@ export default async function MarketingCampaignsPage({ searchParams }: { searchP
 
   if (campaignsResult.error || !campaignsResult.data) {
     return (
-      <PageLayout title="Marketing" subtitle="Campaigns" navItems={MARKETING_SECTION_NAV}>
+      <PageLayout {...layoutProps}>
         <Alert tone="danger" title="Could not load campaigns">
           {campaignsResult.error ?? 'Something went wrong. Refresh to try again.'}
         </Alert>
@@ -105,178 +106,187 @@ export default async function MarketingCampaignsPage({ searchParams }: { searchP
 
   return (
     <PageLayout
-      title="Marketing"
-      subtitle="Email campaigns to guests and business contacts"
-      navItems={MARKETING_SECTION_NAV}
+      {...layoutProps}
       headerActions={
         canCreate ? (
-          <LinkButton href="/marketing/campaigns/new" variant="primary">
-            New campaign
+          <LinkButton href="/marketing/campaigns/new" variant="primary" size="sm">
+            New Campaign
           </LinkButton>
         ) : undefined
       }
     >
-      <div className="space-y-6">
-        {sendingOff && (
-          <Alert tone="warning" title="Sending is switched off">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="min-w-0">
-                Nothing will go out, even if a campaign is scheduled. Turn sending back on in
-                Settings when you are ready.
-              </p>
-              <LinkButton href="/marketing/settings" variant="secondary" size="sm">
-                Go to Settings
-              </LinkButton>
-            </div>
-          </Alert>
-        )}
+      {sendingOff && (
+        <Alert tone="warning" title="Sending is switched off">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="min-w-0">
+              Nothing will go out, even if a campaign is scheduled. Turn sending back on in
+              Settings when you are ready.
+            </p>
+            <LinkButton href="/marketing/settings" variant="secondary" size="sm">
+              Go to Settings
+            </LinkButton>
+          </div>
+        </Alert>
+      )}
 
-        {settingsResult.error && (
-          <Alert tone="warning" title="Could not check whether sending is switched on">
-            {settingsResult.error}. Treat the send switch as unknown until this loads.
-          </Alert>
-        )}
+      {settingsResult.error && (
+        <Alert tone="warning" title="Could not check whether sending is switched on">
+          {settingsResult.error}. Treat the send switch as unknown until this loads.
+        </Alert>
+      )}
 
-        {canEdit && <UnsubscribeEmailCard />}
+      {canEdit && <UnsubscribeEmailCard />}
 
-        <Card>
-          <form key={`${search}:${status}:${audience}:${sort}`} action="/marketing" method="get" className="grid gap-4 border-b border-border p-4 sm:grid-cols-2 xl:grid-cols-5" aria-label="Campaign filters">
-            <Input label="Search campaigns" name="search" type="search" placeholder="Campaign name or subject" defaultValue={search} maxLength={200} />
-            <Select label="Status" name="status" defaultValue={status}>
-              <option value="upcoming">Scheduled and drafts</option>
-              <option value="all">All statuses</option>
-              {STATUSES.map(value => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>)}
-            </Select>
-            <Select label="Audience" name="audience" defaultValue={audience}>
-              <option value="">All audiences</option>
-              <option value="customer">Guests</option>
-              <option value="business">Business contacts</option>
-            </Select>
-            <Select label="Sort by" name="sort" defaultValue={sort}>
-              <option value="scheduled_asc">Send date: earliest first</option>
-              <option value="scheduled_desc">Send date: latest first</option>
-              <option value="newest">Created: newest first</option>
-              <option value="oldest">Created: oldest first</option>
-              <option value="name_asc">Campaign name: A to Z</option>
-              <option value="name_desc">Campaign name: Z to A</option>
-            </Select>
-            <div className="flex items-end gap-2">
-              <Button type="submit" variant="primary">Apply</Button>
-              <LinkButton href="/marketing" variant="secondary">Reset</LinkButton>
-            </div>
-          </form>
-          <p className="px-4 py-3 text-sm text-text-muted" aria-live="polite">
-            {total === 0 ? 'No matching campaigns' : `${(page - 1) * PAGE_SIZE + 1} to ${Math.min(page * PAGE_SIZE, total)} of ${total} campaigns`}
-            {status === 'upcoming' && '. Showing scheduled and draft emails only.'}
-          </p>
-          {campaigns.length === 0 ? (
-            <Empty
-              icon="inbox"
-              title="No campaigns match these filters"
-              description="Try another search or choose All statuses to include completed campaigns."
-              action={
-                  <LinkButton href="/marketing?status=all" variant="secondary">
-                    Show all campaigns
-                  </LinkButton>
-              }
-            />
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Campaign</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Scheduled</TableHead>
-                    <TableHead align="right">Recipients</TableHead>
-                    <TableHead align="right">Sent</TableHead>
-                    <TableHead align="right">Delivered</TableHead>
-                    <TableHead align="right">Opened</TableHead>
-                    <TableHead align="right">Clicked</TableHead>
-                    <TableHead align="right">Unsubscribed</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {campaigns.map((campaign) => {
-                    const stats = statsById.get(campaign.id) ?? null
-                    return (
-                      <TableRow key={campaign.id}>
-                        <TableCell>
-                          <Link
-                            href={`/marketing/campaigns/${campaign.id}`}
-                            className="font-medium text-text underline-offset-2 hover:underline"
-                          >
-                            {campaign.name}
-                          </Link>
-                          <div className="text-xs text-text-muted">{campaign.subject}</div>
-                        </TableCell>
-                        <TableCell>
-                          <CampaignStatusBadge status={campaign.status} />
-                        </TableCell>
-                        <TableCell>
-                          {campaign.scheduledFor ? (
-                            formatDateTimeInLondon(campaign.scheduledFor)
-                          ) : (
-                            <span className="text-text-muted">Not scheduled</span>
-                          )}
-                        </TableCell>
-                        <TableCell align="right">{campaign.summary.recipients}</TableCell>
-                        <TableCell align="right">{campaign.summary.sent}</TableCell>
-                        <TableCell align="right">
-                          {stats ? (
-                            formatCountWithRate(stats.delivered, stats.rates.deliveredRate)
-                          ) : (
-                            <span className="text-text-muted">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell align="right">
-                          {stats ? (
-                            stats.opened > 0 ? (
-                              formatCountWithRate(stats.opened, stats.rates.openRate)
-                            ) : (
-                              <span className="text-text-muted">Not tracked</span>
-                            )
-                          ) : (
-                            <span className="text-text-muted">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell align="right">
-                          {stats ? (
-                            formatCountWithRate(stats.clicked, stats.rates.clickRate)
-                          ) : (
-                            <span className="text-text-muted">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell align="right">
-                          {stats ? (
-                            formatCountWithRate(stats.unsubscribed, stats.rates.unsubscribeRate)
-                          ) : (
-                            <span className="text-text-muted">-</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-          {pages > 1 && (
-            <nav aria-label="Campaign pages" className="flex items-center justify-between border-t border-border p-4">
-              {page > 1 ? <LinkButton href={pageHref(page - 1)} variant="secondary">Previous</LinkButton> : <span />}
-              <span className="text-sm text-text-muted">Page {page} of {pages}</span>
-              {page < pages ? <LinkButton href={pageHref(page + 1)} variant="secondary">Next</LinkButton> : <span />}
-            </nav>
-          )}
-        </Card>
+      {/* Filters sit directly above the list they filter. A plain GET form, so the filters
+          live in the URL and the server renders the result. */}
+      <form key={`${search}:${status}:${audience}:${sort}`} action="/marketing" method="get" className="flex flex-wrap items-end gap-3" aria-label="Campaign filters">
+        <div className="w-full sm:w-64">
+          <Input label="Search campaigns" name="search" type="search" placeholder="Campaign name or subject" defaultValue={search} maxLength={200} />
+        </div>
+        <div className="w-full sm:w-48">
+          <Select label="Status" name="status" defaultValue={status}>
+            <option value="upcoming">Scheduled and drafts</option>
+            <option value="all">All statuses</option>
+            {STATUSES.map(value => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>)}
+          </Select>
+        </div>
+        <div className="w-full sm:w-48">
+          <Select label="Audience" name="audience" defaultValue={audience}>
+            <option value="">All audiences</option>
+            <option value="customer">Guests</option>
+            <option value="business">Business contacts</option>
+          </Select>
+        </div>
+        <div className="w-full sm:w-56">
+          <Select label="Sort by" name="sort" defaultValue={sort}>
+            <option value="scheduled_asc">Send date: earliest first</option>
+            <option value="scheduled_desc">Send date: latest first</option>
+            <option value="newest">Created: newest first</option>
+            <option value="oldest">Created: oldest first</option>
+            <option value="name_asc">Campaign name: A to Z</option>
+            <option value="name_desc">Campaign name: Z to A</option>
+          </Select>
+        </div>
+        <div className="flex items-end gap-2">
+          <LinkButton href="/marketing" variant="secondary">Reset</LinkButton>
+          <Button type="submit" variant="primary">Apply</Button>
+        </div>
+      </form>
 
-        <p className="text-sm text-text-muted">
-          Campaigns are authored as JSON content files and pasted in on the new campaign page.
-          There is no editor here on purpose: the layout blocks are fixed so every email renders
-          the same way in every inbox. Opens are approximate because mail apps can prefetch
-          images. Clicks exclude suspected automated link scans.
+      <Card padding="none">
+        <p className="border-b border-border px-4 py-3 text-sm text-text-muted" aria-live="polite">
+          {total === 0 ? 'No matching campaigns' : `${(page - 1) * PAGE_SIZE + 1} to ${Math.min(page * PAGE_SIZE, total)} of ${total} campaigns`}
+          {status === 'upcoming' && '. Showing scheduled and draft emails only.'}
         </p>
-      </div>
+        {campaigns.length === 0 ? (
+          <Empty
+            size="sm"
+            icon="inbox"
+            title="No campaigns match these filters"
+            description="Try another search or choose All statuses to include completed campaigns."
+            action={
+                <LinkButton href="/marketing?status=all" variant="secondary" size="sm">
+                  Show All Campaigns
+                </LinkButton>
+            }
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Campaign</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Scheduled</TableHead>
+                <TableHead align="right">Recipients</TableHead>
+                <TableHead align="right">Sent</TableHead>
+                <TableHead align="right">Delivered</TableHead>
+                <TableHead align="right">Opened</TableHead>
+                <TableHead align="right">Clicked</TableHead>
+                <TableHead align="right">Unsubscribed</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {campaigns.map((campaign) => {
+                const stats = statsById.get(campaign.id) ?? null
+                return (
+                  <TableRow key={campaign.id}>
+                    <TableCell>
+                      <Link
+                        href={`/marketing/campaigns/${campaign.id}`}
+                        className="font-medium text-text underline-offset-2 hover:underline"
+                      >
+                        {campaign.name}
+                      </Link>
+                      <div className="text-xs text-text-muted">{campaign.subject}</div>
+                    </TableCell>
+                    <TableCell>
+                      <CampaignStatusBadge status={campaign.status} />
+                    </TableCell>
+                    <TableCell>
+                      {campaign.scheduledFor ? (
+                        formatDateTimeInLondon(campaign.scheduledFor)
+                      ) : (
+                        <span className="text-text-muted">Not scheduled</span>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">{campaign.summary.recipients}</TableCell>
+                    <TableCell align="right">{campaign.summary.sent}</TableCell>
+                    <TableCell align="right">
+                      {stats ? (
+                        formatCountWithRate(stats.delivered, stats.rates.deliveredRate)
+                      ) : (
+                        <span className="text-text-muted">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      {stats ? (
+                        stats.opened > 0 ? (
+                          formatCountWithRate(stats.opened, stats.rates.openRate)
+                        ) : (
+                          <span className="text-text-muted">Not tracked</span>
+                        )
+                      ) : (
+                        <span className="text-text-muted">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      {stats ? (
+                        formatCountWithRate(stats.clicked, stats.rates.clickRate)
+                      ) : (
+                        <span className="text-text-muted">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      {stats ? (
+                        formatCountWithRate(stats.unsubscribed, stats.rates.unsubscribeRate)
+                      ) : (
+                        <span className="text-text-muted">-</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        )}
+        {pages > 1 && (
+          <UrlTablePagination
+            page={page}
+            totalPages={pages}
+            totalItems={total}
+            pageSize={PAGE_SIZE}
+            path="/marketing"
+            query={filterQuery}
+          />
+        )}
+      </Card>
+
+      <p className="text-sm text-text-muted">
+        Campaigns are authored as JSON content files and pasted in on the new campaign page.
+        There is no editor here on purpose: the layout blocks are fixed so every email renders
+        the same way in every inbox. Opens are approximate because mail apps can prefetch
+        images. Clicks exclude suspected automated link scans.
+      </p>
     </PageLayout>
   )
 }

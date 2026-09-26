@@ -1,6 +1,6 @@
 'use client'
 
-import { Textarea } from '@/ds'
+import { Card, CardBody, CardHeader, Textarea } from '@/ds'
 import { parseKeywords } from '@/lib/keywords'
 
 interface KeywordStrategyCardProps {
@@ -35,14 +35,10 @@ function KeywordField({
 
   return (
     <div className="space-y-1.5">
-      <div>
-        <label htmlFor={id} className="block text-sm font-medium text-text">
-          {label}
-        </label>
-        <p className="text-xs text-text-muted mt-0.5">{helpText}</p>
-      </div>
       <Textarea
         id={id}
+        label={label}
+        hint={helpText}
         rows={rows}
         value={value}
         placeholder={placeholder}
@@ -64,14 +60,13 @@ export function KeywordStrategyCard({
   onLocalChange,
 }: KeywordStrategyCardProps) {
   return (
-    <div className="rounded-lg border border-cat-3/20 bg-cat-3-soft p-4 space-y-4">
-      <div>
-        <h2 className="text-base font-semibold text-cat-3-fg">Keyword Strategy</h2>
-        <p className="mt-0.5 text-sm text-text-muted">
-          Paste your researched keywords here — these drive all AI-generated content. Accepts
-          comma-separated or one per line.
-        </p>
-      </div>
+    <Card>
+      <CardHeader title="Keyword Strategy" />
+      <CardBody className="space-y-4">
+      <p className="text-sm text-text-muted">
+        Paste your researched keywords here: these drive all AI-generated content. Accepts
+        comma-separated or one per line.
+      </p>
 
       <KeywordField
         id="primary-keywords"
@@ -102,6 +97,7 @@ export function KeywordStrategyCard({
         placeholder={'things to do Sipson\nWest Drayton evening out\nnear Heathrow pubs'}
         onChange={onLocalChange}
       />
-    </div>
+      </CardBody>
+    </Card>
   )
 }

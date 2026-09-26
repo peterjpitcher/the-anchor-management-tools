@@ -5,10 +5,36 @@ import { useRouter } from 'next/navigation';
 import { createTimeclockSession, updateTimeclockSession, deleteTimeclockSession, approveTimeclockSession } from '@/app/actions/timeclock';
 import type { SessionPremiumInput, TimeclockSessionWithEmployee } from '@/app/actions/timeclock';
 import type { RotaEmployee } from '@/app/actions/rota';
-import { Badge, Button, ConfirmDialog, IconButton, Input, Select, toast, Icon } from '@/ds';
+import {
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardFooter,
+  CardHeader,
+  Checkbox,
+  ConfirmDialog,
+  Empty,
+  FormFooter,
+  IconButton,
+  Input,
+  PageLayout,
+  Section,
+  Select,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  toast,
+  Icon,
+} from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { resolvePremiumBoundaryIso } from '@/lib/timeclock/session-times';
 import { displayName } from '@/lib/employees/display-name';
+import type { RotaLayoutProps } from '../_shared/layout';
+import { TIMECLOCK_FLAG_TONE, TIMECLOCK_REVIEWED_ROW_CLASSES } from '../_shared/status-ui';
 
 // Premium rate presets offered in the review UI. 'custom' captures a bespoke
 // £/hr override; 'none' clears any premium.
@@ -52,6 +78,10 @@ function premiumChipLabel(
 }
 
 interface TimeclockManagerProps {
+  /** The page header, built once by page.tsx so the error state shows the same one. */
+  layout: RotaLayoutProps;
+  /** Shown above the page body, such as the alert for a secondary load that failed. */
+  notice?: React.ReactNode;
   sessions: TimeclockSessionWithEmployee[];
   employees: RotaEmployee[];
   periodStart: string;
@@ -66,7 +96,7 @@ interface TimeclockManagerProps {
 }
 
 // A short read-only label describing the premium the linked shift would pay when
-// the session has no explicit override — shown so the manager knows what will be
+// the session has no explicit override, shown so the manager knows what will be
 // paid before deciding whether to override.
 function inheritedShiftPremiumLabel(s: TimeclockSessionWithEmployee): string | null {
   return premiumChipLabel(s.shift_premium_reason, s.shift_rate_multiplier, s.shift_rate_override);
@@ -86,7 +116,7 @@ function formatPeriodRange(start: string, end: string): string {
 }
 
 function durationHours(clockIn: string, clockOut: string | null): string {
-  if (!clockOut) return '—';
+  if (!clockOut) return '–';
   const diff = new Date(clockOut).getTime() - new Date(clockIn).getTime();
   const hrs = diff / 3600000;
   return `${hrs.toFixed(1)}h`;
@@ -99,6 +129,8 @@ function empName(emp: RotaEmployee): string {
 }
 
 export default function TimeclockManager({
+  layout,
+  notice,
   sessions: initialSessions,
   employees,
   periodStart,
@@ -170,7 +202,7 @@ export default function TimeclockManager({
     setEditOut(s.clock_out_local ?? '');
     setEditNotes(s.notes ?? '');
 
-    // Seed the editable premium from the session's OWN premium only — an
+    // Seed the editable premium from the session's OWN premium only: an
     // explicit manager override. We deliberately do NOT seed from the linked
     // shift: otherwise opening a row just to fix a clock time and saving would
     // bake the shift's premium onto the session as a spurious override. When the
@@ -208,7 +240,7 @@ export default function TimeclockManager({
   };
 
   // Has the manager actually touched the override relative to what the session
-  // already stored? If not, we must NOT send a premium on save — otherwise a
+  // already stored? If not, we must NOT send a premium on save, otherwise a
   // pure clock-time correction would bake the current control state into a
   // spurious session override. Compares the edit control against the session's
   // OWN premium only (never the inherited shift default).
@@ -288,165 +320,171 @@ export default function TimeclockManager({
     });
   };
 
+  const orderedDates = Array.from(new Set(visibleSessions.map(s => s.work_date)));
+  const sessionsByDate = visibleSessions.reduce<Record<string, typeof visibleSessions>>((acc, s) => {
+    if (!acc[s.work_date]) acc[s.work_date] = [];
+    acc[s.work_date].push(s);
+    return acc;
+  }, {});
+
   return (
-    <div className="space-y-4">
-      {/* Pay cycle selector */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <select
-            className="text-sm border border-border rounded-lg px-3 py-1.5 text-text bg-surface outline-hidden focus:border-border-focus focus:shadow-ring"
-            value={`?year=${year}&month=${month}`}
-            onChange={e => { if (e.target.value) router.push(`/rota/timeclock${e.target.value}`); }}
-          >
-            {monthOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-          <span className="text-xs text-text-soft">{formatPeriodRange(periodStart, periodEnd)}</span>
-        </div>
-        <div className="flex items-center gap-3">
-          {approvedCount > 0 && (
-            <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showApproved}
-                onChange={e => setShowApproved(e.target.checked)}
-                className="h-4 w-4 accent-primary"
-              />
-              Show approved ({approvedCount})
-            </label>
-          )}
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            leftIcon={<Icon name="plus" size={16} />}
-            onClick={() => { setShowAddForm(v => !v); setAddDate(periodStart); }}
-          >
-            Add entry
-          </Button>
-        </div>
+    <PageLayout
+      {...layout}
+      headerActions={
+        <Button
+          type="button"
+          size="sm"
+          variant="primary"
+          icon={<Icon name="plus" size={16} />}
+          onClick={() => { setShowAddForm(v => !v); setAddDate(periodStart); }}
+        >
+          Add Entry
+        </Button>
+      }
+    >
+      {notice}
+
+      {/* Pay cycle, and whether approved sessions show */}
+      <div className="flex flex-wrap items-end gap-3">
+        <Select
+          label="Pay cycle"
+          value={`?year=${year}&month=${month}`}
+          onChange={e => { if (e.target.value) router.push(`/rota/timeclock${e.target.value}`); }}
+          options={monthOptions}
+        />
+        <p className="flex h-input-h items-center text-xs text-text-soft">{formatPeriodRange(periodStart, periodEnd)}</p>
+        {approvedCount > 0 && (
+          <div className="flex h-input-h items-center">
+            <Checkbox
+              checked={showApproved}
+              onChange={checked => setShowApproved(checked)}
+              label={`Show approved (${approvedCount})`}
+            />
+          </div>
+        )}
       </div>
 
       {/* Add entry form */}
       {showAddForm && (
-        <div className="rounded-lg border border-border bg-surface-2 p-4 space-y-3">
-          <p className="text-sm font-medium text-text">Manual timeclock entry</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <div className="sm:col-span-2">
-              <Select
-                label="Employee"
-                value={addEmployeeId}
-                onChange={e => setAddEmployeeId(e.target.value)}
-              >
-                <option value="">Select employee…</option>
-                {employees.map(e => (
-                  <option key={e.employee_id} value={e.employee_id}>{empName(e)}</option>
-                ))}
-              </Select>
-            </div>
-            <Input
-              label="Date"
-              type="date"
-              value={addDate}
-              min={periodStart}
-              max={periodEnd}
-              onChange={e => setAddDate(e.target.value)}
-            />
-            <div className="hidden sm:block" />
-            <Input
-              label="Clock in"
-              type="time"
-              value={addIn}
-              onChange={e => setAddIn(e.target.value)}
-            />
-            <Input
-              label="Clock out (optional)"
-              type="time"
-              value={addOut}
-              onChange={e => setAddOut(e.target.value)}
-            />
-            <div className="sm:col-span-2">
+        <Card>
+          <CardHeader title="Manual Timeclock Entry" />
+          <CardBody className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+              <div className="sm:col-span-2">
+                <Select
+                  label="Employee"
+                  value={addEmployeeId}
+                  onChange={e => setAddEmployeeId(e.target.value)}
+                >
+                  <option value="">Select employee…</option>
+                  {employees.map(e => (
+                    <option key={e.employee_id} value={e.employee_id}>{empName(e)}</option>
+                  ))}
+                </Select>
+              </div>
               <Input
-                label="Notes (optional)"
-                type="text"
-                value={addNotes}
-                onChange={e => setAddNotes(e.target.value)}
-                placeholder="e.g. Forgot to clock in, corrected by manager"
+                label="Date"
+                type="date"
+                value={addDate}
+                min={periodStart}
+                max={periodEnd}
+                onChange={e => setAddDate(e.target.value)}
               />
+              <div className="hidden sm:block" />
+              <Input
+                label="Clock in"
+                type="time"
+                value={addIn}
+                onChange={e => setAddIn(e.target.value)}
+              />
+              <Input
+                label="Clock out (optional)"
+                type="time"
+                value={addOut}
+                onChange={e => setAddOut(e.target.value)}
+              />
+              <div className="sm:col-span-2">
+                <Input
+                  label="Notes (optional)"
+                  type="text"
+                  value={addNotes}
+                  onChange={e => setAddNotes(e.target.value)}
+                  placeholder="e.g. Forgot to clock in, corrected by manager"
+                />
+              </div>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <Button type="button" size="sm" variant="primary" onClick={handleAdd} disabled={addPending}>
-              {addPending ? 'Saving…' : 'Save entry'}
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setShowAddForm(false)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
+            <FormFooter>
+              <Button type="button" variant="secondary" onClick={() => setShowAddForm(false)}>
+                Cancel
+              </Button>
+              <Button type="button" variant="primary" onClick={handleAdd} disabled={addPending}>
+                {addPending ? 'Saving…' : 'Save Entry'}
+              </Button>
+            </FormFooter>
+          </CardBody>
+        </Card>
       )}
 
-      {visibleSessions.length === 0 ? (
-        <p className="text-sm text-text-soft italic py-6 text-center">
-          {sessions.length === 0
-            ? 'No timeclock sessions for this pay cycle.'
-            : 'All sessions approved. Check "Show approved" to view them.'}
-        </p>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-surface-2 border-b border-border">
-                <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-text-muted">Employee</th>
-                <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-text-muted">Clock In</th>
-                <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-text-muted">Clock Out</th>
-                <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-text-muted">Hours</th>
-                <th scope="col" className="px-3 py-2 text-xs font-medium text-text-muted">Flags</th>
-                <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-text-muted">Notes</th>
-                <th scope="col" className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {(() => {
-                const orderedDates = Array.from(new Set(visibleSessions.map(s => s.work_date)));
-                const byDate = visibleSessions.reduce<Record<string, typeof visibleSessions>>((acc, s) => {
-                  if (!acc[s.work_date]) acc[s.work_date] = [];
-                  acc[s.work_date].push(s);
-                  return acc;
-                }, {});
-                return orderedDates.flatMap(date => {
-                  const rows = byDate[date];
+      <Section
+        title="Sessions"
+        description="Edit times to correct mistakes or fill in missed clock-outs before payroll is run."
+      >
+        <Card padding="none">
+          {visibleSessions.length === 0 ? (
+            <Empty
+              size="sm"
+              icon="clock"
+              title={sessions.length === 0 ? 'No timeclock sessions for this pay cycle' : 'All sessions approved'}
+              description={sessions.length === 0 ? undefined : 'Tick "Show approved" to view them.'}
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Clock In</TableHead>
+                  <TableHead>Clock Out</TableHead>
+                  <TableHead align="right">Hours</TableHead>
+                  <TableHead>Flags</TableHead>
+                  <TableHead>Notes</TableHead>
+                  <TableHead><span className="sr-only">Actions</span></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orderedDates.flatMap(date => {
+                  const rows = sessionsByDate[date];
                   return [
-                    <tr key={`day-${date}`}>
-                      <td colSpan={7} className="px-3 py-1.5 text-xs font-semibold text-text-muted bg-surface-2 border-t border-border">
+                    <TableRow key={`day-${date}`} className="bg-surface-2 hover:bg-surface-2">
+                      <TableCell colSpan={7} className="py-1.5 text-xs font-semibold text-text-muted">
                         {formatDayHeader(date)}
-                      </td>
-                    </tr>,
+                      </TableCell>
+                    </TableRow>,
                     ...rows.map(s => {
                       const isEditing = editingId === s.id;
                       return (
-                        <tr key={s.id} className={`hover:bg-surface-2 ${s.is_reviewed ? 'bg-info-soft/30' : ''}`}>
-                          <td className="px-3 py-2 font-medium text-text-strong">{s.employee_name}</td>
+                        <TableRow key={s.id} className={s.is_reviewed ? TIMECLOCK_REVIEWED_ROW_CLASSES : undefined}>
+                          <TableCell className="align-top font-medium text-text-strong">{s.employee_name}</TableCell>
 
                           {/* Clock In */}
-                          <td className="px-3 py-2">
+                          <TableCell className="align-top">
                             {isEditing ? (
-                              <div>
-                                <input
+                              <div className="space-y-0.5">
+                                <Input
                                   type="time"
                                   value={editIn}
                                   onChange={e => setEditIn(e.target.value)}
-                                  className="border border-border-strong rounded-sm px-1.5 py-0.5 text-xs w-24 outline-hidden focus:border-border-focus focus:shadow-ring"
+                                  aria-label={`Clock in for ${s.employee_name}`}
+                                  className="h-btn-h-sm w-28 text-xs"
                                 />
                                 {s.planned_start && (
-                                  <button
+                                  <Button
                                     type="button"
+                                    variant="link"
+                                    size="xs"
                                     onClick={() => setEditIn(s.planned_start!)}
-                                    className="block rounded-sm text-xs text-primary hover:underline cursor-pointer mt-0.5 focus-visible:outline-hidden focus-visible:shadow-ring"
                                   >
-                                    Use planned ({formatTime12Hour(s.planned_start)})
-                                  </button>
+                                    Use Planned ({formatTime12Hour(s.planned_start)})
+                                  </Button>
                                 )}
                               </div>
                             ) : (
@@ -459,33 +497,39 @@ export default function TimeclockManager({
                                 )}
                               </>
                             )}
-                          </td>
+                          </TableCell>
 
                           {/* Clock Out */}
-                          <td className="px-3 py-2">
+                          <TableCell className="align-top">
                             {isEditing ? (
-                              <div>
-                                <input
+                              <div className="space-y-0.5">
+                                <Input
                                   type="time"
                                   value={editOut}
                                   onChange={e => setEditOut(e.target.value)}
-                                  className="border border-border-strong rounded-sm px-1.5 py-0.5 text-xs w-24 outline-hidden focus:border-border-focus focus:shadow-ring"
+                                  aria-label={`Clock out for ${s.employee_name}`}
+                                  className="h-btn-h-sm w-28 text-xs"
                                 />
                                 {s.planned_end && s.clock_out_local && (
-                                  <button
+                                  <Button
                                     type="button"
+                                    variant="link"
+                                    size="xs"
                                     onClick={() => setEditOut(s.planned_end!)}
-                                    className="block rounded-sm text-xs text-primary hover:underline cursor-pointer mt-0.5 focus-visible:outline-hidden focus-visible:shadow-ring"
                                   >
-                                    Use planned ({formatTime12Hour(s.planned_end)})
-                                  </button>
+                                    Use Planned ({formatTime12Hour(s.planned_end)})
+                                  </Button>
                                 )}
                               </div>
                             ) : (
                               <>
-                                <span className={s.clock_out_at ? 'text-text-strong' : 'text-warning-fg font-medium'}>
-                                  {s.clock_out_local ? formatTime12Hour(s.clock_out_local) : 'Still in'}
-                                </span>
+                                {s.clock_out_local ? (
+                                  <span className={s.clock_out_at ? 'text-text-strong' : undefined}>
+                                    {formatTime12Hour(s.clock_out_local)}
+                                  </span>
+                                ) : (
+                                  <Badge tone={TIMECLOCK_FLAG_TONE.still_in} size="sm">Still in</Badge>
+                                )}
                                 {s.planned_end && (
                                   <div className="text-2xs text-text-soft tabular-nums">
                                     planned {formatTime12Hour(s.planned_end)}
@@ -493,17 +537,16 @@ export default function TimeclockManager({
                                 )}
                               </>
                             )}
-                          </td>
+                          </TableCell>
 
-                          <td className="px-3 py-2 text-right text-text-muted">
+                          <TableCell align="right" className="align-top text-text-muted">
                             {durationHours(s.clock_in_at, s.clock_out_at)}
-                          </td>
+                          </TableCell>
 
                           {/* Flags + premium */}
-                          <td className="px-3 py-2 align-top">
+                          <TableCell className="align-top whitespace-normal">
                             {isEditing ? (
-                              <div className="space-y-1.5">
-                                <label className="block text-2xs font-medium text-text-muted uppercase tracking-wide">Premium rate</label>
+                              <div className="min-w-44 space-y-1.5">
                                 {(() => {
                                   const inherited = inheritedShiftPremiumLabel(s);
                                   if (!inherited) return null;
@@ -513,10 +556,11 @@ export default function TimeclockManager({
                                     </p>
                                   );
                                 })()}
-                                <select
+                                <Select
+                                  label="Premium rate"
                                   value={editPremium}
                                   onChange={e => setEditPremium(e.target.value as PremiumChoice)}
-                                  className="w-full border border-border-strong rounded-sm px-1.5 py-0.5 text-xs bg-surface text-text-strong outline-hidden focus:border-border-focus focus:shadow-ring"
+                                  className="h-btn-h-sm text-xs"
                                 >
                                   <option value="none">
                                     {inheritedShiftPremiumLabel(s) ? 'None (inherit from shift)' : 'None (standard)'}
@@ -524,11 +568,11 @@ export default function TimeclockManager({
                                   <option value="1.5">Time and a half ×1.5</option>
                                   <option value="2">Double time ×2.0</option>
                                   <option value="custom">Custom £/hr…</option>
-                                </select>
+                                </Select>
                                 {editPremium === 'custom' && (
                                   <div className="flex items-center gap-1">
                                     <span className="text-xs text-text-soft">£</span>
-                                    <input
+                                    <Input
                                       type="number"
                                       inputMode="decimal"
                                       min="0"
@@ -536,27 +580,28 @@ export default function TimeclockManager({
                                       value={editCustomRate}
                                       onChange={e => setEditCustomRate(e.target.value)}
                                       placeholder="0.00"
-                                      className="w-20 border border-border-strong rounded-sm px-1.5 py-0.5 text-xs outline-hidden focus:border-border-focus focus:shadow-ring"
+                                      aria-label="Custom rate per hour"
+                                      className="h-btn-h-sm w-20 text-xs"
                                     />
                                     <span className="text-xs text-text-soft">/hr</span>
                                   </div>
                                 )}
                                 {editPremium !== 'none' && (
                                   <div className="flex items-center gap-1">
-                                    <input
+                                    <Input
                                       type="time"
                                       value={editPremiumFrom}
                                       onChange={e => setEditPremiumFrom(e.target.value)}
-                                      className="w-20 border border-border-strong rounded-sm px-1 py-0.5 text-xs outline-hidden focus:border-border-focus focus:shadow-ring"
                                       aria-label="Premium from"
+                                      className="h-btn-h-sm w-24 px-1 text-xs"
                                     />
                                     <span className="text-2xs text-text-soft">to</span>
-                                    <input
+                                    <Input
                                       type="time"
                                       value={editPremiumTo}
                                       onChange={e => setEditPremiumTo(e.target.value)}
-                                      className="w-20 border border-border-strong rounded-sm px-1 py-0.5 text-xs outline-hidden focus:border-border-focus focus:shadow-ring"
                                       aria-label="Premium to"
+                                      className="h-btn-h-sm w-24 px-1 text-xs"
                                     />
                                   </div>
                                 )}
@@ -566,12 +611,12 @@ export default function TimeclockManager({
                               </div>
                             ) : (
                               <div className="flex flex-wrap gap-1">
-                                {s.is_auto_close && <Badge tone="warning" size="sm">auto-close</Badge>}
-                                {s.is_unscheduled && <Badge tone="danger" size="sm">unscheduled</Badge>}
-                                {s.is_reviewed && <Badge tone="success" size="sm">approved</Badge>}
+                                {s.is_auto_close && <Badge tone={TIMECLOCK_FLAG_TONE.auto_close} size="sm">Auto-close</Badge>}
+                                {s.is_unscheduled && <Badge tone={TIMECLOCK_FLAG_TONE.unscheduled} size="sm">Unscheduled</Badge>}
+                                {s.is_reviewed && <Badge tone={TIMECLOCK_FLAG_TONE.approved} size="sm">Approved</Badge>}
                                 {(() => {
                                   // The session's own explicit override wins. When there is none, fall
-                                  // back to the linked shift's premium — it is what actually gets paid
+                                  // back to the linked shift's premium: it is what actually gets paid
                                   // (resolved live at payroll), shown here as inherited context.
                                   const hasOwnOverride = toNum(s.rate_multiplier) != null || toNum(s.rate_override) != null;
                                   if (hasOwnOverride) {
@@ -581,7 +626,7 @@ export default function TimeclockManager({
                                       ? ` ${formatTime12Hour(s.premium_start_local ?? s.clock_in_local)}–${s.premium_end_local ? formatTime12Hour(s.premium_end_local) : 'out'}`
                                       : '';
                                     return (
-                                      <Badge tone="info" size="sm">
+                                      <Badge tone={TIMECLOCK_FLAG_TONE.premium} size="sm">
                                         {label}{windowNote}
                                       </Badge>
                                     );
@@ -589,24 +634,25 @@ export default function TimeclockManager({
                                   const inherited = inheritedShiftPremiumLabel(s);
                                   if (!inherited) return null;
                                   return (
-                                    <Badge tone="neutral" size="sm" title="Inherited from the linked shift">
+                                    <Badge tone={TIMECLOCK_FLAG_TONE.inherited_premium} size="sm" title="Inherited from the linked shift">
                                       {inherited} (shift)
                                     </Badge>
                                   );
                                 })()}
                               </div>
                             )}
-                          </td>
+                          </TableCell>
 
                           {/* Notes */}
-                          <td className="px-3 py-2 max-w-[220px]">
+                          <TableCell className="align-top max-w-[220px] whitespace-normal">
                             {isEditing ? (
-                              <input
+                              <Input
                                 type="text"
                                 value={editNotes}
                                 onChange={e => setEditNotes(e.target.value)}
                                 placeholder="Add a note…"
-                                className="w-full border border-border-strong rounded-sm px-1.5 py-0.5 text-xs text-text placeholder:text-text-subtle outline-hidden focus:border-border-focus focus:shadow-ring"
+                                aria-label={`Notes for ${s.employee_name}`}
+                                className="h-btn-h-sm text-xs"
                               />
                             ) : (
                               <span className="text-xs text-text-muted italic">{s.notes ?? ''}</span>
@@ -616,12 +662,21 @@ export default function TimeclockManager({
                                 <span className="not-italic font-medium">Imported: </span>{s.manager_note}
                               </p>
                             )}
-                          </td>
+                          </TableCell>
 
                           {/* Actions */}
-                          <td className="px-3 py-2">
+                          <TableCell className="align-top">
                             {isEditing ? (
                               <div className="flex gap-1">
+                                <IconButton
+                                  type="button"
+                                  size="sm"
+                                  onClick={cancelEdit}
+                                  className="text-text-subtle"
+                                  title="Cancel"
+                                  label="Cancel"
+                                  icon={<Icon name="x" size={16} />}
+                                />
                                 <IconButton
                                   type="button"
                                   size="sm"
@@ -631,15 +686,6 @@ export default function TimeclockManager({
                                   title="Save"
                                   label="Save"
                                   icon={<Icon name="check" size={16} />}
-                                />
-                                <IconButton
-                                  type="button"
-                                  size="sm"
-                                  onClick={cancelEdit}
-                                  className="text-text-subtle"
-                                  title="Cancel"
-                                  label="Cancel"
-                                  icon={<Icon name="x" size={16} />}
                                 />
                               </div>
                             ) : (
@@ -676,23 +722,26 @@ export default function TimeclockManager({
                                 />
                               </div>
                             )}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       );
                     }),
                   ];
-                });
-              })()}
-            </tbody>
-          </table>
-        </div>
-      )}
+                })}
+              </TableBody>
+            </Table>
+          )}
+          <CardFooter className="text-xs text-text-soft">
+            All times shown in Europe/London local time. Editing a session marks it as reviewed and clears the auto-close flag.
+          </CardFooter>
+        </Card>
+      </Section>
 
       <ConfirmDialog
         open={deletingSession !== null}
         onClose={() => setDeletingId(null)}
         onConfirm={handleDelete}
-        title="Delete timeclock entry?"
+        title="Delete Timeclock Entry?"
         message={
           deletingSession
             ? `Delete ${deletingSession.employee_name}'s timeclock entry for ${formatDayHeader(deletingSession.work_date)}? This cannot be undone.`
@@ -701,8 +750,6 @@ export default function TimeclockManager({
         confirmLabel="Delete"
         tone="danger"
       />
-
-      <p className="text-xs text-text-soft">All times shown in Europe/London local time. Editing a session marks it as reviewed and clears the auto-close flag.</p>
-    </div>
+    </PageLayout>
   );
 }

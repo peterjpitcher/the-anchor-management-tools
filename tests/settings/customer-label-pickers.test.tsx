@@ -43,7 +43,7 @@ describe('customer label colour and icon pickers', () => {
     // PageLayout renders the header actions for wide and narrow screens alike.
     fireEvent.click(screen.getAllByRole('button', { name: 'New Label' })[0])
 
-    const colours = screen.getByRole('group', { name: 'Color' })
+    const colours = screen.getByRole('group', { name: 'Colour' })
     expect(within(colours).getByRole('button', { name: 'Green' })).toHaveAttribute('aria-pressed', 'true')
     expect(pressedIn(colours)).toEqual(['Green'])
 

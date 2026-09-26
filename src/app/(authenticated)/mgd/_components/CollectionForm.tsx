@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Alert, Button, Input, Field, Textarea, toast } from '@/ds'
+import { Alert, Button, FormFooter, Input, Field, Textarea, toast } from '@/ds'
 import { createCollection, updateCollection } from '@/app/actions/mgd'
 import type { MgdCollection } from '@/app/actions/mgd'
 
@@ -134,8 +134,8 @@ export function CollectionForm({
         />
       </Field>
 
-      <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="ghost" onClick={onCancel}>
+      <FormFooter>
+        <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
         <Button
@@ -145,7 +145,7 @@ export function CollectionForm({
         >
           {isEdit ? 'Update Collection' : 'Record Collection'}
         </Button>
-      </div>
+      </FormFooter>
     </form>
   )
 }

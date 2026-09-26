@@ -1,13 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Card, Spinner } from '@/ds'
-import { Badge } from '@/ds'
-import { ProgressBar } from '@/ds'
-import { Checkbox } from '@/ds'
-import { Button } from '@/ds'
-import { Empty } from '@/ds'
-import { toast } from '@/ds'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Checkbox, Empty, PageLoading, toast } from '@/ds'
+import { eventChecklistStatusTextClass } from '@/app/(authenticated)/events/_shared/status-ui'
 import { getTodayIsoDate, formatDate } from '@/lib/dateUtils'
 import type { EventChecklistItem } from '@/lib/event-checklist'
 import { getEventChecklist, toggleEventChecklistTask } from '@/app/actions/event-checklist'
@@ -165,46 +160,35 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
   }
 
   return (
-    <Card padding="lg" className={className}>
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold text-text">Event Checklist</h2>
-        <p className="mt-1 text-sm text-text-muted">Track prep tasks for {eventName}</p>
-      </div>
-
+    <Card className={className}>
+      <CardHeader title="Event Checklist" subtitle={`Track prep tasks for ${eventName}`} />
+      <CardBody>
       {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Spinner size="lg" />
-        </div>
+        <PageLoading inline label="Loading checklist" />
       ) : error ? (
-        <div className="rounded-md border border-danger-border bg-danger-soft p-4 text-sm text-danger-fg">
-          {error}
-        </div>
+        <Alert tone="danger">{error}</Alert>
       ) : (
         <div className="space-y-6">
           <div>
-            <h3 className="text-sm font-semibold text-text uppercase tracking-wide">Outstanding Tasks</h3>
+            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Outstanding Tasks</p>
             <div className="mt-3 space-y-3">
               {outstandingItems.length === 0 ? (
                 <Empty
                   size="sm"
                   variant="minimal"
                   centered={false}
-                  title="All caught up"
+                  title="All Caught Up"
                   description="Every checklist item is complete for this event."
                 />
               ) : (
                 outstandingItems.map((item) => {
                   const isPending = pendingTaskKeys.has(`${eventId}:${item.key}`)
-                  // Small text, so the dark -fg shades: base warning amber is too pale to read.
-                  const dueColor = item.status === 'overdue'
-                    ? 'text-danger-fg'
-                    : item.status === 'due_today'
-                      ? 'text-warning-fg'
-                      : 'text-text-muted'
+                  // Small text, so the map gives the dark -fg shades: base amber is too pale to read.
+                  const dueColor = eventChecklistStatusTextClass(item.status)
                   return (
                     <div
                       key={item.key}
-                      className="flex items-start justify-between rounded-lg border border-border px-4 py-3"
+                      className="flex items-start justify-between rounded-default border border-border px-4 py-3"
                     >
                       <div className="flex flex-1 gap-3">
                         <Checkbox
@@ -233,15 +217,15 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-text uppercase tracking-wide">Completed Tasks</h3>
+            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Completed Tasks</p>
             <div className="mt-3 space-y-2">
               {completedItems.length === 0 ? (
-                <p className="text-sm text-text-muted">No tasks completed yet.</p>
+                <Empty size="sm" variant="minimal" centered={false} title="No Tasks Completed Yet" />
               ) : (
                 completedItems.map((item) => (
                   <div
                     key={item.key}
-                    className="flex items-center justify-between rounded-lg bg-surface-2 px-4 py-2 text-sm"
+                    className="flex items-center justify-between rounded-default bg-surface-2 px-4 py-2 text-sm"
                   >
                     <div className="flex flex-wrap items-center gap-2 text-text-muted">
                       <span>{item.label}</span>
@@ -268,6 +252,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
           </div>
         </div>
       )}
+      </CardBody>
     </Card>
   )
 }

@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useCallback, useTransition, useEffect } from 'react'
+import { useState, useCallback, useTransition, useEffect, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { getTodayIsoDate } from '@/lib/dateUtils'
-import { PageHeader, Segmented } from '@/ds'
-import { Button } from '@/ds'
+import { Alert, PageLayout, PageLoading, Segmented, Button } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { EventListView } from './EventListView'
 import { EventBoardView } from './EventBoardView'
@@ -104,6 +103,14 @@ interface EventsClientProps {
   initialDailyOps?: ScheduleDailyOps | null
   initialMarketingSends?: VenueCalendarMarketingSend[]
   calendarDatasetWarnings?: string[]
+  /**
+   * Why the first page of the list, or the calendar's events, could not be loaded. A failed
+   * load is shown as a failure, never as an empty list or an empty calendar.
+   */
+  initialEventsError?: string | null
+  initialCalendarEventsError?: string | null
+  /** The outstanding todos panel, shown beside the events from the xl breakpoint up. */
+  todosPanel?: ReactNode
 }
 
 export default function EventsClient({
@@ -122,6 +129,9 @@ export default function EventsClient({
   initialDailyOps = null,
   initialMarketingSends = [],
   calendarDatasetWarnings = [],
+  initialEventsError = null,
+  initialCalendarEventsError = null,
+  todosPanel,
 }: EventsClientProps) {
   const router = useRouter()
   const [view, setView] = useState<ViewMode>('calendar')
@@ -134,6 +144,12 @@ export default function EventsClient({
   const [calendarParking, setCalendarParking] = useState<VenueCalendarParking[]>(initialCalendarParking ?? [])
   const [notesError, setNotesError] = useState<string | null>(calendarNotesError)
   const [boardEvents, setBoardEvents] = useState<Event[]>([])
+  const [listError, setListError] = useState<string | null>(initialEventsError)
+  const [calendarEventsError, setCalendarEventsError] = useState<string | null>(initialCalendarEventsError)
+  // The board fetches on first open, so until it has an answer it shows a loading state, not
+  // five empty columns.
+  const [boardLoaded, setBoardLoaded] = useState(false)
+  const [boardError, setBoardError] = useState<string | null>(null)
 
   const [pagination, setPagination] = useState(
     initialPagination ?? { totalCount: 0, currentPage: 1, pageSize: 25, totalPages: 1 }
@@ -166,6 +182,9 @@ export default function EventsClient({
         })
         if (result.data) {
           setEvents(result.data)
+          setListError(null)
+        } else if (result.error) {
+          setListError(result.error)
         }
         if (result.pagination) {
           setPagination(result.pagination)
@@ -186,6 +205,10 @@ export default function EventsClient({
         ])
         if (eventsResult.data) {
           setCalendarEvents(eventsResult.data.map(toCalendarEvent))
+          setCalendarEventsError(null)
+        } else if (eventsResult.error) {
+          // Keep what is on screen; report that it could not be refreshed.
+          setCalendarEventsError(eventsResult.error)
         }
         if ('data' in bookingsResult && bookingsResult.data) {
           setCalendarBookings(bookingsResult.data as VenueCalendarBooking[])
@@ -214,6 +237,10 @@ export default function EventsClient({
       })
       if (result.data) {
         setBoardEvents(result.data)
+        setBoardError(null)
+        setBoardLoaded(true)
+      } else if (result.error) {
+        setBoardError(result.error)
       }
     })
   }, [])
@@ -392,83 +419,142 @@ export default function EventsClient({
   }, [filters.dateFrom, filters.dateTo])
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Events"
-        subtitle="Manage venue events and bookings"
-        className="mb-0"
-        actions={
-          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <Segmented
-              options={VIEW_OPTIONS}
-              value={view}
-              onChange={(id) => setView(id as ViewMode)}
-              size="sm"
+    <PageLayout
+      title="Events"
+      subtitle="Manage venue events and bookings"
+      headerActions={
+        <>
+          {view === 'list' && (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                icon={<Icon name="download" size={14} />}
+                loading={isExporting}
+                onClick={handleExportDateRange}
+              >
+                Export CSV
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                icon={<Icon name="download" size={14} />}
+                loading={isBuildingQrPack}
+                aria-busy={isBuildingQrPack || undefined}
+                onClick={handleExportQrPack}
+              >
+                QR Pack for Designer
+              </Button>
+            </>
+          )}
+          <Segmented
+            options={VIEW_OPTIONS}
+            value={view}
+            onChange={(id) => setView(id as ViewMode)}
+            size="sm"
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Icon name="plus" size={14} />}
+            onClick={handleNewEvent}
+          >
+            New Event
+          </Button>
+        </>
+      }
+    >
+      {/* Two columns from xl up: the events, and the outstanding todos beside them. */}
+      <div className="flex flex-col gap-6 xl:flex-row">
+        <div className="min-w-0 flex-1 space-y-6">
+          {view === 'list' && (
+            <EventFilterPanel
+              filters={filters}
+              onFilterChange={handleFilterChange}
+              categories={categories}
             />
-            <Button
-              variant="primary"
-              icon={<Icon name="plus" size={16} />}
-              onClick={handleNewEvent}
-            >
-              New Event
-            </Button>
+          )}
+
+          <div className={isPending ? 'opacity-50 pointer-events-none' : ''}>
+            {view === 'list' && listError && (
+              <Alert
+                tone="danger"
+                title="Events could not be loaded"
+                actions={
+                  <Button type="button" variant="secondary" size="sm" onClick={() => fetchEvents(pagination.currentPage, filters)}>
+                    Try Again
+                  </Button>
+                }
+              >
+                {listError}
+              </Alert>
+            )}
+
+            {view === 'list' && !listError && (
+              <EventListView
+                events={events}
+                pagination={pagination}
+                selectedIds={selectedIds}
+                onSelectionChange={setSelectedIds}
+                onEventClick={handleEventClick}
+                onEditEvent={handleEditEvent}
+                onPageChange={handlePageChange}
+                onDeleteSelected={handleDeleteSelected}
+              />
+            )}
+
+            {view === 'calendar' && (
+              <VenueCalendar
+                events={calendarEvents}
+                privateBookings={calendarBookings}
+                calendarNotes={calendarNotes}
+                parkingBookings={calendarParking}
+                specialHours={initialSpecialHours}
+                employeeBirthdays={initialBirthdays}
+                balanceDueDates={initialBalanceDues}
+                marketingSends={initialMarketingSends}
+                dailyOps={initialDailyOps ?? undefined}
+                canManageCalendarNotes={canManageCalendarNotes}
+                showFilters
+                onNotesChanged={fetchCalendarData}
+                datasetWarnings={[
+                  ...(calendarEventsError ? [`Events could not be loaded: ${calendarEventsError}`] : []),
+                  ...(notesError ? [`Calendar notes could not be loaded: ${notesError}`] : []),
+                  ...calendarDatasetWarnings,
+                ]}
+              />
+            )}
+
+            {view === 'board' && boardError && (
+              <Alert
+                tone="danger"
+                title="Events could not be loaded"
+                actions={
+                  <Button type="button" variant="secondary" size="sm" onClick={fetchBoardEvents}>
+                    Try Again
+                  </Button>
+                }
+              >
+                {boardError}
+              </Alert>
+            )}
+
+            {view === 'board' && !boardError && !boardLoaded && (
+              <PageLoading inline label="Loading events" />
+            )}
+
+            {view === 'board' && !boardError && boardLoaded && (
+              <EventBoardView
+                events={boardEvents}
+                onEventClick={handleEventClick}
+              />
+            )}
           </div>
-        }
-      />
+        </div>
 
-      {view === 'list' && (
-        <EventFilterPanel
-          filters={filters}
-          onFilterChange={handleFilterChange}
-          categories={categories}
-          onExportDateRange={handleExportDateRange}
-          isExporting={isExporting}
-          onExportQrPack={handleExportQrPack}
-          isBuildingQrPack={isBuildingQrPack}
-        />
-      )}
-
-      <div className={isPending ? 'opacity-50 pointer-events-none' : ''}>
-        {view === 'list' && (
-          <EventListView
-            events={events}
-            pagination={pagination}
-            selectedIds={selectedIds}
-            onSelectionChange={setSelectedIds}
-            onEventClick={handleEventClick}
-            onEditEvent={handleEditEvent}
-            onPageChange={handlePageChange}
-            onDeleteSelected={handleDeleteSelected}
-          />
-        )}
-
-        {view === 'calendar' && (
-          <VenueCalendar
-            events={calendarEvents}
-            privateBookings={calendarBookings}
-            calendarNotes={calendarNotes}
-            parkingBookings={calendarParking}
-            specialHours={initialSpecialHours}
-            employeeBirthdays={initialBirthdays}
-            balanceDueDates={initialBalanceDues}
-            marketingSends={initialMarketingSends}
-            dailyOps={initialDailyOps ?? undefined}
-            canManageCalendarNotes={canManageCalendarNotes}
-            showFilters
-            onNotesChanged={fetchCalendarData}
-            datasetWarnings={[
-              ...(notesError ? [`Calendar notes could not be loaded: ${notesError}`] : []),
-              ...calendarDatasetWarnings,
-            ]}
-          />
-        )}
-
-        {view === 'board' && (
-          <EventBoardView
-            events={boardEvents}
-            onEventClick={handleEventClick}
-          />
-        )}
+        {todosPanel ? <aside className="xl:w-80 xl:shrink-0">{todosPanel}</aside> : null}
       </div>
 
       <EventDrawer
@@ -478,6 +564,6 @@ export default function EventsClient({
         categories={categories}
         onSave={handleSave}
       />
-    </div>
+    </PageLayout>
   )
 }

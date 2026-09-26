@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/ds'
+import { Button, Field } from '@/ds'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import {
   ignoreUnmatchedCommunicationAction,
@@ -71,8 +71,7 @@ export function HoldingQueueActions({
 
   return (
     <div className="mt-3 space-y-2">
-      <div className="max-w-xl">
-        <p className="mb-1 text-ui font-medium text-text">Customer</p>
+      <Field label="Customer" className="max-w-xl">
         <CustomerSearchInput
           onCustomerSelect={setSelectedCustomer}
           selectedCustomerId={selectedCustomer?.id ?? null}
@@ -80,7 +79,7 @@ export function HoldingQueueActions({
           highlightCustomerIds={candidateCustomerIds}
           highlightLabel="Suggested"
         />
-      </div>
+      </Field>
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" onClick={handleLink} loading={isPending}>
           Link
@@ -88,7 +87,7 @@ export function HoldingQueueActions({
         <Button type="button" variant="ghost" size="sm" onClick={handleIgnore} loading={isPending}>
           Ignore
         </Button>
-        {message && <p className="text-sm text-danger">{message}</p>}
+        {message && <p className="text-sm text-danger-fg" role="alert">{message}</p>}
       </div>
     </div>
   )

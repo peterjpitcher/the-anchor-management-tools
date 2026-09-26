@@ -253,7 +253,8 @@ describe('booking portal page', () => {
 
     await renderPortal()
 
-    expect(screen.getByText('Your Requests')).toBeInTheDocument()
+    // A serif card heading now, not an uppercase label, so it reads in sentence case (guest voice).
+    expect(screen.getByRole('heading', { level: 2, name: 'Your requests' })).toBeInTheDocument()
     expect(screen.getByText('Gluten free menu for two guests')).toBeInTheDocument()
   })
 

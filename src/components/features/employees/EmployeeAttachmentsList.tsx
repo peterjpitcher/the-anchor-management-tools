@@ -7,7 +7,7 @@ import type { EmployeeAttachment } from '@/types/database'
 import { deleteEmployeeAttachment, getAttachmentSignedUrl } from '@/app/actions/employeeActions'
 import { formatBytes } from '@/lib/utils'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { Button, IconButton, Modal, toast, Icon } from '@/ds'
+import { Alert, Button, Empty, FormFooter, Icon, IconButton, Modal, toast } from '@/ds'
 
 interface EmployeeAttachmentsListProps {
   employeeId: string
@@ -69,21 +69,21 @@ function DeleteAttachmentButton({
       {/* A DS Modal rather than ConfirmDialog: the delete is a server-action form, and the
           buttons stay inside it so the submit button can read the form's pending state. */}
       <Modal open={isOpen} onClose={() => setIsOpen(false)} title="Delete Attachment" width="md">
-        <form action={dispatch}>
+        <form action={dispatch} className="space-y-4">
           <input type="hidden" name="employee_id" value={employeeId} />
           <input type="hidden" name="attachment_id" value={attachmentId} />
           <p className="text-sm text-text-muted">
             Are you sure you want to delete &quot;{attachmentName}&quot;? This action cannot be undone.
           </p>
           {state?.type === 'error' && (
-            <p className="mt-3 text-sm text-danger-fg">{state.message}</p>
+            <Alert tone="danger" size="sm">{state.message}</Alert>
           )}
-          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+          <FormFooter>
             <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>
               Cancel
             </Button>
             <SubmitActualDeleteButton />
-          </div>
+          </FormFooter>
         </form>
       </Modal>
     </>
@@ -168,7 +168,7 @@ export default function EmployeeAttachmentsList({
   }
 
   if (!attachments || attachments.length === 0) {
-    return <p className="text-sm text-text-muted">No documents uploaded yet.</p>
+    return <Empty size="sm" icon="document" title="No documents uploaded yet" />
   }
 
   return (

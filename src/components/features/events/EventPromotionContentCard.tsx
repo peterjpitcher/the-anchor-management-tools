@@ -1,12 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Card, CardBody, Icon } from '@/ds'
-import { Textarea } from '@/ds'
-import { Input } from '@/ds'
-import { Button } from '@/ds'
-import { Spinner } from '@/ds'
-import { toast } from '@/ds'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Icon, Input, Textarea, toast } from '@/ds'
 import { generateEventPromotionContent, type EventPromotionContentType } from '@/app/actions/event-content'
 import { Select } from '@/ds'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
@@ -260,52 +255,40 @@ export function EventPromotionContentCard({
 
   return (
     <Card>
+      <CardHeader title="AI Event Copy Builder" subtitle="Generate channel-specific event copy" />
       <CardBody className="flex min-w-0 flex-col gap-6">
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold text-text-strong">AI Event Copy Builder</h2>
-        <p className="text-sm text-text-muted">
-          Generate channel-specific event copy. Generated copy is not saved automatically.
-        </p>
-      </div>
+      <p className="text-sm text-text-muted">Generated copy is not saved automatically.</p>
 
       {brief && (
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Brief snapshot</p>
-          <div className="rounded-lg border border-border bg-surface-2 p-3 text-sm text-text whitespace-pre-wrap max-h-48 overflow-y-auto">
+          <div className="rounded-default border border-border bg-surface-2 p-3 text-sm text-text whitespace-pre-wrap max-h-48 overflow-y-auto">
             {brief}
           </div>
         </div>
       )}
 
-      <div className="space-y-2">
-        <label htmlFor="content_type" className="block text-sm font-medium text-text-strong">
-          Content type
-        </label>
-        <Select
-          id="content_type"
-          value={contentType}
-          onChange={(event) => setContentType(event.target.value as EventPromotionContentType)}
-          fullWidth
-        >
-          {CONTENT_TYPES.map((type) => (
-            <option key={type.value} value={type.value}>
-              {type.label}
-            </option>
-          ))}
-        </Select>
-        {selectedTypeMeta?.help && (
-          <p className="text-xs text-text-muted">{selectedTypeMeta.help}</p>
-        )}
-      </div>
+      <Select
+        id="content_type"
+        label="Content type"
+        hint={selectedTypeMeta?.help}
+        value={contentType}
+        onChange={(event) => setContentType(event.target.value as EventPromotionContentType)}
+      >
+        {CONTENT_TYPES.map((type) => (
+          <option key={type.value} value={type.value}>
+            {type.label}
+          </option>
+        ))}
+      </Select>
 
       <div className="space-y-2">
-        <label htmlFor="cta_link_option" className="block text-sm font-medium text-text-strong">
-          CTA link
-        </label>
         {orderedDigitalLinks.length > 0 ? (
           <>
             <Select
               id="cta_link_option"
+              label="CTA link"
+              hint="Defaults to the best-fit UTM link for this channel. The URL is not included in the generated copy."
               value={ctaState.selectedLinkId}
               onChange={(event) =>
                 setCtaStateByType((previous) => ({
@@ -313,7 +296,6 @@ export function EventPromotionContentCard({
                   [contentType]: { ...previous[contentType], selectedLinkId: event.target.value },
                 }))
               }
-              fullWidth
             >
               {orderedDigitalLinks.map((link) => (
                 <option key={link.id} value={link.id}>
@@ -322,18 +304,13 @@ export function EventPromotionContentCard({
               ))}
               <option value="custom">Custom link…</option>
             </Select>
-            <p className="text-xs text-text-muted">
-              Defaults to the best-fit UTM link for this channel. The URL is not included in the generated copy.
-            </p>
           </>
-        ) : (
-          <p className="text-xs text-text-muted">
-            No marketing links yet. Refresh links above or enter a custom URL below.
-          </p>
-        )}
+        ) : null}
         {(ctaState.selectedLinkId === 'custom' || !orderedDigitalLinks.length) && (
           <Input
             id="cta_link_custom"
+            label={orderedDigitalLinks.length ? undefined : 'CTA link'}
+            hint={orderedDigitalLinks.length ? undefined : 'No marketing links yet. Refresh links above or enter a custom URL.'}
             aria-label="Custom booking link"
             type="url"
             value={ctaState.customUrl}
@@ -344,13 +321,11 @@ export function EventPromotionContentCard({
               }))
             }
             placeholder="https://..."
-            fullWidth
-            className="mt-2"
           />
         )}
       </div>
 
-      <div className="rounded-lg border border-border bg-surface-2 p-4">
+      <div className="rounded-default border border-border bg-surface-2 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">CTA link (copy/paste)</p>
@@ -369,17 +344,17 @@ export function EventPromotionContentCard({
               onClick={() => selectedCtaUrl && handleCopy(selectedCtaUrl, 'CTA link')}
               leftIcon={<Icon name="copy" size={16} />}
             >
-              Copy link
+              Copy Link
             </Button>
           </div>
         </div>
         {selectedMarketingLink && (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
-            <span className="min-w-0 break-all rounded-full bg-surface px-2 py-1">source: {selectedMarketingLink.utm.utm_source}</span>
-            <span className="min-w-0 break-all rounded-full bg-surface px-2 py-1">medium: {selectedMarketingLink.utm.utm_medium}</span>
-            <span className="min-w-0 break-all rounded-full bg-surface px-2 py-1">campaign: {selectedMarketingLink.utm.utm_campaign}</span>
+            <Badge tone="neutral" size="sm" className="min-w-0 break-all">source: {selectedMarketingLink.utm.utm_source}</Badge>
+            <Badge tone="neutral" size="sm" className="min-w-0 break-all">medium: {selectedMarketingLink.utm.utm_medium}</Badge>
+            <Badge tone="neutral" size="sm" className="min-w-0 break-all">campaign: {selectedMarketingLink.utm.utm_campaign}</Badge>
             {selectedMarketingLink.utm.utm_content && (
-              <span className="min-w-0 break-all rounded-full bg-surface px-2 py-1">content: {selectedMarketingLink.utm.utm_content}</span>
+              <Badge tone="neutral" size="sm" className="min-w-0 break-all">content: {selectedMarketingLink.utm.utm_content}</Badge>
             )}
           </div>
         )}
@@ -395,17 +370,16 @@ export function EventPromotionContentCard({
           size="md"
           className="h-auto min-h-btn-h w-full whitespace-normal py-2 sm:w-auto"
           onClick={handleGenerate}
-          disabled={isGenerating || Boolean(aiUnavailableMessage)}
-          leftIcon={isGenerating ? <Spinner size="sm" color="gray" /> : <Icon name="refresh" size={16} />}
+          disabled={Boolean(aiUnavailableMessage)}
+          loading={isGenerating}
+          leftIcon={<Icon name="refresh" size={16} />}
         >
-          {isGenerating ? 'Working...' : `Generate ${selectedTypeMeta?.label ?? eventName} copy`}
+          {`Generate ${selectedTypeMeta?.label ?? eventName} Copy`}
         </Button>
       </div>
 
       {aiUnavailableMessage && (
-        <div className="rounded-lg border border-warning-border bg-warning-soft p-4 text-sm text-warning-fg">
-          {aiUnavailableMessage}
-        </div>
+        <Alert tone="warning">{aiUnavailableMessage}</Alert>
       )}
 
       {currentResult && (
@@ -416,14 +390,14 @@ export function EventPromotionContentCard({
               return (
                 <section className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted">Facebook Event</h3>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Facebook Event</p>
                     <Button
                       size="xs"
                       variant="ghost"
                       onClick={() => handleCopy(`${content.name}\n\n${content.description}`.trim(), 'Facebook copy')}
                       leftIcon={<Icon name="copy" size={16} />}
                     >
-                      Copy all
+                      Copy All
                     </Button>
                   </div>
                   <div className="space-y-2">
@@ -441,7 +415,7 @@ export function EventPromotionContentCard({
                           leftIcon={<Icon name="copy" size={16} />}
                         />
                       </div>
-                      <p className="break-words rounded-lg border border-border bg-surface p-3 text-sm text-text-strong">
+                      <p className="break-words rounded-default border border-border bg-surface p-3 text-sm text-text-strong">
                         {content.name}
                       </p>
                     </div>
@@ -466,7 +440,6 @@ export function EventPromotionContentCard({
                         readOnly
                         aria-label={`${selectedTypeMeta?.label} description`}
                         rows={8}
-                        fullWidth
                       />
                     </div>
                   </div>
@@ -481,14 +454,14 @@ export function EventPromotionContentCard({
               return (
                 <section className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted">{titleLabel}</h3>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">{titleLabel}</p>
                     <Button
                       size="xs"
                       variant="ghost"
                       onClick={() => handleCopy(`${content.title}\n\n${content.description}`.trim(), copyLabel)}
                       leftIcon={<Icon name="copy" size={16} />}
                     >
-                      Copy all
+                      Copy All
                     </Button>
                   </div>
                   <div className="space-y-2">
@@ -506,7 +479,7 @@ export function EventPromotionContentCard({
                           leftIcon={<Icon name="copy" size={16} />}
                         />
                       </div>
-                      <p className="break-words rounded-lg border border-border bg-surface p-3 text-sm text-text-strong">
+                      <p className="break-words rounded-default border border-border bg-surface p-3 text-sm text-text-strong">
                         {content.title}
                       </p>
                     </div>
@@ -531,7 +504,6 @@ export function EventPromotionContentCard({
                         readOnly
                         aria-label={`${selectedTypeMeta?.label} description`}
                         rows={8}
-                        fullWidth
                       />
                     </div>
                   </div>

@@ -1,7 +1,8 @@
 import Link from 'next/link'
-import { Badge, Card, Section } from '@/ds'
+import { Alert, Badge, Card, CardBody, Empty, Section } from '@/ds'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
 import type { UndeliveredGuestMessage } from '@/lib/notifications/undelivered'
+import { SMS_FAILURE_TONES } from '../_shared/status-ui'
 
 function describeAttempts(row: UndeliveredGuestMessage): string {
   if (row.attempts.length === 0) return 'No attempt recorded'
@@ -23,18 +24,20 @@ export function UndeliveredGuestMessagesSection({
 }) {
   return (
     <Section
-      title="Undelivered guest messages"
+      title="Undelivered Guest Messages"
       description="Booking messages that reached the guest by neither email nor text. Contact these guests another way."
     >
-      <Card>
+      <Card padding="none">
         {error ? (
-          <div className="p-4 text-sm text-danger-fg">Failed to load undelivered guest messages: {error}</div>
+          <CardBody>
+            <Alert tone="danger">Failed to load undelivered guest messages: {error}</Alert>
+          </CardBody>
         ) : rows.length === 0 ? (
-          <div className="py-10 text-center text-sm text-text-muted">No undelivered guest messages for this window.</div>
+          <Empty size="sm" title="No undelivered guest messages for this window" />
         ) : (
           <ul className="divide-y divide-border" aria-label="Undelivered guest messages">
             {rows.map((row) => (
-              <li key={row.id} className="p-4">
+              <li key={row.id} className="px-pad-card py-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     {row.customerId ? (
@@ -44,7 +47,7 @@ export function UndeliveredGuestMessagesSection({
                     ) : (
                       <span className="font-medium">{row.customerName}</span>
                     )}
-                    <Badge tone="danger">Undelivered</Badge>
+                    <Badge tone={SMS_FAILURE_TONES.undelivered}>Undelivered</Badge>
                   </div>
                   <time className="text-xs text-text-muted" dateTime={row.failedAt}>
                     {formatDateTime12Hour(row.failedAt)}

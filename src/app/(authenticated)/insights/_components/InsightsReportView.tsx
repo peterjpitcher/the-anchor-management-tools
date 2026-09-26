@@ -1,8 +1,11 @@
 import Link from 'next/link'
-import { PageHeader } from '@/ds'
+import { Card, CardBody, CardHeader, LinkButton, PageLayout, Table, TableBody, TableCell, TableRow } from '@/ds'
 import { formatDateWithYear, formatDayDate, formatLondonClock, formatWeekday } from '@/lib/insights/format'
 import type { InsightAction, InsightList, InsightSection, InsightSignal, InsightsReport, Rag, SectionStatus } from '@/lib/insights/types'
 import { cn } from '@/lib/utils'
+import { INSIGHT_STATUS_EMOJI, INSIGHT_STATUS_TEXT, INSIGHT_STATUS_WORD } from '../_shared/status-ui'
+import { INSIGHTS_LAYOUT } from '../_shared/layout'
+import { insightSectionTitle } from '../_shared/title'
 import { InsightsToolbar } from './InsightsToolbar'
 
 /**
@@ -11,15 +14,16 @@ import { InsightsToolbar } from './InsightsToolbar'
  * shadows drop, long lists print in full, and every status carries a word, not just colour.
  */
 
-const STATUS_WORD: Record<SectionStatus, string> = { red: 'Action', amber: 'Watch', green: 'OK', not_checked: 'Not checked' }
-const STATUS_EMOJI: Record<SectionStatus, string> = { red: '🔴', amber: '🟠', green: '🟢', not_checked: '⚪' }
-const STATUS_TEXT: Record<SectionStatus, string> = {
-  red: 'text-danger-fg',
-  amber: 'text-warning-fg',
-  green: 'text-success-fg',
-  not_checked: 'text-text-muted',
-}
 const LIST_VISIBLE = 10
+
+/*
+ * Print rules for the report cards. On screen each block is a DS Card; on paper the frame,
+ * fill and shadow drop, a rule separates the blocks, the text runs to the page margin, and
+ * nothing is clipped where a card breaks across pages.
+ */
+const PRINT_CARD = 'print:overflow-visible print:rounded-none print:border-0 print:border-t print:border-border-strong print:bg-transparent print:shadow-none'
+const PRINT_CARD_HEADER = 'print:border-b-0 print:px-0'
+const PRINT_CARD_BODY = 'print:px-0'
 
 /** Report links are absolute on the configured app origin; on the page they stay on this host. */
 function appPath(href: string | undefined): string | null {
@@ -34,8 +38,8 @@ function appPath(href: string | undefined): string | null {
 
 function StatusLabel({ status, className }: { status: SectionStatus; className?: string }): React.JSX.Element {
   return (
-    <span className={cn('font-semibold print:text-text-strong', STATUS_TEXT[status], className)}>
-      <span aria-hidden="true">{STATUS_EMOJI[status]}</span> {STATUS_WORD[status]}
+    <span className={cn('font-semibold print:text-text-strong', INSIGHT_STATUS_TEXT[status], className)}>
+      <span aria-hidden="true">{INSIGHT_STATUS_EMOJI[status]}</span> {INSIGHT_STATUS_WORD[status]}
     </span>
   )
 }
@@ -67,7 +71,7 @@ function SignalList({ title, signals }: { title: string; signals: InsightSignal[
   if (signals.length === 0) return null
   return (
     <div>
-      <h3 className="mb-1 text-sm font-semibold text-text-strong">{title}</h3>
+      <p className="mb-1 text-sm font-semibold text-text-strong">{title}</p>
       <ul className="list-disc space-y-1.5 pl-5 text-sm">
         {signals.map((signal, index) => (
           <li key={`${index}-${signal.key}`}>
@@ -120,7 +124,7 @@ function SectionList({ list }: { list: InsightList }): React.JSX.Element | null 
   const rest = list.items.slice(LIST_VISIBLE)
   return (
     <div>
-      <h3 className="mb-1 text-sm font-semibold text-text-strong">{list.title}</h3>
+      <p className="mb-1 text-sm font-semibold text-text-strong">{list.title}</p>
       {list.items.length === 0 ? (
         <p className="text-sm text-text-muted">{list.emptyText}</p>
       ) : (
@@ -149,58 +153,63 @@ function SectionCard({ section }: { section: InsightSection }): React.JSX.Elemen
   const wins = section.signals.filter((signal) => signal.kind === 'win')
   const info = section.signals.filter((signal) => signal.kind === 'info')
   const sectionPath = appPath(section.href)
+  const title = insightSectionTitle(section.title)
   return (
+    // The section carries the jump-link anchor and keeps a card whole on one printed page where
+    // it can; the Card inside is the panel.
     <section
       id={section.key}
-      aria-labelledby={`${section.key}-title`}
-      className="scroll-mt-4 rounded-lg border border-border bg-surface p-4 shadow-sm print:break-inside-avoid-page print:rounded-none print:border-0 print:border-t print:border-border-strong print:bg-transparent print:px-0 print:shadow-none"
+      aria-label={`${title}: ${INSIGHT_STATUS_WORD[section.status]}`}
+      className="scroll-mt-4 print:break-inside-avoid-page"
     >
-      <h2 id={`${section.key}-title`} className="text-base font-semibold text-text-strong">
-        <StatusLabel status={section.status} />
-        <span>: {section.title}</span>
-      </h2>
-      <p className="mt-1 text-sm text-text">{section.headline}</p>
+      <Card className={PRINT_CARD}>
+        <CardHeader
+          title={title}
+          action={<StatusLabel status={section.status} />}
+          className={PRINT_CARD_HEADER}
+        />
+        <CardBody className={cn('space-y-3', PRINT_CARD_BODY)}>
+          <p className="text-sm text-text">{section.headline}</p>
 
-      {section.metrics.length > 0 && (
-        // On a phone the figures scroll inside the card rather than widening the page.
-        <div className="mt-3 max-w-2xl overflow-x-auto print:overflow-visible">
-        <table className="w-full border-collapse text-sm">
-          <tbody>
-            {section.metrics.map((metric, index) => (
-              <tr key={`${index}-${metric.label}`} className="border-b border-border last:border-b-0">
-                <th scope="row" className="py-1 pr-3 text-left align-top font-normal text-text-muted print:text-text-strong">{metric.label}</th>
-                <td className="py-1 pr-3 align-top font-semibold text-text-strong">{metric.value}</td>
-                <td className="min-w-[12rem] py-1 align-top text-text-muted print:text-text-strong">{metric.comparison ?? ''}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      )}
+          {section.metrics.length > 0 && (
+            // On a phone the figures scroll inside the card rather than widening the page.
+            <Table className="max-w-2xl print:overflow-visible">
+              <TableBody>
+                {section.metrics.map((metric, index) => (
+                  <TableRow key={`${index}-${metric.label}`}>
+                    {/* A row header, so each figure is read with its label. TableCell has no th. */}
+                    <th scope="row" className="px-4 py-cell-y text-left align-top text-ui font-normal text-text-muted print:text-text-strong">{metric.label}</th>
+                    <TableCell className="align-top font-semibold text-text-strong">{metric.value}</TableCell>
+                    <TableCell className="min-w-48 whitespace-normal align-top text-text-muted print:text-text-strong">{metric.comparison ?? ''}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
 
-      <div className="mt-3 space-y-3">
-        <SignalList title="Needs attention" signals={issues} />
-        <SignalList title="Going well" signals={wins} />
-        {info.length > 0 && (
-          <ul className="list-disc space-y-1 pl-5 text-sm text-text-muted print:text-text-strong">
-            {info.map((signal, index) => <li key={`${index}-${signal.key}`}>{signal.text}</li>)}
-          </ul>
-        )}
-        {section.lists.map((list, index) => <SectionList key={`${index}-${list.title}`} list={list} />)}
-        {section.notes.length > 0 && (
-          <ul className="space-y-0.5 text-xs text-text-muted print:text-text-strong">
-            {section.notes.map((note, index) => <li key={`${index}-${note}`}>{note}</li>)}
-          </ul>
-        )}
-      </div>
+          <SignalList title="Needs attention" signals={issues} />
+          <SignalList title="Going well" signals={wins} />
+          {info.length > 0 && (
+            <ul className="list-disc space-y-1 pl-5 text-sm text-text-muted print:text-text-strong">
+              {info.map((signal, index) => <li key={`${index}-${signal.key}`}>{signal.text}</li>)}
+            </ul>
+          )}
+          {section.lists.map((list, index) => <SectionList key={`${index}-${list.title}`} list={list} />)}
+          {section.notes.length > 0 && (
+            <ul className="space-y-0.5 text-xs text-text-muted print:text-text-strong">
+              {section.notes.map((note, index) => <li key={`${index}-${note}`}>{note}</li>)}
+            </ul>
+          )}
 
-      {sectionPath && (
-        <p className="mt-3 text-sm print:hidden">
-          <Link href={sectionPath} className="font-medium text-primary underline underline-offset-2">
-            Open {section.title.toLowerCase()}
-          </Link>
-        </p>
-      )}
+          {sectionPath && (
+            <p className="text-sm print:hidden">
+              <Link href={sectionPath} className="rounded-sm font-medium text-primary underline underline-offset-2 focus-visible:outline-hidden focus-visible:shadow-ring">
+                Open {section.title.toLowerCase()}
+              </Link>
+            </p>
+          )}
+        </CardBody>
+      </Card>
     </section>
   )
 }
@@ -208,101 +217,99 @@ function SectionCard({ section }: { section: InsightSection }): React.JSX.Elemen
 export function InsightsReportView({ report }: { report: InsightsReport }): React.JSX.Element {
   const { windows, summary } = report
   const generated = new Date(report.generatedAt)
-  const subtitle = `As of ${formatLondonClock(generated)} on ${formatWeekday(windows.today)} ${formatDateWithYear(windows.today)}. `
-    + `Looks back over ${formatDayDate(windows.thisWeek.start)} to ${formatDayDate(windows.thisWeek.end)} and ahead to ${formatDayDate(windows.next14.end)}.`
+  const subtitle = `As of ${formatLondonClock(generated)} on ${formatWeekday(windows.today)} ${formatDateWithYear(windows.today)}`
+  const period = `Looks back over ${formatDayDate(windows.thisWeek.start)} to ${formatDayDate(windows.thisWeek.end)} and ahead to ${formatDayDate(windows.next14.end)}.`
   const notChecked = report.sections.filter((section) => section.status === 'not_checked')
 
   return (
-    <div className="space-y-5 print:space-y-3 print:text-text-strong">
-      <PageHeader
-        breadcrumbs={[{ label: 'Insights' }]}
-        title="Insights"
-        subtitle={subtitle}
-        actions={<InsightsToolbar />}
-        className="mb-0 pb-0"
-      />
+    <PageLayout {...INSIGHTS_LAYOUT} subtitle={subtitle} headerActions={<InsightsToolbar />}>
+      {/*
+        Kept for print: on paper the blocks sit 12px apart and plain text prints in the strong
+        ink. On screen this is the same 24px rhythm PageLayout gives its children.
+      */}
+      <div className="space-y-6 print:space-y-3 print:text-text-strong">
+        <Card className={PRINT_CARD}>
+          <CardHeader title="Summary" className={PRINT_CARD_HEADER} />
+          <CardBody className={cn('space-y-2', PRINT_CARD_BODY)}>
+            <p className="text-sm text-text-muted print:text-text-strong">{period}</p>
+            <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              {(['red', 'amber', 'green', 'not_checked'] as const).map((status) => (
+                <span key={status}>
+                  <StatusLabel status={status} /> {summary.counts[status]}
+                </span>
+              ))}
+            </p>
+            <ul className="list-disc space-y-1 pl-5 text-sm">
+              <li><strong>Biggest win:</strong> {summary.biggestWin?.text ?? 'No standout win this week.'}</li>
+              <li><strong>Biggest concern:</strong> {summary.biggestConcern?.text ?? 'Nothing needs attention.'}</li>
+              <li>
+                <strong>Most urgent action:</strong> {summary.mostUrgentAction?.text ?? 'None this week.'}
+                <OpenLink href={summary.mostUrgentAction?.href} />
+              </li>
+              <li>
+                <strong>Coming up:</strong> {summary.comingUp?.text ?? 'Nothing booked in the next 7 days needs preparing.'}
+                <OpenLink href={summary.comingUp?.href} />
+              </li>
+            </ul>
+            {notChecked.length > 0 && (
+              <p className="text-sm font-semibold text-danger-fg print:text-text-strong" role="alert">
+                Not checked: {notChecked.map((section) => section.title).join(', ')}. The data could not be read. Refresh, or open those sections directly.
+              </p>
+            )}
+          </CardBody>
+        </Card>
 
-      <section aria-labelledby="summary-title" className="rounded-lg border border-border bg-surface p-4 shadow-sm print:rounded-none print:border-0 print:bg-transparent print:p-0 print:shadow-none">
-        <h2 id="summary-title" className="text-base font-semibold text-text-strong">Summary</h2>
-        <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          {(['red', 'amber', 'green', 'not_checked'] as const).map((status) => (
-            <span key={status}>
-              <StatusLabel status={status} /> {summary.counts[status]}
-            </span>
-          ))}
-        </p>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-          <li><strong>Biggest win:</strong> {summary.biggestWin?.text ?? 'No standout win this week.'}</li>
-          <li><strong>Biggest concern:</strong> {summary.biggestConcern?.text ?? 'Nothing needs attention.'}</li>
-          <li>
-            <strong>Most urgent action:</strong> {summary.mostUrgentAction?.text ?? 'None this week.'}
-            <OpenLink href={summary.mostUrgentAction?.href} />
-          </li>
-          <li>
-            <strong>Coming up:</strong> {summary.comingUp?.text ?? 'Nothing booked in the next 7 days needs preparing.'}
-            <OpenLink href={summary.comingUp?.href} />
-          </li>
-        </ul>
-        {notChecked.length > 0 && (
-          <p className="mt-2 text-sm font-semibold text-danger-fg print:text-text-strong" role="alert">
-            Not checked: {notChecked.map((section) => section.title).join(', ')}. The data could not be read. Refresh, or open those sections directly.
-          </p>
-        )}
-      </section>
-
-      <nav aria-label="Report sections" className="print:hidden">
-        <ul className="flex flex-wrap gap-2 text-sm">
-          {report.sections.map((section) => (
-            <li key={section.key}>
-              <a
-                href={`#${section.key}`}
-                className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-text hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-border-focus"
-              >
-                <span aria-hidden="true">{STATUS_EMOJI[section.status]}</span>
-                <span>{section.title}</span>
-                <span className="sr-only">: {STATUS_WORD[section.status]}</span>
-              </a>
-            </li>
-          ))}
-          <li>
-            <a href="#actions" className="inline-flex items-center rounded-md border border-border bg-surface px-2 py-1 text-text hover:bg-surface-hover">
-              Manager actions
-            </a>
-          </li>
-        </ul>
-      </nav>
-
-      {report.sections.map((section) => <SectionCard key={section.key} section={section} />)}
-
-      <section
-        id="actions"
-        aria-labelledby="actions-title"
-        className="scroll-mt-4 rounded-lg border border-border bg-surface p-4 shadow-sm print:break-inside-avoid-page print:rounded-none print:border-0 print:border-t print:border-border-strong print:bg-transparent print:px-0 print:shadow-none"
-      >
-        <h2 id="actions-title" className="text-base font-semibold text-text-strong">Manager actions this week</h2>
-        {report.actions.length === 0 ? (
-          <p className="mt-1 text-sm">No actions this week.</p>
-        ) : (
-          <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm">
-            {report.actions.map((action, index) => (
-              <li key={`${index}-${action.sectionKey}-${action.signalKey}`}>
-                <StatusLabel status={action.kind === 'win' ? 'green' : action.rag} />
-                <span>: {action.text}</span>
-                <OpenLink href={action.href} />
-                <span className="ml-1 text-text-muted print:text-text-strong">({action.sectionTitle})</span>
-                <Members action={action} />
+        <nav aria-label="Report sections" className="print:hidden">
+          <ul className="flex flex-wrap gap-2">
+            {report.sections.map((section) => (
+              <li key={section.key}>
+                <LinkButton href={`#${section.key}`} variant="secondary" size="sm">
+                  <span aria-hidden="true">{INSIGHT_STATUS_EMOJI[section.status]}</span>
+                  <span>{insightSectionTitle(section.title)}</span>
+                  <span className="sr-only">: {INSIGHT_STATUS_WORD[section.status]}</span>
+                </LinkButton>
               </li>
             ))}
-          </ol>
-        )}
-        {report.moreRedActions > 0 && (
-          <p className="mt-2 text-sm">Plus {report.moreRedActions} more to action, shown in their sections above.</p>
-        )}
-      </section>
+            <li>
+              <LinkButton href="#actions" variant="secondary" size="sm">
+                Manager Actions
+              </LinkButton>
+            </li>
+          </ul>
+        </nav>
 
-      <p className="text-xs text-text-muted print:text-text-strong">
-        Built from live data when this page was opened. Printed copies contain staff and customer details: shred after the meeting.
-      </p>
-    </div>
+        {report.sections.map((section) => <SectionCard key={section.key} section={section} />)}
+
+        <section id="actions" aria-label="Manager actions this week" className="scroll-mt-4 print:break-inside-avoid-page">
+          <Card className={PRINT_CARD}>
+            <CardHeader title="Manager Actions This Week" className={PRINT_CARD_HEADER} />
+            <CardBody className={cn('space-y-2', PRINT_CARD_BODY)}>
+              {report.actions.length === 0 ? (
+                <p className="text-sm">No actions this week.</p>
+              ) : (
+                <ol className="list-decimal space-y-2 pl-5 text-sm">
+                  {report.actions.map((action, index) => (
+                    <li key={`${index}-${action.sectionKey}-${action.signalKey}`}>
+                      <StatusLabel status={action.kind === 'win' ? 'green' : action.rag} />
+                      <span>: {action.text}</span>
+                      <OpenLink href={action.href} />
+                      <span className="ml-1 text-text-muted print:text-text-strong">({action.sectionTitle})</span>
+                      <Members action={action} />
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {report.moreRedActions > 0 && (
+                <p className="text-sm">Plus {report.moreRedActions} more to action, shown in their sections above.</p>
+              )}
+            </CardBody>
+          </Card>
+        </section>
+
+        <p className="text-xs text-text-muted print:text-text-strong">
+          Built from live data when this page was opened. Printed copies contain staff and customer details: shred after the meeting.
+        </p>
+      </div>
+    </PageLayout>
   )
 }

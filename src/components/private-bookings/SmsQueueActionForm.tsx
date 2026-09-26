@@ -98,7 +98,7 @@ export function SmsQueueActionForm({
           confirmedRef.current = true
           formRef.current?.requestSubmit()
         }}
-        title="Please confirm"
+        title="Please Confirm"
         message={confirmMessage}
         confirmLabel="Confirm"
         tone={variant === 'danger' ? 'danger' : 'warning'}
@@ -124,7 +124,7 @@ function SubmitButton({
     <Button
       type="submit"
       variant={variant}
-      leftIcon={leftIcon}
+      icon={leftIcon}
       disabled={disabled || pending}
       loading={pending}
     >

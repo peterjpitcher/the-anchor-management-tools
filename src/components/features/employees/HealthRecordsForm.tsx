@@ -5,15 +5,13 @@ import { useFormStatus } from 'react-dom';
 import { upsertHealthRecord } from '@/app/actions/employeeActions';
 import type { EmployeeHealthRecord } from '@/types/database';
 import { usePathname, useRouter } from 'next/navigation';
-import { toast } from '@/ds';
-import { Input } from '@/ds';
-import { Textarea } from '@/ds';
-import { Checkbox } from '@/ds';
-import { Button } from '@/ds';
+import { Alert, Button, Card, CardBody, CardHeader, Checkbox, Field, FormFooter, Input, LinkButton, Textarea, toast } from '@/ds';
 
 interface HealthRecordsFormProps {
   employeeId: string;
   healthRecord: EmployeeHealthRecord | null;
+  /** Where Cancel goes. Without it the form has no Cancel button. */
+  cancelHref?: string;
 }
 
 function SubmitButton() {
@@ -29,7 +27,7 @@ function SubmitButton() {
   );
 }
 
-export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRecordsFormProps) {
+export default function HealthRecordsForm({ employeeId, healthRecord, cancelHref }: HealthRecordsFormProps) {
   const [state, formAction] = useActionState(upsertHealthRecord, null);
   const [hasAllergies, setHasAllergies] = useState(Boolean(healthRecord?.has_allergies ?? healthRecord?.allergies));
   const [hadAbsence, setHadAbsence] = useState(Boolean(healthRecord?.had_absence_over_2_weeks_last_3_years));
@@ -61,45 +59,48 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
   }
   
   const renderField = (field: FieldConfig) => {
-    const error = state?.errors?.[field.name];
-    
+    const error = state?.errors?.[field.name]?.join(' ') || undefined;
+
+    if (field.type === 'checkbox') {
+      return (
+        <Checkbox
+          key={field.name}
+          id={field.name}
+          name={field.name}
+          label={field.label}
+          defaultChecked={field.defaultChecked}
+          onChange={field.onChange}
+        />
+      );
+    }
+
     return (
-      <div key={field.name} className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-        <label htmlFor={field.name} className="block text-sm font-medium text-text sm:col-span-1">
-          {field.label}
-        </label>
-        <div className="mt-1 sm:col-span-3 sm:mt-0">
-          {field.type === 'textarea' ? (
-            <Textarea
-              name={field.name}
-              id={field.name}
-              defaultValue={typeof field.defaultValue === 'string' ? field.defaultValue : ''}
-              rows={3}
-              error={!!error}
-            />
-          ) : field.type === 'checkbox' ? (
-            <div className="flex h-5 items-center">
-              <Checkbox
-                id={field.name}
-                name={field.name}
-                defaultChecked={field.defaultChecked}
-                onChange={field.onChange}
-              />
-            </div>
-          ) : (
-            <Input
-              type={field.type || 'text'}
-              name={field.name}
-              id={field.name}
-              defaultValue={field.defaultValue || ''}
-              error={!!error}
-            />
-          )}
-        </div>
-      </div>
+      <Field
+        key={field.name}
+        label={field.label}
+        className={field.type === 'textarea' ? 'sm:col-span-2' : undefined}
+      >
+        {field.type === 'textarea' ? (
+          <Textarea
+            name={field.name}
+            id={field.name}
+            defaultValue={typeof field.defaultValue === 'string' ? field.defaultValue : ''}
+            rows={3}
+            error={error}
+          />
+        ) : (
+          <Input
+            type={field.type || 'text'}
+            name={field.name}
+            id={field.name}
+            defaultValue={field.defaultValue || ''}
+            error={error}
+          />
+        )}
+      </Field>
     );
   };
-  
+
   const generalFields: FieldConfig[] = [
       { name: 'doctor_name', label: 'Doctor Name', defaultValue: healthRecord?.doctor_name },
       { name: 'doctor_address', label: 'Doctor Address', defaultValue: healthRecord?.doctor_address },
@@ -146,64 +147,74 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
   ];
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} className="space-y-6">
       <input type="hidden" name="employee_id" value={employeeId} />
-      
-      <div className="space-y-4">
-        <div className="space-y-4">
-            {generalFields.map(renderField)}
-        </div>
 
-        <div className="space-y-4 pt-6">
-          <p className="text-base font-medium text-text sm:col-span-4">Health Questionnaire</p>
+      <Card>
+        <CardHeader title="Doctor and Medical Notes" subtitle="Confidential health and medical information" />
+        <CardBody className="grid gap-4 sm:grid-cols-2">
+          {generalFields.map(renderField)}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="Health Questionnaire" />
+        <CardBody className="space-y-4">
           {questionnaireFields.map(renderField)}
 
           {hasAllergies && (
-            <div className="pl-8 mt-2">
-              {renderField({ name: 'allergies', label: 'If yes, please specify', type: 'textarea', defaultValue: healthRecord?.allergies })}
-            </div>
+            renderField({ name: 'allergies', label: 'If yes, please specify', type: 'textarea', defaultValue: healthRecord?.allergies })
           )}
 
           {(hadAbsence || hadOutpatient) && (
-            <div className="pl-8 mt-2">
-              {renderField({ 
-                name: 'absence_or_treatment_details', 
-                label: 'If yes to either, please provide details', 
-                type: 'textarea', 
-                defaultValue: healthRecord?.absence_or_treatment_details 
-              })}
+            renderField({
+              name: 'absence_or_treatment_details',
+              label: 'If yes to either, please provide details',
+              type: 'textarea',
+              defaultValue: healthRecord?.absence_or_treatment_details
+            })
+          )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="Conditions" />
+        <CardBody className="grid gap-4 sm:grid-cols-2">
+          {conditionFields.map(renderField)}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="Disability" />
+        <CardBody className="space-y-4">
+          {renderField({
+            name: 'is_registered_disabled',
+            label: 'Is Registered Disabled?',
+            type: 'checkbox',
+            defaultChecked: isRegisteredDisabled,
+            onChange: (checked: boolean) => setIsRegisteredDisabled(checked)
+          })}
+
+          {isRegisteredDisabled && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {disabilityFields.map(renderField)}
             </div>
           )}
-        </div>
+        </CardBody>
+      </Card>
 
-        <div className="space-y-4 pt-6">
-            <p className="text-base font-medium text-text sm:col-span-4">Conditions</p>
-            {conditionFields.map(renderField)}
-        </div>
+      {state?.type === 'error' && !state.errors && (
+        <Alert tone="danger">{state.message}</Alert>
+      )}
 
-        <div className="space-y-4 pt-6">
-            {renderField({ 
-                name: 'is_registered_disabled', 
-                label: 'Is Registered Disabled?', 
-                type: 'checkbox', 
-                defaultChecked: isRegisteredDisabled, 
-                onChange: (checked: boolean) => setIsRegisteredDisabled(checked)
-            })}
-
-            {isRegisteredDisabled && (
-                <div className="space-y-4 pl-8 mt-4 border-l-2 border-border">
-                    {disabilityFields.map(renderField)}
-                </div>
-            )}
-        </div>
-      </div>
-      
-      <div className="flex justify-end pt-4">
-        <SubmitButton />
-      </div>
-       {state?.type === 'error' && !state.errors && (
-          <p className="mt-2 text-sm text-danger">{state.message}</p>
+      <FormFooter>
+        {cancelHref && (
+          <LinkButton href={cancelHref} variant="secondary">
+            Cancel
+          </LinkButton>
         )}
+        <SubmitButton />
+      </FormFooter>
     </form>
   );
-} 
+}

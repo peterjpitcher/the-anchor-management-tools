@@ -1,3 +1,6 @@
+import { Card, CardHeader, Icon, LinkButton } from '@/ds';
+import { cn } from '@/lib/utils';
+
 export interface PeriodSummary {
   periodLabel: string;
   plannedHours: number;
@@ -8,7 +11,7 @@ export interface PeriodSummary {
   /**
    * Premium UPLIFT already included in the pay figures above (null when none):
    * premiumHours × (effectiveRate − baseRate), i.e. the extra ABOVE base.
-   * This is NOT payroll's PayrollRow.premiumPay (the full premium-portion pay) —
+   * This is NOT payroll's PayrollRow.premiumPay (the full premium-portion pay);
    * do not treat the two identically-shaped fields as interchangeable.
    */
   premiumUpliftPay: number | null;
@@ -26,70 +29,52 @@ function fmtPay(p: number): string {
   return `£${p.toFixed(2)}`;
 }
 
+function SummaryRow({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }): React.ReactElement {
+  return (
+    <div className="flex justify-between gap-3 px-pad-card py-1.5">
+      <span className="text-sm text-text-muted">{label}</span>
+      <span className={cn('text-sm font-semibold text-text', valueClassName)}>{value}</span>
+    </div>
+  );
+}
+
 export default function PaySummaryCard({ current }: PaySummaryCardProps): React.ReactElement {
   const period = current;
   const hasPay = period.plannedPay !== null || period.actualPay !== null || period.holidayPay !== null;
 
   return (
-    <div className="bg-surface rounded-lg border border-border overflow-hidden">
-      {/* Period Navigator */}
-      <div className="bg-surface-2 border-b border-border px-4 py-2 flex items-center justify-between">
-        <span className="text-sm font-medium text-text">{period.periodLabel}</span>
-        <a href="#pay-disclaimer" className="touch-target flex items-center justify-center p-1 text-text-subtle hover:text-text-muted" title="Pay disclaimer">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M8 7V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            <circle cx="8" cy="5" r="0.75" fill="currentColor" />
-          </svg>
-        </a>
-      </div>
+    <Card>
+      <CardHeader
+        title="Pay Summary"
+        subtitle={period.periodLabel}
+        action={
+          <LinkButton
+            href="#pay-disclaimer"
+            variant="ghost"
+            size="sm"
+            icon={<Icon name="info" size={16} />}
+            className="px-1.5 text-text-muted"
+          >
+            <span className="sr-only">Pay disclaimer</span>
+          </LinkButton>
+        }
+      />
 
-      {/* Summary Grid */}
-      <div className="divide-y divide-border">
-        <div className="px-4 py-1.5 flex justify-between">
-          <span className="text-sm text-text-muted">Planned Hours</span>
-          <span className="text-sm font-semibold text-text">{fmtHours(period.plannedHours)}</span>
-        </div>
-
-        <div className="px-4 py-1.5 flex justify-between">
-          <span className="text-sm text-text-muted">Actual Hours</span>
-          <span className="text-sm font-semibold text-text">{fmtHours(period.actualHours)}</span>
-        </div>
-
-        {period.plannedPay !== null && (
-          <div className="px-4 py-1.5 flex justify-between">
-            <span className="text-sm text-text-muted">Planned Pay</span>
-            <span className="text-sm font-semibold text-text">{fmtPay(period.plannedPay)}</span>
-          </div>
-        )}
-
-        {period.actualPay !== null && (
-          <div className="px-4 py-1.5 flex justify-between">
-            <span className="text-sm text-text-muted">Actual Pay</span>
-            <span className="text-sm font-semibold text-text">{fmtPay(period.actualPay)}</span>
-          </div>
-        )}
-
+      <div className="divide-y divide-border py-1">
+        <SummaryRow label="Planned Hours" value={fmtHours(period.plannedHours)} />
+        <SummaryRow label="Actual Hours" value={fmtHours(period.actualHours)} />
+        {period.plannedPay !== null && <SummaryRow label="Planned Pay" value={fmtPay(period.plannedPay)} />}
+        {period.actualPay !== null && <SummaryRow label="Actual Pay" value={fmtPay(period.actualPay)} />}
         {period.premiumUpliftPay !== null && (
-          <div className="px-4 py-1.5 flex justify-between">
-            <span className="text-sm text-text-muted">incl. premium uplift</span>
-            <span className="text-sm font-semibold text-warning-fg">{fmtPay(period.premiumUpliftPay)}</span>
-          </div>
+          <SummaryRow label="incl. premium uplift" value={fmtPay(period.premiumUpliftPay)} valueClassName="text-warning-fg" />
         )}
-
         {period.holidayPay !== null && (
-          <div className="px-4 py-1.5 flex justify-between">
-            <span className="text-sm text-text-muted">Holiday Pay Earned</span>
-            <span className="text-sm font-semibold text-success-fg">{fmtPay(period.holidayPay)}</span>
-          </div>
+          <SummaryRow label="Holiday Pay Earned" value={fmtPay(period.holidayPay)} valueClassName="text-success-fg" />
         )}
-
         {!hasPay && (
-          <div className="px-4 py-1.5">
-            <p className="text-xs text-warning-fg">Hourly rate not configured. Speak to your manager.</p>
-          </div>
+          <p className="px-pad-card py-1.5 text-xs text-warning-fg">Hourly rate not configured. Speak to your manager.</p>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

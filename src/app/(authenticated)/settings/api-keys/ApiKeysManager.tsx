@@ -1,21 +1,41 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, IconButton, toast, Icon } from '@/ds';
-import { Input } from '@/ds';
-import { Checkbox } from '@/ds';
-import { Card } from '@/ds';
-import { Badge } from '@/ds';
-import { DataTable } from '@/ds';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  ConfirmDialog,
+  DataTable,
+  Field,
+  FormFooter,
+  Icon,
+  IconButton,
+  Input,
+  PageLayout,
+  toast,
+} from '@/ds';
 import { deleteApiKey, generateApiKey, revokeApiKey, updateApiKey } from './actions';
 import { format } from 'date-fns';
 import type { ApiKey } from '@/types/api';
-import { Alert, ConfirmDialog } from '@/ds';
+import { activeStateTone } from '../_shared/status-ui';
 
 interface ApiKeysManagerProps {
   initialKeys: ApiKey[];
   canManage: boolean;
+  /** Set when the keys could not be loaded. The page keeps its header and shows the error. */
+  loadError?: string | null;
 }
+
+const layoutProps = {
+  title: 'API Keys',
+  subtitle: 'Manage API keys for external integrations',
+  backButton: { label: 'Back to Settings', href: '/settings' },
+};
 
 const PERMISSION_OPTIONS = [
   { value: 'read:events', label: 'Read Events' },
@@ -77,32 +97,27 @@ function KeyForm({
       onSubmit={(e) => { e.preventDefault(); onSubmit(formData); }}
       className="space-y-4"
     >
-      <div>
-        <Input
-          label="Name *"
-          type="text"
-          id="key-name"
-          required
-          placeholder="e.g., Website Integration"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-        />
-      </div>
+      <Input
+        label="Name *"
+        type="text"
+        id="key-name"
+        required
+        placeholder="e.g., Website Integration"
+        value={formData.name}
+        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+      />
 
-      <div>
-        <Input
-          label="Description"
-          type="text"
-          id="key-description"
-          placeholder="Optional description"
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-        />
-      </div>
+      <Input
+        label="Description"
+        type="text"
+        id="key-description"
+        placeholder="Optional description"
+        value={formData.description}
+        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+      />
 
-      <div>
-        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-text-muted">Permissions</p>
-        <div className="space-y-2">
+      <Field label="Permissions">
+        <div role="group" aria-label="Permissions" className="space-y-2">
           {PERMISSION_OPTIONS.map(option => (
             <Checkbox
               key={option.value}
@@ -112,31 +127,29 @@ function KeyForm({
             />
           ))}
         </div>
-      </div>
+      </Field>
 
-      <div>
-        <Input
-          label="Rate Limit (requests per hour)"
-          type="number"
-          id="key-rate-limit"
-          value={formData.rate_limit}
-          onChange={(e) => setFormData({ ...formData, rate_limit: parseInt(e.target.value) || 1000 })}
-        />
-      </div>
+      <Input
+        label="Rate Limit (requests per hour)"
+        type="number"
+        id="key-rate-limit"
+        value={formData.rate_limit}
+        onChange={(e) => setFormData({ ...formData, rate_limit: parseInt(e.target.value) || 1000 })}
+      />
 
-      <div className="flex gap-3">
-        <Button type="submit" loading={isSaving} disabled={!formData.name}>
-          {isSaving ? 'Saving…' : submitLabel}
-        </Button>
+      <FormFooter>
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-      </div>
+        <Button type="submit" variant="primary" loading={isSaving} disabled={!formData.name}>
+          {isSaving ? 'Saving…' : submitLabel}
+        </Button>
+      </FormFooter>
     </form>
   );
 }
 
-export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManagerProps) {
+export default function ApiKeysManager({ initialKeys, canManage, loadError = null }: ApiKeysManagerProps) {
   const [keys, setKeys] = useState(initialKeys);
   const [showKey, setShowKey] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -229,8 +242,30 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
 
   const editingKey = editingKeyId ? keys.find(k => k.id === editingKeyId) : null;
 
+  if (loadError) {
+    return (
+      <PageLayout {...layoutProps}>
+        <Alert tone="danger" title="Failed to load API keys">{loadError}</Alert>
+      </PageLayout>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <PageLayout
+      {...layoutProps}
+      headerActions={
+        canManage && !showCreateForm && !editingKeyId ? (
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => setShowCreateForm(true)}
+            icon={<Icon name="plus" size={16} />}
+          >
+            New API Key
+          </Button>
+        ) : undefined
+      }
+    >
       {!canManage && (
         <Alert
           tone="info"
@@ -240,46 +275,43 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
         </Alert>
       )}
 
-      {/* Create Button */}
-      {canManage && !showCreateForm && !editingKeyId && (
-        <Button onClick={() => setShowCreateForm(true)} leftIcon={<Icon name="plus" size={16} />}>
-          Create API Key
-        </Button>
-      )}
-
       {/* Create Form */}
       {canManage && showCreateForm && (
-        <Card padding="md">
-          <h3 className="text-lg font-semibold mb-4">Create New API Key</h3>
-          <KeyForm
-            initial={{ name: '', description: '', permissions: ['read:events'], rate_limit: 1000 }}
-            onSubmit={handleCreateKey}
-            onCancel={() => setShowCreateForm(false)}
-            isSaving={isCreating}
-            submitLabel="Create Key"
-          />
+        <Card>
+          <CardHeader title="New API Key" />
+          <CardBody>
+            <KeyForm
+              initial={{ name: '', description: '', permissions: ['read:events'], rate_limit: 1000 }}
+              onSubmit={handleCreateKey}
+              onCancel={() => setShowCreateForm(false)}
+              isSaving={isCreating}
+              submitLabel="Create Key"
+            />
+          </CardBody>
         </Card>
       )}
 
       {/* Edit Form */}
       {canManage && editingKey && (
-        <Card padding="md">
-          <h3 className="text-lg font-semibold mb-1">Edit API Key</h3>
-          <p className="text-sm text-text-muted mb-4">
-            The key value itself cannot be changed. Only the name, description, permissions and rate limit can be updated.
-          </p>
-          <KeyForm
-            initial={{
-              name: editingKey.name,
-              description: editingKey.description ?? '',
-              permissions: editingKey.permissions,
-              rate_limit: editingKey.rate_limit,
-            }}
-            onSubmit={(data) => handleUpdateKey(editingKey.id, data)}
-            onCancel={() => setEditingKeyId(null)}
-            isSaving={isSavingEdit}
-            submitLabel="Save Changes"
-          />
+        <Card>
+          <CardHeader title="Edit API Key" />
+          <CardBody className="space-y-4">
+            <p className="text-sm text-text-muted">
+              The key value itself cannot be changed. Only the name, description, permissions and rate limit can be updated.
+            </p>
+            <KeyForm
+              initial={{
+                name: editingKey.name,
+                description: editingKey.description ?? '',
+                permissions: editingKey.permissions,
+                rate_limit: editingKey.rate_limit,
+              }}
+              onSubmit={(data) => handleUpdateKey(editingKey.id, data)}
+              onCancel={() => setEditingKeyId(null)}
+              isSaving={isSavingEdit}
+              submitLabel="Save Changes"
+            />
+          </CardBody>
         </Card>
       )}
 
@@ -309,6 +341,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
         <DataTable<ApiKey>
           data={keys}
           getRowKey={(k) => k.id}
+          bordered={false}
           emptyMessage="No API keys yet"
           columns={[
             { key: 'name', header: 'Name', cell: (k: ApiKey) => (
@@ -322,7 +355,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
             ) },
             { key: 'rate', header: 'Rate Limit', align: 'right', cell: (k: ApiKey) => <span className="text-sm text-text">{k.rate_limit}/hour</span> },
             { key: 'last', header: 'Last Used', cell: (k: ApiKey) => <span className="text-sm text-text-muted">{k.last_used_at ? format(new Date(k.last_used_at), 'MMM d, yyyy HH:mm') : 'Never'}</span> },
-            { key: 'status', header: 'Status', cell: (k: ApiKey) => <Badge tone={k.is_active ? 'success' : 'neutral'}>{k.is_active ? 'Active' : 'Inactive'}</Badge> },
+            { key: 'status', header: 'Status', cell: (k: ApiKey) => <Badge tone={activeStateTone(k.is_active)}>{k.is_active ? 'Active' : 'Inactive'}</Badge> },
             ...(canManage ? [{
               key: 'actions',
               header: '',
@@ -367,7 +400,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
         onClose={() => setRevokeTarget(null)}
         onConfirm={handleRevokeKey}
         type="warning"
-        title="Revoke API key?"
+        title="Revoke API Key"
         message={revokeTarget ? `Revoke ${revokeTarget.name}? Existing integrations using it will stop working.` : 'Revoke this API key?'}
         confirmText="Revoke"
         confirmVariant="danger"
@@ -382,7 +415,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
         onConfirm={handleDeleteKey}
         type="danger"
         destructive
-        title="Delete API key?"
+        title="Delete API Key"
         message={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone.` : 'Delete this API key?'}
         confirmText="Delete"
         loading={isMutatingKey}
@@ -391,11 +424,11 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
       />
 
       {/* Usage Instructions */}
-      <Card variant="secondary" padding="md">
-        <h3 className="text-lg font-semibold mb-4">API Usage</h3>
-        <div className="space-y-3">
+      <Card>
+        <CardHeader title="API Usage" />
+        <CardBody className="space-y-4">
           <div>
-            <h4 className="font-medium mb-1">Authentication</h4>
+            <p className="mb-1 text-sm font-medium text-text-strong">Authentication</p>
             <p className="text-sm text-text-muted mb-2">
               Include your API key in the Authorization header:
             </p>
@@ -405,7 +438,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
           </div>
 
           <div>
-            <h4 className="font-medium mb-1">Example Request</h4>
+            <p className="mb-1 text-sm font-medium text-text-strong">Example Request</p>
             <code className="block overflow-x-auto whitespace-pre rounded-sm border border-border bg-surface p-3 font-mono text-sm text-text">
 {`curl -H "Authorization: Bearer YOUR_API_KEY" \\
   ${process.env.NEXT_PUBLIC_APP_URL}/api/events`}
@@ -413,7 +446,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
           </div>
 
           <div>
-            <h4 className="font-medium mb-1">Available Endpoints</h4>
+            <p className="mb-1 text-sm font-medium text-text-strong">Available Endpoints</p>
             <ul className="text-sm text-text-muted space-y-1">
               <li>• GET /api/events - List all events</li>
               <li>• GET /api/events/today - Today&apos;s events</li>
@@ -426,8 +459,8 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
               <li>• GET /api/business/amenities - Venue amenities</li>
             </ul>
           </div>
-        </div>
+        </CardBody>
       </Card>
-    </div>
+    </PageLayout>
   );
 }

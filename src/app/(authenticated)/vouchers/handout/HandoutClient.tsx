@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Card, Button, Input, Select, Alert, Badge, toast } from '@/ds'
+import { Card, CardBody, CardHeader, Button, FormFooter, Input, Select, Alert, Badge, toast } from '@/ds'
 import { EXPIRY_PRESET_DAYS, LOOKUP_MIN_CHARS } from '@/lib/vouchers/constants'
 import { normaliseVoucherNumberInput } from '@/lib/vouchers/numbering'
 import {
@@ -24,7 +24,11 @@ import {
   formatDateFull,
   formatTime12Hour,
 } from '@/lib/dateUtils'
-import { newIdempotencyKey } from '../_shared/voucher-ui'
+import { newIdempotencyKey, VoucherStatusBadge } from '../_shared/voucher-ui'
+
+// A caption for a group of toggle buttons, in the DS field-label style. The group points at it
+// with aria-labelledby, because a <label> can only name a single control.
+const GROUP_CAPTION = 'mb-2 block text-xs font-medium uppercase tracking-wider text-text-muted'
 
 const STORAGE_KEY = 'ams-voucher-handout-v1'
 const DEFAULT_EXPIRY_DAYS = EXPIRY_PRESET_DAYS[0]
@@ -297,26 +301,30 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
   }
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <Card title="Session context" subtitle="Applies to every card until you change it">
-        <div className="space-y-4">
+    // data-touch-targets lifts every control here to 44px on a touch screen (globals.css,
+    // pointer: coarse): this screen is used on an iPad at the bar. The wrapper exists for that
+    // scope and spaces its blocks the way PageLayout spaces a page.
+    <div data-touch-targets="" className="space-y-6">
+      <Card>
+        <CardHeader title="Session Context" subtitle="Applies to every card until you change it" />
+        <CardBody className="space-y-4">
           <div>
-            <div className="text-sm font-medium text-text mb-2">Won at</div>
-            <div className="flex flex-wrap gap-2">
+            <span id="handout-won-at" className={GROUP_CAPTION}>
+              Won at
+            </span>
+            <div className="flex flex-wrap gap-2" role="group" aria-labelledby="handout-won-at">
               {context.events.map((event) => (
-                <button
+                <Button
                   key={event.id}
                   type="button"
+                  size="sm"
+                  variant={eventId === event.id ? 'primary' : 'secondary'}
+                  aria-pressed={eventId === event.id}
                   onClick={() => setEventId(eventId === event.id ? null : event.id)}
-                  className={`rounded-pill border px-3 py-1.5 text-sm transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                    eventId === event.id
-                      ? 'border-primary bg-primary-soft text-primary-soft-fg font-medium'
-                      : 'border-border bg-surface text-text-muted hover:bg-surface-hover'
-                  }`}
                 >
                   {event.name}
                   {event.time ? ` · ${formatTime12Hour(event.time)}` : ''}
-                </button>
+                </Button>
               ))}
               {context.events.length === 0 && (
                 <span className="text-sm text-text-muted">
@@ -347,21 +355,21 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
           />
 
           <div>
-            <div className="text-sm font-medium text-text mb-2">Expiry (required)</div>
-            <div className="flex flex-wrap items-center gap-2">
+            <span id="handout-expiry" className={GROUP_CAPTION}>
+              Expiry (required)
+            </span>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="handout-expiry">
               {presetDates.map((preset) => (
-                <button
+                <Button
                   key={preset.days}
                   type="button"
+                  size="sm"
+                  variant={expiryDate === preset.date ? 'primary' : 'secondary'}
+                  aria-pressed={expiryDate === preset.date}
                   onClick={() => setExpiryDate(preset.date)}
-                  className={`rounded-pill border px-3 py-1.5 text-sm transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                    expiryDate === preset.date
-                      ? 'border-primary bg-primary-soft text-primary-soft-fg font-medium'
-                      : 'border-border bg-surface text-text-muted hover:bg-surface-hover'
-                  }`}
                 >
                   +{preset.days} days
-                </button>
+                </Button>
               ))}
               <div className="w-44">
                 <Input
@@ -374,19 +382,23 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
               </div>
             </div>
             {expiryLong && (
-              <div className="mt-3 rounded-lg bg-success-soft border border-success-border px-4 py-3 text-success-fg font-medium">
-                Write this date on every card: {expiryLong}
-              </div>
+              <Alert
+                tone="success"
+                role="status"
+                className="mt-3"
+                title={`Write this date on every card: ${expiryLong}`}
+              />
             )}
           </div>
-        </div>
+        </CardBody>
       </Card>
 
-      <Card
-        title="Hand out a card"
-        subtitle={contextReady ? undefined : 'Set staff, expiry and where it was won first'}
-      >
-        <div className="space-y-4">
+      <Card>
+        <CardHeader
+          title="Hand Out a Card"
+          subtitle={contextReady ? undefined : 'Set staff, expiry and where it was won first'}
+        />
+        <CardBody className="space-y-4">
           {lastIssued && !selected && (
             <Alert tone="success" title={`${lastIssued.number} recorded`}>
               Write {formatDateFull(lastIssued.expiry)} on the card before handing it over.
@@ -415,22 +427,25 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
           </div>
 
           {!selected && matches.length > 0 && (
-            <ul className="divide-y divide-border rounded-lg border border-border">
-              {matches.map((match) => (
-                <li key={match.voucherNumber}>
-                  <button
-                    type="button"
-                    onClick={() => pickVoucher(match)}
-                    className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-                  >
-                    <span className="font-mono font-medium text-text">
-                      {match.voucherNumber}
-                    </span>
-                    <span className="text-sm text-text-muted">{match.typeTitle}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <Card padding="none">
+              <ul className="divide-y divide-border">
+                {matches.map((match) => (
+                  <li key={match.voucherNumber}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => pickVoucher(match)}
+                      className="h-auto w-full justify-between rounded-none px-4 py-3 text-left font-normal focus-visible:shadow-ring-inset"
+                    >
+                      <span className="font-mono font-medium text-text">
+                        {match.voucherNumber}
+                      </span>
+                      <span className="text-sm text-text-muted">{match.typeTitle}</span>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           )}
           {!selected &&
             matches.length === 0 &&
@@ -444,7 +459,7 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
 
           {selected && (
             <div className="space-y-4">
-              <div className="rounded-lg border border-border px-4 py-3">
+              <Card variant="secondary" padding="sm">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="font-mono text-lg font-semibold text-text">
@@ -452,14 +467,15 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                     </div>
                     <div className="text-sm text-text-muted">{selected.typeTitle}</div>
                   </div>
-                  <Badge tone="neutral">In stock</Badge>
+                  {/* Only printed, un-issued cards can be picked here. */}
+                  <VoucherStatusBadge status="generated" />
                 </div>
-              </div>
+              </Card>
 
               <div>
-                <div className="text-sm font-medium text-text mb-2">
+                <span id="handout-customer" className={GROUP_CAPTION}>
                   Customer (optional, for SMS reminders)
-                </div>
+                </span>
                 {customer ? (
                   <div className="flex items-center gap-2">
                     <Badge tone="primary">{customer.name}</Badge>
@@ -468,21 +484,23 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-2" role="group" aria-labelledby="handout-customer">
                     {bookers.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {bookers.map((booker) => (
-                          <button
+                          <Button
                             key={booker.customerId}
                             type="button"
+                            size="sm"
+                            variant="secondary"
                             onClick={() =>
                               setCustomer({ id: booker.customerId, name: booker.name })
                             }
-                            className="rounded-pill border border-border bg-surface px-3 py-1.5 text-sm text-text-muted hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
+                            className="font-normal"
                           >
                             {booker.name} · booked · {booker.seats}{' '}
                             {booker.seats === 1 ? 'seat' : 'seats'}
-                          </button>
+                          </Button>
                         ))}
                       </div>
                     )}
@@ -494,24 +512,27 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                       autoComplete="off"
                     />
                     {customerHits.length > 0 && (
-                      <ul className="divide-y divide-border rounded-lg border border-border">
-                        {customerHits.map((hit) => (
-                          <li key={hit.id}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCustomer({ id: hit.id, name: hit.name })
-                                setCustomerQuery('')
-                                setCustomerHits([])
-                              }}
-                              className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-                            >
-                              <span className="text-text">{hit.name}</span>
-                              <span className="text-sm text-text-muted">{hit.mobile ?? ''}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+                      <Card padding="none">
+                        <ul className="divide-y divide-border">
+                          {customerHits.map((hit) => (
+                            <li key={hit.id}>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => {
+                                  setCustomer({ id: hit.id, name: hit.name })
+                                  setCustomerQuery('')
+                                  setCustomerHits([])
+                                }}
+                                className="h-auto w-full justify-between rounded-none px-4 py-2.5 text-left font-normal focus-visible:shadow-ring-inset"
+                              >
+                                <span className="text-text">{hit.name}</span>
+                                <span className="text-sm text-text-muted">{hit.mobile ?? ''}</span>
+                              </Button>
+                            </li>
+                          ))}
+                        </ul>
+                      </Card>
                     )}
                     {!quickAddOpen && (
                       <Button
@@ -520,51 +541,53 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                         onClick={() => setQuickAddOpen(true)}
                         className="text-sm"
                       >
-                        Not on file? Add them
+                        Not on File? Add Them
                       </Button>
                     )}
                     {quickAddOpen && (
-                      <div className="space-y-2 rounded-lg border border-border bg-surface-2 p-3">
-                        <p className="text-sm text-text-muted">
-                          Adding someone here signs them up for updates from The Anchor, so please say so.
-                        </p>
-                        <Input
-                          aria-label="New customer name"
-                          placeholder="Name"
-                          value={quickAddName}
-                          onChange={(event) => setQuickAddName(event.target.value)}
-                          autoComplete="off"
-                        />
-                        <Input
-                          aria-label="New customer mobile"
-                          placeholder="Mobile number"
-                          value={quickAddMobile}
-                          onChange={(event) => setQuickAddMobile(event.target.value)}
-                          autoComplete="off"
-                        />
-                        <Input
-                          aria-label="New customer email (optional)"
-                          placeholder="Email (optional, used for reminders)"
-                          value={quickAddEmail}
-                          onChange={(event) => setQuickAddEmail(event.target.value)}
-                          autoComplete="off"
-                        />
-                        {quickAddError && <p className="text-sm text-danger">{quickAddError}</p>}
-                        <div className="flex gap-2">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            loading={quickAddBusy}
-                            disabled={quickAddBusy || !quickAddName.trim() || !quickAddMobile.trim()}
-                            onClick={() => void handleQuickAdd()}
-                          >
-                            Add and attach
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => setQuickAddOpen(false)}>
-                            Cancel
-                          </Button>
+                      <Card variant="secondary" padding="sm">
+                        <div className="space-y-2">
+                          <p className="text-sm text-text-muted">
+                            Adding someone here signs them up for updates from The Anchor, so please say so.
+                          </p>
+                          <Input
+                            aria-label="New customer name"
+                            placeholder="Name"
+                            value={quickAddName}
+                            onChange={(event) => setQuickAddName(event.target.value)}
+                            autoComplete="off"
+                          />
+                          <Input
+                            aria-label="New customer mobile"
+                            placeholder="Mobile number"
+                            value={quickAddMobile}
+                            onChange={(event) => setQuickAddMobile(event.target.value)}
+                            autoComplete="off"
+                          />
+                          <Input
+                            aria-label="New customer email (optional)"
+                            placeholder="Email (optional, used for reminders)"
+                            value={quickAddEmail}
+                            onChange={(event) => setQuickAddEmail(event.target.value)}
+                            autoComplete="off"
+                          />
+                          {quickAddError && <p className="text-sm text-danger-fg">{quickAddError}</p>}
+                          <FormFooter>
+                            <Button variant="ghost" size="sm" onClick={() => setQuickAddOpen(false)}>
+                              Cancel
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              loading={quickAddBusy}
+                              disabled={quickAddBusy || !quickAddName.trim() || !quickAddMobile.trim()}
+                              onClick={() => void handleQuickAdd()}
+                            >
+                              Add and Attach
+                            </Button>
+                          </FormFooter>
                         </div>
-                      </div>
+                      </Card>
                     )}
                   </div>
                 )}
@@ -576,23 +599,29 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                 </Alert>
               )}
 
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={() => void handleConfirm()}
-                disabled={!contextReady || submitting}
-                loading={submitting}
+              {/* The hand-out form ends here, so its one action sits in the form footer. */}
+              <FormFooter
+                start={
+                  !contextReady ? (
+                    <span className="text-warning-fg">
+                      Set the staff member, expiry date and where it was won before confirming.
+                    </span>
+                  ) : undefined
+                }
               >
-                Confirm hand-out
-              </Button>
-              {!contextReady && (
-                <p className="text-sm text-warning-fg">
-                  Set the staff member, expiry date and where it was won before confirming.
-                </p>
-              )}
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => void handleConfirm()}
+                  disabled={!contextReady || submitting}
+                  loading={submitting}
+                >
+                  Confirm Hand-Out
+                </Button>
+              </FormFooter>
             </div>
           )}
-        </div>
+        </CardBody>
       </Card>
 
       <div className="flex items-center justify-between text-sm text-text-muted">

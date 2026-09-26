@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
-import { Button } from '@/ds'
+import { Card, Segmented, Stat, StatGrid } from '@/ds'
 import {
   fetchVoucherCounts,
   type FohStaffMember,
@@ -61,50 +61,33 @@ export function VouchersFohClient({ canEdit, staff, todayIso }: VouchersFohClien
   const staffName = staffId ? staff.find((member) => member.id === staffId)?.name ?? null : null
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4">
-      <dl className="grid grid-cols-3 gap-2 sm:gap-3">
-        <div className="min-w-0 rounded-lg border border-border bg-surface p-3 text-center">
-          <dd className="text-3xl font-extrabold text-text">{counts ? counts.inStock : '-'}</dd>
-          <dt className="mt-1 text-sm font-medium text-text-muted">In stock</dt>
-        </div>
-        <div className="min-w-0 rounded-lg border border-border bg-surface p-3 text-center">
-          <dd className="text-3xl font-extrabold text-text">{counts ? counts.out : '-'}</dd>
-          <dt className="mt-1 text-sm font-medium text-text-muted">Out with guests</dt>
-        </div>
-        <div className="min-w-0 rounded-lg border border-border bg-surface p-3 text-center">
-          <dd className="text-3xl font-extrabold text-text">
-            {counts ? counts.redeemedToday : '-'}
-          </dd>
-          <dt className="mt-1 text-sm font-medium text-text-muted">Redeemed today</dt>
-        </div>
-      </dl>
+    // data-touch-targets lifts every control on this screen to 44px on the bar iPad
+    // (globals.css, pointer: coarse). The wrapper exists for that scope; it spaces its blocks
+    // the way PageLayout spaces a page.
+    <div data-touch-targets="" className="space-y-6">
+      <StatGrid columns={3}>
+        <Stat label="In stock" value={counts ? counts.inStock : '-'} />
+        <Stat label="Out with guests" value={counts ? counts.out : '-'} />
+        <Stat label="Redeemed today" value={counts ? counts.redeemedToday : '-'} />
+      </StatGrid>
 
-      <div className="rounded-lg border border-border bg-surface p-4">
+      <Card>
         <StaffPicker staff={staff} value={staffId} onChange={handleStaffChange} />
-      </div>
+      </Card>
 
-      {/* The chosen mode is a filled primary button, the other a secondary one. */}
-      <div className="flex gap-2" role="group" aria-label="Voucher actions">
-        <Button
-          type="button"
-          variant={tab === 'redeem' ? 'primary' : 'secondary'}
-          size="lg"
-          onClick={() => setTab('redeem')}
-          aria-pressed={tab === 'redeem'}
-          className="h-14 flex-1 text-lg font-bold"
-        >
-          Redeem
-        </Button>
-        <Button
-          type="button"
-          variant={tab === 'handout' ? 'primary' : 'secondary'}
-          size="lg"
-          onClick={() => setTab('handout')}
-          aria-pressed={tab === 'handout'}
-          className="h-14 flex-1 text-lg font-bold"
-        >
-          Hand out
-        </Button>
+      {/* Redeem or hand out: two views of the same voucher lookup. Full width, so each half is
+          an easy target on the iPad. Segmented takes no aria-label, so the group around it
+          carries the name the toggle had before ("Voucher actions"). */}
+      <div role="group" aria-label="Voucher actions">
+        <Segmented
+          options={[
+            { id: 'redeem', label: 'Redeem' },
+            { id: 'handout', label: 'Hand Out' },
+          ]}
+          value={tab}
+          onChange={(id) => setTab(id as VoucherTab)}
+          className="w-full [&>button]:min-h-touch [&>button]:flex-1 [&>button]:text-base"
+        />
       </div>
 
       {tab === 'redeem' ? (
