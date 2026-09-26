@@ -23,6 +23,7 @@ import { Badge } from '@/ds'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ds'
 import { BarChart } from '@/components/charts/BarChart'
 import { WinBackCampaign } from '@/components/features/customers/WinBackCampaign'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 
 const WINDOW_OPTIONS: Array<{ key: CustomerInsightsWindow; label: string }> = [
   { key: '30d', label: '30 days' },
@@ -53,10 +54,10 @@ function formatDate(value: string | null): string {
 }
 
 function formatGeneratedAt(iso: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
+  return formatDateTimeInLondon(iso, {
     dateStyle: 'medium',
     timeStyle: 'short'
-  }).format(new Date(iso))
+  })
 }
 
 function signalBadgeTone(signal: StrategicSignal): 'success' | 'warning' | 'danger' | 'info' {
