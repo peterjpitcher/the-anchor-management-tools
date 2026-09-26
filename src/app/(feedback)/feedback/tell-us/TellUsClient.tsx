@@ -133,9 +133,7 @@ export function TellUsClient({ src }: TellUsClientProps) {
             <p id="rating-label" className="font-anchor-body text-guest-lead font-semibold text-guest-text">
               How would you rate your visit?
             </p>
-            <div role="group" aria-labelledby="rating-label">
-              <StarRating value={rating} onChange={setRating} />
-            </div>
+            <StarRating value={rating} onChange={setRating} aria-labelledby="rating-label" />
           </div>
 
           {/* Comments: the card says what this box is for, so its label is for screen readers. */}

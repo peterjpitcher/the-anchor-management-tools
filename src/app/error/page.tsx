@@ -14,7 +14,7 @@ const FRIENDLY_MESSAGES: Record<string, { title: string; message: string }> = {
   otp_expired: {
     title: 'Link Already Used or Expired',
     message:
-      'This link was already used or has expired. You can request another password reset from the login page.',
+      'This link was already used or has expired. You can request another password reset from the sign-in page.',
   },
   over_email_send_rate_limit: {
     title: 'Too Many Reset Attempts',

@@ -8,7 +8,7 @@ import { Alert, Stat, Badge, Empty, ProgressBar, Select, Input } from '@/ds'
 import { cashingUpLayout } from '../../_shared/nav'
 import {
   cashVarianceTextClass,
-  signedAmountTone,
+  cashVarianceTone,
   targetPerformanceRowClass,
   targetPerformanceTone,
   weeklyProgressTone,
@@ -178,7 +178,7 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
         <Stat
           label="Total Variance"
           value={`£${fmt(kpis.totalVariance)}`}
-          tone={signedAmountTone(kpis.totalVariance)}
+          tone={cashVarianceTone(kpis.totalVariance)}
           delta={comp ? pctChange(kpis.totalVariance, comp.totalVariance) : undefined}
           hint={comp ? `vs £${fmt(comp.totalVariance)} (${compareYear})` : undefined}
         />

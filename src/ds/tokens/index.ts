@@ -60,6 +60,7 @@ const colors = {
   primaryHover: 'var(--color-primary-hover)',
   primarySoft: 'var(--color-primary-soft)',
   primarySoftFg: 'var(--color-primary-soft-fg)',
+  primaryBorder: 'var(--color-primary-border)',
   primaryFg: 'var(--color-primary-fg)',
   onDark: 'var(--color-on-dark)',
   onDarkMuted: 'var(--color-on-dark-muted)',

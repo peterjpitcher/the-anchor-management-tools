@@ -42,6 +42,29 @@ describe('Dropdown', () => {
     expect(label).toHaveClass('uppercase', 'text-text-muted')
   })
 
+  it.each([
+    [undefined, ['w-48']],
+    ['sm', ['w-48']],
+    ['md', ['w-64']],
+    ['lg', ['w-80']],
+    ['auto', ['w-max', 'min-w-48', 'max-w-80']],
+  ] as const)('sizes the menu for width=%s', async (width, classes) => {
+    const user = userEvent.setup()
+    render(
+      <Dropdown trigger={<Button>Actions</Button>} width={width}>
+        <DropdownItem onClick={() => undefined}>Post-event Book Next Screen</DropdownItem>
+      </Dropdown>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Actions' }))
+
+    const menu = screen.getByRole('menu')
+    expect(menu).toHaveClass(...classes)
+    for (const other of ['w-48', 'w-64', 'w-80', 'w-max'].filter((name) => !(classes as readonly string[]).includes(name))) {
+      expect(menu).not.toHaveClass(other)
+    }
+  })
+
   it('closes after a choice by default', async () => {
     const user = userEvent.setup()
     const onEdit = vi.fn()

@@ -65,6 +65,17 @@ export function automationCoverageTone(coverage: number): 'success' | 'default' 
   return 'danger'
 }
 
+/**
+ * The change in automation coverage between two months, as the Stat's delta text. Coverage is
+ * itself a percentage, so its change is in percentage points ("+5.2 pts"), never "5.2%".
+ * `points` is the difference of the two percentages (72.5 minus 67.3).
+ */
+export function automationCoverageDeltaLabel(points: number): string {
+  const rounded = Math.round(points * 10) / 10
+  if (rounded === 0) return '0 pts'
+  return `${rounded > 0 ? '+' : '-'}${Math.abs(rounded)} pts`
+}
+
 /** The monthly overview's "what changed" feed: a saving, a cost rising, or something to watch. */
 export type ReceiptInsightKind = 'positive' | 'negative' | 'neutral'
 

@@ -25,7 +25,7 @@ vi.mock('@/contexts/PermissionContext', () => ({
 vi.mock('@/app/actions/quotes', () => quoteActions)
 
 const summary = { total_pending: 0, total_expired: 0, total_accepted: 0, draft_badge: 0 }
-const permissions = { canCreate: true, canEdit: true, canDelete: true }
+const permissions = { canCreate: true, canEdit: true, canDelete: true, canExport: true }
 
 describe('QuotesClient', () => {
   beforeEach(() => {

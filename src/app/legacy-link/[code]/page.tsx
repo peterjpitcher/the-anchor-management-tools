@@ -5,6 +5,10 @@ import LegacyLinkClient from './LegacyLinkClient'
 
 const FALLBACK_REDIRECT_URL = 'https://www.the-anchor.pub'
 
+// Static and non-personal on purpose, like every guest page's title: no short code may reach
+// a browser title or history entry. The words are the page heading's own kicker.
+export const metadata = { title: 'Link update - The Anchor' }
+
 type PageProps = {
   params: Promise<{ code: string }>
   searchParams?: Promise<Record<string, string | string[] | undefined>>

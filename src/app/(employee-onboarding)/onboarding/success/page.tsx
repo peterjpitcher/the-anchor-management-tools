@@ -22,7 +22,7 @@ export default async function OnboardingSuccessPage({ searchParams }: Onboarding
       </Alert>
 
       <Card>
-        <CardHeader title="How to Log In Next Time" />
+        <CardHeader title="How to Sign In Next Time" />
         <CardBody className="space-y-3">
           <p className="text-sm text-text-muted">
             Save the address below to access the staff portal in future. Use the email address and password you just created to sign in.

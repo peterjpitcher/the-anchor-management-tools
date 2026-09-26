@@ -86,6 +86,35 @@ describe('Stat deltaGood', () => {
   })
 })
 
+describe('Stat deltaLabel', () => {
+  it('shows the label instead of the percentage and keeps the direction colour and words', () => {
+    render(<Stat label="No-shows" value="2" delta={2} deltaLabel="+2" deltaGood="down" />)
+    const delta = screen.getByText('+2')
+
+    expect(delta).toHaveClass('text-danger-fg')
+    expect(delta.querySelector('svg')).not.toBeNull()
+    expect(spokenText(delta)).toBe('up +2')
+    expect(visibleText(delta)).toBe('+2')
+    expect(screen.queryByText('2%', { exact: false })).not.toBeInTheDocument()
+  })
+
+  it('shows percentage points for a fall, in the colour of a fall', () => {
+    render(<Stat label="Automation coverage" value="70%" delta={-5} deltaLabel="-5 pts" />)
+    const delta = screen.getByText('-5 pts')
+
+    expect(delta).toHaveClass('text-danger-fg')
+    expect(spokenText(delta)).toBe('down -5 pts')
+  })
+
+  it('takes its direction from deltaDirection when there is no delta number', () => {
+    render(<Stat label="Covers" value="12" deltaDirection="up" deltaLabel="+12" />)
+    const delta = screen.getByText('+12')
+
+    expect(delta).toHaveClass('text-success-fg')
+    expect(spokenText(delta)).toBe('up +12')
+  })
+})
+
 describe('Stat tone', () => {
   it.each([
     ['default', 'text-text'],

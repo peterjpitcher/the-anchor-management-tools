@@ -211,6 +211,32 @@ describe('BohBookingsClient figures and sorting', () => {
     expect(lostDelta).toHaveTextContent('up')
   })
 
+  it('shows a coloured absolute change when the previous period had nothing', async () => {
+    // Last week was empty, so there is no percentage: the change shows in the figure's own units,
+    // still green for more bookings and red for more no-shows.
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/boh/table-bookings?')) {
+        const date = new URLSearchParams(url.split('?')[1]).get('date')
+        return Promise.resolve(listResponse(date === TODAY ? CURRENT : []))
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true, data: {} }) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<BohBookingsClient canEdit canManage />)
+
+    await screen.findByText('Total bookings')
+
+    const bookingsDelta = within(statFor('Total bookings')).getByText('+3', { selector: 'span' })
+    expect(bookingsDelta).toHaveClass('text-success-fg')
+    expect(bookingsDelta).toHaveTextContent('up')
+    expect(bookingsDelta).not.toHaveTextContent('%')
+
+    const lostDelta = within(statFor('No-shows + cancellations')).getByText('+2', { selector: 'span' })
+    expect(lostDelta).toHaveClass('text-danger-fg')
+    expect(lostDelta).toHaveTextContent('up')
+  })
+
   it('sorts from the DS column header buttons and reports the sort to assistive tech', async () => {
     installFetch()
     const user = userEvent.setup()

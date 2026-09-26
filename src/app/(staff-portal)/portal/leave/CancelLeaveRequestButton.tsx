@@ -1,29 +1,31 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Alert, Button } from '@/ds';
+import { Alert, Button, ConfirmDialog } from '@/ds';
 import { cancelOwnLeaveRequest } from '@/app/actions/leave';
 
 interface CancelLeaveRequestButtonProps {
   requestId: string;
 }
 
+/**
+ * Withdraws a pending holiday request. Cancelling deletes the request, so it asks first; a
+ * failure shows beside the button once the dialog has closed.
+ */
 export function CancelLeaveRequestButton({ requestId }: CancelLeaveRequestButtonProps) {
   const router = useRouter();
   const [error, setError] = useState('');
-  const [isPending, startTransition] = useTransition();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const handleCancel = () => {
+  const handleConfirm = async (): Promise<void> => {
     setError('');
-    startTransition(async () => {
-      const result = await cancelOwnLeaveRequest(requestId);
-      if (!result.success) {
-        setError(result.error);
-        return;
-      }
-      router.refresh();
-    });
+    const result = await cancelOwnLeaveRequest(requestId);
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+    router.refresh();
   };
 
   return (
@@ -33,15 +35,19 @@ export function CancelLeaveRequestButton({ requestId }: CancelLeaveRequestButton
           {error}
         </Alert>
       )}
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        onClick={handleCancel}
-        disabled={isPending}
-      >
-        {isPending ? 'Cancelling...' : 'Cancel Request'}
+      <Button type="button" variant="secondary" size="sm" onClick={() => setConfirmOpen(true)}>
+        Cancel Request
       </Button>
+      <ConfirmDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={handleConfirm}
+        title="Cancel Holiday Request?"
+        message="Your request is withdrawn and your manager will no longer see it. To take this time off, send a new request."
+        confirmLabel="Cancel Request"
+        cancelLabel="Keep Request"
+        tone="danger"
+      />
     </div>
   );
 }

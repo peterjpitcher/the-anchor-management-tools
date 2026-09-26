@@ -478,7 +478,7 @@ export default function CustomersClient({
           {loadError}
           <div className="mt-3">
             <Button variant="secondary" size="sm" onClick={refreshCurrentPage}>
-              Try again
+              Try Again
             </Button>
           </div>
         </Alert>

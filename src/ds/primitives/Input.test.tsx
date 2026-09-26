@@ -54,6 +54,15 @@ describe.each(controls)('$name', ({ renderControl }) => {
     expect(control).not.toHaveClass('focus:shadow-ring')
     expect(control).not.toHaveClass('focus:border-border-focus')
   })
+
+  it('writes the error in the readable danger text colour, as Field does', () => {
+    render(renderControl({ label: 'Notes', error: 'Required' }))
+
+    const error = screen.getByRole('alert')
+    expect(error).toHaveTextContent('Required')
+    expect(error).toHaveClass('text-danger-fg', 'text-xs')
+    expect(error).not.toHaveClass('text-danger')
+  })
 })
 
 const WARNING_HALO = 'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-warning)_20%,transparent)]'
@@ -70,7 +79,9 @@ describe('Input warning', () => {
     expect(input).not.toHaveAttribute('aria-invalid')
     expect(input).toHaveAccessibleDescription('This date is in the past')
     expect(message).toHaveClass('text-warning-fg', 'text-xs', 'mt-1')
-    expect(message).not.toHaveAttribute('role')
+    // Announced politely (a status), never interrupting like an error's alert.
+    expect(message).toHaveAttribute('role', 'status')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shows the error instead when both are set', () => {

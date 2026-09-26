@@ -653,7 +653,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                   {loadError}
                   <div className="mt-3">
                     <Button type="button" variant="secondary" size="sm" onClick={() => void fetchBookings()}>
-                      Try again
+                      Try Again
                     </Button>
                   </div>
                 </Alert>

@@ -3,9 +3,9 @@
  * every screen that shows one. Pure module, safe to import from server and client components.
  *
  * Before 26 September 2026 three screens each had their own copy and they disagreed: the event
- * page (eventMessageStatusTone in events/_shared/status-ui.ts), the private booking
- * Communications tab (its statusTone and emailStatusTone) and the marketing recipient list
- * (RECIPIENT_STATUS_TONES in marketing/_shared/marketing-ui.tsx). An email marked "sent" was info
+ * page (its own tone map in events/_shared/status-ui.ts, since removed), the private booking
+ * Communications tab (its own statusTone and emailStatusTone) and the marketing recipient list
+ * (a map in marketing/_shared/marketing-ui.tsx), all since replaced by this one. An email marked "sent" was info
  * on one and a text marked "sent" success on the others; "pending" was info on one and neutral on
  * another. Render every delivery chip as
  *   <Badge tone={messageDeliveryStatusTone(status)}>{messageDeliveryStatusLabel(status)}</Badge>

@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { clockIn, clockOut } from '@/app/actions/timeclock'
-import { Avatar, Button, Input, Modal, Section, Stat, StatGrid, toast } from '@/ds'
+import { Alert, Avatar, Button, Input, Modal, Section, Stat, StatGrid, toast } from '@/ds'
 import { KioskShell } from '@/components/shells/KioskShell'
 import { disambiguatedNames } from '@/lib/employees/display-name'
 import { cn } from '@/lib/utils'
@@ -30,7 +30,16 @@ export interface KioskSession {
 interface TimeclockClientProps {
   employees: Employee[]
   openSessions: KioskSession[]
+  /** The staff list did not load: the kiosk says so instead of showing an empty grid. */
+  employeesLoadFailed?: boolean
+  /**
+   * Who is clocked in did not load: the kiosk says so instead of showing everyone as not
+   * clocked in, and the PIN dialog asks whether to clock in or out.
+   */
+  sessionsLoadFailed?: boolean
 }
+
+type ClockDirection = 'in' | 'out'
 
 // The kiosk is a shared screen, so staff need to spot themselves at a glance:
 // the preferred name is what they answer to. 'Staff' stays as the last-resort
@@ -50,7 +59,12 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function TimeclockClient({ employees, openSessions: initialSessions }: TimeclockClientProps) {
+export default function TimeclockClient({
+  employees,
+  openSessions: initialSessions,
+  employeesLoadFailed = false,
+  sessionsLoadFailed = false,
+}: TimeclockClientProps) {
   const router = useRouter()
   const [sessions, setSessions] = useState(initialSessions)
   const [isPending, startTransition] = useTransition()
@@ -103,7 +117,8 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
     setPin('')
   }
 
-  const submitPin = () => {
+  // With who is clocked in unknown, the person says which way they are going.
+  const submitPin = (direction?: ClockDirection) => {
     if (!pinTarget) return
 
     const normalizedPin = pin.replace(/\D/g, '')
@@ -112,11 +127,17 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
       return
     }
 
-    const isClockedIn = clockedInIds.has(pinTarget.employee_id)
+    const resolvedDirection: ClockDirection | undefined = sessionsLoadFailed
+      ? direction
+      : clockedInIds.has(pinTarget.employee_id) ? 'out' : 'in'
+    if (!resolvedDirection) {
+      toast.error('Choose Clock In or Clock Out')
+      return
+    }
 
     startTransition(async () => {
       try {
-        if (isClockedIn) {
+        if (resolvedDirection === 'out') {
           const result = await clockOut(pinTarget.employee_id, normalizedPin)
           if (!result.success) { toast.error(result.error); return }
           toast.success(`See you later, ${empName(pinTarget)}!`)
@@ -143,6 +164,16 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
   }
 
   const pinTargetClockedIn = pinTarget ? clockedInIds.has(pinTarget.employee_id) : false
+  const pinDescription = sessionsLoadFailed
+    ? 'Enter your PIN, then choose Clock In or Clock Out'
+    : pinTargetClockedIn ? 'Enter your PIN to clock out' : 'Enter your PIN to clock in'
+  const retryButton = (
+    <div className="mt-3">
+      <Button type="button" variant="secondary" size="sm" onClick={() => router.refresh()}>
+        Try Again
+      </Button>
+    </div>
+  )
 
   return (
     <KioskShell
@@ -155,54 +186,79 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
       }
       footer="The Anchor, Staines-upon-Thames"
     >
+      {employeesLoadFailed && (
+        <Alert tone="danger" title="Could Not Load Staff">
+          The staff list did not load, so nobody can clock in or out here yet.
+          {retryButton}
+        </Alert>
+      )}
+      {sessionsLoadFailed && !employeesLoadFailed && (
+        <Alert tone="danger" title="Could Not Load Who Is Clocked In">
+          You can still clock in or out: tap your name, enter your PIN and choose Clock In or Clock Out.
+          {retryButton}
+        </Alert>
+      )}
+
+      {/* A figure that depends on a failed load shows "-", never a made-up zero. */}
       <StatGrid columns={4}>
-        <Stat label="Active Staff" value={activeCount} />
+        <Stat label="Active Staff" value={employeesLoadFailed ? '-' : activeCount} />
         {/* Who is on shift is the good news the kiosk leads with, as it always has. */}
-        <Stat label="Clocked In" value={clockedInCount} tone="success" />
-        <Stat label="Not Clocked In" value={activeCount - clockedInCount} />
+        <Stat
+          label="Clocked In"
+          value={sessionsLoadFailed ? '-' : clockedInCount}
+          tone={sessionsLoadFailed ? 'default' : 'success'}
+        />
+        <Stat
+          label="Not Clocked In"
+          value={employeesLoadFailed || sessionsLoadFailed ? '-' : activeCount - clockedInCount}
+        />
         <Stat label="On Leave" value={0} />
       </StatGrid>
 
-      <Section title="Tap to Clock In/Out">
-        <div className="grid grid-cols-2 gap-3 shell:grid-cols-4 shell:gap-4">
-          {employees.map((emp) => {
-            const isClockedIn = clockedInIds.has(emp.employee_id)
-            const session = sessions.find(s => s.employee_id === emp.employee_id)
-            const state = isClockedIn ? 'in' : 'out'
+      {!employeesLoadFailed && (
+        <Section title="Tap to Clock In/Out">
+          <div className="grid grid-cols-2 gap-3 shell:grid-cols-4 shell:gap-4">
+            {employees.map((emp) => {
+              const isClockedIn = clockedInIds.has(emp.employee_id)
+              const session = sessions.find(s => s.employee_id === emp.employee_id)
+              const state = isClockedIn ? 'in' : 'out'
 
-            return (
-              // A raw button, not the DS Button: each tile is a large grid cell holding an
-              // avatar and three lines of text, which the fixed-height DS Button cannot hold.
-              <button
-                key={emp.employee_id}
-                type="button"
-                className={cn(
-                  'flex min-h-touch flex-col items-center gap-2 rounded-lg border-2 px-4 py-6 text-center shadow-sm',
-                  'transition-[background,border-color,transform] duration-[120ms] hover:-translate-y-0.5',
-                  'focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50',
-                  KIOSK_TILE_CLASSES[state],
-                )}
-                onClick={() => handleClock(emp)}
-                disabled={isPending}
-              >
-                <Avatar name={empName(emp)} size="lg" />
-                <span className="mt-1.5 text-sm font-semibold text-text-strong">{empName(emp)}</span>
-                <span className="text-meta text-text-muted">Staff</span>
-                <span className="mt-2 inline-flex items-center gap-1.5 text-meta text-text-muted">
-                  <span className={cn('inline-block h-2 w-2 rounded-full', KIOSK_DOT_CLASSES[state])} aria-hidden="true" />
-                  {isClockedIn ? `In since ${formatTime(session?.clock_in_at ?? '')}` : 'Not clocked in'}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </Section>
+              return (
+                // A raw button, not the DS Button: each tile is a large grid cell holding an
+                // avatar and three lines of text, which the fixed-height DS Button cannot hold.
+                <button
+                  key={emp.employee_id}
+                  type="button"
+                  className={cn(
+                    'flex min-h-touch flex-col items-center gap-2 rounded-lg border-2 px-4 py-6 text-center shadow-sm',
+                    'transition-[background,border-color,transform] duration-[120ms] hover:-translate-y-0.5',
+                    'focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50',
+                    KIOSK_TILE_CLASSES[state],
+                  )}
+                  onClick={() => handleClock(emp)}
+                  disabled={isPending}
+                >
+                  <Avatar name={empName(emp)} size="lg" />
+                  <span className="mt-1.5 text-sm font-semibold text-text-strong">{empName(emp)}</span>
+                  <span className="text-meta text-text-muted">Staff</span>
+                  <span className="mt-2 inline-flex items-center gap-1.5 text-meta text-text-muted">
+                    <span className={cn('inline-block h-2 w-2 rounded-full', KIOSK_DOT_CLASSES[state])} aria-hidden="true" />
+                    {sessionsLoadFailed
+                      ? 'Status unavailable'
+                      : isClockedIn ? `In since ${formatTime(session?.clock_in_at ?? '')}` : 'Not clocked in'}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </Section>
+      )}
 
       <Modal
         open={pinOpen}
         onClose={closePin}
         title={pinTarget ? empName(pinTarget) : undefined}
-        description={pinTargetClockedIn ? 'Enter your PIN to clock out' : 'Enter your PIN to clock in'}
+        description={pinDescription}
         width="sm"
         footer={
           <>
@@ -216,16 +272,41 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              form="timeclock-pin-form"
-              variant="primary"
-              size="lg"
-              className="min-h-touch sm:flex-1"
-              disabled={isPending}
-            >
-              {isPending ? 'Saving...' : 'Confirm'}
-            </Button>
+            {sessionsLoadFailed ? (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="lg"
+                  className="min-h-touch sm:flex-1"
+                  onClick={() => submitPin('out')}
+                  disabled={isPending}
+                >
+                  Clock Out
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="lg"
+                  className="min-h-touch sm:flex-1"
+                  onClick={() => submitPin('in')}
+                  disabled={isPending}
+                >
+                  {isPending ? 'Saving...' : 'Clock In'}
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="submit"
+                form="timeclock-pin-form"
+                variant="primary"
+                size="lg"
+                className="min-h-touch sm:flex-1"
+                disabled={isPending}
+              >
+                {isPending ? 'Saving...' : 'Confirm'}
+              </Button>
+            )}
           </>
         }
       >

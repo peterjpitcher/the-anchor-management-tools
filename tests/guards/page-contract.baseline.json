@@ -5,12 +5,6 @@
   "src/app/(authenticated)/events/_components/ArtworkBrandingModal.tsx": {
     "raw-button": 1
   },
-  "src/app/(authenticated)/events/_components/EventListView.tsx": {
-    "raw-label": 1
-  },
-  "src/app/(authenticated)/events/_components/EventTodosWidget.tsx": {
-    "raw-label": 1
-  },
   "src/app/(authenticated)/events/_components/branding/BrandingControls.tsx": {
     "raw-input": 1
   },

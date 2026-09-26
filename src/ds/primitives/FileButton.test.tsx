@@ -128,6 +128,25 @@ describe('FileButton', () => {
     expect(screen.getByTestId('camera-icon')).toBeInTheDocument()
   })
 
+  it('puts a hover hint on an icon-only button', () => {
+    render(
+      <FileButton
+        onFiles={() => {}}
+        aria-label="Upload receipt"
+        title="Upload receipt"
+        icon={<svg data-testid="upload-icon" />}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Upload receipt' })).toHaveAttribute('title', 'Upload receipt')
+  })
+
+  it('adds no title when none is given', () => {
+    render(<FileButton onFiles={() => {}}>Upload</FileButton>)
+
+    expect(screen.getByRole('button', { name: 'Upload' })).not.toHaveAttribute('title')
+  })
+
   it('exposes the input through inputRef so a caller can clear it', () => {
     const ref = createRef<HTMLInputElement>()
     const { container } = render(

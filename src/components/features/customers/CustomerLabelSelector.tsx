@@ -152,6 +152,8 @@ export function CustomerLabelSelector({
         {canEdit && availableLabels.length > 0 && (
           <Dropdown
             align="left"
+            // auto: label names are staff-chosen, so the menu fits the longest one.
+            width="auto"
             trigger={
               <Button
                 type="button"

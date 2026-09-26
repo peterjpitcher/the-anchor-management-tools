@@ -40,6 +40,6 @@ describe('private bookings tab rows', () => {
   })
 
   it('titles every settings tab with the sub-area name', () => {
-    expect(PB_SETTINGS_TITLE).toBe('Private Booking Settings')
+    expect(PB_SETTINGS_TITLE).toBe('Private Bookings Settings')
   })
 })

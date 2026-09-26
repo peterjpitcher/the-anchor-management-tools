@@ -22,7 +22,7 @@ import {
   Select,
   TablePagination,
 } from '@/ds'
-import type { DescriptionListItem } from '@/ds/composites/DescriptionList'
+import type { DescriptionListItem } from '@/ds'
 import { auditLogStatusTone } from '../_shared/status-ui'
 
 type FiltersState = {

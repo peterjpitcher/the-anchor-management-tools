@@ -86,6 +86,16 @@ describe('LeaveManagerClient A-045', () => {
     expect(screen.queryByText(/Invalid Date/)).not.toBeInTheDocument()
   })
 
+  it('words the status filter exactly as the status badges', () => {
+    renderManager()
+
+    const filter = screen.getByRole('radiogroup', { name: 'Show requests' })
+    expect(within(filter).getByText('Pending approval (1)')).toBeInTheDocument()
+    expect(within(filter).getByText('Approved')).toBeInTheDocument()
+    expect(within(filter).getByText('Declined')).toBeInTheDocument()
+    expect(within(filter).queryByText(/^Pending( \(\d+\))?$/)).not.toBeInTheDocument()
+  })
+
   it('confirms delete before removing the request', async () => {
     renderManager()
 

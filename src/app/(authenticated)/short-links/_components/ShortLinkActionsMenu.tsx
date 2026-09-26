@@ -121,6 +121,8 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
   return (
     <Dropdown
       align="right"
+      // md: "Post-event Book Next Screen" and the other channel names fit on one line.
+      width="md"
       trigger={
         <IconButton
           variant="secondary"

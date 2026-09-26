@@ -25,6 +25,21 @@ export interface DropdownProps {
    * trigger and flips above it when there is no room below.
    */
   align?: 'left' | 'right'
+  /**
+   * How wide the menu is: `sm` (the default, 12rem), `md` (16rem) or `lg` (20rem) for items with
+   * longer labels, or `auto` to fit the longest item (at least 12rem, at most 20rem). Pick the
+   * width that keeps every label on one line.
+   */
+  width?: DropdownWidth
+}
+
+export type DropdownWidth = 'auto' | 'sm' | 'md' | 'lg'
+
+const WIDTH_CLASSES: Record<DropdownWidth, string> = {
+  sm: 'w-48',
+  md: 'w-64',
+  lg: 'w-80',
+  auto: 'w-max min-w-48 max-w-80',
 }
 
 /** Marks an item that keeps the menu open when chosen (see `DropdownItemProps.closeOnSelect`). */
@@ -49,7 +64,7 @@ function handleMenuKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
  * A menu of actions behind a trigger. The menu is portalled to the end of the page and anchored
  * to the trigger, so a scrolling table or a card with `overflow: hidden` cannot clip it.
  */
-export function Dropdown({ trigger, label, icon: _icon, items, disabled: _disabled, variant: _variant, size: _size, children, align = 'right' }: DropdownProps) {
+export function Dropdown({ trigger, label, icon: _icon, items, disabled: _disabled, variant: _variant, size: _size, children, align = 'right', width = 'sm' }: DropdownProps) {
   const resolvedTrigger = trigger ?? (
     <Button type="button" variant="ghost" size="sm" disabled={_disabled}>
       {label ?? 'More actions'}
@@ -65,7 +80,8 @@ export function Dropdown({ trigger, label, icon: _icon, items, disabled: _disabl
         anchor={{ to: align === 'right' ? 'bottom end' : 'bottom start', gap: 4, padding: 8 }}
         onKeyDown={handleMenuKeyDown}
         className={cn(
-          'z-50 w-48 rounded-lg bg-surface border border-border shadow-lg py-1',
+          'z-50 rounded-lg bg-surface border border-border shadow-lg py-1',
+          WIDTH_CLASSES[width],
           'focus:outline-hidden',
           'transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0',
         )}

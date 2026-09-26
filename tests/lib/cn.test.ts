@@ -48,6 +48,9 @@ describe('cn knows the design tokens', () => {
     expect(cn('text-text-muted', 'text-danger')).toBe('text-danger')
     expect(cn('bg-surface', 'bg-primary')).toBe('bg-primary')
     expect(cn('border-border', 'border-danger-border')).toBe('border-danger-border')
+    // Colour tokens need no registration in cn(): tailwind-merge takes any colour name.
+    expect(cn('border-primary/20', 'border-primary-border')).toBe('border-primary-border')
+    expect(cn('border', 'border-primary-border')).toBe('border border-primary-border')
   })
 })
 

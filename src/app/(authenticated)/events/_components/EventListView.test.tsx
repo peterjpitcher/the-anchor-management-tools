@@ -84,4 +84,16 @@ describe('EventListView selection checkboxes', () => {
     fireEvent.click(checkbox.closest('tr') as HTMLElement)
     expect(onEventClick).toHaveBeenCalledWith(events[0])
   })
+
+  it('gives the phone list checkbox the DS 44px tap area, with no hand-made label wrapper', () => {
+    const onSelectionChange = renderList()
+
+    // [1] is the phone list card.
+    const checkbox = screen.getAllByRole('checkbox', { name: 'Select Quiz Night on 2 October 2026' })[1]
+    expect(checkbox).toHaveClass('pointer-coarse:h-touch', 'pointer-coarse:w-touch')
+    expect(checkbox.closest('label')).toBeNull()
+
+    fireEvent.click(checkbox)
+    expect(onSelectionChange).toHaveBeenCalledWith(new Set(['evt-1']))
+  })
 })

@@ -272,7 +272,7 @@ export function PageLayout({
           {onRetry && (
             <div className="mt-3">
               <Button variant="secondary" size="sm" onClick={onRetry}>
-                Try again
+                Try Again
               </Button>
             </div>
           )}

@@ -319,7 +319,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
           {loadError}
           <div className="mt-3">
             <Button variant="secondary" size="sm" onClick={() => void refreshLinks(currentPage)} loading={isRefreshing}>
-              Try again
+              Try Again
             </Button>
           </div>
         </Alert>

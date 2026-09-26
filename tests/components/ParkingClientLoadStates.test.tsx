@@ -42,7 +42,7 @@ describe('ParkingClient load states', () => {
     vi.clearAllMocks()
   })
 
-  it('shows a failed load as a failure, not as an empty list, and recovers on Try again', async () => {
+  it('shows a failed load as a failure, not as an empty list, and recovers on Try Again', async () => {
     mockListParkingBookings.mockResolvedValueOnce({ error: 'Database unavailable' })
     render(<ParkingClient permissions={permissions} />)
 
@@ -54,7 +54,7 @@ describe('ParkingClient load states', () => {
     expect(screen.queryByText('0 bookings total')).not.toBeInTheDocument()
 
     mockListParkingBookings.mockResolvedValueOnce({ data: [] })
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }))
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Try Again' }))
 
     expect(await screen.findByText('No bookings')).toBeInTheDocument()
     expect(screen.queryByText('Bookings could not be loaded')).not.toBeInTheDocument()

@@ -18,6 +18,20 @@ describe('StarRating', () => {
     expect(screen.getAllByRole('button')).toHaveLength(5)
   })
 
+  it('takes its group name from the question it answers when given aria-labelledby', () => {
+    render(
+      <>
+        <p id="rating-question">How would you rate your visit?</p>
+        <StarRating value={0} onChange={vi.fn()} aria-labelledby="rating-question" />
+      </>,
+    )
+
+    const group = screen.getByRole('group', { name: 'How would you rate your visit?' })
+    expect(group).toHaveAttribute('aria-labelledby', 'rating-question')
+    expect(group).not.toHaveAttribute('aria-label')
+    expect(screen.queryByRole('group', { name: 'Star rating' })).not.toBeInTheDocument()
+  })
+
   it('marks only the selected star as pressed', () => {
     render(<StarRating value={3} onChange={vi.fn()} />)
 

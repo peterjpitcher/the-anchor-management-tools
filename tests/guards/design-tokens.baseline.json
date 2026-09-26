@@ -16,9 +16,6 @@
     "sidebar-outside-shell": 1,
     "status-opacity": 1
   },
-  "src/app/(authenticated)/private-bookings/_shared/status-ui.ts": {
-    "status-opacity": 1
-  },
   "src/app/(authenticated)/settings/customer-labels/CustomerLabelsClient.tsx": {
     "hex-colour": 8
   },

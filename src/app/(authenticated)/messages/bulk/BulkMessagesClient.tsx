@@ -473,7 +473,7 @@ export default function BulkMessagesClient({
               {loadFailed && (
                 <div className="mt-3">
                   <Button variant="secondary" size="sm" onClick={() => void loadRecipients(recipientPage)}>
-                    Try again
+                    Try Again
                   </Button>
                 </div>
               )}

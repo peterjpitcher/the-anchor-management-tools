@@ -221,16 +221,13 @@ export function EventListView({
             return (
               <div key={event.id} className="py-4">
                 <div className="flex items-start gap-2">
-                  {/* Not a field label: it widens the area that ticks the 16px DS checkbox to 44px.
-                      The DS Checkbox grows its own touch row only when it shows a visible label,
-                      and this one is named by aria-label (event and date), so the wrapper stays. */}
-                  <label className="-my-1.5 flex h-touch w-touch shrink-0 cursor-pointer items-center justify-center">
-                    <Checkbox
-                      aria-label={selectEventLabel(event)}
-                      checked={selectedIds.has(event.id)}
-                      onChange={() => toggleOne(event.id)}
-                    />
-                  </label>
+                  {/* Named by aria-label (event and date); touchTarget gives it the 44px tap area. */}
+                  <Checkbox
+                    aria-label={selectEventLabel(event)}
+                    touchTarget
+                    checked={selectedIds.has(event.id)}
+                    onChange={() => toggleOne(event.id)}
+                  />
                   {/* The Open button below opens the event. */}
                   <div className="min-w-0 flex-1">
                     <div className="font-medium text-text-strong">{event.name}</div>

@@ -20,6 +20,8 @@ export interface FileButtonProps {
   /** The button label. */
   children?: ReactNode
   'aria-label'?: string
+  /** A hover hint on the button, for an icon-only picker (pair it with aria-label). */
+  title?: string
   /** For a Field's hint or error. */
   'aria-describedby'?: string
   /**
@@ -66,6 +68,7 @@ export function FileButton({
   icon,
   children,
   'aria-label': ariaLabel,
+  title,
   'aria-describedby': ariaDescribedBy,
   name,
   inputRef,
@@ -110,6 +113,7 @@ export function FileButton({
         loading={loading}
         disabled={disabled}
         aria-label={ariaLabel}
+        title={title}
         aria-describedby={ariaDescribedBy}
         className={className}
         onClick={() => ownInputRef.current?.click()}

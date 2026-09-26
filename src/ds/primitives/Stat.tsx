@@ -13,6 +13,13 @@ interface StatProps {
    * in the danger colour; 'down' swaps them, for figures such as costs or no-shows.
    */
   deltaGood?: 'up' | 'down'
+  /**
+   * Replaces the displayed delta text, which is otherwise the unsigned percentage. Use it for a
+   * change that is not a percentage: an absolute change when the previous figure was zero ("+2")
+   * or a change in percentage points ("+5 pts"). The direction, its colour, the arrow and the
+   * screen-reader direction word still come from `delta` (or `deltaDirection`).
+   */
+  deltaLabel?: string
   /** Colours the value: a figure that is itself good or bad news. */
   tone?: StatTone
   icon?: React.ReactNode
@@ -34,7 +41,7 @@ function inferDirection(delta: number): DeltaDirection {
 }
 
 // The arrow and colour carry direction visually; this is what a screen reader hears
-// before the unsigned percentage. It names the direction, never whether it is good.
+// before the unsigned percentage (or the deltaLabel). It names the direction, never whether it is good.
 const DELTA_DIRECTION_LABEL: Record<DeltaDirection, string> = {
   up: 'up',
   down: 'down',
@@ -66,7 +73,7 @@ const DeltaArrow = ({ direction }: { direction: DeltaDirection }) => {
   )
 }
 
-export function Stat({ label, value, delta, deltaDirection, deltaGood = 'up', tone = 'default', icon, hint, className }: StatProps): React.JSX.Element {
+export function Stat({ label, value, delta, deltaDirection, deltaGood = 'up', deltaLabel, tone = 'default', icon, hint, className }: StatProps): React.JSX.Element {
   const direction = deltaDirection ?? (delta !== undefined ? inferDirection(delta) : undefined)
 
   return (
@@ -85,11 +92,11 @@ export function Stat({ label, value, delta, deltaDirection, deltaGood = 'up', to
         {value}
       </span>
 
-      {delta !== undefined && direction && (
+      {(delta !== undefined || deltaLabel !== undefined) && direction && (
         <span className={cn('inline-flex items-center gap-1 text-xs font-medium', deltaColour(direction, deltaGood))}>
           <span className="sr-only">{`${DELTA_DIRECTION_LABEL[direction]} `}</span>
           <DeltaArrow direction={direction} />
-          {Math.abs(delta)}%
+          {deltaLabel ?? `${Math.abs(delta ?? 0)}%`}
         </span>
       )}
 

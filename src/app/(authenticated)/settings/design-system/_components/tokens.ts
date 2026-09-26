@@ -40,6 +40,7 @@ export const PRIMARY_COLOURS: readonly ColourToken[] = [
   { name: 'primary-hover', usage: ['hover:bg'] },
   { name: 'primary-soft', usage: ['bg'], note: 'Soft highlights' },
   { name: 'primary-soft-fg', usage: ['text'], note: 'Text on primary-soft' },
+  { name: 'primary-border', usage: ['border'], note: 'Edge of a primary-soft block' },
   { name: 'primary-fg', usage: ['text'], note: 'Text on primary' },
 ]
 

@@ -53,6 +53,17 @@ describe('ShortLinkActionsMenu (DS Dropdown)', () => {
     expect(within(menu).getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
   })
 
+  it('uses the wider menu so the longest channel names stay on one line', async () => {
+    const user = userEvent.setup()
+    renderMenu()
+
+    await user.click(screen.getByRole('button', { name: 'Short link actions' }))
+
+    const menu = screen.getByRole('menu')
+    expect(menu).toHaveClass('w-64')
+    expect(menu).not.toHaveClass('w-48')
+  })
+
   it('hides the manage and campaign entries from someone who cannot manage links', async () => {
     const user = userEvent.setup()
     renderMenu({ canManage: false })

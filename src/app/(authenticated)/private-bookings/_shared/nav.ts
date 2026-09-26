@@ -54,7 +54,7 @@ export const PB_SETTINGS_NAV: HeaderNavItem[] = [
 ]
 
 /** Every settings tab is titled with the sub-area's name; the subtitle names the tab. */
-export const PB_SETTINGS_TITLE = 'Private Booking Settings'
+export const PB_SETTINGS_TITLE = 'Private Bookings Settings'
 
 /**
  * Which settings tabs this person can open, read from their private_bookings actions. General

@@ -358,3 +358,41 @@ describe('RecruitmentDashboardClient A-039', () => {
     expect(formData.get('slot_id')).toBe('slot-1')
   })
 })
+
+describe('RecruitmentDashboardClient Run Retention', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('asks in a danger dialog that says what it deletes before running, and runs only on confirm', async () => {
+    const { runRecruitmentRetentionAction } = await import('@/app/actions/recruitment')
+    render(<RecruitmentDashboardClient initialData={makeInitialData()} permissions={permissions} />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Run Retention' })[0])
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Run Retention?')).toBeInTheDocument()
+    expect(dialog).toHaveTextContent('anonymised')
+    expect(dialog).toHaveTextContent('permanently deleted')
+    expect(dialog).toHaveTextContent('This cannot be undone.')
+    expect(runRecruitmentRetentionAction).not.toHaveBeenCalled()
+
+    const confirm = within(dialog).getByRole('button', { name: 'Confirm' })
+    expect(confirm).toHaveClass('bg-danger')
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(runRecruitmentRetentionAction).toHaveBeenCalledTimes(1))
+  })
+
+  it('does nothing when the dialog is cancelled', async () => {
+    const { runRecruitmentRetentionAction } = await import('@/app/actions/recruitment')
+    render(<RecruitmentDashboardClient initialData={makeInitialData()} permissions={permissions} />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Run Retention' })[0])
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(runRecruitmentRetentionAction).not.toHaveBeenCalled()
+  })
+})
