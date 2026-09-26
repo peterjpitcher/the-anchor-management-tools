@@ -68,6 +68,13 @@ export function AppShell({
     // Print: the chrome hides and the scroll containers open up, so a printed page (the
     // weekly Insights report above all) runs across pages instead of being cut at one screen.
     <div className={cn('flex min-h-dvh bg-bg print:block print:h-auto print:min-h-0 print:overflow-visible print:bg-surface', showSidebar && !fohMode && 'max-shell:h-[100dvh] max-shell:flex-col max-shell:overflow-hidden')}>
+      {/* One skip link and one <main> for every page, whatever the page renders. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-default focus:bg-surface focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-text focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
       {/* Desktop sidebar. Its badges read the NavCountsProvider below, which is
           mounted on `showSidebar && !fohMode`. The caller keeps `showSidebar`
           and `!fohMode` equal, so the sidebar is always inside the provider; if
@@ -123,7 +130,10 @@ export function AppShell({
             ordinary bottom padding. Reserving a further 88px plus the inset on
             top of that left a dead band at the foot of every mobile page. */}
         <main
+          id="main-content"
+          tabIndex={-1}
           className={cn(
+            'focus:outline-hidden',
             'flex-1 overflow-auto bg-bg print:overflow-visible print:bg-surface print:!p-0',
             showSidebar && !fohMode
               ? 'px-4 pt-3 pb-6 shell:px-shell-pad-x shell:pt-shell-pad-top shell:pb-shell-pad-bottom'
