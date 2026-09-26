@@ -28,7 +28,7 @@ describe('staff portal A-044 controls', () => {
 
     render(<CancelLeaveRequestButton requestId="request-1" />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel request' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel Request' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Only pending holiday requests can be cancelled')
     expect(refresh).not.toHaveBeenCalled()
@@ -39,7 +39,7 @@ describe('staff portal A-044 controls', () => {
 
     render(<CancelLeaveRequestButton requestId="request-1" />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel request' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel Request' }))
 
     await waitFor(() => expect(refresh).toHaveBeenCalled())
   })
@@ -48,6 +48,6 @@ describe('staff portal A-044 controls', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/(staff-portal)/layout.tsx'), 'utf8')
 
     expect(source).toContain('auth.signOut')
-    expect(source).toContain('Sign out')
+    expect(source).toContain('Sign Out')
   })
 })

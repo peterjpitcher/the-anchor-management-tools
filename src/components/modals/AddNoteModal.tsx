@@ -3,11 +3,7 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { getEmployeeList, addEmployeeNote } from '@/app/actions/employeeActions';
 import type { NoteFormState } from '@/types/actions';
-import { Modal, ModalActions } from '@/ds';
-import { Button } from '@/ds';
-import { Select } from '@/ds';
-import { Textarea } from '@/ds';
-import { Alert } from '@/ds';
+import { Alert, Button, Modal, PageLoading, Select, Textarea } from '@/ds';
 
 interface EmployeeOption {
   id: string;
@@ -89,66 +85,55 @@ export default function AddNoteModal({ isOpen, onClose, defaultEmployeeId }: Add
       open={isOpen}
       onClose={onClose}
       title="Add Employee Note"
-      size="sm"
-      mobileFullscreen
+      width="sm"
       footer={
-        <ModalActions>
+        <>
           <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button type="submit" form="add-note-form" loading={isSubmitting || isLoadingEmployees}>
+          <Button type="submit" variant="primary" form="add-note-form" loading={isSubmitting || isLoadingEmployees}>
             Save Note
           </Button>
-        </ModalActions>
+        </>
       }
     >
-      {formState && formState.message && (
-        <Alert tone={formState.type === 'success' ? 'success' : 'danger'}
-          className="mb-4"
-        >
-          {formState.message}
-        </Alert>
-      )}
+      <div className="space-y-4">
+        {formState && formState.message && (
+          <Alert tone={formState.type === 'success' ? 'success' : 'danger'}>
+            {formState.message}
+          </Alert>
+        )}
 
-      <form id="add-note-form" onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="employee-select" className="block text-sm font-medium text-text mb-1">
-            Select Employee
-          </label>
+        <form id="add-note-form" onSubmit={handleSubmit} className="space-y-4">
           {isLoadingEmployees ? (
-            <p className="text-sm text-text-muted">Loading employees...</p>
+            <PageLoading inline label="Loading employees..." className="py-4" />
           ) : (
             <Select
               id="employee-select"
               name="employee_id"
+              label="Select Employee"
               value={selectedEmployeeId}
               onChange={(e) => setSelectedEmployeeId(e.target.value)}
               disabled={isSubmitting}
               placeholder="-- Select an Employee --"
               options={employees.map(emp => ({ value: emp.id, label: emp.name }))}
-              error={!!formState?.errors?.general}
+              error={formState?.errors?.general?.join(' ') || undefined}
             />
           )}
-          {formState?.errors?.general && <p className="mt-1 text-xs text-danger">{formState.errors.general}</p>}
-        </div>
 
-        <div>
-          <label htmlFor="note-text" className="block text-sm font-medium text-text mb-1">
-            Note
-          </label>
           <Textarea
             id="note-text"
             name="note_text"
+            label="Note"
             rows={4}
             value={noteText}
             onChange={(e) => setNoteText(e.target.value)}
             placeholder="Enter note details..."
             disabled={isSubmitting}
-            error={!!formState?.errors?.note_text}
+            error={formState?.errors?.note_text?.join(' ') || undefined}
           />
-          {formState?.errors?.note_text && <p className="mt-1 text-xs text-danger">{formState.errors.note_text}</p>}
-        </div>
-      </form>
+        </form>
+      </div>
     </Modal>
   );
-} 
+}

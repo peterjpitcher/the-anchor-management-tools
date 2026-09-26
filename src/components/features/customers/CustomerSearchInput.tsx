@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Input, Icon } from '@/ds'
+import { Button, Input, Icon, SHELL_MEDIA_QUERY, Spinner } from '@/ds'
 import { buildCustomerSearchFilter } from './customerSearchFilters'
 
 interface Customer {
@@ -20,6 +20,14 @@ interface CustomerSearchInputProps {
   excludeCustomerIds?: string[] | Set<string>
   highlightCustomerIds?: string[] | Set<string>
   highlightLabel?: string
+  /**
+   * Set by a wrapping DS Field (every caller has one), which clones its child with an id and
+   * the ids of its hint and error. They are passed to the text field so the Field's label names
+   * it; without them the label pointed at an element that did not exist.
+   */
+  id?: string
+  'aria-describedby'?: string
+  'aria-invalid'?: boolean
 }
 
 export default function CustomerSearchInput({
@@ -28,7 +36,10 @@ export default function CustomerSearchInput({
   placeholder = 'Search by name or phone...',
   excludeCustomerIds,
   highlightCustomerIds,
-  highlightLabel = 'Preferred'
+  highlightLabel = 'Preferred',
+  id,
+  'aria-describedby': ariaDescribedBy,
+  'aria-invalid': ariaInvalid,
 }: CustomerSearchInputProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState<Customer[]>([])
@@ -148,8 +159,12 @@ export default function CustomerSearchInput({
       onCustomerSelect(null)
     }
 
-    // Debounce search - longer delay on mobile for better performance
-    const delay = typeof window !== 'undefined' && window.innerWidth < 768 ? 500 : 300
+    // Debounce search: a longer delay on the phone layout for better performance
+    const isPhoneLayout =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia(SHELL_MEDIA_QUERY).matches
+    const delay = isPhoneLayout ? 500 : 300
     searchTimeout.current = setTimeout(() => {
       searchCustomers(value)
     }, delay)
@@ -176,12 +191,15 @@ export default function CustomerSearchInput({
       {/* A DS Input, so the picker matches the fields beside it (height, text, radius, focus). */}
       <div className="relative">
         <Input
+          id={id}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
           type="text"
           value={searchTerm}
           onChange={(e) => handleSearchChange(e.target.value)}
           icon={
             isSearching ? (
-              <span className="block h-4 w-4 animate-spin rounded-full border-2 border-border-strong border-t-primary" />
+              <Spinner size="sm" />
             ) : selectedCustomer ? (
               <Icon name="check" size={16} className="text-success" />
             ) : (
@@ -195,19 +213,21 @@ export default function CustomerSearchInput({
           spellCheck="false"
         />
         {(searchTerm || selectedCustomer) && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={clearSelection}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center min-w-touch justify-center rounded-sm text-ui text-text-soft hover:text-text focus-visible:outline-hidden focus-visible:shadow-ring"
+            className="absolute right-1 top-1/2 -translate-y-1/2 text-text-soft hover:text-text max-shell:right-0"
           >
             Clear
-          </button>
+          </Button>
         )}
       </div>
 
       {/* Selected Customer Display */}
       {selectedCustomer && (
-        <div className="mt-2 p-3 bg-primary-soft border border-primary/20 rounded-lg">
+        <div className="mt-2 rounded-default bg-primary-soft p-3">
           <div className="flex items-start justify-between">
             <div className="min-w-0 flex-1">
               <p className="font-medium text-text text-sm sm:text-base">
@@ -229,13 +249,15 @@ export default function CustomerSearchInput({
 
       {/* Search Results Dropdown */}
       {showDropdown && searchResults.length > 0 && !selectedCustomer && (
-        <div className="absolute z-50 mt-1 w-full bg-surface shadow-lg rounded-md border border-border max-h-60 sm:max-h-80 overflow-auto">
+        <div className="absolute z-50 mt-1 w-full bg-surface shadow-lg rounded-lg border border-border max-h-60 sm:max-h-80 overflow-auto">
+          {/* Plain buttons: these are the options of a type-ahead list, full width and two lines
+              tall. The DS has no combobox, and its Button is a single-line control. */}
           {searchResults.map((customer) => (
             <button
               key={customer.id}
               type="button"
               onClick={() => handleCustomerSelect(customer)}
-              className="w-full text-left px-4 py-3 sm:py-2 hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset border-b border-border last:border-b-0 min-h-[50px] sm:min-h-0"
+              className="w-full text-left px-4 py-3 sm:py-2 hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset border-b border-border last:border-b-0 min-h-touch sm:min-h-0"
             >
               <div className="flex items-center">
                 <Icon name="user" size={20} className="text-text-subtle mr-3 flex-shrink-0" />
@@ -268,8 +290,8 @@ export default function CustomerSearchInput({
 
       {/* No Results Message */}
       {showDropdown && searchResults.length === 0 && searchTerm.trim().length >= 2 && !isSearching && (
-        <div className="absolute z-50 mt-1 w-full bg-surface shadow-lg rounded-md border border-border p-4">
-          <p className="text-sm text-text-muted text-center">
+        <div className="absolute z-50 mt-1 w-full bg-surface shadow-lg rounded-lg border border-border p-4">
+          <p className={searchError ? 'text-sm text-danger-fg text-center' : 'text-sm text-text-muted text-center'} role={searchError ? 'alert' : undefined}>
             {searchError ? 'Customer search failed. Please try again.' : 'No customers found'}
           </p>
         </div>

@@ -34,3 +34,21 @@ describe('MenuDishesTable active status', () => {
     expect(screen.getAllByText('Inactive')).toHaveLength(1)
   })
 })
+
+describe('MenuDishesTable below-target rows', () => {
+  it('keeps the red tint on hover instead of the grey row hover', () => {
+    render(
+      <MenuDishesTable
+        dishes={[{ ...makeDish('Cheap Dish', true), gp_pct: 0.5 }]}
+        loadError={null}
+        standardTarget={0.7}
+      />,
+    )
+
+    const row = screen.getByText('Cheap Dish').closest('tr')
+    expect(row).not.toBeNull()
+    expect(row?.className).toContain('bg-danger-soft')
+    expect(row?.className).toContain('hover:bg-danger-soft')
+    expect(row?.className).not.toContain('hover:bg-surface-hover')
+  })
+})

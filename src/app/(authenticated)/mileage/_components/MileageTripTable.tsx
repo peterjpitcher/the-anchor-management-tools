@@ -11,6 +11,7 @@ import { formatLongDate } from '@/lib/mileage/periods'
 import type { MileageReportTrip } from '@/lib/mileage/report/dataset'
 import { formatMilesText, formatPoundsText } from '@/lib/mileage/report/format'
 import { describeTripRate, describeTripRoute } from '@/lib/mileage/report/model'
+import { MILEAGE_TRIP_SOURCE_LABEL, MILEAGE_TRIP_SOURCE_TONE } from '../_shared/status-ui'
 
 export interface TripRowActions {
   canManage: boolean
@@ -41,9 +42,13 @@ interface SortHeaderProps {
 }
 
 /**
+ * The database sorts every matching trip and the order lives in the address, so DataTable (which
+ * sorts the rows it is given, in memory) cannot do this: the DS Table's sortable header is used.
+ *
  * The design-system header only listens for clicks on the cell, which a keyboard cannot reach.
- * The button inside gives it a tab stop: Enter or Space clicks the button, and that click bubbles
- * to the cell's handler, so the button needs no handler of its own and a press sorts only once.
+ * The raw button inside gives it a tab stop: Enter or Space clicks the button, and that click
+ * bubbles to the cell's handler, so the button needs no handler of its own and a press sorts only
+ * once. A DS Button would add its own height and padding to the header row.
  */
 function SortHeader({ column, label, sort, dir, onSort, align }: SortHeaderProps): React.JSX.Element {
   return (
@@ -59,8 +64,9 @@ function SortHeader({ column, label, sort, dir, onSort, align }: SortHeaderProps
 }
 
 export function MileageTripTable({ trips, sort, dir, onSort, canManage, onEdit, onDelete }: MileageTripTableProps): React.JSX.Element {
+  // The trips page frames this table in a Card with the pager.
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div>
       <p className="sr-only" aria-live="polite">
         {SORT_DESCRIPTIONS[sort][dir]}
       </p>
@@ -100,7 +106,7 @@ export function MileageTripTable({ trips, sort, dir, onSort, canManage, onEdit, 
                   {formatPoundsText(trip.amountPence)}
                 </TableCell>
                 <TableCell align="center">
-                  <Badge tone={isOjProjects ? 'primary' : 'neutral'}>{isOjProjects ? 'OJ Projects' : 'Logged'}</Badge>
+                  <Badge tone={MILEAGE_TRIP_SOURCE_TONE[trip.source]}>{MILEAGE_TRIP_SOURCE_LABEL[trip.source]}</Badge>
                 </TableCell>
                 {canManage && (
                   <TableCell align="right">

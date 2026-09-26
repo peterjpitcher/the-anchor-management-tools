@@ -10,7 +10,7 @@ import {
 import { Alert, PageLayout } from '@/ds'
 import type { EligibilityStatus, MarketingStatus } from '@/types/marketing'
 
-import { MARKETING_SECTION_NAV } from '../_shared/marketing-ui'
+import { marketingLayout } from '../_shared/nav'
 import { ContactsClient } from './ContactsClient'
 
 export const dynamic = 'force-dynamic'
@@ -69,7 +69,7 @@ export default async function MarketingContactsPage({
 
   if (listResult.error || !listResult.data) {
     return (
-      <PageLayout title="Marketing" subtitle="Contacts" navItems={MARKETING_SECTION_NAV}>
+      <PageLayout {...marketingLayout('contacts')}>
         <Alert tone="danger" title="Could not load contacts">
           {listResult.error ?? 'Something went wrong. Refresh to try again.'}
         </Alert>

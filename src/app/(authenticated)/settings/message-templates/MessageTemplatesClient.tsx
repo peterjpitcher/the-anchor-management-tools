@@ -9,21 +9,25 @@ import {
   deleteMessageTemplate,
   toggleMessageTemplate,
 } from '@/app/actions/messageTemplates'
-import { PageLayout, toast, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
-import { Button } from '@/ds'
-import { Modal } from '@/ds'
-import { Form } from '@/ds'
-import { Field } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Badge } from '@/ds'
-import { Spinner } from '@/ds'
-import { Empty } from '@/ds'
-import { ConfirmDialog } from '@/ds'
-import { Alert } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  Empty,
+  Field,
+  FormFooter,
+  Icon,
+  Input,
+  Modal,
+  PageLayout,
+  PageLoading,
+  Select,
+  Textarea,
+  toast,
+} from '@/ds'
+import { activeStateTone, DEFAULT_TEMPLATE_TONE } from '../_shared/status-ui'
 
 const TEMPLATE_TYPES: Record<string, string> = {
   booking_confirmation: 'Booking Confirmation',
@@ -84,6 +88,8 @@ type TemplateFormData = {
 export default function MessageTemplatesClient({ initialTemplates, canManage, initialError }: MessageTemplatesClientProps) {
   const [templates, setTemplates] = useState<MessageTemplateRecord[]>(initialTemplates)
   const [error, setError] = useState<string | null>(initialError)
+  // A list that failed to load is an error, never shown as "no templates yet".
+  const [loadFailed, setLoadFailed] = useState(initialError !== null)
   const [showForm, setShowForm] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<MessageTemplateRecord | null>(null)
   const [editingTemplate, setEditingTemplate] = useState<MessageTemplateRecord | null>(null)
@@ -142,9 +148,11 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
       const result = await listMessageTemplates()
       if (result.error) {
         setError(result.error)
+        setLoadFailed(true)
         return
       }
       setTemplates(result.templates ?? [])
+      setLoadFailed(false)
       setError(null)
     })
   }
@@ -272,17 +280,12 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
     updatePreview(formData.content)
   }, [formData.content])
 
-  const breadcrumbs = [
-    { label: 'Settings', href: '/settings' },
-    { label: 'Message Templates' },
-  ]
-
   const headerActions = canManage ? (
     <Button
       variant="primary"
       size="sm"
       onClick={openNewTemplateModal}
-      leftIcon={<Icon name="plus" size={16} />}
+      icon={<Icon name="plus" size={16} />}
     >
       New Template
     </Button>
@@ -292,269 +295,264 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
     <PageLayout
       title="Message Templates"
       subtitle="Reference copy only, not used when messages are sent"
-      breadcrumbs={breadcrumbs}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
       headerActions={headerActions}
     >
-      <div className="space-y-6">
-        {error && <Alert tone="danger" title="Error">{error}</Alert>}
+      {error && <Alert tone="danger" title="Error">{error}</Alert>}
 
-        {/*
-          Nothing in the sending code reads the message_templates table: every
-          SMS body is currently hard-coded in the send helpers. Editing here
-          therefore changes nothing that a customer receives, and staff had no
-          way of knowing that. Remove this notice when the send paths are wired
-          up to read these rows.
-        */}
-        <Alert
-          tone="warning"
-          title="Editing these does not change the messages customers receive"
-        >
-          Message wording is currently set in code. These templates are kept as reference copy only, so changes saved here have no effect on live sends. Ask a developer if you need the wording of an automated message changed.
-        </Alert>
+      {/*
+        Nothing in the sending code reads the message_templates table: every
+        SMS body is currently hard-coded in the send helpers. Editing here
+        therefore changes nothing that a customer receives, and staff had no
+        way of knowing that. Remove this notice when the send paths are wired
+        up to read these rows.
+      */}
+      <Alert
+        tone="warning"
+        title="Editing these does not change the messages customers receive"
+      >
+        Message wording is currently set in code. These templates are kept as reference copy only, so changes saved here have no effect on live sends. Ask a developer if you need the wording of an automated message changed.
+      </Alert>
 
-        <Section>
-          <Card>
-            {isRefreshing ? (
-              <div className="flex h-64 items-center justify-center">
-                <Spinner size="lg" />
-              </div>
-            ) : templates.length === 0 ? (
-              <Empty
-                title="No templates yet"
-                description="Create your first template to start automating messages."
-                action={
-                  canManage ? (
-                    <Button onClick={openNewTemplateModal}>
-                      <Icon name="plus" size={16} className="mr-2" />
-                      New Template
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ) : (
-              <div className="divide-y divide-border">
-                {templates.map((template) => (
-                  <div key={template.id} className="px-4 py-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-medium text-text">{template.name}</h3>
-                          <Badge tone={template.is_active ? 'success' : 'neutral'} size="sm">
-                            {template.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
-                          {template.is_default && (
-                            <Badge tone="info" size="sm">
-                              Default
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="mt-1 text-sm text-text-muted">
-                          {TEMPLATE_TYPES[template.template_type] || template.template_type}
-                        </p>
-                        {template.description && (
-                          <p className="mt-1 text-sm text-text-muted">{template.description}</p>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {canManage && (
-                          <>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              leftIcon={<Icon name="edit" size={16} />}
-                              onClick={() => editTemplate(template)}
-                              disabled={isMutating}
-                            >
-                              Edit
-                            </Button>
-                            {!template.is_default && (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => handleToggleActive(template)}
-                                disabled={isMutating}
-                              >
-                                {template.is_active ? 'Deactivate' : 'Activate'}
-                              </Button>
-                            )}
-                            {!template.is_default && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                leftIcon={<Icon name="trash" size={16} />}
-                                onClick={() => handleDelete(template)}
-                                disabled={isMutating}
-                              >
-                                Delete
-                              </Button>
-                            )}
-                          </>
-                        )}
-                      </div>
+      <Card padding="none">
+        {isRefreshing ? (
+          <PageLoading inline label="Loading templates" />
+        ) : templates.length === 0 ? (
+          loadFailed ? null : (
+            <Empty
+              size="sm"
+              title="No templates yet"
+              description="Create your first template to start automating messages."
+              action={
+                canManage ? (
+                  <Button variant="primary" onClick={openNewTemplateModal} icon={<Icon name="plus" size={16} />}>
+                    New Template
+                  </Button>
+                ) : undefined
+              }
+            />
+          )
+        ) : (
+          <div className="divide-y divide-border">
+            {templates.map((template) => (
+              <div key={template.id} className="px-pad-card py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-text">{template.name}</p>
+                      <Badge tone={activeStateTone(template.is_active)} size="sm">
+                        {template.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                      {template.is_default && (
+                        <Badge tone={DEFAULT_TEMPLATE_TONE} size="sm">
+                          Default
+                        </Badge>
+                      )}
                     </div>
-
-                    <div className="mt-3 flex flex-wrap gap-3 text-xs text-text-muted">
-                      <span>Variables: {template.variables.join(', ') || 'None'}</span>
-                      <span>
-                        Segments: {template.estimated_segments ?? Math.ceil(template.content.length / 160)}
-                      </span>
-                      <span>Timing: {TIMING_OPTIONS[template.send_timing] || template.send_timing}</span>
-                    </div>
+                    <p className="mt-1 text-sm text-text-muted">
+                      {TEMPLATE_TYPES[template.template_type] || template.template_type}
+                    </p>
+                    {template.description && (
+                      <p className="mt-1 text-sm text-text-muted">{template.description}</p>
+                    )}
                   </div>
-                ))}
+                  <div className="flex flex-wrap gap-2">
+                    {canManage && (
+                      <>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon={<Icon name="edit" size={16} />}
+                          onClick={() => editTemplate(template)}
+                          disabled={isMutating}
+                        >
+                          Edit
+                        </Button>
+                        {!template.is_default && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleToggleActive(template)}
+                            disabled={isMutating}
+                          >
+                            {template.is_active ? 'Deactivate' : 'Activate'}
+                          </Button>
+                        )}
+                        {!template.is_default && (
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            icon={<Icon name="trash" size={16} />}
+                            onClick={() => handleDelete(template)}
+                            disabled={isMutating}
+                          >
+                            Delete
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-3 text-xs text-text-muted">
+                  <span>Variables: {template.variables.join(', ') || 'None'}</span>
+                  <span>
+                    Segments: {template.estimated_segments ?? Math.ceil(template.content.length / 160)}
+                  </span>
+                  <span>Timing: {TIMING_OPTIONS[template.send_timing] || template.send_timing}</span>
+                </div>
               </div>
-            )}
-          </Card>
-        </Section>
+            ))}
+          </div>
+        )}
+      </Card>
 
-        <ConfirmDialog
-          open={!!deleteConfirm}
-          onClose={() => setDeleteConfirm(null)}
-          onConfirm={confirmDelete}
-          title="Delete Template"
-          message={`Are you sure you want to delete the "${deleteConfirm?.name}" template?`}
-          confirmText="Delete"
-          type="danger"
-        />
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={confirmDelete}
+        title="Delete Template"
+        message={`Are you sure you want to delete the "${deleteConfirm?.name}" template?`}
+        confirmText="Delete"
+        type="danger"
+      />
 
-        <Modal
-          open={showForm}
-          onClose={() => {
-            setShowForm(false)
-            setEditingTemplate(null)
-            resetForm()
+      <Modal
+        open={showForm}
+        onClose={() => {
+          setShowForm(false)
+          setEditingTemplate(null)
+          resetForm()
+        }}
+        title={editingTemplate ? 'Edit Template' : 'New Template'}
+        size="lg"
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            handleSave()
           }}
-          title={editingTemplate ? 'Edit Template' : 'New Template'}
-          size="lg"
         >
-          <Form
-            onSubmit={(e) => {
-              e.preventDefault()
-              handleSave()
-            }}
-          >
-            <Field label="Name" required>
-              <Input
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-              />
-            </Field>
+          <Field label="Name" required>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+            />
+          </Field>
 
-            <Field label="Description">
-              <Input
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
-            </Field>
+          <Field label="Description">
+            <Input
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
+          </Field>
 
-            {!editingTemplate && (
-              <Field label="Type">
-                <Select
-                  value={formData.template_type}
-                  onChange={(e) => setFormData({ ...formData, template_type: e.target.value })}
-                >
-                  {Object.entries(TEMPLATE_TYPES).map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            )}
-
-            <Field label="Send Timing">
+          {!editingTemplate && (
+            <Field label="Type">
               <Select
-                value={formData.send_timing}
-                onChange={(e) =>
-                  setFormData({ ...formData, send_timing: e.target.value as TemplateFormData['send_timing'] })
-                }
+                value={formData.template_type}
+                onChange={(e) => setFormData({ ...formData, template_type: e.target.value })}
               >
-                {Object.entries(TIMING_OPTIONS).map(([key, label]) => (
+                {Object.entries(TEMPLATE_TYPES).map(([key, label]) => (
                   <option key={key} value={key}>
                     {label}
                   </option>
                 ))}
               </Select>
             </Field>
+          )}
 
-            {formData.send_timing === 'custom' && (
-              <Field label="Hours before event" help="Maximum 30 days (720 hours)">
-                <Input
-                  type="number"
-                  min="1"
-                  max="720"
-                  value={formData.custom_timing_hours ?? ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      custom_timing_hours: e.target.value ? parseInt(e.target.value, 10) : null,
-                    })
-                  }
-                  placeholder="Enter hours (1-720)"
-                />
-              </Field>
-            )}
-
-            <Field
-              label="Template Content"
-              help={`${formData.content.length} chars, ~${Math.ceil(Math.max(formData.content.length, 1) / 160)} segments`}
-              required
+          <Field label="Send Timing">
+            <Select
+              value={formData.send_timing}
+              onChange={(e) =>
+                setFormData({ ...formData, send_timing: e.target.value as TemplateFormData['send_timing'] })
+              }
             >
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {Object.entries(AVAILABLE_VARIABLES).map(([key, desc]) => (
-                  <Button
-                    key={key}
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => insertVariable(key)}
-                    title={desc}
-                  >
-                    {`{{${key}}}`}
-                  </Button>
-                ))}
-              </div>
-              <Textarea
-                id="template-content"
-                value={formData.content}
-                onChange={(e) => {
-                  setFormData({ ...formData, content: e.target.value })
-                  updatePreview(e.target.value)
-                }}
-                rows={8}
-                required
+              {Object.entries(TIMING_OPTIONS).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          {formData.send_timing === 'custom' && (
+            <Field label="Hours before event" help="Maximum 30 days (720 hours)">
+              <Input
+                type="number"
+                min="1"
+                max="720"
+                value={formData.custom_timing_hours ?? ''}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    custom_timing_hours: e.target.value ? parseInt(e.target.value, 10) : null,
+                  })
+                }
+                placeholder="Enter hours (1-720)"
               />
             </Field>
+          )}
 
-            <Section title="Preview">
-              <Card>
-                <pre className="whitespace-pre-wrap rounded-md bg-surface-hover p-3 text-sm">
-                  {preview || 'Start typing to see preview...'}
-                </pre>
-              </Card>
-            </Section>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setShowForm(false)
-                  setEditingTemplate(null)
-                  resetForm()
-                }}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isMutating} loading={isMutating}>
-                {editingTemplate ? 'Save Changes' : 'Create Template'}
-              </Button>
+          <Field
+            label="Template Content"
+            htmlFor="template-content"
+            help={`${formData.content.length} chars, ~${Math.ceil(Math.max(formData.content.length, 1) / 160)} segments`}
+            required
+          >
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {Object.entries(AVAILABLE_VARIABLES).map(([key, desc]) => (
+                <Button
+                  key={key}
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => insertVariable(key)}
+                  title={desc}
+                >
+                  {`{{${key}}}`}
+                </Button>
+              ))}
             </div>
-          </Form>
-        </Modal>
-      </div>
+            <Textarea
+              id="template-content"
+              value={formData.content}
+              onChange={(e) => {
+                setFormData({ ...formData, content: e.target.value })
+                updatePreview(e.target.value)
+              }}
+              rows={8}
+              required
+            />
+          </Field>
+
+          <Field label="Preview">
+            <pre className="whitespace-pre-wrap rounded-default bg-surface-2 p-3 text-sm">
+              {preview || 'Start typing to see preview...'}
+            </pre>
+          </Field>
+
+          <FormFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setShowForm(false)
+                setEditingTemplate(null)
+                resetForm()
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={isMutating} loading={isMutating}>
+              {editingTemplate ? 'Save Changes' : 'Create Template'}
+            </Button>
+          </FormFooter>
+        </form>
+      </Modal>
     </PageLayout>
   )
 }

@@ -37,8 +37,8 @@ export function UnsubscribeEmailCard() {
   return (
     <Card>
       <CardHeader
-        title="Unsubscribe an email address"
-        subtitle="Stops future marketing and prevents the address being added back by an import."
+        title="Unsubscribe an Email Address"
+        subtitle="Stops future marketing and prevents the address being added back by an import"
       />
       <CardBody>
         <form className="flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={handleSubmit}>

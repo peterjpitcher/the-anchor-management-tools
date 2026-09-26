@@ -1,4 +1,4 @@
-import { Card, CardBody, CardHeader, LinkButton } from '@/ds'
+import { Card, CardBody, CardHeader, Empty, LinkButton } from '@/ds'
 import { Icon } from '@/ds/icons'
 import type { Event } from '@/types/database'
 import {
@@ -23,11 +23,11 @@ export function EventArtworkDownloadsCard({ event }: { event: Event }) {
     <Card>
       <CardHeader
         title="Event Artwork"
-        subtitle="Download ready-to-use artwork for this event."
+        subtitle="Download ready-to-use artwork for this event"
       />
       <CardBody>
         {assets.length === 0 ? (
-          <p className="text-sm text-text-muted">No artwork has been added yet.</p>
+          <Empty size="sm" title="No Artwork Yet" description="No artwork has been added yet." />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {assets.map(({ variant, config, url }) => {
@@ -35,8 +35,8 @@ export function EventArtworkDownloadsCard({ event }: { event: Event }) {
               const isPdf = eventImageFileExtension(url) === 'pdf'
 
               return (
-                <div key={variant} className="flex flex-col rounded-lg border border-border p-3">
-                  <div className="flex h-28 items-center justify-center overflow-hidden rounded-md bg-surface-2">
+                <div key={variant} className="flex flex-col rounded-default border border-border p-3">
+                  <div className="flex h-28 items-center justify-center overflow-hidden rounded-default bg-surface-2">
                     {isPdf ? (
                       <span className="text-sm font-semibold text-text-muted">PDF</span>
                     ) : (

@@ -6,19 +6,25 @@ import { createQuote } from '@/app/actions/quotes'
 import { getVendors } from '@/app/actions/vendors'
 import { getLineItemCatalog } from '@/app/actions/invoices'
 import type { InvoiceVendor, InvoiceLineItemInput, LineItemCatalogItem } from '@/types/invoices'
-// UI v2 components
-import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Field } from '@/ds'
-import { Alert } from '@/ds'
-import { Empty } from '@/ds'
-import { Dropdown } from '@/ds'
-import { toast } from '@/ds'
+import {
+  PageLayout,
+  Icon,
+  Card,
+  CardHeader,
+  CardBody,
+  Button,
+  IconButton,
+  Input,
+  Select,
+  Textarea,
+  Field,
+  Alert,
+  Empty,
+  Dropdown,
+  FormFooter,
+  toast,
+} from '@/ds'
+import { BACK_TO_QUOTES } from '@/app/(authenticated)/invoices/_shared/nav'
 
 import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -91,16 +97,14 @@ export default function NewQuotePage() {
     }
   }
 
+  const layoutProps = {
+    title: 'New Quote',
+    subtitle: 'Create a new quote',
+    backButton: BACK_TO_QUOTES,
+  }
+
   if (permissionsLoading) {
-    return (
-      <PageLayout
-        title="New Quote"
-        subtitle="Loading quote resources..."
-        backButton={{ label: 'Back to Quotes', href: '/quotes' }}
-        loading
-        loadingLabel="Loading..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading" />
   }
 
   if (!canCreate) {
@@ -227,18 +231,8 @@ export default function NewQuotePage() {
     return null
   }
 
-  const layoutProps = {
-    title: 'New Quote',
-    subtitle: 'Create a new quote',
-    backButton: { label: 'Back to Quotes', href: '/quotes' },
-  }
-
   if (loading) {
-    return (
-      <PageLayout {...layoutProps} loading loadingLabel="Preparing quote...">
-        {null}
-      </PageLayout>
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Preparing quote" />
   }
 
   const totals = calculateQuoteTotal()
@@ -250,272 +244,259 @@ export default function NewQuotePage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Section title="Quote Details">
-          <Card>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Vendor" required>
-                <Select
-                  value={vendorId}
-                  onChange={(e) => setVendorId(e.target.value)}
-                  required
-                >
-                  <option value="">Select a vendor</option>
-                  {vendors.map(vendor => (
-                    <option key={vendor.id} value={vendor.id}>
-                      {vendor.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+        <Card>
+          <CardHeader title="Quote Details" />
+          <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Vendor" required>
+              <Select
+                value={vendorId}
+                onChange={(e) => setVendorId(e.target.value)}
+                required
+              >
+                <option value="">Select a vendor</option>
+                {vendors.map(vendor => (
+                  <option key={vendor.id} value={vendor.id}>
+                    {vendor.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
 
-              <Field label="Reference">
-                <Input
-                  type="text"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  placeholder="PO number or reference"
-                />
-              </Field>
-
-              <Field label="Quote Date" required>
-                <Input
-                  type="date"
-                  value={quoteDate}
-                  onChange={(e) => setQuoteDate(e.target.value)}
-                  required
-                />
-              </Field>
-
-              <Field label="Valid Until" required>
-                <Input
-                  type="date"
-                  value={validUntil}
-                  onChange={(e) => setValidUntil(e.target.value)}
-                  required
-                />
-              </Field>
-            </div>
-          </Card>
-        </Section>
-
-        <Section
-          title="Line Items"
-          actions={
-            <div className="flex gap-2">
-              {catalogItems.length > 0 && (
-                <Dropdown
-                  trigger={
-                    <span className="inline-flex items-center min-h-touch text-sm font-medium md:min-h-0">
-                      Add from Catalog
-                    </span>
-                  }
-                  items={catalogItems.map(item => ({
-                    key: item.id,
-                    label: (
-                      <div>
-                        <div className="font-medium">{item.name}</div>
-                        <div className="text-sm text-text-muted">{item.description}</div>
-                        <div className="text-sm mt-1">
-                          £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%
-                        </div>
-                      </div>
-                    ),
-                    onClick: () => addFromCatalog(item)
-                  }))}
-                />
-              )}
-              <Button type="button" onClick={addLineItem} leftIcon={<Icon name="plusCircle" size={16} />} size="sm">
-                Add Line Item
-              </Button>
-            </div>
-          }
-        >
-          <Card>
-            {lineItems.length === 0 ? (
-              <Empty title="No line items added yet"
-                action={
-                  <Button type="button"
-                    onClick={addLineItem}
-                    leftIcon={<Icon name="plusCircle" size={16} />}
-                  >
-                    Add Line Item
-                  </Button>
-                }
+            <Field label="Reference">
+              <Input
+                type="text"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="PO number or reference"
               />
+            </Field>
+
+            <Field label="Quote Date" required>
+              <Input
+                type="date"
+                value={quoteDate}
+                onChange={(e) => setQuoteDate(e.target.value)}
+                required
+              />
+            </Field>
+
+            <Field label="Valid Until" required>
+              <Input
+                type="date"
+                value={validUntil}
+                onChange={(e) => setValidUntil(e.target.value)}
+                required
+              />
+            </Field>
+          </CardBody>
+        </Card>
+
+        <Card className="overflow-visible">
+          <CardHeader
+            title="Line Items"
+            action={
+              <div className="flex gap-2">
+                {catalogItems.length > 0 && (
+                  <Dropdown
+                    trigger={
+                      <Button type="button" variant="secondary" size="sm">
+                        Add from Catalog
+                      </Button>
+                    }
+                    items={catalogItems.map(item => ({
+                      key: item.id,
+                      label: (
+                        <div>
+                          <div className="font-medium">{item.name}</div>
+                          <div className="text-sm text-text-muted">{item.description}</div>
+                          <div className="text-sm mt-1">
+                            £{item.default_price.toFixed(2)} • VAT {item.default_vat_rate}%
+                          </div>
+                        </div>
+                      ),
+                      onClick: () => addFromCatalog(item)
+                    }))}
+                  />
+                )}
+                <Button variant="secondary" type="button" onClick={addLineItem} leftIcon={<Icon name="plusCircle" size={16} />} size="sm">
+                  Add Line Item
+                </Button>
+              </div>
+            }
+          />
+          <CardBody>
+            {lineItems.length === 0 ? (
+              <Empty size="sm" title="No line items added yet" />
             ) : (
               <div className="space-y-4">
                 {lineItems.map((item) => (
-                  <div key={item.id} className="border border-border rounded-lg p-4">
-                    <div className="grid grid-cols-12 gap-4">
-                      <div className="col-span-12 md:col-span-5">
-                        <Field label="Description">
-                          <Input
-                            type="text"
-                            value={item.description}
-                            onChange={(e) => updateLineItem(item.id, { description: e.target.value })}
-                            placeholder="Item description"
-                            required
+                  <Card key={item.id}>
+                    <CardBody>
+                      <div className="grid grid-cols-12 gap-4">
+                        <div className="col-span-12 md:col-span-5">
+                          <Field label="Description">
+                            <Input
+                              type="text"
+                              value={item.description}
+                              onChange={(e) => updateLineItem(item.id, { description: e.target.value })}
+                              placeholder="Item description"
+                              required
+                            />
+                          </Field>
+                        </div>
+
+                        <div className="col-span-12 md:col-span-2">
+                          <Field label="Quantity">
+                            <Input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => updateLineItem(item.id, { quantity: parseFloat(e.target.value) || 0 })}
+                              min="0"
+                              step="0.01"
+                              required
+                            />
+                          </Field>
+                        </div>
+
+                        <div className="col-span-12 md:col-span-2">
+                          <Field label="Unit Price (£)">
+                            <Input
+                              type="number"
+                              value={item.unit_price}
+                              onChange={(e) => updateLineItem(item.id, { unit_price: parseFloat(e.target.value) || 0 })}
+                              min="0"
+                              step="0.01"
+                              required
+                            />
+                          </Field>
+                        </div>
+
+                        <div className="col-span-12 md:col-span-1">
+                          <Field label="Disc %">
+                            <Input
+                              type="number"
+                              value={item.discount_percentage}
+                              onChange={(e) => updateLineItem(item.id, { discount_percentage: parseFloat(e.target.value) || 0 })}
+                              min="0"
+                              max="100"
+                              step="0.01"
+                            />
+                          </Field>
+                        </div>
+
+                        <div className="col-span-12 md:col-span-1">
+                          <Field label="VAT %">
+                            <Input
+                              type="number"
+                              value={item.vat_rate}
+                              onChange={(e) => updateLineItem(item.id, { vat_rate: parseFloat(e.target.value) || 0 })}
+                              min="0"
+                              step="0.01"
+                            />
+                          </Field>
+                        </div>
+
+                        <div className="col-span-12 flex items-end md:col-span-1">
+                          <IconButton
+                            type="button"
+                            onClick={() => removeLineItem(item.id)}
+                            variant="danger"
+                            size="sm"
+                            label="Remove line item"
+                            icon={<Icon name="trash" size={16} />}
                           />
-                        </Field>
+                        </div>
                       </div>
 
-                      <div className="col-span-12 md:col-span-2">
-                        <Field label="Quantity">
-                          <Input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) => updateLineItem(item.id, { quantity: parseFloat(e.target.value) || 0 })}
-                            min="0"
-                            step="0.01"
-                            required
-                          />
-                        </Field>
+                      <div className="mt-2 text-right text-sm text-text-muted">
+                        Line Total: £{calculateLineTotal(item).toFixed(2)}
                       </div>
-
-                      <div className="col-span-12 md:col-span-2">
-                        <Field label="Unit Price (£)">
-                          <Input
-                            type="number"
-                            value={item.unit_price}
-                            onChange={(e) => updateLineItem(item.id, { unit_price: parseFloat(e.target.value) || 0 })}
-                            min="0"
-                            step="0.01"
-                            required
-                          />
-                        </Field>
-                      </div>
-
-                      <div className="col-span-12 md:col-span-1">
-                        <Field label="Disc %">
-                          <Input
-                            type="number"
-                            value={item.discount_percentage}
-                            onChange={(e) => updateLineItem(item.id, { discount_percentage: parseFloat(e.target.value) || 0 })}
-                            min="0"
-                            max="100"
-                            step="0.01"
-                          />
-                        </Field>
-                      </div>
-
-                      <div className="col-span-12 md:col-span-1">
-                        <Field label="VAT %">
-                          <Input
-                            type="number"
-                            value={item.vat_rate}
-                            onChange={(e) => updateLineItem(item.id, { vat_rate: parseFloat(e.target.value) || 0 })}
-                            min="0"
-                            step="0.01"
-                          />
-                        </Field>
-                      </div>
-
-                      <div className="col-span-12 md:col-span-1 flex items-end">
-                        <Button
-                          type="button"
-                          onClick={() => removeLineItem(item.id)}
-                          variant="danger"
-                          size="sm"
-                          iconOnly
-                        >
-                          <Icon name="trash" size={16} />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="mt-2 text-right text-sm text-text-muted">
-                      Line Total: £{calculateLineTotal(item).toFixed(2)}
-                    </div>
-                  </div>
+                    </CardBody>
+                  </Card>
                 ))}
               </div>
             )}
-          </Card>
-        </Section>
+          </CardBody>
+        </Card>
 
-        <Section title="Quote Summary">
-          <Card>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-              <div className="space-y-4">
-                <Field label="Quote Discount (%)">
-                  <Input
-                    type="number"
-                    value={quoteDiscountPercentage}
-                    onChange={(e) => setQuoteDiscountPercentage(parseFloat(e.target.value) || 0)}
-                    min="0"
-                    max="100"
-                    step="0.01"
-                  />
-                </Field>
+        <Card>
+          <CardHeader title="Quote Summary" />
+          <CardBody className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="space-y-4">
+              <Field label="Quote Discount (%)">
+                <Input
+                  type="number"
+                  value={quoteDiscountPercentage}
+                  onChange={(e) => setQuoteDiscountPercentage(parseFloat(e.target.value) || 0)}
+                  min="0"
+                  max="100"
+                  step="0.01"
+                />
+              </Field>
 
-                <Field label="Notes (visible on quote)">
-                  <Textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={3}
-                    placeholder="Terms, conditions, special instructions, etc."
-                  />
-                </Field>
+              <Field label="Notes (visible on quote)">
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Terms, conditions, special instructions, etc."
+                />
+              </Field>
 
-                <Field label="Internal Notes">
-                  <Textarea
-                    value={internalNotes}
-                    onChange={(e) => setInternalNotes(e.target.value)}
-                    rows={3}
-                    placeholder="Private notes about this quote"
-                  />
-                </Field>
-              </div>
+              <Field label="Internal Notes">
+                <Textarea
+                  value={internalNotes}
+                  onChange={(e) => setInternalNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Private notes about this quote"
+                />
+              </Field>
+            </div>
 
-              <div className="bg-surface-2 rounded-lg p-3 sm:p-4">
-                <h3 className="font-semibold text-sm sm:text-base mb-2 sm:mb-3">Summary</h3>
-                <div className="space-y-1.5 sm:space-y-2">
-                  <div className="flex justify-between text-sm sm:text-base">
-                    <span>Subtotal:</span>
-                    <span className="font-medium">£{totals.subtotal.toFixed(2)}</span>
+            <Card variant="secondary">
+              <CardHeader title="Summary" />
+              <CardBody className="space-y-2 text-sm sm:text-base">
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span className="font-medium">£{totals.subtotal.toFixed(2)}</span>
+                </div>
+                {totals.discount > 0 && (
+                  <div className="flex justify-between text-success-fg">
+                    <span>Quote Discount: </span>
+                    <span>-£{totals.discount.toFixed(2)}</span>
                   </div>
-                  {totals.discount > 0 && (
-                    <div className="flex justify-between text-success-fg text-sm sm:text-base">
-                      <span>Quote Discount: </span>
-                      <span>-£{totals.discount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-sm sm:text-base">
-                    <span>VAT:</span>
-                    <span className="font-medium">£{totals.vat.toFixed(2)}</span>
-                  </div>
-                  <div className="border-t border-border pt-2">
-                    <div className="flex justify-between text-base sm:text-lg font-semibold">
-                      <span>Total:</span>
-                      <span>£{totals.total.toFixed(2)}</span>
-                    </div>
+                )}
+                <div className="flex justify-between">
+                  <span>VAT:</span>
+                  <span className="font-medium">£{totals.vat.toFixed(2)}</span>
+                </div>
+                <div className="border-t border-border pt-2">
+                  <div className="flex justify-between text-base font-semibold sm:text-lg">
+                    <span>Total:</span>
+                    <span>£{totals.total.toFixed(2)}</span>
                   </div>
                 </div>
-              </div>
-            </div>
-          </Card>
-        </Section>
+              </CardBody>
+            </Card>
+          </CardBody>
+        </Card>
 
-        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 sm:gap-4">
+        <FormFooter>
           <Button
             type="button"
             variant="secondary"
             onClick={() => router.push('/quotes')}
-            fullWidth={false}
-            className="sm:w-auto"
           >
             Cancel
           </Button>
-          <Button
+          <Button variant="primary"
             type="submit"
             disabled={lineItems.length === 0}
             loading={loading}
-            fullWidth={false}
-            className="sm:w-auto"
           >
             Create Quote
           </Button>
-        </div>
+        </FormFooter>
       </form>
     </PageLayout>
   )

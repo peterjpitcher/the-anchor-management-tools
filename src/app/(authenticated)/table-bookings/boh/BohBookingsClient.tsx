@@ -2,9 +2,33 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Alert, Badge, Button, Input, Segmented, Select, toast, Icon } from '@/ds'
-import { Empty } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Empty,
+  Icon,
+  Input,
+  LinkButton,
+  PageLayout,
+  PageLoading,
+  Segmented,
+  Select,
+  Stat,
+  StatGrid,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  toast,
+} from '@/ds'
 import { MessageGuestsModal } from './MessageGuestsModal'
+import { tableBookingsNav } from '../_shared/nav'
 import { FohCreateBookingModal } from '../foh/components/FohCreateBookingModal'
 import { useFohCreateBooking } from '../foh/hooks/useFohCreateBooking'
 import { buildTimelineRange } from '../foh/utils'
@@ -172,12 +196,61 @@ const VIEW_OPTIONS: Array<{ id: BohViewMode; label: string }> = [
   { id: 'month', label: 'Month' },
 ]
 
-// One table look (design decision A6): small uppercase muted headers, as DS Table draws them.
-// The sort buttons sit in a sticky header inside the scrolling wrapper, so their focus ring is
-// drawn inset where the scroll cannot clip it.
-const TH_CLASS = 'px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted'
+// The sort buttons sit in the DS table header, restyled to read as header text. The header is
+// sticky inside the scrolling table, so the focus ring is drawn inset where the scroll cannot
+// clip it.
 const SORT_BUTTON_CLASS =
-  'inline-flex items-center gap-1 rounded-sm uppercase tracking-wider hover:text-text focus-visible:outline-hidden focus-visible:shadow-ring-inset'
+  'h-auto gap-1 p-0 text-xs font-medium uppercase tracking-wider text-text-muted hover:text-text hover:no-underline focus-visible:shadow-ring-inset'
+
+function SortHead({
+  column,
+  label,
+  sortColumn,
+  sortDirection,
+  onSort,
+  align,
+  className,
+}: {
+  column: SortColumn
+  label: string
+  sortColumn: SortColumn
+  sortDirection: SortDirection
+  onSort: (column: SortColumn) => void
+  align?: 'left' | 'right'
+  className?: string
+}): React.JSX.Element {
+  const active = sortColumn === column
+  return (
+    <TableHead align={align} className={className}>
+      <Button
+        type="button"
+        variant="link"
+        size="xs"
+        className={SORT_BUTTON_CLASS}
+        onClick={() => onSort(column)}
+        iconRight={
+          <span className="flex flex-col" aria-hidden="true">
+            <Icon
+              name="chevronUp"
+              size={12}
+              className={cn('-mb-1', active && sortDirection === 'asc' ? 'text-text' : 'text-text-subtle')}
+            />
+            <Icon
+              name="chevronDown"
+              size={12}
+              className={cn('-mt-1', active && sortDirection === 'desc' ? 'text-text' : 'text-text-subtle')}
+            />
+          </span>
+        }
+      >
+        {label}
+        {active && (
+          <span className="sr-only">{sortDirection === 'asc' ? ', sorted ascending' : ', sorted descending'}</span>
+        )}
+      </Button>
+    </TableHead>
+  )
+}
 
 const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
   { value: 'all', label: 'All statuses' },
@@ -371,16 +444,14 @@ function formatMetricValue(value: number, decimals = 0): string {
   return new Intl.NumberFormat('en-GB').format(Math.round(value))
 }
 
-function getDeltaDisplay(
-  current: number,
-  previous: number,
-  options?: { decimals?: number; invertTrend?: boolean }
-): { label: string; toneClass: string } {
-  const decimals = options?.decimals ?? 0
-  const invertTrend = options?.invertTrend ?? false
+/**
+ * The change against the previous period, as "+3 (+12.5%)". It is shown as the figure's hint:
+ * DS Stat colours a delta green when it rises, which would paint a rise in no-shows as good news,
+ * so the sign carries the direction instead.
+ */
+function getDeltaLabel(current: number, previous: number, decimals = 0): string {
   const rawDelta = current - previous
   const delta = Number(rawDelta.toFixed(decimals))
-  const epsilon = decimals > 0 ? Math.pow(10, -decimals) : 0
   const deltaSign = delta > 0 ? '+' : ''
   const deltaText = `${deltaSign}${formatMetricValue(delta, decimals)}`
 
@@ -391,19 +462,7 @@ function getDeltaDisplay(
     percentText = `${percentSign}${percent.toFixed(1)}%`
   }
 
-  if (Math.abs(delta) <= epsilon) {
-    return {
-      label: `${deltaText} (${percentText})`,
-      toneClass: 'text-text-muted'
-    }
-  }
-
-  const positiveDirection = invertTrend ? delta < 0 : delta > 0
-
-  return {
-    label: `${deltaText} (${percentText})`,
-    toneClass: positiveDirection ? 'text-success-fg' : 'text-danger-fg'
-  }
+  return `${deltaText} (${percentText})`
 }
 
 export function BohBookingsClient({
@@ -411,6 +470,8 @@ export function BohBookingsClient({
   canManage,
   canWaiveDeposit = false,
   canSendMessages = false,
+  canViewReports = false,
+  canManageSettings = false,
   initialDate,
   initialView
 }: {
@@ -418,6 +479,10 @@ export function BohBookingsClient({
   canManage: boolean
   canWaiveDeposit?: boolean
   canSendMessages?: boolean
+  /** Shows the Reports tab. */
+  canViewReports?: boolean
+  /** Shows the Table Setup header action. */
+  canManageSettings?: boolean
   /** Opens on this London date (YYYY-MM-DD), for links such as the weekly Insights report's day links. */
   initialDate?: string
   initialView?: BohViewMode
@@ -430,7 +495,9 @@ export function BohBookingsClient({
   const [rangeEndDate, setRangeEndDate] = useState<string>(focusDate)
   const [previousRangeStartDate, setPreviousRangeStartDate] = useState<string>('')
   const [previousRangeEndDate, setPreviousRangeEndDate] = useState<string>('')
-  const [loading, setLoading] = useState<boolean>(false)
+  // True from the first render: the fetch starts in an effect after mount, and starting at false
+  // painted "There are no bookings for this period" before anything had been asked for.
+  const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const [bookings, setBookings] = useState<BohBooking[]>([])
   const [previousPeriodBookings, setPreviousPeriodBookings] = useState<BohBooking[]>([])
@@ -724,8 +791,7 @@ export function BohBookingsClient({
         title: 'No-shows + cancellations',
         value: currentMetrics.lostBookings,
         previous: previousMetrics.lostBookings,
-        decimals: 0,
-        invertTrend: true
+        decimals: 0
       },
       {
         key: 'avg-party',
@@ -750,11 +816,6 @@ export function BohBookingsClient({
     const newDirection = sortColumn === column ? (sortDirection === 'asc' ? 'desc' : 'asc') : 'asc'
     setSortColumn(column)
     setSortDirection(newDirection)
-  }
-
-  function sortIndicator(column: SortColumn): string {
-    if (sortColumn !== column) return '↕'
-    return sortDirection === 'asc' ? '↑' : '↓'
   }
 
   // `bookings` holds the whole loaded range (week/month), not one day — filter to the focused day.
@@ -812,533 +873,503 @@ export function BohBookingsClient({
     }
   }
 
-  return (
-    // data-touch-targets: BOH is also used on a tablet, and the 44px floor in globals.css
-    // only applies below 821px. See the note in FohScheduleClient.
-    <div className="space-y-4" data-touch-targets>
-      <div className="rounded-lg border border-border bg-surface p-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Booking window</p>
-            <h2 className="text-lg font-semibold text-text">{formatRangeLabel(rangeStartDate, rangeEndDate)}</h2>
-            <p className="text-sm text-text-muted">
-              {filteredBookings.length} booking{filteredBookings.length === 1 ? '' : 's'} in view
-              {lastLoadedAt ? ` · updated ${lastLoadedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}
-            </p>
-          </div>
+  const sortHeadProps = { sortColumn, sortDirection, onSort: handleSort }
 
-          <div className="flex flex-wrap items-center gap-2">
-            {canEdit && (
-              <Button
-                variant="primary"
-                size="sm"
-                className="w-full sm:w-auto"
-                icon={<Icon name="plus" size={16} />}
-                onClick={() => createBooking.openCreateModal({ mode: 'booking', prefill: { booking_date: focusDate } })}
-              >
-                Book table
-              </Button>
-            )}
-            {canSendMessages && (
+  const headerActions = (
+    // display: contents keeps the buttons as items of the header's own row; the attribute gives
+    // them the same 44px touch floor on the iPad as the page body below.
+    <div className="contents" data-touch-targets>
+      <Segmented
+        size="sm"
+        options={VIEW_OPTIONS}
+        value={view}
+        onChange={(id) => setView(id as BohViewMode)}
+      />
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => void loadBookings()}
+        loading={loading}
+      >
+        Refresh
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => void handleDownloadPdf()}
+        loading={downloading}
+        disabled={!canDownload || downloading}
+        aria-busy={downloading}
+        title={!isDayView ? "Switch to Day view to print a day's sheets" : undefined}
+      >
+        Download PDF
+      </Button>
+      {canSendMessages && (
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Icon name="message" size={16} />}
+          onClick={() => setIsMessageModalOpen(true)}
+        >
+          Message Guests
+        </Button>
+      )}
+      {canManageSettings && (
+        <LinkButton href="/settings/table-bookings" variant="secondary" size="sm">
+          Table Setup
+        </LinkButton>
+      )}
+      {canEdit && (
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<Icon name="plus" size={16} />}
+          onClick={() => createBooking.openCreateModal({ mode: 'booking', prefill: { booking_date: focusDate } })}
+        >
+          Book Table
+        </Button>
+      )}
+    </div>
+  )
+
+  return (
+    <PageLayout
+      title="Back of House Table Bookings"
+      subtitle="Manage table bookings across day, week, and month views"
+      navItems={tableBookingsNav({ canViewReports })}
+      headerActions={headerActions}
+    >
+      {/* data-touch-targets: BOH is also used on a tablet, and the 44px floor in globals.css
+          only applies below 821px. See the note in FohScheduleClient. This wrapper carries the
+          attribute for the page body and keeps the page's own 24px rhythm between blocks. */}
+      <div className="space-y-6" data-touch-targets>
+        <Card>
+          <CardHeader
+            title={formatRangeLabel(rangeStartDate, rangeEndDate)}
+            // No count on a failed load: "0 bookings in view" would contradict the alert below.
+            subtitle={error ? undefined : `${filteredBookings.length} booking${filteredBookings.length === 1 ? '' : 's'} in view${
+              lastLoadedAt ? ` · updated ${lastLoadedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''
+            }`}
+          />
+          <CardBody className="space-y-4">
+            {/* The date moves every block below it (figures, kitchen totals and the list), so it
+                stays at the top. Search and the status filter only narrow the list, so they sit
+                directly above it in the Bookings Table card. */}
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="secondary"
                 size="sm"
-                className="w-full sm:w-auto"
-                icon={<Icon name="message" size={16} />}
-                onClick={() => setIsMessageModalOpen(true)}
+                onClick={() => setFocusDate((current) => shiftFocusDate(current, view, -1))}
               >
-                Message guests
+                Previous
               </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setFocusDate(getTodayIsoDate())}
+              >
+                Today
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setFocusDate((current) => shiftFocusDate(current, view, 1))}
+              >
+                Next
+              </Button>
+            </div>
+
+            {createStatusMessage && (
+              <Alert tone="success" role="status">
+                {createStatusMessage}
+              </Alert>
             )}
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setFocusDate((current) => shiftFocusDate(current, view, -1))}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setFocusDate(getTodayIsoDate())}
-            >
-              Today
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setFocusDate((current) => shiftFocusDate(current, view, 1))}
-            >
-              Next
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void loadBookings()}
-              loading={loading}
-            >
-              Refresh
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void handleDownloadPdf()}
-              loading={downloading}
-              disabled={!canDownload || downloading}
-              aria-busy={downloading}
-              title={!isDayView ? "Switch to Day view to print a day's sheets" : undefined}
-            >
-              Download PDF
-            </Button>
-            <Segmented
-              className="ml-2"
-              options={VIEW_OPTIONS}
-              value={view}
-              onChange={(id) => setView(id as BohViewMode)}
-            />
-          </div>
-        </div>
+          </CardBody>
+        </Card>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
-          <div>
-            <label htmlFor="boh-search" className="sr-only">Search bookings</label>
-            <Input
-              id="boh-search"
-              type="search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search by guest, ref, table, phone, notes"
-            />
-          </div>
-          <div>
-            <label htmlFor="boh-status-filter" className="sr-only">Filter by status</label>
-            <Select
-              id="boh-status-filter"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-              options={STATUS_OPTIONS}
-            />
-          </div>
-        </div>
-
-        {statusTotals.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {statusTotals.slice(0, 8).map(([status, count]) => (
-              <Badge key={status} className={getStatusBadgeClasses(status)}>
-                {getStatusLabel(status)}: {count}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {createStatusMessage && (
-          <div role="status" className="mt-3 rounded-md border border-success-border bg-success-soft px-3 py-2 text-sm text-success-fg">
-            {createStatusMessage}
-          </div>
-        )}
-      </div>
-
-      {/* A failed load zeroes the arrays, and these cards render unconditionally, so an
-          outage painted "Total bookings 0" and "-100.0%" in large type at the top of the
-          page. A manager reads that as a dead service, not a broken request. The error
-          banner lived further down, below five full-width cards on a narrow screen. */}
-      {error ? (
-        <Alert tone="warning" title="These figures could not be loaded">
-          <p>{error}</p>
-          <Button type="button" variant="secondary" size="sm" onClick={() => void loadBookings()} className="mt-2">
-            Try again
-          </Button>
-        </Alert>
-      ) : (
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {metricsCards.map((card) => {
-          const delta = getDeltaDisplay(card.value, card.previous, {
-            decimals: card.decimals,
-            invertTrend: card.invertTrend
-          })
-
-          return (
-            <div key={card.key} className="rounded-lg border border-border bg-surface p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{card.title}</p>
-              <p className="mt-2 text-2xl font-semibold text-text">
-                {formatMetricValue(card.value, card.decimals)}
-              </p>
-              <p className={`mt-2 text-xs font-medium ${delta.toneClass}`}>
-                {delta.label}
-              </p>
-              <p className="mt-1 text-meta text-text-muted">Compared with {previousPeriodLabel}</p>
-            </div>
-          )
-        })}
-      </div>
-      )}
-
-      {isDayView && dishTotals && dishTotals.coverCount > 0 && (
-        <div className="rounded-lg border border-border bg-surface">
-          <div className="border-b border-border px-4 py-3">
-            <h3 className="text-sm font-semibold text-text">Kitchen pre-orders</h3>
-            <p className="text-xs text-text-muted">
-              {dishTotals.coverCount} cover{dishTotals.coverCount === 1 ? '' : 's'} across{' '}
-              {dishTotals.bookingCount} booking{dishTotals.bookingCount === 1 ? '' : 's'}. Dietary
-              notes and allergies are on the booking sheet.
-            </p>
-          </div>
-          <div className="grid gap-4 p-4 sm:grid-cols-3">
-            {PREORDER_COURSES.map((course) => {
-              const dishes = dishTotals.byCourse[course] ?? []
-              return (
-                <div key={course}>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                    {PREORDER_COURSE_LABELS[course]}
-                  </p>
-                  {dishes.length === 0 ? (
-                    <p className="mt-2 text-sm text-text-muted">None chosen</p>
-                  ) : (
-                    <ul className="mt-2 space-y-1">
-                      {dishes.map((dish) => (
-                        <li
-                          key={dish.menuItemId}
-                          className="flex items-baseline justify-between gap-3 text-sm text-text"
-                        >
-                          <span className="min-w-0 break-words">{dish.itemName}</span>
-                          <span className="shrink-0 font-semibold tabular-nums">{dish.count}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {(dishTotals.addons ?? []).length > 0 && (
-            <div className="border-t border-border px-4 py-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                  Add-ons, extra to the courses
-                </p>
-                <p className="text-sm font-semibold tabular-nums text-text">
-                  {formatAddonLineMoney(
-                    dishTotals.addonTotalGbp ?? 0,
-                    dishTotals.addonHasUnpricedSelection ?? false
-                  )}
-                </p>
-              </div>
-              <ul className="mt-2 space-y-1">
-                {(dishTotals.addons ?? []).map((addon) => (
-                  <li
-                    key={addon.menuItemId}
-                    className="flex items-baseline justify-between gap-3 text-sm text-text"
-                  >
-                    <span className="min-w-0 break-words">
-                      {addon.itemName}
-                      <span className="ml-2 text-xs text-text-muted">
-                        {addon.unitPriceGbp === null
-                          ? formatPreorderAddonPrice(null)
-                          : `${formatPreorderMoney(addon.unitPriceGbp)} each`}
-                      </span>
-                    </span>
-                    <span className="shrink-0 tabular-nums">
-                      <span className="font-semibold">{addon.count}</span>
-                      <span className="ml-3 text-text-muted">
-                        {formatAddonLineMoney(addon.totalGbp, addon.hasUnpricedSelection)}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {/* Verbatim from the shared constant: four surfaces wording this four ways is how one
-                  of them ends up implying the guest has already paid. */}
-              <p className="mt-3 text-xs text-text-muted">{PREORDER_ADDON_STAFF_NOTE}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="rounded-lg border border-border bg-surface">
-        <div className="border-b border-border px-4 py-3">
-          <h3 className="text-sm font-semibold text-text">Bookings Table</h3>
-          <p className="text-xs text-text-muted">Click column headers to sort</p>
-        </div>
-
-        <div className="max-h-[680px] overflow-auto overflow-x-auto">
-          {loading && (
-            <div className="flex items-center gap-2 px-4 py-3">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-border-strong border-t-text-muted" />
-              <p className="text-sm text-text-muted">Loading bookings…</p>
-            </div>
-          )}
-          {!loading && error && (
-            <div className="flex items-center justify-between px-4 py-3">
-              <p className="text-sm text-danger">{error}</p>
-              <Button variant="secondary" size="sm" onClick={() => void loadBookings()}>
-                Retry
+        {/* A failed load zeroes the arrays, so the figures and the list would read "0 bookings",
+            which a manager takes for a dead service rather than a broken request. On failure the
+            alert replaces both, near the top where a narrow screen still shows it. */}
+        {error ? (
+          <Alert tone="danger" title="Bookings could not be loaded">
+            {error}
+            {/* The same retry row as PageLayout's own error state. */}
+            <div className="mt-3">
+              <Button type="button" variant="secondary" size="sm" onClick={() => void loadBookings()}>
+                Try again
               </Button>
             </div>
-          )}
-          {!loading && !error && sortedBookings.length === 0 && (
-            <Empty
-              icon="calendar"
-              title="No bookings"
-              description={searchTerm || statusFilter !== 'all' ? 'No bookings match the selected filters.' : 'There are no bookings for this period.'}
-              size="sm"
-              variant="minimal"
+          </Alert>
+        ) : (
+          <StatGrid columns={4} className="xl:grid-cols-5">
+            {metricsCards.map((card) => (
+              <Stat
+                key={card.key}
+                label={card.title}
+                value={formatMetricValue(card.value, card.decimals)}
+                hint={`${getDeltaLabel(card.value, card.previous, card.decimals)} compared with ${previousPeriodLabel}`}
+              />
+            ))}
+          </StatGrid>
+        )}
+
+        {isDayView && dishTotals && dishTotals.coverCount > 0 && (
+          <Card>
+            <CardHeader
+              title="Kitchen Pre-Orders"
+              subtitle={`${dishTotals.coverCount} cover${dishTotals.coverCount === 1 ? '' : 's'} across ${dishTotals.bookingCount} booking${dishTotals.bookingCount === 1 ? '' : 's'}`}
             />
-          )}
-
-          {!loading && !error && sortedBookings.length > 0 && (
-            <>
-            {/* Mobile card list — the 9-column table is unusable at phone width, so below md
-                each booking renders as a stacked card with the key fields as label/value pairs. */}
-            <ul className="divide-y divide-border md:hidden">
-              {sortedBookings.map((booking) => {
-                const visualState = getTableBookingVisualState(booking)
-                const depositState = getTableBookingDepositState(booking)
-
-                return (
-                  <li key={booking.id} className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-text" title={booking.guest_name || ''}>
-                          {booking.guest_name || 'Unknown guest'}
-                        </p>
-                        <p className="mt-0.5 text-xs text-text-muted">{formatBookingDateTime(booking)}</p>
-                      </div>
-                      <Badge size="sm" className={`shrink-0 ${getStatusBadgeClasses(visualState)}`}>
-                        {getStatusLabel(visualState)}
-                      </Badge>
-                    </div>
-
-                    {booking.event_name && (
-                      <p className="mt-1 truncate text-xs text-text-muted" title={booking.event_name}>
-                        {booking.event_name}
-                      </p>
-                    )}
-
-                    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-                      <div>
-                        <dt className="text-xs text-text-muted">Party</dt>
-                        <dd className="font-semibold text-text">{booking.party_size || 0}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-text-muted">Tables</dt>
-                        <dd className="font-medium text-text">
-                          {booking.is_outside_seating
-                            ? 'Outside'
-                            : booking.table_names.length > 0
-                              ? booking.table_names.join(', ')
-                              : 'Unassigned'}
-                        </dd>
-                      </div>
-                      {booking.customer?.mobile_number && (
-                        <div>
-                          <dt className="text-xs text-text-muted">Phone</dt>
-                          <dd className="font-medium text-text">{booking.customer.mobile_number}</dd>
-                        </div>
-                      )}
-                      {booking.booking_reference && (
-                        <div>
-                          <dt className="text-xs text-text-muted">Ref</dt>
-                          <dd className="font-medium text-text">{booking.booking_reference}</dd>
-                        </div>
-                      )}
-                    </dl>
-
-                    {((booking.high_chair_count ?? 0) > 0 || depositState.kind !== 'none') && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {(booking.high_chair_count ?? 0) > 0 && (
-                          <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
-                        )}
-                        {depositState.kind !== 'none' && (
-                          <Badge size="sm" className={getTableBookingDepositBadgeClasses(depositState.kind)}>
-                            {depositState.label}
-                            {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
-                            {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}
-                          </Badge>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="mt-3">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="w-full"
-                        aria-label={`Manage booking for ${booking.guest_name || booking.booking_reference || 'unknown guest'}`}
-                        onClick={() => router.push(`/table-bookings/${booking.id}`)}
-                      >
-                        Manage
-                      </Button>
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-
-            <table className="hidden min-w-full divide-y divide-border text-sm md:table">
-              <thead className="sticky top-0 z-10 bg-surface-2">
-                <tr>
-                  <th scope="col" className={TH_CLASS}>
-                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('datetime')}>
-                      Date/Time <span className="text-text-subtle">{sortIndicator('datetime')}</span>
-                    </button>
-                  </th>
-                  <th scope="col" className={TH_CLASS}>
-                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('guest')}>
-                      Guest <span className="text-text-subtle">{sortIndicator('guest')}</span>
-                    </button>
-                  </th>
-                  <th scope="col" className={cn(TH_CLASS, 'hidden lg:table-cell')}>
-                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('reference')}>
-                      Ref <span className="text-text-subtle">{sortIndicator('reference')}</span>
-                    </button>
-                  </th>
-                  <th scope="col" className={cn(TH_CLASS, 'text-right')}>
-                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('party_size')}>
-                      Party <span className="text-text-subtle">{sortIndicator('party_size')}</span>
-                    </button>
-                  </th>
-                  <th scope="col" className={TH_CLASS}>
-                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('tables')}>
-                      Tables <span className="text-text-subtle">{sortIndicator('tables')}</span>
-                    </button>
-                  </th>
-                  <th scope="col" className={TH_CLASS}>
-                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('status')}>
-                      Status <span className="text-text-subtle">{sortIndicator('status')}</span>
-                    </button>
-                  </th>
-                  <th scope="col" className={cn(TH_CLASS, 'hidden lg:table-cell')}>
-                    <button type="button" className={SORT_BUTTON_CLASS} onClick={() => handleSort('phone')}>
-                      Phone <span className="text-text-subtle">{sortIndicator('phone')}</span>
-                    </button>
-                  </th>
-                  <th scope="col" className={cn(TH_CLASS, 'hidden lg:table-cell')}>Deposit</th>
-                  <th scope="col" className={cn(TH_CLASS, 'text-right')}>Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border bg-surface">
-                {sortedBookings.map((booking) => {
-                  const visualState = getTableBookingVisualState(booking)
-                  const depositState = getTableBookingDepositState(booking)
-
+            <CardBody className="space-y-4">
+              <p className="text-xs text-text-muted">
+                Dietary notes and allergies are on the booking sheet.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-3">
+                {PREORDER_COURSES.map((course) => {
+                  const dishes = dishTotals.byCourse[course] ?? []
                   return (
-                  <tr key={booking.id} className="hover:bg-surface-hover">
-                    <td className="px-3 py-2 font-medium text-text whitespace-nowrap">{formatBookingDateTime(booking)}</td>
-                    <td className="px-3 py-2 text-text">
-                      <div className="max-w-[220px] truncate font-medium" title={booking.guest_name || ''}>
-                        {booking.guest_name || 'Unknown guest'}
-                      </div>
-                      {booking.event_name && (
-                        <div className="max-w-[220px] truncate text-xs text-text-muted" title={booking.event_name}>
-                          {booking.event_name}
-                        </div>
-                      )}
-                      {(booking.high_chair_count ?? 0) > 0 && (
-                        <div className="mt-1">
-                          <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
-                        </div>
-                      )}
-                    </td>
-                    <td className="hidden px-3 py-2 text-text whitespace-nowrap lg:table-cell">{booking.booking_reference || '—'}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                      <span className="text-base font-bold text-text">{booking.party_size || 0}</span>
-                    </td>
-                    <td className="px-3 py-2 text-text">
-                      {booking.is_outside_seating ? (
-                        <Badge tone="info">Outside</Badge>
+                    <div key={course}>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                        {PREORDER_COURSE_LABELS[course]}
+                      </p>
+                      {dishes.length === 0 ? (
+                        <p className="mt-2 text-sm text-text-muted">None chosen</p>
                       ) : (
-                        <div className="max-w-[220px] truncate font-medium" title={booking.table_names.join(', ')}>
-                          {booking.table_names.length > 0 ? booking.table_names.join(', ') : 'Unassigned'}
-                        </div>
+                        <ul className="mt-2 space-y-1">
+                          {dishes.map((dish) => (
+                            <li
+                              key={dish.menuItemId}
+                              className="flex items-baseline justify-between gap-3 text-sm text-text"
+                            >
+                              <span className="min-w-0 break-words">{dish.itemName}</span>
+                              <span className="shrink-0 font-semibold tabular-nums">{dish.count}</span>
+                            </li>
+                          ))}
+                        </ul>
                       )}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <Badge size="sm" className={getStatusBadgeClasses(visualState)}>
-                        {getStatusLabel(visualState)}
-                      </Badge>
-                    </td>
-                    <td className="hidden px-3 py-2 text-text whitespace-nowrap lg:table-cell">{booking.customer?.mobile_number || '—'}</td>
-                    <td className="hidden px-3 py-2 whitespace-nowrap lg:table-cell">
-                      {depositState.kind !== 'none' ? (
-                        <Badge size="sm" className={getTableBookingDepositBadgeClasses(depositState.kind)}>
-                          {depositState.label}
-                          {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
-                          {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}
-                        </Badge>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        aria-label={`Manage booking for ${booking.guest_name || booking.booking_reference || 'unknown guest'}`}
-                        onClick={() => router.push(`/table-bookings/${booking.id}`)}
-                      >
-                        Manage
-                      </Button>
-                    </td>
-                  </tr>
+                    </div>
                   )
                 })}
-              </tbody>
-            </table>
-            </>
-          )}
-        </div>
+              </div>
+            </CardBody>
+
+            {(dishTotals.addons ?? []).length > 0 && (
+              <CardBody className="border-t border-border">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    Add-ons, extra to the courses
+                  </p>
+                  <p className="text-sm font-semibold tabular-nums text-text">
+                    {formatAddonLineMoney(
+                      dishTotals.addonTotalGbp ?? 0,
+                      dishTotals.addonHasUnpricedSelection ?? false
+                    )}
+                  </p>
+                </div>
+                <ul className="mt-2 space-y-1">
+                  {(dishTotals.addons ?? []).map((addon) => (
+                    <li
+                      key={addon.menuItemId}
+                      className="flex items-baseline justify-between gap-3 text-sm text-text"
+                    >
+                      <span className="min-w-0 break-words">
+                        {addon.itemName}
+                        <span className="ml-2 text-xs text-text-muted">
+                          {addon.unitPriceGbp === null
+                            ? formatPreorderAddonPrice(null)
+                            : `${formatPreorderMoney(addon.unitPriceGbp)} each`}
+                        </span>
+                      </span>
+                      <span className="shrink-0 tabular-nums">
+                        <span className="font-semibold">{addon.count}</span>
+                        <span className="ml-3 text-text-muted">
+                          {formatAddonLineMoney(addon.totalGbp, addon.hasUnpricedSelection)}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {/* Verbatim from the shared constant: four surfaces wording this four ways is how one
+                    of them ends up implying the guest has already paid. */}
+                <p className="mt-3 text-xs text-text-muted">{PREORDER_ADDON_STAFF_NOTE}</p>
+              </CardBody>
+            )}
+          </Card>
+        )}
+
+        {!error && (
+          <Card>
+            <CardHeader title="Bookings Table" subtitle="Click column headers to sort" />
+            <CardBody className="space-y-3 border-b border-border">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-0 flex-1 basis-60">
+                  <Input
+                    id="boh-search"
+                    type="search"
+                    aria-label="Search bookings"
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="Search by guest, ref, table, phone, notes"
+                  />
+                </div>
+                <div className="w-full sm:w-48">
+                  <Select
+                    id="boh-status-filter"
+                    aria-label="Filter by status"
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+                    options={STATUS_OPTIONS}
+                  />
+                </div>
+              </div>
+
+              {statusTotals.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {statusTotals.slice(0, 8).map(([status, count]) => (
+                    <Badge key={status} className={getStatusBadgeClasses(status)}>
+                      {getStatusLabel(status)}: {count}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </CardBody>
+
+            {loading ? (
+              <PageLoading inline label="Loading bookings" />
+            ) : sortedBookings.length === 0 ? (
+              <Empty
+                icon="calendar"
+                title="No bookings"
+                description={searchTerm || statusFilter !== 'all' ? 'No bookings match the selected filters.' : 'There are no bookings for this period.'}
+                size="sm"
+                variant="minimal"
+              />
+            ) : (
+              <>
+                {/* Mobile card list: the 9-column table is unusable at phone width, so below md
+                    each booking renders as a stacked card with the key fields as label/value pairs. */}
+                <ul className="max-h-[680px] divide-y divide-border overflow-auto md:hidden">
+                  {sortedBookings.map((booking) => {
+                    const visualState = getTableBookingVisualState(booking)
+                    const depositState = getTableBookingDepositState(booking)
+
+                    return (
+                      <li key={booking.id} className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-text" title={booking.guest_name || ''}>
+                              {booking.guest_name || 'Unknown guest'}
+                            </p>
+                            <p className="mt-0.5 text-xs text-text-muted">{formatBookingDateTime(booking)}</p>
+                          </div>
+                          <Badge size="sm" className={`shrink-0 ${getStatusBadgeClasses(visualState)}`}>
+                            {getStatusLabel(visualState)}
+                          </Badge>
+                        </div>
+
+                        {booking.event_name && (
+                          <p className="mt-1 truncate text-xs text-text-muted" title={booking.event_name}>
+                            {booking.event_name}
+                          </p>
+                        )}
+
+                        <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                          <div>
+                            <dt className="text-xs text-text-muted">Party</dt>
+                            <dd className="font-semibold text-text">{booking.party_size || 0}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs text-text-muted">Tables</dt>
+                            <dd className="font-medium text-text">
+                              {booking.is_outside_seating
+                                ? 'Outside'
+                                : booking.table_names.length > 0
+                                  ? booking.table_names.join(', ')
+                                  : 'Unassigned'}
+                            </dd>
+                          </div>
+                          {booking.customer?.mobile_number && (
+                            <div>
+                              <dt className="text-xs text-text-muted">Phone</dt>
+                              <dd className="font-medium text-text">{booking.customer.mobile_number}</dd>
+                            </div>
+                          )}
+                          {booking.booking_reference && (
+                            <div>
+                              <dt className="text-xs text-text-muted">Ref</dt>
+                              <dd className="font-medium text-text">{booking.booking_reference}</dd>
+                            </div>
+                          )}
+                        </dl>
+
+                        {((booking.high_chair_count ?? 0) > 0 || depositState.kind !== 'none') && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {(booking.high_chair_count ?? 0) > 0 && (
+                              <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
+                            )}
+                            {depositState.kind !== 'none' && (
+                              <Badge size="sm" className={getTableBookingDepositBadgeClasses(depositState.kind)}>
+                                {depositState.label}
+                                {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
+                                {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="mt-3">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="w-full"
+                            aria-label={`Manage booking for ${booking.guest_name || booking.booking_reference || 'unknown guest'}`}
+                            onClick={() => router.push(`/table-bookings/${booking.id}`)}
+                          >
+                            Manage
+                          </Button>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+
+                {/* The table scrolls inside its own 680px frame, so the sticky header stays in view. */}
+                <Table className="hidden max-h-[680px] overflow-y-auto md:block">
+                  <TableHeader className="sticky top-0 z-10">
+                    <TableRow>
+                      <SortHead column="datetime" label="Date/Time" {...sortHeadProps} />
+                      <SortHead column="guest" label="Guest" {...sortHeadProps} />
+                      <SortHead column="reference" label="Ref" className="hidden lg:table-cell" {...sortHeadProps} />
+                      <SortHead column="party_size" label="Party" align="right" {...sortHeadProps} />
+                      <SortHead column="tables" label="Tables" {...sortHeadProps} />
+                      <SortHead column="status" label="Status" {...sortHeadProps} />
+                      <SortHead column="phone" label="Phone" className="hidden lg:table-cell" {...sortHeadProps} />
+                      <TableHead className="hidden lg:table-cell">Deposit</TableHead>
+                      <TableHead align="right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedBookings.map((booking) => {
+                      const visualState = getTableBookingVisualState(booking)
+                      const depositState = getTableBookingDepositState(booking)
+
+                      return (
+                        <TableRow key={booking.id}>
+                          <TableCell className="font-medium">{formatBookingDateTime(booking)}</TableCell>
+                          <TableCell className="whitespace-normal">
+                            <div className="max-w-[220px] truncate font-medium" title={booking.guest_name || ''}>
+                              {booking.guest_name || 'Unknown guest'}
+                            </div>
+                            {booking.event_name && (
+                              <div className="max-w-[220px] truncate text-xs text-text-muted" title={booking.event_name}>
+                                {booking.event_name}
+                              </div>
+                            )}
+                            {(booking.high_chair_count ?? 0) > 0 && (
+                              <div className="mt-1">
+                                <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="hidden lg:table-cell">{booking.booking_reference || '-'}</TableCell>
+                          <TableCell align="right">
+                            <span className="text-base font-bold text-text">{booking.party_size || 0}</span>
+                          </TableCell>
+                          <TableCell className="whitespace-normal">
+                            {booking.is_outside_seating ? (
+                              <Badge tone="info">Outside</Badge>
+                            ) : (
+                              <div className="max-w-[220px] truncate font-medium" title={booking.table_names.join(', ')}>
+                                {booking.table_names.length > 0 ? booking.table_names.join(', ') : 'Unassigned'}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge size="sm" className={getStatusBadgeClasses(visualState)}>
+                              {getStatusLabel(visualState)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="hidden lg:table-cell">{booking.customer?.mobile_number || '-'}</TableCell>
+                          <TableCell className="hidden lg:table-cell">
+                            {depositState.kind !== 'none' ? (
+                              <Badge size="sm" className={getTableBookingDepositBadgeClasses(depositState.kind)}>
+                                {depositState.label}
+                                {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
+                                {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}
+                              </Badge>
+                            ) : null}
+                          </TableCell>
+                          <TableCell align="right">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              aria-label={`Manage booking for ${booking.guest_name || booking.booking_reference || 'unknown guest'}`}
+                              onClick={() => router.push(`/table-bookings/${booking.id}`)}
+                            >
+                              Manage
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </>
+            )}
+          </Card>
+        )}
+
+        <MessageGuestsModal
+          open={isMessageModalOpen}
+          onClose={() => setIsMessageModalOpen(false)}
+          bookingDate={focusDate}
+        />
+
+        <FohCreateBookingModal
+          open={createBooking.isCreateModalOpen}
+          createMode={createBooking.createMode}
+          createForm={createBooking.createForm}
+          canWaiveDeposit={canWaiveDeposit}
+          canEdit={canEdit}
+          walkInTargetTable={createBooking.walkInTargetTable}
+          submittingBooking={createBooking.submittingBooking}
+          customerQuery={createBooking.customerQuery}
+          completedCustomerSearchQuery={createBooking.completedCustomerSearchQuery}
+          customerResults={createBooking.customerResults}
+          selectedCustomer={createBooking.selectedCustomer}
+          searchingCustomers={createBooking.searchingCustomers}
+          eventOptions={createBooking.eventOptions}
+          loadingEventOptions={createBooking.loadingEventOptions}
+          eventOptionsError={createBooking.eventOptionsError}
+          selectedEventOption={createBooking.selectedEventOption}
+          overlappingEventForTable={createBooking.overlappingEventForTable}
+          tableEventPromptAcknowledgedEventId={createBooking.tableEventPromptAcknowledgedEventId}
+          walkInPurposeAutoSelectionEnabled={createBooking.walkInPurposeAutoSelectionEnabled}
+          formRequiresDeposit={createBooking.formRequiresDeposit}
+          seasonalPeriod={createBooking.seasonalPeriod}
+          seasonalAnswer={createBooking.seasonalAnswer}
+          onSetSeasonalAnswer={createBooking.setSeasonalAnswer}
+          errorMessage={createErrorMessage}
+          onClose={createBooking.closeCreateModal}
+          onSubmit={createBooking.handleCreateBooking}
+          onSetCreateForm={createBooking.setCreateForm}
+          onSetCustomerQuery={createBooking.setCustomerQuery}
+          onSelectCustomer={(customer) => {
+            createBooking.setSelectedCustomer(customer)
+            createBooking.setCreateForm((current) => ({
+              ...current,
+              phone: customer.mobile_e164 || customer.mobile_number || ''
+            }))
+          }}
+          onClearCustomer={() => {
+            createBooking.setSelectedCustomer(null)
+            createBooking.setCustomerQuery('')
+            createBooking.setCustomerResults([])
+          }}
+          onSetTableEventPromptAcknowledgedEventId={createBooking.setTableEventPromptAcknowledgedEventId}
+          onSetWalkInPurposeAutoSelectionEnabled={createBooking.setWalkInPurposeAutoSelectionEnabled}
+          onSetErrorMessage={setCreateErrorMessage}
+        />
       </div>
-
-      <MessageGuestsModal
-        open={isMessageModalOpen}
-        onClose={() => setIsMessageModalOpen(false)}
-        bookingDate={focusDate}
-      />
-
-      <FohCreateBookingModal
-        open={createBooking.isCreateModalOpen}
-        createMode={createBooking.createMode}
-        createForm={createBooking.createForm}
-        canWaiveDeposit={canWaiveDeposit}
-        canEdit={canEdit}
-        walkInTargetTable={createBooking.walkInTargetTable}
-        submittingBooking={createBooking.submittingBooking}
-        customerQuery={createBooking.customerQuery}
-        completedCustomerSearchQuery={createBooking.completedCustomerSearchQuery}
-        customerResults={createBooking.customerResults}
-        selectedCustomer={createBooking.selectedCustomer}
-        searchingCustomers={createBooking.searchingCustomers}
-        eventOptions={createBooking.eventOptions}
-        loadingEventOptions={createBooking.loadingEventOptions}
-        eventOptionsError={createBooking.eventOptionsError}
-        selectedEventOption={createBooking.selectedEventOption}
-        overlappingEventForTable={createBooking.overlappingEventForTable}
-        tableEventPromptAcknowledgedEventId={createBooking.tableEventPromptAcknowledgedEventId}
-        walkInPurposeAutoSelectionEnabled={createBooking.walkInPurposeAutoSelectionEnabled}
-        formRequiresDeposit={createBooking.formRequiresDeposit}
-        seasonalPeriod={createBooking.seasonalPeriod}
-        seasonalAnswer={createBooking.seasonalAnswer}
-        onSetSeasonalAnswer={createBooking.setSeasonalAnswer}
-        errorMessage={createErrorMessage}
-        onClose={createBooking.closeCreateModal}
-        onSubmit={createBooking.handleCreateBooking}
-        onSetCreateForm={createBooking.setCreateForm}
-        onSetCustomerQuery={createBooking.setCustomerQuery}
-        onSelectCustomer={(customer) => {
-          createBooking.setSelectedCustomer(customer)
-          createBooking.setCreateForm((current) => ({
-            ...current,
-            phone: customer.mobile_e164 || customer.mobile_number || ''
-          }))
-        }}
-        onClearCustomer={() => {
-          createBooking.setSelectedCustomer(null)
-          createBooking.setCustomerQuery('')
-          createBooking.setCustomerResults([])
-        }}
-        onSetTableEventPromptAcknowledgedEventId={createBooking.setTableEventPromptAcknowledgedEventId}
-        onSetWalkInPurposeAutoSelectionEnabled={createBooking.setWalkInPurposeAutoSelectionEnabled}
-        onSetErrorMessage={setCreateErrorMessage}
-      />
-    </div>
+    </PageLayout>
   )
 }

@@ -59,6 +59,7 @@ describe('TimeclockManager', () => {
   it('asks for confirmation before deleting a session', async () => {
     render(
       <TimeclockManager
+        layout={{ title: 'Timeclock', navItems: [] }}
         sessions={[session]}
         employees={[]}
         periodStart="2026-07-25"

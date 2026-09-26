@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Card,
+  CardBody,
+  CardHeader,
+  FormFooter,
   Button,
   LinkButton,
   Input,
@@ -186,11 +189,21 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
     setPhase('form')
   }
 
+  // Each phase passes its blocks straight to PageLayout, which spaces them and sets the form
+  // width (containerSize="md" on the page).
   if (phase === 'form' || phase === 'creating') {
     return (
-      <div className="max-w-3xl space-y-6">
-        <Card title="How many of each card?" subtitle={`Maximum ${MAX_PER_TYPE_PER_BATCH} per type, ${MAX_CARDS_PER_BATCH} cards per batch`}>
-          <div className="divide-y divide-border">
+      <>
+        <p className="text-sm text-text-muted">
+          Expiry is written on at hand-out, never at generation.
+        </p>
+
+        <Card>
+          <CardHeader
+            title="How Many of Each Card?"
+            subtitle={`Maximum ${MAX_PER_TYPE_PER_BATCH} per type, ${MAX_CARDS_PER_BATCH} cards per batch`}
+          />
+          <CardBody className="divide-y divide-border py-0">
             {types.map((type) => {
               const value = quantities[type.typeId] ?? 0
               return (
@@ -236,18 +249,21 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
                 </div>
               )
             })}
-          </div>
+          </CardBody>
         </Card>
 
         <Card>
-          <Textarea
-            label="Batch note (optional)"
-            hint="For example: Quiz night prizes, autumn stock"
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            rows={2}
-            maxLength={500}
-          />
+          <CardHeader title="Batch Details" />
+          <CardBody>
+            <Textarea
+              label="Batch note (optional)"
+              hint="For example: Quiz night prizes, autumn stock"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              rows={2}
+              maxLength={500}
+            />
+          </CardBody>
         </Card>
 
         {overCap && (
@@ -261,45 +277,46 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
           </Alert>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm font-medium text-text" aria-live="polite">
-            {total} vouchers · {total} A4 sheets · {total * PDF_PAGES_PER_CARD} PDF pages
-          </div>
+        <FormFooter
+          start={
+            <span className="font-medium text-text" aria-live="polite">
+              {total} vouchers · {total} A4 sheets · {total * PDF_PAGES_PER_CARD} PDF pages
+            </span>
+          }
+        >
           <Button
             variant="primary"
             onClick={() => void handleSubmit()}
             disabled={total === 0 || overCap || phase === 'creating'}
             loading={phase === 'creating'}
           >
-            Generate batch
+            Generate Batch
           </Button>
-        </div>
-      </div>
+        </FormFooter>
+      </>
     )
   }
 
   if (phase === 'rendering') {
     return (
-      <div className="max-w-3xl">
-        <Card>
-          <div className="flex items-center gap-3 py-6">
-            <Spinner size="md" />
-            <div>
-              <div className="font-medium text-text">Rendering the print PDF</div>
-              <div className="text-sm text-text-muted">
-                This can take a minute for larger batches. If you close this page the batch is
-                safe: come back via the overview to download or retry.
-              </div>
+      <Card>
+        <CardBody className="flex items-center gap-3 py-6">
+          <Spinner size="md" />
+          <div>
+            <div className="font-medium text-text">Rendering the print PDF</div>
+            <div className="text-sm text-text-muted">
+              This can take a minute for larger batches. If you close this page the batch is
+              safe: come back via the overview to download or retry.
             </div>
           </div>
-        </Card>
-      </div>
+        </CardBody>
+      </Card>
     )
   }
 
   if (phase === 'blocked') {
     return (
-      <div className="max-w-3xl space-y-4">
+      <>
         <Alert tone="warning" title="This batch cannot be rendered right now">
           {refusal?.message ?? 'This batch cannot be rendered at the moment.'}
         </Alert>
@@ -309,61 +326,62 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
             <span className="font-mono text-text">{batchId}</span> if you need help.
           </p>
         )}
-        <div className="flex flex-wrap gap-2">
+        <FormFooter>
+          <Button variant="secondary" onClick={resetForm}>
+            Start a New Batch
+          </Button>
           {batchId && refusal?.retryable !== false && (
             <Button variant="primary" onClick={() => void triggerRender(batchId)}>
-              Try the render again
+              Try the Render Again
             </Button>
           )}
-          <Button variant="secondary" onClick={resetForm}>
-            Start a new batch
-          </Button>
-        </div>
-      </div>
+        </FormFooter>
+      </>
     )
   }
 
   if (phase === 'failed') {
     return (
-      <div className="max-w-3xl space-y-4">
+      <>
         <Alert tone="danger" title="The PDF render failed">
           {progress?.batch.renderError ?? error ?? 'Unknown render error.'}
         </Alert>
         {batchId && (
-          <div className="flex gap-2">
-            <Button variant="primary" onClick={() => void triggerRender(batchId)}>
-              Retry render
-            </Button>
+          <FormFooter>
             <Button variant="secondary" onClick={resetForm}>
-              Start a new batch
+              Start a New Batch
             </Button>
-          </div>
+            <Button variant="primary" onClick={() => void triggerRender(batchId)}>
+              Retry Render
+            </Button>
+          </FormFooter>
         )}
-      </div>
+      </>
     )
   }
 
   const batch = progress?.batch
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <>
       <Alert tone="success" title="Batch ready to print">
         The PDF has rendered and every card in it now counts as stock.
       </Alert>
 
-      <Card
-        title="Batch summary"
-        subtitle={
-          batch
-            ? `Created ${formatDateInLondon(batch.createdAt, {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric',
-              })} by ${batch.createdByName}${batch.note ? `, note: ${batch.note}` : ''}`
-            : undefined
-        }
-      >
-        <div className="space-y-3">
+      <Card>
+        <CardHeader
+          title="Batch Summary"
+          subtitle={
+            batch
+              ? `Created ${formatDateInLondon(batch.createdAt, {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })} by ${batch.createdByName}${batch.note ? `, note: ${batch.note}` : ''}`
+              : undefined
+          }
+        />
+        <CardBody className="space-y-3">
           <ul className="space-y-1">
             {(progress?.countsByType ?? []).map((row) => (
               <li key={row.typeId} className="flex justify-between text-sm">
@@ -393,22 +411,25 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
                 href={`/api/vouchers/batches/${batchId}/manifest`}
                 target="_blank"
               >
-                Download manifest CSV
+                Download Manifest CSV
               </LinkButton>
             )}
             <Button variant="ghost" onClick={resetForm}>
-              Generate another batch
+              Generate Another Batch
             </Button>
           </div>
-        </div>
+        </CardBody>
       </Card>
 
-      <Card title="Print instructions">
-        <blockquote className="border-l-4 border-border-strong pl-4 text-sm text-text">
-          A4 landscape · print <strong>double sided, flip on short edge</strong> · 100% scale, no
-          &quot;fit to page&quot; · fold each sheet down the middle. Pages come in pairs: odd pages
-          are the outside (back cover + front cover), even pages are the inside spread.
-        </blockquote>
+      <Card>
+        <CardHeader title="Print Instructions" />
+        <CardBody>
+          <blockquote className="border-l-4 border-border-strong pl-4 text-sm text-text">
+            A4 landscape · print <strong>double sided, flip on short edge</strong> · 100% scale, no
+            &quot;fit to page&quot; · fold each sheet down the middle. Pages come in pairs: odd pages
+            are the outside (back cover + front cover), even pages are the inside spread.
+          </blockquote>
+        </CardBody>
       </Card>
 
       <ConfirmDialog
@@ -418,13 +439,13 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
           setDownloadWarning(null)
           if (batchId) window.open(`/api/vouchers/batches/${batchId}/download`, '_blank', 'noopener')
         }}
-        title="This file contains cards that are no longer stock"
+        title="Cards No Longer in Stock"
         message={`This file contains ${downloadWarning?.deadCount ?? 0} card${
           (downloadWarning?.deadCount ?? 0) === 1 ? '' : 's'
         } that have since been issued or cancelled. Only reprint pages you know are safe to print.`}
-        confirmLabel="Download anyway"
+        confirmLabel="Download Anyway"
         tone="warning"
       />
-    </div>
+    </>
   )
 }

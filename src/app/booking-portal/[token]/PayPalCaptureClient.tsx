@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { captureDepositPaymentByToken } from '@/app/actions/portalPayPalActions'
-import { GuestAlert } from '@/components/features/guest'
+// Imported file by file rather than through the `guest` barrel, which would pull
+// the guest webfont module into this client bundle.
+import { GuestAlert } from '@/components/features/guest/GuestAlert'
 
 interface PayPalCaptureClientProps {
   portalToken: string

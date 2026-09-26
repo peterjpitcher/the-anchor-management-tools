@@ -4,6 +4,7 @@ import UpcomingScheduleCalendar from './UpcomingScheduleCalendar'
 import { loadDashboardSnapshot } from './dashboard-data'
 import { checkUserPermission } from '@/app/actions/rbac'
 import DashboardClient from './_components/DashboardClient'
+import { EVENT_FILL_BADGE, eventFillStatus } from './_shared/status-ui'
 
 const LONDON_TIMEZONE = 'Europe/London'
 
@@ -167,7 +168,6 @@ export default async function DashboardPage() {
     const dayNum = d.toLocaleDateString('en-GB', { day: 'numeric', timeZone: LONDON_TIMEZONE })
     const capacity = e.capacity ?? 60
     const booked = e.bookedSeatsCount
-    const pct = capacity > 0 ? booked / capacity : 0
     return {
       id: e.id,
       dateLabel: dayStr,
@@ -177,10 +177,7 @@ export default async function DashboardPage() {
       host: 'Team',
       booked,
       capacity,
-      badge: {
-        tone: (pct > 0.9 ? 'warning' : pct > 0.5 ? 'success' : 'neutral') as 'success' | 'warning' | 'primary' | 'neutral',
-        text: pct > 0.9 ? 'Near full' : pct > 0.5 ? 'On track' : 'Open',
-      },
+      badge: EVENT_FILL_BADGE[eventFillStatus(booked, capacity)],
       href: `/events/${e.id}`,
     }
   })
@@ -210,28 +207,25 @@ export default async function DashboardPage() {
   }
 
   // --- Mini Metrics ---
+  // Shown as DS Stats. The old tiles carried an always-empty sparkline, and its amber colour for
+  // a non-zero SMS failure or unread count was the only thing the tone changed; "Action
+  // Required" above still flags both.
   const miniMetrics = [
     {
       label: 'SMS failures (24h)',
       value: snapshot.systemHealth.permitted ? String(snapshot.systemHealth.smsFailures24h) : '--',
-      trend: [] as number[],
-      tone: (snapshot.systemHealth.permitted && snapshot.systemHealth.smsFailures24h > 0 ? 'warning' : undefined) as 'warning' | undefined,
     },
     {
       label: 'Unread messages',
       value: snapshot.messages.permitted ? String(snapshot.messages.unread) : '--',
-      trend: [] as number[],
-      tone: (snapshot.messages.permitted && snapshot.messages.unread > 0 ? 'warning' : undefined) as 'warning' | undefined,
     },
     {
       label: 'Active private bookings',
       value: snapshot.privateBookings.permitted ? String(snapshot.privateBookings.upcoming.length) : '--',
-      trend: [] as number[],
     },
     {
       label: 'New customers (month)',
       value: snapshot.customers.permitted ? String(snapshot.customers.newThisMonth) : '--',
-      trend: [] as number[],
     },
   ]
 
@@ -310,72 +304,71 @@ export default async function DashboardPage() {
     : []
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-5">
-      <DashboardClient
-        subtitle={subtitle}
-        calendar={
-          <UpcomingScheduleCalendar
-            events={calendarEvents}
-            calendarNotes={calendarNotes}
-            privateBookings={calendarPrivateBookings}
-            balanceDueDates={calendarBalanceDueDates}
-            employeeBirthdays={calendarEmployeeBirthdays}
-            specialHours={snapshot.events.specialHours}
-            parkingBookings={calendarParkingBookings}
-            marketingSends={snapshot.marketing.calendarSends}
-            canManageCalendarNotes={canManageCalendarNotes}
-            dailyOps={snapshot.dailyOps}
-          />
-        }
-        revenueData={revenueData}
-        revenueSummary={(() => {
-          if (!snapshot.cashingUp.permitted) return { avgDaily: '--', completedThrough: '--', vsLastWeek: '--', lastYearSameWeek: '--' }
+    <DashboardClient
+      subtitle={subtitle}
+      canViewAuditLog={canManageSettings}
+      calendar={
+        <UpcomingScheduleCalendar
+          events={calendarEvents}
+          calendarNotes={calendarNotes}
+          privateBookings={calendarPrivateBookings}
+          balanceDueDates={calendarBalanceDueDates}
+          employeeBirthdays={calendarEmployeeBirthdays}
+          specialHours={snapshot.events.specialHours}
+          parkingBookings={calendarParkingBookings}
+          marketingSends={snapshot.marketing.calendarSends}
+          canManageCalendarNotes={canManageCalendarNotes}
+          dailyOps={snapshot.dailyOps}
+        />
+      }
+      revenueData={revenueData}
+      revenueSummary={(() => {
+        if (!snapshot.cashingUp.permitted) return { avgDaily: '--', completedThrough: '--', vsLastWeek: '--', lastYearSameWeek: '--' }
 
-          // Average daily — from the displayed 7 days
-          const daysWithData = revenueData.filter(d => d.amount > 0)
-          const totalDisplayed = daysWithData.reduce((sum, d) => sum + d.amount, 0)
-          const avgDaily = daysWithData.length > 0
-            ? currencyFormatter.format(totalDisplayed / daysWithData.length)
-            : '£0'
-          const completedThrough = daysWithData.length > 0
-            ? daysWithData[daysWithData.length - 1].day
-            : '--'
+        // Average daily: from the displayed 7 days
+        const daysWithData = revenueData.filter(d => d.amount > 0)
+        const totalDisplayed = daysWithData.reduce((sum, d) => sum + d.amount, 0)
+        const avgDaily = daysWithData.length > 0
+          ? currencyFormatter.format(totalDisplayed / daysWithData.length)
+          : '£0'
+        const completedThrough = daysWithData.length > 0
+          ? daysWithData[daysWithData.length - 1].day
+          : '--'
 
-          // Week vs last — recent 7 days vs prior 7 days from the 14-day session list
-          const recentSum = recentSessions.reduce((sum, s) => sum + s.amount, 0)
-          const priorSum = priorSessions.reduce((sum, s) => sum + s.amount, 0)
-          const vsLastWeek = priorSum > 0
-            ? `${recentSum >= priorSum ? '+' : ''}${(((recentSum - priorSum) / priorSum) * 100).toFixed(1)}%`
-            : '--'
+        // Week vs last: recent 7 days vs prior 7 days from the 14-day session list
+        const recentSum = recentSessions.reduce((sum, s) => sum + s.amount, 0)
+        const priorSum = priorSessions.reduce((sum, s) => sum + s.amount, 0)
+        const vsLastWeek = priorSum > 0
+          ? `${recentSum >= priorSum ? '+' : ''}${(((recentSum - priorSum) / priorSum) * 100).toFixed(1)}%`
+          : '--'
 
-          // Last year same week — ISO week number match (weekdays align)
-          const lastYearTotal = snapshot.cashingUp.lastYearTotal
-          const lastYearSameWeek = lastYearTotal > 0 && recentSum > 0
-            ? `${recentSum >= lastYearTotal ? '+' : ''}${(((recentSum - lastYearTotal) / lastYearTotal) * 100).toFixed(1)}%`
-            : '--'
+        // Last year same week: ISO week number match (weekdays align)
+        const lastYearTotal = snapshot.cashingUp.lastYearTotal
+        const lastYearSameWeek = lastYearTotal > 0 && recentSum > 0
+          ? `${recentSum >= lastYearTotal ? '+' : ''}${(((recentSum - lastYearTotal) / lastYearTotal) * 100).toFixed(1)}%`
+          : '--'
 
-          return { avgDaily, completedThrough, vsLastWeek, lastYearSameWeek }
-        })()}
-        todayTitle={`Today at The Anchor`}
-        todayItems={todayItems}
-        todayMeta={{
-          openTime: '12:00',
-          onRota: snapshot.rotaToday.staffOnRota,
-          bookings: snapshot.tableBookings.permitted ? String(snapshot.tableBookings.todayTotal) : '--',
-          covers: (() => {
-            if (!snapshot.tableBookings.permitted) return '--'
-            const total = snapshot.tableBookings.todayCovers
-            return total > 0 ? String(total) : '--'
-          })(),
-        }}
-        upcomingEvents={upcomingEventsFormatted}
-        activity={activity}
-        miniMetrics={miniMetrics}
-        actionItems={actionItems}
-        quickActions={quickActions}
-        alerts={[]}
-        refreshAction={refreshDashboard}
-      />
-    </div>
+        return { avgDaily, completedThrough, vsLastWeek, lastYearSameWeek }
+      })()}
+      todayTitle={`Today at The Anchor`}
+      todayItems={todayItems}
+      todayMeta={{
+        openTime: '12:00',
+        onRota: snapshot.rotaToday.staffOnRota,
+        bookings: snapshot.tableBookings.permitted ? String(snapshot.tableBookings.todayTotal) : '--',
+        covers: (() => {
+          if (!snapshot.tableBookings.permitted) return '--'
+          const total = snapshot.tableBookings.todayCovers
+          return total > 0 ? String(total) : '--'
+        })(),
+      }}
+      upcomingEvents={upcomingEventsFormatted}
+      activity={activity}
+      miniMetrics={miniMetrics}
+      actionItems={actionItems}
+      quickActions={quickActions}
+      alerts={[]}
+      refreshAction={refreshDashboard}
+    />
   )
 }

@@ -92,6 +92,7 @@ export async function CommunicationsTabServer({
       isDateTbd={isDateTbd}
       emails={emails}
       emailsError={emailResult.error}
+      historyError={historyError ? historyError.message || 'Unknown error' : null}
     />
   )
 }

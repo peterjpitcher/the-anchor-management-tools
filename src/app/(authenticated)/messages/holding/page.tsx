@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
-import { PageHeader, Card, CardBody, Badge } from '@/ds'
+import { PageLayout, Alert, Card, CardBody, Badge, Empty } from '@/ds'
 import { CommunicationsService } from '@/services/communications'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { HoldingQueueActions } from './_components/HoldingQueueActions'
+import { MESSAGE_ATTACHMENT_BADGE_TONE, MESSAGE_CHANNEL_BADGE_TONE } from '../_shared/status-ui'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,30 +37,28 @@ export default async function HoldingQueuePage() {
   }
 
   return (
-    <div>
-      <PageHeader
-        breadcrumbs={[
-          { label: 'Messages', href: '/messages' },
-          { label: 'Holding queue' },
-        ]}
-        title="Holding Queue"
-        subtitle={`${rows.length} unmatched communication${rows.length === 1 ? '' : 's'}`}
-      />
-
-      <Card>
-        <CardBody className="space-y-4">
-          {error ? (
-            <p className="text-sm text-danger">{error}</p>
-          ) : rows.length === 0 ? (
-            <p className="text-sm text-text-muted">No unmatched communications.</p>
-          ) : (
-            <div className="space-y-3">
+    <PageLayout
+      title="Holding Queue"
+      subtitle={error ? undefined : `${rows.length} unmatched communication${rows.length === 1 ? '' : 's'}`}
+      backButton={{ label: 'Back to Messages', href: '/messages' }}
+    >
+      {error ? (
+        <Alert tone="danger" title="Could not load the holding queue">{error}</Alert>
+      ) : rows.length === 0 ? (
+        <Card>
+          <CardBody>
+            <Empty size="sm" icon="inbox" title="No unmatched communications" />
+          </CardBody>
+        </Card>
+      ) : (
+        <Card padding="none">
+            <ul className="divide-y divide-border">
               {rows.map((row) => (
-                <div key={row.id} className="rounded-sm border border-border p-3">
+                <li key={row.id} className="p-pad-card">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <Badge tone="info">{channelLabel(row.channel)}</Badge>
+                    <Badge tone={MESSAGE_CHANNEL_BADGE_TONE}>{channelLabel(row.channel)}</Badge>
                     {Array.isArray(row.attachments) && row.attachments.length > 0 && (
-                      <Badge tone="neutral">Attachment</Badge>
+                      <Badge tone={MESSAGE_ATTACHMENT_BADGE_TONE}>Attachment</Badge>
                     )}
                     <span className="text-xs text-text-muted">
                       {new Date(row.received_at).toLocaleString('en-GB')}
@@ -74,12 +73,11 @@ export default async function HoldingQueuePage() {
                     unmatchedId={row.id}
                     candidateCustomerIds={Array.isArray(row.candidate_customer_ids) ? row.candidate_customer_ids : []}
                   />
-                </div>
+                </li>
               ))}
-            </div>
-          )}
-        </CardBody>
-      </Card>
-    </div>
+            </ul>
+        </Card>
+      )}
+    </PageLayout>
   )
 }

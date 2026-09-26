@@ -4,21 +4,29 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageLayout, Icon } from '@/ds';
-import { Section } from '@/ds';
 import { Card } from '@/ds';
 import { Button } from '@/ds';
-import { Select } from '@/ds';
 import { DataTable, type Column } from '@/ds';
 import { Badge } from '@/ds';
-import { FilterPanel, type FilterDefinition } from '@/ds';
-import { Pagination } from '@/ds';
+import { TablePagination } from '@/ds';
 import { Empty } from '@/ds';
 import { ConfirmDialog } from '@/ds';
+import { Dropdown, DropdownItem } from '@/ds';
 import { toast } from '@/ds';
 import { LinkButton } from '@/ds';
 import { usePermissions } from '@/contexts/PermissionContext';
-import { Stat, StatGroup } from '@/ds';
+import { Stat, StatGrid } from '@/ds';
+import { cn } from '@/lib/utils';
 import { useTablePipeline } from '../_components/useTablePipeline';
+import { MenuTableFilters, type MenuFilterDefinition } from '../_components/MenuTableFilters';
+import { MENU_NAV, MENU_TITLE } from '../_shared/nav';
+import {
+  GP_TARGET_UI,
+  gpTargetState,
+  menuActiveLabel,
+  menuActiveTone,
+  menuAssignmentTone,
+} from '../_shared/status-ui';
 import { EditableCurrencyCell } from '../_components/EditableCurrencyCell';
 import { StatusToggleCell } from '../_components/StatusToggleCell';
 import { DishExpandedRow, type DishListItem, type IngredientSummary, type RecipeSummary, type MenuSummary } from './_components/DishExpandedRow';
@@ -127,7 +135,7 @@ const SUNDAY_LUNCH_OPTIONS = [
   { value: 'no', label: 'Not Sunday lunch' },
 ];
 
-function buildFilterDefinitions(menus: MenuSummary[]): FilterDefinition[] {
+function buildFilterDefinitions(menus: MenuSummary[]): MenuFilterDefinition[] {
   const menuOptions = menus.map((m) => ({ value: m.code, label: m.name }));
   const categoryOptions: Array<{ value: string; label: string }> = [];
   menus.forEach((m) => {
@@ -139,9 +147,9 @@ function buildFilterDefinitions(menus: MenuSummary[]): FilterDefinition[] {
   });
 
   return [
-    { id: 'menu', label: 'Menu', type: 'select' as const, options: menuOptions, pinned: true },
+    { id: 'menu', label: 'Menu', type: 'select' as const, options: menuOptions },
     { id: 'category', label: 'Category', type: 'select' as const, options: categoryOptions },
-    { id: 'status', label: 'Status', type: 'select' as const, options: STATUS_OPTIONS, pinned: true },
+    { id: 'status', label: 'Status', type: 'select' as const, options: STATUS_OPTIONS },
     { id: 'gp_alert', label: 'GP Alert', type: 'select' as const, options: GP_ALERT_OPTIONS },
     { id: 'sunday_lunch', label: 'Sunday Lunch', type: 'select' as const, options: SUNDAY_LUNCH_OPTIONS },
   ];
@@ -447,7 +455,7 @@ export default function MenuDishesPage(): React.ReactElement {
           const dish = row as unknown as DishListItem;
           const belowTarget = dish.gp_pct !== null && dish.gp_pct < (dish.target_gp_pct ?? targetGpPct);
           return (
-            <span className={belowTarget ? 'text-danger font-semibold' : ''}>
+            <span className={cn(belowTarget && GP_TARGET_UI.below.text, belowTarget && 'font-semibold')}>
               £{dish.portion_cost.toFixed(2)}
             </span>
           );
@@ -476,17 +484,19 @@ export default function MenuDishesPage(): React.ReactElement {
             const requiredPrice = dish.portion_cost / (1 - target);
             if (Number.isFinite(requiredPrice) && requiredPrice > 0) {
               targetNote = (
-                <div className="text-xs font-normal text-danger">
+                <div className={cn('text-xs font-normal', GP_TARGET_UI.below.text)}>
                   {Math.round(target * 100)}% = £{requiredPrice.toFixed(2)}
                 </div>
               );
             }
           }
 
+          const flagged = belowTarget || dish.is_gp_alert;
+          const gpUi = GP_TARGET_UI[gpTargetState(belowTarget)];
           return (
             <div className="flex flex-col items-end">
-              <span className={belowTarget || dish.is_gp_alert ? 'text-danger font-semibold' : ''}>
-                {belowTarget && <Icon name="alertTriangle" size={14} className="mr-1 inline text-danger" />}
+              <span className={cn(flagged && GP_TARGET_UI.below.text, flagged && 'font-semibold')}>
+                {belowTarget && <Icon name={gpUi.icon} size={14} className={cn('mr-1 inline', gpUi.iconClass)} />}
                 {dish.gp_pct !== null ? `${Math.round(dish.gp_pct * 100)}%` : '\u2014'}
               </span>
               {targetNote}
@@ -505,7 +515,7 @@ export default function MenuDishesPage(): React.ReactElement {
               {dish.assignments.map((a, idx) => (
                 <div key={`${a.menu_code}-${a.category_code}-${idx}`} className="flex items-center gap-1">
                   <Badge
-                    tone={a.is_special ? 'warning' : 'neutral'}
+                    tone={menuAssignmentTone(a.is_special)}
                     size="sm"
                   >
                     {a.menu_code === 'website_food' ? 'Website' : a.menu_code === 'sunday_lunch' ? 'Sunday' : a.menu_code}
@@ -536,8 +546,8 @@ export default function MenuDishesPage(): React.ReactElement {
               onToggled={() => void loadDishes()}
             />
           ) : (
-            <Badge tone={dish.is_active ? 'success' : 'neutral'}>
-              {dish.is_active ? 'Active' : 'Inactive'}
+            <Badge tone={menuActiveTone(dish.is_active)}>
+              {menuActiveLabel(dish.is_active)}
             </Badge>
           );
         },
@@ -579,32 +589,33 @@ export default function MenuDishesPage(): React.ReactElement {
     link.remove();
   }
 
-  const [allergenCategory, setAllergenCategory] = useState<'all' | 'food' | 'drinks'>('all');
-
+  // The allergen report is an export, so it is a header action: one button whose menu picks the
+  // dishes the PDF covers, rather than a picker in the header beside it.
   const headerActions = (
-    <div className="flex flex-wrap items-end gap-2">
-      <div className="w-36">
-        <Select
-          aria-label="Allergen report category"
-          value={allergenCategory}
-          onChange={(e) => setAllergenCategory(e.target.value as 'all' | 'food' | 'drinks')}
-          options={[
-            { value: 'all', label: 'All dishes' },
-            { value: 'food', label: 'Food' },
-            { value: 'drinks', label: 'Drinks' },
-          ]}
-        />
-      </div>
-      <Button variant="secondary" size="sm" onClick={() => handleDownloadDishAllergenPdf(allergenCategory)}>
-        Download Allergens
-      </Button>
-      {canManage && <Button onClick={openCreate}>{addDishLabel}</Button>}
+    <>
+      <Dropdown
+        trigger={
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Icon name="download" size={14} />}
+            iconRight={<Icon name="chevronDown" size={14} />}
+          >
+            Download Allergens
+          </Button>
+        }
+      >
+        <DropdownItem onClick={() => handleDownloadDishAllergenPdf('all')}>All Dishes</DropdownItem>
+        <DropdownItem onClick={() => handleDownloadDishAllergenPdf('food')}>Food</DropdownItem>
+        <DropdownItem onClick={() => handleDownloadDishAllergenPdf('drinks')}>Drinks</DropdownItem>
+      </Dropdown>
       {canManage && (
         <LinkButton href="/settings/menu-target" variant="secondary" size="sm">
           Menu Target
         </LinkButton>
       )}
-    </div>
+      {canManage && <Button variant="primary" size="sm" onClick={openCreate}>{addDishLabel}</Button>}
+    </>
   );
 
   // ---- Stats ----
@@ -638,135 +649,114 @@ export default function MenuDishesPage(): React.ReactElement {
 
   // ---- Render ----
 
+  // One set of header props for every state, so the title, tabs and actions never move.
+  const layoutProps = {
+    title: MENU_TITLE,
+    subtitle: 'Dishes: build from ingredients, manage GP% and menu placement',
+    navItems: MENU_NAV,
+    headerActions,
+  };
+
   return (
     <PageLayout
-      title="Menu Dishes"
-      subtitle="Build dishes from ingredients, manage GP%, and configure menu placement"
-      backButton={{ label: 'Back to Menu Management', href: '/menu-management' }}
-      navItems={[
-        { label: 'Overview', href: '/menu-management' },
-        { label: 'Dishes', href: '/menu-management/dishes' },
-        { label: 'Recipes', href: '/menu-management/recipes' },
-        { label: 'Ingredients', href: '/menu-management/ingredients' },
-      ]}
-      headerActions={headerActions}
+      {...layoutProps}
       loading={loading}
-      loadingLabel="Loading dishes..."
+      loadingLabel="Loading dishes"
       error={error}
       onRetry={loadDishes}
     >
-      {/* Stat Cards */}
-      <Section>
-        <StatGroup columns={4}>
-          <Stat
-            label="Total Dishes"
-            value={dishStats.total}
-            description={`${dishStats.active} active, ${dishStats.inactive} inactive`}
-            variant="filled"
-            size="sm"
-          />
-          <Stat
-            label="Below GP Target"
-            value={dishStats.belowTarget}
-            color={dishStats.belowTarget > 0 ? 'error' : 'success'}
-            variant="filled"
-            size="sm"
-          />
-          <Stat
-            label="Missing Costing"
-            value={dishStats.missingCosting}
-            color={dishStats.missingCosting > 0 ? 'warning' : 'success'}
-            variant="filled"
-            size="sm"
-          />
-          <Stat
-            label="Avg GP%"
-            value={dishStats.avgGp !== null ? `${Math.round(dishStats.avgGp * 100)}%` : '--'}
-            description={`Target: ${Math.round(targetGpPct * 100)}%`}
-            variant="filled"
-            size="sm"
-          />
-        </StatGroup>
-      </Section>
-
-      <Section>
-        {/* Filter panel with integrated search */}
-        <FilterPanel
-          filters={filterDefs}
-          values={pipeline.filters}
-          onChange={(newFilters) => {
-            pipeline.setFilters(newFilters);
-            // Sync menu filter to URL
-            const menuValue = newFilters.menu as string | undefined;
-            if (menuValue && menuValue !== activeMenuFilter) {
-              handleMenuFilterChange(menuValue);
-            } else if (!menuValue && activeMenuFilter !== 'all') {
-              handleMenuFilterChange('all');
-            }
-          }}
-          showSearch
-          searchValue={pipeline.searchQuery}
-          onSearchChange={pipeline.setSearchQuery}
-          searchPlaceholder="Search dishes, menus, or ingredients..."
-          layout="horizontal"
-          onReset={() => {
-            pipeline.clearFilters();
-            handleMenuFilterChange('all');
-          }}
+      <StatGrid columns={4}>
+        <Stat
+          label="Total Dishes"
+          value={dishStats.total}
+          hint={`${dishStats.active} active, ${dishStats.inactive} inactive`}
         />
+        <Stat
+          label="Below GP Target"
+          value={dishStats.belowTarget}
+          hint={dishStats.belowTarget > 0 ? 'Needs attention' : 'On track'}
+        />
+        <Stat
+          label="Missing Costing"
+          value={dishStats.missingCosting}
+          hint={dishStats.missingCosting > 0 ? 'Needs costing data' : 'All costed'}
+        />
+        <Stat
+          label="Avg GP%"
+          value={dishStats.avgGp !== null ? `${Math.round(dishStats.avgGp * 100)}%` : '--'}
+          hint={`Target: ${Math.round(targetGpPct * 100)}%`}
+        />
+      </StatGrid>
 
-        {/* Data table */}
-        <Card className="mt-4">
-          {!loading && dishes.length === 0 ? (
-            <Empty
-              title="No dishes yet"
-              description="Add a dish to start tracking costs and GP%."
-              icon="inbox"
-              action={
-                canManage ? (
-                  <Button onClick={openCreate}>{addDishLabel}</Button>
-                ) : undefined
-              }
-            />
-          ) : (
-            <DataTable
-              data={pipeline.pageData}
-              columns={columns}
-              getRowKey={(row) => (row as unknown as DishListItem).id}
-              emptyMessage={
-                pipeline.searchQuery || Object.keys(pipeline.filters).length > 0
-                  ? 'No dishes match your filters'
-                  : 'No dishes configured yet'
-              }
-              expandable
-              renderExpandedContent={(row) => (
-                <DishExpandedRow dish={row as unknown as DishListItem} />
-              )}
-              rowClassName={(row) => {
-                const dish = row as unknown as DishListItem;
-                const target = dish.target_gp_pct ?? targetGpPct;
-                const belowTarget = dish.gp_pct !== null && dish.gp_pct < target;
-                return belowTarget ? 'bg-danger-soft hover:bg-danger-soft' : undefined;
-              }}
-            />
-          )}
-        </Card>
+      <MenuTableFilters
+        filters={filterDefs}
+        values={pipeline.filters}
+        onChange={(newFilters) => {
+          pipeline.setFilters(newFilters);
+          // Sync menu filter to URL
+          const menuValue = newFilters.menu as string | undefined;
+          if (menuValue && menuValue !== activeMenuFilter) {
+            handleMenuFilterChange(menuValue);
+          } else if (!menuValue && activeMenuFilter !== 'all') {
+            handleMenuFilterChange('all');
+          }
+        }}
+        searchValue={pipeline.searchQuery}
+        onSearchChange={pipeline.setSearchQuery}
+        searchPlaceholder="Search dishes, menus, or ingredients..."
+        onClear={() => {
+          pipeline.clearFilters();
+          handleMenuFilterChange('all');
+        }}
+      />
 
-        {/* Pagination */}
-        {pipeline.totalPages > 1 && (
-          <Pagination
-            currentPage={pipeline.currentPage}
-            totalPages={pipeline.totalPages}
-            totalItems={pipeline.totalItems}
-            itemsPerPage={pipeline.itemsPerPage}
-            onPageChange={pipeline.setCurrentPage}
-            onItemsPerPageChange={pipeline.setItemsPerPage}
-            showItemsPerPage
-            showItemCount
-            className="mt-2"
+      <Card padding="none">
+        {!loading && dishes.length === 0 ? (
+          <Empty
+            size="sm"
+            title="No dishes yet"
+            description="Add a dish to start tracking costs and GP%."
+            icon="inbox"
+            action={
+              canManage ? (
+                <Button variant="primary" size="sm" onClick={openCreate}>{addDishLabel}</Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <DataTable
+            data={pipeline.pageData}
+            columns={columns}
+            getRowKey={(row) => (row as unknown as DishListItem).id}
+            bordered={false}
+            emptyMessage={
+              pipeline.searchQuery || Object.keys(pipeline.filters).length > 0
+                ? 'No dishes match your filters'
+                : 'No dishes configured yet'
+            }
+            expandable
+            renderExpandedContent={(row) => (
+              <DishExpandedRow dish={row as unknown as DishListItem} />
+            )}
+            rowClassName={(row) => {
+              const dish = row as unknown as DishListItem;
+              const target = dish.target_gp_pct ?? targetGpPct;
+              const belowTarget = dish.gp_pct !== null && dish.gp_pct < target;
+              return belowTarget ? GP_TARGET_UI.below.row : undefined;
+            }}
           />
         )}
-      </Section>
+
+        {pipeline.totalPages > 1 && (
+          <TablePagination
+            page={pipeline.currentPage}
+            totalPages={pipeline.totalPages}
+            onPageChange={pipeline.setCurrentPage}
+            pageSize={pipeline.itemsPerPage}
+            totalItems={pipeline.totalItems}
+          />
+        )}
+      </Card>
 
       {/* Dish drawer (create / edit) */}
       <DishDrawer
@@ -787,12 +777,10 @@ export default function MenuDishesPage(): React.ReactElement {
       {/* Delete confirmation */}
       <ConfirmDialog
         open={Boolean(dishToDelete)}
-        title="Delete dish?"
+        title="Delete Dish?"
         message={`Are you sure you want to delete ${dishToDelete?.name}? This cannot be undone.`}
-        confirmText="Delete"
-        type="danger"
-        confirmVariant="danger"
-        destructive
+        confirmLabel="Delete"
+        tone="danger"
         onClose={() => setDishToDelete(null)}
         onConfirm={handleDelete}
       />

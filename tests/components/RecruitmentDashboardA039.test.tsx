@@ -131,11 +131,11 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
 
-    expect(screen.getByRole('heading', { name: 'interviewed' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'trial completed' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'on hold' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'new' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'offered' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Interviewed' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Trial Completed' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'On Hold' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'New' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Offered' })).not.toBeInTheDocument()
     expect(screen.getByText('Candidate 1 Test')).toBeInTheDocument()
     expect(screen.getByText('Candidate 2 Test')).toBeInTheDocument()
     expect(screen.getByText('Candidate 3 Test')).toBeInTheDocument()
@@ -151,9 +151,9 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
 
-    expect(screen.queryByRole('heading', { name: 'hired' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'rejected' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'withdrawn' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Hired' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Rejected' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Withdrawn' })).not.toBeInTheDocument()
   })
 
   it('requires confirmation before erasing a candidate', () => {
@@ -176,7 +176,7 @@ describe('RecruitmentDashboardClient A-039', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Talent pool/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Erase' }))
 
-    expect(screen.getByRole('dialog', { name: 'Erase candidate' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Erase Candidate' })).toBeInTheDocument()
     expect(screen.getByText('This permanently anonymises the candidate record. Continue?')).toBeInTheDocument()
   })
 
@@ -244,10 +244,10 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    expect(screen.getByRole('button', { name: 'Save slot' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save Slot' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Delete slot' })
+    const dialog = await screen.findByRole('dialog', { name: 'Delete Slot' })
     expect(cancelRecruitmentSlotAction).not.toHaveBeenCalled()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
 
@@ -283,7 +283,7 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Manage booking' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Booking' }))
     expect(screen.getByRole('dialog', { name: 'Megan Daily' })).toBeInTheDocument()
   })
 
@@ -309,11 +309,11 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     // The drawer always opens on Candidate. For an invited candidate the action
     // bar's primary action is the route to the scheduling form.
-    fireEvent.click(screen.getByRole('button', { name: 'Book interview directly' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Book Interview Directly' }))
 
-    expect(screen.getByText('Schedule interview for candidate')).toBeInTheDocument()
+    expect(screen.getByText('Schedule Interview for Candidate')).toBeInTheDocument()
     expect(screen.getByLabelText('Interview slot to schedule')).toHaveValue('slot-1')
-    expect(screen.getByRole('button', { name: 'Schedule interview' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Schedule Interview' })).toBeInTheDocument()
   })
 
   it('confirms, then submits the schedule interview action with the chosen slot', async () => {
@@ -334,13 +334,13 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
     fireEvent.click(screen.getByRole('button', { name: /Candidate 1 Test/i }))
-    fireEvent.click(screen.getByRole('button', { name: 'Book interview directly' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Book Interview Directly' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Schedule interview' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule Interview' }))
 
     // A confirmation step gates the action (it emails the candidate + books a calendar slot).
     expect(scheduleRecruitmentInterviewForCandidateAction).not.toHaveBeenCalled()
-    const dialog = await screen.findByRole('dialog', { name: 'Schedule interview' })
+    const dialog = await screen.findByRole('dialog', { name: 'Schedule Interview' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
 
     await waitFor(() => expect(scheduleRecruitmentInterviewForCandidateAction).toHaveBeenCalledTimes(1))

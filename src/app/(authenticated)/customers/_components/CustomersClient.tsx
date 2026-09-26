@@ -26,23 +26,22 @@ import {
 } from '@/app/actions/customers'
 
 import {
-  PageHeader,
+  PageLayout,
+  Alert,
   Card,
-  CardHeader,
   CardBody,
   Stat,
+  StatGrid,
   Badge,
   Button,
-  LinkButton,
   Avatar,
   Checkbox,
   SearchInput,
-  Select,
+  Segmented,
   PageLoading,
   Empty,
   ConfirmDialog,
   IconButton,
-  Tabs,
   Table,
   TableHeader,
   TableBody,
@@ -54,6 +53,15 @@ import {
 
 /* ---------- Toast helper (re-use existing) ---------- */
 import { toast } from '@/ds'
+import { CUSTOMERS_BACK_LABEL, CUSTOMERS_NAV } from '../_shared/nav'
+import { CONTACT_CHANNEL_TONE } from '../_shared/status-ui'
+
+/** The SMS filter above the list: every customer, or only those whose texts are on or off. */
+const SMS_FILTER_OPTIONS: Array<{ id: CustomerSmsFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'active', label: 'SMS Active' },
+  { id: 'deactivated', label: 'Deactivated' },
+]
 
 /* ---------- SVG Icons ---------- */
 const PlusIcon = () => (
@@ -120,7 +128,7 @@ export default function CustomersClient({
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   // Client-side column sorting of the loaded page (list is paginated server-side,
-  // so we sort the currently loaded rows — mirrors the previous DataTable behaviour)
+  // so we sort the currently loaded rows, which mirrors the previous DataTable behaviour)
   const [sortColumn, setSortColumn] = useState<'name' | 'contact' | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
@@ -130,6 +138,9 @@ export default function CustomersClient({
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null)
   const [isFetching, setIsFetching] = useState(false)
+  // A failed read returns an empty list with an error. Showing that as "No customers found"
+  // told staff the database was empty, so the error is kept and shown in its place.
+  const [loadError, setLoadError] = useState<string | null>(initialData.error ?? null)
 
   // URL sync
   const pushParams = useCallback(
@@ -180,9 +191,9 @@ export default function CustomersClient({
         setCustomerPreferences(result.customerPreferences)
         setCustomerLabels(result.customerLabels)
         setUnreadCounts(result.unreadCounts)
-        if (result.error) toast.error(result.error)
+        setLoadError(result.error ?? null)
       } catch {
-        toast.error('Failed to load customers')
+        setLoadError('Failed to load customers')
       } finally {
         setIsFetching(false)
       }
@@ -371,133 +382,133 @@ export default function CustomersClient({
     return [...customers].sort((a, b) => sortKey(a).localeCompare(sortKey(b)) * dir)
   }, [customers, sortColumn, sortDirection])
 
+  const closeForm = useCallback(() => {
+    setShowForm(false); setEditingCustomer(null)
+  }, [])
+
   // --- Form/Import subviews ---
+  // Both stay on /customers (no route of their own), so the back button returns to the list
+  // in place rather than navigating.
   if (showForm || editingCustomer) {
     return (
-      <div className="flex flex-col gap-5">
-        <PageHeader
-          breadcrumbs={[{ label: 'Customers', href: '/customers' }, { label: editingCustomer ? 'Edit Customer' : 'New Customer' }]}
-          title={editingCustomer ? 'Edit Customer' : 'Create New Customer'}
-          className="mb-0"
+      <PageLayout
+        title={editingCustomer ? 'Edit Customer' : 'New Customer'}
+        navItems={CUSTOMERS_NAV}
+        backButton={{ label: CUSTOMERS_BACK_LABEL, onBack: closeForm }}
+        containerSize="md"
+      >
+        <CustomerForm
+          framed
+          customer={editingCustomer ?? undefined}
+          onSubmit={editingCustomer ? handleUpdateCustomer : handleCreateCustomer}
+          onCancel={closeForm}
         />
-        <Card>
-          <CardBody>
-            <CustomerForm
-              customer={editingCustomer ?? undefined}
-              onSubmit={editingCustomer ? handleUpdateCustomer : handleCreateCustomer}
-              onCancel={() => { setShowForm(false); setEditingCustomer(null) }}
-            />
-          </CardBody>
-        </Card>
-      </div>
+      </PageLayout>
     )
   }
 
   if (showImport) {
     return (
-      <div className="flex flex-col gap-5">
-        <PageHeader
-          breadcrumbs={[{ label: 'Customers', href: '/customers' }, { label: 'Import' }]}
-          title="Import Customers"
-          subtitle="Import multiple customers from a CSV file"
-          className="mb-0"
-        />
+      <PageLayout
+        title="Import Customers"
+        subtitle="Import multiple customers from a CSV file"
+        navItems={CUSTOMERS_NAV}
+        backButton={{ label: CUSTOMERS_BACK_LABEL, onBack: () => setShowImport(false) }}
+      >
         <CustomerImport
           onImportComplete={handleImportCustomers}
           onCancel={() => setShowImport(false)}
           existingCustomers={customers}
         />
-      </div>
+      </PageLayout>
     )
   }
 
   // --- Main list view ---
   return (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        breadcrumbs={[{ label: 'Customers' }]}
-        title="Customers"
-        subtitle={`${totalCount.toLocaleString()} customers`}
-        className="mb-0"
-        actions={
+    <PageLayout
+      title="Customers"
+      // A failed read reports zero customers, so the count is only shown once a read succeeds.
+      subtitle={loadError ? undefined : `${totalCount.toLocaleString()} customers`}
+      navItems={CUSTOMERS_NAV}
+      headerActions={
+        canManageCustomers ? (
+          <>
+            <Button variant="secondary" size="sm" onClick={openImportCustomers}>Import</Button>
+            <Button variant="primary" size="sm" icon={<PlusIcon />} onClick={openCreateCustomer}>
+              New Customer
+            </Button>
+          </>
+        ) : undefined
+      }
+    >
+      {/* The figures are zeros after a failed read, which would read as an empty database. */}
+      {!loadError && (
+        <StatGrid columns={4}>
+          <Stat label="Total customers" value={totalCount.toLocaleString()} />
+          <Stat label="SMS Active" value={smsActiveCount.toLocaleString()} />
+          <Stat label="SMS Deactivated" value={smsDeactivatedCount.toLocaleString()} />
+          <Stat label="This page" value={String(customers.length)} hint={`of ${totalCount}`} />
+        </StatGrid>
+      )}
+
+      {/* Search and the SMS filter sit directly above the list they filter. Each filter option
+          maps to its own query: All and SMS Active used to collapse into one boolean and run
+          the identical query. */}
+      <div className="flex flex-wrap items-end gap-3">
+        <SearchInput
+          value={searchTerm}
+          onChange={handleSearch}
+          debounceDelay={350}
+          placeholder="Search by name, phone, or email..."
+          className="w-full sm:w-80"
+        />
+        <Segmented
+          options={SMS_FILTER_OPTIONS}
+          value={smsFilter}
+          onChange={(id) => handleFilterChange(id as CustomerSmsFilter)}
+        />
+        <div className="flex-1" />
+        {selected.size > 0 ? (
           <div className="flex items-center gap-2">
-            {/* Insights is the only way into the win-back campaign, and it needs
-                nothing more than customers.view, so it sits outside the manage gate. */}
-            <LinkButton href="/customers/insights" variant="secondary" size="sm">Insights</LinkButton>
-            {canManageCustomers && (
-              <>
-                <Button variant="secondary" size="sm" onClick={openImportCustomers}>Import</Button>
-                <Button variant="primary" size="sm" icon={<PlusIcon />} onClick={openCreateCustomer}>
-                  Add customer
-                </Button>
-              </>
+            <span className="text-xs text-text-muted">{selected.size} selected</span>
+            {canSendBulkMessages && (
+              <Button size="sm" icon={<MessageIcon />} onClick={openBulkSmsForSelected}>
+                SMS
+              </Button>
             )}
           </div>
-        }
-      />
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Stat label="Total customers" value={totalCount.toLocaleString()} />
-        <Stat label="SMS Active" value={smsActiveCount.toLocaleString()} />
-        <Stat label="SMS Deactivated" value={smsDeactivatedCount.toLocaleString()} />
-        <Stat label="This page" value={String(customers.length)} hint={`of ${totalCount}`} />
+        ) : loadError ? null : (
+          <span className="text-xs text-text-muted">
+            {customers.length} of {totalCount.toLocaleString()}
+          </span>
+        )}
       </div>
 
-      {/* Tabs */}
-      <Tabs
-        tabs={[
-          { id: 'all', label: 'All' },
-          { id: 'active', label: 'SMS Active' },
-          { id: 'deactivated', label: 'Deactivated' },
-        ]}
-        activeTab={smsFilter}
-        onTabChange={(id) => {
-          // Each tab maps to its own filter. All three used to collapse into a
-          // single boolean, so All and SMS Active ran the identical query.
-          handleFilterChange(id as CustomerSmsFilter)
-        }}
-      />
-
-      {/* Filter/Search bar + Table */}
-      <Card>
-        <div className="flex flex-wrap items-center gap-2 p-3 border-b border-border">
-          <SearchInput
-            value={searchTerm}
-            onChange={handleSearch}
-            debounceDelay={350}
-            placeholder="Search by name, phone, or email..."
-            className="w-full sm:w-80"
-          />
-          <div className="flex-1" />
-          {selected.size > 0 ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-text-muted">{selected.size} selected</span>
-              {canSendBulkMessages && (
-                <Button size="sm" icon={<MessageIcon />} onClick={openBulkSmsForSelected}>
-                  SMS
-                </Button>
-              )}
-            </div>
-          ) : (
-            <span className="text-xs text-text-muted">
-              {customers.length} of {totalCount.toLocaleString()}
-            </span>
-          )}
-        </div>
-
+      {loadError && !isFetching ? (
+        <Alert tone="danger" title="Could not load customers">
+          {loadError}
+          <div className="mt-3">
+            <Button variant="secondary" size="sm" onClick={refreshCurrentPage}>
+              Try again
+            </Button>
+          </div>
+        </Alert>
+      ) : (
+      <Card padding="none">
         {isFetching ? (
           <CardBody>
-            <PageLoading className="min-h-0 py-12" />
+            <PageLoading inline label="Loading customers" />
           </CardBody>
         ) : customers.length === 0 ? (
           <CardBody>
             <Empty
+              size="sm"
               title="No customers found"
               description="Adjust your search or add a new customer."
               action={
                 canManageCustomers ? (
-                  <Button size="sm" onClick={openCreateCustomer}>Add Customer</Button>
+                  <Button size="sm" onClick={openCreateCustomer}>New Customer</Button>
                 ) : undefined
               }
             />
@@ -569,7 +580,7 @@ export default function CustomersClient({
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs text-text-subtle">--</span>
+                        <span className="text-xs text-text-soft">--</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -577,7 +588,7 @@ export default function CustomersClient({
                         {customer.mobile_number || '--'}
                         {customer.email && <div>{customer.email}</div>}
                       </div>
-                      {customer.sms_opt_in === false && <Badge tone="danger">SMS off</Badge>}
+                      {customer.sms_opt_in === false && <Badge tone={CONTACT_CHANNEL_TONE.inactive}>SMS off</Badge>}
                     </TableCell>
                     {canManageCustomers && (
                       <TableCell>
@@ -593,7 +604,7 @@ export default function CustomersClient({
             </Table>
             </div>
 
-            {/* Mobile cards (<768px) — stacked version of the list table */}
+            {/* Mobile cards (<768px): stacked version of the list table */}
             <div className="divide-y divide-border md:hidden">
               {sortedCustomers.map(customer => (
                 <div key={customer.id} className="flex gap-3 p-3">
@@ -621,7 +632,7 @@ export default function CustomersClient({
                           <div className="text-xs text-text-muted break-all">{customer.email}</div>
                         )}
                         {customer.sms_opt_in === false && (
-                          <Badge tone="danger" className="mt-1">SMS off</Badge>
+                          <Badge tone={CONTACT_CHANNEL_TONE.inactive} className="mt-1">SMS off</Badge>
                         )}
                       </div>
                       {canManageCustomers && (
@@ -663,6 +674,7 @@ export default function CustomersClient({
           </>
         )}
       </Card>
+      )}
 
       {/* Delete confirmation.
           The copy has to describe both outcomes of deleteCustomer, because the
@@ -699,6 +711,6 @@ export default function CustomersClient({
         tone="danger"
         onConfirm={confirmDelete}
       />
-    </div>
+    </PageLayout>
   )
 }

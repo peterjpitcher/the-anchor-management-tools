@@ -1,6 +1,7 @@
 'use client';
 
-import { Badge } from '@/ds';
+import { Badge, Card, Empty, Section } from '@/ds';
+import { menuActiveLabel, menuActiveTone } from '../../_shared/status-ui';
 
 // ---------------------------------------------------------------------------
 // Types (shared with page and drawer)
@@ -129,15 +130,14 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
   const hasIngredients = dish.ingredients.length > 0;
 
   if (!hasRecipes && !hasIngredients) {
-    return <p className="text-sm text-text-muted">No ingredients or recipes linked to this dish yet.</p>;
+    return <Empty size="sm" title="No ingredients or recipes linked to this dish yet" />;
   }
 
   return (
     <div className="space-y-6">
       {hasRecipes && (
-        <div>
-          <h4 className="text-sm font-semibold text-text">Recipes</h4>
-          <div className="mt-3 space-y-3">
+        <Section title="Recipes">
+          <div className="space-y-3">
             {dish.recipes.map((recipe) => {
               const costLabel = recipe.cost_override != null
                 ? `Override £${Number(recipe.cost_override).toFixed(2)}`
@@ -146,13 +146,13 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
                   : 'Cost unavailable';
 
               return (
-                <div key={recipe.recipe_id} className="rounded-lg border border-border bg-surface p-3 shadow-sm">
+                <Card key={recipe.recipe_id} padding="sm">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="flex items-center gap-2 font-medium text-text">
                         {recipe.recipe_name}
                         {!recipe.recipe_is_active && (
-                          <Badge tone="neutral" size="sm">Inactive</Badge>
+                          <Badge tone={menuActiveTone(false)} size="sm">{menuActiveLabel(false)}</Badge>
                         )}
                       </div>
                       <div className="text-xs text-text-muted">
@@ -177,17 +177,16 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
                       <span>Allergens: {recipe.allergen_flags.join(', ')}</span>
                     )}
                   </div>
-                </div>
+                </Card>
               );
             })}
           </div>
-        </div>
+        </Section>
       )}
 
       {hasIngredients && (
-        <div>
-          <h4 className="text-sm font-semibold text-text">Ingredients</h4>
-          <div className="mt-3 space-y-3">
+        <Section title="Ingredients">
+          <div className="space-y-3">
             {dish.ingredients.map((ingredient) => {
               const quantityLabel = ingredient.quantity
                 ? `${ingredient.quantity}${ingredient.unit ? ` ${ingredient.unit}` : ingredient.default_unit ? ` ${ingredient.default_unit}` : ''}`
@@ -200,7 +199,7 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
                   : 'Unit cost unavailable';
 
               return (
-                <div key={ingredient.ingredient_id} className="rounded-lg border border-border bg-surface p-3 shadow-sm">
+                <Card key={ingredient.ingredient_id} padding="sm">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="font-medium text-text">{ingredient.ingredient_name}</div>
@@ -233,11 +232,11 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
                       Pack cost: {ingredient.latest_pack_cost != null ? `£${Number(ingredient.latest_pack_cost).toFixed(2)}` : '\u2014'}
                     </span>
                   </div>
-                </div>
+                </Card>
               );
             })}
           </div>
-        </div>
+        </Section>
       )}
     </div>
   );

@@ -6,21 +6,31 @@ import type { BackgroundJob, BackgroundJobFilters, BackgroundJobSummary } from '
 import { listBackgroundJobs, retryBackgroundJob, deleteBackgroundJob } from '@/app/actions/backgroundJobs'
 import { runCronJob } from '@/app/actions/cronJobs'
 import { formatDate } from '@/lib/dateUtils'
-import { PageLayout, toast, Icon } from '@/ds'
-import { Section } from '@/ds'
-import { Card } from '@/ds'
-import { Button, IconButton } from '@/ds'
-import { Badge } from '@/ds'
-import { DataTable } from '@/ds'
-import { Empty } from '@/ds'
-import { Select } from '@/ds'
-import { Field } from '@/ds'
-import { Pagination } from '@/ds'
-import { Stat } from '@/ds'
-import { Spinner } from '@/ds'
-import { Alert } from '@/ds'
-import { DescriptionList } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  ConfirmDialog,
+  DataTable,
+  DescriptionList,
+  Empty,
+  Field,
+  Icon,
+  IconButton,
+  PageLayout,
+  PageLoading,
+  Select,
+  Spinner,
+  Stat,
+  StatGrid,
+  TablePagination,
+  toast,
+} from '@/ds'
 import type { DescriptionListItem } from '@/ds/composites/DescriptionList'
+import { backgroundJobStatusTone } from '../_shared/status-ui'
 
 const jobTypeLabels: Record<string, string> = {
   send_sms: 'Send SMS',
@@ -67,6 +77,7 @@ export default function BackgroundJobsClient({
   const [isProcessingEngagement, setIsProcessingEngagement] = useState(false)
   const [isProcessingCommsMonitor, setIsProcessingCommsMonitor] = useState(false)
   const [isProcessingCommsRetention, setIsProcessingCommsRetention] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
 
   useEffect(() => {
     setJobs(initialJobs)
@@ -99,29 +110,12 @@ export default function BackgroundJobsClient({
     fetchJobs(next)
   }
 
-  const getStatusTone = (status: string): 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info' => {
-    switch (status) {
-      case 'pending':
-        return 'warning'
-      case 'processing':
-        return 'info'
-      case 'completed':
-        return 'success'
-      case 'failed':
-        return 'danger'
-      case 'cancelled':
-        return 'neutral'
-      default:
-        return 'neutral'
-    }
-  }
-
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending':
         return <Icon name="clock" size={16} />
       case 'processing':
-        return <Icon name="refresh" size={16} className="animate-spin" />
+        return <Spinner size="sm" />
       case 'completed':
         return <Icon name="checkCircle" size={16} />
       case 'failed':
@@ -244,11 +238,6 @@ export default function BackgroundJobsClient({
   }
 
   const handleDelete = (jobId: string) => {
-    const confirmed = confirm('Delete this job? This cannot be undone.')
-    if (!confirmed) {
-      return
-    }
-
     startMutateTransition(async () => {
       const result = await deleteBackgroundJob(jobId)
       if (result.error) {
@@ -266,7 +255,7 @@ export default function BackgroundJobsClient({
       key: 'status',
       header: 'Status',
       cell: (job: BackgroundJob) => (
-        <Badge tone={getStatusTone(job.status)} icon={getStatusIcon(job.status)}>
+        <Badge tone={backgroundJobStatusTone(job.status)} icon={getStatusIcon(job.status)}>
           {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
         </Badge>
       ),
@@ -328,7 +317,7 @@ export default function BackgroundJobsClient({
             <IconButton
               variant="secondary"
               size="sm"
-              onClick={() => handleDelete(job.id)}
+              onClick={() => setDeleteTargetId(job.id)}
               label="Delete job"
               title="Delete job"
               disabled={isMutating}
@@ -341,13 +330,8 @@ export default function BackgroundJobsClient({
     },
   ]
 
-  const breadcrumbs = [
-    { label: 'Settings', href: '/settings' },
-    { label: 'Background Jobs' },
-  ]
-
   const headerActions = canManage ? (
-    <div className="flex items-center gap-2">
+    <>
       <Button
         variant="secondary"
         size="sm"
@@ -392,7 +376,7 @@ export default function BackgroundJobsClient({
       >
         {isProcessing ? 'Processing...' : 'Process Jobs'}
       </Button>
-    </div>
+    </>
   ) : undefined
 
   const selectedJobDetails = selectedJob ? jobs.find((j) => j.id === selectedJob) : null
@@ -401,176 +385,173 @@ export default function BackgroundJobsClient({
     <PageLayout
       title="Background Jobs"
       subtitle="Monitor and manage background job processing"
-      breadcrumbs={breadcrumbs}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
       headerActions={headerActions}
     >
-      <div className="space-y-6">
-        {error && <Alert tone="danger" title="Error">{error}</Alert>}
+      {error && <Alert tone="danger" title="Error">{error}</Alert>}
 
-        <Section id="summary" title="Summary">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <Stat label="Total Jobs" value={summary.total} />
-            <Stat label="Pending" value={summary.pending} color="warning" />
-            <Stat label="Completed" value={summary.completed} color="success" />
-            <Stat
-              label="Failed"
-              value={summary.failed}
-              color={summary.failed > 0 ? 'error' : 'default'}
+      <StatGrid columns={4}>
+        <Stat label="Total Jobs" value={summary.total} />
+        <Stat label="Pending" value={summary.pending} />
+        <Stat label="Completed" value={summary.completed} />
+        <Stat label="Failed" value={summary.failed} />
+      </StatGrid>
+
+      <Card padding="none">
+        <CardHeader title="Jobs" />
+        <CardBody className="flex flex-wrap items-end gap-3 border-b border-border">
+          <Field label="Status Filter" className="w-full sm:w-48">
+            <Select
+              value={filters.status || ''}
+              onChange={(e) => handleFilterChange({ ...filters, status: e.target.value || undefined })}
+              options={[
+                { value: '', label: 'All Statuses' },
+                { value: 'pending', label: 'Pending' },
+                { value: 'processing', label: 'Processing' },
+                { value: 'completed', label: 'Completed' },
+                { value: 'failed', label: 'Failed' },
+                { value: 'cancelled', label: 'Cancelled' },
+              ]}
             />
-          </div>
-        </Section>
+          </Field>
 
-        <Section title="Filters">
-          <Card>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Field label="Status Filter">
-                <Select
-                  value={filters.status || ''}
-                  onChange={(e) => handleFilterChange({ ...filters, status: e.target.value || undefined })}
-                  options={[
-                    { value: '', label: 'All Statuses' },
-                    { value: 'pending', label: 'Pending' },
-                    { value: 'processing', label: 'Processing' },
-                    { value: 'completed', label: 'Completed' },
-                    { value: 'failed', label: 'Failed' },
-                    { value: 'cancelled', label: 'Cancelled' },
-                  ]}
-                />
-              </Field>
+          <Field label="Type Filter" className="w-full sm:w-64">
+            <Select
+              value={filters.type || ''}
+              onChange={(e) => handleFilterChange({ ...filters, type: e.target.value || undefined })}
+              options={[
+                { value: '', label: 'All Types' },
+                ...Object.entries(jobTypeLabels).map(([value, label]) => ({ value, label })),
+              ]}
+            />
+          </Field>
 
-              <Field label="Type Filter">
-                <Select
-                  value={filters.type || ''}
-                  onChange={(e) => handleFilterChange({ ...filters, type: e.target.value || undefined })}
-                  options={[
-                    { value: '', label: 'All Types' },
-                    ...Object.entries(jobTypeLabels).map(([value, label]) => ({ value, label })),
-                  ]}
-                />
-              </Field>
-            </div>
-            <div className="mt-4 flex justify-end">
-              <Button variant="secondary" onClick={() => handleFilterChange({})} disabled={isRefreshing}>
-                Clear Filters
-              </Button>
-            </div>
-          </Card>
-        </Section>
+          <Button variant="secondary" onClick={() => handleFilterChange({})} disabled={isRefreshing}>
+            Clear Filters
+          </Button>
+        </CardBody>
 
-        <Section id="jobs" title="Jobs">
-          <Card>
-            {isRefreshing ? (
-              <div className="flex items-center justify-center py-8">
-                <Spinner />
-              </div>
-            ) : pagedJobs.length === 0 ? (
-              <Empty
-                icon={<Icon name="alertCircle" size={48} />}
-                title="No jobs found"
-                description="No background jobs match your current filters."
-                action={
-                  (filters.status || filters.type) && (
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleFilterChange({})}
-                      disabled={isRefreshing}
-                    >
-                      Clear Filters
-                    </Button>
-                  )
-                }
-              />
-            ) : (
-              <DataTable data={pagedJobs} columns={columns} getRowKey={(job) => job.id} />
-            )}
-          </Card>
-        </Section>
+        {isRefreshing ? (
+          <PageLoading inline label="Loading jobs" />
+        ) : pagedJobs.length === 0 ? (
+          // A failed load is reported by the error above, never shown as an empty list.
+          error ? null : (
+            <Empty
+              size="sm"
+              icon={<Icon name="alertCircle" size={48} />}
+              title="No jobs found"
+              description="No background jobs match your current filters."
+              action={
+                (filters.status || filters.type) && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => handleFilterChange({})}
+                    disabled={isRefreshing}
+                  >
+                    Clear Filters
+                  </Button>
+                )
+              }
+            />
+          )
+        ) : (
+          <DataTable data={pagedJobs} columns={columns} getRowKey={(job) => job.id} bordered={false} />
+        )}
 
         {pagedJobs.length > 0 && (
-          <Pagination
-            currentPage={page}
+          <TablePagination
+            page={page}
             totalPages={totalPages}
             totalItems={jobs.length}
-            itemsPerPage={PAGE_SIZE}
+            pageSize={PAGE_SIZE}
             onPageChange={setPage}
-            position="end"
           />
         )}
+      </Card>
 
-        {selectedJobDetails && (
-          <Section id="job-details" title="Job Details">
-            <Card>
-              <DescriptionList
-                items={[
-                  {
-                    key: 'id',
-                    label: 'Job ID',
-                    value: <span className="font-mono">{selectedJobDetails.id}</span>,
-                  },
-                  {
-                    key: 'priority',
-                    label: 'Priority',
-                    value: <Badge tone="neutral">{selectedJobDetails.priority}</Badge>,
-                  },
-                  ...(selectedJobDetails.started_at
-                    ? [{
-                        key: 'started_at',
-                        label: 'Started At',
-                        value: new Date(selectedJobDetails.started_at).toLocaleString(),
-                      }]
-                    : []),
-                  ...(selectedJobDetails.completed_at
-                    ? [{
-                        key: 'completed_at',
-                        label: 'Completed At',
-                        value: new Date(selectedJobDetails.completed_at).toLocaleString(),
-                      }]
-                    : []),
-                  ...(selectedJobDetails.error_message
-                    ? [{
-                        key: 'error',
-                        label: 'Error',
-                        value: <span className="whitespace-pre-wrap text-danger">{selectedJobDetails.error_message}</span>,
-                        span: 2,
-                      } satisfies DescriptionListItem]
-                    : []),
-                ]}
-              />
-            </Card>
-          </Section>
-        )}
+      {selectedJobDetails && (
+        <Card>
+          <CardHeader title="Job Details" />
+          <CardBody>
+            <DescriptionList
+              items={[
+                {
+                  key: 'id',
+                  label: 'Job ID',
+                  value: <span className="font-mono">{selectedJobDetails.id}</span>,
+                },
+                {
+                  key: 'priority',
+                  label: 'Priority',
+                  value: <Badge>{selectedJobDetails.priority}</Badge>,
+                },
+                ...(selectedJobDetails.started_at
+                  ? [{
+                      key: 'started_at',
+                      label: 'Started At',
+                      value: new Date(selectedJobDetails.started_at).toLocaleString(),
+                    }]
+                  : []),
+                ...(selectedJobDetails.completed_at
+                  ? [{
+                      key: 'completed_at',
+                      label: 'Completed At',
+                      value: new Date(selectedJobDetails.completed_at).toLocaleString(),
+                    }]
+                  : []),
+                ...(selectedJobDetails.error_message
+                  ? [{
+                      key: 'error',
+                      label: 'Error',
+                      value: <span className="whitespace-pre-wrap text-danger-fg">{selectedJobDetails.error_message}</span>,
+                      span: 2,
+                    } satisfies DescriptionListItem]
+                  : []),
+              ]}
+            />
+          </CardBody>
+        </Card>
+      )}
 
-        {selectedJobDetails?.status === 'failed' && selectedJobDetails.error_message && (
-          <Section title="Error Message">
-            <Card>
-              <pre className="text-sm text-danger whitespace-pre-wrap bg-danger-soft p-3 rounded-sm">
-                {selectedJobDetails.error_message}
-              </pre>
-            </Card>
-          </Section>
-        )}
+      {selectedJobDetails?.status === 'failed' && selectedJobDetails.error_message && (
+        <Alert tone="danger" title="Error Message">
+          <pre className="whitespace-pre-wrap text-sm">{selectedJobDetails.error_message}</pre>
+        </Alert>
+      )}
 
-        {selectedJobDetails?.payload && (
-          <Section title="Payload">
-            <Card>
-              <pre className="text-sm whitespace-pre-wrap bg-surface-2 p-3 rounded-sm">
-                {JSON.stringify(selectedJobDetails.payload, null, 2)}
-              </pre>
-            </Card>
-          </Section>
-        )}
+      {selectedJobDetails?.payload && (
+        <Card>
+          <CardHeader title="Payload" />
+          <CardBody>
+            <pre className="text-sm whitespace-pre-wrap bg-surface-2 p-3 rounded-sm">
+              {JSON.stringify(selectedJobDetails.payload, null, 2)}
+            </pre>
+          </CardBody>
+        </Card>
+      )}
 
-        {selectedJobDetails?.result && (
-          <Section title="Result">
-            <Card>
-              <pre className="text-sm whitespace-pre-wrap bg-surface-2 p-3 rounded-sm">
-                {JSON.stringify(selectedJobDetails.result, null, 2)}
-              </pre>
-            </Card>
-          </Section>
-        )}
-      </div>
+      {selectedJobDetails?.result && (
+        <Card>
+          <CardHeader title="Result" />
+          <CardBody>
+            <pre className="text-sm whitespace-pre-wrap bg-surface-2 p-3 rounded-sm">
+              {JSON.stringify(selectedJobDetails.result, null, 2)}
+            </pre>
+          </CardBody>
+        </Card>
+      )}
+
+      <ConfirmDialog
+        open={deleteTargetId !== null}
+        onClose={() => setDeleteTargetId(null)}
+        onConfirm={() => {
+          if (deleteTargetId) handleDelete(deleteTargetId)
+        }}
+        tone="danger"
+        title="Delete Job"
+        message="Delete this job? This cannot be undone."
+        confirmLabel="Delete"
+      />
     </PageLayout>
   )
 }

@@ -44,13 +44,13 @@ export type RotaNavOptions = RotaNavPermissions & {
 const ROTA_NAV_ENTRIES: RotaNavEntry[] = [
   { label: 'Rota', href: '/rota' },
   { label: 'Reassign', href: '/rota/reassign' },
-  { label: 'Hours by employee', href: '/rota/hours' },
+  { label: 'Hours by Employee', href: '/rota/hours' },
   { label: 'Leave', href: '/rota/leave', requires: 'leave' },
   { label: 'Timeclock', href: '/rota/timeclock', requires: 'timeclock' },
   { label: 'Labour Costs', href: '/rota/dashboard' },
   { label: 'Payroll', href: '/rota/payroll', requires: 'payroll' },
-  { label: 'Shift templates', href: '/rota/templates' },
-  { label: 'Rota settings', href: '/settings/rota', requires: 'settings' },
+  { label: 'Shift Templates', href: '/rota/templates' },
+  { label: 'Rota Settings', href: '/settings/rota', requires: 'settings' },
 ];
 
 function isVisible(entry: RotaNavEntry, permissions: RotaNavPermissions): boolean {

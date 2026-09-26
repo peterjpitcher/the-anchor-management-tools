@@ -3,10 +3,28 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatErrorMessage } from '@/lib/sms-status'
-import { Alert, Badge, Button, Card, LinkButton, PageLayout, Section, Stat } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Empty,
+  PageLayout,
+  Section,
+  Stat,
+  StatGrid,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/ds'
 import { loadUndeliveredGuestMessages } from '@/lib/notifications/undelivered'
+import { SMS_FAILURE_TONES } from '../_shared/status-ui'
 import { dismissSmsFailureFromForm, retrySmsFailureFromForm } from './actions'
 import { UndeliveredGuestMessagesSection } from './UndeliveredGuestMessagesSection'
+import { WindowSwitch } from './WindowSwitch'
 
 type SmsFailureRow = {
   id: string
@@ -161,72 +179,44 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
     return acc
   }, {})
 
+  const windowId = windowHours === 7 * 24 ? '7d' : windowHours === 30 * 24 ? '30d' : '24h'
+
   return (
     <PageLayout
       title="SMS Failures"
       subtitle={`${windowLabel} · ${rows.length} failed outbound message${rows.length === 1 ? '' : 's'}`}
-      breadcrumbs={[
-        { label: 'Settings', href: '/settings' },
-        { label: 'SMS Failures' },
-      ]}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
-      headerActions={
-        <div className="flex flex-wrap gap-2">
-          <LinkButton
-            href="/settings/sms-failures?window=24h"
-            size="sm"
-            variant={windowHours === 24 ? 'primary' : 'secondary'}
-          >
-            24h
-          </LinkButton>
-          <LinkButton
-            href="/settings/sms-failures?window=7d"
-            size="sm"
-            variant={windowHours === 7 * 24 ? 'primary' : 'secondary'}
-          >
-            7d
-          </LinkButton>
-          <LinkButton
-            href="/settings/sms-failures?window=30d"
-            size="sm"
-            variant={windowHours === 30 * 24 ? 'primary' : 'secondary'}
-          >
-            30d
-          </LinkButton>
-        </div>
-      }
+      headerActions={<WindowSwitch value={windowId} />}
     >
-      <div className="space-y-6">
-        {error && (
-          <Alert tone="danger">
-            Failed to load SMS failures: {error.message}
-          </Alert>
-        )}
+      {error ? (
+        <Alert tone="danger">
+          Failed to load SMS failures: {error.message}
+        </Alert>
+      ) : (
+        <StatGrid columns={3}>
+          <Stat label="Failed messages" value={rows.length} />
+          <Stat label="Most common code" value={Object.entries(codeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '--'} />
+          <Stat label="Window" value={windowLabel} />
+        </StatGrid>
+      )}
 
-        <Section title="Summary">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <Stat label="Failed messages" value={rows.length} color={rows.length > 0 ? 'error' : 'default'} />
-            <Stat label="Most common code" value={Object.entries(codeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '--'} />
-            <Stat label="Window" value={windowLabel} />
-          </div>
-        </Section>
+      <UndeliveredGuestMessagesSection rows={undelivered.rows} error={undelivered.error} />
 
-        <UndeliveredGuestMessagesSection rows={undelivered.rows} error={undelivered.error} />
-
-        <Section title="Failure Log">
-          <Card>
-            {rows.length === 0 ? (
-              <div className="py-10 text-center text-sm text-text-muted">No failed SMS messages found for this window.</div>
-            ) : (
-              <>
-              {/* Mobile: stacked cards (one per failed message) */}
-              <div className="space-y-3 p-4 md:hidden">
+      <Section title="Failure Log">
+        <Card padding="none">
+          {rows.length === 0 ? (
+            // A failed load is reported above, never shown as an empty log.
+            error ? null : <Empty size="sm" title="No failed SMS messages found for this window" />
+          ) : (
+            <>
+              {/* Mobile: one row per failed message */}
+              <ul className="divide-y divide-border md:hidden">
                 {rows.map((row) => {
                   const source = getSource(row)
                   const code = getFailureCode(row)
 
                   return (
-                    <div key={row.id} className="rounded-default border border-border p-4">
+                    <li key={row.id} className="px-pad-card py-4">
                       <div className="flex items-start justify-between gap-2">
                         <Link href={`/customers/${row.customer_id}`} className="font-medium text-primary hover:underline">
                           {getCustomerName(row)}
@@ -236,8 +226,8 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                         </span>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
-                        {code && <Badge tone="danger">{code}</Badge>}
-                        {row.message_sid.startsWith('local-fail-') && <Badge tone="warning">not sent</Badge>}
+                        {code && <Badge tone={SMS_FAILURE_TONES.errorCode}>{code}</Badge>}
+                        {row.message_sid.startsWith('local-fail-') && <Badge tone={SMS_FAILURE_TONES.notSent}>not sent</Badge>}
                       </div>
                       <p className="mt-2 text-sm text-text-muted">{getFailureMessage(row)}</p>
                       <dl className="mt-3 space-y-1.5 text-sm">
@@ -276,41 +266,41 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                           </Button>
                         </form>
                       </div>
-                    </div>
+                    </li>
                   )
                 })}
-              </div>
+              </ul>
 
               {/* Desktop: full table */}
-              <div className="hidden overflow-x-auto md:block">
-                <table className="min-w-full divide-y divide-border text-sm">
-                  <thead className="bg-surface-2 text-left text-xs font-semibold text-text-muted">
-                    <tr>
-                      <th scope="col" className="px-4 py-3">Time</th>
-                      <th scope="col" className="px-4 py-3">Customer</th>
-                      <th scope="col" className="px-4 py-3">Source</th>
-                      <th scope="col" className="px-4 py-3">Error</th>
-                      <th scope="col" className="px-4 py-3">To</th>
-                      <th scope="col" className="px-4 py-3">Message</th>
-                      <th scope="col" className="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead>Error</TableHead>
+                      <TableHead>To</TableHead>
+                      <TableHead>Message</TableHead>
+                      <TableHead align="right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {rows.map((row) => {
                       const source = getSource(row)
                       const code = getFailureCode(row)
 
                       return (
-                        <tr key={row.id} className="align-top">
-                          <td className="whitespace-nowrap px-4 py-3 text-text-muted">
+                        <TableRow key={row.id} className="align-top">
+                          <TableCell className="text-text-muted">
                             {new Date(row.created_at).toLocaleString('en-GB')}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3">
+                          </TableCell>
+                          <TableCell>
                             <Link href={`/customers/${row.customer_id}`} className="font-medium text-primary hover:underline">
                               {getCustomerName(row)}
                             </Link>
-                          </td>
-                          <td className="px-4 py-3">
+                          </TableCell>
+                          <TableCell className="whitespace-normal">
                             {source.href ? (
                               <Link href={source.href} className="text-primary hover:underline">
                                 {source.label}
@@ -318,19 +308,19 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                             ) : (
                               source.label
                             )}
-                          </td>
-                          <td className="min-w-[220px] px-4 py-3">
+                          </TableCell>
+                          <TableCell className="min-w-[220px] whitespace-normal">
                             <div className="flex flex-wrap items-center gap-2">
-                              {code && <Badge tone="danger">{code}</Badge>}
-                              {row.message_sid.startsWith('local-fail-') && <Badge tone="warning">not sent</Badge>}
+                              {code && <Badge tone={SMS_FAILURE_TONES.errorCode}>{code}</Badge>}
+                              {row.message_sid.startsWith('local-fail-') && <Badge tone={SMS_FAILURE_TONES.notSent}>not sent</Badge>}
                             </div>
                             <div className="mt-1 text-text-muted">{getFailureMessage(row)}</div>
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-text-muted">
+                          </TableCell>
+                          <TableCell className="font-mono text-xs text-text-muted">
                             {maskPhone(row.to_number)}
-                          </td>
-                          <td className="max-w-md px-4 py-3 text-text-muted">{truncate(row.body)}</td>
-                          <td className="whitespace-nowrap px-4 py-3">
+                          </TableCell>
+                          <TableCell className="max-w-md whitespace-normal text-text-muted">{truncate(row.body)}</TableCell>
+                          <TableCell>
                             <div className="flex justify-end gap-2">
                               <form action={retrySmsFailureFromForm}>
                                 <input type="hidden" name="message_id" value={row.id} />
@@ -345,18 +335,17 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                                 </Button>
                               </form>
                             </div>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       )
                     })}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
-              </>
-            )}
-          </Card>
-        </Section>
-      </div>
+            </>
+          )}
+        </Card>
+      </Section>
     </PageLayout>
   )
 }

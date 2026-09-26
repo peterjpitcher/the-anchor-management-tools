@@ -55,7 +55,7 @@ describe('LeaveManagerClient A-045', () => {
 
     expect(reviewLeaveRequest).not.toHaveBeenCalled()
 
-    const dialog = await screen.findByRole('dialog', { name: 'Approve holiday request?' })
+    const dialog = await screen.findByRole('dialog', { name: 'Approve Holiday Request?' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' }))
 
     await waitFor(() => expect(reviewLeaveRequest).toHaveBeenCalledWith(request.id, 'approved', undefined))
@@ -67,7 +67,7 @@ describe('LeaveManagerClient A-045', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit Alex Rowe holiday request' }))
     fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-07-22' } })
     fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-07-23' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save dates' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Dates' }))
 
     await waitFor(() => {
       expect(updateLeaveRequestDates).toHaveBeenCalledWith(request.id, '2026-07-22', '2026-07-23')
@@ -81,7 +81,7 @@ describe('LeaveManagerClient A-045', () => {
 
     expect(deleteLeaveRequest).not.toHaveBeenCalled()
 
-    const dialog = await screen.findByRole('dialog', { name: 'Delete holiday request?' })
+    const dialog = await screen.findByRole('dialog', { name: 'Delete Holiday Request?' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(deleteLeaveRequest).toHaveBeenCalledWith(request.id))

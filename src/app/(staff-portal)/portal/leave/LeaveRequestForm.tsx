@@ -2,10 +2,7 @@
 
 import { useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, toast } from '@/ds';
-import { Input } from '@/ds';
-import { Field } from '@/ds';
-import { Alert } from '@/ds';
+import { Alert, Button, Field, FormFooter, Input, toast } from '@/ds';
 import { submitLeaveRequest } from '@/app/actions/leave';
 
 interface LeaveRequestFormProps {
@@ -26,7 +23,7 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
 
-  // Compute today's London date client-side using Intl — avoids UTC offset bugs
+  // Compute today's London date client-side using Intl, which avoids UTC offset bugs
   const todayLocal = useMemo(() => {
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
   }, []);
@@ -51,7 +48,7 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
     <div className="space-y-4">
       {error && <Alert tone="danger">{error}</Alert>}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="First day" htmlFor="lr-start" required>
           <Input
             id="lr-start"
@@ -73,9 +70,9 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
       </div>
 
       {days > 0 && (
-        <div className="rounded-lg border border-info-border bg-info-soft px-3 py-2 text-sm text-info-fg">
+        <Alert tone="info" role="status" size="sm">
           <strong>{days} day{days !== 1 ? 's' : ''}</strong> requested
-        </div>
+        </Alert>
       )}
 
       <Field label="Note (optional)" htmlFor="lr-note">
@@ -87,14 +84,14 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
         />
       </Field>
 
-      <div className="flex gap-2">
-        <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
-          {isPending ? 'Submitting…' : 'Submit request'}
-        </Button>
-        <Button type="button" variant="ghost" onClick={() => router.push('/portal/leave')}>
+      <FormFooter>
+        <Button type="button" variant="secondary" onClick={() => router.push('/portal/leave')}>
           Cancel
         </Button>
-      </div>
+        <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
+          {isPending ? 'Submitting…' : 'Submit Request'}
+        </Button>
+      </FormFooter>
     </div>
   );
 }

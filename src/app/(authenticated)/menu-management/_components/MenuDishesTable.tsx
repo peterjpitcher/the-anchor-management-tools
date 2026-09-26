@@ -1,9 +1,32 @@
 'use client';
 
 import { useMemo, useCallback, useState } from 'react';
-import { Card, Badge, Button, Input, Icon } from '@/ds';
-import { Pagination } from '@/ds';
+import {
+  Alert,
+  Badge,
+  Button,
+  CardBody,
+  Empty,
+  Icon,
+  SearchInput,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TablePagination,
+  TableRow,
+} from '@/ds';
+import { cn } from '@/lib/utils';
 import { useTablePipeline } from './useTablePipeline';
+import {
+  DISH_COSTING_STATUS_UI,
+  GP_TARGET_UI,
+  gpTargetState,
+  menuActiveLabel,
+  menuActiveTone,
+  type DishCostingStatus,
+} from '../_shared/status-ui';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,7 +84,7 @@ interface MenuDishesTableProps {
 }
 
 // ---------------------------------------------------------------------------
-// Cost computation helpers (numeric types — not form row strings)
+// Cost computation helpers (numeric types, not form row strings)
 // ---------------------------------------------------------------------------
 
 function computeLineCost(
@@ -274,9 +297,60 @@ function isMissingCosting(dish: DishDisplayItem): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Sortable column header
+// ---------------------------------------------------------------------------
+
+/**
+ * A sortable header that sorts the whole list, not just the page on screen. DataTable sorts only
+ * the rows it is given and reports no sort back, so with this table's pagination it would sort
+ * one page of 25 at a time; the DS Table header drives the pipeline's sort instead. The DS
+ * TableHead `sortable` mode puts the click on the <th>, which a keyboard cannot reach, so the
+ * label is a DS Button inside a plain TableHead.
+ */
+function SortableHead({
+  label,
+  sortKey,
+  activeKey,
+  direction,
+  onSort,
+}: {
+  label: string;
+  sortKey: string;
+  activeKey: string;
+  direction: 'asc' | 'desc';
+  onSort: (key: string) => void;
+}): React.ReactElement {
+  const isActive = activeKey === sortKey;
+  return (
+    <TableHead>
+      <Button
+        variant="ghost"
+        size="xs"
+        onClick={() => onSort(sortKey)}
+        iconRight={
+          isActive ? (
+            <Icon name={direction === 'asc' ? 'chevronUp' : 'chevronDown'} size={12} />
+          ) : undefined
+        }
+        className={cn(
+          '-mx-1.5 text-xs font-medium uppercase tracking-wider',
+          isActive ? 'text-text' : 'text-text-muted',
+        )}
+      >
+        {label}
+      </Button>
+    </TableHead>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
+/**
+ * The Menu Health table. It renders a card body (search and the combinations toggle), the table
+ * and its pager, so it sits straight inside a `Card padding="none"` under a CardHeader.
+ */
 export function MenuDishesTable({
   dishes: allDishes,
   loadError,
@@ -333,35 +407,6 @@ export function MenuDishesTable({
     itemsPerPage: 25,
   });
 
-  // Sortable column header
-  const SortHeader = ({
-    label,
-    sortKey,
-    className,
-  }: {
-    label: string;
-    sortKey: string;
-    className?: string;
-  }) => {
-    const isActive = pipeline.sortKey === sortKey;
-    return (
-      <th scope="col" className={className}>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 rounded-sm text-xs font-medium uppercase tracking-wider text-text-muted hover:text-text focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-          onClick={() => pipeline.handleSort(sortKey)}
-        >
-          {label}
-          {isActive && (
-            <span className="text-xs" aria-hidden="true">
-              {pipeline.sortDirection === 'asc' ? '\u25B2' : '\u25BC'}
-            </span>
-          )}
-        </button>
-      </th>
-    );
-  };
-
   // Custom sort comparators for the pipeline data
   const sorted = useMemo(() => {
     const data = pipeline.pageData as unknown as CombinationRow[];
@@ -396,177 +441,168 @@ export function MenuDishesTable({
     });
   }, [pipeline.pageData, pipeline.sortKey, pipeline.sortDirection]);
 
-  return (
-    <div className="space-y-3">
-      {/* Search + combination toggle */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="max-w-sm flex-1">
-          <Input
-            placeholder="Search dishes..."
-            value={pipeline.searchQuery}
-            onChange={(e) => pipeline.setSearchQuery(e.target.value)}
-            icon={<Icon name="search" size={16} />}
-          />
-        </div>
-        {hasAnyOptionGroups && (
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => setShowAllCombinations((prev) => !prev)}
-            // While every combination is showing, the toggle wears the selected (primary) look.
-            className={showAllCombinations ? 'border-primary bg-primary-soft text-primary-soft-fg hover:bg-primary-soft' : undefined}
-          >
-            {showAllCombinations ? 'Show worst case only' : 'Show all combinations'}
-          </Button>
-        )}
-      </div>
+  const sortProps = {
+    activeKey: pipeline.sortKey,
+    direction: pipeline.sortDirection,
+    onSort: pipeline.handleSort,
+  };
 
-      {/* Filter label */}
-      {filter !== 'all' && (
-        <div className="text-sm text-text-muted">
-          Showing: <span className="font-medium">{filter === 'below-target' ? 'Below GP Target' : 'Missing Costing'}</span>
-          {' '}({pipeline.totalItems} {showAllCombinations ? 'row' : 'dish'}{pipeline.totalItems !== 1 ? (showAllCombinations ? 's' : 'es') : ''})
+  const emptyTitle =
+    filter === 'below-target'
+      ? 'No dishes are below the GP target. Great work!'
+      : filter === 'missing-costing'
+        ? 'All dishes have costing data. Nice!'
+        : pipeline.searchQuery
+          ? 'No dishes match your search.'
+          : 'No dishes found. Create a dish to start tracking GP%.';
+
+  return (
+    <>
+      {/* Search + combination toggle, directly above the rows they filter */}
+      <CardBody className="space-y-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="max-w-sm flex-1">
+            <SearchInput
+              placeholder="Search dishes..."
+              value={pipeline.searchQuery}
+              onChange={pipeline.setSearchQuery}
+            />
+          </div>
+          {hasAnyOptionGroups && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              aria-pressed={showAllCombinations}
+              onClick={() => setShowAllCombinations((prev) => !prev)}
+              // While every combination is showing, the toggle wears the selected (primary) look.
+              className={showAllCombinations ? 'border-primary bg-primary-soft text-primary-soft-fg hover:bg-primary-soft' : undefined}
+            >
+              {showAllCombinations ? 'Show Worst Case Only' : 'Show All Combinations'}
+            </Button>
+          )}
         </div>
-      )}
+
+        {/* Filter label */}
+        {filter !== 'all' && (
+          <p className="text-sm text-text-muted">
+            Showing: <span className="font-medium">{filter === 'below-target' ? 'Below GP Target' : 'Missing Costing'}</span>
+            {' '}({pipeline.totalItems} {showAllCombinations ? 'row' : 'dish'}{pipeline.totalItems !== 1 ? (showAllCombinations ? 's' : 'es') : ''})
+          </p>
+        )}
+
+        {loadError && (
+          <Alert tone="danger">
+            Unable to load GP% data right now. Please refresh the page or try again shortly.
+          </Alert>
+        )}
+      </CardBody>
 
       {/* Table */}
-      {loadError ? (
-        <Card>
-          <p className="text-sm text-danger">
-            Unable to load GP% data right now. Please refresh the page or try again shortly.
-          </p>
-        </Card>
-      ) : sorted.length === 0 && pipeline.totalItems === 0 ? (
-        <Card>
-          <p className="text-sm text-text-muted">
-            {filter === 'below-target'
-              ? 'No dishes are below the GP target. Great work!'
-              : filter === 'missing-costing'
-                ? 'All dishes have costing data. Nice!'
-                : pipeline.searchQuery
-                  ? 'No dishes match your search.'
-                  : 'No dishes found. Create a dish to start tracking GP%.'}
-          </p>
-        </Card>
+      {loadError ? null : sorted.length === 0 && pipeline.totalItems === 0 ? (
+        <Empty size="sm" title={emptyTitle} />
       ) : (
-        <Card padding="none">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border text-ui">
-              <thead className="bg-surface-2">
-                <tr>
-                  <SortHeader label="Dish" sortKey="dishName" className="px-4 py-2 text-left" />
-                  <SortHeader label="Price" sortKey="sellingPrice" className="px-4 py-2 text-left" />
-                  <SortHeader label="Portion Cost" sortKey="portionCost" className="px-4 py-2 text-left" />
-                  <SortHeader label="GP%" sortKey="gpPct" className="px-4 py-2 text-left" />
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Target</th>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Active status</th>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Costing status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {sorted.map((row, idx) => {
-                  const gpValue = typeof row.gpPct === 'number' ? row.gpPct : Infinity;
-                  const belowTarget = gpValue !== Infinity && row.belowTarget;
+        <Table className="border-t border-border">
+          <TableHeader>
+            <TableRow>
+              <SortableHead label="Dish" sortKey="dishName" {...sortProps} />
+              <SortableHead label="Price" sortKey="sellingPrice" {...sortProps} />
+              <SortableHead label="Portion Cost" sortKey="portionCost" {...sortProps} />
+              <SortableHead label="GP%" sortKey="gpPct" {...sortProps} />
+              <TableHead>Target</TableHead>
+              <TableHead>Active status</TableHead>
+              <TableHead>Costing status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sorted.map((row, idx) => {
+              const gpValue = typeof row.gpPct === 'number' ? row.gpPct : Infinity;
+              const belowTarget = gpValue !== Infinity && row.belowTarget;
+              const gpUi = GP_TARGET_UI[gpTargetState(belowTarget)];
+              const costingStatus: DishCostingStatus = belowTarget
+                ? 'alert'
+                : isMissingCosting(row.originalDish)
+                  ? 'missing'
+                  : 'ok';
+              const costingUi = DISH_COSTING_STATUS_UI[costingStatus];
 
-                  // Calculate required price for target GP
-                  let targetPriceHint: string | null = null;
-                  if (belowTarget && row.targetGpPct > 0) {
-                    const requiredPrice = row.portionCost / (1 - row.targetGpPct);
-                    if (Number.isFinite(requiredPrice) && requiredPrice > 0) {
-                      targetPriceHint = `sell at \u00A3${requiredPrice.toFixed(2)} for ${Math.round(row.targetGpPct * 100)}%`;
-                    }
-                  }
+              // Calculate required price for target GP
+              let targetPriceHint: string | null = null;
+              if (belowTarget && row.targetGpPct > 0) {
+                const requiredPrice = row.portionCost / (1 - row.targetGpPct);
+                if (Number.isFinite(requiredPrice) && requiredPrice > 0) {
+                  targetPriceHint = `sell at £${requiredPrice.toFixed(2)} for ${Math.round(row.targetGpPct * 100)}%`;
+                }
+              }
 
-                  const rowKey = row.comboLabel
-                    ? `${row.dishId}-${idx}`
-                    : row.dishId;
+              const rowKey = row.comboLabel
+                ? `${row.dishId}-${idx}`
+                : row.dishId;
 
-                  return (
-                    <tr
-                      key={rowKey}
-                      className={belowTarget ? 'bg-danger-soft' : ''}
-                    >
-                      <td className="px-4 py-2">
-                        {onDishClick ? (
-                          <button
-                            type="button"
-                            className="rounded-sm text-left font-medium text-primary hover:text-primary-hover hover:underline focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-                            onClick={() => onDishClick(row.originalDish)}
-                          >
-                            {row.dishName}
-                          </button>
-                        ) : (
-                          <div className="font-medium text-text">{row.dishName}</div>
+              return (
+                <TableRow key={rowKey} className={gpUi.row}>
+                  <TableCell>
+                    {onDishClick ? (
+                      <Button
+                        variant="link"
+                        onClick={() => onDishClick(row.originalDish)}
+                        className="font-medium"
+                      >
+                        {row.dishName}
+                      </Button>
+                    ) : (
+                      <div className="font-medium text-text">{row.dishName}</div>
+                    )}
+                    {row.comboLabel && (
+                      <div className="text-xs text-cat-2-fg">{row.comboLabel}</div>
+                    )}
+                    {!row.comboLabel && row.assignments.length > 0 && (
+                      <div className="text-xs text-text-muted">
+                        {row.assignments.map((a) => a.menu_code).join(', ')}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>&pound;{row.sellingPrice.toFixed(2)}</TableCell>
+                  <TableCell>&pound;{row.portionCost.toFixed(2)}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span className={cn('font-medium', belowTarget ? gpUi.text : 'text-text')}>
+                        {belowTarget && (
+                          <Icon name={gpUi.icon} size={14} className={cn('mr-1 inline', gpUi.iconClass)} label={gpUi.label} />
                         )}
-                        {row.comboLabel && (
-                          <div className="text-xs text-cat-2-fg">{row.comboLabel}</div>
-                        )}
-                        {!row.comboLabel && row.assignments.length > 0 && (
-                          <div className="text-xs text-text-muted">
-                            {row.assignments.map((a) => a.menu_code).join(', ')}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-text">
-                        &pound;{row.sellingPrice.toFixed(2)}
-                      </td>
-                      <td className="px-4 py-2 text-text">
-                        &pound;{row.portionCost.toFixed(2)}
-                      </td>
-                      <td className="px-4 py-2">
-                        <div className="flex flex-col">
-                          <span
-                            className={`font-medium ${belowTarget ? 'text-danger' : 'text-text'}`}
-                          >
-                            {belowTarget && (
-                              <Icon name="alertTriangle" size={14} className="mr-1 inline text-danger" label="Below target" />
-                            )}
-                            {formatGp(gpValue)}
-                          </span>
-                          {targetPriceHint && (
-                            <span className="text-xs text-danger">{targetPriceHint}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 text-text">{formatGp(row.targetGpPct)}</td>
-                      <td className="px-4 py-2">
-                        <Badge tone={row.originalDish.is_active ? 'success' : 'neutral'}>
-                          {row.originalDish.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-2">
-                        {belowTarget ? (
-                          <Badge tone="danger">Alert</Badge>
-                        ) : isMissingCosting(row.originalDish) ? (
-                          <Badge tone="warning">No cost</Badge>
-                        ) : (
-                          <Badge tone="success">OK</Badge>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+                        {formatGp(gpValue)}
+                      </span>
+                      {targetPriceHint && (
+                        <span className={cn('text-xs', gpUi.text)}>{targetPriceHint}</span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>{formatGp(row.targetGpPct)}</TableCell>
+                  <TableCell>
+                    <Badge tone={menuActiveTone(row.originalDish.is_active)}>
+                      {menuActiveLabel(row.originalDish.is_active)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge tone={costingUi.tone}>{costingUi.label}</Badge>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
       )}
 
       {/* Pagination */}
-      {pipeline.totalPages > 1 && (
-        <Pagination
-          currentPage={pipeline.currentPage}
+      {!loadError && pipeline.totalPages > 1 && (
+        <TablePagination
+          page={pipeline.currentPage}
           totalPages={pipeline.totalPages}
-          totalItems={pipeline.totalItems}
-          itemsPerPage={pipeline.itemsPerPage}
           onPageChange={pipeline.setCurrentPage}
-          onItemsPerPageChange={pipeline.setItemsPerPage}
-          showItemsPerPage
-          showItemCount
-          className="mt-2"
+          pageSize={pipeline.itemsPerPage}
+          totalItems={pipeline.totalItems}
         />
       )}
-    </div>
+    </>
   );
 }

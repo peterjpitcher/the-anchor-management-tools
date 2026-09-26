@@ -10,7 +10,20 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { PageLayout, Card, Button, Alert, Badge, ConfirmDialog, toast } from '@/ds'
+import {
+  PageLayout,
+  PageLoading,
+  Card,
+  CardBody,
+  CardHeader,
+  Button,
+  Alert,
+  Badge,
+  ConfirmDialog,
+  Empty,
+  FormFooter,
+  toast,
+} from '@/ds'
 import {
   previewEmailCaptureSend,
   runEmailCaptureSend,
@@ -85,10 +98,19 @@ export default function EmailCaptureClient() {
     void load()
   }
 
+  // Not linked from the Messages menu by owner decision: staff reach it by its address.
   return (
-    <PageLayout title="Ask for email addresses">
+    <PageLayout
+      title="Ask for Email Addresses"
+      backButton={{ label: 'Back to Messages', href: '/messages' }}
+      headerActions={
+        <Button variant="secondary" size="sm" onClick={() => void load()} disabled={sending || loading}>
+          Refresh
+        </Button>
+      }
+    >
       <Card>
-        <div className="space-y-4">
+        <CardBody className="space-y-4">
           <p className="text-sm text-text">
             Texts guests we can reach by SMS but have no email address for, with a one-tap
             link to add one. Everyone here has booked before.
@@ -102,79 +124,83 @@ export default function EmailCaptureClient() {
             hourly SMS limit with booking confirmations and reminders. Run it again each hour
             until it says nobody is left.
           </p>
-        </div>
+        </CardBody>
       </Card>
 
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {result ? <Alert tone="success">{result}</Alert> : null}
 
-      <Card title="Who this would reach">
-        {loading ? (
-          <p className="text-sm text-text-muted">Working out who is eligible...</p>
-        ) : preview ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Badge>{preview.thisRunCount}</Badge>
-              <span className="text-sm text-text">
-                {preview.thisRunCount === 1 ? 'guest' : 'guests'} would be texted in this run
-              </span>
-            </div>
-
-            {preview.eligibleCount > preview.thisRunCount ? (
-              <Alert tone="info">
-                {preview.eligibleCount} guests are waiting in total. This run takes the first{' '}
-                {preview.thisRunCount}; the rest stay on the list for the next run.
-              </Alert>
-            ) : null}
-
-            {preview.sampleNames.length > 0 ? (
-              <p className="text-sm text-text-muted">
-                Warmest first, starting with: {preview.sampleNames.join(', ')}
-              </p>
-            ) : null}
-
-            {preview.sampleMessages.length > 0 ? (
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-text">
-                  Exactly what they will receive
-                </p>
-                {preview.sampleMessages.map((message, index) => (
-                  <pre
-                    key={index}
-                    className="whitespace-pre-wrap rounded-md bg-surface-2 p-3 text-sm text-text"
-                  >
-                    {message}
-                  </pre>
-                ))}
-                <p className="text-xs text-text-muted">
-                  Shown exactly as the guest receives it, with the link already shortened.
-                  Each guest gets their own single-use link in place of the example one.
-                </p>
+      <Card>
+        <CardHeader title="Who This Would Reach" />
+        <CardBody>
+          {loading ? (
+            <PageLoading inline label="Working out who is eligible" />
+          ) : preview ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Badge>{preview.thisRunCount}</Badge>
+                <span className="text-sm text-text">
+                  {preview.thisRunCount === 1 ? 'guest' : 'guests'} would be texted in this run
+                </span>
               </div>
-            ) : null}
 
-            <div className="flex gap-3 pt-2">
-              <Button
-                onClick={() => setConfirmOpen(true)}
-                disabled={sending || preview.thisRunCount === 0}
-              >
-                {sending ? 'Sending...' : `Send to ${preview.thisRunCount}`}
-              </Button>
-              <Button variant="secondary" onClick={() => void load()} disabled={sending}>
-                Refresh
-              </Button>
+              {preview.eligibleCount > preview.thisRunCount ? (
+                <Alert tone="info">
+                  {preview.eligibleCount} guests are waiting in total. This run takes the first{' '}
+                  {preview.thisRunCount}; the rest stay on the list for the next run.
+                </Alert>
+              ) : null}
+
+              {preview.sampleNames.length > 0 ? (
+                <p className="text-sm text-text-muted">
+                  Warmest first, starting with: {preview.sampleNames.join(', ')}
+                </p>
+              ) : null}
+
+              {preview.sampleMessages.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-text">
+                    Exactly what they will receive
+                  </p>
+                  {preview.sampleMessages.map((message, index) => (
+                    <pre
+                      key={index}
+                      className="whitespace-pre-wrap rounded-default bg-surface-2 p-3 text-sm text-text"
+                    >
+                      {message}
+                    </pre>
+                  ))}
+                  <p className="text-xs text-text-muted">
+                    Shown exactly as the guest receives it, with the link already shortened.
+                    Each guest gets their own single-use link in place of the example one.
+                  </p>
+                </div>
+              ) : null}
+
+              <FormFooter>
+                <Button
+                  variant="primary"
+                  onClick={() => setConfirmOpen(true)}
+                  disabled={sending || preview.thisRunCount === 0}
+                >
+                  {sending ? 'Sending...' : `Send to ${preview.thisRunCount}`}
+                </Button>
+              </FormFooter>
             </div>
-          </div>
-        ) : null}
+          ) : (
+            // A failed preview is reported in the Alert above, so the card says why it is empty.
+            <Empty size="sm" title="No preview to show" description="Use Refresh to try again." />
+          )}
+        </CardBody>
       </Card>
 
       <ConfirmDialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={handleSend}
-        title={`Text ${preview?.thisRunCount ?? 0} guests?`}
+        title={`Text ${preview?.thisRunCount ?? 0} Guests?`}
         message="This sends real text messages and cannot be undone. Each guest is asked only once, so there is no way to re-send to them later."
-        confirmText="Send now"
+        confirmText="Send Now"
       />
     </PageLayout>
   )

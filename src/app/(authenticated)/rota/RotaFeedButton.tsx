@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { Button, IconButton, toast, Icon } from '@/ds';
+import { useState } from 'react';
+import { Button, Input, Popover, toast, Icon } from '@/ds';
 
 interface RotaFeedButtonProps {
   feedUrl: string;
@@ -9,30 +9,8 @@ interface RotaFeedButtonProps {
 }
 
 export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedButtonProps) {
-  const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open]);
-
-  useEffect(() => {
-    if (open && popoverRef.current) {
-      const firstFocusable = popoverRef.current.querySelector<HTMLElement>(
-        'button, input, [tabindex]:not([tabindex="-1"])'
-      );
-      firstFocusable?.focus();
-    }
-  }, [open]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(feedUrl);
@@ -55,14 +33,14 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
         toast.error(result.error || 'Sync failed');
       }
     } catch {
-      toast.error('Sync failed — check logs');
+      toast.error('Sync failed, check the logs');
     } finally {
       setSyncing(false);
     }
   };
 
   return (
-    <div className="relative flex items-center gap-2">
+    <>
       {showCalendarSync && (
         <Button
           type="button"
@@ -72,75 +50,64 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
           loading={syncing}
           icon={<Icon name="refresh" size={16} />}
         >
-          {syncing ? 'Syncing…' : 'Sync calendar'}
+          {syncing ? 'Syncing…' : 'Sync Calendar'}
         </Button>
       )}
 
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        onClick={() => setOpen(v => !v)}
-        icon={<Icon name="calendar" size={16} />}
+      {/* A Popover rather than a Dropdown: the panel holds a text field and a Copy button,
+          which a menu cannot hold. Escape or a click outside closes it. */}
+      <Popover
+        align="right"
+        trigger={
+          <Button type="button" variant="secondary" size="sm" icon={<Icon name="calendar" size={16} />}>
+            Subscribe
+          </Button>
+        }
       >
-        Subscribe
-      </Button>
+        <div className="space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-text-strong">Calendar Feed</p>
+            <p className="mt-0.5 text-xs text-text-muted">
+              Subscribe to see all rota shifts in your calendar app. Rota changes appear within 24 hours of
+              publishing (Google Calendar), or sooner in Apple Calendar and Outlook.
+            </p>
+          </div>
 
-      {open && (
-        <>
-          {/* Backdrop */}
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-
-          {/* Popover */}
-          <div ref={popoverRef} role="dialog" aria-modal="true" className="absolute right-0 top-full mt-2 z-50 w-[min(24rem,calc(100vw-2rem))] bg-surface border border-border rounded-xl shadow-lg p-4 space-y-3">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-semibold text-text-strong">Calendar feed</p>
-                <p className="text-xs text-text-muted mt-0.5">Subscribe to see all rota shifts in your calendar app. Rota changes appear within 24 hours of publishing (Google Calendar), or sooner in Apple Calendar and Outlook.</p>
-              </div>
-              <IconButton
-                type="button"
-                size="sm"
-                onClick={() => setOpen(false)}
-                label="Close calendar feed popover"
-                icon={<Icon name="x" size={16} />}
-                className="shrink-0 ml-2"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <input
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <Input
                 type="text"
                 readOnly
                 value={feedUrl}
-                className="flex-1 min-w-0 text-xs border border-border rounded-lg px-2.5 py-1.5 bg-surface-2 text-text-muted truncate outline-hidden focus:border-border-focus focus:shadow-ring"
+                aria-label="Calendar feed address"
+                className="h-btn-h-sm truncate bg-surface-2 text-xs text-text-muted"
                 onFocus={e => e.target.select()}
               />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={handleCopy}
-                className="shrink-0"
-                icon={copied
-                  ? <Icon name="check" size={14} className="text-success-fg" />
-                  : <Icon name="copy" size={14} />}
-              >
-                {copied ? 'Copied' : 'Copy'}
-              </Button>
             </div>
-
-            <div className="bg-surface-2 rounded-lg p-3 space-y-1.5">
-              <p className="text-xs font-medium text-text-muted">How to subscribe:</p>
-              <ul className="text-xs text-text-muted space-y-1">
-                <li><span className="font-medium text-text">Google Calendar</span> — Other calendars → From URL</li>
-                <li><span className="font-medium text-text">Apple Calendar</span> — File → New Calendar Subscription</li>
-                <li><span className="font-medium text-text">Outlook</span> — Add calendar → Subscribe from web</li>
-              </ul>
-            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleCopy}
+              className="shrink-0"
+              icon={copied
+                ? <Icon name="check" size={14} className="text-success" />
+                : <Icon name="copy" size={14} />}
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
           </div>
-        </>
-      )}
-    </div>
+
+          <div className="space-y-1.5 border-t border-border pt-3">
+            <p className="text-xs font-medium text-text-muted">How to subscribe:</p>
+            <ul className="space-y-1 text-xs text-text-muted">
+              <li><span className="font-medium text-text">Google Calendar</span>: Other calendars → From URL</li>
+              <li><span className="font-medium text-text">Apple Calendar</span>: File → New Calendar Subscription</li>
+              <li><span className="font-medium text-text">Outlook</span>: Add calendar → Subscribe from web</li>
+            </ul>
+          </div>
+        </div>
+      </Popover>
+    </>
   );
 }

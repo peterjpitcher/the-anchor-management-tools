@@ -9,17 +9,17 @@ import {
 import {
   DetailRow,
   GuestAlert,
+  GuestAmount,
   GuestBlockedState,
   GuestButton,
   GuestCard,
   GuestField,
+  GuestHelpLine,
+  GuestInput,
+  GuestIntro,
+  GuestPhoneLink,
   guestFieldControlProps,
   GuestShell,
-  GUEST_H1_CLASS,
-  GUEST_INPUT_CLASS,
-  GUEST_INTRO_CLASS,
-  GUEST_KICKER_CLASS,
-  GUEST_LEAD_CLASS,
   GUEST_SUNK_BOX_CLASS,
 } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
@@ -40,14 +40,6 @@ const KICKER = 'Event booking'
 
 /** Where a guest goes when this link cannot help them any more. */
 const WHATS_ON_URL = 'https://www.the-anchor.pub/whats-on'
-
-/**
- * The seats label keeps its existing uppercase treatment. GuestField has no
- * label-class prop, so it is targeted here rather than by patching the shared
- * primitive, which seven other routes depend on.
- */
-const UPPERCASE_FIELD_LABEL_CLASS =
-  '[&>label]:text-meta [&>label]:font-semibold [&>label]:uppercase [&>label]:tracking-[0.16em] [&>label]:text-guest-text-muted'
 
 function getSingleValue(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) {
@@ -208,106 +200,80 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
 
   return (
     <GuestShell>
-      <section className="flex flex-col gap-[18px]">
-        <div className={GUEST_INTRO_CLASS}>
-          <p className={GUEST_KICKER_CLASS}>{KICKER}</p>
-          <h1 className={GUEST_H1_CLASS}>Manage your booking</h1>
-          <p className={GUEST_LEAD_CLASS}>
-            {formatGuestGreeting(guestFirstName, 'your booking details are below.')}
-          </p>
-        </div>
+      <GuestIntro
+        kicker={KICKER}
+        title="Manage your booking"
+        lead={formatGuestGreeting(guestFirstName, 'your booking details are below.')}
+      />
 
-        {statusMessage && <GuestAlert tone="success">{statusMessage}</GuestAlert>}
+      {statusMessage && <GuestAlert tone="success">{statusMessage}</GuestAlert>}
 
-        {state === 'blocked' && (
-          <GuestAlert tone="notice">{blockedReasonMessage(reason)}</GuestAlert>
-        )}
+      {state === 'blocked' && (
+        <GuestAlert tone="notice">{blockedReasonMessage(reason)}</GuestAlert>
+      )}
 
-        <GuestCard variant="accent">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-[5px]">
-              <span className="font-anchor-body text-meta font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted">
-                Event
-              </span>
-              <span className="font-anchor-display text-[26px] font-normal leading-[1.15] tracking-[-0.02em] text-guest-text-strong">
-                {preview.event_name || 'Event booking'}
-              </span>
-            </div>
+      <GuestCard variant="accent">
+        <div className="flex flex-col gap-guest-md">
+          <GuestAmount label="Event" value={preview.event_name || 'Event booking'} size="title" />
 
-            <div>
-              <DetailRow label="Event time" value={eventStart} />
-              <DetailRow label="Current seats" value={currentSeats} />
-              <DetailRow label="Payment mode" value={preview.payment_mode || 'free'} />
-            </div>
-
-            {preview.payment_mode === 'prepaid' && (
-              <p className={GUEST_SUNK_BOX_CLASS}>
-                Refund policy for cancellations or seat reductions:
-                {' '}
-                {policy.policyBand === 'full' ? '100% refund window' : policy.policyBand === 'partial' ? '50% refund window' : 'No refund window'}.
-                {' '}
-                Price per seat: {formatMoney(pricePerSeat)}.
-              </p>
-            )}
-
-            {!preview.can_change_seats && (
-              <p className={GUEST_SUNK_BOX_CLASS}>
-                This booking can no longer be changed online.
-              </p>
-            )}
+          <div>
+            <DetailRow label="Event time" value={eventStart} />
+            <DetailRow label="Current seats" value={currentSeats} />
+            <DetailRow label="Payment mode" value={preview.payment_mode || 'free'} />
           </div>
-        </GuestCard>
 
-        {preview.can_change_seats && (
-          <GuestCard>
-            {/*
-              Server-rendered POST, deliberately. A seat change has to work
-              with no JavaScript, so this stays a plain form.
-            */}
-            <form
-              method="post"
-              action={`/g/${token}/manage-booking/action`}
-              className="flex flex-col gap-4"
-            >
-              <input type="hidden" name="intent" value="update_seats" />
+          {preview.payment_mode === 'prepaid' && (
+            <p className={GUEST_SUNK_BOX_CLASS}>
+              Refund policy for cancellations or seat reductions:
+              {' '}
+              {policy.policyBand === 'full' ? '100% refund window' : policy.policyBand === 'partial' ? '50% refund window' : 'No refund window'}.
+              {' '}
+              Price per seat: {formatMoney(pricePerSeat)}.
+            </p>
+          )}
 
-              <GuestField id="seats" label="Change seats" className={UPPERCASE_FIELD_LABEL_CLASS}>
-                <input
-                  {...guestFieldControlProps({ id: 'seats' })}
-                  name="seats"
-                  type="number"
-                  min={1}
-                  max={20}
-                  defaultValue={currentSeats}
-                  className={GUEST_INPUT_CLASS}
-                />
-              </GuestField>
+          {!preview.can_change_seats && (
+            <p className={GUEST_SUNK_BOX_CLASS}>
+              This booking can no longer be changed online.
+            </p>
+          )}
+        </div>
+      </GuestCard>
 
-              <GuestButton
-                as="button"
-                type="submit"
-                variant="primary"
-                size="md"
-                className="w-full sm:w-auto"
-              >
-                Update seats
-              </GuestButton>
-            </form>
-          </GuestCard>
-        )}
-
-        <p className="text-center font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
-          Need to cancel or need help? Call{' '}
-          <a
-            href={GUEST_CONTACT.telHref}
-            referrerPolicy="no-referrer"
-            className="font-semibold text-guest-accent-text underline underline-offset-[3px]"
+      {preview.can_change_seats && (
+        <GuestCard>
+          {/*
+            Server-rendered POST, deliberately. A seat change has to work
+            with no JavaScript, so this stays a plain form.
+          */}
+          <form
+            method="post"
+            action={`/g/${token}/manage-booking/action`}
+            className="flex flex-col gap-guest-lg"
           >
-            {GUEST_CONTACT.phoneDisplay}
-          </a>
-          .
-        </p>
-      </section>
+            <input type="hidden" name="intent" value="update_seats" />
+
+            <GuestField id="seats" label="Change seats">
+              <GuestInput
+                {...guestFieldControlProps({ id: 'seats' })}
+                name="seats"
+                type="number"
+                min={1}
+                max={20}
+                defaultValue={currentSeats}
+              />
+            </GuestField>
+
+            <GuestButton as="button" type="submit" variant="primary" size="md" fullWidth="mobile">
+              Update seats
+            </GuestButton>
+          </form>
+        </GuestCard>
+      )}
+
+      <GuestHelpLine>
+        Need to cancel or need help? Call <GuestPhoneLink />.
+      </GuestHelpLine>
     </GuestShell>
   )
 }

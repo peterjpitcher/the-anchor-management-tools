@@ -12,7 +12,25 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Button, Card, CardBody, CardHeader, Select } from '@/ds'
+import {
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Empty,
+  Segmented,
+  Select,
+  Stat,
+  StatGrid,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/ds'
+import { growthRecordSourceTone } from '../../_shared/status-ui'
 import type { PrivateBookingGrowthSnapshot } from '@/lib/analytics/private-booking-growth'
 import {
   buildAnnualPrivateBookingSeries,
@@ -26,10 +44,15 @@ import {
 
 type Granularity = 'year' | 'month'
 
-const RANGE_OPTIONS: Array<{ value: PrivateBookingGrowthRange; label: string }> = [
-  { value: 'all', label: 'All history' },
-  { value: 'five_years', label: 'Last 5 years' },
-  { value: 'three_years', label: 'Last 3 years' },
+const RANGE_OPTIONS: Array<{ id: PrivateBookingGrowthRange; label: string }> = [
+  { id: 'all', label: 'All history' },
+  { id: 'five_years', label: 'Last 5 years' },
+  { id: 'three_years', label: 'Last 3 years' },
+]
+
+const GRANULARITY_OPTIONS: Array<{ id: Granularity; label: string }> = [
+  { id: 'year', label: 'Yearly' },
+  { id: 'month', label: 'Monthly' },
 ]
 
 const numberFormatter = new Intl.NumberFormat('en-GB')
@@ -70,21 +93,6 @@ function TrendTooltip({ active, payload, label }: {
         </p>
       ))}
     </div>
-  )
-}
-
-function MetricCard({ label, value, detail, accent = false }: {
-  label: string
-  value: string
-  detail: string
-  accent?: boolean
-}) {
-  return (
-    <Card className={accent ? 'border-primary/30 bg-primary-soft' : undefined}>
-      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-text-muted">{label}</p>
-      <p className="mt-2 text-3xl font-bold tracking-tight text-text-strong">{value}</p>
-      <p className="mt-1 text-xs leading-5 text-text-muted">{detail}</p>
-    </Card>
   )
 }
 
@@ -158,121 +166,95 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
     timeStyle: 'short',
   }).format(new Date(snapshot.generatedAt))
 
+  // Blocks only: the page wraps them in PageLayout, which spaces its direct children.
   return (
-    <div className="space-y-5">
-      <section className="overflow-hidden rounded-xl border border-primary/25 bg-[linear-gradient(120deg,var(--color-primary-soft),var(--color-surface)_62%)] shadow-sm">
-        <div className="grid gap-5 px-5 py-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:px-7">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Booking record</p>
-            <p className="mt-2 max-w-3xl text-lg font-semibold leading-7 text-text-strong">
-              From {snapshot.firstRecordDate ? dateFormatter.format(utcDate(snapshot.firstRecordDate)) : 'the first record'} to {dateFormatter.format(utcDate(snapshot.asOfDate))}
-            </p>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-text-muted">
-              Confirmed and completed customer private bookings, grouped by event date. Cancelled, draft, future and test records are excluded.
-            </p>
-          </div>
-          <p className="text-xs text-text-muted">Updated {generatedAt}</p>
-        </div>
-        <div className="border-t border-primary/15 bg-surface/70 px-5 py-4 lg:px-7">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Reporting period">
-              {RANGE_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-pressed={range === option.value}
-                  onClick={() => setRange(option.value)}
-                  className={`rounded-md px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                    range === option.value
-                      ? 'bg-primary text-primary-fg shadow-sm'
-                      : 'border border-border bg-surface text-text-muted hover:bg-surface-hover hover:text-text-strong'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-              <label className="min-w-0 text-xs font-semibold text-text-muted sm:w-64">
-                Occasion
-                <Select
-                  value={occasion}
-                  onChange={(event) => setOccasion(event.target.value)}
-                  className="mt-1 w-full"
-                >
-                  <option value="all">All occasions</option>
-                  {occasionOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-                </Select>
-              </label>
-              {hasFilters && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="self-end"
-                  onClick={() => {
-                    setRange('all')
-                    setOccasion('all')
-                  }}
-                >
-                  Reset filters
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
+    <>
+      <Card>
+        <CardHeader
+          title="Booking Record"
+          subtitle={`From ${snapshot.firstRecordDate ? dateFormatter.format(utcDate(snapshot.firstRecordDate)) : 'the first record'} to ${dateFormatter.format(utcDate(snapshot.asOfDate))}`}
+          action={<span className="text-xs text-text-muted">Updated {generatedAt}</span>}
+        />
+        <CardBody>
+          <p className="text-sm text-text-muted">
+            Confirmed and completed customer private bookings, grouped by event date. Cancelled, draft, future and test records are excluded.
+          </p>
+        </CardBody>
+      </Card>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Growth summary">
-        <MetricCard
+      {/* Filters, directly above the figures they filter */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div role="group" aria-label="Reporting period">
+          <Segmented
+            options={RANGE_OPTIONS}
+            value={range}
+            onChange={(id) => setRange(id as PrivateBookingGrowthRange)}
+          />
+        </div>
+        <div className="w-full sm:w-64">
+          <Select
+            label="Occasion"
+            value={occasion}
+            onChange={(event) => setOccasion(event.target.value)}
+          >
+            <option value="all">All occasions</option>
+            {occasionOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+          </Select>
+        </div>
+        {hasFilters && (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setRange('all')
+              setOccasion('all')
+            }}
+          >
+            Reset Filters
+          </Button>
+        )}
+      </div>
+
+      <StatGrid columns={4}>
+        <Stat
           label="Bookings shown"
           value={numberFormatter.format(filteredRecords.length)}
-          detail={`${startYear} to ${currentYear}, including years with none`}
-          accent
+          hint={`${startYear} to ${currentYear}, including years with none`}
         />
-        <MetricCard
+        <Stat
           label={`${currentYear} to date`}
           value={numberFormatter.format(thisYearCount)}
-          detail={`${formatSignedChange(yearToDateChange)} versus the same point in ${currentYear - 1}`}
+          hint={`${formatSignedChange(yearToDateChange)} versus the same point in ${currentYear - 1}`}
         />
-        <MetricCard
+        <Stat
           label="Busiest year"
           value={busiestYear ? String(busiestYear.year) : 'None'}
-          detail={busiestYear ? `${numberFormatter.format(busiestYear.bookings)} bookings in the current filter` : 'No bookings match the filter'}
+          hint={busiestYear ? `${numberFormatter.format(busiestYear.bookings)} bookings in the current filter` : 'No bookings match the filter'}
         />
-        <MetricCard
+        <Stat
           label="Known guests"
           value={numberFormatter.format(knownGuests)}
-          detail={`Guest numbers recorded for ${guestCoverage}% of shown bookings`}
+          hint={`Guest numbers recorded for ${guestCoverage}% of shown bookings`}
         />
-      </section>
+      </StatGrid>
 
       <Card className="min-w-0">
         <CardHeader
-          title="Bookings and running total"
+          title="Bookings and Running Total"
           subtitle="Bars show events in each period. The line shows the accumulated booking record."
           action={
-            <div className="flex rounded-md border border-border bg-surface-2 p-0.5" role="group" aria-label="Chart interval">
-              {(['year', 'month'] as const).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={granularity === option}
-                  onClick={() => setGranularity(option)}
-                  className={`rounded-sm px-2.5 py-1 text-xs font-semibold focus-visible:outline-hidden focus-visible:shadow-ring ${
-                    granularity === option ? 'bg-surface text-text-strong shadow-sm' : 'text-text-muted'
-                  }`}
-                >
-                  {option === 'year' ? 'Yearly' : 'Monthly'}
-                </button>
-              ))}
+            <div role="group" aria-label="Chart interval">
+              <Segmented
+                size="sm"
+                options={GRANULARITY_OPTIONS}
+                value={granularity}
+                onChange={(id) => setGranularity(id as Granularity)}
+              />
             </div>
           }
         />
-        <CardBody className="pt-5">
+        <CardBody>
           {filteredRecords.length === 0 ? (
-            <div className="flex h-80 items-center justify-center rounded-lg bg-surface-2 text-sm text-text-muted">
-              No bookings match these filters.
-            </div>
+            <Empty size="sm" icon="chart" title="No bookings match these filters" />
           ) : (
             <div className="h-[360px] min-w-0 w-full" role="img" aria-label="Private bookings and running total over time">
               <ResponsiveContainer width="100%" height="100%">
@@ -318,12 +300,12 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
         </CardBody>
       </Card>
 
-      <section className="grid gap-5 xl:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-2">
         <Card className="min-w-0">
-          <CardHeader title="Occasion mix" subtitle="Broad categories combine spelling and naming variations." />
+          <CardHeader title="Occasion Mix" subtitle="Broad categories combine spelling and naming variations." />
           <CardBody>
             {occasionMix.length === 0 ? (
-              <p className="py-12 text-center text-sm text-text-muted">No occasion data for this selection.</p>
+              <Empty size="sm" icon="chart" title="No occasion data for this selection" />
             ) : (
               <div className="h-[340px] min-w-0" role="img" aria-label="Private bookings by occasion category">
                 <ResponsiveContainer width="100%" height="100%">
@@ -341,7 +323,7 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
         </Card>
 
         <Card className="min-w-0">
-          <CardHeader title="When bookings happen" subtitle="Month of the event across the selected years." />
+          <CardHeader title="When Bookings Happen" subtitle="Month of the event across the selected years." />
           <CardBody>
             <div className="h-[340px] min-w-0" role="img" aria-label="Private bookings by month of year">
               <ResponsiveContainer width="100%" height="100%">
@@ -356,53 +338,53 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
             </div>
           </CardBody>
         </Card>
-      </section>
+      </div>
 
-      <Card>
+      <Card padding="none">
         <CardHeader
-          title="Bookings behind the figures"
+          title="Bookings Behind the Figures"
           subtitle={`${numberFormatter.format(filteredRecords.length)} records, newest first`}
         />
-        <div className="max-h-[520px] overflow-auto">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="sticky top-0 z-10 bg-surface-2">
-              <tr>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">Date</th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">Customer</th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">Event</th>
-                <th scope="col" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-text-muted">Guests</th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">Record</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border bg-surface">
+        <div className="max-h-[520px] overflow-y-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Event</TableHead>
+                <TableHead align="right">Guests</TableHead>
+                <TableHead>Record</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {[...filteredRecords].reverse().map((record) => (
-                <tr key={record.id} className="hover:bg-surface-hover">
-                  <td className="whitespace-nowrap px-4 py-3 font-medium text-text-strong">{shortDateFormatter.format(utcDate(record.eventDate))} {record.eventDate.slice(0, 4)}</td>
-                  <td className="px-4 py-3 text-text">{record.customerName}</td>
-                  <td className="px-4 py-3 text-text-muted">{record.eventType}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-text">{record.guestCount === null ? 'Not recorded' : numberFormatter.format(record.guestCount)}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-pill px-2 py-0.5 text-xs font-semibold ${
-                      record.isHistoricalImport
-                        ? 'bg-warning-soft text-warning-fg'
-                        : 'bg-primary-soft text-primary-soft-fg'
-                    }`}>
+                <TableRow key={record.id}>
+                  <TableCell className="font-medium text-text-strong">{shortDateFormatter.format(utcDate(record.eventDate))} {record.eventDate.slice(0, 4)}</TableCell>
+                  <TableCell className="whitespace-normal">{record.customerName}</TableCell>
+                  <TableCell className="whitespace-normal text-text-muted">{record.eventType}</TableCell>
+                  <TableCell align="right" className="tabular-nums">{record.guestCount === null ? 'Not recorded' : numberFormatter.format(record.guestCount)}</TableCell>
+                  <TableCell>
+                    <Badge tone={growthRecordSourceTone(record.isHistoricalImport ? 'archive' : 'live')}>
                       {record.isHistoricalImport ? 'Archive' : 'Live app'}
-                    </span>
-                  </td>
-                </tr>
+                    </Badge>
+                  </TableCell>
+                </TableRow>
               ))}
               {filteredRecords.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-10 text-center text-text-muted">No bookings match these filters.</td></tr>
+                <TableRow>
+                  <TableCell colSpan={5}>
+                    <Empty size="sm" title="No bookings match these filters" />
+                  </TableCell>
+                </TableRow>
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </Card>
 
       <p className="text-xs leading-5 text-text-muted">
         Coverage starts with the available archive in 2019. The venue closure affects 2020 and 2021. Current-year figures run to {dateFormatter.format(utcDate(snapshot.asOfDate))}. {numberFormatter.format(snapshot.futureConfirmedCount)} future confirmed bookings are not included.
       </p>
-    </div>
+    </>
   )
 }

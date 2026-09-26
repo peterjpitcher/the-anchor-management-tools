@@ -10,7 +10,7 @@ import {
   Select,
   Switch,
   Modal,
-  ModalActions,
+  Alert,
   toast,
 } from '@/ds'
 import { createTemplate, updateTemplate } from '@/app/actions/checklists-admin'
@@ -247,24 +247,20 @@ export function TemplateModal({
       open={open}
       onClose={onClose}
       width="xl"
-      title={isEdit ? `Edit task: ${checklistName}` : `New task: ${checklistName}`}
+      title={isEdit ? `Edit Task: ${checklistName}` : `New Task: ${checklistName}`}
       footer={
-        <ModalActions>
+        <>
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
           <Button type="button" variant="primary" onClick={handleSubmit} loading={saving}>
-            {isEdit ? 'Save task' : 'Create task'}
+            {isEdit ? 'Save Task' : 'Create Task'}
           </Button>
-        </ModalActions>
+        </>
       }
     >
       <div className="space-y-5">
-        {error && (
-          <p className="rounded-default border-l-4 border-l-danger bg-danger-soft px-3 py-2 text-sm text-danger-fg" role="alert">
-            {error}
-          </p>
-        )}
+        {error && <Alert tone="danger">{error}</Alert>}
 
         {/* Basics */}
         <div className="space-y-4">

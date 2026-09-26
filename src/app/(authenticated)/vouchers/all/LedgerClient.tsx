@@ -4,22 +4,25 @@ import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Card,
+  CardBody,
   Button,
+  Empty,
   Input,
   Select,
   Modal,
   Textarea,
   ConfirmDialog,
   Checkbox,
-  Pagination,
   Table,
   TableHeader,
   TableBody,
   TableRow,
   TableHead,
   TableCell,
+  TablePagination,
   toast,
 } from '@/ds'
+import { Icon } from '@/ds/icons'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import type { VoucherStatus } from '@/types/vouchers'
 import {
@@ -305,9 +308,9 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize))
 
   return (
-    <div className="space-y-4">
+    <>
       <Card>
-        <div className="space-y-4">
+        <CardBody className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="w-full sm:w-64">
               <Input
@@ -325,42 +328,45 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
               Search
             </Button>
             <Button variant="ghost" onClick={clearFilters}>
-              Clear filters
+              Clear Filters
             </Button>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {ALL_STATUSES.map((status) => (
-              <button
-                key={status}
-                type="button"
-                onClick={() => toggleStatus(status)}
-                className={`rounded-pill border px-3 py-1 text-sm transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                  filters.status?.includes(status)
-                    ? 'border-primary bg-primary-soft text-primary-soft-fg font-medium'
-                    : 'border-border bg-surface text-text-muted hover:bg-surface-hover'
-                }`}
-              >
-                {VOUCHER_STATUS_LABELS[status]}
-              </button>
-            ))}
+          {/* Status and type toggles: a pressed button is an active filter. */}
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
+            {ALL_STATUSES.map((status) => {
+              const active = Boolean(filters.status?.includes(status))
+              return (
+                <Button
+                  key={status}
+                  type="button"
+                  size="sm"
+                  variant={active ? 'primary' : 'secondary'}
+                  aria-pressed={active}
+                  onClick={() => toggleStatus(status)}
+                >
+                  {VOUCHER_STATUS_LABELS[status]}
+                </Button>
+              )
+            })}
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {types.map((type) => (
-              <button
-                key={type.id}
-                type="button"
-                onClick={() => toggleType(type.id)}
-                className={`rounded-pill border px-3 py-1 text-xs transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                  filters.typeIds?.includes(type.id)
-                    ? 'border-primary bg-primary-soft text-primary-soft-fg font-medium'
-                    : 'border-border bg-surface text-text-muted hover:bg-surface-hover'
-                }`}
-              >
-                {type.displayTitle}
-              </button>
-            ))}
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by type">
+            {types.map((type) => {
+              const active = Boolean(filters.typeIds?.includes(type.id))
+              return (
+                <Button
+                  key={type.id}
+                  type="button"
+                  size="sm"
+                  variant={active ? 'primary' : 'secondary'}
+                  aria-pressed={active}
+                  onClick={() => toggleType(type.id)}
+                >
+                  {type.displayTitle}
+                </Button>
+              )
+            })}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -397,62 +403,73 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
             />
           </div>
 
+          {/* Filters set by a deep link, each removable on its own. */}
           {(filters.eventId || filters.customerId || filters.batchReady) && (
-            <div className="flex flex-wrap gap-2 text-sm">
+            <div className="flex flex-wrap gap-2">
               {filters.batchReady && (
-                <button
+                <Button
                   type="button"
-                  className="rounded-pill border border-primary bg-primary-soft px-3 py-1 text-primary-soft-fg focus-visible:outline-hidden focus-visible:shadow-ring"
+                  size="sm"
+                  variant="secondary"
+                  iconRight={<Icon name="x" size={12} />}
+                  aria-label="Printable Stock Only, remove filter"
                   onClick={() => update({ batchReady: undefined })}
                 >
-                  Printable stock only ✕
-                </button>
+                  Printable Stock Only
+                </Button>
               )}
               {filters.eventId && (
-                <button
+                <Button
                   type="button"
-                  className="rounded-pill border border-primary bg-primary-soft px-3 py-1 text-primary-soft-fg focus-visible:outline-hidden focus-visible:shadow-ring"
+                  size="sm"
+                  variant="secondary"
+                  iconRight={<Icon name="x" size={12} />}
+                  aria-label="Filtered to One Event, remove filter"
                   onClick={() => update({ eventId: undefined })}
                 >
-                  Filtered to one event ✕
-                </button>
+                  Filtered to One Event
+                </Button>
               )}
               {filters.customerId && (
-                <button
+                <Button
                   type="button"
-                  className="rounded-pill border border-primary bg-primary-soft px-3 py-1 text-primary-soft-fg focus-visible:outline-hidden focus-visible:shadow-ring"
+                  size="sm"
+                  variant="secondary"
+                  iconRight={<Icon name="x" size={12} />}
+                  aria-label="Filtered to One Customer, remove filter"
                   onClick={() => update({ customerId: undefined })}
                 >
-                  Filtered to one customer ✕
-                </button>
+                  Filtered to One Customer
+                </Button>
               )}
             </div>
           )}
-        </div>
+        </CardBody>
       </Card>
 
       {selected.size > 0 && (
         <Card>
-          <div className="flex flex-wrap items-center gap-3">
+          <CardBody className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-medium text-text">{selected.size} selected</span>
             <Button variant="secondary" size="sm" onClick={() => setCancelOpen(true)}>
-              Cancel selected
+              Cancel Selected
             </Button>
             <Button variant="secondary" size="sm" onClick={handleExport}>
               Export CSV
             </Button>
             <Button variant="secondary" size="sm" onClick={startReprint} loading={reprintBusy}>
-              Reprint selected
+              Reprint Selected
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
-              Clear selection
+              Clear Selection
             </Button>
-          </div>
+          </CardBody>
         </Card>
       )}
 
-      <Card>
-        <div className="overflow-x-auto">
+      <Card padding="none">
+        {/* While a new page of results loads, the current rows stay and dim. */}
+        <div aria-busy={loading} className={loading ? 'opacity-60' : undefined}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -479,9 +496,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
               {result.rows.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={11}>
-                    <div className="py-8 text-center text-sm text-text-muted">
-                      No vouchers match these filters.
-                    </div>
+                    <Empty size="sm" title="No vouchers match these filters" />
                   </TableCell>
                 </TableRow>
               )}
@@ -538,32 +553,28 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
             </TableBody>
           </Table>
         </div>
-        <div className="mt-4">
-          <Pagination
-            currentPage={result.page}
-            totalPages={totalPages}
-            totalItems={result.total}
-            itemsPerPage={result.pageSize}
-            onPageChange={(page) => void applyFilters({ ...filters, page })}
-            showItemsPerPage={false}
-          />
-        </div>
-        {loading && <div className="mt-2 text-sm text-text-muted">Loading…</div>}
+        <TablePagination
+          page={result.page}
+          totalPages={totalPages}
+          totalItems={result.total}
+          pageSize={result.pageSize}
+          onPageChange={(page) => void applyFilters({ ...filters, page })}
+        />
       </Card>
 
       <Modal
         open={cancelOpen}
         onClose={() => setCancelOpen(false)}
-        title={`Cancel ${selected.size} voucher${selected.size === 1 ? '' : 's'}`}
+        title={`Cancel ${selected.size} Voucher${selected.size === 1 ? '' : 's'}`}
         footer={
-          <div className="flex justify-end gap-2">
+          <>
             <Button variant="secondary" onClick={() => setCancelOpen(false)}>
-              Keep them
+              Keep Them
             </Button>
             <Button variant="danger" onClick={() => void handleBulkCancel()} loading={cancelBusy}>
-              Cancel vouchers
+              Cancel Vouchers
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-3">
@@ -584,11 +595,11 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
         open={reprintConfirmOpen}
         onClose={() => setReprintConfirmOpen(false)}
         onConfirm={() => void runReprint()}
-        title="Reprint issued cards?"
+        title="Reprint Issued Cards?"
         message="Reprinting an issued card is only allowed when the original is destroyed or unusable. Confirm that applies to every issued card selected."
-        confirmLabel="Original destroyed or unusable, reprint"
+        confirmLabel="Original Destroyed or Unusable, Reprint"
         tone="warning"
       />
-    </div>
+    </>
   )
 }

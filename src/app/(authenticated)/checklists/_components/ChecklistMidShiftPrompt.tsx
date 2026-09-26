@@ -142,14 +142,14 @@ export function ChecklistMidShiftPrompt() {
     <Modal
       open={open}
       onClose={handleLater}
-      title={closingOnly ? 'Time to start closing' : 'Checks are due'}
+      title={closingOnly ? 'Time to Start Closing' : 'Checks Are Due'}
       footer={
         <>
           <Button variant="ghost" onClick={handleLater}>
             Later
           </Button>
           <Button variant="primary" onClick={handleOpenChecklist}>
-            Open checklist
+            Open Checklist
           </Button>
         </>
       }
@@ -161,7 +161,7 @@ export function ChecklistMidShiftPrompt() {
         {/* The closing list is 22 tasks. One line for the lot, rather than a modal that
             needs scrolling before anyone can act on it. */}
         {closePrompts.length > 0 && (
-          <li className="flex items-center justify-between gap-3 rounded-md border border-border p-2">
+          <li className="flex items-center justify-between gap-3 rounded-default border border-border p-2">
             <span className="min-w-0 truncate text-sm font-medium text-text">
               Closing checklist
             </span>
@@ -171,7 +171,7 @@ export function ChecklistMidShiftPrompt() {
           </li>
         )}
         {otherPrompts.map((p) => (
-          <li key={p.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-2">
+          <li key={p.id} className="flex items-center justify-between gap-3 rounded-default border border-border p-2">
             <span className="min-w-0 truncate text-sm font-medium text-text">{p.title}</span>
             <span className="shrink-0 text-xs text-text-muted">{p.slot}</span>
           </li>

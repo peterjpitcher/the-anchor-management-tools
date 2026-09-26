@@ -15,7 +15,10 @@ import {
   Input,
   Modal,
   PageLayout,
+  PageLoading,
+  Section,
   Stat,
+  StatGrid,
   Table,
   TableBody,
   TableCell,
@@ -43,7 +46,7 @@ import type {
 
 import {
   CampaignStatusBadge,
-  MARKETING_SECTION_NAV,
+  EngagedBadge,
   RecipientStatusBadge,
   SKIP_REASON_LABELS,
   formatDateTimeInLondon,
@@ -51,6 +54,7 @@ import {
   formatPercent,
   skipReasonLabel,
 } from '../../_shared/marketing-ui'
+import { MARKETING_BACK_TO_CAMPAIGNS, MARKETING_NAV } from '../../_shared/nav'
 
 /**
  * `skippedByReason` is keyed by whatever string the database held, including the literal
@@ -166,17 +170,17 @@ export function CampaignDetailClient({
     <PageLayout
       title={campaign.name}
       subtitle={campaign.subject}
-      navItems={MARKETING_SECTION_NAV}
-      backButton={{ label: 'Campaigns', href: '/marketing' }}
+      navItems={MARKETING_NAV}
+      backButton={MARKETING_BACK_TO_CAMPAIGNS}
       headerActions={
-        <div className="flex flex-wrap gap-2">
+        <>
           <Button
             variant="secondary"
             size="sm"
             onClick={() => setTestSendOpen(true)}
             disabled={!canSend || busy}
           >
-            Test send
+            Test Send
           </Button>
           <Button
             variant="secondary"
@@ -212,12 +216,12 @@ export function CampaignDetailClient({
           >
             Cancel
           </Button>
-        </div>
+        </>
       }
       showHeaderActionsOnMobile
     >
-      <div className="space-y-6">
         <Card>
+          <CardBody>
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -277,6 +281,7 @@ export function CampaignDetailClient({
               )}
             </dl>
           </div>
+          </CardBody>
         </Card>
 
         {!canSend && (
@@ -292,7 +297,7 @@ export function CampaignDetailClient({
         )}
 
         {stats && (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <StatGrid columns={4}>
             <Stat label="Recipients" value={stats.recipients} />
             <Stat label="Sent" value={stats.sent} />
             <Stat
@@ -317,17 +322,16 @@ export function CampaignDetailClient({
             />
             <Stat label="Failed" value={stats.failed} />
             <Stat label="Needs review" value={stats.needsReview} />
-          </div>
+          </StatGrid>
         )}
 
         {stats && (
-          <Card>
-            <CardHeader
-              title="Engagement"
-              subtitle="Counted through our own short links and our own booking records, so these say which call to action worked and whether it turned into business"
-            />
-            <CardBody>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          <Section
+            title="Engagement"
+            description="Counted through our own short links and our own booking records, so these say which call to action worked and whether it turned into business"
+          >
+            <div className="space-y-4">
+              <StatGrid columns={3}>
                 <Stat
                   label="Link visits"
                   value={stats.engagement.clicks}
@@ -366,30 +370,32 @@ export function CampaignDetailClient({
                       : 'Total across the bookings above'
                   }
                 />
-              </div>
+              </StatGrid>
 
-              <p className="mt-4 text-sm text-text-muted">
+              <p className="text-sm text-text-muted">
                 Opens come from the email provider. Clicks come from our own redirector and
                 exclude bots plus rapid sweeps across most links. Raw activity is retained for
                 auditing, and a later isolated click from the same person still counts.
               </p>
 
-              {linkPerformanceError ? (
-                <div className="mt-4">
-                  <Alert tone="warning" title="Could not load the link figures">
-                    {linkPerformanceError}
-                  </Alert>
-                </div>
-              ) : linkPerformance.length === 0 ? (
-                <div className="mt-4">
-                  <Empty
-                    icon="document"
-                    title="No tracked links yet"
-                    description="Short links are created when the campaign is scheduled. Until then there is nothing to count."
-                  />
-                </div>
-              ) : (
-                <div className="mt-4 overflow-x-auto">
+              <Card>
+                <CardHeader title="Links" subtitle="Clicks and people for each tracked link in the email" />
+                {linkPerformanceError ? (
+                  <CardBody>
+                    <Alert tone="warning" title="Could not load the link figures">
+                      {linkPerformanceError}
+                    </Alert>
+                  </CardBody>
+                ) : linkPerformance.length === 0 ? (
+                  <CardBody>
+                    <Empty
+                      size="sm"
+                      icon="document"
+                      title="No tracked links yet"
+                      description="Short links are created when the campaign is scheduled. Until then there is nothing to count."
+                    />
+                  </CardBody>
+                ) : (
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -415,17 +421,17 @@ export function CampaignDetailClient({
                       ))}
                     </TableBody>
                   </Table>
-                </div>
-              )}
-            </CardBody>
-          </Card>
+                )}
+              </Card>
+            </div>
+          </Section>
         )}
 
         {stats && stats.skipped > 0 && (
           <Card>
             <CardHeader
-              title={`${stats.skipped} contacts were skipped`}
-              subtitle="Skipped contacts never reached an inbox, so they are left out of every percentage above"
+              title="Skipped Contacts"
+              subtitle={`${stats.skipped} never reached an inbox, so they are left out of every percentage above`}
             />
             <CardBody>
               <div className="flex flex-wrap gap-2">
@@ -441,7 +447,7 @@ export function CampaignDetailClient({
 
         <Card>
           <CardHeader
-            title="Email preview"
+            title="Email Preview"
             subtitle="How the email looks when it arrives"
           />
           <CardBody>
@@ -457,7 +463,7 @@ export function CampaignDetailClient({
                 className="h-[600px] w-full border border-border"
               />
             ) : (
-              <Empty icon="document" title="No preview available" />
+              <Empty size="sm" icon="document" title="No preview available" />
             )}
           </CardBody>
         </Card>
@@ -467,139 +473,138 @@ export function CampaignDetailClient({
             title="Recipients"
             subtitle={`${recipientsTotal} in total`}
           />
-          <CardBody>
-            {recipientsError ? (
+          {recipientsError ? (
+            <CardBody>
               <Alert tone="warning" title="Could not load the recipients">
                 {recipientsError}
               </Alert>
-            ) : recipients.length === 0 ? (
+            </CardBody>
+          ) : recipients.length === 0 ? (
+            <CardBody>
               <Empty
+                size="sm"
                 icon="users"
                 title="No recipients yet"
                 description="The audience is frozen when the campaign is scheduled. Until then this list is empty."
               />
-            ) : (
-              <>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Why skipped</TableHead>
-                        <TableHead>Sent</TableHead>
-                        <TableHead>Delivered</TableHead>
-                        <TableHead>Opened</TableHead>
-                        <TableHead>Clicked</TableHead>
-                        <TableHead align="right">Clicks</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {recipients.map((recipient) => (
-                        <TableRow key={recipient.id}>
-                          <TableCell>
-                            <span className="break-all">{recipient.email}</span>
-                            {recipient.error && (
-                              <div className="text-xs text-danger-fg break-words">
-                                {recipient.error}
+            </CardBody>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Why skipped</TableHead>
+                    <TableHead>Sent</TableHead>
+                    <TableHead>Delivered</TableHead>
+                    <TableHead>Opened</TableHead>
+                    <TableHead>Clicked</TableHead>
+                    <TableHead align="right">Clicks</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recipients.map((recipient) => (
+                    <TableRow key={recipient.id}>
+                      <TableCell>
+                        <span className="break-all">{recipient.email}</span>
+                        {recipient.error && (
+                          <div className="text-xs text-danger-fg break-words">
+                            {recipient.error}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <RecipientStatusBadge status={recipient.status} />
+                      </TableCell>
+                      <TableCell>
+                        {recipient.skipReason ? (
+                          skipReasonLabel(recipient.skipReason)
+                        ) : (
+                          <span className="text-text-muted">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {recipient.sentAt ? (
+                          formatDateTimeInLondon(recipient.sentAt)
+                        ) : (
+                          <span className="text-text-muted">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {recipient.engagement?.deliveredAt ? (
+                          <EngagedBadge />
+                        ) : (
+                          <span className="text-text-muted">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {recipient.engagement?.openedAt ? (
+                          <EngagedBadge />
+                        ) : (
+                          <span className="text-text-muted">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {recipient.engagement?.clickedAt ? (
+                          <EngagedBadge />
+                        ) : (
+                          <span className="text-text-muted">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        {recipient.clickCount > 0 ? (
+                          <div className="min-w-0">
+                            <span className="text-text">{recipient.clickCount}</span>
+                            {recipient.lastClickedAt && (
+                              <div className="text-xs text-text-muted">
+                                {formatDateTimeInLondon(recipient.lastClickedAt)}
                               </div>
                             )}
-                          </TableCell>
-                          <TableCell>
-                            <RecipientStatusBadge status={recipient.status} />
-                          </TableCell>
-                          <TableCell>
-                            {recipient.skipReason ? (
-                              skipReasonLabel(recipient.skipReason)
-                            ) : (
-                              <span className="text-text-muted">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {recipient.sentAt ? (
-                              formatDateTimeInLondon(recipient.sentAt)
-                            ) : (
-                              <span className="text-text-muted">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {recipient.engagement?.deliveredAt ? (
-                              <Badge tone="success">Yes</Badge>
-                            ) : (
-                              <span className="text-text-muted">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {recipient.engagement?.openedAt ? (
-                              <Badge tone="success">Yes</Badge>
-                            ) : (
-                              <span className="text-text-muted">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {recipient.engagement?.clickedAt ? (
-                              <Badge tone="success">Yes</Badge>
-                            ) : (
-                              <span className="text-text-muted">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell align="right">
-                            {recipient.clickCount > 0 ? (
-                              <div className="min-w-0">
-                                <span className="text-text">{recipient.clickCount}</span>
-                                {recipient.lastClickedAt && (
-                                  <div className="text-xs text-text-muted">
-                                    {formatDateTimeInLondon(recipient.lastClickedAt)}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-text-muted">-</span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                          </div>
+                        ) : (
+                          <span className="text-text-muted">-</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
 
-                {totalPages > 1 && (
-                  <div className="mt-4">
-                    <TablePagination
-                      page={recipientsPage}
-                      totalPages={totalPages}
-                      onPageChange={(next) => {
-                        startTransition(() => {
-                          router.push(`/marketing/campaigns/${campaign.id}?page=${next}`)
-                        })
-                      }}
-                      pageSize={recipientsPageSize}
-                      totalItems={recipientsTotal}
-                    />
-                  </div>
-                )}
-              </>
-            )}
-          </CardBody>
+              {totalPages > 1 && (
+                <TablePagination
+                  page={recipientsPage}
+                  totalPages={totalPages}
+                  onPageChange={(next) => {
+                    startTransition(() => {
+                      router.push(`/marketing/campaigns/${campaign.id}?page=${next}`)
+                    })
+                  }}
+                  pageSize={recipientsPageSize}
+                  totalItems={recipientsTotal}
+                />
+              )}
+            </>
+          )}
         </Card>
 
-        {isPending && <p className="text-sm text-text-muted">Loading…</p>}
-      </div>
+        {isPending && <PageLoading inline label="Loading recipients" className="py-4" />}
+
 
       <Modal
         open={scheduleOpen}
         onClose={() => setScheduleOpen(false)}
-        title="Schedule this campaign"
+        title="Schedule This Campaign"
         width="md"
         footer={
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <>
             <Button variant="secondary" onClick={() => setScheduleOpen(false)}>
               Cancel
             </Button>
             <Button variant="primary" onClick={handleSchedule} loading={busy}>
-              Schedule it
+              Schedule It
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-3">
@@ -627,19 +632,19 @@ export function CampaignDetailClient({
           setCancelOpen(false)
           await runAction('Campaign cancelled.', () => cancelMarketingCampaign(campaign.id))
         }}
-        title="Cancel this campaign?"
+        title="Cancel This Campaign?"
         message="Anything not yet sent will be stopped. Emails already sent cannot be pulled back, and a cancelled campaign cannot be restarted."
-        confirmLabel="Cancel the campaign"
+        confirmLabel="Cancel the Campaign"
         tone="danger"
       />
 
       <Modal
         open={testSendOpen}
         onClose={() => setTestSendOpen(false)}
-        title="Test send"
+        title="Test Send"
         width="md"
         footer={
-          <div className="flex gap-2">
+          <>
             <Button variant="secondary" onClick={() => setTestSendOpen(false)} disabled={busy}>
               Close
             </Button>
@@ -653,9 +658,9 @@ export function CampaignDetailClient({
                 if (sent) setTestSendOpen(false)
               }}
             >
-              Send it to me
+              Send It to Me
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-3">

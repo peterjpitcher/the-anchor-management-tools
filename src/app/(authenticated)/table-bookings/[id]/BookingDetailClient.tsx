@@ -3,8 +3,34 @@
 import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { Badge, Button, Card, ConfirmDialog, Input, Modal, Radio, Select, Textarea, toast } from '@/ds'
-import { cn } from '@/lib/utils'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  ConfirmDialog,
+  DescriptionList,
+  Empty,
+  Field,
+  FormFooter,
+  Input,
+  Modal,
+  Radio,
+  Select,
+  Stat,
+  StatGrid,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Textarea,
+  toast,
+} from '@/ds'
 import {
   STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT,
   defaultStaffMessageChannel,
@@ -28,6 +54,7 @@ import {
   describeGuestNotificationProblem,
   readGuestNotificationOutcome,
 } from '@/lib/table-bookings/guest-notification-outcome'
+import { TABLE_BOOKING_REFUND_PROGRESS_TONE as REFUND_PROGRESS_TONE } from '../_shared/status-ui'
 
 /**
  * Staff must know when a guest was not told their booking was cancelled. Only the email-first
@@ -209,44 +236,9 @@ function getAuditDetails(entry: BookingAuditEntry): string[] {
     .slice(0, 4)
 }
 
-function SectionCard({
-  title,
-  description,
-  action,
-  children,
-  className = '',
-}: {
-  title: string
-  description?: string
-  action?: ReactNode
-  children: ReactNode
-  className?: string
-}) {
-  // The DS card frame, so this page's sections match every other card in the app. The header is
-  // its own rather than CardHeader, which would turn these h2 section headings into h3 and
-  // truncate the description. cn() lets a caller's border colour (the Danger Zone) replace the
-  // default one instead of fighting it.
-  return (
-    <Card padding="none" className={cn(className)}>
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-pad-card py-3">
-        <div>
-          <h2 className="text-sm font-semibold text-text-strong">{title}</h2>
-          {description && <p className="mt-0.5 text-xs text-text-muted">{description}</p>}
-        </div>
-        {action}
-      </div>
-      <div className="p-pad-card">{children}</div>
-    </Card>
-  )
-}
-
-function DetailItem({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-text-muted">{label}</dt>
-      <dd className="mt-1 text-sm text-text">{value || '-'}</dd>
-    </div>
-  )
+/** The page's empty marker for a missing value, as the old detail rows showed it (0 and '' included). */
+function orDash(value: string | number | null | undefined): string | number {
+  return value || '-'
 }
 
 function StatusBadge({ booking }: { booking: Booking }) {
@@ -917,188 +909,182 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
 
   return (
     // data-touch-targets: reached from BOH on a tablet, and its Danger Zone buttons are the
-    // smallest destructive controls in the section. See the note in FohScheduleClient.
+    // smallest destructive controls in the section. See the note in FohScheduleClient. The
+    // wrapper carries that attribute and keeps the page's own 24px rhythm between blocks.
     <div className="space-y-6" data-touch-targets>
-      {/* The same DS card frame as the section cards below it. */}
-      <Card padding="none" className="p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge booking={booking} />
-              {depositState.kind !== 'none' && (
-                <Badge className={getTableBookingDepositBadgeClasses(depositState.kind)}>
-                  {depositState.label}
-                  {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
-                </Badge>
-              )}
-              {booking.booking_type && (
-                <Badge tone="neutral">{formatLabel(booking.booking_type)}</Badge>
-              )}
-              {booking.requires_accessible_table && (
-                <Badge tone="warning">Step-free table</Badge>
-              )}
-              {(booking.high_chair_count ?? 0) > 0 && (
-                <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
-              )}
-            </div>
-            <div>
-              <p className="text-xl font-semibold text-text">{guestName}</p>
-              <p className="text-sm text-text-muted">
-                {formatBookingDate(booking.booking_date)}
-                {booking.booking_time ? ` at ${booking.booking_time.slice(0, 5)}` : ''}
-                {booking.party_size != null ? ` · ${booking.party_size} covers` : ''}
-                {booking.is_outside_seating ? ' · Outside' : assignedTableLabel ? ` · ${assignedTableLabel}` : ''}
-              </p>
-            </div>
+      {/* The guest's name is the page title, so this card carries the status and the when. */}
+      <Card>
+        <CardBody className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge booking={booking} />
+            {depositState.kind !== 'none' && (
+              <Badge className={getTableBookingDepositBadgeClasses(depositState.kind)}>
+                {depositState.label}
+                {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
+              </Badge>
+            )}
+            {booking.booking_type && (
+              <Badge tone="neutral">{formatLabel(booking.booking_type)}</Badge>
+            )}
+            {booking.requires_accessible_table && (
+              <Badge tone="warning">Step-free table</Badge>
+            )}
+            {(booking.high_chair_count ?? 0) > 0 && (
+              <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[520px]">
-            <div className="rounded-md bg-surface-2 px-3 py-2">
-              <p className="text-xs text-text-muted">Covers</p>
-              <p className="text-lg font-semibold text-text">{booking.party_size ?? '-'}</p>
-            </div>
-            <div className="rounded-md bg-surface-2 px-3 py-2">
-              <p className="text-xs text-text-muted">Tables</p>
-              <p className="text-lg font-semibold text-text">{booking.is_outside_seating ? 'Outside' : assignedTables.length || '-'}</p>
-            </div>
-            <div className="rounded-md bg-surface-2 px-3 py-2">
-              <p className="text-xs text-text-muted">Capacity</p>
-              <p className="text-lg font-semibold text-text">{booking.is_outside_seating ? 'Outside' : assignedCapacity || '-'}</p>
-            </div>
-            <div className="rounded-md bg-surface-2 px-3 py-2">
-              <p className="text-xs text-text-muted">Audit</p>
-              <p className="text-lg font-semibold text-text">{auditTrail.length}</p>
-            </div>
-          </div>
-        </div>
+          <p className="text-sm text-text-muted">
+            {formatBookingDate(booking.booking_date)}
+            {booking.booking_time ? ` at ${booking.booking_time.slice(0, 5)}` : ''}
+            {booking.party_size != null ? ` · ${booking.party_size} covers` : ''}
+            {booking.is_outside_seating ? ' · Outside' : assignedTableLabel ? ` · ${assignedTableLabel}` : ''}
+          </p>
+        </CardBody>
       </Card>
+
+      <StatGrid columns={4}>
+        <Stat label="Covers" value={booking.party_size ?? '-'} />
+        <Stat label="Tables" value={booking.is_outside_seating ? 'Outside' : assignedTables.length || '-'} />
+        <Stat label="Capacity" value={booking.is_outside_seating ? 'Outside' : assignedCapacity || '-'} />
+        <Stat label="Audit" value={auditTrail.length} />
+      </StatGrid>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-6">
-          <SectionCard title="Booking Details">
-            <dl className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              <DetailItem label="Reference" value={booking.booking_reference} />
-              <DetailItem label="Guest" value={guestName} />
-              <DetailItem
-                label="Mobile"
-                value={
-                  booking.customer?.mobile_number ? (
-                    <a
-                      href={`tel:${booking.customer.mobile_number}`}
-                      className="rounded-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
-                    >
-                      {booking.customer.mobile_number}
-                    </a>
-                  ) : '-'
-                }
+          <Card>
+            <CardHeader title="Booking Details" />
+            <CardBody>
+              <DescriptionList
+                columns={3}
+                items={[
+                  { key: 'reference', label: 'Reference', value: orDash(booking.booking_reference) },
+                  { key: 'guest', label: 'Guest', value: guestName },
+                  {
+                    key: 'mobile',
+                    label: 'Mobile',
+                    value: booking.customer?.mobile_number ? (
+                      <a
+                        href={`tel:${booking.customer.mobile_number}`}
+                        className="rounded-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring"
+                      >
+                        {booking.customer.mobile_number}
+                      </a>
+                    ) : '-',
+                  },
+                  { key: 'date', label: 'Date', value: formatBookingDate(booking.booking_date) },
+                  { key: 'time', label: 'Time', value: booking.booking_time ? booking.booking_time.slice(0, 5) : '-' },
+                  { key: 'duration', label: 'Duration', value: formatDuration(booking.duration_minutes) },
+                  { key: 'party-size', label: 'Party size', value: orDash(booking.party_size) },
+                  { key: 'committed-size', label: 'Committed size', value: orDash(booking.committed_party_size) },
+                  {
+                    key: 'assigned-tables',
+                    label: 'Assigned tables',
+                    value: booking.is_outside_seating ? 'Outside' : assignedTableLabel ?? '-',
+                  },
+                  { key: 'seating', label: 'Seating', value: booking.is_outside_seating ? 'Outside' : 'Indoor' },
+                  {
+                    key: 'step-free',
+                    label: 'Step-free table',
+                    value: booking.requires_accessible_table ? 'Requested' : 'Not requested',
+                  },
+                  { key: 'high-chairs', label: 'High chairs', value: String(booking.high_chair_count ?? 0) },
+                  { key: 'booking-type', label: 'Booking type', value: formatLabel(booking.booking_type) },
+                  { key: 'purpose', label: 'Purpose', value: formatLabel(booking.booking_purpose) },
+                  { key: 'source', label: 'Source', value: formatLabel(booking.source) },
+                ]}
               />
-              <DetailItem label="Date" value={formatBookingDate(booking.booking_date)} />
-              <DetailItem label="Time" value={booking.booking_time ? booking.booking_time.slice(0, 5) : '-'} />
-              <DetailItem label="Duration" value={formatDuration(booking.duration_minutes)} />
-              <DetailItem label="Party size" value={booking.party_size ?? '-'} />
-              <DetailItem label="Committed size" value={booking.committed_party_size ?? '-'} />
-              <DetailItem label="Assigned tables" value={booking.is_outside_seating ? 'Outside' : assignedTableLabel ?? '-'} />
-              <DetailItem label="Seating" value={booking.is_outside_seating ? 'Outside' : 'Indoor'} />
-              <DetailItem label="Step-free table" value={booking.requires_accessible_table ? 'Requested' : 'Not requested'} />
-              <DetailItem label="High chairs" value={String(booking.high_chair_count ?? 0)} />
-              <DetailItem label="Booking type" value={formatLabel(booking.booking_type)} />
-              <DetailItem label="Purpose" value={formatLabel(booking.booking_purpose)} />
-              <DetailItem label="Source" value={formatLabel(booking.source)} />
-            </dl>
-          </SectionCard>
+            </CardBody>
+          </Card>
 
-          <SectionCard title="Notes And Requirements">
+          <Card>
+            <CardHeader title="Notes and Requirements" />
             {notes.length > 0 ? (
-              <dl className="space-y-4">
-                {notes.map((note) => (
-                  <div key={note.label}>
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-text-muted">{note.label}</dt>
-                    <dd className="mt-1 whitespace-pre-wrap text-sm text-text">{note.value}</dd>
-                  </div>
-                ))}
-              </dl>
+              <CardBody>
+                <DescriptionList
+                  columns={1}
+                  items={notes.map((note) => ({
+                    key: note.label,
+                    label: note.label,
+                    // Notes keep the line breaks staff typed.
+                    value: <span className="whitespace-pre-wrap">{note.value}</span>,
+                  }))}
+                />
+              </CardBody>
             ) : (
-              <p className="text-sm text-text-muted">No notes, dietary requirements, allergies, or internal notes recorded.</p>
+              <Empty size="sm" title="No notes, dietary requirements, allergies, or internal notes recorded" />
             )}
-          </SectionCard>
+          </Card>
 
           {/* High up on purpose: staff take these orders on the telephone while the guest waits. */}
           {seasonalPreorder}
 
-          <SectionCard
-            title="Sunday Pre-Order"
-            action={
-              canEditPreorder ? (
-                <Button size="sm" variant="secondary" onClick={openPreorderEdit}>
-                  Edit pre-order
-                </Button>
-              ) : undefined
-            }
-          >
+          <Card>
+            <CardHeader
+              title="Sunday Pre-Order"
+              action={
+                canEditPreorder ? (
+                  <Button size="sm" variant="secondary" onClick={openPreorderEdit}>
+                    Edit Pre-Order
+                  </Button>
+                ) : undefined
+              }
+            />
             {preorderItems.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-border text-sm">
-                  <thead>
-                    <tr>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
-                        Item
-                      </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
-                        Qty
-                      </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
-                        Guest
-                      </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
-                        Requests
-                      </th>
-                      <th scope="col" className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-text-muted">
-                        Price
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {preorderItems.map((item) => (
-                      <tr key={item.id}>
-                        <td className="px-3 py-2 font-medium text-text">
-                          {item.menu_dish?.name || item.custom_item_name || 'Unnamed item'}
-                          {item.item_type ? <span className="ml-2 text-xs text-text-muted">{formatLabel(item.item_type)}</span> : null}
-                        </td>
-                        <td className="px-3 py-2 text-text">{item.quantity}</td>
-                        <td className="px-3 py-2 text-text">{item.guest_name || '-'}</td>
-                        <td className="px-3 py-2 text-text">{item.special_requests || '-'}</td>
-                        <td className="px-3 py-2 text-right text-text">
-                          {item.price_at_booking != null ? formatGbp(Number(item.price_at_booking) * Number(item.quantity || 1)) : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead>Qty</TableHead>
+                    <TableHead>Guest</TableHead>
+                    <TableHead>Requests</TableHead>
+                    <TableHead align="right">Price</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {preorderItems.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="whitespace-normal font-medium">
+                        {item.menu_dish?.name || item.custom_item_name || 'Unnamed item'}
+                        {item.item_type ? <span className="ml-2 text-xs font-normal text-text-muted">{formatLabel(item.item_type)}</span> : null}
+                      </TableCell>
+                      <TableCell>{item.quantity}</TableCell>
+                      <TableCell className="whitespace-normal">{item.guest_name || '-'}</TableCell>
+                      <TableCell className="whitespace-normal">{item.special_requests || '-'}</TableCell>
+                      <TableCell align="right">
+                        {item.price_at_booking != null ? formatGbp(Number(item.price_at_booking) * Number(item.quantity || 1)) : '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             ) : (
-              <p className="text-sm text-text-muted">No saved pre-order items.</p>
+              <Empty size="sm" title="No saved pre-order items" />
             )}
-          </SectionCard>
+          </Card>
 
-          <SectionCard title="Lifecycle">
+          <Card>
+            <CardHeader title="Lifecycle" />
             {lifecycleEvents.length > 0 ? (
-              <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {lifecycleEvents.map((event) => (
-                  <li key={`${event.label}-${event.at}`} className="rounded-md border border-border bg-surface-2 px-3 py-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{event.label}</p>
-                    <p className="mt-1 text-sm text-text">{formatLondonDateTime(event.at)}</p>
-                  </li>
-                ))}
-              </ol>
+              <CardBody>
+                <DescriptionList
+                  items={lifecycleEvents.map((event) => ({
+                    key: `${event.label}-${event.at}`,
+                    label: event.label,
+                    value: formatLondonDateTime(event.at),
+                  }))}
+                />
+              </CardBody>
             ) : (
-              <p className="text-sm text-text-muted">No lifecycle timestamps recorded yet.</p>
+              <Empty size="sm" title="No lifecycle timestamps recorded yet" />
             )}
-          </SectionCard>
+          </Card>
         </div>
 
         <aside className="space-y-6">
           {canEdit && (
-            <SectionCard title="Actions">
-              <div className="space-y-4">
+            <Card>
+              <CardHeader title="Actions" />
+              <CardBody className="space-y-4">
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
@@ -1106,7 +1092,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     loading={actionLoadingKey === 'status:seated'}
                     disabled={Boolean(actionLoadingKey)}
                   >
-                    Seat guests
+                    Seat Guests
                   </Button>
                   <Button
                     size="sm"
@@ -1115,7 +1101,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     loading={actionLoadingKey === 'status:left'}
                     disabled={Boolean(actionLoadingKey)}
                   >
-                    Mark left
+                    Mark Left
                   </Button>
                   <Button
                     size="sm"
@@ -1124,7 +1110,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     loading={actionLoadingKey === 'status:confirmed'}
                     disabled={Boolean(actionLoadingKey)}
                   >
-                    Mark confirmed
+                    Mark Confirmed
                   </Button>
                   <Button
                     size="sm"
@@ -1133,7 +1119,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     loading={actionLoadingKey === 'status:completed'}
                     disabled={Boolean(actionLoadingKey)}
                   >
-                    Mark completed
+                    Mark Completed
                   </Button>
                   <Button
                     size="sm"
@@ -1141,7 +1127,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     onClick={openBookingEdit}
                     disabled={Boolean(actionLoadingKey)}
                   >
-                    Edit booking
+                    Edit Booking
                   </Button>
                   <Button
                     size="sm"
@@ -1149,7 +1135,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     onClick={openPartySizeEdit}
                     disabled={Boolean(actionLoadingKey)}
                   >
-                    Edit party size
+                    Edit Party Size
                   </Button>
                   {booking.status === 'pending_payment' && (
                     <Button
@@ -1159,7 +1145,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                       loading={actionLoadingKey === 'deposit-link'}
                       disabled={Boolean(actionLoadingKey)}
                     >
-                      Copy deposit link
+                      Copy Deposit Link
                     </Button>
                   )}
                 </div>
@@ -1168,7 +1154,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     opposite ends: move it deliberately, then stop anything else moving it. */}
                 {!booking.is_outside_seating && (
                   <div className="space-y-2 border-t border-border pt-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    {/* Styled as the field label of Move table below, which it sits beside. */}
+                    <p className="text-xs font-medium uppercase tracking-wider text-text-muted">
                       Pin to this table
                     </p>
                     <div className="flex items-center justify-between gap-3">
@@ -1178,6 +1165,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                           : 'Not pinned. This booking may be moved to make room for another.'}
                       </p>
                       <Button
+                        size="sm"
                         variant={booking.table_pinned ? 'secondary' : 'primary'}
                         onClick={() => void handleTogglePin(!booking.table_pinned)}
                         loading={actionLoadingKey === 'pin'}
@@ -1189,51 +1177,48 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   </div>
                 )}
 
-                <div className="space-y-2 border-t border-border pt-4">
-                  <label htmlFor="move-table-select" className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                    Move table
-                  </label>
-                  <div className="flex flex-col gap-2 sm:flex-row xl:flex-col 2xl:flex-row">
-                    <div className="min-w-0 grow">
-                      <Select
-                        id="move-table-select"
-                        value={moveTableId}
-                        onChange={(e) => setMoveTableId(e.target.value)}
-                        disabled={loadingMoveTables || availableMoveTables.length === 0}
-                      >
-                        <option value="">
-                          {loadingMoveTables
-                            ? 'Loading available tables...'
-                            : availableMoveTables.length === 0
-                              ? 'No available tables'
-                              : 'Select table to move booking'}
-                        </option>
-                        {availableMoveTables.map((table) => (
-                          <option key={table.id} value={table.id}>
-                            {table.name}
-                            {table.table_number ? ` (${table.table_number})` : ''}
-                            {table.capacity ? ` - cap ${table.capacity}` : ''}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      loading={actionLoadingKey === 'move-table'}
-                      disabled={loadingMoveTables || availableMoveTables.length === 0 || Boolean(actionLoadingKey)}
-                      onClick={() => void handleMoveTable()}
+                <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:items-end xl:flex-col xl:items-stretch 2xl:flex-row 2xl:items-end">
+                  <div className="min-w-0 grow">
+                    <Select
+                      id="move-table-select"
+                      label="Move table"
+                      value={moveTableId}
+                      onChange={(e) => setMoveTableId(e.target.value)}
+                      disabled={loadingMoveTables || availableMoveTables.length === 0}
                     >
-                      Move
-                    </Button>
+                      <option value="">
+                        {loadingMoveTables
+                          ? 'Loading available tables...'
+                          : availableMoveTables.length === 0
+                            ? 'No available tables'
+                            : 'Select table to move booking'}
+                      </option>
+                      {availableMoveTables.map((table) => (
+                        <option key={table.id} value={table.id}>
+                          {table.name}
+                          {table.table_number ? ` (${table.table_number})` : ''}
+                          {table.capacity ? ` - cap ${table.capacity}` : ''}
+                        </option>
+                      ))}
+                    </Select>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={actionLoadingKey === 'move-table'}
+                    disabled={loadingMoveTables || availableMoveTables.length === 0 || Boolean(actionLoadingKey)}
+                    onClick={() => void handleMoveTable()}
+                  >
+                    Move
+                  </Button>
                 </div>
-              </div>
-            </SectionCard>
+              </CardBody>
+            </Card>
           )}
 
-          <SectionCard title="Payment And Deposit">
-            <div className="space-y-4">
+          <Card>
+            <CardHeader title="Payment and Deposit" />
+            <CardBody className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
                 {depositState.kind !== 'none' ? (
                   <Badge className={getTableBookingDepositBadgeClasses(depositState.kind)}>
@@ -1246,12 +1231,25 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 {booking.payment_status && <Badge tone="neutral">{formatLabel(booking.payment_status)}</Badge>}
               </div>
 
-              <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                <DetailItem label="Method" value={formatLabel(booking.payment_method)} />
-                <DetailItem label="Refundable" value={refundableDepositAmount > 0 ? formatGbp(refundableDepositAmount) : '-'} />
-                <DetailItem label="Locked amount" value={booking.deposit_amount_locked != null ? formatGbp(Number(booking.deposit_amount_locked)) : '-'} />
-                <DetailItem label="Captured" value={formatLondonDateTime(booking.card_capture_completed_at)} />
-              </dl>
+              {/* One column at xl, where this card sits in the 420px side column. */}
+              <DescriptionList
+                columns={2}
+                className="xl:grid-cols-1 2xl:grid-cols-2"
+                items={[
+                  { key: 'method', label: 'Method', value: formatLabel(booking.payment_method) },
+                  {
+                    key: 'refundable',
+                    label: 'Refundable',
+                    value: refundableDepositAmount > 0 ? formatGbp(refundableDepositAmount) : '-',
+                  },
+                  {
+                    key: 'locked-amount',
+                    label: 'Locked amount',
+                    value: booking.deposit_amount_locked != null ? formatGbp(Number(booking.deposit_amount_locked)) : '-',
+                  },
+                  { key: 'captured', label: 'Captured', value: formatLondonDateTime(booking.card_capture_completed_at) },
+                ]}
+              />
 
               {booking.paypal_deposit_capture_id && (
                 <p className="break-all text-xs text-text-muted">Capture ID: {booking.paypal_deposit_capture_id}</p>
@@ -1259,7 +1257,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
 
               {refundTotals.totalRefunded > 0 && (
                 <Badge
-                  tone={refundTotals.totalRefunded >= refundableDepositAmount ? 'info' : 'warning'}
+                  tone={refundTotals.totalRefunded >= refundableDepositAmount ? REFUND_PROGRESS_TONE.refunded : REFUND_PROGRESS_TONE.partial}
                   size="sm"
                 >
                   {refundTotals.totalRefunded >= refundableDepositAmount ? 'Refunded' : 'Partially refunded'}
@@ -1272,100 +1270,108 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   size="sm"
                   onClick={() => setShowRefundDialog(true)}
                 >
-                  Process refund
+                  Process Refund
                 </Button>
               )}
+            </CardBody>
+          </Card>
 
-              {booking.payment_status === 'completed' && (
-                <div className="border-t border-border pt-3">
-                  <RefundHistoryTable sourceType="table_booking" sourceId={booking.id} />
-                </div>
-              )}
-            </div>
-          </SectionCard>
+          {/* Its own card, titled Refund History, beside the payment card rather than nested in it. */}
+          {booking.payment_status === 'completed' && (
+            <RefundHistoryTable sourceType="table_booking" sourceId={booking.id} />
+          )}
 
-          <SectionCard title={emailOption?.enabled ? 'Message guest' : 'Send SMS'}>
-            {canEdit ? (
-              <div className="space-y-3">
-                {emailOption?.enabled && (
-                  <fieldset className="space-y-2">
-                    <legend className="sr-only">Send by</legend>
-                    <Radio
-                      name="guest-message-channel"
-                      value="email"
-                      label="Email"
-                      description={emailOption.usable ? undefined : 'No usable email address on file for this guest.'}
-                      checked={messageChannel === 'email'}
-                      onChange={() => setMessageChannel('email')}
-                      disabled={!emailOption.usable || Boolean(actionLoadingKey)}
+          <Card>
+            <CardHeader title={emailOption?.enabled ? 'Message Guest' : 'Send SMS'} />
+            <CardBody>
+              {canEdit ? (
+                <div className="space-y-3">
+                  {emailOption?.enabled && (
+                    <fieldset className="space-y-2">
+                      <legend className="sr-only">Send by</legend>
+                      <Radio
+                        name="guest-message-channel"
+                        value="email"
+                        label="Email"
+                        description={emailOption.usable ? undefined : 'No usable email address on file for this guest.'}
+                        checked={messageChannel === 'email'}
+                        onChange={() => setMessageChannel('email')}
+                        disabled={!emailOption.usable || Boolean(actionLoadingKey)}
+                      />
+                      <Radio
+                        name="guest-message-channel"
+                        value="sms"
+                        label="Text"
+                        checked={messageChannel === 'sms'}
+                        onChange={() => setMessageChannel('sms')}
+                        disabled={Boolean(actionLoadingKey)}
+                      />
+                    </fieldset>
+                  )}
+                  {emailChosen && (
+                    <Input
+                      label="Subject"
+                      value={emailSubject}
+                      maxLength={200}
+                      onChange={(e) => setEmailSubject(e.target.value)}
                     />
-                    <Radio
-                      name="guest-message-channel"
-                      value="sms"
-                      label="Text"
-                      checked={messageChannel === 'sms'}
-                      onChange={() => setMessageChannel('sms')}
-                      disabled={Boolean(actionLoadingKey)}
-                    />
-                  </fieldset>
-                )}
-                {emailChosen && (
-                  <Input
-                    label="Subject"
-                    value={emailSubject}
-                    maxLength={200}
-                    onChange={(e) => setEmailSubject(e.target.value)}
+                  )}
+                  <Textarea
+                    label="Message"
+                    value={smsBody}
+                    onChange={(e) => setSmsBody(e.target.value)}
+                    rows={5}
+                    maxLength={emailChosen ? 2000 : 640}
+                    placeholder="Type message..."
                   />
-                )}
-                <Textarea
-                  value={smsBody}
-                  onChange={(e) => setSmsBody(e.target.value)}
-                  rows={5}
-                  maxLength={emailChosen ? 2000 : 640}
-                  placeholder="Type message..."
-                />
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-text-muted">{smsBody.length}/{emailChosen ? 2000 : 640}</p>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    loading={actionLoadingKey === 'send-sms'}
-                    disabled={Boolean(actionLoadingKey)}
-                    onClick={() => void (emailChosen ? handleSendEmail() : handleSendSms())}
-                  >
-                    {emailChosen ? 'Send email' : 'Send SMS'}
-                  </Button>
+                  <FormFooter start={<span className="text-xs">{smsBody.length}/{emailChosen ? 2000 : 640}</span>}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={actionLoadingKey === 'send-sms'}
+                      disabled={Boolean(actionLoadingKey)}
+                      onClick={() => void (emailChosen ? handleSendEmail() : handleSendSms())}
+                    >
+                      {emailChosen ? 'Send Email' : 'Send SMS'}
+                    </Button>
+                  </FormFooter>
                 </div>
-              </div>
-            ) : (
-              <p className="text-sm text-text-muted">You do not have permission to send SMS messages.</p>
-            )}
-          </SectionCard>
+              ) : (
+                <p className="text-sm text-text-muted">You do not have permission to send SMS messages.</p>
+              )}
+            </CardBody>
+          </Card>
 
-          <SectionCard title="Operational Flags">
+          <Card>
+            <CardHeader title="Operational Flags" />
             {operationalFlags.length > 0 ? (
-              <ul className="space-y-2">
-                {operationalFlags.map((flag) => (
-                  <li key={flag} className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning-fg">
-                    {flag}
-                  </li>
-                ))}
-              </ul>
+              <CardBody>
+                <ul className="space-y-2">
+                  {operationalFlags.map((flag) => (
+                    <li key={flag}>
+                      <Alert tone="warning" size="sm" role="status">
+                        {flag}
+                      </Alert>
+                    </li>
+                  ))}
+                </ul>
+              </CardBody>
             ) : (
-              <p className="text-sm text-text-muted">No operational flags for this booking.</p>
+              <Empty size="sm" title="No operational flags for this booking" />
             )}
-          </SectionCard>
+          </Card>
 
           {canManage && (
-            <SectionCard title="Danger Zone" className="border-danger-border">
-              <div className="flex flex-wrap gap-2">
+            <Card className="border-danger-border">
+              <CardHeader title="Danger Zone" />
+              <CardBody className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   variant="danger"
                   onClick={() => setNoShowConfirmOpen(true)}
                   disabled={Boolean(actionLoadingKey)}
                 >
-                  Mark no-show
+                  Mark No-Show
                 </Button>
                 <Button
                   size="sm"
@@ -1373,7 +1379,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   onClick={() => setCancelConfirmOpen(true)}
                   disabled={Boolean(actionLoadingKey)}
                 >
-                  Cancel booking
+                  Cancel Booking
                 </Button>
                 <Button
                   size="sm"
@@ -1381,52 +1387,58 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   onClick={() => setDeleteConfirmOpen(true)}
                   disabled={Boolean(actionLoadingKey)}
                 >
-                  Delete booking
+                  Delete Booking
                 </Button>
-              </div>
-            </SectionCard>
+              </CardBody>
+            </Card>
           )}
         </aside>
       </div>
 
-      <SectionCard title="Audit Trail" description="Every recorded booking audit event, newest first.">
+      <Card>
+        <CardHeader title="Audit Trail" subtitle="Every recorded booking audit event, newest first" />
         {auditTrail.length === 0 ? (
-          <p className="text-sm text-text-muted">No audit events have been recorded for this booking yet.</p>
+          <Empty size="sm" title="No audit events have been recorded for this booking yet" />
         ) : (
-          <ol className="divide-y divide-border">
-            {auditTrail.map((entry) => {
-              const details = getAuditDetails(entry)
-              return (
-                <li key={entry.id} className="grid grid-cols-1 gap-3 py-4 lg:grid-cols-[220px_minmax(0,1fr)_180px]">
-                  <div>
-                    <p className="text-sm font-medium text-text">{formatLondonDateTime(entry.created_at)}</p>
-                    <p className="mt-0.5 text-xs text-text-muted">{getAuditActor(entry)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-text">{formatAuditEvent(entry.event)}</p>
-                    {details.length > 0 && (
-                      <ul className="mt-2 space-y-1">
-                        {details.map((detail) => (
-                          <li key={detail} className="whitespace-pre-wrap text-sm text-text-muted">
-                            {detail}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div className="lg:text-right">
-                    {entry.new_status ? (
-                      <Badge tone="neutral">{formatLabel(entry.new_status)}</Badge>
-                    ) : (
-                      <span className="text-xs text-text-soft">No status change</span>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ol>
+          <CardBody>
+            <ol className="divide-y divide-border">
+              {auditTrail.map((entry) => {
+                const details = getAuditDetails(entry)
+                return (
+                  <li key={entry.id} className="grid grid-cols-1 gap-3 py-4 first:pt-0 last:pb-0 lg:grid-cols-[220px_minmax(0,1fr)_180px]">
+                    <div>
+                      <p className="text-sm font-medium text-text">{formatLondonDateTime(entry.created_at)}</p>
+                      <p className="mt-0.5 text-xs text-text-muted">{getAuditActor(entry)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-text">{formatAuditEvent(entry.event)}</p>
+                      {details.length > 0 && (
+                        <ul className="mt-2 space-y-1">
+                          {details.map((detail) => (
+                            <li key={detail} className="whitespace-pre-wrap text-sm text-text-muted">
+                              {detail}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="lg:text-right">
+                      {entry.new_status ? (
+                        // The booking status colour map, as on every other status badge.
+                        <Badge className={getTableBookingStatusBadgeClasses(entry.new_status)}>
+                          {formatLabel(entry.new_status)}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-text-soft">No status change</span>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ol>
+          </CardBody>
         )}
-      </SectionCard>
+      </Card>
 
       <ConfirmDialog
         open={noShowConfirmOpen}
@@ -1436,9 +1448,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           await handleStatusAction('no_show')
         }}
         type="warning"
-        title="Mark as no-show?"
+        title="Mark as No-Show?"
         message="This will mark the booking as no-show and remove it from active covers."
-        confirmText="Mark No-show"
+        confirmText="Mark No-Show"
         closeOnConfirm={false}
       />
 
@@ -1450,7 +1462,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           await handleStatusAction('cancelled')
         }}
         type="warning"
-        title="Cancel this booking?"
+        title="Cancel This Booking?"
         message="The customer will be notified."
         confirmText="Cancel Booking"
         confirmVariant="danger"
@@ -1463,36 +1475,36 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         onConfirm={() => void handleDeleteBooking()}
         type="danger"
         destructive
-        title="Delete this booking?"
+        title="Delete This Booking?"
         message={`Delete booking ${booking.booking_reference ?? ''} permanently? This cannot be undone.`}
         confirmText="Delete"
       />
 
+      {/* The DS Modal panel carries data-touch-targets, so on a touch screen (BOH on the bar iPad)
+          each dialog's controls get the 44px floor (D6). */}
       <Modal
         open={bookingEditOpen}
         onClose={() => setBookingEditOpen(false)}
-        title="Edit booking"
-        size="xl"
+        title="Edit Booking"
+        width="xl"
         footer={
-          // Modals render outside the page's data-touch-targets wrapper, so each one opts in
-          // again: on a touch screen (BOH on the bar iPad) its controls get the 44px floor (D6).
-          <div className="contents" data-touch-targets>
-            <Button variant="secondary" size="sm" onClick={() => setBookingEditOpen(false)}>
+          <>
+            <Button variant="secondary" onClick={() => setBookingEditOpen(false)}>
               Cancel
             </Button>
             <Button
-              size="sm"
+              variant="primary"
               onClick={() => void handleSubmitBookingEdit()}
               loading={actionLoadingKey === 'booking-edit'}
               disabled={Boolean(actionLoadingKey) || !bookingEdit}
             >
               Save
             </Button>
-          </div>
+          </>
         }
       >
         {bookingEdit && (
-          <div className="space-y-5" data-touch-targets>
+          <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Input
                 label="Date"
@@ -1517,8 +1529,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               />
             </div>
 
-            <div>
-              <p className="mb-1 text-ui font-medium text-text">Customer</p>
+            <Field label="Customer">
               <CustomerSearchInput
                 selectedCustomerId={bookingEdit.customer_id}
                 placeholder="Search customers..."
@@ -1526,7 +1537,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   setBookingEdit((prev) => prev ? { ...prev, customer_id: customer?.id ?? null } : prev)
                 }
               />
-            </div>
+            </Field>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Textarea
@@ -1567,27 +1578,27 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       <Modal
         open={preorderEditOpen}
         onClose={() => setPreorderEditOpen(false)}
-        title="Edit pre-order"
-        size="lg"
+        title="Edit Pre-Order"
+        width="lg"
         footer={
-          <div className="contents" data-touch-targets>
-            <Button variant="secondary" size="sm" onClick={() => setPreorderEditOpen(false)}>
+          <>
+            <Button variant="secondary" onClick={() => setPreorderEditOpen(false)}>
               Cancel
             </Button>
             <Button
-              size="sm"
+              variant="primary"
               onClick={() => void handleSubmitPreorderEdit()}
               loading={actionLoadingKey === 'preorder-edit'}
               disabled={Boolean(actionLoadingKey)}
             >
               Save
             </Button>
-          </div>
+          </>
         }
       >
-        <div className="space-y-4" data-touch-targets>
+        <ul className="divide-y divide-border">
           {preorderItems.map((item) => (
-            <div key={item.id} className="rounded-md border border-border p-3">
+            <li key={item.id} className="py-4 first:pt-0 last:pb-0">
               <p className="text-sm font-medium text-text">
                 {item.menu_dish?.name || item.custom_item_name || 'Unnamed item'}
               </p>
@@ -1622,18 +1633,37 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   }
                 />
               </div>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </Modal>
 
       <Modal
         open={partySizeEditOpen}
         onClose={() => setPartySizeEditOpen(false)}
-        title="Edit party size"
-        size="sm"
+        title="Edit Party Size"
+        width="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPartySizeEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleSubmitPartySize()}
+              loading={actionLoadingKey === 'party-size'}
+              disabled={
+                Boolean(actionLoadingKey) ||
+                !partySizeEditValue ||
+                Number.parseInt(partySizeEditValue, 10) < 1
+              }
+            >
+              Save
+            </Button>
+          </>
+        }
       >
-        <div className="space-y-4" data-touch-targets>
+        <div className="space-y-4">
           <Input
             id="party-size-input"
             label="New party size"
@@ -1645,11 +1675,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           />
           <ChristmasCourseFields bookingId={booking.id} partySize={Number(partySizeEditValue)} onChange={setChristmasCourseCounts} />
           {partySizeNeedsLargerTable && (
-            <div className="space-y-3 rounded-md border border-warning-border bg-warning-soft p-3">
-              <p className="text-sm text-warning-fg">
+            <>
+              <Alert tone="warning" role="status">
                 This party is larger than the current {assignedCapacity} seats. Saving will move it
-                to a larger table setup automatically — pick specific tables below if you&rsquo;d prefer.
-              </p>
+                to a larger table setup automatically. Pick specific tables below if you&rsquo;d prefer.
+              </Alert>
               <Select
                 id="party-size-move-table"
                 label="Larger table"
@@ -1672,34 +1702,14 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                   </option>
                 ))}
               </Select>
-            </div>
+            </>
           )}
-          <label className="flex items-center gap-2 text-sm text-text">
-            <input
-              type="checkbox"
-              checked={partySizeEditSendSms}
-              onChange={(event) => setPartySizeEditSendSms(event.target.checked)}
-            />
-            {/* The request goes by text, or by email first when table_party_size_deposit_email_first is on. */}
-            Notify guest
-          </label>
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setPartySizeEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => void handleSubmitPartySize()}
-              loading={actionLoadingKey === 'party-size'}
-              disabled={
-                Boolean(actionLoadingKey) ||
-                !partySizeEditValue ||
-                Number.parseInt(partySizeEditValue, 10) < 1
-              }
-            >
-              Save
-            </Button>
-          </div>
+          {/* The request goes by text, or by email first when table_party_size_deposit_email_first is on. */}
+          <Checkbox
+            label="Notify guest"
+            checked={partySizeEditSendSms}
+            onChange={(checked) => setPartySizeEditSendSms(checked)}
+          />
         </div>
       </Modal>
 

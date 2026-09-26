@@ -4,9 +4,19 @@ import { Role } from '@/types/rbac'
 import { deleteRole } from '@/app/actions/rbac'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardHeader, CardTitle, CardDescription, toast, Icon } from '@/ds'
-import { Button, IconButton, LinkButton } from '@/ds'
-import { Badge } from '@/ds'
+import {
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  ConfirmDialog,
+  Icon,
+  IconButton,
+  LinkButton,
+  toast,
+} from '@/ds'
+import { ROLE_SYSTEM_FLAG_TONE } from '../_shared/status-ui'
 
 interface RoleCardProps {
   role: Role
@@ -16,14 +26,11 @@ interface RoleCardProps {
 
 export default function RoleCard({ role, onEditPermissions, canManage }: RoleCardProps) {
   const [isDeleting, setIsDeleting] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const router = useRouter()
 
   const handleDelete = async () => {
     if (!canManage || role.is_system) {
-      return
-    }
-
-    if (!confirm(`Are you sure you want to delete the role "${role.name}"?`)) {
       return
     }
 
@@ -42,58 +49,61 @@ export default function RoleCard({ role, onEditPermissions, canManage }: RoleCar
 
   return (
     <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <CardTitle className="flex items-center">
-              {role.name}
-              {role.is_system && (
-                <Badge tone="neutral" size="sm" className="ml-2">
-                  System
-                </Badge>
-              )}
-            </CardTitle>
-            {role.description && (
-              <CardDescription>{role.description}</CardDescription>
+      <CardHeader
+        title={role.name}
+        action={role.is_system ? <Badge tone={ROLE_SYSTEM_FLAG_TONE} size="sm">System</Badge> : undefined}
+      />
+
+      <CardBody className="space-y-4">
+        {role.description && (
+          <p className="text-sm text-text-muted">{role.description}</p>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Button
+            onClick={onEditPermissions}
+            variant="secondary"
+            size="sm"
+            leftIcon={<Icon name="shieldCheck" size={16} />}
+          >
+            {canManage ? 'Permissions' : 'View Permissions'}
+          </Button>
+
+          <div className="flex gap-2">
+            {canManage && !role.is_system && (
+              <LinkButton
+                href={`/roles/${role.id}/edit`}
+                variant="secondary"
+                size="sm"
+                icon={<Icon name="edit" size={16} />}
+              >
+                Edit
+              </LinkButton>
+            )}
+            {!role.is_system && (
+              <IconButton
+                onClick={() => setConfirmOpen(true)}
+                disabled={isDeleting || !canManage}
+                variant="secondary"
+                size="sm"
+                aria-label="Delete role"
+              >
+                <Icon name="trash" size={16} />
+              </IconButton>
             )}
           </div>
         </div>
-      </CardHeader>
+      </CardBody>
 
-      <div className="px-4 py-3 sm:px-6 flex flex-wrap justify-between items-center gap-2 border-t border-border">
-        <Button
-          onClick={onEditPermissions}
-          variant="secondary"
-          size="sm"
-          leftIcon={<Icon name="shieldCheck" size={16} />}
-        >
-          {canManage ? 'Permissions' : 'View Permissions'}
-        </Button>
-
-        <div className="flex space-x-2">
-          {canManage && !role.is_system && (
-            <LinkButton
-              href={`/roles/${role.id}/edit`}
-              variant="secondary"
-              size="sm"
-              icon={<Icon name="edit" size={16} />}
-            >
-              Edit
-            </LinkButton>
-          )}
-          {!role.is_system && (
-            <IconButton
-              onClick={handleDelete}
-              disabled={isDeleting || !canManage}
-              variant="secondary"
-              size="sm"
-              aria-label="Delete role"
-            >
-              <Icon name="trash" size={16} />
-            </IconButton>
-          )}
-        </div>
-      </div>
+      <ConfirmDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={handleDelete}
+        title="Delete Role"
+        message={`Are you sure you want to delete the role "${role.name}"?`}
+        confirmLabel="Delete Role"
+        tone="danger"
+      />
     </Card>
   )
 }

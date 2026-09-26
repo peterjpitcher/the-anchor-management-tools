@@ -15,17 +15,6 @@ import type {
 
 export type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
 
-export interface MarketingNavItem {
-  label: string
-  href: string
-}
-
-export const MARKETING_SECTION_NAV: MarketingNavItem[] = [
-  { label: 'Campaigns', href: '/marketing' },
-  { label: 'Contacts', href: '/marketing/contacts' },
-  { label: 'Settings', href: '/marketing/settings' },
-]
-
 // ---------------------------------------------------------------------------
 // Campaign status
 // ---------------------------------------------------------------------------
@@ -53,6 +42,28 @@ export function CampaignStatusBadge({ status }: { status: MarketingCampaignStatu
 }
 
 // ---------------------------------------------------------------------------
+// The campaign send switch (Settings)
+// ---------------------------------------------------------------------------
+
+/** On is good news; off is a warning, because nothing will go out while it is off. */
+const SEND_SWITCH_TONES: Record<'on' | 'off', BadgeTone> = {
+  on: 'success',
+  off: 'warning',
+}
+
+export function SendSwitchBadge({ enabled }: { enabled: boolean }) {
+  const state = enabled ? 'on' : 'off'
+  return <Badge tone={SEND_SWITCH_TONES[state]}>{enabled ? 'On' : 'Off'}</Badge>
+}
+
+/** The email provider on Settings, shown only once its configuration is complete. */
+const PROVIDER_READY_TONE: BadgeTone = 'success'
+
+export function ProviderReadyBadge() {
+  return <Badge tone={PROVIDER_READY_TONE}>Ready</Badge>
+}
+
+// ---------------------------------------------------------------------------
 // Recipient status and skip reasons
 // ---------------------------------------------------------------------------
 
@@ -76,6 +87,13 @@ const RECIPIENT_STATUS_TONES: Record<MarketingRecipientStatus, BadgeTone> = {
 
 export function RecipientStatusBadge({ status }: { status: MarketingRecipientStatus }) {
   return <Badge tone={RECIPIENT_STATUS_TONES[status]}>{RECIPIENT_STATUS_LABELS[status]}</Badge>
+}
+
+/** A recipient's engagement flags (delivered, opened, clicked): shown only when it happened. */
+const ENGAGEMENT_FLAG_TONE: BadgeTone = 'success'
+
+export function EngagedBadge() {
+  return <Badge tone={ENGAGEMENT_FLAG_TONE}>Yes</Badge>
 }
 
 export const SKIP_REASON_LABELS: Record<MarketingSkipReason, string> = {
@@ -128,6 +146,26 @@ const MARKETING_STATUS_TONES: Record<MarketingStatus, BadgeTone> = {
 
 export function MarketingStatusBadge({ status }: { status: MarketingStatus }) {
   return <Badge tone={MARKETING_STATUS_TONES[status]}>{MARKETING_STATUS_LABELS[status]}</Badge>
+}
+
+/**
+ * How sure the company-name hint is when suggesting a subscriber type. A confident hint is
+ * information; an unsure one asks for a check, so it is a warning.
+ */
+export const SUBSCRIBER_SUGGESTION_TONES: Record<'high' | 'low', 'info' | 'warning'> = {
+  high: 'info',
+  low: 'warning',
+}
+
+/** What the contacts CSV preview says about a row before anything is imported. */
+export type ContactImportFlag = 'ready' | 'problem' | 'repeated' | 'existing' | 'freemail'
+
+export const CONTACT_IMPORT_FLAG_TONES: Record<ContactImportFlag, BadgeTone> = {
+  ready: 'success',
+  problem: 'danger',
+  repeated: 'danger',
+  existing: 'info',
+  freemail: 'warning',
 }
 
 export const SUBSCRIBER_TYPE_LABELS: Record<SubscriberType, string> = {

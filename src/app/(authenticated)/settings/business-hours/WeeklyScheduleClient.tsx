@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Alert, toast } from '@/ds'
+import { Alert, CardBody, PageLoading } from '@/ds'
 import type { BusinessHours } from '@/types/business-hours'
 import { getHoursVersionRows, type HoursVersionSummary } from '@/app/actions/business-hours'
 import { BusinessHoursManager } from './BusinessHoursManager'
@@ -33,21 +33,25 @@ export function WeeklyScheduleClient({
   const [selectedId, setSelectedId] = useState<string | null>(activeVersionId)
   const [rows, setRows] = useState<BusinessHours[]>(activeRows)
   const [loading, setLoading] = useState(false)
+  // A version that fails to load is an error, never shown as a schedule with no days.
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const selected = versions.find(v => v.id === selectedId) ?? null
 
   useEffect(() => {
     if (!selectedId || selectedId === activeVersionId) {
       setRows(activeRows)
+      setLoadError(null)
       return
     }
     let live = true
     setLoading(true)
+    setLoadError(null)
     getHoursVersionRows(selectedId)
       .then(result => {
         if (!live) return
         if (result.error) {
-          toast.error(result.error)
+          setLoadError(result.error)
           setRows([])
         } else {
           setRows(result.data ?? [])
@@ -77,11 +81,15 @@ export function WeeklyScheduleClient({
       />
 
       {loading ? (
-        <p className="p-4 text-sm text-text-muted">Loading that schedule...</p>
+        <PageLoading inline label="Loading that schedule" />
+      ) : loadError ? (
+        <CardBody>
+          <Alert tone="danger" title="Could not load that schedule">{loadError}</Alert>
+        </CardBody>
       ) : rows.length === 0 ? (
-        <div className="p-4">
+        <CardBody>
           <Alert tone="warning">This schedule has no days set up.</Alert>
-        </div>
+        </CardBody>
       ) : (
         <BusinessHoursManager
           canManage={canManage}

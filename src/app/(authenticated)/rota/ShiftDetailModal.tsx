@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Alert, Badge, Button, Checkbox, Field, Input, Modal, Select, toast } from '@/ds';
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Checkbox, ConfirmDialog, DescriptionList, Empty, Field, Input, Modal, Select, toast } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { updateShift, deleteShift } from '@/app/actions/rota';
 import type { RotaShift, RotaEmployee, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
@@ -10,7 +10,8 @@ import MarkSickModal from './MarkSickModal';
 import { PremiumControl, usePremiumControl } from './CreateShiftModal';
 import { displayName } from '@/lib/employees/display-name';
 import { calculatePaidHours } from '@/lib/rota/pay-math';
-import { ROTA_SHIFT_STATUS_CLASSES, rotaDepartmentClasses, rotaShiftStatusClasses } from '@/lib/rota/status-ui';
+import { rotaDepartmentClasses, rotaShiftStatusClasses } from '@/lib/rota/status-ui';
+import { OPEN_SHIFT_REQUEST_STATUS_TONE } from './_shared/status-ui';
 
 interface ShiftDetailModalProps {
   shift: RotaShift;
@@ -38,7 +39,7 @@ function formatDate(iso: string): string {
 function describePremium(shift: RotaShift): string | null {
   if (shift.rate_multiplier == null && shift.rate_override == null) return null;
 
-  // `numeric` DB columns arrive as STRINGS — coerce before comparing/formatting
+  // `numeric` DB columns arrive as STRINGS: coerce before comparing/formatting
   // so a ×1.5 shift is labelled correctly and `.toFixed` never runs on a string.
   const multiplier = shift.rate_multiplier != null ? Number(shift.rate_multiplier) : null;
   const override = shift.rate_override != null ? Number(shift.rate_override) : null;
@@ -221,15 +222,46 @@ export default function ShiftDetailModal({
     });
   };
 
-  const handleDelete = () => {
-    startTransition(async () => {
-      const result = await deleteShift(shift.id);
-      if (!result.success) { toast.error((result as { success: false; error: string }).error); return; }
-      toast.success('Shift deleted');
-      onDeleted(shift.id);
-      onClose();
-    });
+  const handleDelete = async () => {
+    const result = await deleteShift(shift.id);
+    if (!result.success) { toast.error((result as { success: false; error: string }).error); return; }
+    toast.success('Shift deleted');
+    onDeleted(shift.id);
+    onClose();
   };
+
+  const detailItems = [
+    ...(shift.name ? [{ key: 'label', label: 'Shift label', value: shift.name }] : []),
+    ...(!isCouldntWork
+      ? [
+          {
+            key: 'time',
+            label: 'Time',
+            value: `${formatTime12Hour(shift.start_time)} – ${formatTime12Hour(shift.end_time)}${shift.is_overnight ? ' (+1)' : ''}`,
+          },
+          { key: 'break', label: 'Break', value: `${shift.unpaid_break_minutes} min` },
+          { key: 'paid', label: 'Paid hours', value: `${paidH.toFixed(1)}h` },
+          ...(premiumSummary ? [{ key: 'premium', label: 'Premium', value: premiumSummary }] : []),
+        ]
+      : []),
+    {
+      key: 'acceptance',
+      label: 'Acceptance',
+      value: (
+        <>
+          <span className="font-medium">{acceptanceStatus}</span>
+          {acceptanceDetail && <span className="block text-xs text-text-muted">{acceptanceDetail}</span>}
+          {shift.auto_accept_reason && <span className="block text-xs text-text-muted">{shift.auto_accept_reason}</span>}
+        </>
+      ),
+    },
+    ...(shift.notes ? [{ key: 'notes', label: 'Notes', value: shift.notes }] : []),
+    ...(shift.status === 'sick' && shift.sick_reason
+      ? [{ key: 'reason', label: "Couldn't Work reason", value: shift.sick_reason }]
+      : []),
+  ];
+
+  const cancelEdit = () => { setEditing(false); setError(''); };
 
   return (
     <Modal
@@ -238,9 +270,48 @@ export default function ShiftDetailModal({
       title={empName}
       width="md"
       footer={
-        <Button type="button" variant="secondary" onClick={onClose}>
-          Close
-        </Button>
+        editing ? (
+          <>
+            <Button type="button" variant="secondary" onClick={cancelEdit} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primary" onClick={handleSaveEdit} disabled={isPending}>
+              {isPending ? 'Saving…' : 'Save Changes'}
+            </Button>
+          </>
+        ) : (
+          <>
+            {canEdit && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setConfirmDelete(true)}
+                disabled={isPending}
+                className="text-danger-fg hover:bg-danger-soft hover:text-danger-fg sm:mr-auto"
+              >
+                Delete
+              </Button>
+            )}
+            {canEdit && shift.status === 'scheduled' && (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setShowSickModal(true)}
+                disabled={isPending}
+              >
+                Mark Couldn&apos;t Work
+              </Button>
+            )}
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Close
+            </Button>
+            {canEdit && (
+              <Button type="button" variant="primary" onClick={() => setEditing(true)} disabled={isPending}>
+                Edit Shift
+              </Button>
+            )}
+          </>
+        )
       }
     >
       <div className="space-y-4">
@@ -260,106 +331,59 @@ export default function ShiftDetailModal({
               </Badge>
             </div>
 
-            <dl className="space-y-2">
-              {shift.name && (
-                <div className="flex justify-between text-sm">
-                  <dt className="text-text-muted">Shift label</dt>
-                  <dd className="max-w-[260px] text-right font-medium text-text-strong">{shift.name}</dd>
-                </div>
-              )}
-              {!isCouldntWork && (
-                <>
-                  <div className="flex justify-between text-sm">
-                    <dt className="text-text-muted">Time</dt>
-                    <dd className="text-text-strong font-medium">{formatTime12Hour(shift.start_time)} – {formatTime12Hour(shift.end_time)}{shift.is_overnight ? ' (+1)' : ''}</dd>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <dt className="text-text-muted">Break</dt>
-                    <dd className="text-text-strong">{shift.unpaid_break_minutes} min</dd>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <dt className="text-text-muted">Paid hours</dt>
-                    <dd className="text-text-strong font-medium">{paidH.toFixed(1)}h</dd>
-                  </div>
-                  {premiumSummary && (
-                    <div className="flex justify-between text-sm">
-                      <dt className="text-text-muted">Premium</dt>
-                      <dd className="text-text-strong text-right max-w-[260px]">{premiumSummary}</dd>
-                    </div>
-                  )}
-                </>
-              )}
-              <div className="flex justify-between text-sm">
-                <dt className="text-text-muted">Acceptance</dt>
-                <dd className="text-text-strong text-right max-w-[260px]">
-                  <span className="font-medium">{acceptanceStatus}</span>
-                  {acceptanceDetail && <span className="block text-xs text-text-muted">{acceptanceDetail}</span>}
-                  {shift.auto_accept_reason && <span className="block text-xs text-text-muted">{shift.auto_accept_reason}</span>}
-                </dd>
-              </div>
-              {shift.notes && (
-                <div className="flex justify-between text-sm">
-                  <dt className="text-text-muted">Notes</dt>
-                  <dd className="text-text-strong text-right max-w-[240px]">{shift.notes}</dd>
-                </div>
-              )}
-              {shift.status === 'sick' && shift.sick_reason && (
-                <div className="flex justify-between text-sm">
-                  <dt className="text-text-muted">Couldn&apos;t Work reason</dt>
-                  <dd className="text-text-strong text-right max-w-[240px]">{shift.sick_reason}</dd>
-                </div>
-              )}
-            </dl>
+            <DescriptionList columns={2} items={detailItems} />
 
             {shift.is_open_shift && (
-              <div className="rounded-lg border border-warning-border bg-warning-soft p-3">
-                <p className="text-sm font-semibold text-warning-fg">Open shift requests</p>
+              <Card>
+                <CardHeader title="Open Shift Requests" />
                 {openShiftRequests.length === 0 ? (
-                  <p className="mt-1 text-xs text-warning-fg">No requests yet.</p>
+                  <Empty size="sm" title="No requests yet" />
                 ) : (
-                  <div className="mt-2 space-y-2">
+                  <ul className="divide-y divide-border">
                     {openShiftRequests.map(request => (
-                      <div key={request.id} className="rounded-md bg-surface/70 px-3 py-2 text-xs text-warning-fg">
+                      <li key={request.id} className="px-pad-card py-3 text-xs">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium">{request.employee_name}</span>
-                          <span className="capitalize text-warning-fg">{request.status}</span>
+                          <span className="font-medium text-text-strong">{request.employee_name}</span>
+                          <Badge size="sm" tone={OPEN_SHIFT_REQUEST_STATUS_TONE[request.status] ?? 'neutral'} className="capitalize">
+                            {request.status}
+                          </Badge>
                         </div>
-                        {request.note && <p className="mt-1 text-warning-fg">{request.note}</p>}
-                      </div>
+                        {request.note && <p className="mt-1 text-text-muted">{request.note}</p>}
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 )}
-              </div>
+              </Card>
             )}
 
             {rejectionHistory.length > 0 && (
-              <div className={`rounded-lg p-3 ${ROTA_SHIFT_STATUS_CLASSES.rejected}`}>
-                <p className="text-sm font-semibold">Rejected shift history</p>
-                <div className="mt-2 space-y-2">
+              <Card>
+                <CardHeader title="Rejected Shift History" />
+                <ul className="divide-y divide-border">
                   {rejectionHistory.map(rejection => (
-                    <div key={rejection.id} className="rounded-md bg-danger-soft px-3 py-2 text-xs text-danger-fg">
+                    <li key={rejection.id} className="px-pad-card py-3 text-xs">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-medium">{rejectedEmployeeNames[rejection.employee_id] ?? 'Unknown staff member'}</span>
-                        <span>{formatDateTime(rejection.rejected_at)}</span>
+                        <span className="font-medium text-text-strong">{rejectedEmployeeNames[rejection.employee_id] ?? 'Unknown staff member'}</span>
+                        <span className="text-text-muted">{formatDateTime(rejection.rejected_at)}</span>
                       </div>
-                      <p className="mt-1">
+                      <p className="mt-1 text-text">
                         {formatTime12Hour(rejection.start_time)} – {formatTime12Hour(rejection.end_time)}
                         {rejection.is_overnight ? ' (+1)' : ''}
                         {rejection.department ? ` · ${rejection.department}` : ''}
                       </p>
-                      {rejection.rejection_note && <p className="mt-1">{rejection.rejection_note}</p>}
-                    </div>
+                      {rejection.rejection_note && <p className="mt-1 text-danger-fg">{rejection.rejection_note}</p>}
+                    </li>
                   ))}
-                </div>
-              </div>
+                </ul>
+              </Card>
             )}
 
-            <div className="rounded-lg border border-border bg-surface-2 p-3">
-              <p className="text-sm font-semibold text-text-strong">Shift audit trail</p>
+            <Card>
+              <CardHeader title="Shift Audit Trail" />
               {auditTrail.length === 0 ? (
-                <p className="mt-1 text-xs text-text-muted">No recorded changes for this shift.</p>
+                <Empty size="sm" title="No recorded changes for this shift" />
               ) : (
-                <div className="mt-2 space-y-3">
+                <CardBody className="space-y-3">
                   {auditTrail.map(entry => {
                     const lines = auditLines(entry, auditValueLabels);
                     return (
@@ -377,50 +401,9 @@ export default function ShiftDetailModal({
                       </div>
                     );
                   })}
-                </div>
+                </CardBody>
               )}
-            </div>
-
-            {canEdit && (
-              <div className="flex flex-wrap gap-2 pt-2">
-                <Button type="button" size="sm" onClick={() => setEditing(true)} disabled={isPending}>
-                  Edit
-                </Button>
-                {shift.status === 'scheduled' && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => setShowSickModal(true)}
-                    disabled={isPending}
-                  >
-                    Mark Couldn&apos;t Work
-                  </Button>
-                )}
-                {!confirmDelete ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setConfirmDelete(true)}
-                    disabled={isPending}
-                    className="text-danger-fg hover:text-danger-fg hover:bg-danger-soft"
-                  >
-                    Delete
-                  </Button>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-danger-fg">Delete this shift?</span>
-                    <Button type="button" size="sm" variant="danger" onClick={handleDelete} disabled={isPending}>
-                      {isPending ? 'Deleting…' : 'Confirm'}
-                    </Button>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
-                      Cancel
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
+            </Card>
           </>
         ) : (
           /* Edit view */
@@ -479,19 +462,19 @@ export default function ShiftDetailModal({
                 Paid: <strong>{calculatePaidHours(startTime, endTime, parseInt(breakMins) || 0, overnight).toFixed(1)}h</strong>
               </p>
             )}
-
-            <div className="flex gap-2 pt-1">
-              <Button type="button" variant="primary" onClick={handleSaveEdit} disabled={isPending}>
-                {isPending ? 'Saving…' : 'Save changes'}
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => { setEditing(false); setError(''); }}>
-                Cancel
-              </Button>
-            </div>
           </div>
         )}
       </div>
-      {/* Rendered inside this dialog so Headless UI stacks it on top as a nested dialog. */}
+      {/* Rendered inside this dialog so Headless UI stacks them on top as nested dialogs. */}
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDelete}
+        title="Delete Shift?"
+        message={`Delete ${empName}'s shift on ${formatDate(shift.shift_date)}?`}
+        confirmLabel="Delete"
+        tone="danger"
+      />
       {showSickModal && (
         <MarkSickModal
           shift={shift}

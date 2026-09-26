@@ -25,7 +25,7 @@ describe('EventArtworkDownloadsCard', () => {
     )
 
     expect(screen.getByText('Table talker (print)')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Print sheet \(A4\)/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Print Sheet \(A4\)/ })).toBeEnabled()
   })
 
   it('holds the sheet back while the table talker is unbranded', () => {
@@ -37,7 +37,7 @@ describe('EventArtworkDownloadsCard', () => {
       />
     )
 
-    expect(screen.getByRole('button', { name: /Print sheet \(A4\)/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Print Sheet \(A4\)/ })).toBeDisabled()
   })
 
   it('offers no sheet for any other artwork', () => {
@@ -49,6 +49,6 @@ describe('EventArtworkDownloadsCard', () => {
       />
     )
 
-    expect(screen.queryByRole('button', { name: /Print sheet/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Print Sheet/ })).toBeNull()
   })
 })

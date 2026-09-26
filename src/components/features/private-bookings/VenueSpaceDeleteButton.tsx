@@ -1,6 +1,7 @@
 'use client'
 
-import { IconButton, Icon } from '@/ds'
+import { useRef, useState } from 'react'
+import { ConfirmDialog, IconButton, Icon } from '@/ds'
 
 interface VenueSpaceDeleteButtonProps {
   spaceName: string
@@ -9,19 +10,27 @@ interface VenueSpaceDeleteButtonProps {
 }
 
 export function VenueSpaceDeleteButton({ spaceName, spaceId, deleteAction }: VenueSpaceDeleteButtonProps) {
+  const formRef = useRef<HTMLFormElement>(null)
+  const [confirming, setConfirming] = useState(false)
+
   return (
-    <form action={deleteAction} className="inline">
+    <form ref={formRef} action={deleteAction} className="inline">
       <input type="hidden" name="spaceId" value={spaceId} />
       <IconButton
-        type="submit"
+        type="button"
         label={`Delete ${spaceName}`}
         icon={<Icon name="trash" size={20} />}
         className="text-danger hover:text-danger-fg"
-        onClick={(e) => {
-          if (!confirm(`Are you sure you want to delete "${spaceName}"? This action cannot be undone.`)) {
-            e.preventDefault()
-          }
-        }}
+        onClick={() => setConfirming(true)}
+      />
+      <ConfirmDialog
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        onConfirm={() => formRef.current?.requestSubmit()}
+        title="Delete Space?"
+        message={`Are you sure you want to delete "${spaceName}"? This action cannot be undone.`}
+        confirmLabel="Delete Space"
+        tone="danger"
       />
     </form>
   )

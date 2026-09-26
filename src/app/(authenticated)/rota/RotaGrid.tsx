@@ -15,7 +15,23 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Badge, Button, Card, CardBody, CardHeader, toast, Icon, type IconName } from '@/ds';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Empty,
+  Input,
+  ProgressBar,
+  Spinner,
+  Stat,
+  StatGrid,
+  toast,
+  Icon,
+  type IconName,
+} from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { moveShift, autoPopulateWeekFromTemplates, upsertRotaSalesTargetOverride } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
@@ -43,6 +59,24 @@ import BookHolidayModal from './BookHolidayModal';
 import HolidayDetailModal from './HolidayDetailModal';
 import AddShiftsModal from './AddShiftsModal';
 import MarkSickModal from './MarkSickModal';
+import {
+  LABOUR_SHARE_CELL_CLASSES,
+  LABOUR_SHARE_LABEL,
+  LABOUR_SHARE_TEXT_CLASSES,
+  LABOUR_SHARE_TONE,
+  ROTA_CAPACITY_BAR_TONE,
+  ROTA_CAPACITY_TEXT_CLASSES,
+  ROTA_HOURS_LIMIT_TEXT_CLASSES,
+  ROTA_OPEN_SHIFTS_TONE,
+  ROTA_TONE_ICON,
+  ROTA_TONE_ICON_CLASSES,
+  ROTA_WAGES_COSTING_TONE,
+  ROTA_WEEK_PUBLISH_LABEL,
+  ROTA_WEEK_PUBLISH_TONE,
+  rotaCapacityState,
+  type RotaBadgeTone,
+  type RotaWeekPublishState,
+} from './_shared/status-ui';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -84,11 +118,12 @@ type CouldntWorkTarget = {
   date: string;
 };
 
-// Static class strings per tone, because Tailwind cannot see dynamically built names.
-const OPENING_EXCEPTION_STYLES: Record<OpeningExceptionTone, { chip: string; banner: string }> = {
-  danger: { chip: 'bg-danger-soft text-danger-fg', banner: 'border-danger-border bg-danger-soft text-danger-fg' },
-  warning: { chip: 'bg-warning-soft text-warning-fg', banner: 'border-warning-border bg-warning-soft text-warning-fg' },
-  info: { chip: 'bg-info-soft text-info-fg', banner: 'border-info-border bg-info-soft text-info-fg' },
+// Static class strings per tone, because Tailwind cannot see dynamically built names. The
+// week's banner is an Alert in the same tone.
+const OPENING_EXCEPTION_CHIP_CLASSES: Record<OpeningExceptionTone, string> = {
+  danger: 'bg-danger-soft text-danger-fg',
+  warning: 'bg-warning-soft text-warning-fg',
+  info: 'bg-info-soft text-info-fg',
 };
 
 // ---------------------------------------------------------------------------
@@ -128,12 +163,12 @@ const GBP = new Intl.NumberFormat('en-GB', {
 });
 
 function formatMoney(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—';
+  if (value === null || value === undefined) return '–';
   return GBP.format(value);
 }
 
 function formatPercent(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—';
+  if (value === null || value === undefined) return '–';
   return `${value.toFixed(1)}%`;
 }
 
@@ -261,35 +296,15 @@ function empWeekHours(employeeId: string, shifts: RotaShift[]): number {
     .reduce((sum, s) => sum + calculatePaidHours(s.start_time, s.end_time, s.unpaid_break_minutes, s.is_overnight), 0);
 }
 
-type SummaryTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
-
-function SummaryPill({
-  label,
-  value,
-  detail,
-  tone = 'neutral',
-}: {
-  label: string;
-  value: React.ReactNode;
-  detail?: React.ReactNode;
-  tone?: SummaryTone;
-}) {
-  const toneStyles = {
-    neutral: 'border-border bg-surface-2 text-text-strong',
-    primary: 'border-primary/20 bg-primary-soft text-primary-soft-fg',
-    success: 'border-success-border bg-success-soft text-success-fg',
-    warning: 'border-warning-border bg-warning-soft text-warning-fg',
-    danger: 'border-danger-border bg-danger-soft text-danger-fg',
-    info: 'border-info-border bg-info-soft text-info-fg',
-  }[tone];
-
-  return (
-    <div className={`grid h-full min-w-0 grid-cols-[auto_1fr] items-center gap-x-2 gap-y-0.5 rounded-default border px-2 py-1 ${toneStyles}`}>
-      <p className="text-2xs font-medium uppercase leading-none opacity-75">{label}</p>
-      <p className="text-right text-sm font-semibold leading-tight tabular-nums">{value}</p>
-      {detail && <p className="col-span-2 text-meta leading-tight opacity-75">{detail}</p>}
-    </div>
-  );
+/**
+ * The week's figures sit in a StatGrid, and a Stat has no tone of its own, so a figure that
+ * needs attention carries its state as an icon in the tone's colour. Stat hides its icon from
+ * screen readers, so the state is visual only, as the tinted pills it replaced were. Neutral and
+ * informational figures carry none.
+ */
+function statToneIcon(tone: RotaBadgeTone, label: string): React.ReactNode {
+  if (tone === 'neutral' || tone === 'info' || tone === 'primary') return undefined;
+  return <Icon name={ROTA_TONE_ICON[tone]} size={20} label={label} className={ROTA_TONE_ICON_CLASSES[tone]} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -394,6 +409,10 @@ function ShiftBlockOverlay({ shift, colour, isDraft }: { shift: RotaShift; colou
 // report, payroll and the staff portal agree. The cell takes the soft tint and the label a
 // bordered chip. A rejected shift is a dashed danger outline on an untinted cell, so it never
 // reads as the same thing as a Couldn't Work shift.
+//
+// Raw <button>s inside the grid cells are deliberate. They are the tinted status chips and the
+// 12px cell shortcuts of a dense seven-column grid, where the DS Button's fixed heights and its
+// 44px touch floor on phones would push every row open.
 const LEAVE_STYLES = {
   approved: { bg: 'bg-success-soft', pill: `border ${ROTA_HOLIDAY_CLASSES.approved}`, label: 'HOLIDAY' },
   pending:  { bg: 'bg-warning-soft', pill: `border ${ROTA_HOLIDAY_CLASSES.pending}`,  label: 'HOLIDAY – PENDING' },
@@ -420,6 +439,7 @@ function CouldntWorkBlock({
 }) {
   return (
     <div className="mb-1">
+      {/* A status chip in a grid cell (see the note above LEAVE_STYLES). */}
       <button
         type="button"
         onClick={event => { event.stopPropagation(); onClick(); }}
@@ -429,7 +449,7 @@ function CouldntWorkBlock({
         {COULDNT_WORK_STYLE.label}
       </button>
       {shift.sick_reason && (
-        <p className="mt-0.5 whitespace-normal break-words text-2xs leading-tight text-danger-fg/80">
+        <p className="mt-0.5 whitespace-normal break-words text-2xs leading-tight text-danger-fg">
           {shift.sick_reason}
         </p>
       )}
@@ -457,6 +477,7 @@ function RejectedShiftBlock({
   return (
     <div className="mb-1">
       {onClick ? (
+        // A status chip in a grid cell (see the note above LEAVE_STYLES).
         <button
           type="button"
           onClick={event => { event.stopPropagation(); onClick(); }}
@@ -471,7 +492,7 @@ function RejectedShiftBlock({
         </span>
       )}
       {rejection.rejection_note && (
-        <p className="mt-0.5 whitespace-normal break-words text-2xs leading-tight text-danger-fg/80">
+        <p className="mt-0.5 whitespace-normal break-words text-2xs leading-tight text-danger-fg">
           {rejection.rejection_note}
         </p>
       )}
@@ -521,6 +542,7 @@ function DroppableCell({
       {leaveStyle && (
         <div className="mb-1">
           {onLeaveClick ? (
+            // A status chip in a grid cell (see the note above LEAVE_STYLES).
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onLeaveClick(); }}
@@ -537,6 +559,7 @@ function DroppableCell({
         </div>
       )}
       <div className="relative z-10 space-y-0.5">{children}</div>
+      {/* The cell's 12px shortcuts (see the note above LEAVE_STYLES). */}
       {(onAdd || onBookHoliday || onMarkSick) && (
         <div className="absolute bottom-1 right-1 z-20 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/cell:opacity-100 group-focus-within/cell:opacity-100">
           {onMarkSick && (
@@ -706,7 +729,7 @@ export default function RotaGrid({
     [shifts, isShiftUnpublished],
   );
   // Shifts deleted since the last publish. The per-shift diff above only sees live
-  // rows, so it is blind to deletions — surface them explicitly so a "Published with
+  // rows, so it is blind to deletions, so surface them explicitly so a "Published with
   // changes" week always shows what actually needs republishing.
   const removedShifts = useMemo(
     () => getRemovedPublishedShifts(shifts, week, publishedShifts),
@@ -894,26 +917,27 @@ export default function RotaGrid({
       <div
         key={date}
         className={`mt-1 rounded-default border px-1 py-0.5 text-left text-2xs leading-tight ${
-          overTarget ? 'border-danger-border bg-danger-soft' : 'border-border bg-surface'
+          LABOUR_SHARE_CELL_CLASSES[overTarget ? 'over' : 'within']
         }`}
       >
         {isEditing ? (
           <div className="space-y-0.5">
-            <input
+            {/* DS fields at the day header's compact size: the column is a seventh of the grid. */}
+            <Input
               type="number"
               min="0"
               step="1"
               value={editingTarget.amount}
               onChange={e => setEditingTarget(current => current ? { ...current, amount: e.target.value } : current)}
-              className="w-full rounded-default border border-border bg-surface px-1 py-0.5 text-2xs text-text outline-hidden focus:border-border-focus focus:shadow-ring"
+              className="h-6 px-1 text-2xs"
               aria-label={`Sales target for ${date}`}
             />
-            <input
+            <Input
               type="text"
               value={editingTarget.reason}
               onChange={e => setEditingTarget(current => current ? { ...current, reason: e.target.value } : current)}
               placeholder="Reason"
-              className="w-full rounded-default border border-border bg-surface px-1 py-0.5 text-2xs text-text placeholder:text-text-subtle outline-hidden focus:border-border-focus focus:shadow-ring"
+              className="h-6 px-1 text-2xs"
               aria-label={`Sales target reason for ${date}`}
             />
             <div className="flex gap-1">
@@ -948,6 +972,7 @@ export default function RotaGrid({
                 )}
               </span>
               {canEditSalesTargets && canViewSalesTargets && periodSummary.site && (
+                // A 12px shortcut in the day header cell (see the note above LEAVE_STYLES).
                 <button
                   type="button"
                   onClick={() => startTargetEdit(date)}
@@ -963,7 +988,7 @@ export default function RotaGrid({
               <span className="text-text-soft">Payroll</span>{' '}
               <strong className="text-text-strong">{canViewSpend ? formatMoney(total?.estimatedCost ?? null) : 'Hidden'}</strong>
             </p>
-            <p className={`truncate font-semibold ${overTarget ? 'text-danger-fg' : 'text-success-fg'}`}>
+            <p className={`truncate font-semibold ${LABOUR_SHARE_TEXT_CLASSES[overTarget ? 'over' : 'within']}`}>
               <span className="font-normal text-text-soft">%</span>{' '}
               {canViewSpend && canViewSalesTargets ? formatPercent(total?.wagePercent ?? null) : 'Hidden'}
             </p>
@@ -976,10 +1001,11 @@ export default function RotaGrid({
     );
   };
 
-  const weekStatusLabel = week.status === 'published'
-    ? week.has_unpublished_changes ? 'Published with changes' : 'Published'
-    : 'Draft';
-  const weekStatusTone = week.status === 'published' && !week.has_unpublished_changes ? 'success' : 'warning';
+  const weekPublishState: RotaWeekPublishState = week.status === 'published'
+    ? week.has_unpublished_changes ? 'published_with_changes' : 'published'
+    : 'draft';
+  const weekStatusLabel = ROTA_WEEK_PUBLISH_LABEL[weekPublishState];
+  const weekStatusTone = ROTA_WEEK_PUBLISH_TONE[weekPublishState];
   const wagePercentOverTarget =
     periodSummary?.weekTotals.wagePercent !== null &&
     periodSummary?.weekTotals.wagePercent !== undefined &&
@@ -997,23 +1023,78 @@ export default function RotaGrid({
       ? 'warning'
       : 'info';
 
+  const wageShareState = wagePercentOverTarget ? 'over' : 'within';
+  const wagesTone = ROTA_WAGES_COSTING_TONE[uncostedShiftCount > 0 && canViewSpend ? 'uncosted' : 'costed'];
+  const openShiftsTone = ROTA_OPEN_SHIFTS_TONE[openShifts.length > 0 ? 'some' : 'none'];
+
   return (
-    <div className="space-y-2">
+    <>
+      {/* The week in figures. A figure that needs attention shows it as an icon in its tone. */}
+      <StatGrid columns={4}>
+        <Stat
+          label="Status"
+          value={weekStatusLabel}
+          hint={week.published_at ? new Date(week.published_at).toLocaleDateString('en-GB') : undefined}
+          icon={statToneIcon(weekStatusTone, weekStatusLabel)}
+        />
+        <Stat
+          label="Hours"
+          value={formatHours(totalScheduledHours)}
+          hint={`${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'}`}
+        />
+        <Stat
+          label="Open"
+          value={openShifts.length}
+          hint={openShifts.length > 0 ? 'Available' : 'None'}
+          icon={statToneIcon(openShiftsTone, openShifts.length > 0 ? 'Open shifts to fill' : 'No open shifts')}
+        />
+        <Stat
+          label="People"
+          value={`${scheduledEmployeeCount}/${employees.length}`}
+          hint={publishStatusDetail}
+          icon={hasPendingChanges
+            ? statToneIcon(ROTA_WEEK_PUBLISH_TONE.unpublished_changes, ROTA_WEEK_PUBLISH_LABEL.unpublished_changes)
+            : undefined}
+        />
+        {periodSummary && (
+          <Stat
+            label="Wages"
+            value={canViewSpend ? formatMoney(periodSummary.weekTotals.estimatedCost) : 'Hidden'}
+            hint={canViewSpend ? `${uncostedShiftCount} uncosted` : undefined}
+            icon={statToneIcon(wagesTone, 'Some shifts are not costed')}
+          />
+        )}
+        {periodSummary && (
+          <Stat
+            label="Target"
+            value={canViewSalesTargets ? formatMoney(periodSummary.weekTotals.salesTarget) : 'Hidden'}
+            hint={periodSummary.payrollPeriod.label}
+          />
+        )}
+        {periodSummary && (
+          <Stat
+            label="Wage %"
+            value={canViewSpend && canViewSalesTargets ? formatPercent(periodSummary.weekTotals.wagePercent) : 'Hidden'}
+            hint={`Limit ${periodSummary.weekTotals.targetPercent.toFixed(1)}%`}
+            icon={statToneIcon(LABOUR_SHARE_TONE[wageShareState], LABOUR_SHARE_LABEL[wageShareState])}
+          />
+        )}
+      </StatGrid>
+
       <DndContext
         sensors={sensors}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="min-w-0">
           <Card className="min-w-0">
             <CardHeader
               title="Schedule"
-              className="px-3 py-1.5 [&>div:first-child]:flex [&>div:first-child]:flex-wrap [&>div:first-child]:items-baseline [&>div:first-child]:gap-x-2 [&_p]:mt-0"
-              subtitle="Weekly assignments grouped by employee and day."
+              subtitle="Weekly assignments grouped by employee and day"
               action={<Badge tone={weekStatusTone}>{weekStatusLabel}</Badge>}
             />
-            <CardBody className="space-y-2 border-b border-border bg-surface px-3 py-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardBody className="space-y-4 border-b border-border">
+              {/* Week navigation filters the grid below, so it sits directly above it. */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     type="button"
@@ -1043,15 +1124,18 @@ export default function RotaGrid({
                     disabled={navPending}
                   />
 
-                  <input
+                  <Input
                     type="date"
                     value={weekStart}
                     onChange={e => { if (e.target.value) navigateToWeek(e.target.value); }}
-                    className="h-btn-h-sm cursor-pointer rounded-sm border border-border bg-surface px-2 text-xs text-text outline-hidden focus:border-border-focus focus:shadow-ring"
+                    aria-label="Go to week"
+                    className="h-btn-h-sm w-auto cursor-pointer text-xs"
                   />
 
-                  <p className="ml-1 whitespace-nowrap text-base font-semibold text-text-strong">
-                    {navPending ? 'Loading week...' : formatWeekRange(days)}
+                  <p className="ml-1 flex items-center gap-2 whitespace-nowrap text-base font-semibold text-text-strong">
+                    {formatWeekRange(days)}
+                    {navPending && <Spinner size="sm" />}
+                    {navPending && <span className="sr-only" role="status">Loading the week</span>}
                   </p>
                 </div>
 
@@ -1064,89 +1148,30 @@ export default function RotaGrid({
                       onClick={handleApplyTemplates}
                       disabled={isPending}
                     >
-                      Apply templates
+                      Apply Templates
                     </Button>
                   )}
                   {canEdit && hasAnyActiveTemplate && (
                     <Button
                       type="button"
                       size="sm"
-                      variant="ghost"
+                      variant="secondary"
                       onClick={() => setShowAddShifts(true)}
                       disabled={isPending}
                     >
-                      Add shifts
+                      Add Shifts
                     </Button>
                   )}
-
-                  <a
-                    href={`/api/rota/pdf?week=${weekStart}`}
-                    download
-                    title="Download rota as PDF"
-                    className="inline-flex h-btn-h-sm items-center justify-center gap-1.5 rounded-sm border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text no-underline transition-colors hover:bg-surface-hover max-shell:min-h-touch focus-visible:outline-hidden focus-visible:shadow-ring"
-                  >
-                    <Icon name="printer" size={14} />
-                    Download PDF
-                  </a>
                 </div>
               </div>
 
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-1">
-                <SummaryPill
-                  label="Status"
-                  value={weekStatusLabel}
-                  detail={week.published_at ? new Date(week.published_at).toLocaleDateString('en-GB') : undefined}
-                  tone={weekStatusTone}
-                />
-                <SummaryPill
-                  label="Hours"
-                  value={formatHours(totalScheduledHours)}
-                  detail={`${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'}`}
-                  tone="neutral"
-                />
-                <SummaryPill
-                  label="Open"
-                  value={openShifts.length}
-                  detail={openShifts.length > 0 ? 'Available' : 'None'}
-                  tone={openShifts.length > 0 ? 'warning' : 'success'}
-                />
-                <SummaryPill
-                  label="People"
-                  value={`${scheduledEmployeeCount}/${employees.length}`}
-                  detail={publishStatusDetail}
-                  tone={hasPendingChanges ? 'warning' : 'info'}
-                />
-                {periodSummary && (
-                  <>
-                    <SummaryPill
-                      label="Wages"
-                      value={canViewSpend ? formatMoney(periodSummary.weekTotals.estimatedCost) : 'Hidden'}
-                      detail={canViewSpend ? `${uncostedShiftCount} uncosted` : undefined}
-                      tone={uncostedShiftCount > 0 && canViewSpend ? 'warning' : 'neutral'}
-                    />
-                    <SummaryPill
-                      label="Target"
-                      value={canViewSalesTargets ? formatMoney(periodSummary.weekTotals.salesTarget) : 'Hidden'}
-                      detail={periodSummary.payrollPeriod.label}
-                      tone="neutral"
-                    />
-                    <SummaryPill
-                      label="Wage %"
-                      value={canViewSpend && canViewSalesTargets ? formatPercent(periodSummary.weekTotals.wagePercent) : 'Hidden'}
-                      detail={`Limit ${periodSummary.weekTotals.targetPercent.toFixed(1)}%`}
-                      tone={wagePercentOverTarget ? 'danger' : 'success'}
-                    />
-                  </>
-                )}
-              </div>
-
               {weekOpeningExceptions.length > 0 && (
-                <div className={`rounded-default border px-3 py-2 text-xs ${OPENING_EXCEPTION_STYLES[openingExceptionTone].banner}`}>
-                  <p className="font-semibold">
-                    Opening hours differ from the usual week on {weekOpeningExceptions.length} day
-                    {weekOpeningExceptions.length === 1 ? '' : 's'}. Check shifts still match.
-                  </p>
-                  <ul className="mt-1 space-y-1">
+                <Alert
+                  tone={openingExceptionTone}
+                  role="status"
+                  title={`Opening hours differ from the usual week on ${weekOpeningExceptions.length} day${weekOpeningExceptions.length === 1 ? '' : 's'}. Check shifts still match.`}
+                >
+                  <ul className="space-y-1">
                     {weekOpeningExceptions.map(entry => (
                       <li key={entry.date}>
                         <span className="font-semibold">{formatDayHeader(entry.date)}</span>
@@ -1158,21 +1183,22 @@ export default function RotaGrid({
                       </li>
                     ))}
                   </ul>
-                </div>
+                </Alert>
               )}
 
               {canViewSpend && uncostedShiftCount > 0 && (
-                <p className="rounded-default border border-warning-border bg-warning-soft px-3 py-1.5 text-xs text-warning-fg">
+                <Alert tone="warning" role="status">
                   {uncostedShiftCount} visible shift{uncostedShiftCount === 1 ? '' : 's'} could not be costed because the shift is open or missing a rate.
-                </p>
+                </Alert>
               )}
 
               {removedShifts.length > 0 && (
-                <div className="rounded-default border border-warning-border bg-warning-soft px-3 py-2 text-xs text-warning-fg">
-                  <p className="font-semibold">
-                    {removedShifts.length} shift{removedShifts.length === 1 ? '' : 's'} removed since the rota was last published — publish to update staff.
-                  </p>
-                  <ul className="mt-1 space-y-0.5">
+                <Alert
+                  tone="warning"
+                  role="status"
+                  title={`${removedShifts.length} shift${removedShifts.length === 1 ? '' : 's'} removed since the rota was last published. Publish to update staff.`}
+                >
+                  <ul className="space-y-0.5">
                     {removedShifts.map(shift => {
                       const who = shift.is_open_shift
                         ? 'Open shift'
@@ -1181,13 +1207,13 @@ export default function RotaGrid({
                           : 'Unassigned';
                       return (
                         <li key={shift.id} className="truncate">
-                          {who} — {shift.name ? `${shift.name}, ` : ''}
+                          {who}: {shift.name ? `${shift.name}, ` : ''}
                           {formatDayHeader(shift.shift_date)} {formatTime12Hour(shift.start_time)}–{formatTime12Hour(shift.end_time)}
                         </li>
                       );
                     })}
                   </ul>
-                </div>
+                </Alert>
               )}
             </CardBody>
             <CardBody className="p-0">
@@ -1233,7 +1259,7 @@ export default function RotaGrid({
                               {exception.chips.map((chip, i) => (
                                 <span
                                   key={i}
-                                  className={`block truncate rounded-default px-1 py-px text-2xs font-semibold leading-tight ${OPENING_EXCEPTION_STYLES[chip.tone].chip}`}
+                                  className={`block truncate rounded-default px-1 py-px text-2xs font-semibold leading-tight ${OPENING_EXCEPTION_CHIP_CLASSES[chip.tone]}`}
                                 >
                                   {chip.label}
                                 </span>
@@ -1310,7 +1336,7 @@ export default function RotaGrid({
               <div className="flex border-b border-warning-border bg-warning-soft/70 transition-colors hover:bg-warning-soft">
                 <div className="sticky left-0 z-20 flex w-[260px] shrink-0 flex-col justify-center border-r border-warning-border bg-warning-soft px-3 py-1">
                   <p className="text-xs font-semibold text-warning-fg leading-tight">Open shifts</p>
-                  <p className="text-2xs text-warning-fg/75">Available to staff</p>
+                  <p className="text-2xs text-warning-fg">Available to staff</p>
                 </div>
                 <div className="flex-1 grid grid-cols-7">
                   {days.map(d => {
@@ -1341,9 +1367,7 @@ export default function RotaGrid({
 
               {/* Employee rows */}
               {employees.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-text-muted">
-                  No active employees found.
-                </div>
+                <Empty size="sm" icon="users" title="No active employees found" />
               ) : (
                 <>
                   {employeeGroups.map(group => {
@@ -1371,16 +1395,7 @@ export default function RotaGrid({
                           const periodUsedPercent = periodTotal && periodMax !== null && periodMax > 0
                             ? Math.min((periodTotal.periodHours / periodMax) * 100, 120)
                             : 0;
-                          const periodCapacityColour = overPeriodHours
-                            ? 'text-danger'
-                            : periodUsedPercent >= 85
-                              ? 'text-warning-fg'
-                              : 'text-text-muted';
-                          const periodBarColour = overPeriodHours
-                            ? 'bg-danger'
-                            : periodUsedPercent >= 85
-                              ? 'bg-warning'
-                              : 'bg-success';
+                          const capacity = rotaCapacityState(overPeriodHours, periodUsedPercent);
                           const empRole = employeeRole(emp);
                           const empStyle = roleStyle(empRole);
 
@@ -1396,7 +1411,7 @@ export default function RotaGrid({
                                     {empRole}
                                   </span>
                                 </div>
-                                <p className={`text-2xs truncate ${overWeekHours || overPeriodHours ? 'text-danger font-semibold' : 'text-text-muted'}`}>
+                                <p className={`text-2xs truncate ${ROTA_HOURS_LIMIT_TEXT_CLASSES[overWeekHours || overPeriodHours ? 'over' : 'within']}`}>
                                   {emp.is_active ? (
                                     <>
                                       W {formatHours(weekHrs)}
@@ -1415,15 +1430,17 @@ export default function RotaGrid({
                                 {periodTotal && (
                                   <div className="flex items-center gap-2">
                                     {periodMax !== null && (
-                                      <div className="h-1 min-w-8 flex-1 overflow-hidden rounded-full bg-surface-hover" title={`Payroll period hours: ${formatHours(periodTotal.periodHours)} of ${formatHours(periodMax)}`}>
-                                        <div
-                                          className={`h-full rounded-full ${periodBarColour}`}
-                                          style={{ width: `${Math.min(periodUsedPercent, 100)}%` }}
+                                      <div className="min-w-8 flex-1" title={`Payroll period hours: ${formatHours(periodTotal.periodHours)} of ${formatHours(periodMax)}`}>
+                                        <ProgressBar
+                                          value={periodUsedPercent}
+                                          tone={ROTA_CAPACITY_BAR_TONE[capacity]}
+                                          label={`Payroll period hours: ${formatHours(periodTotal.periodHours)} of ${formatHours(periodMax)}`}
+                                          className="h-1"
                                         />
                                       </div>
                                     )}
                                     {canViewSpend && (
-                                      <p className={`shrink-0 text-2xs ${periodCapacityColour}`}>
+                                      <p className={`shrink-0 text-2xs ${ROTA_CAPACITY_TEXT_CLASSES[capacity]}`}>
                                         {formatMoney(periodTotal.estimatedCost)}
                                         {periodTotal.costStatus === 'partial' ? ' · partial rate' : ''}
                                         {periodTotal.costStatus === 'missing_rate' ? ' · missing rate' : ''}
@@ -1511,7 +1528,6 @@ export default function RotaGrid({
             </div>
             </CardBody>
           </Card>
-        </div>
 
         {/* Drag overlay */}
         <DragOverlay dropAnimation={null}>
@@ -1521,8 +1537,9 @@ export default function RotaGrid({
         </DragOverlay>
       </DndContext>
 
+      {/* Key to the grid */}
       <Card>
-        <CardBody className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 text-xs text-text-muted">
+        <CardBody className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
           <span className="flex items-center gap-1.5">
             <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${ROTA_SHIFT_STATUS_CLASSES.pending}`}>
               <Icon name="clock" size={12} />
@@ -1697,6 +1714,6 @@ export default function RotaGrid({
           }}
         />
       )}
-    </div>
+    </>
   );
 }

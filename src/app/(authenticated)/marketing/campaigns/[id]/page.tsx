@@ -12,7 +12,7 @@ import { Alert, PageLayout } from '@/ds'
 import { marketingContentSchema } from '@/lib/email/marketing/registry'
 import { renderCampaignHtml } from '@/lib/email/marketing/render'
 
-import { MARKETING_SECTION_NAV } from '../../_shared/marketing-ui'
+import { MARKETING_BACK_TO_CAMPAIGNS, MARKETING_NAV } from '../../_shared/nav'
 import { CampaignDetailClient } from './CampaignDetailClient'
 
 export const dynamic = 'force-dynamic'
@@ -52,7 +52,7 @@ export default async function MarketingCampaignDetailPage({
 
   if (campaignResult.error || !campaignResult.data) {
     return (
-      <PageLayout title="Campaign" navItems={MARKETING_SECTION_NAV}>
+      <PageLayout title="Campaign" navItems={MARKETING_NAV} backButton={MARKETING_BACK_TO_CAMPAIGNS}>
         <Alert tone="danger" title="Could not load this campaign">
           {campaignResult.error ?? 'Something went wrong. Refresh to try again.'}
         </Alert>

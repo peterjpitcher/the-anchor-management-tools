@@ -2,27 +2,27 @@ import ErrorClient from './_components/ErrorClient'
 
 const FRIENDLY_MESSAGES: Record<string, { title: string; message: string }> = {
   missing_state: {
-    title: 'Password reset timed out',
+    title: 'Password Reset Timed Out',
     message:
       'The confirmation window took too long and the secure link expired. Please request a fresh reset email and click it on the same device.',
   },
   missing_token: {
-    title: 'Reset link incomplete',
+    title: 'Reset Link Incomplete',
     message:
       'We could not read the reset link. Request a new password email and try again. Reach out if the problem persists.',
   },
   otp_expired: {
-    title: 'Link already used or expired',
+    title: 'Link Already Used or Expired',
     message:
       'This link was already used or has expired. You can request another password reset from the login page.',
   },
   over_email_send_rate_limit: {
-    title: 'Too many reset attempts',
+    title: 'Too Many Reset Attempts',
     message:
       'Please wait a few seconds before requesting another password reset email.',
   },
   rate_limited: {
-    title: 'Too many attempts',
+    title: 'Too Many Attempts',
     message:
       'Please wait a few minutes before opening that link again.',
   },
@@ -48,7 +48,7 @@ export default async function ErrorPage({ searchParams }: PageProps) {
 
   return (
     <ErrorClient
-      title={friendly?.title ?? 'Something went wrong'}
+      title={friendly?.title ?? 'Something Went Wrong'}
       message={
         friendly?.message ??
         'We were not able to complete that request. Try again in a moment, or contact support if the issue continues.'

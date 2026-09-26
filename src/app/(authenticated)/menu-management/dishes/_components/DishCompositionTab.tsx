@@ -3,6 +3,9 @@
 import { useMemo } from 'react';
 import { Button } from '@/ds';
 import { Alert } from '@/ds';
+import { Card, CardBody, Section } from '@/ds';
+import { cn } from '@/lib/utils';
+import { UPGRADE_TEXT } from '../../_shared/status-ui';
 import {
   IngredientCompositionRow,
   RecipeCompositionRow,
@@ -392,21 +395,21 @@ export function DishCompositionTab({
   return (
     <div className="space-y-6">
       {/* Recipes section */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-semibold text-text">Recipes</h4>
+      <Section
+        title="Recipes"
+        actions={
           <span className="text-sm text-text-muted">
             Recipes: £{recipesResult.baseTotal.toFixed(2)}
           </span>
-        </div>
-
-        {recipes.length === 0 && (
-          <Alert tone="warning" className="mb-3">
-            No recipes available yet. Add recipes from the Recipes tab or continue with direct ingredients.
-          </Alert>
-        )}
-
+        }
+      >
         <div className="space-y-3">
+          {recipes.length === 0 && (
+            <Alert tone="warning">
+              No recipes available yet. Add recipes from the Recipes tab or continue with direct ingredients.
+            </Alert>
+          )}
+
           {formRecipes.map((row, index) => (
             <RecipeCompositionRow
               key={`recipe-${index}`}
@@ -421,22 +424,22 @@ export function DishCompositionTab({
               recipeCostMap={recipeCostMap}
             />
           ))}
-        </div>
 
-        <Button type="button" variant="secondary" size="sm" onClick={addRecipeRow} className="mt-2">
-          Add Recipe
-        </Button>
-      </div>
+          <Button type="button" variant="secondary" size="sm" onClick={addRecipeRow}>
+            Add Recipe
+          </Button>
+        </div>
+      </Section>
 
       {/* Ingredients section */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-semibold text-text">Direct Ingredients</h4>
+      <Section
+        title="Direct Ingredients"
+        actions={
           <span className="text-sm text-text-muted">
             Direct ingredients: £{ingredientsResult.baseTotal.toFixed(2)}
           </span>
-        </div>
-
+        }
+      >
         <div className="space-y-3">
           {formIngredients.map((row, index) => (
             <IngredientCompositionRow
@@ -452,12 +455,12 @@ export function DishCompositionTab({
               unitCostMap={unitCostMap}
             />
           ))}
-        </div>
 
-        <Button type="button" variant="secondary" size="sm" onClick={addIngredientRow} className="mt-2">
-          Add Ingredient
-        </Button>
-      </div>
+          <Button type="button" variant="secondary" size="sm" onClick={addIngredientRow}>
+            Add Ingredient
+          </Button>
+        </div>
+      </Section>
 
       {/* Duplicate warnings */}
       {duplicateWarnings.length > 0 && (
@@ -562,83 +565,85 @@ function CostBreakdownFooter({
     : null;
 
   return (
-    <div className="space-y-2 rounded-lg border border-dashed border-border-strong bg-surface-2 p-4">
-      {missingCostItems.length > 0 && (
-        <div role="alert" className="rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-xs text-warning-fg">
-          Cost data incomplete. Missing costs: {missingCostItems.join(', ')}. GP figures are unreliable until these are priced.
-        </div>
-      )}
-      {hasBreakdown ? (
-        <>
-          <Row label="Core ingredients" value={coreIncluded} />
-          {coreRemovable > 0 && <Row label="Removable ingredients" value={coreRemovable} />}
-          {Array.from(allChoiceGroups.entries()).map(([name, g]) => (
-            <Row key={`cg-${name}`} label={`Choice \u2014 ${name} (worst case)`} value={g.maxCost} />
-          ))}
+    <Card variant="secondary">
+      <CardBody className="space-y-2">
+        {missingCostItems.length > 0 && (
+          <Alert tone="warning" size="sm">
+            Cost data incomplete. Missing costs: {missingCostItems.join(', ')}. GP figures are unreliable until these are priced.
+          </Alert>
+        )}
+        {hasBreakdown ? (
+          <>
+            <Row label="Core ingredients" value={coreIncluded} />
+            {coreRemovable > 0 && <Row label="Removable ingredients" value={coreRemovable} />}
+            {Array.from(allChoiceGroups.entries()).map(([name, g]) => (
+              <Row key={`cg-${name}`} label={`Choice: ${name} (worst case)`} value={g.maxCost} />
+            ))}
 
-          <div className="border-t border-border-strong pt-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-text">
-              Base portion cost
-            </span>
-            <span className="text-sm font-semibold">
+            <div className="border-t border-border-strong pt-2 flex items-center justify-between">
+              <span className="text-sm font-medium text-text">
+                Base portion cost
+              </span>
+              <span className="text-sm font-semibold">
+                £{totalPortionCost.toFixed(2)}
+                {baseGp !== null && (
+                  <span className="ml-2 text-text-muted font-normal">
+                    | Base GP: {(baseGp * 100).toFixed(1)}%
+                  </span>
+                )}
+              </span>
+            </div>
+
+            {hasAnyUpgrades && (
+              <>
+                <div className={cn('mt-2 mb-1 text-xs font-semibold uppercase tracking-wide', UPGRADE_TEXT)}>
+                  Upgrades
+                </div>
+                {Array.from(allUpgradeGroups.entries()).map(([name, g]) => (
+                  <div key={`ug-${name}`} className="flex items-center justify-between">
+                    <span className="text-sm text-text">
+                      {name} (+£{g.maxPrice.toFixed(2)})
+                    </span>
+                    <span className="text-sm font-medium">cost £{g.maxCost.toFixed(2)}</span>
+                  </div>
+                ))}
+                {allUngroupedUpgrades.map((u, i) => (
+                  <div key={`uu-${i}`} className="flex items-center justify-between">
+                    <span className="text-sm text-text">
+                      {u.name} (+£{u.price.toFixed(2)})
+                    </span>
+                    <span className="text-sm font-medium">cost £{u.cost.toFixed(2)}</span>
+                  </div>
+                ))}
+                {upgradeGp !== null && (
+                  <div className="flex items-center justify-between border-t border-border pt-1">
+                    <span className={cn('text-sm font-medium', UPGRADE_TEXT)}>Upgrade GP (all upgrades)</span>
+                    <span className={cn('text-sm font-semibold', UPGRADE_TEXT)}>
+                      {(upgradeGp * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        ) : (
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-text">Total portion cost</span>
+            <span className="text-lg font-semibold">
               £{totalPortionCost.toFixed(2)}
               {baseGp !== null && (
-                <span className="ml-2 text-text-muted font-normal">
-                  | Base GP: {(baseGp * 100).toFixed(1)}%
+                <span className="ml-2 text-sm text-text-muted font-normal">
+                  GP: {(baseGp * 100).toFixed(1)}%
                 </span>
               )}
             </span>
           </div>
-
-          {hasAnyUpgrades && (
-            <>
-              <div className="mt-2 mb-1 text-xs font-semibold uppercase tracking-wide text-warning-fg">
-                Upgrades
-              </div>
-              {Array.from(allUpgradeGroups.entries()).map(([name, g]) => (
-                <div key={`ug-${name}`} className="flex items-center justify-between">
-                  <span className="text-sm text-text">
-                    {name} (+£{g.maxPrice.toFixed(2)})
-                  </span>
-                  <span className="text-sm font-medium">cost £{g.maxCost.toFixed(2)}</span>
-                </div>
-              ))}
-              {allUngroupedUpgrades.map((u, i) => (
-                <div key={`uu-${i}`} className="flex items-center justify-between">
-                  <span className="text-sm text-text">
-                    {u.name} (+£{u.price.toFixed(2)})
-                  </span>
-                  <span className="text-sm font-medium">cost £{u.cost.toFixed(2)}</span>
-                </div>
-              ))}
-              {upgradeGp !== null && (
-                <div className="flex items-center justify-between border-t border-border pt-1">
-                  <span className="text-sm text-warning-fg font-medium">Upgrade GP (all upgrades)</span>
-                  <span className="text-sm font-semibold text-warning-fg">
-                    {(upgradeGp * 100).toFixed(1)}%
-                  </span>
-                </div>
-              )}
-            </>
-          )}
-        </>
-      ) : (
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-text">Total portion cost</span>
-          <span className="text-lg font-semibold">
-            £{totalPortionCost.toFixed(2)}
-            {baseGp !== null && (
-              <span className="ml-2 text-sm text-text-muted font-normal">
-                GP: {(baseGp * 100).toFixed(1)}%
-              </span>
-            )}
-          </span>
-        </div>
-      )}
-      <p className="text-xs text-text-muted">
-        Figures update instantly as you tweak quantities.
-      </p>
-    </div>
+        )}
+        <p className="text-xs text-text-muted">
+          Figures update instantly as you tweak quantities.
+        </p>
+      </CardBody>
+    </Card>
   );
 }
 

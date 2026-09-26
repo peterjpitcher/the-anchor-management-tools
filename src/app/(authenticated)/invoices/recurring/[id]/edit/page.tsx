@@ -6,15 +6,22 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import { getRecurringInvoice, updateRecurringInvoice } from '@/app/actions/recurring-invoices'
 import { getVendors } from '@/app/actions/vendors'
 import { getLineItemCatalog } from '@/app/actions/invoices'
-import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Field } from '@/ds'
-import { Alert } from '@/ds'
-import { toast } from '@/ds'
+import {
+  PageLayout,
+  Icon,
+  Card,
+  CardHeader,
+  CardBody,
+  Button,
+  IconButton,
+  Input,
+  Select,
+  Textarea,
+  Field,
+  Alert,
+  FormFooter,
+  toast,
+} from '@/ds'
 import type { InvoiceVendor, InvoiceLineItemInput, RecurringFrequency, LineItemCatalogItem, RecurringInvoiceWithDetails } from '@/types/invoices'
 
 export default function EditRecurringInvoicePage() {
@@ -216,16 +223,17 @@ export default function EditRecurringInvoicePage() {
     }
   }
 
+  const layoutProps = {
+    title: 'Edit Recurring Invoice',
+    subtitle: 'Update recurring invoice template',
+    backButton: {
+      label: 'Back to Recurring Invoice',
+      href: recurringInvoiceId ? `/invoices/recurring/${recurringInvoiceId}` : '/invoices/recurring',
+    },
+  }
+
   if (permissionsLoading || (loading && canEdit)) {
-    return (
-      <PageLayout
-        title="Edit Recurring Invoice"
-        subtitle="Update recurring invoice template"
-        backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
-        loading
-        loadingLabel="Loading recurring invoice..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading recurring invoice" />
   }
 
   if (!canEdit) {
@@ -233,316 +241,308 @@ export default function EditRecurringInvoicePage() {
   }
 
   if (error && !recurringInvoice) {
-    return (
-      <PageLayout
-        title="Edit Recurring Invoice"
-        subtitle="Update recurring invoice template"
-        backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
-        error={error}
-      />
-    )
+    return <PageLayout {...layoutProps} error={error} />
   }
 
   const totals = calculateTotals()
 
   return (
-    <PageLayout
-      title="Edit Recurring Invoice"
-      subtitle="Update recurring invoice template"
-      backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
-    >
-      <div className="space-y-6">
-        {error && <Alert tone="danger">{error}</Alert>}
+    <PageLayout {...layoutProps}>
+      {error && <Alert tone="danger">{error}</Alert>}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
 
-          <Card title="Template Details">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Vendor" required>
-                <Select
-                  value={vendorId}
-                  onChange={(e) => setVendorId(e.target.value)}
-                  required
-                >
-                  <option value="">Select a vendor...</option>
-                  {vendors.map(vendor => (
-                    <option key={vendor.id} value={vendor.id}>
-                      {vendor.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-
-              <Field label="Frequency" required>
-                <Select
-                  value={frequency}
-                  onChange={(e) => setFrequency(e.target.value as RecurringFrequency)}
-                  required
-                >
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="quarterly">Quarterly</option>
-                  <option value="yearly">Yearly</option>
-                </Select>
-              </Field>
-
-              <Field label="Start Date" required>
-                <Input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  required
-                />
-              </Field>
-
-              <Field
-                label="Next Invoice Date"
+        <Card>
+          <CardHeader title="Template Details" />
+          <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Vendor" required>
+              <Select
+                value={vendorId}
+                onChange={(e) => setVendorId(e.target.value)}
                 required
-                help="Controls when the next invoice will be generated."
               >
-                <Input
-                  type="date"
-                  value={nextInvoiceDate}
-                  onChange={(e) => setNextInvoiceDate(e.target.value)}
-                  min={startDate}
-                  required
-                />
-              </Field>
+                <option value="">Select a vendor...</option>
+                {vendors.map(vendor => (
+                  <option key={vendor.id} value={vendor.id}>
+                    {vendor.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
 
-              <Field label="End Date" help="Leave blank for ongoing">
-                <Input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  min={startDate}
-                />
-              </Field>
+            <Field label="Frequency" required>
+              <Select
+                value={frequency}
+                onChange={(e) => setFrequency(e.target.value as RecurringFrequency)}
+                required
+              >
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="yearly">Yearly</option>
+              </Select>
+            </Field>
 
-              <Field label="Days Before Due" required>
-                <Input
-                  type="number"
-                  value={daysBefore}
-                  onChange={(e) => setDaysBefore(parseInt(e.target.value) || 30)}
-                  min="0"
-                  required
-                />
-              </Field>
+            <Field label="Start Date" required>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                required
+              />
+            </Field>
 
-              <Field label="Reference">
-                <Input
-                  type="text"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  placeholder="Optional reference"
-                />
-              </Field>
+            <Field
+              label="Next Invoice Date"
+              required
+              hint="Controls when the next invoice will be generated."
+            >
+              <Input
+                type="date"
+                value={nextInvoiceDate}
+                onChange={(e) => setNextInvoiceDate(e.target.value)}
+                min={startDate}
+                required
+              />
+            </Field>
 
-              <Field label="Invoice Discount (%)" className="md:col-span-1">
-                <Input
-                  type="number"
-                  value={invoiceDiscount}
-                  onChange={(e) => setInvoiceDiscount(parseFloat(e.target.value) || 0)}
-                  min="0"
-                  max="100"
-                  step="0.01"
-                />
-              </Field>
+            <Field label="End Date" hint="Leave blank for ongoing">
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                min={startDate}
+              />
+            </Field>
 
-              <Field label="Status" className="md:col-span-1">
-                <Select
-                  value={isActive ? 'active' : 'inactive'}
-                  onChange={(e) => setIsActive(e.target.value === 'active')}
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </Select>
-              </Field>
-            </div>
-          </Card>
+            <Field label="Days Before Due" required>
+              <Input
+                type="number"
+                value={daysBefore}
+                onChange={(e) => setDaysBefore(parseInt(e.target.value) || 30)}
+                min="0"
+                required
+              />
+            </Field>
 
-          <Card title="Line Items">
-            <div className="space-y-4">
-              {lineItems.map((item, index) => (
-                <div key={index} className="border border-border rounded-lg p-4 space-y-4">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-4">
-                      <Field label="Catalog Item" className="md:col-span-2">
-                        <Select
-                          value={item.catalog_item_id || ''}
-                          onChange={(e) => {
-                            const catalogId = e.target.value
-                            if (catalogId) {
-                              const catalogItem = catalogItems.find(c => c.id === catalogId)
-                              if (catalogItem) {
-                                updateLineItemMultiple(index, {
-                                  catalog_item_id: catalogId,
-                                  description: catalogItem.description || catalogItem.name,
-                                  unit_price: catalogItem.default_price,
-                                  vat_rate: catalogItem.default_vat_rate
-                                })
-                              }
-                            } else {
-                              updateLineItem(index, 'catalog_item_id', undefined)
-                            }
-                          }}
-                        >
-                          <option value="">Custom item...</option>
-                          {catalogItems.map(cat => (
-                            <option key={cat.id} value={cat.id}>
-                              {cat.name} - £{cat.default_price.toFixed(2)}
-                            </option>
-                          ))}
-                        </Select>
-                      </Field>
+            <Field label="Reference">
+              <Input
+                type="text"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="Optional reference"
+              />
+            </Field>
 
-                      <Field label="Description" required className="md:col-span-4">
-                        <Input
-                          type="text"
-                          value={item.description}
-                          onChange={(e) => updateLineItem(index, 'description', e.target.value)}
-                          required
-                        />
-                      </Field>
+            <Field label="Invoice Discount (%)">
+              <Input
+                type="number"
+                value={invoiceDiscount}
+                onChange={(e) => setInvoiceDiscount(parseFloat(e.target.value) || 0)}
+                min="0"
+                max="100"
+                step="0.01"
+              />
+            </Field>
 
-                      <Field label="Quantity" required>
-                        <Input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => updateLineItem(index, 'quantity', parseFloat(e.target.value) || 1)}
-                          min="0.001"
-                          step="0.001"
-                          required
-                        />
-                      </Field>
+            <Field label="Status">
+              <Select
+                value={isActive ? 'active' : 'inactive'}
+                onChange={(e) => setIsActive(e.target.value === 'active')}
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </Select>
+            </Field>
+          </CardBody>
+        </Card>
 
-                      <Field label="Unit Price" required>
-                        <Input
-                          type="number"
-                          value={item.unit_price}
-                          onChange={(e) => updateLineItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
-                          min="0"
-                          step="0.01"
-                          required
-                        />
-                      </Field>
-
-                      <Field label="Discount (%)">
-                        <Input
-                          type="number"
-                          value={item.discount_percentage}
-                          onChange={(e) => updateLineItem(index, 'discount_percentage', parseFloat(e.target.value) || 0)}
-                          min="0"
-                          max="100"
-                          step="0.01"
-                        />
-                      </Field>
-
-                      <Field label="VAT Rate (%)">
-                        <Input
-                          type="number"
-                          value={item.vat_rate}
-                          onChange={(e) => updateLineItem(index, 'vat_rate', parseFloat(e.target.value) || 0)}
-                          min="0"
-                          step="0.01"
-                        />
-                      </Field>
-
-                      <div className="md:col-span-2 text-right pt-6">
-                        <div className="text-sm text-text-muted">
-                          Subtotal: £{((item.quantity * item.unit_price) * (1 - item.discount_percentage / 100)).toFixed(2)}
-                        </div>
-                      </div>
-                    </div>
-                    {lineItems.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => removeLineItem(index)}
-                        className="sm:mt-6"
-                        aria-label="Remove line item"
-                      >
-                        <Icon name="trash" size={16} />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-              
+        <Card>
+          <CardHeader
+            title="Line Items"
+            action={
               <Button
                 type="button"
                 variant="secondary"
+                size="sm"
                 onClick={addLineItem}
                 leftIcon={<Icon name="plus" size={16} />}
               >
                 Add Line Item
               </Button>
+            }
+          />
+          <CardBody className="space-y-4">
+            {lineItems.map((item, index) => (
+              <Card key={index}>
+                <CardBody className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-4">
+                    <Field label="Catalog Item" className="md:col-span-2">
+                      <Select
+                        value={item.catalog_item_id || ''}
+                        onChange={(e) => {
+                          const catalogId = e.target.value
+                          if (catalogId) {
+                            const catalogItem = catalogItems.find(c => c.id === catalogId)
+                            if (catalogItem) {
+                              updateLineItemMultiple(index, {
+                                catalog_item_id: catalogId,
+                                description: catalogItem.description || catalogItem.name,
+                                unit_price: catalogItem.default_price,
+                                vat_rate: catalogItem.default_vat_rate
+                              })
+                            }
+                          } else {
+                            updateLineItem(index, 'catalog_item_id', undefined)
+                          }
+                        }}
+                      >
+                        <option value="">Custom item...</option>
+                        {catalogItems.map(cat => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name} - £{cat.default_price.toFixed(2)}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+
+                    <Field label="Description" required className="md:col-span-4">
+                      <Input
+                        type="text"
+                        value={item.description}
+                        onChange={(e) => updateLineItem(index, 'description', e.target.value)}
+                        required
+                      />
+                    </Field>
+
+                    <Field label="Quantity" required>
+                      <Input
+                        type="number"
+                        value={item.quantity}
+                        onChange={(e) => updateLineItem(index, 'quantity', parseFloat(e.target.value) || 1)}
+                        min="0.001"
+                        step="0.001"
+                        required
+                      />
+                    </Field>
+
+                    <Field label="Unit Price" required>
+                      <Input
+                        type="number"
+                        value={item.unit_price}
+                        onChange={(e) => updateLineItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
+                        min="0"
+                        step="0.01"
+                        required
+                      />
+                    </Field>
+
+                    <Field label="Discount (%)">
+                      <Input
+                        type="number"
+                        value={item.discount_percentage}
+                        onChange={(e) => updateLineItem(index, 'discount_percentage', parseFloat(e.target.value) || 0)}
+                        min="0"
+                        max="100"
+                        step="0.01"
+                      />
+                    </Field>
+
+                    <Field label="VAT Rate (%)">
+                      <Input
+                        type="number"
+                        value={item.vat_rate}
+                        onChange={(e) => updateLineItem(index, 'vat_rate', parseFloat(e.target.value) || 0)}
+                        min="0"
+                        step="0.01"
+                      />
+                    </Field>
+
+                    <div className="md:col-span-2 text-right pt-6">
+                      <div className="text-sm text-text-muted">
+                        Subtotal: £{((item.quantity * item.unit_price) * (1 - item.discount_percentage / 100)).toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                  {lineItems.length > 1 && (
+                    <IconButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => removeLineItem(index)}
+                      className="sm:mt-6"
+                      label="Remove line item"
+                      icon={<Icon name="trash" size={16} />}
+                    />
+                  )}
+                </CardBody>
+              </Card>
+            ))}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Additional Information" />
+          <CardBody className="space-y-4">
+            <Field label="Notes" hint="Will appear on invoices">
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+              />
+            </Field>
+
+            <Field label="Internal Notes" hint="For internal use only">
+              <Textarea
+                value={internalNotes}
+                onChange={(e) => setInternalNotes(e.target.value)}
+                rows={3}
+              />
+            </Field>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Summary" />
+          <CardBody className="space-y-2">
+            <div className="flex justify-between">
+              <span>Subtotal:</span>
+              <span>£{totals.subtotal.toFixed(2)}</span>
             </div>
-          </Card>
-
-          <Card title="Additional Information">
-            <div className="space-y-4">
-              <Field label="Notes" help="Will appear on invoices">
-                <Textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
-                />
-              </Field>
-
-              <Field label="Internal Notes" help="For internal use only">
-                <Textarea
-                  value={internalNotes}
-                  onChange={(e) => setInternalNotes(e.target.value)}
-                  rows={3}
-                />
-              </Field>
+            {invoiceDiscount > 0 && (
+              <div className="flex justify-between text-sm">
+                <span>Invoice Discount ({invoiceDiscount}%):</span>
+                <span>-£{totals.invoiceDiscountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span>VAT:</span>
+              <span>£{totals.totalVat.toFixed(2)}</span>
             </div>
-          </Card>
-
-          <Card title="Summary">
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span>£{totals.subtotal.toFixed(2)}</span>
-              </div>
-              {invoiceDiscount > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span>Invoice Discount ({invoiceDiscount}%):</span>
-                  <span>-£{totals.invoiceDiscountAmount.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span>VAT:</span>
-                <span>£{totals.totalVat.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-lg pt-2 border-t border-border">
-                <span>Total:</span>
-                <span>£{totals.total.toFixed(2)}</span>
-              </div>
+            <div className="flex justify-between font-bold text-lg pt-2 border-t border-border">
+              <span>Total:</span>
+              <span>£{totals.total.toFixed(2)}</span>
             </div>
-          </Card>
+          </CardBody>
+        </Card>
 
-          <div className="flex flex-col justify-end gap-3 sm:flex-row sm:gap-4">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => router.push('/invoices/recurring')}
-              className="w-full sm:w-auto"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              loading={submitting}
-              disabled={!vendorId || lineItems.length === 0}
-              className="w-full sm:w-auto"
-            >
-              Update Recurring Invoice
-            </Button>
-          </div>
-        </form>
-      </div>
+        <FormFooter>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => router.push('/invoices/recurring')}
+          >
+            Cancel
+          </Button>
+          <Button variant="primary"
+            type="submit"
+            loading={submitting}
+            disabled={!vendorId || lineItems.length === 0}
+          >
+            Update Recurring Invoice
+          </Button>
+        </FormFooter>
+      </form>
     </PageLayout>
   )
 }

@@ -3,18 +3,32 @@ import { createVendor, updateVendor, deleteVendor, getVendorsForManagement } fro
 import { VendorDeleteButton } from '@/components/features/invoices/VendorDeleteButton'
 import type { Vendor, VendorServiceType } from '@/types/private-bookings'
 import { VENDOR_SERVICE_TYPE_LABELS } from '@/lib/private-bookings/item-labels'
-import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { Section } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Field } from '@/ds'
-import { Badge } from '@/ds'
-import { Empty } from '@/ds'
-import { Alert } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Empty,
+  Field,
+  FormFooter,
+  Icon,
+  Input,
+  PageLayout,
+  Select,
+  Textarea,
+} from '@/ds'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
+import { PB_BACK_TO_LIST, PB_SETTINGS_NAV } from '../../_shared/nav'
+import { PREFERRED_VENDOR_TONE, settingsActiveLabel, settingsActiveTone } from '../../_shared/status-ui'
+
+const layoutProps = {
+  title: 'Vendor Database',
+  subtitle: 'Manage preferred vendors and service providers',
+  backButton: PB_BACK_TO_LIST,
+  navItems: PB_SETTINGS_NAV,
+}
 
 async function handleCreateVendor(formData: FormData) {
   'use server'
@@ -108,22 +122,7 @@ export default async function VendorsPage({
 
   const vendorsResult = await getVendorsForManagement()
   if ('error' in vendorsResult) {
-    const navItems = [
-      { label: 'General', href: '/private-bookings/settings' },
-      { label: 'Catering', href: '/private-bookings/settings/catering' },
-      { label: 'Vendors', href: '/private-bookings/settings/vendors' },
-      { label: 'Spaces', href: '/private-bookings/settings/spaces' },
-    ];
-
-    return (
-      <PageLayout
-        title="Vendor Database"
-        subtitle="Manage preferred vendors and service providers"
-        backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-        navItems={navItems}
-        error={vendorsResult.error}
-      />
-    )
+    return <PageLayout {...layoutProps} error={vendorsResult.error} />
   }
 
   const vendors = vendorsResult.data ?? []
@@ -170,30 +169,16 @@ export default async function VendorsPage({
     { value: 'false', label: 'Inactive' }
   ]
 
-  const navItems = [
-    { label: 'General', href: '/private-bookings/settings' },
-    { label: 'Catering', href: '/private-bookings/settings/catering' },
-    { label: 'Vendors', href: '/private-bookings/settings/vendors' },
-    { label: 'Spaces', href: '/private-bookings/settings/spaces' },
-  ];
-
   return (
-    <PageLayout
-      title="Vendor Database"
-      subtitle="Manage preferred vendors and service providers"
-      backButton={{ label: 'Back to Private Bookings', href: '/private-bookings' }}
-      navItems={navItems}
-    >
-      <div className="space-y-6">
+    <PageLayout {...layoutProps}>
       {errorMessage && (
         <Alert tone="danger" title="Error">{errorMessage}</Alert>
       )}
+
       {/* Add New Vendor Form */}
       <Card>
-        <Section 
-          title="Add New Vendor"
-          icon={<Icon name="plus" size={20} className="text-primary" />}
-        >
+        <CardHeader title="Add New Vendor" />
+        <CardBody>
           <form action={handleCreateVendor} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <Field label="Vendor Name" required>
@@ -222,7 +207,7 @@ export default async function VendorsPage({
                 />
               </Field>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Field label="Phone">
                 <Input
@@ -259,7 +244,7 @@ export default async function VendorsPage({
                 />
               </Field>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="Preferred Status">
                 <Select
@@ -276,7 +261,7 @@ export default async function VendorsPage({
                 />
               </Field>
             </div>
-            
+
             <Field label="Notes">
               <Textarea
                 id="notes"
@@ -285,166 +270,161 @@ export default async function VendorsPage({
                 placeholder="Additional notes about this vendor..."
               />
             </Field>
-            
-            <Button type="submit">
-              Add Vendor
-            </Button>
+
+            <FormFooter>
+              <Button type="submit" variant="primary">
+                Add Vendor
+              </Button>
+            </FormFooter>
           </form>
-        </Section>
+        </CardBody>
       </Card>
 
       {/* Existing Vendors */}
       {Object.keys(vendorsByType || {}).length === 0 ? (
         <Card>
-          <Empty icon={<Icon name="users" size={48} />}
+          <Empty
+            size="sm"
+            icon={<Icon name="users" size={48} />}
             title="No vendors configured yet"
             description="Add your first vendor using the form above."
           />
         </Card>
       ) : (
-        <div className="space-y-6">
-          {vendorTypes.filter(type => vendorsByType[type]).map((type) => (
-            <Card key={type}>
-              <Section 
-                title={type === 'dj' ? 'DJs' : type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
-              >
-                
-                <div className="space-y-4 md:space-y-0 md:divide-y md:divide-border">
-                  {vendorsByType[type]?.map((vendor: any) => (
-                    <div
-                      key={vendor.id}
-                      className="rounded-lg border border-border p-4 md:rounded-none md:border-0 md:p-0 md:py-6 md:first:pt-0 md:last:pb-0"
-                    >
-                      <form action={handleUpdateVendor} className="space-y-4">
-                        <input type="hidden" name="vendorId" value={vendor.id} />
+        vendorTypes.filter(type => vendorsByType[type]).map((type) => (
+          <Card key={type}>
+            <CardHeader
+              title={type === 'dj' ? 'DJs' : type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
+            />
+            <div className="divide-y divide-border">
+              {vendorsByType[type]?.map((vendor: any) => {
+                const formId = `vendor-form-${vendor.id}`
+                return (
+                  <div key={vendor.id} className="space-y-4 p-pad-card">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-text-strong">{vendor.name}</p>
+                      {vendor.preferred && (
+                        <Badge tone={PREFERRED_VENDOR_TONE} icon={<Icon name="star" size={12} />}>
+                          Preferred
+                        </Badge>
+                      )}
+                      <Badge tone={settingsActiveTone(vendor.active)}>
+                        {settingsActiveLabel(vendor.active)}
+                      </Badge>
+                    </div>
 
-                        <div className="flex flex-wrap items-center gap-2 mb-4">
-                          <h4 className="text-lg font-medium text-text">{vendor.name}</h4>
-                          {vendor.preferred && (
-                            <Badge tone="warning" icon={<Icon name="star" size={12} />}>
-                              Preferred
-                            </Badge>
-                          )}
-                          <Badge tone={vendor.active ? 'success' : 'neutral'}>
-                            {vendor.active ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          <Field label="Vendor Name">
-                            <Input
-                              type="text"
-                              name="name"
-                              defaultValue={vendor.name}
-                              required
-                            />
-                          </Field>
-                          <Field label="Type">
-                            <Select
-                              name="service_type"
-                              defaultValue={vendor.service_type}
-                              required
-                              options={vendorTypeOptions.filter(opt => opt.value !== '')}
-                            />
-                          </Field>
-                          <Field label="Contact Name">
-                            <Input
-                              type="text"
-                              name="contact_name"
-                              defaultValue={vendor.contact_name || ''}
-                            />
-                          </Field>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                          <Field 
-                            label="Phone"
-                          >
-                            <Input
-                              type="tel"
-                              name="contact_phone"
-                              defaultValue={vendor.contact_phone || ''}
-                            />
-                          </Field>
-                          <Field 
-                            label="Email"
-                          >
-                            <Input
-                              type="email"
-                              name="contact_email"
-                              defaultValue={vendor.contact_email || ''}
-                            />
-                          </Field>
-                          <Field 
-                            label="Website"
-                          >
-                            <Input
-                              type="url"
-                              name="website"
-                              defaultValue={vendor.website || ''}
-                            />
-                          </Field>
-                          <Field label="Typical Rate (£)">
-                            <Input
-                              type="number"
-                              name="typical_rate"
-                              defaultValue={vendor.typical_rate || ''}
-                              min="0"
-                              step="0.01"
-                            />
-                          </Field>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <Field label="Preferred Status">
-                            <Select
-                              name="preferred"
-                              defaultValue={vendor.preferred ? 'true' : 'false'}
-                              options={preferredOptions}
-                            />
-                          </Field>
-                          <Field label="Status">
-                            <Select
-                              name="active"
-                              defaultValue={vendor.active ? 'true' : 'false'}
-                              options={statusOptions}
-                            />
-                          </Field>
-                        </div>
-                        
-                        <Field label="Notes">
-                          <Textarea
-                            name="notes"
-                            defaultValue={vendor.notes || ''}
-                            rows={2}
+                    <form id={formId} action={handleUpdateVendor} className="space-y-4">
+                      <input type="hidden" name="vendorId" value={vendor.id} />
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <Field label="Vendor Name">
+                          <Input
+                            type="text"
+                            name="name"
+                            defaultValue={vendor.name}
+                            required
                           />
                         </Field>
-                        
-                        <Button type="submit"
-                          variant="primary"
-                          size="sm"
-                          leftIcon={<Icon name="check" size={16} />}
-                        >
-                          Update Vendor
-                        </Button>
-                      </form>
-                      
-                      <div className="mt-4 flex justify-end">
-                        <VendorDeleteButton 
-                          vendorName={vendor.name}
-                          vendorId={vendor.id}
-                          deleteAction={handleDeleteVendor}
-                        />
+                        <Field label="Type">
+                          <Select
+                            name="service_type"
+                            defaultValue={vendor.service_type}
+                            required
+                            options={vendorTypeOptions.filter(opt => opt.value !== '')}
+                          />
+                        </Field>
+                        <Field label="Contact Name">
+                          <Input
+                            type="text"
+                            name="contact_name"
+                            defaultValue={vendor.contact_name || ''}
+                          />
+                        </Field>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </Section>
-            </Card>
-          ))}
-        </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <Field label="Phone">
+                          <Input
+                            type="tel"
+                            name="contact_phone"
+                            defaultValue={vendor.contact_phone || ''}
+                          />
+                        </Field>
+                        <Field label="Email">
+                          <Input
+                            type="email"
+                            name="contact_email"
+                            defaultValue={vendor.contact_email || ''}
+                          />
+                        </Field>
+                        <Field label="Website">
+                          <Input
+                            type="url"
+                            name="website"
+                            defaultValue={vendor.website || ''}
+                          />
+                        </Field>
+                        <Field label="Typical Rate (£)">
+                          <Input
+                            type="number"
+                            name="typical_rate"
+                            defaultValue={vendor.typical_rate || ''}
+                            min="0"
+                            step="0.01"
+                          />
+                        </Field>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Field label="Preferred Status">
+                          <Select
+                            name="preferred"
+                            defaultValue={vendor.preferred ? 'true' : 'false'}
+                            options={preferredOptions}
+                          />
+                        </Field>
+                        <Field label="Status">
+                          <Select
+                            name="active"
+                            defaultValue={vendor.active ? 'true' : 'false'}
+                            options={statusOptions}
+                          />
+                        </Field>
+                      </div>
+
+                      <Field label="Notes">
+                        <Textarea
+                          name="notes"
+                          defaultValue={vendor.notes || ''}
+                          rows={2}
+                        />
+                      </Field>
+                    </form>
+
+                    {/* The delete button submits its own form, so this footer sits outside the edit
+                        form and Update reaches that form through the form attribute. */}
+                    <FormFooter>
+                      <VendorDeleteButton
+                        vendorName={vendor.name}
+                        vendorId={vendor.id}
+                        deleteAction={handleDeleteVendor}
+                      />
+                      <Button
+                        type="submit"
+                        form={formId}
+                        variant="primary"
+                        icon={<Icon name="check" size={16} />}
+                      >
+                        Update Vendor
+                      </Button>
+                    </FormFooter>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        ))
       )}
-      </div>
     </PageLayout>
   )
 }

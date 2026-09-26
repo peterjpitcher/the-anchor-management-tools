@@ -188,13 +188,13 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Select value={localFilters.status ?? 'all'} onChange={handleStatusChange} className="w-40" options={statusOptions} />
-        <Select value={localFilters.direction ?? 'all'} onChange={handleDirectionChange} className="w-40" options={directionOptions} />
-        <Select value={localFilters.sourceType ?? 'all'} onChange={handleSourceChange} className="w-40" options={sourceOptions} />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <Select label="Status" value={localFilters.status ?? 'all'} onChange={handleStatusChange} className="w-40" options={statusOptions} />
+        <Select label="Direction" value={localFilters.direction ?? 'all'} onChange={handleDirectionChange} className="w-40" options={directionOptions} />
+        <Select label="Source" value={localFilters.sourceType ?? 'all'} onChange={handleSourceChange} className="w-40" options={sourceOptions} />
         {availableCardMembers.length > 0 && localFilters.sourceType === 'amex' && (
-          <Select value={localFilters.cardMember ?? ''} onChange={handleCardMemberChange} className="w-40" options={cardMemberOptions} />
+          <Select label="Cardholder" value={localFilters.cardMember ?? ''} onChange={handleCardMemberChange} className="w-40" options={cardMemberOptions} />
         )}
       </div>
 
@@ -209,7 +209,7 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
             onClick={() => applyFilters({ ...localFilters, month: undefined })}
             className="whitespace-nowrap flex-shrink-0"
           >
-            All time
+            All Time
           </Button>
           {monthOptions.map((monthValue) => {
             const isActive = monthValue === localFilters.month
@@ -228,9 +228,10 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
           })}
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <form onSubmit={handleSearchSubmit} className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <form onSubmit={handleSearchSubmit} className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
           <Input
+            label="Search"
             name="search"
             placeholder="Search description or type"
             value={localFilters.search ?? ''}

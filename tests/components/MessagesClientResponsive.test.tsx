@@ -128,10 +128,13 @@ function inbox(overrides: Record<string, unknown> = {}) {
   }
 }
 
-/** Drive the layout branch the component reads from matchMedia. */
+/**
+ * Drive the layout branch the component reads from matchMedia. The inbox asks the phone shell
+ * query (SHELL_MEDIA_QUERY, a max-width query), which matches when the layout is narrow.
+ */
 function setViewport(wide: boolean) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: wide,
+    matches: query.includes('max-width') ? !wide : wide,
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -223,14 +226,14 @@ describe('MessagesClient, read state', () => {
     // the whole document before the menu has opened passes for the wrong
     // reason, and would keep passing if the item came back.
     const menu = await screen.findByRole('menu')
-    expect(within(menu).getByText('View full profile')).toBeInTheDocument()
+    expect(within(menu).getByText('View Full Profile')).toBeInTheDocument()
     expect(within(menu).queryByText(/Mark whole conversation unread/i)).not.toBeInTheDocument()
   })
 
   it('says that mark unread affects the whole conversation', async () => {
     render(<MessagesClient />)
     fireEvent.click(await screen.findByRole('button', { name: 'Conversation actions' }))
-    expect(await screen.findByText('Mark whole conversation unread')).toBeInTheDocument()
+    expect(await screen.findByText('Mark Whole Conversation Unread')).toBeInTheDocument()
   })
 })
 
@@ -303,7 +306,7 @@ describe('MessagesClient, composer eligibility', () => {
     expect(await screen.findByText('This customer has opted out of SMS')).toBeInTheDocument()
     // Scoped to the composer: the search box is also a textbox.
     expect(screen.queryByPlaceholderText('Reply by SMS...')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Open customer profile' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open Customer Profile' })).toBeInTheDocument()
   })
 
   it('blocks when SMS consent has never been recorded', async () => {
@@ -398,7 +401,8 @@ describe('MessagesClient, honesty about data', () => {
       inbox({ totalUnread: 500, unreadIsCapped: true, hasMoreUnread: true }),
     )
     render(<MessagesClient />)
-    expect(await screen.findByText('500+ unread messages')).toBeInTheDocument()
+    // The subtitle shows in both PageLayout headers (phone and desktop; CSS shows one).
+    expect((await screen.findAllByText('500+ unread messages')).length).toBeGreaterThan(0)
     expect(screen.getByText(/lower bound/i)).toBeInTheDocument()
   })
 
@@ -486,20 +490,23 @@ describe('MessagesClient, header actions', () => {
     render(<MessagesClient />)
     await screen.findByRole('option', { name: /Jane Smith/i })
     // Showing this to a user without send_marketing sent them to /unauthorized.
-    expect(screen.queryByRole('button', { name: 'Bulk message' })).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('button', { name: 'Bulk Message' })).toHaveLength(0)
   })
 
   it('shows the bulk link to a marketing sender', async () => {
     render(<MessagesClient />)
-    expect(await screen.findByRole('button', { name: 'Bulk message' })).toBeInTheDocument()
+    // PageLayout draws a phone and a desktop header (CSS shows one), so the button is in both.
+    expect((await screen.findAllByRole('button', { name: 'Bulk Message' })).length).toBeGreaterThan(0)
   })
 
   it('keeps the header to one primary button plus an overflow menu', async () => {
     render(<MessagesClient />)
     await screen.findByRole('option', { name: /Jane Smith/i })
 
-    const header = screen.getByRole('heading', { name: 'Messages' }).closest('div')?.parentElement
-    expect(within(header as HTMLElement).getByRole('button', { name: 'Bulk message' })).toBeInTheDocument()
+    // PageLayout renders a phone header and a desktop header; the desktop one, last in the
+    // document, carries the actions beside the title.
+    const header = screen.getAllByRole('heading', { name: 'Messages' }).at(-1)?.closest('div')?.parentElement
+    expect(within(header as HTMLElement).getByRole('button', { name: 'Bulk Message' })).toBeInTheDocument()
     expect(
       within(header as HTMLElement).getByRole('button', { name: 'More inbox actions' }),
     ).toBeInTheDocument()
@@ -528,14 +535,14 @@ describe('MessagesClient, header actions', () => {
     await screen.findByRole('option', { name: /Sam Patel/i })
     await waitFor(() => expect(markConversationAsRead).toHaveBeenCalled())
 
-    fireEvent.click(screen.getByRole('button', { name: 'More inbox actions' }))
-    fireEvent.click(await screen.findByText('Mark all read'))
+    fireEvent.click(screen.getAllByRole('button', { name: 'More inbox actions' })[0])
+    fireEvent.click(await screen.findByText('Mark All Read'))
 
-    expect(await screen.findByText('Mark every conversation as read?')).toBeInTheDocument()
+    expect(await screen.findByText('Mark Every Conversation as Read?')).toBeInTheDocument()
     // The bulk clear only runs once it has been confirmed.
     expect(markAllMessagesAsRead).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mark all read' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mark All Read' }))
     await waitFor(() => expect(markAllMessagesAsRead).toHaveBeenCalled())
   })
 })

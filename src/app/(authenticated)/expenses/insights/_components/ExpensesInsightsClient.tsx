@@ -2,24 +2,41 @@
 
 import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { TabNav } from '@/ds'
-import { StatGroup, Stat } from '@/ds'
-import { Card } from '@/ds'
+import {
+  Alert,
+  Card,
+  CardBody,
+  CardHeader,
+  DataTable,
+  Empty,
+  PageLayout,
+  PageLoading,
+  Segmented,
+  Stat,
+  StatGrid,
+  type Column,
+} from '@/ds'
 import { BarChart } from '@/components/charts/BarChart'
 import {
   getExpenseInsights,
   type ExpenseInsightsData,
   type ExpenseGranularity,
 } from '@/app/actions/expenses'
-import { useSort } from '@/hooks/useSort'
-import { SortableHeader } from '@/ds'
+import { EXPENSES_INSIGHTS_LAYOUT } from '../../_shared/nav'
 
-const PERIOD_TABS = [
-  { key: 'monthly' as const, label: 'Monthly' },
-  { key: 'quarterly' as const, label: 'Quarterly' },
-  { key: 'annually' as const, label: 'Annually' },
-  { key: 'all' as const, label: 'All Time' },
+const PERIOD_OPTIONS: Array<{ id: ExpenseGranularity; label: string }> = [
+  { id: 'monthly', label: 'Monthly' },
+  { id: 'quarterly', label: 'Quarterly' },
+  { id: 'annually', label: 'Annually' },
+  { id: 'all', label: 'All Time' },
 ]
+
+const PERIOD_LOAD_FAILED = 'Could not load expenses for that period. Try again.'
+
+type CompanyRow = ExpenseInsightsData['byCompany'][number]
+
+// Module level so DataTable gets the same function on every render.
+const companyRowKey = (row: CompanyRow): string => row.companyRef
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value)
@@ -36,7 +53,7 @@ function getPeriodEnd(periodStart: string, granularity: ExpenseGranularity): str
     const lastDay = new Date(y, endMonth, 0).getDate()
     return `${y}-${String(endMonth).padStart(2, '0')}-${lastDay}`
   }
-  // monthly — last day of the month
+  // monthly: last day of the month
   const lastDay = new Date(y, m, 0).getDate()
   return `${y}-${String(m).padStart(2, '0')}-${lastDay}`
 }
@@ -49,46 +66,65 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
   const router = useRouter()
   const [granularity, setGranularity] = useState<ExpenseGranularity>('monthly')
   const [data, setData] = useState<ExpenseInsightsData>(initialData)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  // ---------------------------------------------------------------------------
-  // Sorting — By Company table
-  // ---------------------------------------------------------------------------
-
-  type CompanySortKey = 'company' | 'total' | 'vat' | 'count'
-
-  const companyComparators = useMemo(
-    () => ({
-      company: (a: ExpenseInsightsData['byCompany'][number], b: ExpenseInsightsData['byCompany'][number]) =>
-        a.companyRef.localeCompare(b.companyRef),
-      total: (a: ExpenseInsightsData['byCompany'][number], b: ExpenseInsightsData['byCompany'][number]) =>
-        a.totalAmount - b.totalAmount,
-      vat: (a: ExpenseInsightsData['byCompany'][number], b: ExpenseInsightsData['byCompany'][number]) =>
-        a.totalVat - b.totalVat,
-      count: (a: ExpenseInsightsData['byCompany'][number], b: ExpenseInsightsData['byCompany'][number]) =>
-        a.count - b.count,
-    }),
-    []
+  // The company table opens in the order it always had, biggest spend first. DataTable sorts
+  // from there when a header is clicked.
+  const companiesBySpend = useMemo(
+    () => [...data.byCompany].sort((a, b) => b.totalAmount - a.totalAmount),
+    [data.byCompany],
   )
 
-  const {
-    sortedData: sortedByCompany,
-    sort: companySort,
-    toggleSort: toggleCompanySort,
-  } = useSort<ExpenseInsightsData['byCompany'][number], CompanySortKey>(
-    data.byCompany,
-    'total',
-    'desc',
-    companyComparators
-  )
+  const companyColumns: Column<CompanyRow>[] = [
+    {
+      key: 'company',
+      header: 'Company',
+      sortable: true,
+      sortFn: (a, b) => a.companyRef.localeCompare(b.companyRef),
+      cell: (row) => row.companyRef,
+    },
+    {
+      key: 'total',
+      header: 'Total',
+      align: 'right',
+      sortable: true,
+      sortFn: (a, b) => a.totalAmount - b.totalAmount,
+      cell: (row) => formatCurrency(row.totalAmount),
+    },
+    {
+      key: 'vat',
+      header: 'VAT',
+      align: 'right',
+      sortable: true,
+      sortFn: (a, b) => a.totalVat - b.totalVat,
+      cell: (row) => formatCurrency(row.totalVat),
+    },
+    {
+      key: 'count',
+      header: 'Count',
+      align: 'right',
+      sortable: true,
+      sortFn: (a, b) => a.count - b.count,
+      cell: (row) => row.count,
+    },
+  ]
 
   function handlePeriodChange(key: string): void {
     const newGranularity = key as ExpenseGranularity
     setGranularity(newGranularity)
     startTransition(async () => {
-      const result = await getExpenseInsights(newGranularity)
-      if (result.success && result.data) {
-        setData(result.data)
+      try {
+        const result = await getExpenseInsights(newGranularity)
+        if (result.success && result.data) {
+          setData(result.data)
+          setLoadError(null)
+        } else {
+          // A failed read is shown as a failure, never as the previous period's figures.
+          setLoadError(result.error ?? PERIOD_LOAD_FAILED)
+        }
+      } catch {
+        setLoadError(PERIOD_LOAD_FAILED)
       }
     })
   }
@@ -106,102 +142,59 @@ export function ExpensesInsightsClient({ initialData }: ExpensesInsightsClientPr
   }))
 
   return (
-    <div className="space-y-6">
-      <TabNav
-        tabs={PERIOD_TABS}
-        activeKey={granularity}
-        onChange={handlePeriodChange}
-        variant="pills"
-      />
-
-      <StatGroup columns={3}>
-        <Stat
-          label="Total Spend"
-          value={formatCurrency(data.totals.totalAmount)}
-          loading={isPending}
+    <PageLayout
+      {...EXPENSES_INSIGHTS_LAYOUT}
+      headerActions={
+        <Segmented
+          options={PERIOD_OPTIONS}
+          value={granularity}
+          onChange={handlePeriodChange}
+          size="sm"
         />
-        <Stat
-          label="VAT Reclaimable"
-          value={formatCurrency(data.totals.totalVat)}
-          loading={isPending}
-        />
-        <Stat
-          label="Number of Expenses"
-          value={data.totals.count.toLocaleString('en-GB')}
-          loading={isPending}
-        />
-      </StatGroup>
+      }
+    >
+      {isPending ? (
+        <PageLoading inline />
+      ) : loadError ? (
+        <Alert tone="danger" title="Couldn't load this period">{loadError}</Alert>
+      ) : (
+        <>
+          <StatGrid columns={3}>
+            <Stat label="Total Spend" value={formatCurrency(data.totals.totalAmount)} />
+            <Stat label="VAT Reclaimable" value={formatCurrency(data.totals.totalVat)} />
+            <Stat label="Number of Expenses" value={data.totals.count.toLocaleString('en-GB')} />
+          </StatGrid>
 
-      <Card>
-        <h3 className="text-lg font-semibold mb-4">Expenses Over Time</h3>
-        {chartData.length > 0 ? (
-          <BarChart
-            data={chartData}
-            height={300}
-            color="var(--color-chart-1)"
-            formatType="shorthandCurrency"
-            onBarClick={handleBarClick}
-          />
-        ) : (
-          <p className="text-text-muted text-center py-12">No expense data available.</p>
-        )}
-      </Card>
+          <Card>
+            <CardHeader title="Expenses Over Time" />
+            <CardBody>
+              {chartData.length > 0 ? (
+                <BarChart
+                  data={chartData}
+                  height={300}
+                  color="var(--color-chart-1)"
+                  formatType="shorthandCurrency"
+                  onBarClick={handleBarClick}
+                />
+              ) : (
+                <Empty size="sm" title="No expense data available" />
+              )}
+            </CardBody>
+          </Card>
 
-      {data.byCompany.length > 0 && (
-        <Card>
-          <h3 className="text-lg font-semibold mb-4">By Company</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <SortableHeader
-                    label="Company"
-                    column="company"
-                    currentColumn={companySort.column}
-                    currentDirection={companySort.direction}
-                    onSort={toggleCompanySort}
-                    className="text-left py-2 pr-4 font-medium text-text-muted"
-                  />
-                  <SortableHeader
-                    label="Total"
-                    column="total"
-                    currentColumn={companySort.column}
-                    currentDirection={companySort.direction}
-                    onSort={toggleCompanySort}
-                    className="text-right py-2 px-4 font-medium text-text-muted"
-                  />
-                  <SortableHeader
-                    label="VAT"
-                    column="vat"
-                    currentColumn={companySort.column}
-                    currentDirection={companySort.direction}
-                    onSort={toggleCompanySort}
-                    className="text-right py-2 px-4 font-medium text-text-muted"
-                  />
-                  <SortableHeader
-                    label="Count"
-                    column="count"
-                    currentColumn={companySort.column}
-                    currentDirection={companySort.direction}
-                    onSort={toggleCompanySort}
-                    className="text-right py-2 pl-4 font-medium text-text-muted"
-                  />
-                </tr>
-              </thead>
-              <tbody>
-                {sortedByCompany.map((company) => (
-                  <tr key={company.companyRef} className="border-b border-border">
-                    <td className="py-2 pr-4">{company.companyRef}</td>
-                    <td className="text-right py-2 px-4">{formatCurrency(company.totalAmount)}</td>
-                    <td className="text-right py-2 px-4">{formatCurrency(company.totalVat)}</td>
-                    <td className="text-right py-2 pl-4">{company.count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+          {data.byCompany.length > 0 && (
+            <Card>
+              <CardHeader title="By Company" />
+              <DataTable
+                data={companiesBySpend}
+                columns={companyColumns}
+                getRowKey={companyRowKey}
+                bordered={false}
+              />
+            </Card>
+          )}
+        </>
       )}
-    </div>
+    </PageLayout>
   )
 }

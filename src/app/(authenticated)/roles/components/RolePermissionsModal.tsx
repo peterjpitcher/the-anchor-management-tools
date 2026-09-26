@@ -4,11 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Role, Permission } from '@/types/rbac';
 import { getRolePermissions, assignPermissionsToRole } from '@/app/actions/rbac';
 import { useRouter } from 'next/navigation';
-import { Modal, ModalActions, toast } from '@/ds';
-import { Button } from '@/ds';
-import { Checkbox } from '@/ds';
-import { Card } from '@/ds';
-import { Spinner } from '@/ds';
+import { Button, Card, CardBody, CardHeader, Checkbox, Modal, PageLoading, toast } from '@/ds';
 
 interface RolePermissionsModalProps {
   isOpen: boolean
@@ -20,6 +16,18 @@ interface RolePermissionsModalProps {
 
 interface GroupedPermissions {
   [module: string]: Permission[];
+}
+
+/**
+ * A module key as a Title Case card title ("private_bookings" to "Private Bookings"). The old
+ * heading did this with CSS capitalize and replaced only the first underscore.
+ */
+function formatModuleName(module: string): string {
+  return module
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 }
 
 export default function RolePermissionsModal({
@@ -112,7 +120,7 @@ export default function RolePermissionsModal({
       title={`Manage Permissions: ${role.name}`}
       size="lg"
       footer={
-        <ModalActions>
+        <>
           <Button
             onClick={onClose}
             variant="secondary"
@@ -127,33 +135,31 @@ export default function RolePermissionsModal({
           >
             Save Permissions
           </Button>
-        </ModalActions>
+        </>
       }
     >
       {loading ? (
-        <div className="flex items-center justify-center py-8">
-          <Spinner size="lg" />
-        </div>
+        <PageLoading inline label="Loading permissions" />
       ) : (
         <div className="space-y-4">
           {Object.entries(groupedPermissions).map(([module, permissions]) => (
-            <Card key={module} padding="sm">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-medium text-text capitalize">
-                  {module.replace('_', ' ')}
-                </h4>
-                <Button
-                  onClick={() => toggleModule(permissions)}
-                  variant="link"
-                  size="sm"
-                  disabled={!canManage || role.is_system}
-                >
-                  {permissions.every(p => selectedPermissions.has(p.id))
-                    ? 'Deselect all'
-                    : 'Select all'}
-                </Button>
-              </div>
-              <div className="space-y-2">
+            <Card key={module}>
+              <CardHeader
+                title={formatModuleName(module)}
+                action={
+                  <Button
+                    onClick={() => toggleModule(permissions)}
+                    variant="link"
+                    size="sm"
+                    disabled={!canManage || role.is_system}
+                  >
+                    {permissions.every(p => selectedPermissions.has(p.id))
+                      ? 'Deselect All'
+                      : 'Select All'}
+                  </Button>
+                }
+              />
+              <CardBody className="space-y-2">
                 {permissions.map((permission) => (
                   <Checkbox
                     key={permission.id}
@@ -163,7 +169,7 @@ export default function RolePermissionsModal({
                     label={permission.description || permission.action}
                   />
                 ))}
-              </div>
+              </CardBody>
             </Card>
           ))}
         </div>

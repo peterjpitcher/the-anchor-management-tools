@@ -2,7 +2,7 @@
 
 import type { EmployeeHealthRecord } from '@/types/database';
 import { formatDateInLondon } from '@/lib/dateUtils';
-import { LinkButton } from '@/ds';
+import { Card, CardBody, CardHeader, DescriptionList, LinkButton } from '@/ds';
 
 interface HealthRecordsTabProps {
   employeeId: string;
@@ -10,19 +10,17 @@ interface HealthRecordsTabProps {
   canEdit: boolean;
 }
 
-const DetailItem = ({ label, value }: { label: string; value: string | undefined | null | boolean }) => (
-  <div className="py-3 sm:grid sm:grid-cols-4 sm:gap-4">
-    <dt className="text-sm font-medium text-text-muted">{label}</dt>
-    <dd className="mt-1 text-sm text-text sm:col-span-3 sm:mt-0">
-      {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : (value || 'N/A')}
-    </dd>
-  </div>
-);
+type DetailValue = string | undefined | null | boolean;
+
+function displayValue(value: DetailValue): string {
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return value || 'N/A';
+}
 
 export default function HealthRecordsTab({ employeeId, healthRecord, canEdit }: HealthRecordsTabProps) {
   const hasAllergies = Boolean(healthRecord?.has_allergies ?? healthRecord?.allergies)
 
-  const details = [
+  const details: Array<{ label: string; value: DetailValue }> = [
     { label: 'Doctor Name', value: healthRecord?.doctor_name },
     { label: 'Doctor Address', value: healthRecord?.doctor_address },
     { label: 'Has Allergies?', value: hasAllergies },
@@ -33,7 +31,7 @@ export default function HealthRecordsTab({ employeeId, healthRecord, canEdit }: 
     { label: 'Additional Medical Notes', value: healthRecord?.illness_history },
   ];
 
-  const conditions = [
+  const conditions: Array<{ label: string; value: DetailValue }> = [
     { label: 'Suffer with Diabetes?', value: healthRecord?.has_diabetes ?? false },
     { label: 'Suffer with Epilepsy/Fits/Blackouts?', value: healthRecord?.has_epilepsy ?? false },
     { label: 'Suffer with Eczema/Dermatitis/Skin Disease?', value: healthRecord?.has_skin_condition ?? false },
@@ -41,8 +39,8 @@ export default function HealthRecordsTab({ employeeId, healthRecord, canEdit }: 
     { label: 'Suffer with Bowel Problems?', value: healthRecord?.has_bowel_problems ?? false },
     { label: 'Suffer with Earache or Infection?', value: healthRecord?.has_ear_problems ?? false },
   ];
-  
-  const disabilityDetails = [
+
+  const disabilityDetails: Array<{ label: string; value: DetailValue }> = [
       { label: 'Registered Disabled?', value: healthRecord?.is_registered_disabled ?? false },
       ...((healthRecord?.is_registered_disabled) ? [
           { label: 'Disability Registration Number', value: healthRecord.disability_reg_number },
@@ -55,27 +53,26 @@ export default function HealthRecordsTab({ employeeId, healthRecord, canEdit }: 
       ])
   ]
 
+  const items = [...details, ...conditions, ...disabilityDetails].map((item) => ({
+    key: item.label,
+    label: item.label,
+    value: displayValue(item.value),
+  }));
+
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-medium text-text">Confidential Health Records</h3>
-          <p className="mt-1 text-sm text-text-muted">
-            Confidential health and medical information.
-          </p>
-        </div>
-        {canEdit && (
+    <Card>
+      <CardHeader
+        title="Confidential Health Records"
+        subtitle="Confidential health and medical information"
+        action={canEdit ? (
           <LinkButton href={`/employees/${employeeId}/edit?tab=health`} variant="secondary" size="sm">
             Edit
           </LinkButton>
-        )}
-      </div>
-      
-      <dl className="sm:divide-y sm:divide-border">
-        {details.map(item => <DetailItem key={item.label} {...item} />)}
-        {conditions.map(item => <DetailItem key={item.label} {...item} />)}
-        {disabilityDetails.map(item => <DetailItem key={item.label} {...item} />)}
-      </dl>
-    </div>
+        ) : undefined}
+      />
+      <CardBody>
+        <DescriptionList items={items} />
+      </CardBody>
+    </Card>
   );
-} 
+}

@@ -42,6 +42,7 @@ describe('PayrollClient pay rates', () => {
   it('shows base and premium rates clearly in the daily breakdown and summary', () => {
     render(
       <PayrollClient
+        layout={{ title: 'Payroll', subtitle: 'July 2026', navItems: [] }}
         year={2026}
         month={7}
         rows={[row]}
@@ -69,7 +70,7 @@ describe('PayrollClient pay rates', () => {
 
     expect(screen.getByRole('columnheader', { name: 'Pay rate' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Expand All' }))
 
     const table = screen.getByRole('table')
     expect(within(table).getByText('£12.71/hr')).toBeInTheDocument()

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Card, CardHeader, CardBody, Checkbox, ProgressBar, Badge } from '@/ds'
+import { Card, CardHeader, CardBody, Checkbox, ProgressBar, Badge, Empty } from '@/ds'
 import { toggleEventChecklistTask } from '@/app/actions/event-checklist'
 import type { ChecklistTodoItem } from '@/lib/event-checklist'
 
@@ -59,21 +59,26 @@ export default function TodoClient({ initialTodos }: TodoClientProps) {
 
   if (groups.length === 0) {
     return (
-      <div className="text-center py-12 text-text-muted">
-        No outstanding todos across events
-      </div>
+      <Card>
+        <Empty
+          size="sm"
+          title="No Outstanding Todos"
+          description="No outstanding todos across events."
+        />
+      </Card>
     )
   }
 
+  // Each event is its own card, passed straight to PageLayout, which spaces them.
   return (
-    <div className={`flex flex-col gap-4 ${isPending ? 'opacity-50' : ''}`}>
+    <>
       {groups.map((group) => {
         const completed = group.items.filter((i) => i.completed).length
         const total = group.items.length
         const pct = total > 0 ? Math.round((completed / total) * 100) : 0
 
         return (
-          <Card key={group.eventId}>
+          <Card key={group.eventId} className={isPending ? 'opacity-50' : undefined}>
             <CardHeader
               title={group.eventName}
               action={
@@ -85,8 +90,8 @@ export default function TodoClient({ initialTodos }: TodoClientProps) {
                 </div>
               }
             />
-            <CardBody>
-              <ProgressBar value={pct} className="mb-3" />
+            <CardBody className="space-y-4">
+              <ProgressBar value={pct} />
               <div className="flex flex-col gap-2">
                 {group.items.map((item) => (
                   <Checkbox
@@ -102,6 +107,6 @@ export default function TodoClient({ initialTodos }: TodoClientProps) {
           </Card>
         )
       })}
-    </div>
+    </>
   )
 }

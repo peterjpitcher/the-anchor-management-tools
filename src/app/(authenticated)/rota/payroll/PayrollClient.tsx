@@ -2,7 +2,29 @@
 
 import { useEffect, useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Alert, Badge, Button, IconButton, toast, Icon } from '@/ds';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  ConfirmDialog,
+  Empty,
+  IconButton,
+  Input,
+  PageLayout,
+  Section,
+  Select,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  toast,
+  Icon,
+} from '@/ds';
 import { approvePayrollMonth, sendPayrollEmail, updatePayrollPeriod, upsertShiftNote, updatePayrollRowTimes, deletePayrollRow } from '@/app/actions/payroll';
 import type { PayrollRow } from '@/lib/rota/excel-export';
 import type { PayrollEmployeeSummary } from '@/lib/rota/email-templates';
@@ -11,11 +33,24 @@ import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 import { validatePayrollPeriodRange } from '@/lib/rota/payroll-guards';
 import { hasCouldntWorkPayrollFlag, isCouldntWorkPayrollFlag, parsePayrollFlags, payrollFlagLabel } from '@/lib/rota/payroll-flags';
-import { ROTA_CALENDAR_NOTE_CLASSES, ROTA_DAY_INFO_CLASSES, ROTA_SHIFT_STATUS_CLASSES } from '@/lib/rota/status-ui';
+import { ROTA_CALENDAR_NOTE_CLASSES, ROTA_DAY_INFO_CLASSES } from '@/lib/rota/status-ui';
+import { DownloadLink } from '../_shared/DownloadLink';
+import type { RotaLayoutProps } from '../_shared/layout';
+import {
+  PAYROLL_APPROVAL_TONE,
+  PAYROLL_DAY_FLAGGED_TONE,
+  PAYROLL_PAY_RATE_TONE,
+  payrollDiffClasses,
+  payrollFlagBadgeClasses,
+} from '../_shared/status-ui';
 import { PayrollSummaryBar } from './PayrollSummaryBar';
 import { computeEmployeeCards } from './payrollCycleStats';
 
 interface PayrollClientProps {
+  /** The page header, built once by page.tsx so the error state shows the same one. */
+  layout: RotaLayoutProps;
+  /** Shown above the page body, such as the alert for a secondary load that failed. */
+  notice?: React.ReactNode;
   year: number;
   month: number;
   rows: PayrollRow[];
@@ -102,10 +137,8 @@ function formatTime12h(time: string | null | undefined): string {
   return m === 0 ? `${hour12}${period}` : `${hour12}:${String(m).padStart(2, '0')}${period}`;
 }
 
-function diffColour(diff: number) {
-  if (Math.abs(diff) < 0.05) return 'text-text-muted';
-  return diff < 0 ? 'text-danger-fg font-medium' : 'text-success-fg';
-}
+/** Shown in a cell with no value to report. */
+const NO_VALUE = '–';
 
 function diffLabel(diff: number) {
   if (Math.abs(diff) < 0.05) return '–';
@@ -131,17 +164,6 @@ function PayRateDisplay({ row }: { row: PayrollRow }) {
   );
 }
 
-// Couldn't Work takes the shared rota colour (danger); a variance is a warning; auto-closed and
-// unscheduled are kinds of entry rather than problems, so they take category colours. Anything
-// else is a neutral badge.
-function flagBadgeClasses(flag: string): string | undefined {
-  if (isCouldntWorkPayrollFlag(flag)) return ROTA_SHIFT_STATUS_CLASSES.sick;
-  if (flag === 'variance') return 'bg-warning-soft text-warning-fg border-warning-border';
-  if (flag === 'auto_close') return 'bg-cat-3-soft text-cat-3-fg border-cat-3/20';
-  if (flag === 'unscheduled') return 'bg-cat-5-soft text-cat-5-fg border-cat-5/20';
-  return undefined;
-}
-
 function FlagChips({ flags, couldntWorkReason }: { flags: string; couldntWorkReason?: string | null }) {
   const parts = parsePayrollFlags(flags);
   if (!parts.length) return null;
@@ -152,7 +174,7 @@ function FlagChips({ flags, couldntWorkReason }: { flags: string; couldntWorkRea
     <div className="space-y-1">
       <div className="flex flex-wrap gap-1">
         {parts.map(f => (
-          <Badge key={f} size="sm" className={flagBadgeClasses(f)}>
+          <Badge key={f} size="sm" className={payrollFlagBadgeClasses(f)}>
             {payrollFlagLabel(f)}
           </Badge>
         ))}
@@ -169,6 +191,8 @@ function FlagChips({ flags, couldntWorkReason }: { flags: string; couldntWorkRea
 
 
 export default function PayrollClient({
+  layout,
+  notice,
   year,
   month,
   rows: initialRows,
@@ -193,7 +217,7 @@ export default function PayrollClient({
   const [editClockOut, setEditClockOut] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [confirmDeleteRow, setConfirmDeleteRow] = useState<PayrollRow | null>(null);
 
   useEffect(() => {
     setApproval(initialApproval);
@@ -218,13 +242,17 @@ export default function PayrollClient({
   };
 
   const handleDelete = async (row: import('@/lib/rota/excel-export').PayrollRow) => {
-    setDeleteLoading(true);
     const result = await deletePayrollRow(row.sessionId, row.shiftId, year, month);
-    setDeleteLoading(false);
     if (!result.success) { toast.error(result.error); return; }
     setConfirmDeleteKey(null);
+    setConfirmDeleteRow(null);
     if (approval) setApproval(null);
     router.refresh();
+  };
+
+  const closeDeleteConfirm = () => {
+    setConfirmDeleteKey(null);
+    setConfirmDeleteRow(null);
   };
 
   // Note editing
@@ -319,53 +347,79 @@ export default function PayrollClient({
     });
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Month selector */}
-      <select
-        className="text-sm border border-border rounded-lg px-3 py-1.5 text-text bg-surface outline-hidden focus:border-border-focus focus:shadow-ring"
-        value={`?year=${year}&month=${month}`}
-        onChange={e => { if (e.target.value) router.push(`/rota/payroll${e.target.value}`); }}
-      >
-        {monthOptions.map(opt => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
+  const approvalState = approval ? 'approved' : 'pending';
+  const approvalLabel = approval
+    ? `Approved ${formatDateInLondon(approval.approved_at, { day: 'numeric', month: 'short', year: 'numeric' })}${
+        approval.email_sent_at ? ` · Emailed ${formatDateInLondon(approval.email_sent_at)}` : ''
+      }`
+    : 'Pending approval';
 
-      {/* Payroll period */}
-      <div className="flex items-center gap-3 text-sm">
+  return (
+    <PageLayout
+      {...layout}
+      headerActions={
+        <>
+          <Badge
+            tone={PAYROLL_APPROVAL_TONE[approvalState]}
+            icon={approval ? <Icon name="checkCircle" size={12} /> : undefined}
+          >
+            {approvalLabel}
+          </Badge>
+          {canExport && approval && (
+            <DownloadLink href={`/api/rota/export?year=${year}&month=${month}`}>
+              Download Excel
+            </DownloadLink>
+          )}
+          {canSend && approval && !approval.email_sent_at && (
+            <Button type="button" size="sm" variant="secondary" icon={<Icon name="mail" size={14} />} onClick={handleSend} disabled={sendPending}>
+              {sendPending ? 'Sending…' : 'Email Accountant'}
+            </Button>
+          )}
+          {canApprove && !approval && (
+            <Button type="button" size="sm" variant="primary" onClick={handleApprove} disabled={approvePending || initialRows.length === 0}>
+              {approvePending ? 'Approving…' : 'Approve Payroll'}
+            </Button>
+          )}
+        </>
+      }
+    >
+      {notice}
+
+      {/* Which month, and the pay period it covers. */}
+      <div className="flex flex-wrap items-end gap-3">
+        <Select
+          label="Month"
+          value={`?year=${year}&month=${month}`}
+          onChange={e => { if (e.target.value) router.push(`/rota/payroll${e.target.value}`); }}
+          options={monthOptions}
+        />
         {editingPeriod ? (
           <>
-            <label className="text-text-muted shrink-0">Period:</label>
-            <input
+            <Input
               type="date"
+              label="Period start"
               value={periodStart}
               onChange={e => setPeriodStart(e.target.value)}
-              aria-invalid={Boolean(periodError)}
-              className="border border-border-strong rounded-sm px-2 py-1 text-sm outline-hidden focus:border-border-focus focus:shadow-ring"
+              error={Boolean(periodError)}
             />
-            <span className="text-text-subtle">–</span>
-            <input
+            <Input
               type="date"
+              label="Period end"
               value={periodEnd}
               onChange={e => setPeriodEnd(e.target.value)}
-              aria-invalid={Boolean(periodError)}
-              className="border border-border-strong rounded-sm px-2 py-1 text-sm outline-hidden focus:border-border-focus focus:shadow-ring"
+              error={periodError ?? undefined}
             />
-            <Button type="button" size="sm" variant="primary" onClick={handleSavePeriod} disabled={periodPending || Boolean(periodError)}>
-              {periodPending ? 'Saving…' : 'Save'}
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => { setPeriodStart(initialPeriod.period_start); setPeriodEnd(initialPeriod.period_end); setEditingPeriod(false); }}>
+            <Button type="button" variant="secondary" onClick={() => { setPeriodStart(initialPeriod.period_start); setPeriodEnd(initialPeriod.period_end); setEditingPeriod(false); }}>
               Cancel
             </Button>
-            {periodError ? (
-              <span className="text-xs text-danger-fg">{periodError}</span>
-            ) : null}
+            <Button type="button" variant="primary" onClick={handleSavePeriod} disabled={periodPending || Boolean(periodError)}>
+              {periodPending ? 'Saving…' : 'Save'}
+            </Button>
           </>
         ) : (
-          <>
+          <div className="flex h-input-h items-center gap-2 text-sm">
             <span className="text-text-muted">Period:</span>
-            <span className="text-text-strong font-medium">
+            <span className="font-medium text-text-strong">
               {formatDate(initialPeriod.period_start)} – {formatDate(initialPeriod.period_end)}
             </span>
             {canApprove && !approval && (
@@ -378,90 +432,60 @@ export default function PayrollClient({
                 Edit
               </Button>
             )}
-          </>
+          </div>
         )}
       </div>
 
-      {/* Status bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          {approval ? (
-            <div className="flex items-center gap-2 text-sm text-success-fg bg-success-soft border border-success-border rounded-lg px-3 py-2">
-              <Icon name="checkCircle" size={16} className="shrink-0" />
-              <span>Approved {formatDateInLondon(approval.approved_at, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-              {approval.email_sent_at && (
-                <span className="text-success-fg">· Emailed {formatDateInLondon(approval.email_sent_at)}</span>
-              )}
-            </div>
-          ) : (
-            <Badge tone="warning" size="sm">Pending approval</Badge>
-          )}
-          {approval && (editingKey !== null || confirmDeleteKey !== null) && (
-            <span className="text-xs text-warning-fg">Editing after approval — re-approve to update the snapshot</span>
-          )}
-        </div>
-        <div className="flex gap-2">
-          {canExport && approval && (
-            <a
-              href={`/api/rota/export?year=${year}&month=${month}`}
-              className="inline-flex h-btn-h-sm items-center justify-center gap-1.5 rounded-sm border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text no-underline transition-colors hover:bg-surface-hover max-shell:min-h-touch focus-visible:outline-hidden focus-visible:shadow-ring"
-              download
-            >
-              <Icon name="download" size={14} />
-              Download Excel
-            </a>
-          )}
-          {canSend && approval && !approval.email_sent_at && (
-            <Button type="button" size="sm" variant="secondary" leftIcon={<Icon name="mail" size={14} />} onClick={handleSend} disabled={sendPending}>
-              {sendPending ? 'Sending…' : 'Email accountant'}
-            </Button>
-          )}
-          {canApprove && !approval && (
-            <Button type="button" size="sm" variant="primary" onClick={handleApprove} disabled={approvePending || initialRows.length === 0}>
-              {approvePending ? 'Approving…' : 'Approve payroll'}
-            </Button>
-          )}
-        </div>
-      </div>
+      {approval && (editingKey !== null || confirmDeleteKey !== null) && (
+        <Alert tone="warning" role="status">
+          Editing after approval. Re-approve to update the snapshot.
+        </Alert>
+      )}
 
-      {/* Cycle stats bar — planned vs actual to date + earned */}
+      {/* Cycle stats: planned against actual to date, and earned */}
       <PayrollSummaryBar rows={initialRows} />
 
-      {/* Pivot table: dates → employees */}
-      {initialRows.length === 0 ? (
-        <Alert tone="info">
-          No hourly shifts found for this month. Salaried employees are excluded from payroll calculations.
-        </Alert>
-      ) : (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-text">Daily breakdown</h3>
-            <div className="flex gap-2">
-              <button type="button" onClick={expandAll} className="rounded-sm text-xs text-text-muted hover:text-text underline underline-offset-2 focus-visible:outline-hidden focus-visible:shadow-ring">
-                Expand all
-              </button>
-              <span className="text-text-subtle">|</span>
-              <button type="button" onClick={collapseAll} className="rounded-sm text-xs text-text-muted hover:text-text underline underline-offset-2 focus-visible:outline-hidden focus-visible:shadow-ring">
-                Collapse all
-              </button>
+      {/* Pivot table: dates, then employees */}
+      <Section
+        title="Daily Breakdown"
+        description="Review planned against actual hours per employee. Salaried staff are excluded. Approve to lock the snapshot, then download the Excel or email the accountant."
+        actions={
+          initialRows.length > 0 ? (
+            <div className="flex gap-1">
+              <Button type="button" size="sm" variant="ghost" onClick={expandAll}>
+                Expand All
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={collapseAll}>
+                Collapse All
+              </Button>
             </div>
-          </div>
-
-          <div className="rounded-lg border border-border overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-surface-2 border-b border-border">
-                  <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-text-muted w-8" />
-                  <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-text-muted">Date / Employee</th>
-                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-text-muted">Planned</th>
-                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-text-muted">Worked</th>
-                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-text-muted">Diff</th>
-                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-text-muted">Pay rate</th>
-                  <th scope="col" className="px-3 py-2 text-xs font-medium text-text-muted">Flags</th>
-                  <th scope="col" className="px-3 py-2 w-16" />
-                </tr>
-              </thead>
-              <tbody>
+          ) : undefined
+        }
+      >
+        {initialRows.length === 0 ? (
+          <Card padding="none">
+            <Empty
+              size="sm"
+              title="No hourly shifts found for this month"
+              description="Salaried employees are excluded from payroll calculations."
+            />
+          </Card>
+        ) : (
+          <Card padding="none">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8"><span className="sr-only">Expand</span></TableHead>
+                  <TableHead>Date / Employee</TableHead>
+                  <TableHead align="right">Planned</TableHead>
+                  <TableHead align="right">Worked</TableHead>
+                  <TableHead align="right">Diff</TableHead>
+                  <TableHead align="right">Pay rate</TableHead>
+                  <TableHead>Flags</TableHead>
+                  <TableHead className="w-16"><span className="sr-only">Actions</span></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {sortedDates.map(date => {
                   const dayRows = byDate.get(date)!;
                   const dayPlanned = dayRows.reduce((s, r) => s + (r.plannedHours ?? 0), 0);
@@ -472,67 +496,72 @@ export default function PayrollClient({
 
                   return [
                     /* Date summary row */
-                    <tr
+                    <TableRow
                       key={`date-${date}`}
                       onClick={() => toggleDate(date)}
-                      className="border-t border-border bg-surface-2 hover:bg-surface-hover cursor-pointer select-none"
+                      className="cursor-pointer select-none bg-surface-2"
                     >
-                      <td className="px-3 py-2 text-text-subtle">
-                        {isExpanded
-                          ? <Icon name="chevronDown" size={14} className="block" />
-                          : <Icon name="chevronRight" size={14} className="block" />}
-                      </td>
-                      <td className="px-3 py-2 font-semibold text-text-strong">
+                      <TableCell>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          aria-expanded={isExpanded}
+                          aria-label={`${isExpanded ? 'Hide' : 'Show'} shifts for ${formatDate(date)}`}
+                          onClick={event => { event.stopPropagation(); toggleDate(date); }}
+                          icon={<Icon name={isExpanded ? 'chevronDown' : 'chevronRight'} size={14} className="block" />}
+                        />
+                      </TableCell>
+                      <TableCell className="whitespace-normal font-semibold text-text-strong">
                         {formatDate(date)}
                         <span className="ml-2 text-xs font-normal text-text-soft">{dayRows.length} shift{dayRows.length !== 1 ? 's' : ''}</span>
                         <DayInfoChips info={dayInfo?.[date]} />
-                      </td>
-                      <td className="px-3 py-2 text-right text-text font-medium">{dayPlanned.toFixed(1)}h</td>
-                      <td className="px-3 py-2 text-right text-text font-medium">{dayActual > 0 ? `${dayActual.toFixed(1)}h` : '—'}</td>
-                      <td className={`px-3 py-2 text-right text-xs ${diffColour(dayDiff)}`}>{dayActual > 0 ? diffLabel(dayDiff) : '—'}</td>
-                      <td className="px-3 py-2 text-right text-xs text-text-subtle">—</td>
-                      <td className="px-3 py-2">
-                        {dayHasFlags && <span className="text-2xs text-warning-fg font-medium">⚑ flagged</span>}
-                      </td>
-                      <td className="px-3 py-2" />
-                    </tr>,
+                      </TableCell>
+                      <TableCell align="right" className="font-medium">{dayPlanned.toFixed(1)}h</TableCell>
+                      <TableCell align="right" className="font-medium">{dayActual > 0 ? `${dayActual.toFixed(1)}h` : NO_VALUE}</TableCell>
+                      <TableCell align="right" className={`text-xs ${payrollDiffClasses(dayDiff)}`}>{dayActual > 0 ? diffLabel(dayDiff) : NO_VALUE}</TableCell>
+                      <TableCell align="right" className="text-xs text-text-soft">{NO_VALUE}</TableCell>
+                      <TableCell>
+                        {dayHasFlags && <Badge size="sm" tone={PAYROLL_DAY_FLAGGED_TONE}>Flagged</Badge>}
+                      </TableCell>
+                      <TableCell />
+                    </TableRow>,
 
                     /* Employee rows (expanded) */
                     ...(isExpanded ? dayRows.flatMap((row, i) => {
                       const rowKey = `${date}-${i}`;
                       const empDiff = (row.actualHours ?? 0) - (row.plannedHours ?? 0);
                       const isEditing = editingKey === rowKey;
-                      const isConfirmingDelete = confirmDeleteKey === rowKey;
                       const isCouldntWork = hasCouldntWorkPayrollFlag(row.flags);
 
                       const dataRow = (
-                        <tr key={`row-${rowKey}`} className="group border-t border-border bg-surface hover:bg-surface-2">
-                          <td className="px-3 py-2" />
-                          <td className="px-3 py-2 pl-8 text-text-strong">
+                        <TableRow key={`row-${rowKey}`} className="group">
+                          <TableCell />
+                          <TableCell className="pl-8 text-text-strong">
                             {row.employeeName}
                             <span className="ml-2 text-xs text-text-soft capitalize">{row.department}</span>
-                          </td>
-                          <td className="px-3 py-2 text-right text-text-muted text-xs tabular-nums">
+                          </TableCell>
+                          <TableCell align="right" className="text-xs text-text-muted tabular-nums">
                             {isCouldntWork
                               ? null
                               : row.plannedStart
                               ? <>{formatTime12h(row.plannedStart)}–{formatTime12h(row.plannedEnd)}{' '}<span className="text-text-soft">({row.plannedHours?.toFixed(1)}h)</span></>
-                              : row.plannedHours != null ? `${row.plannedHours.toFixed(1)}h` : '—'
+                              : row.plannedHours != null ? `${row.plannedHours.toFixed(1)}h` : NO_VALUE
                             }
-                          </td>
-                          <td className="px-3 py-2 text-right text-text-muted text-xs tabular-nums">
+                          </TableCell>
+                          <TableCell align="right" className="text-xs text-text-muted tabular-nums">
                             {row.actualStart
                               ? <>{formatTime12h(row.actualStart)}–{row.actualEnd ? formatTime12h(row.actualEnd) : '…'}{' '}<span className="text-text-soft">({row.actualHours?.toFixed(1)}h)</span></>
-                              : row.actualHours != null ? `${row.actualHours.toFixed(1)}h` : '—'
+                              : row.actualHours != null ? `${row.actualHours.toFixed(1)}h` : NO_VALUE
                             }
-                          </td>
-                          <td className={`px-3 py-2 text-right text-xs ${row.actualHours != null ? diffColour(empDiff) : 'text-text-subtle'}`}>
-                            {row.actualHours != null ? diffLabel(empDiff) : '—'}
-                          </td>
-                          <td className="px-3 py-2 text-right text-xs">
+                          </TableCell>
+                          <TableCell align="right" className={`text-xs ${row.actualHours != null ? payrollDiffClasses(empDiff) : 'text-text-soft'}`}>
+                            {row.actualHours != null ? diffLabel(empDiff) : NO_VALUE}
+                          </TableCell>
+                          <TableCell align="right" className="text-xs">
                             <PayRateDisplay row={row} />
-                          </td>
-                          <td className="px-3 py-2">
+                          </TableCell>
+                          <TableCell className="whitespace-normal">
                             <FlagChips flags={row.flags} couldntWorkReason={row.sickReason} />
                             {row.sessionNote && (
                               <p className="mt-1 text-2xs text-text-muted italic">
@@ -546,97 +575,85 @@ export default function PayrollClient({
                                 {row.note}
                               </p>
                             )}
-                          </td>
-                          <td className="px-3 py-2">
-                            {isConfirmingDelete ? (
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  type="button"
-                                  variant="danger"
-                                  size="xs"
-                                  onClick={() => handleDelete(row)}
-                                  disabled={deleteLoading}
-                                >
-                                  {deleteLoading ? '…' : 'Confirm'}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="xs"
-                                  onClick={() => setConfirmDeleteKey(null)}
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
+                              <IconButton
+                                type="button"
+                                size="sm"
+                                onClick={() => startEdit(rowKey, row)}
+                                className="text-text-subtle hover:text-text"
+                                title="Edit times"
+                                label="Edit times"
+                                icon={<Icon name="edit" size={14} />}
+                              />
+                              {row.shiftId && (
                                 <IconButton
                                   type="button"
                                   size="sm"
-                                  onClick={() => startEdit(rowKey, row)}
-                                  className="text-text-subtle hover:text-text"
-                                  title="Edit times"
-                                  label="Edit times"
-                                  icon={<Icon name="edit" size={14} />}
+                                  onClick={() => startEditNote(rowKey, row.note)}
+                                  className={row.note ? 'text-info-fg' : 'text-text-subtle hover:text-text'}
+                                  title={row.note ? 'Edit note' : 'Add note'}
+                                  label={row.note ? 'Edit note' : 'Add note'}
+                                  icon={<Icon name="message" size={14} />}
                                 />
-                                {row.shiftId && (
-                                  <IconButton
-                                    type="button"
-                                    size="sm"
-                                    onClick={() => startEditNote(rowKey, row.note)}
-                                    className={row.note ? 'text-info-fg' : 'text-text-subtle hover:text-text'}
-                                    title={row.note ? 'Edit note' : 'Add note'}
-                                    label={row.note ? 'Edit note' : 'Add note'}
-                                    icon={<Icon name="message" size={14} />}
-                                  />
-                                )}
-                                <IconButton
-                                  type="button"
-                                  size="sm"
-                                  onClick={() => { setConfirmDeleteKey(rowKey); setEditingKey(null); setEditingNoteKey(null); }}
-                                  className="text-text-subtle hover:bg-danger-soft hover:text-danger-fg"
-                                  title="Delete row"
-                                  label="Delete row"
-                                  icon={<Icon name="trash" size={14} />}
-                                />
-                              </div>
-                            )}
-                          </td>
-                        </tr>
+                              )}
+                              <IconButton
+                                type="button"
+                                size="sm"
+                                onClick={() => { setConfirmDeleteKey(rowKey); setConfirmDeleteRow(row); setEditingKey(null); setEditingNoteKey(null); }}
+                                className="text-text-subtle hover:bg-danger-soft hover:text-danger-fg"
+                                title="Delete row"
+                                label="Delete row"
+                                icon={<Icon name="trash" size={14} />}
+                              />
+                            </div>
+                          </TableCell>
+                        </TableRow>
                       );
 
                       const editRow = isEditing ? (
-                        <tr key={`edit-${rowKey}`} className="border-t border-info-border bg-info-soft">
-                          <td className="px-3 py-2" />
-                          <td className="px-3 py-2 pl-8 text-xs text-text-muted">
+                        <TableRow key={`edit-${rowKey}`} className="bg-info-soft hover:bg-info-soft">
+                          <TableCell />
+                          <TableCell className="pl-8 text-xs text-text-muted">
                             Edit actual times for <span className="font-medium text-text">{row.employeeName}</span>
-                          </td>
-                          <td className="px-3 py-2 text-right text-xs text-text-soft tabular-nums">
-                            {isCouldntWork ? null : row.plannedStart ? `${formatTime12h(row.plannedStart)}–${formatTime12h(row.plannedEnd)}` : '—'}
-                          </td>
-                          <td className="px-3 py-2 text-right" colSpan={2}>
+                          </TableCell>
+                          <TableCell align="right" className="text-xs text-text-soft tabular-nums">
+                            {isCouldntWork ? null : row.plannedStart ? `${formatTime12h(row.plannedStart)}–${formatTime12h(row.plannedEnd)}` : NO_VALUE}
+                          </TableCell>
+                          <TableCell align="right" colSpan={2}>
                             <div className="flex items-center justify-end gap-1.5">
-                              <input
+                              <Input
                                 type="time"
                                 value={editClockIn}
                                 onChange={e => setEditClockIn(e.target.value)}
-                                className="text-xs border border-border-strong rounded-sm px-1.5 py-0.5 w-24 outline-hidden focus:border-border-focus focus:shadow-ring"
+                                aria-label={`Clock in for ${row.employeeName}`}
+                                className="h-btn-h-sm w-28 text-xs"
                               />
-                              <span className="text-text-subtle text-xs">–</span>
-                              <input
+                              <span className="text-xs text-text-soft">–</span>
+                              <Input
                                 type="time"
                                 value={editClockOut}
                                 onChange={e => setEditClockOut(e.target.value)}
-                                className="text-xs border border-border-strong rounded-sm px-1.5 py-0.5 w-24 outline-hidden focus:border-border-focus focus:shadow-ring"
+                                aria-label={`Clock out for ${row.employeeName}`}
+                                className="h-btn-h-sm w-28 text-xs"
                               />
                             </div>
-                          </td>
-                          <td className="px-3 py-2 text-right text-xs">
+                          </TableCell>
+                          <TableCell align="right" className="text-xs">
                             <PayRateDisplay row={row} />
-                          </td>
-                          <td className="px-3 py-2" />
-                          <td className="px-3 py-2">
+                          </TableCell>
+                          <TableCell />
+                          <TableCell>
                             <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="xs"
+                                onClick={() => setEditingKey(null)}
+                              >
+                                Cancel
+                              </Button>
                               <Button
                                 type="button"
                                 variant="primary"
@@ -646,39 +663,42 @@ export default function PayrollClient({
                               >
                                 {editSaving ? '…' : 'Save'}
                               </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="xs"
-                                onClick={() => setEditingKey(null)}
-                              >
-                                Cancel
-                              </Button>
                             </div>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ) : null;
 
                       const noteEditRow = editingNoteKey === rowKey && row.shiftId ? (
-                        <tr key={`note-${rowKey}`} className="border-t border-warning-border bg-warning-soft">
-                          <td className="px-3 py-2" />
-                          <td className="px-3 py-2 pl-8 text-xs text-text-muted" colSpan={5}>
+                        <TableRow key={`note-${rowKey}`} className="bg-warning-soft hover:bg-warning-soft">
+                          <TableCell />
+                          <TableCell className="pl-8 text-xs text-text-muted" colSpan={5}>
                             <div className="flex items-center gap-2">
                               <span className="text-text-muted shrink-0">Payroll note for <span className="font-medium text-text">{row.employeeName}</span>:</span>
-                              <input
-                                autoFocus
-                                type="text"
-                                value={editNoteValue}
-                                onChange={e => setEditNoteValue(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') handleSaveNote(row.shiftId!); if (e.key === 'Escape') setEditingNoteKey(null); }}
-                                placeholder="Add a note for this shift…"
-                                className="flex-1 text-xs border border-border-strong rounded-sm px-2 py-1 outline-hidden focus:border-border-focus focus:shadow-ring"
-                              />
+                              <div className="min-w-0 flex-1">
+                                <Input
+                                  autoFocus
+                                  type="text"
+                                  value={editNoteValue}
+                                  onChange={e => setEditNoteValue(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') handleSaveNote(row.shiftId!); if (e.key === 'Escape') setEditingNoteKey(null); }}
+                                  placeholder="Add a note for this shift…"
+                                  aria-label={`Payroll note for ${row.employeeName}`}
+                                  className="h-btn-h-sm text-xs"
+                                />
+                              </div>
                             </div>
-                          </td>
-                          <td className="px-3 py-2" />
-                          <td className="px-3 py-2">
+                          </TableCell>
+                          <TableCell />
+                          <TableCell>
                             <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="xs"
+                                onClick={() => setEditingNoteKey(null)}
+                              >
+                                Cancel
+                              </Button>
                               <Button
                                 type="button"
                                 variant="primary"
@@ -688,85 +708,83 @@ export default function PayrollClient({
                               >
                                 {notePending ? '…' : 'Save'}
                               </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="xs"
-                                onClick={() => setEditingNoteKey(null)}
-                              >
-                                Cancel
-                              </Button>
                             </div>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ) : null;
 
                       return [dataRow, editRow, noteEditRow].filter(Boolean);
                     }) : []),
                   ];
                 })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-border bg-surface-2">
-                  <td className="px-3 py-2" />
-                  <td className="px-3 py-2 font-semibold text-text-strong">Total</td>
-                  <td className="px-3 py-2 text-right font-semibold text-text-strong">{totalPlanned.toFixed(1)}h</td>
-                  <td className="px-3 py-2 text-right font-semibold text-text-strong">{totalActual.toFixed(1)}h</td>
-                  <td className={`px-3 py-2 text-right font-semibold text-sm ${diffColour(totalActual - totalPlanned)}`}>
+              </TableBody>
+              <tfoot className="border-t-2 border-border bg-surface-2">
+                <tr>
+                  <TableCell />
+                  <TableCell className="font-semibold text-text-strong">Total</TableCell>
+                  <TableCell align="right" className="font-semibold text-text-strong">{totalPlanned.toFixed(1)}h</TableCell>
+                  <TableCell align="right" className="font-semibold text-text-strong">{totalActual.toFixed(1)}h</TableCell>
+                  <TableCell align="right" className={`font-semibold text-sm ${payrollDiffClasses(totalActual - totalPlanned)}`}>
                     {diffLabel(totalActual - totalPlanned)}
-                  </td>
-                  <td className="px-3 py-2 text-right text-xs font-medium text-text-muted">Varies</td>
-                  <td className="px-3 py-2" />
-                  <td className="px-3 py-2" />
+                  </TableCell>
+                  <TableCell align="right" className="text-xs font-medium text-text-muted">Varies</TableCell>
+                  <TableCell />
+                  <TableCell />
                 </tr>
               </tfoot>
-            </table>
-          </div>
-        </div>
-      )}
+            </Table>
+          </Card>
+        )}
+      </Section>
 
       {/* Employee summary cards */}
       {employeeCards.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-text mb-3">Employee summary</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <Section title="Employee Summary">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {employeeCards.map(card => (
-              <div
-                key={card.employeeId}
-                className="bg-surface border border-border rounded-lg p-3 text-sm"
-              >
-                <p className="font-semibold text-text-strong truncate">{card.employeeName}</p>
-                <div className={`my-2 rounded-md border px-2.5 py-2 ${
-                  card.hourlyRate != null
-                    ? 'border-success-border bg-success-soft'
-                    : 'border-warning-border bg-warning-soft'
-                }`}>
-                  <p className="text-2xs font-semibold uppercase tracking-wide text-text-muted">Pay rate</p>
-                  <p className={`text-base font-bold ${
-                    card.hourlyRate != null ? 'text-success-fg' : 'text-warning-fg'
-                  }`}>
-                    {card.hourlyRate != null ? `£${card.hourlyRate.toFixed(2)} per hour` : 'Not set'}
-                  </p>
-                </div>
-                <div className="space-y-1 text-xs text-text-muted">
-                  <div className="flex justify-between">
-                    <span>Planned</span>
-                    <span className="font-medium text-text-strong">{card.plannedHours.toFixed(1)}h</span>
+              <Card key={card.employeeId}>
+                <CardHeader title={card.employeeName} />
+                <CardBody className="space-y-3 text-sm">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-text-muted">Pay rate</span>
+                    <Badge tone={PAYROLL_PAY_RATE_TONE[card.hourlyRate != null ? 'set' : 'missing']}>
+                      {card.hourlyRate != null ? `£${card.hourlyRate.toFixed(2)} per hour` : 'Not set'}
+                    </Badge>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Actual</span>
-                    <span className="font-medium text-text-strong">{card.actualHours.toFixed(1)}h</span>
+                  <div className="space-y-1 text-xs text-text-muted">
+                    <div className="flex justify-between">
+                      <span>Planned</span>
+                      <span className="font-medium text-text-strong">{card.plannedHours.toFixed(1)}h</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Actual</span>
+                      <span className="font-medium text-text-strong">{card.actualHours.toFixed(1)}h</span>
+                    </div>
                   </div>
-                </div>
-                <div className="mt-2 pt-2 border-t border-border flex justify-between text-xs">
-                  <span className="font-medium text-text-muted">Earned to date</span>
-                  <span className="font-bold text-success-fg">£{card.earnedToDate.toFixed(2)}</span>
-                </div>
-              </div>
+                  <div className="flex justify-between border-t border-border pt-2 text-xs">
+                    <span className="font-medium text-text-muted">Earned to date</span>
+                    <span className="font-bold text-success-fg">£{card.earnedToDate.toFixed(2)}</span>
+                  </div>
+                </CardBody>
+              </Card>
             ))}
           </div>
-        </div>
+        </Section>
       )}
-    </div>
+
+      <ConfirmDialog
+        open={confirmDeleteRow !== null}
+        onClose={closeDeleteConfirm}
+        onConfirm={async () => { if (confirmDeleteRow) await handleDelete(confirmDeleteRow); }}
+        title="Delete Payroll Row?"
+        message={
+          confirmDeleteRow
+            ? `Delete ${confirmDeleteRow.employeeName}'s row for ${formatDate(confirmDeleteRow.date)}?`
+            : undefined
+        }
+        confirmLabel="Delete"
+        tone="danger"
+      />
+    </PageLayout>
   );
 }

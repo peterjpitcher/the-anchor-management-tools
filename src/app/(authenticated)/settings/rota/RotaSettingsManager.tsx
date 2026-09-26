@@ -1,10 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Button, toast } from '@/ds';
-import { Input } from '@/ds';
-import { Select } from '@/ds';
-import { Field } from '@/ds';
+import { Button, Card, CardBody, CardHeader, Field, FormFooter, Input, Section, Select, toast } from '@/ds';
 import { updateRotaSettings, type RotaSettings } from '@/app/actions/rota-settings';
 
 const MONTHS = [
@@ -52,129 +49,140 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
   };
 
   return (
-    <div className="space-y-8">
-      {/* Holiday year */}
-      <div>
-        <h3 className="text-sm font-semibold text-text-strong mb-1">Holiday Year</h3>
-        <p className="text-xs text-text-muted mb-4">
-          The date on which the annual holiday entitlement resets. Defaults to 1 January, so the
-          holiday year runs with the financial year.
-        </p>
-        <div className="flex flex-wrap items-end gap-4">
-          <Field label="Start month" htmlFor="holiday-month" className="min-w-[140px]">
-            <Select
-              id="holiday-month"
-              value={holidayMonth}
-              onChange={e => setHolidayMonth(e.target.value)}
-              disabled={!canManage}
-            >
-              {MONTHS.map((name, i) => (
-                <option key={i + 1} value={i + 1}>{name}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Start day" htmlFor="holiday-day" className="w-24">
-            <Input
-              id="holiday-day"
-              type="number"
-              min="1"
-              max="31"
-              value={holidayDay}
-              onChange={e => setHolidayDay(e.target.value)}
-              disabled={!canManage}
-            />
-          </Field>
-        </div>
-      </div>
+    <Section
+      title="Configuration"
+      description="These settings apply across the rota, leave, and payroll modules."
+    >
+      <div className="space-y-6">
+        <Card>
+          <CardHeader title="Holiday Year" />
+          <CardBody className="space-y-4">
+            <p className="text-xs text-text-muted">
+              The date on which the annual holiday entitlement resets. Defaults to 1 January, so the
+              holiday year runs with the financial year.
+            </p>
+            <div className="flex flex-wrap items-end gap-4">
+              <Field label="Start month" htmlFor="holiday-month" className="min-w-[140px]">
+                <Select
+                  id="holiday-month"
+                  value={holidayMonth}
+                  onChange={e => setHolidayMonth(e.target.value)}
+                  disabled={!canManage}
+                >
+                  {MONTHS.map((name, i) => (
+                    <option key={i + 1} value={i + 1}>{name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Start day" htmlFor="holiday-day" className="w-24">
+                <Input
+                  id="holiday-day"
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={holidayDay}
+                  onChange={e => setHolidayDay(e.target.value)}
+                  disabled={!canManage}
+                />
+              </Field>
+            </div>
+          </CardBody>
+        </Card>
 
-      {/* Default allowance */}
-      <div>
-        <h3 className="text-sm font-semibold text-text-strong mb-1">Default Holiday Allowance</h3>
-        <p className="text-xs text-text-muted mb-4">
-          Used when an employee has no personal allowance set in their pay settings.
-        </p>
-        <Field label="Days per year" htmlFor="default-days" className="w-40">
-          <Input
-            id="default-days"
-            type="number"
-            min="1"
-            max="365"
-            value={defaultDays}
-            onChange={e => setDefaultDays(e.target.value)}
-            disabled={!canManage}
-          />
-        </Field>
-      </div>
-
-      {/* Labour planning */}
-      <div>
-        <h3 className="text-sm font-semibold text-text-strong mb-1">Labour Planning</h3>
-        <p className="text-xs text-text-muted mb-4">
-          Used on the rota to flag days where scheduled wages exceed the target percentage of sales.
-        </p>
-        <Field label="Target wage percentage" htmlFor="wage-target-percent" className="w-48">
-          <Input
-            id="wage-target-percent"
-            type="number"
-            min="0.1"
-            max="100"
-            step="0.1"
-            value={wageTargetPercent}
-            onChange={e => setWageTargetPercent(e.target.value)}
-            disabled={!canManage}
-          />
-        </Field>
-      </div>
-
-      {/* Email addresses */}
-      <div>
-        <h3 className="text-sm font-semibold text-text-strong mb-1">Email Addresses</h3>
-        <p className="text-xs text-text-muted mb-4">
-          Where automated rota and payroll emails are sent. These override any environment variable fallbacks.
-        </p>
-        <div className="space-y-4 max-w-md">
-          <div>
-            <Field label="Rota manager alert email" htmlFor="manager-email">
+        <Card>
+          <CardHeader title="Default Holiday Allowance" />
+          <CardBody className="space-y-4">
+            <p className="text-xs text-text-muted">
+              Used when an employee has no personal allowance set in their pay settings.
+            </p>
+            <Field label="Days per year" htmlFor="default-days" className="w-40">
               <Input
-                id="manager-email"
-                type="email"
-                placeholder="manager@example.com"
-                value={managerEmail}
-                onChange={e => setManagerEmail(e.target.value)}
+                id="default-days"
+                type="number"
+                min="1"
+                max="365"
+                value={defaultDays}
+                onChange={e => setDefaultDays(e.target.value)}
                 disabled={!canManage}
               />
             </Field>
-            {/* Spelled out because this address used to drive only the Sunday alert
-                while the other two paths carried a hard-coded copy of the mailbox, so
-                the screen was quietly lying about what it controlled. */}
-            <p className="mt-2 text-xs text-text-muted">Every rota alert goes to this address:</p>
-            <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-text-muted">
-              <li>the Sunday summary of unfilled shifts and weeks still to publish</li>
-              <li>a staff member rejecting a shift, or asking for an open one</li>
-              <li>a copy of the reminder chasing staff to accept or reject their shifts</li>
-            </ul>
-            <p className="mt-2 text-xs text-text-muted">
-              Leave it blank to fall back to the ROTA_MANAGER_EMAIL environment variable.
-            </p>
-          </div>
-          <Field label="Payroll accountant email" htmlFor="accountant-email">
-            <Input
-              id="accountant-email"
-              type="email"
-              placeholder="accountant@example.com"
-              value={accountantEmail}
-              onChange={e => setAccountantEmail(e.target.value)}
-              disabled={!canManage}
-            />
-          </Field>
-        </div>
-      </div>
+          </CardBody>
+        </Card>
 
-      {canManage && (
-        <Button type="button" onClick={handleSave} disabled={isPending}>
-          {isPending ? 'Saving…' : 'Save settings'}
-        </Button>
-      )}
-    </div>
+        <Card>
+          <CardHeader title="Labour Planning" />
+          <CardBody className="space-y-4">
+            <p className="text-xs text-text-muted">
+              Used on the rota to flag days where scheduled wages exceed the target percentage of sales.
+            </p>
+            <Field label="Target wage percentage" htmlFor="wage-target-percent" className="w-48">
+              <Input
+                id="wage-target-percent"
+                type="number"
+                min="0.1"
+                max="100"
+                step="0.1"
+                value={wageTargetPercent}
+                onChange={e => setWageTargetPercent(e.target.value)}
+                disabled={!canManage}
+              />
+            </Field>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Email Addresses" />
+          <CardBody className="space-y-4">
+            <p className="text-xs text-text-muted">
+              Where automated rota and payroll emails are sent. These override any environment variable fallbacks.
+            </p>
+            <div className="space-y-4 max-w-md">
+              <div>
+                <Field label="Rota manager alert email" htmlFor="manager-email">
+                  <Input
+                    id="manager-email"
+                    type="email"
+                    placeholder="manager@example.com"
+                    value={managerEmail}
+                    onChange={e => setManagerEmail(e.target.value)}
+                    disabled={!canManage}
+                  />
+                </Field>
+                {/* Spelled out because this address used to drive only the Sunday alert
+                    while the other two paths carried a hard-coded copy of the mailbox, so
+                    the screen was quietly lying about what it controlled. */}
+                <p className="mt-2 text-xs text-text-muted">Every rota alert goes to this address:</p>
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-text-muted">
+                  <li>the Sunday summary of unfilled shifts and weeks still to publish</li>
+                  <li>a staff member rejecting a shift, or asking for an open one</li>
+                  <li>a copy of the reminder chasing staff to accept or reject their shifts</li>
+                </ul>
+                <p className="mt-2 text-xs text-text-muted">
+                  Leave it blank to fall back to the ROTA_MANAGER_EMAIL environment variable.
+                </p>
+              </div>
+              <Field label="Payroll accountant email" htmlFor="accountant-email">
+                <Input
+                  id="accountant-email"
+                  type="email"
+                  placeholder="accountant@example.com"
+                  value={accountantEmail}
+                  onChange={e => setAccountantEmail(e.target.value)}
+                  disabled={!canManage}
+                />
+              </Field>
+            </div>
+          </CardBody>
+        </Card>
+
+        {canManage && (
+          <FormFooter>
+            <Button type="button" variant="primary" onClick={handleSave} disabled={isPending}>
+              {isPending ? 'Saving…' : 'Save Settings'}
+            </Button>
+          </FormFooter>
+        )}
+      </div>
+    </Section>
   );
 }

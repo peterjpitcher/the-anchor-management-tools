@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { PageHeader } from '@/ds'
-import { ManageNav } from './_components/ManageNav'
 
+// Permission gate for the manager tabs. Each page renders its own PageLayout with
+// CHECKLISTS_MANAGE_LAYOUT (checklists/_shared/nav.ts), so a tab can put its actions in the
+// header and the active tab comes from the path.
 export default async function ChecklistsManageLayout({
   children,
 }: {
@@ -11,14 +12,5 @@ export default async function ChecklistsManageLayout({
   const canManage = await checkUserPermission('checklists', 'manage')
   if (!canManage) redirect('/unauthorized')
 
-  return (
-    <div>
-      <PageHeader
-        title="Checklists Management"
-        subtitle="Setup, oversight and spot checks"
-      />
-      <ManageNav />
-      {children}
-    </div>
-  )
+  return <>{children}</>
 }

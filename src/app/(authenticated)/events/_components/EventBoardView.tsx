@@ -34,7 +34,7 @@ export function EventBoardView({ events, onEventClick }: EventBoardViewProps) {
       {columns.map(({ stage, events: columnEvents }) => (
         <div
           key={stage}
-          className="flex-shrink-0 w-64 flex flex-col bg-surface-2/50 rounded-default border border-border"
+          className="flex-shrink-0 w-64 flex flex-col bg-surface-2 rounded-default border border-border"
         >
           {/* Column header */}
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
@@ -45,7 +45,7 @@ export function EventBoardView({ events, onEventClick }: EventBoardViewProps) {
           {/* Column body */}
           <div className="flex-1 p-2 flex flex-col gap-2 overflow-y-auto max-h-[600px]">
             {columnEvents.length === 0 ? (
-              <Empty title="Empty" description="No events in this stage" />
+              <Empty size="sm" title="No Events" description="No events in this stage" />
             ) : (
               columnEvents.map((event) => (
                 <EventCard

@@ -111,11 +111,11 @@ describe('single-guest message card (P7)', () => {
     const user = userEvent.setup()
     render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} emailOption={{ enabled: true, usable: true }} />)
 
-    expect(screen.getByText('Message guest')).toBeInTheDocument()
+    expect(screen.getByText('Message Guest')).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Email' })).toBeChecked()
 
     await user.type(screen.getByPlaceholderText('Type message...'), 'Your table is ready early.')
-    await user.click(screen.getByRole('button', { name: 'Send email' }))
+    await user.click(screen.getByRole('button', { name: 'Send Email' }))
 
     await waitFor(() => {
       expect(requestTableBookingActionMock).toHaveBeenCalledWith(`/api/boh/table-bookings/${BOOKING_ID}/email`, {
@@ -131,7 +131,7 @@ describe('single-guest message card (P7)', () => {
     render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} emailOption={{ enabled: true, usable: true }} />)
 
     await user.type(screen.getByPlaceholderText('Type message...'), 'Hello')
-    await user.click(screen.getByRole('button', { name: 'Send email' }))
+    await user.click(screen.getByRole('button', { name: 'Send Email' }))
 
     await waitFor(() => {
       expect(dsToast.error).toHaveBeenCalledWith('This guest has no usable email address')
@@ -177,7 +177,7 @@ describe('BOH "Message guests" modal (P7)', () => {
     expect(screen.getByRole('radio', { name: 'Email where the guest has a usable address, text the rest' })).toBeChecked()
     expect(screen.getByLabelText('Email subject')).toHaveValue('A message about your booking at The Anchor')
 
-    await user.click(screen.getByRole('button', { name: 'Send to 4 guests' }))
+    await user.click(screen.getByRole('button', { name: 'Send to 4 Guests' }))
 
     await waitFor(() => {
       expect(sendMock).toHaveBeenCalledWith(
@@ -194,7 +194,7 @@ describe('BOH "Message guests" modal (P7)', () => {
 
     await screen.findByText(/will be emailed and/)
     await user.click(screen.getByRole('radio', { name: 'Text only' }))
-    await user.click(screen.getByRole('button', { name: 'Send to 3 guests' }))
+    await user.click(screen.getByRole('button', { name: 'Send to 3 Guests' }))
 
     await waitFor(() => {
       expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({ channel: 'sms' }))

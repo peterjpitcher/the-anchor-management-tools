@@ -66,4 +66,27 @@ describe('StarRating', () => {
     expect(container.innerHTML).not.toContain('text-text-subtle')
     expect(container.innerHTML).not.toContain('ring-blue-500')
   })
+
+  it('draws staff stars in the staff tokens, with the staff focus pattern', () => {
+    const { container } = render(<StarRating value={2} onChange={vi.fn()} tone="staff" />)
+    const icons = container.querySelectorAll('svg')
+
+    expect(icons[1]?.getAttribute('class')).toContain('text-warning')
+    expect(icons[2]?.getAttribute('class')).toContain('text-text-subtle')
+    expect(screen.getByRole('button', { name: '1 star' }).className).toContain('rounded-default')
+    expect(screen.getByRole('button', { name: '1 star' }).className).toContain('focus-visible:shadow-ring')
+    expect(container.innerHTML).not.toContain('anchor-gold')
+    expect(container.innerHTML).not.toContain('guest-')
+  })
+
+  it('shows a read-only rating with one accessible name and no buttons when onChange is left out', () => {
+    const { container } = render(<StarRating value={3.6} tone="staff" />)
+
+    expect(screen.getByRole('img', { name: '4 out of 5 stars' })).toBeInTheDocument()
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+    const icons = container.querySelectorAll('svg')
+    expect(icons).toHaveLength(5)
+    expect(icons[3]?.getAttribute('class')).toContain('text-warning')
+    expect(icons[4]?.getAttribute('class')).toContain('text-text-subtle')
+  })
 })

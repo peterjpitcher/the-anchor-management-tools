@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useCallback, ReactNode } from 'react';
-import { Popover, PopoverHeader, PopoverContent } from '@/ds';
-import { Spinner } from '@/ds';
+import { useState, useCallback, useEffect, ReactNode } from 'react';
+import { Alert, Card, Empty, PageLoading, Popover } from '@/ds';
 import { getMenuIngredientPrices } from '@/app/actions/menu-management';
 import { toast } from '@/ds';
 
@@ -22,6 +21,18 @@ interface PriceHistoryPopoverProps {
   trigger: ReactNode;
 }
 
+/**
+ * Runs `onOpen` when the popover panel mounts. The DS Popover renders its panel only while it is
+ * open and has no open callback, so this is how the history loads the first time it is shown.
+ */
+function OnOpen({ onOpen }: { onOpen: () => void }): null {
+  useEffect(() => {
+    onOpen();
+    // Once per opening: the panel unmounts when it closes.
+  }, []);
+  return null;
+}
+
 export function PriceHistoryPopover({
   ingredientId,
   ingredientName,
@@ -30,52 +41,47 @@ export function PriceHistoryPopover({
   const [prices, setPrices] = useState<IngredientPriceEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const handleOpenChange = useCallback(
-    async (open: boolean) => {
-      if (open && !loaded) {
-        setLoading(true);
-        try {
-          const result = await getMenuIngredientPrices(ingredientId);
-          if (result.error) {
-            toast.error(result.error);
-          } else {
-            setPrices((result.data as IngredientPriceEntry[]) || []);
-          }
-          setLoaded(true);
-        } catch {
-          toast.error('Failed to load price history');
-        } finally {
-          setLoading(false);
-        }
+  const handleOpen = useCallback(async () => {
+    if (loaded) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const result = await getMenuIngredientPrices(ingredientId);
+      if (result.error) {
+        toast.error(result.error);
+        setLoadError(result.error);
+      } else {
+        setPrices((result.data as IngredientPriceEntry[]) || []);
+        // Only a successful load is kept: after a failure, opening the popover again retries.
+        setLoaded(true);
       }
-    },
-    [ingredientId, loaded]
-  );
+    } catch {
+      toast.error('Failed to load price history');
+      setLoadError('Failed to load price history');
+    } finally {
+      setLoading(false);
+    }
+  }, [ingredientId, loaded]);
 
   return (
-    <Popover
-      trigger={trigger}
-      placement="bottom-start"
-      width={360}
-      onOpenChange={handleOpenChange}
-    >
-      <PopoverHeader>
-        <h4 className="text-sm font-semibold text-text">
-          Price history &ndash; {ingredientName}
-        </h4>
-      </PopoverHeader>
-      <PopoverContent className="max-h-80 overflow-y-auto">
+    <Popover trigger={trigger} align="right">
+      <OnOpen onOpen={() => void handleOpen()} />
+      <p className="mb-2 border-b border-border pb-2 text-sm font-semibold text-text-strong">
+        Price History &ndash; {ingredientName}
+      </p>
+      <div className="max-h-80 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center py-4">
-            <Spinner size="sm" showLabel label="Loading prices..." />
-          </div>
+          <PageLoading inline label="Loading prices" className="py-4" />
+        ) : loadError ? (
+          <Alert tone="danger" size="sm">{loadError}</Alert>
         ) : prices.length === 0 ? (
-          <p className="text-sm text-text-muted">No price history recorded yet.</p>
+          <Empty size="sm" title="No price history recorded yet" />
         ) : (
           <div className="space-y-3">
             {prices.map((entry) => (
-              <div key={entry.id} className="border border-border rounded-lg p-3">
+              <Card key={entry.id} padding="sm">
                 <div className="flex items-center justify-between">
                   <div className="font-medium text-sm">
                     £{entry.pack_cost.toFixed(2)} per pack
@@ -93,11 +99,11 @@ export function PriceHistoryPopover({
                 {entry.notes && (
                   <div className="text-sm text-text-muted mt-1">{entry.notes}</div>
                 )}
-              </div>
+              </Card>
             ))}
           </div>
         )}
-      </PopoverContent>
+      </div>
     </Popover>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { format, isPast, isSameDay } from 'date-fns'
+import { Badge, Card, CardHeader, Empty } from '@/ds'
 import { cn } from '@/lib/utils'
 import type { CalendarEntry, ScheduleDailyOps } from './types'
 import type { ReactNode } from 'react'
@@ -17,7 +18,7 @@ export interface ScheduleCalendarListProps {
     onEntryClick?: (entry: CalendarEntry) => void
     /**
      * Hide date groups before today. Used on mobile where the list is the only
-     * view — without it, months of past entries render above Today and the
+     * view. Without it, months of past entries render above Today and the
      * page loads scrolled halfway down.
      */
     hidePast?: boolean
@@ -54,11 +55,11 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
         return next
     }, [groups, today, hidePast])
 
-    const todayRef = useRef<HTMLHeadingElement | null>(null)
+    const todayRef = useRef<HTMLDivElement | null>(null)
     const hasAnchoredRef = useRef(false)
 
     useLayoutEffect(() => {
-        // With past groups hidden, Today is already at the top — scrolling
+        // With past groups hidden, Today is already at the top, so scrolling
         // would just yank the document down past any page header.
         if (hidePast) return
         if (hasAnchoredRef.current) return
@@ -74,32 +75,21 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
     }, [groupsWithToday.length, hidePast])
 
     return (
-        <div className="flex flex-col gap-3 bg-surface-2 rounded-md p-2">
+        <div className="flex flex-col gap-3 rounded-lg bg-surface-2 p-2">
             {groupsWithToday.map((group) => {
                 const isTodayGroup = isSameDay(group.date, today)
                 return (
-                    <section
-                        key={group.date.toISOString()}
-                        className={cn(
-                            'rounded-md border overflow-hidden bg-surface shadow-sm',
-                            isTodayGroup ? 'border-primary' : 'border-border'
-                        )}
-                    >
-                        <h2
-                            ref={isTodayGroup ? todayRef : undefined}
-                            className={cn(
-                                // Plain card header — not sticky. Each day is its own
-                                // rounded, overflow-hidden card, so a viewport-offset
-                                // sticky header (top-14 to clear the mobile chrome) pinned
-                                // 56px into the card and bisected the first event row.
-                                'text-sm font-semibold px-3 py-2 border-b',
-                                isTodayGroup
-                                    ? 'border-primary bg-primary text-primary-fg'
-                                    : 'bg-surface-hover text-text border-border'
-                            )}
-                        >
-                            {isTodayGroup ? 'Today' : format(group.date, 'EEEE d MMMM')}
-                        </h2>
+                    // The wrapper is the scroll anchor for Today.
+                    <div key={group.date.toISOString()} ref={isTodayGroup ? todayRef : undefined}>
+                    <Card className={isTodayGroup ? 'border-primary' : undefined}>
+                        {/* A plain card header, not sticky. Each day is its own rounded,
+                            overflow-hidden card, so a viewport-offset sticky header
+                            (top-14 to clear the mobile chrome) pinned 56px into the card
+                            and bisected the first event row. */}
+                        <CardHeader
+                            title={isTodayGroup ? 'Today' : format(group.date, 'EEEE d MMMM')}
+                            className={isTodayGroup ? 'border-primary bg-primary-soft' : 'bg-surface-2'}
+                        />
                         {(() => {
                             const iso = format(group.date, 'yyyy-MM-dd')
                             const covers = dailyOps?.coversByDate[iso] ?? 0
@@ -116,9 +106,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                             )
                         })()}
                         {group.entries.length === 0 && isTodayGroup && (
-                            <div className="text-xs text-text-muted px-3 py-4 italic">
-                                No entries today.
-                            </div>
+                            <Empty size="sm" title="No Entries Today" />
                         )}
                         {group.entries.length > 0 && (
                             <ul className="space-y-1 p-1">
@@ -126,7 +114,9 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                     const isPastEntry = isPast(entry.end) && !isTodayGroup
                                     const isCancelled = entry.status === 'cancelled'
                                     const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
-                                    const secondaryTextClass = lightText ? 'text-on-dark-muted' : 'text-black/70'
+                                    // Secondary text on the entry's own colour: the light or dark
+                                    // text colour, softened.
+                                    const secondaryTextClass = lightText ? 'text-on-dark-muted' : 'opacity-70'
                                     const details = (
                                         <>
                                             <div
@@ -149,12 +139,9 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                             {entryGaps(entry).length > 0 && (
                                                 <div className="mt-1 flex flex-wrap gap-1">
                                                     {entryGaps(entry).map((gap) => (
-                                                        <span
-                                                            key={gap}
-                                                            className="rounded-sm border border-black/20 bg-surface px-1.5 py-0.5 text-2xs font-medium text-text-strong"
-                                                        >
+                                                        <Badge key={gap} size="sm">
                                                             {CONTENT_GAP_LABELS[gap]}
-                                                        </span>
+                                                        </Badge>
                                                     ))}
                                                 </div>
                                             )}
@@ -192,7 +179,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                                         ev.preventDefault()
                                                         onEntryClick(entry)
                                                     }}
-                                                    className="block flex-1 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-1"
+                                                    className="block flex-1 rounded-sm focus-visible:outline-hidden focus-visible:shadow-ring"
                                                     title={entryTooltipText(entry)}
                                                 >
                                                     {details}
@@ -200,11 +187,13 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                             ) : onEntryClick ? (
                                                 // Entries without an href (calendar notes) used to
                                                 // render as an inert div, so they could not be
-                                                // opened at all in this view.
+                                                // opened at all in this view. A raw button: the
+                                                // entry's multi-line details are the control, which
+                                                // a DS Button (one line, fixed height) cannot hold.
                                                 <button
                                                     type="button"
                                                     onClick={() => onEntryClick(entry)}
-                                                    className="block min-w-0 flex-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-1"
+                                                    className="block min-w-0 flex-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:shadow-ring"
                                                     title={entryTooltipText(entry)}
                                                 >
                                                     {details}
@@ -218,7 +207,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                                 <span
                                                     className={cn(
                                                         'rounded-sm px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide',
-                                                        lightText ? 'bg-on-dark-active text-on-dark' : 'bg-black/10 text-text-strong'
+                                                        lightText ? 'bg-on-dark-active text-on-dark' : 'bg-text-strong/10 text-text-strong'
                                                     )}
                                                 >
                                                     {entry.statusLabel}
@@ -229,7 +218,8 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                 })}
                             </ul>
                         )}
-                    </section>
+                    </Card>
+                    </div>
                 )
             })}
         </div>

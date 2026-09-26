@@ -14,19 +14,17 @@ describe('privacy policy page', () => {
     expect(container.querySelector('[class*="public__"]')).toBeNull()
   })
 
-  it('lets the hero run full bleed by dropping the shell column padding', () => {
+  it("reads in the wide guest column with the shell's own padding, like every guest page", () => {
     render(<PrivacyPolicy />)
 
-    // The hero has to reach both edges under the brand bar, so the shell's own
-    // width cap and padding are overridden here and re-applied to the prose
-    // column. If tailwind-merge ever stopped resolving these, the hero would
-    // sit inset in a 560px box and the page would look broken.
+    // The policy is long prose, so it takes the one wide option. It no longer
+    // overrides the shell's width or padding with a full-bleed hero.
     const main = screen.getByRole('main')
-    expect(main.className).toContain('max-w-none')
-    expect(main.className).not.toContain('max-w-[560px]')
-    expect(main.className).toContain('px-0')
-    expect(main.className).not.toContain('px-[18px]')
-    expect(main.className).not.toContain('sm:px-6')
+    expect(main.className).toContain('max-w-guest-wide')
+    expect(main.className).toContain('px-guest-lg')
+    expect(main.className).toContain('sm:px-6')
+    expect(main.className).not.toContain('max-w-none')
+    expect(main.className).not.toContain('px-0')
   })
 
   it('keeps all fifteen numbered sections, in order', () => {

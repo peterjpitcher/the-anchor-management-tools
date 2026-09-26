@@ -2,26 +2,44 @@
 
 import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { TabNav } from '@/ds'
-import { StatGroup } from '@/ds'
-import { Stat } from '@/ds'
-import { Card } from '@/ds'
+import {
+  Alert,
+  Card,
+  CardBody,
+  CardHeader,
+  DataTable,
+  Empty,
+  PageLayout,
+  PageLoading,
+  Segmented,
+  Stat,
+  StatGrid,
+  type Column,
+} from '@/ds'
 import { BarChart } from '@/components/charts/BarChart'
 import {
   getMileageInsights,
   type MileageInsightsData,
   type MileageGranularity,
 } from '@/app/actions/mileage'
-import { useSort } from '@/hooks/useSort'
-import { SortableHeader } from '@/ds'
+import { MILEAGE_INSIGHTS_LAYOUT } from '../../_shared/nav'
 
-const PERIOD_TABS = [
-  { key: 'monthly' as const, label: 'Monthly' },
-  { key: 'quarterly' as const, label: 'Quarterly' },
+const PERIOD_OPTIONS: Array<{ id: MileageGranularity; label: string }> = [
+  { id: 'monthly', label: 'Monthly' },
+  { id: 'quarterly', label: 'Quarterly' },
   // The financial year runs 1 January to 31 December, which is how the yearly bars group.
-  { key: 'annually' as const, label: 'Financial year' },
-  { key: 'all' as const, label: 'All Time' },
+  { id: 'annually', label: 'Financial Year' },
+  { id: 'all', label: 'All Time' },
 ]
+
+const PERIOD_LOAD_FAILED = 'Could not load mileage for that period. Try again.'
+
+type DestinationRow = MileageInsightsData['byDestination'][number]
+
+// Module level so DataTable gets the same function on every render.
+const destinationRowKey = (row: DestinationRow): string => row.destinationName
+
+const formatMiles = (miles: number): string => miles.toLocaleString('en-GB', { maximumFractionDigits: 1 })
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value)
@@ -51,46 +69,65 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
   const router = useRouter()
   const [granularity, setGranularity] = useState<MileageGranularity>('monthly')
   const [data, setData] = useState<MileageInsightsData>(initialData)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  // ---------------------------------------------------------------------------
-  // Sorting: By Destination table
-  // ---------------------------------------------------------------------------
-
-  type DestinationSortKey = 'destination' | 'miles' | 'amount' | 'trips'
-
-  const destinationComparators = useMemo(
-    () => ({
-      destination: (a: MileageInsightsData['byDestination'][number], b: MileageInsightsData['byDestination'][number]) =>
-        a.destinationName.localeCompare(b.destinationName),
-      miles: (a: MileageInsightsData['byDestination'][number], b: MileageInsightsData['byDestination'][number]) =>
-        a.totalMiles - b.totalMiles,
-      amount: (a: MileageInsightsData['byDestination'][number], b: MileageInsightsData['byDestination'][number]) =>
-        a.amountDue - b.amountDue,
-      trips: (a: MileageInsightsData['byDestination'][number], b: MileageInsightsData['byDestination'][number]) =>
-        a.tripCount - b.tripCount,
-    }),
-    []
+  // The destination table opens longest distance first, as it always has. DataTable sorts from
+  // there when a header is clicked.
+  const destinationsByMiles = useMemo(
+    () => [...data.byDestination].sort((a, b) => b.totalMiles - a.totalMiles),
+    [data.byDestination],
   )
 
-  const {
-    sortedData: sortedByDestination,
-    sort: destinationSort,
-    toggleSort: toggleDestinationSort,
-  } = useSort<MileageInsightsData['byDestination'][number], DestinationSortKey>(
-    data.byDestination,
-    'miles',
-    'desc',
-    destinationComparators
-  )
+  const destinationColumns: Column<DestinationRow>[] = [
+    {
+      key: 'destination',
+      header: 'Destination',
+      sortable: true,
+      sortFn: (a, b) => a.destinationName.localeCompare(b.destinationName),
+      cell: (row) => row.destinationName,
+    },
+    {
+      key: 'miles',
+      header: 'Miles',
+      align: 'right',
+      sortable: true,
+      sortFn: (a, b) => a.totalMiles - b.totalMiles,
+      cell: (row) => formatMiles(row.totalMiles),
+    },
+    {
+      key: 'amount',
+      header: 'Amount Due',
+      align: 'right',
+      sortable: true,
+      sortFn: (a, b) => a.amountDue - b.amountDue,
+      cell: (row) => formatCurrency(row.amountDue),
+    },
+    {
+      key: 'trips',
+      header: 'Trips',
+      align: 'right',
+      sortable: true,
+      sortFn: (a, b) => a.tripCount - b.tripCount,
+      cell: (row) => row.tripCount,
+    },
+  ]
 
   function handlePeriodChange(key: string): void {
     const newGranularity = key as MileageGranularity
     setGranularity(newGranularity)
     startTransition(async () => {
-      const result = await getMileageInsights(newGranularity)
-      if (result.success && result.data) {
-        setData(result.data)
+      try {
+        const result = await getMileageInsights(newGranularity)
+        if (result.success && result.data) {
+          setData(result.data)
+          setLoadError(null)
+        } else {
+          // A failed read is shown as a failure, never as the previous period's figures.
+          setLoadError(result.error ?? PERIOD_LOAD_FAILED)
+        }
+      } catch {
+        setLoadError(PERIOD_LOAD_FAILED)
       }
     })
   }
@@ -108,102 +145,59 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
   }))
 
   return (
-    <div className="space-y-6">
-      <TabNav
-        tabs={PERIOD_TABS}
-        activeKey={granularity}
-        onChange={handlePeriodChange}
-        variant="pills"
-      />
-
-      <StatGroup columns={3}>
-        <Stat
-          label="Total Miles"
-          value={`${data.totals.totalMiles.toLocaleString('en-GB', { maximumFractionDigits: 1 })} mi`}
-          loading={isPending}
+    <PageLayout
+      {...MILEAGE_INSIGHTS_LAYOUT}
+      headerActions={
+        <Segmented
+          options={PERIOD_OPTIONS}
+          value={granularity}
+          onChange={handlePeriodChange}
+          size="sm"
         />
-        <Stat
-          label="Total Amount Due"
-          value={formatCurrency(data.totals.totalAmountDue)}
-          loading={isPending}
-        />
-        <Stat
-          label="Number of Trips"
-          value={data.totals.tripCount.toLocaleString('en-GB')}
-          loading={isPending}
-        />
-      </StatGroup>
+      }
+    >
+      {isPending ? (
+        <PageLoading inline />
+      ) : loadError ? (
+        <Alert tone="danger" title="Couldn't load this period">{loadError}</Alert>
+      ) : (
+        <>
+          <StatGrid columns={3}>
+            <Stat label="Total Miles" value={`${formatMiles(data.totals.totalMiles)} mi`} />
+            <Stat label="Total Amount Due" value={formatCurrency(data.totals.totalAmountDue)} />
+            <Stat label="Number of Trips" value={data.totals.tripCount.toLocaleString('en-GB')} />
+          </StatGrid>
 
-      <Card>
-        <h3 className="text-lg font-semibold mb-4">Miles Over Time</h3>
-        {chartData.length > 0 ? (
-          <BarChart
-            data={chartData}
-            height={300}
-            color="var(--color-chart-1)"
-            formatType="number"
-            onBarClick={handleBarClick}
-          />
-        ) : (
-          <p className="text-text-muted text-center py-12">No mileage data available.</p>
-        )}
-      </Card>
+          <Card>
+            <CardHeader title="Miles Over Time" />
+            <CardBody>
+              {chartData.length > 0 ? (
+                <BarChart
+                  data={chartData}
+                  height={300}
+                  color="var(--color-chart-1)"
+                  formatType="number"
+                  onBarClick={handleBarClick}
+                />
+              ) : (
+                <Empty size="sm" title="No mileage data available" />
+              )}
+            </CardBody>
+          </Card>
 
-      {data.byDestination.length > 0 && (
-        <Card>
-          <h3 className="text-lg font-semibold mb-4">By Destination</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <SortableHeader
-                    label="Destination"
-                    column="destination"
-                    currentColumn={destinationSort.column}
-                    currentDirection={destinationSort.direction}
-                    onSort={toggleDestinationSort}
-                    className="text-left py-2 pr-4 font-medium text-text-muted"
-                  />
-                  <SortableHeader
-                    label="Miles"
-                    column="miles"
-                    currentColumn={destinationSort.column}
-                    currentDirection={destinationSort.direction}
-                    onSort={toggleDestinationSort}
-                    className="text-right py-2 px-4 font-medium text-text-muted"
-                  />
-                  <SortableHeader
-                    label="Amount Due"
-                    column="amount"
-                    currentColumn={destinationSort.column}
-                    currentDirection={destinationSort.direction}
-                    onSort={toggleDestinationSort}
-                    className="text-right py-2 px-4 font-medium text-text-muted"
-                  />
-                  <SortableHeader
-                    label="Trips"
-                    column="trips"
-                    currentColumn={destinationSort.column}
-                    currentDirection={destinationSort.direction}
-                    onSort={toggleDestinationSort}
-                    className="text-right py-2 pl-4 font-medium text-text-muted"
-                  />
-                </tr>
-              </thead>
-              <tbody>
-                {sortedByDestination.map((dest) => (
-                  <tr key={dest.destinationName} className="border-b border-border">
-                    <td className="py-2 pr-4">{dest.destinationName}</td>
-                    <td className="text-right py-2 px-4">{dest.totalMiles.toLocaleString('en-GB', { maximumFractionDigits: 1 })}</td>
-                    <td className="text-right py-2 px-4">{formatCurrency(dest.amountDue)}</td>
-                    <td className="text-right py-2 pl-4">{dest.tripCount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+          {data.byDestination.length > 0 && (
+            <Card>
+              <CardHeader title="By Destination" />
+              <DataTable
+                data={destinationsByMiles}
+                columns={destinationColumns}
+                getRowKey={destinationRowKey}
+                bordered={false}
+              />
+            </Card>
+          )}
+        </>
       )}
-    </div>
+    </PageLayout>
   )
 }

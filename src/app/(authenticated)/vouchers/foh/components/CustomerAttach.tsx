@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useRef, useState } from 'react'
-import { Button, Input } from '@/ds'
+import { Badge, Button, Card, FormFooter, Input } from '@/ds'
 import {
   fetchEventBookers,
   quickAddCustomer,
@@ -107,12 +107,15 @@ export function CustomerAttach({
   if (value) {
     return (
       <div>
-        <span className="block text-sm font-medium text-text">Customer (optional)</span>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          {/* The attached customer reads as a selected chip, like the Won at chips. */}
-          <span className="inline-flex min-h-touch items-center rounded-pill border border-primary bg-primary-soft px-4 py-2 text-base font-medium text-primary-soft-fg">
+        {/* A caption in the field-label style: the chosen customer is a chip, not a field. */}
+        <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-text-muted">
+          Customer (optional)
+        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* The attached customer reads as a selected chip. */}
+          <Badge tone="primary" className="min-h-touch px-4 py-2 text-base">
             {value.name}
-          </span>
+          </Badge>
           {!disabled && (
             <Button
               type="button"
@@ -138,61 +141,61 @@ export function CustomerAttach({
 
   return (
     <div>
-      <label htmlFor={`${idPrefix}-customer-search`} className="block text-sm font-medium text-text">
-        Customer (optional)
-      </label>
+      <Input
+        id={`${idPrefix}-customer-search`}
+        label="Customer (optional)"
+        type="text"
+        autoComplete="off"
+        placeholder="Search by name or mobile"
+        value={searchTerm}
+        disabled={disabled}
+        onChange={(event) => setSearchTerm(event.target.value)}
+        className="h-12 text-base"
+      />
 
       {bookers.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-2" aria-label="Customers booked on this event">
+        <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Customers booked on this event">
           {bookers.map((booker) => (
-            <button
+            <Button
               key={booker.customerId}
               type="button"
+              variant="secondary"
+              size="lg"
               disabled={disabled}
               onClick={() => onChange({ id: booker.customerId, name: booker.name })}
-              className="min-h-touch rounded-pill border border-border bg-surface px-4 py-2 text-base text-text-muted hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-touch text-base font-normal"
             >
               {booker.name}
-              <span className="ml-1 text-sm text-text-muted">
+              <span className="text-sm text-text-muted">
                 (booked, {booker.seats} {booker.seats === 1 ? 'seat' : 'seats'})
               </span>
-            </button>
+            </Button>
           ))}
         </div>
       )}
 
-      <div className="mt-2">
-        <Input
-          id={`${idPrefix}-customer-search`}
-          type="text"
-          autoComplete="off"
-          placeholder="Search by name or mobile"
-          value={searchTerm}
-          disabled={disabled}
-          onChange={(event) => setSearchTerm(event.target.value)}
-          className="h-12 text-base"
-        />
-      </div>
-
       <div aria-live="polite">
         {searchResults.length > 0 && (
-          <ul className="mt-2 divide-y divide-border rounded-lg border border-border bg-surface">
-            {searchResults.map((customer) => (
-              <li key={customer.id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange(customer)
-                    setSearchTerm('')
-                    setSearchResults([])
-                  }}
-                  className="min-h-touch w-full px-4 py-2 text-left text-base text-text hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-                >
-                  {customer.name}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <Card padding="none" className="mt-2">
+            <ul className="divide-y divide-border">
+              {searchResults.map((customer) => (
+                <li key={customer.id}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      onChange(customer)
+                      setSearchTerm('')
+                      setSearchResults([])
+                    }}
+                    className="h-auto w-full min-h-touch justify-start rounded-none px-4 py-2 text-left text-base font-normal focus-visible:shadow-ring-inset"
+                  >
+                    {customer.name}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </Card>
         )}
         {statusMessage && (
           <p role="status" className="mt-2 text-sm font-medium text-text">
@@ -210,68 +213,53 @@ export function CustomerAttach({
           onClick={() => setShowQuickAdd(true)}
           className="mt-2 min-h-touch text-base"
         >
-          Add a new customer
+          Add a New Customer
         </Button>
       ) : (
-        <div className="mt-2 rounded-lg border border-border bg-surface-2 p-3">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div className="min-w-0">
-              <label htmlFor={`${idPrefix}-quick-name`} className="mb-1 block text-sm font-medium text-text">
-                Name
-              </label>
-              <Input
-                id={`${idPrefix}-quick-name`}
-                type="text"
-                autoComplete="off"
-                value={quickName}
-                onChange={(event) => setQuickName(event.target.value)}
-                className="h-12 text-base"
-              />
-            </div>
-            <div className="min-w-0">
-              <label htmlFor={`${idPrefix}-quick-mobile`} className="mb-1 block text-sm font-medium text-text">
-                Mobile
-              </label>
-              <Input
-                id={`${idPrefix}-quick-mobile`}
-                type="tel"
-                inputMode="tel"
-                autoComplete="off"
-                value={quickMobile}
-                onChange={(event) => setQuickMobile(event.target.value)}
-                className="h-12 text-base"
-              />
-            </div>
-            <div className="min-w-0 sm:col-span-2">
-              <label htmlFor={`${idPrefix}-quick-email`} className="mb-1 block text-sm font-medium text-text">
-                Email (optional, best for reminders)
-              </label>
-              <Input
-                id={`${idPrefix}-quick-email`}
-                type="email"
-                inputMode="email"
-                autoComplete="off"
-                value={quickEmail}
-                onChange={(event) => setQuickEmail(event.target.value)}
-                className="h-12 text-base"
-              />
-            </div>
+        <Card variant="secondary" padding="sm" className="mt-2">
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="min-w-0">
+                <Input
+                  id={`${idPrefix}-quick-name`}
+                  label="Name"
+                  type="text"
+                  autoComplete="off"
+                  value={quickName}
+                  onChange={(event) => setQuickName(event.target.value)}
+                  className="h-12 text-base"
+                />
+              </div>
+              <div className="min-w-0">
+                <Input
+                  id={`${idPrefix}-quick-mobile`}
+                  label="Mobile"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="off"
+                  value={quickMobile}
+                  onChange={(event) => setQuickMobile(event.target.value)}
+                  className="h-12 text-base"
+                />
+              </div>
+              <div className="min-w-0 sm:col-span-2">
+                <Input
+                  id={`${idPrefix}-quick-email`}
+                  label="Email (optional, best for reminders)"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="off"
+                  value={quickEmail}
+                  onChange={(event) => setQuickEmail(event.target.value)}
+                  className="h-12 text-base"
+                />
+              </div>
           </div>
-          <p className="mt-2 text-sm text-text">
+          <p className="text-sm text-text">
             Adding someone here signs them up for updates from The Anchor, so please say so out loud.
             We will remind them about the voucher by email, or by text if they have no email address.
           </p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="primary"
-              size="lg"
-              onClick={handleQuickAdd}
-              disabled={busy}
-              className="min-h-touch text-base"
-            >
-              {busy ? 'Adding...' : 'Add customer'}
-            </Button>
+          <FormFooter>
             <Button
               type="button"
               variant="secondary"
@@ -285,8 +273,19 @@ export function CustomerAttach({
             >
               Cancel
             </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="lg"
+              onClick={handleQuickAdd}
+              disabled={busy}
+              className="min-h-touch text-base"
+            >
+              {busy ? 'Adding...' : 'Add Customer'}
+            </Button>
+          </FormFooter>
           </div>
-        </div>
+        </Card>
       )}
     </div>
   )

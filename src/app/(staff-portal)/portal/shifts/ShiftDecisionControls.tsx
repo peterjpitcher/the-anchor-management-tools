@@ -2,10 +2,12 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, IconButton, Textarea, toast, Icon } from '@/ds';
+import { Button, FormFooter, IconButton, Textarea, toast, Icon } from '@/ds';
 import { acceptPortalShift, rejectPortalShift, type ShiftAcceptanceStatus } from '@/app/actions/rota';
 import { rotaShiftStatusClasses } from '@/lib/rota/status-ui';
 import { validateShiftRejectionReason } from '@/lib/rota/shift-rejection-validation';
+import { cn } from '@/lib/utils';
+import { SHIFT_CONFIRM_PANEL_CLASSES } from '../_shared/status-ui';
 
 type Props = {
   shiftId: string;
@@ -111,7 +113,6 @@ export default function ShiftDecisionControls({
               label="Accept shift"
               title="Accept shift"
               icon={<Icon name="check" size={16} />}
-              className="rounded-pill"
             />
             <IconButton
               type="button"
@@ -121,28 +122,21 @@ export default function ShiftDecisionControls({
               label="Reject shift"
               title="Reject shift"
               icon={<Icon name="x" size={16} />}
-              className="rounded-pill border-danger-border text-danger-fg shadow-xs hover:bg-danger-soft"
             />
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border border-danger-border bg-danger-soft p-3">
-          <label htmlFor={`reject-note-${shiftId}`} className="text-xs font-medium text-danger-fg">
-            Reason for manager
-          </label>
+        <div className={cn('space-y-3', SHIFT_CONFIRM_PANEL_CLASSES.reject)}>
           <Textarea
             id={`reject-note-${shiftId}`}
+            label="Reason for manager"
             value={note}
             onChange={event => setNote(event.target.value)}
             maxLength={500}
             required
             rows={3}
-            className="mt-1"
           />
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button type="button" variant="danger" size="sm" onClick={onReject} disabled={isPending}>
-              {isPending ? 'Saving...' : 'Confirm reject'}
-            </Button>
+          <FormFooter>
             <Button
               type="button"
               variant="secondary"
@@ -152,7 +146,10 @@ export default function ShiftDecisionControls({
             >
               Cancel
             </Button>
-          </div>
+            <Button type="button" variant="danger" size="sm" onClick={onReject} disabled={isPending}>
+              {isPending ? 'Saving...' : 'Confirm Reject'}
+            </Button>
+          </FormFooter>
         </div>
       )}
     </div>

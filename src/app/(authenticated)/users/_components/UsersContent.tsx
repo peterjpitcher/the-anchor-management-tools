@@ -23,6 +23,7 @@ import {
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import UserRolesModal from '../components/UserRolesModal'
+import { ROLE_NAME_BADGE_TONE, ROLE_NONE_TONE } from '../../roles/_shared/status-ui'
 
 interface UsersContentProps {
   users: UserSummaryWithRoles[]
@@ -51,7 +52,7 @@ function buildRoleOptions(users: UserSummaryWithRoles[], roles: Role[]) {
   ]
 }
 
-export function UsersContent({ users, roles, canManageRoles }: UsersContentProps) {
+export function UsersContent({ users, roles, canManageRoles }: UsersContentProps): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [selectedUser, setSelectedUser] = useState<UserSummaryWithRoles | null>(null)
@@ -78,10 +79,10 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
     setIsRolesModalOpen(true)
   }
 
+  // A fragment, so the filters and the table are page blocks spaced by PageLayout.
   return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3">
+    <>
+      <div className="flex flex-wrap items-end gap-3">
         <SearchInput
           value={searchQuery}
           onChange={setSearchQuery}
@@ -97,16 +98,16 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
         />
       </div>
 
-      {/* Table */}
       {filteredUsers.length === 0 ? (
         <Card>
           <Empty
+            size="sm"
             title="No users found"
             description={searchQuery ? 'Try adjusting your search query.' : 'Start by inviting users to your application.'}
           />
         </Card>
       ) : (
-        <Card>
+        <Card padding="none">
           <Table>
             <TableHeader>
               <TableRow>
@@ -137,12 +138,12 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
                     <div className="flex flex-wrap gap-1.5">
                       {(user.roles ?? []).length > 0 ? (
                         user.roles.map((role) => (
-                          <Badge key={role.id} tone={role.is_system ? 'primary' : 'neutral'}>
+                          <Badge key={role.id} tone={ROLE_NAME_BADGE_TONE[role.is_system ? 'system' : 'custom']}>
                             {role.name}
                           </Badge>
                         ))
                       ) : (
-                        <Badge tone="neutral">No roles</Badge>
+                        <Badge tone={ROLE_NONE_TONE}>No roles</Badge>
                       )}
                     </div>
                   </TableCell>
@@ -164,7 +165,7 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
                         actions={[
                           {
                             key: 'manage-roles',
-                            label: 'Manage roles',
+                            label: 'Manage Roles',
                             icon: <Icon name="edit" size={16} />,
                             onSelect: () => handleManageRoles(user),
                           },
@@ -179,7 +180,6 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
         </Card>
       )}
 
-      {/* Roles modal (domain component, preserved) */}
       {canManageRoles && selectedUser && (
         <UserRolesModal
           isOpen={isRolesModalOpen}
@@ -192,6 +192,6 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
           canManageRoles={canManageRoles}
         />
       )}
-    </div>
+    </>
   )
 }

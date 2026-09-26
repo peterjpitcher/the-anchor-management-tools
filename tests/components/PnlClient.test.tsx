@@ -6,6 +6,12 @@ import type { PnlDashboardData } from '@/app/actions/pnl'
 import { MANUAL_METRIC_KEYS, PNL_METRICS, PNL_TIMEFRAMES } from '@/lib/pnl/constants'
 import { GREENE_KING_BENCHMARK } from '@/lib/pnl/greene-king-benchmark'
 
+// PnlClient renders the Receipts page chrome (PageLayout), which reads the router and path.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => '/receipts/pnl',
+}))
+
 vi.mock('@/app/actions/pnl', () => ({
   savePlManualActualsAction: vi.fn().mockResolvedValue({ success: true }),
   savePlTargetsAction: vi.fn().mockResolvedValue({ success: true }),
@@ -123,23 +129,26 @@ describe('PnlClient currency detail formatting', () => {
 
     rerender(<PnlClient initialData={data} canExport />)
 
-    expect(screen.getByRole('button', { name: 'PDF' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Spreadsheet' })).toBeInTheDocument()
+    // Header actions: PageLayout renders them in the desktop header and the phone nav row.
+    expect(screen.getAllByRole('button', { name: 'PDF' })[0]).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Spreadsheet' })[0]).toBeInTheDocument()
   })
 
   it('uses the selected timeframe when triggering PDF export', () => {
     render(<PnlClient initialData={createInitialDashboardData()} canExport />)
 
-    const timeframeSelect = screen.getByLabelText('View timeframe')
-    const exportButton = screen.getByRole('button', { name: 'PDF' })
+    // The timeframe switch and the exports are header actions (the switch is a DS Segmented,
+    // so each timeframe is a radio). PageLayout renders header actions twice, desktop and phone.
+    const chooseTimeframe = (label: string) => fireEvent.click(screen.getAllByRole('radio', { name: label })[0])
+    const exportButton = screen.getAllByRole('button', { name: 'PDF' })[0]
 
-    fireEvent.change(timeframeSelect, { target: { value: '1m' } })
+    chooseTimeframe('Last 30 days')
     expect(exportButton).toHaveAttribute('data-export-url', '/api/receipts/pnl/export?timeframe=1m&format=pdf')
 
-    fireEvent.change(timeframeSelect, { target: { value: '3m' } })
+    chooseTimeframe('Last 90 days')
     expect(exportButton).toHaveAttribute('data-export-url', '/api/receipts/pnl/export?timeframe=3m&format=pdf')
 
-    fireEvent.change(timeframeSelect, { target: { value: '12m' } })
+    chooseTimeframe('Last 365 days')
     expect(exportButton).toHaveAttribute('data-export-url', '/api/receipts/pnl/export?timeframe=12m&format=pdf')
   })
 
@@ -147,19 +156,19 @@ describe('PnlClient currency detail formatting', () => {
     render(<PnlClient initialData={createInitialDashboardData()} canExport />)
 
     expect(screen.getByText('Actual income')).toBeInTheDocument()
-    expect(screen.getByText('Sales performance')).toBeInTheDocument()
-    expect(screen.getByText('Expense performance')).toBeInTheDocument()
-    expect(screen.getByText('Gross profit / operating profit')).toBeInTheDocument()
-    expect(screen.getByText('Greene King benchmark')).toBeInTheDocument()
-    expect(screen.getByText('Greene King benchmark target values')).toBeInTheDocument()
+    expect(screen.getByText('Sales Performance')).toBeInTheDocument()
+    expect(screen.getByText('Expense Performance')).toBeInTheDocument()
+    expect(screen.getByText('Gross Profit / Operating Profit')).toBeInTheDocument()
+    expect(screen.getByText('Greene King Benchmark')).toBeInTheDocument()
+    expect(screen.getByText('Greene King Benchmark Target Values')).toBeInTheDocument()
   })
 
   it('saves P&L inputs for the selected timeframe only', async () => {
     render(<PnlClient initialData={createInitialDashboardData()} canManage />)
 
-    fireEvent.change(screen.getByLabelText('View timeframe'), { target: { value: '3m' } })
+    fireEvent.click(screen.getAllByRole('radio', { name: 'Last 90 days' })[0])
     fireEvent.change(screen.getAllByLabelText('Accommodation sales')[0], { target: { value: '123.45' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save P&L inputs' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save P&L Inputs' }))
 
     await waitFor(() => {
       expect(savePlManualActualsAction).toHaveBeenCalled()

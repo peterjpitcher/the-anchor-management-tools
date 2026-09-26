@@ -91,7 +91,7 @@ describe('MaintenanceDetailClient', () => {
 
     renderDetail()
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Cooler tripping out' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => expect(updateMaintenanceItemMock).toHaveBeenCalledTimes(1))
     expect(updateMaintenanceItemMock).toHaveBeenCalledWith({
@@ -112,7 +112,7 @@ describe('MaintenanceDetailClient', () => {
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Cooler keeps tripping' } })
     fireEvent.change(screen.getByLabelText('Estimated cost'), { target: { value: '480.25' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => {
       expect(
@@ -123,7 +123,7 @@ describe('MaintenanceDetailClient', () => {
     // Nothing typed is discarded on a refused write.
     expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Cooler keeps tripping')
     expect((screen.getByLabelText('Estimated cost') as HTMLInputElement).value).toBe('480.25')
-    expect(screen.getByRole('button', { name: 'Load the newer version' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Load the Newer Version' })).toBeInTheDocument()
   })
 
   it('reapplies on to the newer version without losing the typing', async () => {
@@ -146,18 +146,18 @@ describe('MaintenanceDetailClient', () => {
 
     renderDetail()
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Cooler keeps tripping' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Load the newer version' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Load the Newer Version' })).toBeInTheDocument()
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Load the newer version' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Load the Newer Version' }))
 
     await waitFor(() => expect(screen.getByText('Loaded the newer version')).toBeInTheDocument())
     expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Cooler keeps tripping')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => expect(updateMaintenanceItemMock).toHaveBeenCalledTimes(2))
     expect(updateMaintenanceItemMock).toHaveBeenLastCalledWith({
@@ -179,7 +179,7 @@ describe('MaintenanceDetailClient', () => {
 
     renderDetail()
     fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'done' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => expect(updateMaintenanceItemMock).toHaveBeenCalledTimes(1))
     const payload = updateMaintenanceItemMock.mock.calls[0][0]
@@ -196,7 +196,7 @@ describe('MaintenanceDetailClient', () => {
 
     renderDetail()
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Still typing this' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() =>
       expect(screen.getByText('Could not save your changes')).toBeInTheDocument()
@@ -213,7 +213,7 @@ describe('MaintenanceDetailClient', () => {
 
     renderDetail()
     fireEvent.change(screen.getByLabelText('Area'), { target: { value: areas[1].id } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => {
       expect(
@@ -227,7 +227,7 @@ describe('MaintenanceDetailClient', () => {
   it('restores the saved values on cancel and leaves save disabled until something changes', () => {
     renderDetail()
 
-    const saveButton = screen.getByRole('button', { name: 'Save changes' })
+    const saveButton = screen.getByRole('button', { name: 'Save Changes' })
     expect(saveButton).toBeDisabled()
 
     const title = screen.getByLabelText('Title') as HTMLInputElement
@@ -244,7 +244,7 @@ describe('MaintenanceDetailClient', () => {
     renderDetail()
 
     fireEvent.change(screen.getByLabelText('Target date'), { target: { value: '2026-08-01' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => {
       expect(
@@ -263,13 +263,13 @@ describe('MaintenanceDetailClient', () => {
     renderDetail()
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Cooler keeps tripping' } })
     fireEvent.change(screen.getByLabelText('Estimated cost'), { target: { value: '480.25' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() =>
       expect(screen.getByText(/Check your connection and try again/)).toBeInTheDocument()
     )
     // The control comes back, so a retry is possible.
-    expect(screen.getByRole('button', { name: 'Save changes' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save Changes' })).not.toBeDisabled()
     // And everything typed survives to be retried.
     expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Cooler keeps tripping')
     expect((screen.getByLabelText('Estimated cost') as HTMLInputElement).value).toBe('480.25')
@@ -285,17 +285,17 @@ describe('MaintenanceDetailClient', () => {
 
     renderDetail()
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Cooler keeps tripping' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Load the newer version' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Load the Newer Version' })).toBeInTheDocument()
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Load the newer version' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Load the Newer Version' }))
 
     await waitFor(() =>
       expect(screen.getByText(/Could not load the newer version/)).toBeInTheDocument()
     )
-    expect(screen.getByRole('button', { name: 'Load the newer version' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Load the Newer Version' })).not.toBeDisabled()
     expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Cooler keeps tripping')
   })
 
@@ -325,18 +325,18 @@ describe('MaintenanceDetailClient', () => {
     fireEvent.change(screen.getByLabelText('Description'), {
       target: { value: 'Trips every other morning, worse in the heat.' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Load the newer version' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Load the Newer Version' })).toBeInTheDocument()
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Load the newer version' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Load the Newer Version' }))
     await waitFor(() => expect(screen.getByText('Loaded the newer version')).toBeInTheDocument())
 
     // The field nobody here touched now shows the other person's value.
     expect((screen.getByLabelText('Priority') as HTMLSelectElement).value).toBe('critical')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => expect(updateMaintenanceItemMock).toHaveBeenCalledTimes(2))
     const secondPatch = updateMaintenanceItemMock.mock.calls[1][0]
@@ -374,7 +374,7 @@ describe('MaintenanceDetailClient', () => {
     renderDetail(buildItem({ reportedOn: '2026-08-15' }))
     fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'done' } })
     fireEvent.change(screen.getByLabelText('Completed on'), { target: { value: '2026-08-20' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => expect(updateMaintenanceItemMock).toHaveBeenCalledTimes(1))
     const payload = updateMaintenanceItemMock.mock.calls[0][0]
@@ -392,7 +392,7 @@ describe('MaintenanceDetailClient', () => {
     renderDetail(buildItem({ status: 'done', completedOn: '2026-09-05' }))
 
     fireEvent.change(screen.getByLabelText('Completed on'), { target: { value: '2026-08-01' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() =>
       expect(
@@ -402,7 +402,7 @@ describe('MaintenanceDetailClient', () => {
     expect(screen.getByLabelText('Completed on')).toHaveFocus()
 
     fireEvent.change(screen.getByLabelText('Completed on'), { target: { value: '2026-09-30' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() =>
       expect(screen.getByText('The completion date cannot be in the future')).toBeInTheDocument()
@@ -421,7 +421,7 @@ describe('MaintenanceDetailClient', () => {
     renderDetail(buildItem({ status: 'done', completedOn: '2026-08-01' }))
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Cooler, cellar' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => expect(updateMaintenanceItemMock).toHaveBeenCalledTimes(1))
     const payload = updateMaintenanceItemMock.mock.calls[0][0]

@@ -5,7 +5,11 @@ import {
   Badge,
   Card,
   CardHeader,
-  CardBody,
+  Empty,
+  PageLayout,
+  Section,
+  Stat,
+  StatGrid,
   Table,
   TableHeader,
   TableBody,
@@ -14,8 +18,10 @@ import {
   TableCell,
 } from '@/ds'
 import type { InsightsData } from '@/app/actions/checklists-insights'
+import { CHECKLISTS_MANAGE_LAYOUT } from '../../_shared/nav'
+import { checklistBandTone } from '../../_shared/status-ui'
 import { DateRangeControl } from './DateRangeControl'
-import { formatPercent, bandTone } from './format'
+import { formatPercent } from './format'
 
 interface InsightsClientProps {
   data?: InsightsData
@@ -24,92 +30,87 @@ interface InsightsClientProps {
 
 export function InsightsClient({ data, error }: InsightsClientProps) {
   if (error || !data) {
+    // The action refuses anyone but a super admin with 'Insufficient permissions'. Any other
+    // error is a failed load, which the page reports as one rather than as a permission note.
+    const refused = !error || error === 'Insufficient permissions'
     return (
-      <Alert tone="warning" title="Super admins only">
-        {error ?? 'Insights are only available to super admins.'}
-      </Alert>
+      <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+        {refused ? (
+          <Alert tone="warning" title="Super admins only">
+            Insights are only available to super admins.
+          </Alert>
+        ) : (
+          <Alert tone="danger" title="Could not load insights">
+            {error}
+          </Alert>
+        )}
+      </PageLayout>
     )
   }
 
   return (
-    <div className="space-y-4">
-      <DateRangeControl from={data.from} to={data.to} />
-      <p className="text-sm text-text-muted">
-        Locked business days from {data.from} to {data.to}.
-      </p>
+    <PageLayout {...CHECKLISTS_MANAGE_LAYOUT}>
+      {/* The filter and the window it resolved to, directly above the figures they drive. */}
+      <div className="space-y-2">
+        <DateRangeControl from={data.from} to={data.to} />
+        <p className="text-sm text-text-muted">
+          Locked business days from {data.from} to {data.to}.
+        </p>
+      </div>
 
-      {/* Headline metrics */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label="Venue completion" value={formatPercent(data.venueCompletionRate)} />
-        <Metric label="Late rate" value={formatPercent(data.lateRate)} />
-        <Metric
+      <StatGrid columns={4}>
+        <Stat label="Venue completion" value={formatPercent(data.venueCompletionRate)} />
+        <Stat label="Late rate" value={formatPercent(data.lateRate)} />
+        <Stat
           label="Spot checks recorded"
           value={`${data.spotCheckRecorded} / ${data.spotCheckExpected}`}
         />
-        <Metric label="Spot-check pass rate" value={formatPercent(data.spotCheckPassRate)} />
-      </div>
+        <Stat label="Spot-check pass rate" value={formatPercent(data.spotCheckPassRate)} />
+      </StatGrid>
 
-      {/* Day-part completion */}
-      <Card>
-        <CardHeader title="Completion by day-part" />
-        <CardBody>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Metric label="Open list" value={formatPercent(data.byDayPart.open)} />
-            <Metric label="During service" value={formatPercent(data.byDayPart.service)} />
-            <Metric label="Close list" value={formatPercent(data.byDayPart.close)} />
-            <Metric label="Floating" value={formatPercent(data.byDayPart.floating)} />
-          </div>
-        </CardBody>
-      </Card>
+      <Section title="Completion by Day-Part">
+        <StatGrid columns={4}>
+          <Stat label="Open list" value={formatPercent(data.byDayPart.open)} />
+          <Stat label="During service" value={formatPercent(data.byDayPart.service)} />
+          <Stat label="Close list" value={formatPercent(data.byDayPart.close)} />
+          <Stat label="Floating" value={formatPercent(data.byDayPart.floating)} />
+        </StatGrid>
+      </Section>
 
-      {/* Per-person timeliness */}
       <Card>
         <CardHeader
-          title="Timeliness (completed ticks)"
+          title="Timeliness (Completed Ticks)"
           subtitle="Score out of 10 over completed ticks. Suppressed below 30 ticks."
         />
-        <CardBody className="p-0">
-          {data.perPerson.length === 0 ? (
-            <p className="px-pad-card py-4 text-sm text-text-muted">
-              No completed ticks in this window.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Person</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead align="right">Ticks</TableHead>
+        {data.perPerson.length === 0 ? (
+          <Empty size="sm" title="No completed ticks in this window" />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Person</TableHead>
+                <TableHead>Score</TableHead>
+                <TableHead align="right">Ticks</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.perPerson.map((person) => (
+                <TableRow key={person.employeeId}>
+                  <TableCell className="font-medium text-text">{person.name}</TableCell>
+                  <TableCell>
+                    {person.score == null ? (
+                      <span className="text-text-soft">n/a (fewer than 30)</span>
+                    ) : (
+                      <Badge tone={checklistBandTone(person.band)}>{person.score.toFixed(1)} / 10</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell align="right">{person.count}</TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.perPerson.map((person) => (
-                  <TableRow key={person.employeeId}>
-                    <TableCell className="font-medium text-text">{person.name}</TableCell>
-                    <TableCell>
-                      {person.score == null ? (
-                        <span className="text-text-soft">n/a (fewer than 30)</span>
-                      ) : (
-                        <Badge tone={bandTone(person.band)}>{person.score.toFixed(1)} / 10</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell align="right">{person.count}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardBody>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Card>
-    </div>
-  )
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-default border border-border bg-surface px-3 py-2">
-      <div className="text-xs uppercase tracking-wider text-text-muted">{label}</div>
-      <div className="text-xl font-semibold text-text-strong">{value}</div>
-    </div>
+    </PageLayout>
   )
 }

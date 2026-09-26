@@ -20,8 +20,8 @@ vi.mock('@/ds', async () => {
   const React = await import('react')
   return {
     Card: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
-    CardHeader: ({ title, subtitle }: { title?: string; subtitle?: string }) =>
-      React.createElement('div', null, title, subtitle ? React.createElement('p', null, subtitle) : null),
+    CardHeader: ({ title, subtitle, action }: { title?: string; subtitle?: string; action?: React.ReactNode }) =>
+      React.createElement('div', null, title, subtitle ? React.createElement('p', null, subtitle) : null, action),
     CardBody: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
     Badge: ({ tone, children }: { tone?: string; children: React.ReactNode }) =>
       React.createElement('span', { 'data-tone': tone }, children),
@@ -41,6 +41,12 @@ vi.mock('@/ds', async () => {
         'aria-label': rest['aria-label'],
         onClick: () => onChange?.(!checked),
       }),
+    Alert: ({ tone, children }: { tone?: string; children: React.ReactNode }) =>
+      React.createElement('div', { role: 'alert', 'data-tone': tone }, children),
+    Empty: ({ title, description }: { title: string; description?: string }) =>
+      React.createElement('div', null, React.createElement('p', null, title), description ? React.createElement('p', null, description) : null),
+    LinkButton: ({ href, children }: { href: string; children: React.ReactNode }) =>
+      React.createElement('a', { href }, children),
     toast: { error: vi.fn(), success: vi.fn() },
   }
 })
@@ -100,8 +106,14 @@ describe('EventTodosWidget', () => {
 
   it('shows a load-error state instead of the caught-up state when loadError is set', () => {
     render(<EventTodosWidget initialTodos={[]} canManage todayIso={TODAY} loadError="boom" />)
+    expect(screen.getByRole('alert')).toHaveAttribute('data-tone', 'danger')
     expect(screen.getByText(/could not be loaded/i)).toBeInTheDocument()
     expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument()
+  })
+
+  it('links to the full cross-event todo list', () => {
+    render(<EventTodosWidget initialTodos={[makeItem()]} canManage todayIso={TODAY} />)
+    expect(screen.getByRole('link', { name: 'View All' })).toHaveAttribute('href', '/events/todo')
   })
 
   it('hides checkboxes when the user cannot manage', () => {

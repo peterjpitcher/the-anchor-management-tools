@@ -1,6 +1,6 @@
 import type { EmployeeNoteWithAuthor } from '@/app/actions/employeeDetails'
 import { formatDate } from '@/lib/dateUtils'
-import { Icon } from '@/ds'
+import { Empty, Icon } from '@/ds'
 
 interface EmployeeNotesListProps {
   notes: EmployeeNoteWithAuthor[]
@@ -8,7 +8,7 @@ interface EmployeeNotesListProps {
 
 export default function EmployeeNotesList({ notes }: EmployeeNotesListProps) {
   if (!notes || notes.length === 0) {
-    return <p className="text-sm text-text-muted">No notes recorded for this employee yet.</p>
+    return <Empty size="sm" title="No notes yet" description="No notes recorded for this employee yet." />
   }
 
   return (

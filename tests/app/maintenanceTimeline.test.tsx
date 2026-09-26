@@ -64,11 +64,11 @@ describe('MaintenanceTimeline', () => {
       expect(screen.getByText('Chased the electrician again.')).toBeInTheDocument()
     )
 
-    const toggle = screen.getByRole('button', { name: 'Show system events (1)' })
+    const toggle = screen.getByRole('button', { name: 'Show System Events (1)' })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
 
     fireEvent.click(toggle)
-    expect(screen.getByRole('button', { name: 'Hide system events' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Hide System Events' })).toHaveAttribute(
       'aria-expanded',
       'true'
     )
@@ -102,7 +102,7 @@ describe('MaintenanceTimeline', () => {
 
     const box = screen.getByLabelText('Add a note') as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: 'Rang the landlord.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save note' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Note' }))
 
     await waitFor(() => expect(screen.getByText('Could not save that note.')).toBeInTheDocument())
     expect(box.value).toBe('Rang the landlord.')
@@ -127,7 +127,7 @@ describe('MaintenanceTimeline', () => {
     fireEvent.change(screen.getByLabelText('Add a note'), {
       target: { value: 'Rang the landlord.' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Save note' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Note' }))
 
     await waitFor(() => expect(screen.getByText('Rang the landlord.')).toBeInTheDocument())
     expect((screen.getByLabelText('Add a note') as HTMLTextAreaElement).value).toBe('')
@@ -144,14 +144,14 @@ describe('MaintenanceTimeline', () => {
 
     const box = screen.getByLabelText('Add a note') as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: 'Rang the landlord.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save note' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Note' }))
 
     await waitFor(() =>
       expect(
         screen.getByText('Could not save the note. Check your connection and try again.')
       ).toBeInTheDocument()
     )
-    expect(screen.getByRole('button', { name: 'Save note' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save Note' })).not.toBeDisabled()
     expect(box.value).toBe('Rang the landlord.')
 
     // And the retry actually goes through, rather than being swallowed by the guard.
@@ -166,7 +166,7 @@ describe('MaintenanceTimeline', () => {
         createdAt: '2026-09-06T09:00:00.000Z',
       },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Save note' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Note' }))
     await waitFor(() => expect(addMaintenanceNoteMock).toHaveBeenCalledTimes(2))
   })
 

@@ -1,12 +1,28 @@
 'use client'
 
-import { useMemo, useState, useTransition, useRef, ChangeEvent } from 'react'
+import { useMemo, useState, useTransition, useRef } from 'react'
 import { PNL_METRICS, PNL_TIMEFRAMES, MANUAL_METRIC_KEYS } from '@/lib/pnl/constants'
 import { buildPnlReportViewModel, formatPnlMetricValue, type PnlReportRow } from '@/lib/pnl/report-view-model'
 import type { PnlDashboardData, PnlTimeframeKey } from '@/app/actions/pnl'
 import { savePlManualActualsAction, savePlTargetsAction } from '@/app/actions/pnl'
-import { Alert, Button, Card, CardBody, CardHeader, Input, Select, Spinner, toast, Icon } from '@/ds'
-import clsx from 'clsx'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  FormFooter,
+  Icon,
+  Input,
+  Section,
+  Segmented,
+  Stat,
+  StatGrid,
+  toast,
+} from '@/ds'
+import { ReceiptsPageChrome } from './ReceiptsPageChrome'
+import { PNL_HEALTH_TONE, pnlVarianceTone } from '../_shared/status-ui'
 
 const TARGET_TIMEFRAME: PnlTimeframeKey = '12m'
 
@@ -41,54 +57,49 @@ function buildInitialEditableMap(
   return map
 }
 
-function varianceClass(value: number | null, invert = false) {
-  if (value === null || Math.abs(value) < 0.01) return 'bg-surface-2 text-text'
-  const favourable = invert ? value <= 0 : value >= 0
-  return favourable ? 'bg-success-soft text-success-fg' : 'bg-danger-soft text-danger-fg'
-}
-
-function healthClass(status: string) {
-  if (status === 'on_track') return 'border-success-border bg-success-soft text-success-fg'
-  if (status === 'watch') return 'border-warning-border bg-warning-soft text-warning-fg'
-  if (status === 'off_track') return 'border-danger-border bg-danger-soft text-danger-fg'
-  return 'border-border bg-surface-2 text-text'
-}
-
 function formatDate(value: string) {
   const date = new Date(`${value}T12:00:00`)
   return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+/** One P&L line: its variance badge in the header, actual and target below. */
 function MetricCard({ row, invertVariance = false }: { row: PnlReportRow; invertVariance?: boolean }) {
   return (
-    <div className="rounded-md border border-border bg-surface p-3">
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="text-sm font-semibold text-text-strong">{row.label}</h3>
-        <span className={clsx('shrink-0 rounded-sm px-2 py-0.5 text-xs font-semibold', varianceClass(row.variance, invertVariance))}>
-          {formatPnlMetricValue(row.variance, row.format)}
-        </span>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-text-muted">Actual</p>
-          <p className="font-semibold text-text-strong">{formatPnlMetricValue(row.actual, row.format)}</p>
+    <Card>
+      <CardHeader
+        title={row.label}
+        action={
+          <Badge tone={pnlVarianceTone(row.variance, invertVariance)}>
+            {formatPnlMetricValue(row.variance, row.format)}
+          </Badge>
+        }
+      />
+      <CardBody>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-text-muted">Actual</p>
+            <p className="font-semibold text-text-strong">{formatPnlMetricValue(row.actual, row.format)}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-text-muted">GK target</p>
+            <p className="font-semibold text-text-strong">{formatPnlMetricValue(row.timeframeTarget, row.format)}</p>
+          </div>
         </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-text-muted">GK target</p>
-          <p className="font-semibold text-text-strong">{formatPnlMetricValue(row.timeframeTarget, row.format)}</p>
-        </div>
-      </div>
-      {row.detailLines.length > 0 && (
-        <div className="mt-3 space-y-1 border-t border-border pt-2 text-xs text-text-muted">
-          {row.detailLines.map((line) => <p key={line}>{line}</p>)}
-        </div>
-      )}
-    </div>
+        {row.detailLines.length > 0 && (
+          <div className="mt-3 space-y-1 border-t border-border pt-2 text-xs text-text-muted">
+            {row.detailLines.map((line) => <p key={line}>{line}</p>)}
+          </div>
+        )}
+      </CardBody>
+    </Card>
   )
 }
 
+const PNL_SUBTITLE = 'Cash-up sales and receipt expenses against the Greene King Shadow P&L'
+
 export default function PnlClient({ initialData, canExport = false, canManage = false }: Props) {
   const [selectedTimeframe, setSelectedTimeframe] = useState<PnlTimeframeKey>('12m')
+  const [showBenchmarkTargets, setShowBenchmarkTargets] = useState(false)
   const [isSavingManual, startSavingManual] = useTransition()
   const [isSavingTargets, startSavingTargets] = useTransition()
 
@@ -275,123 +286,92 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
   ]
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="text-sm font-medium text-text" htmlFor="pnl-timeframe">View timeframe</label>
-          <Select
-            id="pnl-timeframe"
+    <ReceiptsPageChrome
+      subtitle={PNL_SUBTITLE}
+      navState={{ view: 'pnl' }}
+      canManage={canManage}
+      headerActions={
+        <>
+          <Segmented
+            options={PNL_TIMEFRAMES.map((tf) => ({ id: tf.key, label: tf.label }))}
             value={selectedTimeframe}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              setSelectedTimeframe(event.target.value as PnlTimeframeKey)
-            }
-            options={PNL_TIMEFRAMES.map((tf) => ({ value: tf.key, label: tf.label }))}
+            onChange={(key) => setSelectedTimeframe(key as PnlTimeframeKey)}
+            size="sm"
           />
-          <span className={clsx('rounded-md border px-2.5 py-1 text-sm font-semibold', healthClass(viewModel.healthStatus))}>
-            {viewModel.healthLabel}
-          </span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
           {canExport && (
             <>
               <Button
                 variant="secondary"
+                size="sm"
+                icon={<Icon name="download" size={16} />}
                 onClick={() => downloadReport('pdf')}
                 data-export-url={`/api/receipts/pnl/export?timeframe=${selectedTimeframe}&format=pdf`}
               >
-                <Icon name="download" size={16} className="mr-2" />
                 PDF
               </Button>
               <Button
                 variant="secondary"
+                size="sm"
+                icon={<Icon name="download" size={16} />}
                 onClick={() => downloadReport('xlsx')}
                 data-export-url={`/api/receipts/pnl/export?timeframe=${selectedTimeframe}&format=xlsx`}
               >
-                <Icon name="download" size={16} className="mr-2" />
                 Spreadsheet
               </Button>
             </>
           )}
-          {canManage && (
-            <>
-              <Button onClick={() => saveManualValues()} disabled={isSavingManual}>
-                {isSavingManual && <Spinner className="mr-2 h-4 w-4" />}Save inputs
-              </Button>
-              <Button onClick={saveTargetValues} disabled={isSavingTargets}>
-                {isSavingTargets && <Spinner className="mr-2 h-4 w-4" />}Save GK targets
-              </Button>
-            </>
-          )}
-        </div>
+        </>
+      }
+    >
+      <div className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
+        <span>Business health, {timeframeLabel.toLowerCase()}:</span>
+        <Badge tone={PNL_HEALTH_TONE[viewModel.healthStatus]}>{viewModel.healthLabel}</Badge>
       </div>
 
       {viewModel.dataQualityWarnings.length > 0 && (
-        <Alert tone="warning">
-          <div className="space-y-1 text-sm">
-            <p className="font-semibold">Data confidence warnings</p>
+        <Alert tone="warning" title="Data confidence warnings">
+          <div className="space-y-1">
             {viewModel.dataQualityWarnings.slice(0, 5).map((warning) => <p key={warning}>{warning}</p>)}
           </div>
         </Alert>
       )}
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Business health">
+      <StatGrid columns={4}>
         {summaryCards.map((item) => (
-          <Card key={item.label}>
-            <CardBody>
-              <p className="text-xs uppercase tracking-wide text-text-muted">{item.label}</p>
-              <p className="mt-2 text-2xl font-bold text-text-strong">{formatPnlMetricValue(item.value)}</p>
-              <div className="mt-3 space-y-1 text-sm text-text">
-                <div className="flex justify-between gap-2">
-                  <span>{item.targetLabel}</span>
-                  <span className="font-semibold">{formatPnlMetricValue(item.target)}</span>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <span>Variance</span>
-                  <span className={clsx('rounded-sm px-2 py-0.5 text-xs font-semibold', varianceClass(item.variance, item.invert))}>
-                    {formatPnlMetricValue(item.variance)}
-                  </span>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
+          <div key={item.label} className="space-y-2">
+            <Stat
+              label={item.label}
+              value={formatPnlMetricValue(item.value)}
+              hint={`${item.targetLabel}: ${formatPnlMetricValue(item.target)}`}
+            />
+            <div className="flex items-center justify-between gap-2 text-sm text-text">
+              <span>Variance</span>
+              <Badge tone={pnlVarianceTone(item.variance, item.invert)}>{formatPnlMetricValue(item.variance)}</Badge>
+            </div>
+          </div>
         ))}
-      </section>
+      </StatGrid>
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <Card>
-          <CardHeader title="Sales performance" subtitle={`${timeframeLabel} against Greene King target`} />
-          <CardBody>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <Section title="Sales Performance" description={`${timeframeLabel} against Greene King target`}>
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {salesSection?.rows.map((row) => <MetricCard key={row.key} row={row} />)}
             </div>
-            <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm">
-              <div className="grid gap-2 sm:grid-cols-4">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-text-muted">Sales days</p>
-                  <p className="font-semibold text-text-strong">{selectedCashupSummary.sessionCount}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-text-muted">Latest sales day</p>
-                  <p className="font-semibold text-text-strong">
-                    {selectedCashupSummary.latestSessionDate ? formatDate(selectedCashupSummary.latestSessionDate) : 'None'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-text-muted">Missing splits</p>
-                  <p className="font-semibold text-text-strong">{selectedCashupSummary.missingSplitCount}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-text-muted">Unallocated</p>
-                  <p className="font-semibold text-text-strong">{formatPnlMetricValue(selectedCashupSummary.unallocatedSales)}</p>
-                </div>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
+            <StatGrid columns={4}>
+              <Stat label="Sales days" value={selectedCashupSummary.sessionCount} />
+              <Stat
+                label="Latest sales day"
+                value={selectedCashupSummary.latestSessionDate ? formatDate(selectedCashupSummary.latestSessionDate) : 'None'}
+              />
+              <Stat label="Missing splits" value={selectedCashupSummary.missingSplitCount} />
+              <Stat label="Unallocated" value={formatPnlMetricValue(selectedCashupSummary.unallocatedSales)} />
+            </StatGrid>
+          </div>
+        </Section>
 
         <Card>
-          <CardHeader title="Greene King benchmark" subtitle={`${benchmark.pubCode} - ${benchmark.pubName}`} />
+          <CardHeader title="Greene King Benchmark" subtitle={`${benchmark.pubCode} - ${benchmark.pubName}`} />
           <CardBody>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-3">
@@ -417,88 +397,89 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
             </dl>
           </CardBody>
         </Card>
-      </section>
+      </div>
+
+      <Section title="Expense Performance" description="Receipt categories against Greene King model">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {expensesSection?.rows.map((row) => <MetricCard key={row.key} row={row} invertVariance />)}
+        </div>
+      </Section>
+
+      <Section title="Gross Profit / Operating Profit" description="Operating profit is before rent, matching the Shadow P&L">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {grossProfitSection?.rows.map((row) => <MetricCard key={row.key} row={row} />)}
+          {grossProfitSection?.subtotal && (
+            <MetricCard
+              row={{
+                key: 'gross_profit_total',
+                label: grossProfitSection.subtotal.label,
+                group: 'sales_totals',
+                format: 'currency',
+                actual: grossProfitSection.subtotal.actual,
+                annualTarget: grossProfitSection.subtotal.annualTarget,
+                timeframeTarget: grossProfitSection.subtotal.timeframeTarget,
+                variance: grossProfitSection.subtotal.variance,
+                detailLines: [],
+              }}
+            />
+          )}
+        </div>
+      </Section>
 
       <Card>
-        <CardHeader title="Expense performance" subtitle="Receipt categories against Greene King model" />
-        <CardBody>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {expensesSection?.rows.map((row) => <MetricCard key={row.key} row={row} invertVariance />)}
-          </div>
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardHeader title="Gross profit / operating profit" subtitle="Operating profit is before rent, matching the Shadow P&L" />
-        <CardBody>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {grossProfitSection?.rows.map((row) => <MetricCard key={row.key} row={row} />)}
-            {grossProfitSection?.subtotal && (
-              <MetricCard
-                row={{
-                  key: 'gross_profit_total',
-                  label: grossProfitSection.subtotal.label,
-                  group: 'sales_totals',
-                  format: 'currency',
-                  actual: grossProfitSection.subtotal.actual,
-                  annualTarget: grossProfitSection.subtotal.annualTarget,
-                  timeframeTarget: grossProfitSection.subtotal.timeframeTarget,
-                  variance: grossProfitSection.subtotal.variance,
-                  detailLines: [],
-                }}
+        <CardHeader title="P&L Inputs" subtitle={canManage ? `${timeframeLabel} inputs` : 'Read-only'} />
+        <CardBody className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {manualInputMetrics.map((metric) => (
+              <Input
+                key={metric.key}
+                label={metric.label}
+                type="number"
+                step={metric.format === 'percent' ? '0.1' : '0.01'}
+                value={manualValues[metric.key]?.[selectedTimeframe] ?? ''}
+                onChange={(event) => handleManualChange(metric.key, selectedTimeframe, event.target.value)}
+                disabled={!canManage}
+                className="w-full"
               />
-            )}
+            ))}
           </div>
+          {canManage && (
+            <FormFooter>
+              <Button variant="primary" onClick={() => saveManualValues(selectedTimeframe)} loading={isSavingManual}>
+                Save P&L Inputs
+              </Button>
+            </FormFooter>
+          )}
         </CardBody>
       </Card>
+
+      <Section title="Rent/Divisible Balance Assumptions" description="Shown separately from operating profit">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {rentSection?.rows.map((row) => <MetricCard key={row.key} row={row} />)}
+        </div>
+      </Section>
 
       <Card>
         <CardHeader
-          title="P&L inputs"
-          subtitle={canManage ? `${timeframeLabel} inputs` : 'Read-only'}
-          action={canManage ? (
-            <Button onClick={() => saveManualValues(selectedTimeframe)} disabled={isSavingManual}>
-              {isSavingManual && <Spinner className="mr-2 h-4 w-4" />}Save P&L inputs
+          title="Greene King Benchmark Target Values"
+          subtitle="Annual targets the comparisons above are measured against"
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              aria-expanded={showBenchmarkTargets}
+              onClick={() => setShowBenchmarkTargets((current) => !current)}
+            >
+              {showBenchmarkTargets ? 'Hide' : 'Show'}
             </Button>
-          ) : undefined}
+          }
         />
-        <CardBody>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {manualInputMetrics.map((metric) => (
-              <div key={metric.key}>
+        {showBenchmarkTargets && (
+          <CardBody className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {initialData.metrics.map((metric) => (
                 <Input
-                  label={metric.label}
-                  type="number"
-                  step={metric.format === 'percent' ? '0.1' : '0.01'}
-                  value={manualValues[metric.key]?.[selectedTimeframe] ?? ''}
-                  onChange={(event) => handleManualChange(metric.key, selectedTimeframe, event.target.value)}
-                  disabled={!canManage}
-                  className="w-full"
-                />
-              </div>
-            ))}
-          </div>
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardHeader title="Rent/divisible balance assumptions" subtitle="Shown separately from operating profit" />
-        <CardBody>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {rentSection?.rows.map((row) => <MetricCard key={row.key} row={row} />)}
-          </div>
-        </CardBody>
-      </Card>
-
-      <details className="rounded-md border border-border bg-surface">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-text-strong">
-          Greene King benchmark target values
-        </summary>
-        <div className="border-t border-border p-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {initialData.metrics.map((metric) => (
-              <div key={metric.key}>
-                <Input
+                  key={metric.key}
                   label={metric.label}
                   type="number"
                   step={metric.format === 'percent' ? '0.1' : '0.01'}
@@ -507,11 +488,18 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
                   disabled={!canManage}
                   className="w-full"
                 />
-              </div>
-            ))}
-          </div>
-        </div>
-      </details>
-    </div>
+              ))}
+            </div>
+            {canManage && (
+              <FormFooter>
+                <Button variant="primary" onClick={saveTargetValues} loading={isSavingTargets}>
+                  Save GK Targets
+                </Button>
+              </FormFooter>
+            )}
+          </CardBody>
+        )}
+      </Card>
+    </ReceiptsPageChrome>
   )
 }

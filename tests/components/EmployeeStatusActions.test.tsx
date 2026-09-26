@@ -97,7 +97,7 @@ describe('EmployeeStatusActions separation review', () => {
     await user.click(screen.getByRole('button', { name: 'Begin Separation' }))
 
     expect(screen.getByText('Loading scheduled shifts...')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Confirm separation' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Confirm Separation' })).toBeDisabled()
 
     resolvePreview({ success: true, data: preview })
 
@@ -105,7 +105,7 @@ describe('EmployeeStatusActions separation review', () => {
     expect(screen.getByText('Draft')).toBeInTheDocument()
     expect(screen.getByText('Auto accepted')).toBeInTheDocument()
     expect(screen.getByText(/Sunday, 20 September 2026/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Confirm separation' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Confirm Separation' })).toBeDisabled()
   })
 
   it('shows the retained and released split for work agreed shifts', async () => {
@@ -121,7 +121,7 @@ describe('EmployeeStatusActions separation review', () => {
     expect(screen.getAllByText('Will stay assigned')).toHaveLength(1)
     expect(screen.getAllByText('Will become open')).toHaveLength(1)
     expect(screen.getByText(/1 approved leave day after the last working day/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Confirm separation' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Confirm Separation' })).toBeEnabled()
   })
 
   it('blocks an end date which is not after employment started', async () => {
@@ -138,7 +138,7 @@ describe('EmployeeStatusActions separation review', () => {
     await user.click(screen.getByRole('radio', { name: /Release all remaining shifts/ }))
 
     expect(screen.getByText(/Last working day must be after Wednesday, 16 September 2026/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Confirm separation' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Confirm Separation' })).toBeDisabled()
   })
 
   it('releases all remaining shifts and refreshes after an email warning', async () => {
@@ -157,7 +157,7 @@ describe('EmployeeStatusActions separation review', () => {
     await user.click(screen.getByRole('radio', { name: /Release all remaining shifts/ }))
 
     expect(screen.getByText('0 shifts will stay assigned. 2 shifts will become open.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Confirm separation' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm Separation' }))
 
     await waitFor(() => {
       expect(beginMock).toHaveBeenCalledWith(EMPLOYEE_ID, {

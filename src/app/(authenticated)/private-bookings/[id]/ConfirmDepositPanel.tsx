@@ -86,7 +86,7 @@ export function ConfirmDepositPanel({
 
   return (
     <>
-      <Alert tone="warning" title="Deposit to be confirmed" className="mb-6">
+      <Alert tone="warning" title="Deposit to be confirmed">
         <p>
           The guest has not been told a deposit yet. Deposit reminders and the automatic release of
           the hold are paused until you confirm it.
@@ -94,7 +94,7 @@ export function ConfirmDepositPanel({
         {canConfirm ? (
           <div className="mt-3">
             <Button type="button" variant="primary" size="sm" onClick={openDialog}>
-              Confirm deposit
+              Confirm Deposit
             </Button>
           </div>
         ) : (
@@ -107,16 +107,16 @@ export function ConfirmDepositPanel({
         onClose={() => {
           if (!pending) setOpen(false)
         }}
-        title="Confirm the deposit"
+        title="Confirm the Deposit"
         footer={
-          <div className="flex justify-end gap-2">
+          <>
             <Button type="button" variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
               Cancel
             </Button>
             <Button type="button" variant="primary" onClick={handleConfirm} loading={pending} disabled={pending}>
-              Confirm and send
+              Confirm and Send
             </Button>
-          </div>
+          </>
         }
       >
         <div className="space-y-4">

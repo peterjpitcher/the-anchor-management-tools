@@ -2,7 +2,16 @@
 
 import { useMemo, useState } from 'react'
 import {
+  Alert,
   Card,
+  DescriptionList,
+  FormFooter,
+  PageLayout,
+  PageLoading,
+  Section,
+  Spinner,
+  Stat,
+  StatGrid,
   Table,
   TableHeader,
   TableBody,
@@ -49,10 +58,13 @@ import {
   upsertVendorBillingSettings,
   type OJVendorBillingSettings,
 } from '@/app/actions/oj-projects/vendor-settings'
+import { cn } from '@/lib/utils'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 import { addMonthsToIsoDate } from '@/lib/oj-projects/recurring-periods'
 import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
+import { OJ_PROJECTS_LAYOUT } from '../../_shared/nav'
+import { OJ_MONEY_TEXT, ojActive, ojBalanceText } from '../../_shared/status-ui'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -210,9 +222,11 @@ function settingsToForm(settings: OJVendorBillingSettings | null): BillingSettin
 
 interface ClientsClientProps {
   initialClients: OJClientSummary[]
+  /** Set when the clients failed to load, so the page says so rather than showing none. */
+  loadError?: string
 }
 
-export function ClientsClient({ initialClients }: ClientsClientProps): React.ReactElement {
+export function ClientsClient({ initialClients, loadError }: ClientsClientProps): React.ReactElement {
   const { hasPermission } = usePermissions()
   const canCreateClients = hasPermission('oj_projects', 'create')
   const canEditClients = hasPermission('oj_projects', 'edit')
@@ -224,6 +238,9 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
   const [drawerVendor, setDrawerVendor] = useState<OJClientSummary | null>(null)
   const [balance, setBalance] = useState<ClientBalance | null>(null)
   const [loadingBalance, setLoadingBalance] = useState(false)
+  // A failed load in the drawer says so, rather than looking like an empty account.
+  const [balanceError, setBalanceError] = useState<string | null>(null)
+  const [chargesError, setChargesError] = useState<string | null>(null)
   const [loadingBillingSettings, setLoadingBillingSettings] = useState(false)
   const [billingForm, setBillingForm] = useState<BillingSettingsForm>(defaultBillingSettingsForm)
   const [billingSaving, setBillingSaving] = useState(false)
@@ -265,6 +282,8 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
   async function openDrawer(client: OJClientSummary): Promise<void> {
     setDrawerVendor(client)
     setBalance(null)
+    setBalanceError(null)
+    setChargesError(null)
     setRecurringCharges([])
     setBillingForm(defaultBillingSettingsForm)
     setStatement(null)
@@ -288,12 +307,14 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
 
       if (balanceRes.error) {
         toast.error(balanceRes.error)
+        setBalanceError(balanceRes.error)
       } else {
         setBalance(balanceRes.balance ?? null)
       }
 
       if (chargesRes.error) {
         toast.error(chargesRes.error)
+        setChargesError(chargesRes.error)
       } else {
         setRecurringCharges((chargesRes.charges ?? []) as RecurringCharge[])
       }
@@ -305,6 +326,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
       }
     } catch {
       toast.error('Failed to load client details')
+      setBalanceError('Failed to load client details')
     } finally {
       setLoadingBalance(false)
       setLoadingRecurringCharges(false)
@@ -418,11 +440,14 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
       const res = await getRecurringCharges(vendorId)
       if (res.error) {
         toast.error(res.error)
+        setChargesError(res.error)
       } else {
+        setChargesError(null)
         setRecurringCharges((res.charges ?? []) as RecurringCharge[])
       }
     } catch {
       toast.error('Failed to load recurring charges')
+      setChargesError('Failed to load recurring charges')
     } finally {
       setLoadingRecurringCharges(false)
     }
@@ -595,34 +620,48 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
     }
   }
 
+  if (loadError) {
+    return (
+      <PageLayout {...OJ_PROJECTS_LAYOUT}>
+        <Alert tone="danger" title="Could not load clients">
+          {loadError}
+        </Alert>
+      </PageLayout>
+    )
+  }
+
   return (
-    <div className="flex flex-col gap-4">
-      {/* Toolbar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <PageLayout
+      {...OJ_PROJECTS_LAYOUT}
+      headerActions={
+        canCreateClients ? (
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Icon name="plus" size={16} />}
+            onClick={openCreateClient}
+          >
+            New Client
+          </Button>
+        ) : undefined
+      }
+    >
+      {/* Search, directly above the list it filters */}
+      <div className="flex flex-wrap items-end gap-3">
         <SearchInput
           value={search}
           onChange={setSearch}
           placeholder="Search clients..."
-          className="flex-1 sm:max-w-xs"
+          className="min-w-[220px] flex-1 sm:max-w-xs"
         />
-        {canCreateClients && (
-          <Button
-            variant="primary"
-            icon={<Icon name="plus" size={16} />}
-            onClick={openCreateClient}
-          >
-            Add Client
-          </Button>
-        )}
       </div>
 
-      {/* Clients Table */}
-      <Card>
+      <Card padding="none">
         {filtered.length === 0 ? (
-          <Empty title="No clients" description="No clients found." />
+          <Empty size="sm" title="No clients" description="No clients found." />
         ) : (
           <>
-            <div className="divide-y divide-border md:hidden">
+            <div className="divide-y divide-border px-pad-card py-3 md:hidden">
               {filtered.map((client) => (
                 <div key={client.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
                   <div className="min-w-0">
@@ -665,56 +704,56 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
               ))}
             </div>
             <Table className="hidden md:block">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Client Name</TableHead>
-                <TableHead>Projects</TableHead>
-                <TableHead>Retainer</TableHead>
-                <TableHead className="w-32">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((client) => (
-                <TableRow key={client.id}>
-                  <TableCell className="font-medium">{client.name}</TableCell>
-                  <TableCell>
-                    <Badge tone="info">{client.projectCount} project{client.projectCount !== 1 ? 's' : ''}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {client.retainerHours ? (
-                      <Badge tone="success">{client.retainerHours}h / month</Badge>
-                    ) : (
-                      <span className="text-sm text-text-muted">None</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <RowActions
-                      actions={[
-                        {
-                          key: 'view',
-                          label: 'View',
-                          icon: <Icon name="eye" size={16} />,
-                          onSelect: () => openDrawer(client),
-                        },
-                        canEditClients && {
-                          key: 'edit',
-                          label: 'Edit',
-                          icon: <Icon name="edit" size={16} />,
-                          onSelect: () => openEditClient(client),
-                        },
-                        canDeleteClients && {
-                          key: 'delete',
-                          label: 'Delete',
-                          icon: <Icon name="trash" size={16} />,
-                          tone: 'danger',
-                          onSelect: () => setDeleteClientId(client.id),
-                        },
-                      ]}
-                    />
-                  </TableCell>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Client Name</TableHead>
+                  <TableHead>Projects</TableHead>
+                  <TableHead>Retainer</TableHead>
+                  <TableHead className="w-32">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((client) => (
+                  <TableRow key={client.id}>
+                    <TableCell className="font-medium">{client.name}</TableCell>
+                    <TableCell>
+                      <Badge tone="info">{client.projectCount} project{client.projectCount !== 1 ? 's' : ''}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {client.retainerHours ? (
+                        <Badge tone="success">{client.retainerHours}h / month</Badge>
+                      ) : (
+                        <span className="text-sm text-text-muted">None</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <RowActions
+                        actions={[
+                          {
+                            key: 'view',
+                            label: 'View',
+                            icon: <Icon name="eye" size={16} />,
+                            onSelect: () => openDrawer(client),
+                          },
+                          canEditClients && {
+                            key: 'edit',
+                            label: 'Edit',
+                            icon: <Icon name="edit" size={16} />,
+                            onSelect: () => openEditClient(client),
+                          },
+                          canDeleteClients && {
+                            key: 'delete',
+                            label: 'Delete',
+                            icon: <Icon name="trash" size={16} />,
+                            tone: 'danger',
+                            onSelect: () => setDeleteClientId(client.id),
+                          },
+                        ]}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
             </Table>
           </>
         )}
@@ -728,28 +767,19 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
         width="480px"
       >
         {loadingBalance ? (
-          <p className="text-sm text-text-muted py-4">Loading balance...</p>
+          <PageLoading inline label="Loading balance" />
+        ) : balanceError ? (
+          <Alert tone="danger" title="Could not load this client's account">
+            {balanceError}
+          </Alert>
         ) : balance ? (
           <div className="flex flex-col gap-6">
-            {/* Balance summary */}
-            <div>
-              <h3 className="text-sm font-semibold text-text mb-3">Balance Summary</h3>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="p-3 rounded-lg bg-surface-2">
-                  <p className="text-xs text-text-muted">Unpaid Invoices (inc VAT)</p>
-                  <p className="text-lg font-semibold">{formatCurrency(balance.unpaidInvoiceBalance)}</p>
-                </div>
-                <div className="p-3 rounded-lg bg-surface-2">
-                  <p className="text-xs text-text-muted">Unbilled Work (inc VAT)</p>
-                  <p className="text-lg font-semibold">{formatCurrency(balance.unbilledTotal)}</p>
-                </div>
-                <div className="p-3 rounded-lg bg-surface-2 col-span-2">
-                  <p className="text-xs text-text-muted">Total Outstanding (inc VAT)</p>
-                  <p className={`text-xl font-bold ${balance.totalOutstanding > 0 ? 'text-danger' : 'text-success-fg'}`}>
-                    {formatCurrency(balance.totalOutstanding)}
-                  </p>
-                </div>
-              </div>
+            <Section title="Balance Summary">
+              <StatGrid columns={2}>
+                <Stat label="Unpaid Invoices (inc VAT)" value={formatCurrency(balance.unpaidInvoiceBalance)} />
+                <Stat label="Unbilled Work (inc VAT)" value={formatCurrency(balance.unbilledTotal)} />
+                <Stat label="Total Outstanding (inc VAT)" value={formatCurrency(balance.totalOutstanding)} />
+              </StatGrid>
 
               {/*
                 Drafts are deliberately outside Total Outstanding: the client has
@@ -758,12 +788,12 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                 started and abandoned, which freezes the work it covers.
               */}
               {balance.draftInvoiceTotal > 0 && (
-                <div className="mt-3 flex items-center justify-between rounded-lg border border-warning-border bg-warning-soft p-3 text-sm">
-                  <span className="text-text-muted">
-                    Draft, not yet sent (excluded from the total)
-                  </span>
-                  <span className="font-semibold">{formatCurrency(balance.draftInvoiceTotal)}</span>
-                </div>
+                <Alert tone="warning" role="status" className="mt-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Draft, not yet sent (excluded from the total)</span>
+                    <span className="font-semibold">{formatCurrency(balance.draftInvoiceTotal)}</span>
+                  </div>
+                </Alert>
               )}
 
               {/* Unbilled breakdown */}
@@ -795,21 +825,17 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                   )}
                 </div>
               )}
-            </div>
+            </Section>
 
             {/*
               The billing cron raises and emails this client's invoice
               automatically on the 1st with no human gate, so this is the only
               chance to see what it will send.
             */}
-            <div className="border-t border-border pt-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-text">Next Invoice</h3>
-                  <p className="text-xs text-text-muted">
-                    Dry run of the monthly billing run. Nothing is created or sent.
-                  </p>
-                </div>
+            <Section
+              title="Next Invoice"
+              description="Dry run of the monthly billing run. Nothing is created or sent."
+              actions={
                 <Button
                   variant="secondary"
                   size="sm"
@@ -818,16 +844,15 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                 >
                   Preview Next Invoice
                 </Button>
-              </div>
-            </div>
+              }
+            />
 
             {/* Invoices */}
             {balance.invoices.length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold text-text mb-2">Recent Invoices</h3>
-                <div className="flex flex-col gap-2">
+              <Section title="Recent Invoices">
+                <div className="divide-y divide-border">
                   {balance.invoices.slice(0, 5).map((inv) => (
-                    <div key={inv.id} className="flex items-center justify-between text-sm p-2 rounded-lg bg-surface-2">
+                    <div key={inv.id} className="flex items-center justify-between py-2 text-sm">
                       <div>
                         <p className="font-medium">{inv.invoice_number}</p>
                         <p className="text-xs text-text-muted">{formatDateDdMmmmYyyy(inv.invoice_date)}</p>
@@ -841,18 +866,16 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                     </div>
                   ))}
                 </div>
-              </div>
+              </Section>
             )}
 
             {/* Billing settings */}
-            <div className="border-t border-border pt-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold text-text">Billing Settings</h3>
-                {loadingBillingSettings && (
-                  <span className="text-xs text-text-muted">Loading...</span>
-                )}
-              </div>
-
+            <Section
+              title="Billing Settings"
+              actions={
+                loadingBillingSettings ? <Spinner size="sm" label="Loading billing settings" /> : undefined
+              }
+            >
               <form onSubmit={handleBillingSubmit} className="flex flex-col gap-3">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field label="Client Code">
@@ -947,20 +970,20 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                 />
 
                 {canEditClients && (
-                  <div className="flex justify-end">
-                    <Button type="submit" size="sm" loading={billingSaving}>
+                  <FormFooter>
+                    <Button type="submit" variant="primary" size="sm" loading={billingSaving}>
                       Save Billing Settings
                     </Button>
-                  </div>
+                  </FormFooter>
                 )}
               </form>
-            </div>
+            </Section>
 
             {/* Recurring charges */}
-            <div className="border-t border-border pt-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold text-text">Recurring Charges</h3>
-                {canEditRecurringCharges && (
+            <Section
+              title="Recurring Charges"
+              actions={
+                canEditRecurringCharges ? (
                   <Button
                     variant="secondary"
                     size="xs"
@@ -969,19 +992,23 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                   >
                     Add
                   </Button>
-                )}
-              </div>
-
+                ) : undefined
+              }
+            >
               {loadingRecurringCharges ? (
-                <p className="py-2 text-sm text-text-muted">Loading charges...</p>
+                <PageLoading inline label="Loading charges" />
+              ) : chargesError ? (
+                <Alert tone="danger" title="Could not load the recurring charges">
+                  {chargesError}
+                </Alert>
               ) : recurringCharges.length === 0 ? (
-                <p className="py-2 text-sm text-text-muted">No recurring charges set up.</p>
+                <Empty size="sm" title="No recurring charges set up" />
               ) : (
                 <div className="flex flex-col gap-2">
                   {recurringCharges.map((charge) => {
                     const incVat = calculateIncVat(Number(charge.amount_ex_vat || 0), Number(charge.vat_rate || 0))
                     return (
-                      <div key={charge.id} className="rounded-lg border border-border bg-surface p-3">
+                      <Card key={charge.id} padding="sm">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium text-text">{charge.description}</p>
@@ -989,9 +1016,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                               {formatFrequency(charge.frequency)} · {formatCurrency(Number(charge.amount_ex_vat || 0))} ex VAT · {formatCurrency(incVat)} inc VAT
                             </p>
                           </div>
-                          <Badge tone={charge.is_active ? 'success' : 'neutral'}>
-                            {charge.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
+                          <Badge tone={ojActive(charge.is_active).tone}>{ojActive(charge.is_active).label}</Badge>
                         </div>
 
                         {canEditRecurringCharges && (
@@ -1014,16 +1039,15 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                             ]}
                           />
                         )}
-                      </div>
+                      </Card>
                     )
                   })}
                 </div>
               )}
-            </div>
+            </Section>
 
             {/* Statement generator */}
-            <div className="border-t border-border pt-4">
-              <h3 className="text-sm font-semibold text-text mb-3">Account Statement</h3>
+            <Section title="Account Statement">
               <div className="grid grid-cols-1 gap-3 mb-3 sm:grid-cols-2">
                 <Field label="From">
                   <Input
@@ -1101,7 +1125,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
               </div>
 
               {workRecord && (
-                <div className="mt-4 border border-border rounded-lg p-3 text-sm">
+                <Card padding="sm" className="mt-4 text-sm">
                   <p className="mb-2 text-xs font-medium text-text">
                     {workRecord.period.from} to {workRecord.period.to}
                   </p>
@@ -1114,36 +1138,36 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                       : ''}
                   </p>
                   {!workRecord.record.reconciles && (
-                    <p className="text-danger mb-2">
+                    <Alert tone="danger" className="mb-2">
                       {workRecord.record.unexplainedInvoices?.length
                         ? `${workRecord.record.unexplainedInvoices.join(', ')} ${workRecord.record.unexplainedInvoices.length === 1 ? 'has' : 'have'} no work recorded against ${workRecord.record.unexplainedInvoices.length === 1 ? 'it' : 'them'}, so this document would not agree with the account statement. Link the work it covered, or credit it, before sending anything to the client.`
                         : 'These figures do not add up against the invoices, so no PDF can be produced. Please check the entries before sending anything to the client.'}
-                    </p>
+                    </Alert>
                   )}
                   <div className="max-h-[200px] overflow-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-text-muted">
-                          <th className="text-left font-medium py-1">Project</th>
-                          <th className="text-right font-medium py-1">Hours</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="px-2">Project</TableHead>
+                          <TableHead align="right" className="px-2">Hours</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {workRecord.record.projects.map((p) => (
-                          <tr key={p.project} className="border-t border-border">
-                            <td className="py-1">{p.project}</td>
-                            <td className="py-1 text-right">{p.hours.toFixed(2)}</td>
-                          </tr>
+                          <TableRow key={p.project}>
+                            <TableCell className="px-2 whitespace-normal">{p.project}</TableCell>
+                            <TableCell align="right" className="px-2">{p.hours.toFixed(2)}</TableCell>
+                          </TableRow>
                         ))}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   </div>
-                </div>
+                </Card>
               )}
 
               {/* Statement preview */}
               {statement && (
-                <div className="mt-4 border border-border rounded-lg p-3 text-sm">
+                <Card padding="sm" className="mt-4 text-sm">
                   {/* The period is stated so the preview can never be mistaken
                       for a different range than the one it covers. */}
                   <p className="mb-2 text-xs font-medium text-text">
@@ -1154,43 +1178,43 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                     <span className="font-medium">{formatCurrency(statement.openingBalance)}</span>
                   </div>
                   {statement.transactions.length === 0 ? (
-                    <p className="text-text-muted text-center py-2">No transactions in this period.</p>
+                    <Empty size="sm" title="No transactions in this period" />
                   ) : (
                     <div className="max-h-[200px] overflow-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b border-border">
-                            <th scope="col" className="text-left py-1">Date</th>
-                            <th scope="col" className="text-left py-1">Description</th>
-                            <th scope="col" className="text-right py-1">Debit</th>
-                            <th scope="col" className="text-right py-1">Credit</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="px-2">Date</TableHead>
+                            <TableHead className="px-2">Description</TableHead>
+                            <TableHead align="right" className="px-2">Debit</TableHead>
+                            <TableHead align="right" className="px-2">Credit</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {statement.transactions.map((txn, i) => (
-                            <tr key={i} className="border-b border-border/50">
-                              <td className="py-1">{txn.date}</td>
-                              <td className="py-1 truncate max-w-[120px]">{txn.description}</td>
-                              <td className="py-1 text-right">{txn.debit != null ? formatCurrency(txn.debit) : ''}</td>
-                              <td className="py-1 text-right text-success-fg">{txn.credit != null ? formatCurrency(txn.credit) : ''}</td>
-                            </tr>
+                            <TableRow key={i}>
+                              <TableCell className="px-2">{txn.date}</TableCell>
+                              <TableCell className="px-2 truncate max-w-[120px]">{txn.description}</TableCell>
+                              <TableCell align="right" className="px-2">{txn.debit != null ? formatCurrency(txn.debit) : ''}</TableCell>
+                              <TableCell align="right" className={cn('px-2', OJ_MONEY_TEXT.received)}>{txn.credit != null ? formatCurrency(txn.credit) : ''}</TableCell>
+                            </TableRow>
                           ))}
-                        </tbody>
-                      </table>
+                        </TableBody>
+                      </Table>
                     </div>
                   )}
                   <div className="flex justify-between mt-2 pt-2 border-t border-border font-medium">
                     <span>Closing balance</span>
-                    <span className={statement.closingBalance > 0 ? 'text-danger' : 'text-success-fg'}>
+                    <span className={ojBalanceText(statement.closingBalance)}>
                       {formatCurrency(statement.closingBalance)}
                     </span>
                   </div>
-                </div>
+                </Card>
               )}
-            </div>
+            </Section>
           </div>
         ) : (
-          <p className="text-sm text-text-muted py-4">Select a client to view balance details.</p>
+          <Empty size="sm" title="Select a client to view balance details" />
         )}
       </Drawer>
 
@@ -1206,40 +1230,31 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
         }
       >
         <div className="flex flex-col gap-4 text-sm">
-          <p className="rounded-lg bg-surface-2 p-3 text-text-muted">
+          <Alert tone="info" role="status">
             Dry run for the period the next billing run will invoice. No invoice is created or sent.
-          </p>
+          </Alert>
 
-          {previewError && <p className="text-danger">{previewError}</p>}
+          {previewError && <Alert tone="danger">{previewError}</Alert>}
 
           {!previewError && previewVendor && !previewVendor.would_invoice && (
-            <p className="rounded-lg border border-warning-border bg-warning-soft p-3 text-warning-fg">
+            <Alert tone="warning" role="status">
               {previewVendor.reason || 'No invoice would be generated for this period.'}
-            </p>
+            </Alert>
           )}
 
           {!previewError && previewInvoice && (
             <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs text-text-muted">Billing period</p>
-                  <p className="font-medium">{previewData?.period}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted">Invoice date</p>
-                  <p className="font-medium">{previewInvoice.invoice_date}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted">Due date</p>
-                  <p className="font-medium">{previewInvoice.due_date}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted">Reference</p>
-                  <p className="font-medium">{previewInvoice.reference}</p>
-                </div>
-              </div>
+              <DescriptionList
+                columns={2}
+                items={[
+                  { key: 'period', label: 'Billing period', value: previewData?.period },
+                  { key: 'invoice-date', label: 'Invoice date', value: previewInvoice.invoice_date },
+                  { key: 'due-date', label: 'Due date', value: previewInvoice.due_date },
+                  { key: 'reference', label: 'Reference', value: previewInvoice.reference },
+                ]}
+              />
 
-              <div className="rounded-lg border border-border p-3">
+              <Card padding="sm">
                 <p className="text-xs text-text-muted mb-2">Totals (ex VAT)</p>
                 <div className="flex justify-between font-semibold">
                   <span>Subtotal</span>
@@ -1248,25 +1263,27 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-text-muted">VAT is added when the invoice is sent.</p>
-              </div>
+              </Card>
 
               <div>
                 <p className="text-xs text-text-muted mb-2">Line items</p>
-                <div className="flex flex-col gap-2">
-                  {(previewInvoice.line_items || []).map((item: any, idx: number) => {
-                    const qty = Number(item.quantity || 0)
-                    const unit = Number(item.unit_price || 0)
-                    return (
-                      <div key={`${item.description}-${idx}`} className="rounded-lg border border-border p-2">
-                        <p className="font-medium">{item.description}</p>
-                        <p className="text-xs text-text-muted">
-                          Qty {qty} at {formatCurrency(unit)} ex VAT
-                        </p>
-                        <p className="font-semibold">{formatCurrency(qty * unit)}</p>
-                      </div>
-                    )
-                  })}
-                </div>
+                <Card padding="none">
+                  <div className="divide-y divide-border">
+                    {(previewInvoice.line_items || []).map((item: any, idx: number) => {
+                      const qty = Number(item.quantity || 0)
+                      const unit = Number(item.unit_price || 0)
+                      return (
+                        <div key={`${item.description}-${idx}`} className="px-3 py-2">
+                          <p className="font-medium">{item.description}</p>
+                          <p className="text-xs text-text-muted">
+                            Qty {qty} at {formatCurrency(unit)} ex VAT
+                          </p>
+                          <p className="font-semibold">{formatCurrency(qty * unit)}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </Card>
               </div>
 
               {previewInvoice.notes && (
@@ -1285,7 +1302,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
       <Modal
         open={clientModalOpen}
         onClose={() => setClientModalOpen(false)}
-        title={clientForm.id ? 'Edit Client' : 'Add Client'}
+        title={clientForm.id ? 'Edit Client' : 'New Client'}
         footer={
           <>
             <Button variant="secondary" onClick={() => setClientModalOpen(false)}>
@@ -1294,9 +1311,10 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
             <Button
               type="submit"
               form="oj-client-form"
+              variant="primary"
               loading={clientSaving}
             >
-              {clientForm.id ? 'Save Changes' : 'Add Client'}
+              {clientForm.id ? 'Save Changes' : 'Create Client'}
             </Button>
           </>
         }
@@ -1388,6 +1406,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
             <Button
               type="submit"
               form="oj-recurring-charge-form"
+              variant="primary"
               loading={chargeSaving}
             >
               {chargeForm.id ? 'Save Changes' : 'Add Charge'}
@@ -1480,6 +1499,6 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
         confirmLabel="Delete"
         tone="danger"
       />
-    </div>
+    </PageLayout>
   )
 }

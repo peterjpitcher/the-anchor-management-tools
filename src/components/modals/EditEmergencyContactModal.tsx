@@ -4,7 +4,7 @@ import { useActionState, useEffect } from 'react'
 import { useFormStatus } from 'react-dom'
 import { updateEmergencyContact } from '@/app/actions/employeeActions'
 import type { EmployeeEmergencyContact } from '@/types/database'
-import { Button, Input, Modal, Select, Textarea } from '@/ds'
+import { Alert, Button, Field, FormFooter, Input, Modal, Select, Textarea } from '@/ds'
 
 interface EditEmergencyContactModalProps {
   contact: EmployeeEmergencyContact
@@ -55,24 +55,24 @@ export default function EditEmergencyContactModal({
       <form action={formAction} className="space-y-4">
         <input type="hidden" name="contact_id" value={contact.id} />
         <input type="hidden" name="employee_id" value={contact.employee_id} />
-        {formFields.map((field) => (
-          <div key={field.name}>
-            <label htmlFor={`edit-${field.name}`} className="block text-sm font-medium text-text">
-              {field.label} {field.required && <span className="text-danger">*</span>}
-            </label>
-            <div className="mt-1">
+        {formFields.map((field) => {
+          const error = state?.errors?.[field.name]?.join(' ') || undefined
+          return (
+            <Field key={field.name} label={field.label} required={field.required}>
               {field.type === 'textarea' ? (
                 <Textarea
                   id={`edit-${field.name}`}
                   name={field.name}
                   rows={3}
                   defaultValue={field.defaultValue}
+                  error={error}
                 />
               ) : field.type === 'select' ? (
                 <Select
                   id={`edit-${field.name}`}
                   name={field.name}
                   defaultValue={field.defaultValue}
+                  error={error}
                 >
                   {field.options?.map((option) => (
                     <option key={option} value={option}>{option}</option>
@@ -85,25 +85,23 @@ export default function EditEmergencyContactModal({
                   name={field.name}
                   required={field.required}
                   defaultValue={field.defaultValue}
+                  error={error}
                 />
               )}
-            </div>
-            {state?.errors?.[field.name] && (
-              <p className="mt-2 text-sm text-danger">{state.errors[field.name]}</p>
-            )}
-          </div>
-        ))}
+            </Field>
+          )
+        })}
 
         {state?.type === 'error' && !state.errors && (
-          <p className="text-sm text-danger">{state.message}</p>
+          <Alert tone="danger" size="sm">{state.message}</Alert>
         )}
 
-        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
+        <FormFooter>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <SubmitButton />
-        </div>
+        </FormFooter>
       </form>
     </Modal>
   )

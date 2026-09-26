@@ -1,13 +1,15 @@
+import { clsx } from 'clsx'
 import {
-  GUEST_H1_CLASS,
-  GUEST_INTRO_CLASS,
-  GUEST_KICKER_CLASS,
   GuestButton,
   GuestCard,
+  GuestIntro,
+  GuestPhoneLink,
   GuestShell,
+  GuestStatusMark,
+  GUEST_MESSAGE_CLASS,
+  GUEST_MUTED_CLASS,
 } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
-import { Icon } from '@/ds'
 
 type ParkingPaymentErrorPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -41,34 +43,28 @@ export default async function ParkingPaymentErrorPage({ searchParams }: ParkingP
 
   return (
     <GuestShell>
-      <div className={GUEST_INTRO_CLASS}>
-        <p className={GUEST_KICKER_CLASS}>Guest parking</p>
-        <h1 className={GUEST_H1_CLASS}>{copy.title}</h1>
-      </div>
+      <GuestIntro kicker="Guest parking" title={copy.title} />
 
-      <GuestCard variant="accent" className="flex flex-col gap-4">
-        <span
-          aria-hidden="true"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-anchor-danger/10 text-anchor-danger"
-        >
-          <Icon name="alertCircle" size={20} />
-        </span>
+      <GuestCard variant="accent">
+        <div className="flex flex-col gap-guest-md">
+          <GuestStatusMark tone="problem" />
 
-        <p className="font-anchor-body text-guest-lead leading-[1.65] text-guest-text">{copy.body}</p>
+          <p className={GUEST_MESSAGE_CLASS}>{copy.body}</p>
 
-        {bookingId && (
-          <p className="font-anchor-body text-ui leading-[1.6] text-guest-text-muted">
-            Booking ID: <span className="font-mono font-semibold text-guest-text">{bookingId}</span>
+          {bookingId && (
+            <p className={GUEST_MUTED_CLASS}>
+              Booking ID: <span className="font-mono font-semibold text-guest-text">{bookingId}</span>
+            </p>
+          )}
+
+          {/* The number is a tap-to-call link, as on the parking booking page and every other guest page. */}
+          <p className={clsx('border-t border-guest-border pt-4', GUEST_MUTED_CLASS)}>
+            Please try the payment link again, or call <GuestPhoneLink />.
           </p>
-        )}
-
-        <p className="border-t border-guest-border pt-4 font-anchor-body text-sm leading-[1.6] text-guest-text-muted">
-          Please try the payment link again, or call{' '}
-          <span className="font-bold text-guest-text">{GUEST_CONTACT.phoneDisplay}</span>.
-        </p>
+        </div>
       </GuestCard>
 
-      <GuestButton as="a" href={GUEST_CONTACT.website} variant="outline" size="md">
+      <GuestButton as="a" href={GUEST_CONTACT.website} variant="outline" fullWidth>
         Return to The Anchor website
       </GuestButton>
     </GuestShell>

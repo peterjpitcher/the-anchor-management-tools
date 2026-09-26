@@ -18,6 +18,7 @@ import {
   LinkButton,
   Modal,
   PageLayout,
+  PageLoading,
   SearchInput,
   Select,
   Table,
@@ -47,11 +48,11 @@ import type {
 
 import {
   EligibilityBadge,
-  MARKETING_SECTION_NAV,
   MarketingStatusBadge,
   formatDateOnlyInLondon,
   formatDateTimeInLondon,
 } from '../_shared/marketing-ui'
+import { marketingLayout } from '../_shared/nav'
 import { suggestSubscriberType } from '@/lib/email/marketing/subscriber-type'
 import { EligibilityModal } from './EligibilityModal'
 import { ImportModal } from './ImportModal'
@@ -297,18 +298,15 @@ export function ContactsClient({
 
   return (
     <PageLayout
-      title="Marketing"
-      subtitle="Business contacts for email campaigns"
-      navItems={MARKETING_SECTION_NAV}
+      {...marketingLayout('contacts')}
       headerActions={
         canCreate ? (
-          <Button variant="secondary" onClick={() => setImportOpen(true)}>
-            Import contacts
+          <Button variant="secondary" size="sm" onClick={() => setImportOpen(true)}>
+            Import Contacts
           </Button>
         ) : undefined
       }
     >
-      <div className="space-y-6">
         {pendingReviewCount > 0 && (
           <Alert tone="warning" title="Eligibility review needed">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -322,25 +320,25 @@ export function ContactsClient({
                 variant="secondary"
                 size="sm"
               >
-                Review them
+                Review Them
               </LinkButton>
             </div>
           </Alert>
         )}
 
-        <Card>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            <div className="min-w-0">
-              {/* SearchInput fires `onChange ?? onSearch`, never both, so the search handler
-                  goes on onChange. debounceDelay makes it hold a draft while typing. */}
-              <SearchInput
-                value={filters.search}
-                debounceDelay={400}
-                onChange={(value) => applyFilters({ ...filters, search: value })}
-                placeholder="Search name, email or company"
-              />
-            </div>
-            <div className="min-w-0">
+        {/* Filters sit directly above the list they filter. */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-end gap-3">
+            {/* SearchInput fires `onChange ?? onSearch`, never both, so the search handler
+                goes on onChange. debounceDelay makes it hold a draft while typing. */}
+            <SearchInput
+              value={filters.search}
+              debounceDelay={400}
+              onChange={(value) => applyFilters({ ...filters, search: value })}
+              placeholder="Search name, email or company"
+              className="w-full sm:w-72"
+            />
+            <div className="w-full sm:w-48">
               <Select
                 aria-label="Filter by tag"
                 options={tagOptions}
@@ -349,7 +347,7 @@ export function ContactsClient({
                 fullWidth
               />
             </div>
-            <div className="min-w-0">
+            <div className="w-full sm:w-48">
               <Select
                 aria-label="Filter by area"
                 options={clusterOptions}
@@ -358,7 +356,7 @@ export function ContactsClient({
                 fullWidth
               />
             </div>
-            <div className="min-w-0">
+            <div className="w-full sm:w-48">
               <Select
                 aria-label="Filter by eligibility"
                 options={ELIGIBILITY_OPTIONS}
@@ -367,40 +365,38 @@ export function ContactsClient({
                 fullWidth
               />
             </div>
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="min-w-0 flex-1">
-                <Select
-                  aria-label="Filter by marketing status"
-                  options={STATUS_OPTIONS}
-                  value={filters.status}
-                  onChange={(event) => applyFilters({ ...filters, status: event.target.value })}
-                  fullWidth
-                />
-              </div>
-              {hasFilters && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    applyFilters({ search: '', tag: '', cluster: '', eligibility: '', status: '' })
-                  }
-                >
-                  Clear
-                </Button>
-              )}
+            <div className="w-full sm:w-48">
+              <Select
+                aria-label="Filter by marketing status"
+                options={STATUS_OPTIONS}
+                value={filters.status}
+                onChange={(event) => applyFilters({ ...filters, status: event.target.value })}
+                fullWidth
+              />
             </div>
+            {hasFilters && (
+              <Button
+                variant="ghost"
+                onClick={() =>
+                  applyFilters({ search: '', tag: '', cluster: '', eligibility: '', status: '' })
+                }
+              >
+                Clear
+              </Button>
+            )}
           </div>
           {filters.cluster && (
-            <p className="mt-3 text-sm text-text-muted">
+            <p className="text-sm text-text-muted">
               Areas group businesses into a walkable round, so this is the list for one morning
               of visits.
             </p>
           )}
-        </Card>
+        </div>
 
-        <Card>
+        <Card padding="none">
           {initialContacts.length === 0 ? (
             <Empty
+              size="sm"
               icon="users"
               title={hasFilters ? 'No contacts match these filters' : 'No contacts yet'}
               description={
@@ -410,8 +406,8 @@ export function ContactsClient({
               }
               action={
                 canCreate && !hasFilters ? (
-                  <Button variant="primary" onClick={() => setImportOpen(true)}>
-                    Import contacts
+                  <Button variant="primary" size="sm" onClick={() => setImportOpen(true)}>
+                    Import Contacts
                   </Button>
                 ) : undefined
               }
@@ -419,35 +415,34 @@ export function ContactsClient({
           ) : (
             <>
               {clearCorporate.length > 0 && (
-                <div className="mb-3 flex flex-col gap-2 rounded-md border border-border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-2 border-b border-border px-pad-card py-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="min-w-0 text-sm text-text">
                     {clearCorporate.length} on this page look like limited companies or public
                     bodies, which can be emailed without asking first. You still confirm them.
                   </p>
                   <Button size="sm" variant="secondary" onClick={selectClearCorporate}>
-                    Select those {clearCorporate.length}
+                    Select Those {clearCorporate.length}
                   </Button>
                 </div>
               )}
 
               {selectedContacts.length > 0 && (
-                <div className="mb-3 flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-2 border-b border-border bg-surface-2 px-pad-card py-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="min-w-0 text-sm text-text">
                     {selectedContacts.length} selected on this page
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="secondary" onClick={() => setSelectedIds(new Set())}>
-                      Clear selection
+                      Clear Selection
                     </Button>
                     <Button size="sm" variant="primary" onClick={() => setEligibilityTarget(selectedContacts)}>
-                      Set eligibility together
+                      Set Eligibility Together
                     </Button>
                   </div>
                 </div>
               )}
 
-              <div className="overflow-x-auto">
-                <Table>
+              <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>
@@ -569,7 +564,7 @@ export function ContactsClient({
                                   size="sm"
                                   onClick={() => setEligibilityTarget([contact])}
                                 >
-                                  Set eligibility
+                                  Set Eligibility
                                 </Button>
                                 {contact.marketingStatus === 'subscribed' ? (
                                   <Button
@@ -611,24 +606,21 @@ export function ContactsClient({
                     ))}
                   </TableBody>
                 </Table>
-              </div>
 
               {totalPages > 1 && (
-                <div className="mt-4">
-                  <TablePagination
-                    page={initialPage}
-                    totalPages={totalPages}
-                    onPageChange={goToPage}
-                    pageSize={pageSize}
-                    totalItems={initialTotal}
-                  />
-                </div>
+                <TablePagination
+                  page={initialPage}
+                  totalPages={totalPages}
+                  onPageChange={goToPage}
+                  pageSize={pageSize}
+                  totalItems={initialTotal}
+                />
               )}
             </>
           )}
         </Card>
 
-        {isPending && <p className="text-sm text-text-muted">Loading…</p>}
+        {isPending && <PageLoading inline label="Loading contacts" className="py-4" />}
 
         <p className="text-sm text-text-muted">
           Contacts are business addresses only.{' '}
@@ -636,7 +628,6 @@ export function ContactsClient({
             Sending is controlled in Settings.
           </Link>
         </p>
-      </div>
 
       {eligibilityTarget && eligibilityTarget.length > 0 && (
         <EligibilityModal
@@ -668,7 +659,7 @@ export function ContactsClient({
           if (unsubscribeTarget) await handleUnsubscribe(unsubscribeTarget)
           setUnsubscribeTarget(null)
         }}
-        title="Stop marketing email to this contact?"
+        title="Stop Marketing Email to This Contact?"
         message={
           <span>
             {unsubscribeTarget?.email} will be added to the do-not-contact list. That record
@@ -686,7 +677,7 @@ export function ContactsClient({
           if (resubscribeTarget) await handleResubscribe(resubscribeTarget)
           setResubscribeTarget(null)
         }}
-        title="Add this contact back to marketing email?"
+        title="Add This Contact Back to Marketing Email?"
         message={
           <span>
             Only do this if {resubscribeTarget?.email} has asked to hear from us again. Their
@@ -757,15 +748,15 @@ function ContactDetailPanel({
           <div className="grid gap-4 md:grid-cols-2">
             {contact.angle && (
               <div className="min-w-0">
-                <h4 className="text-xs uppercase tracking-wide text-text-muted">
+                <p className="text-xs uppercase tracking-wide text-text-muted">
                   Why they should care
-                </h4>
+                </p>
                 <p className="mt-1 text-sm text-text break-words">{contact.angle}</p>
               </div>
             )}
             {contact.openingLine && (
               <div className="min-w-0">
-                <h4 className="text-xs uppercase tracking-wide text-text-muted">Opening line</h4>
+                <p className="text-xs uppercase tracking-wide text-text-muted">Opening line</p>
                 <p className="mt-1 text-sm text-text break-words">{contact.openingLine}</p>
                 <p className="mt-1 text-xs text-text-muted">
                   Written for a one-to-one approach. It is never merged into a campaign email.
@@ -784,7 +775,7 @@ function ContactDetailPanel({
 
           {contact.notes && (
             <div className="min-w-0">
-              <h4 className="text-xs uppercase tracking-wide text-text-muted">Notes</h4>
+              <p className="text-xs uppercase tracking-wide text-text-muted">Notes</p>
               <p className="mt-1 text-sm text-text break-words">{contact.notes}</p>
             </div>
           )}
@@ -796,9 +787,9 @@ function ContactDetailPanel({
       )}
 
       <div className="border-t border-border pt-4">
-        <h4 className="text-xs uppercase tracking-wide text-text-muted">Engagement</h4>
+        <p className="text-xs uppercase tracking-wide text-text-muted">Engagement</p>
         {engagement === undefined || engagement.status === 'loading' ? (
-          <p className="mt-2 text-sm text-text-muted">Loading…</p>
+          <PageLoading inline label="Loading engagement" className="py-4" />
         ) : engagement.status === 'error' ? (
           <p className="mt-2 text-sm text-danger-fg break-words">{engagement.message}</p>
         ) : (
@@ -877,17 +868,17 @@ function EditContactModal({
 
   return (
     <ContactModalShell
-      title="Edit contact"
+      title="Edit Contact"
       onClose={onClose}
       footer={
-        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <>
           <Button variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSave} loading={saving}>
-            Save changes
+            Save Changes
           </Button>
-        </div>
+        </>
       }
     >
       <div className="space-y-4">

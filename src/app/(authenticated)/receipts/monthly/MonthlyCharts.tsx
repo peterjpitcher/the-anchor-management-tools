@@ -1,8 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Card } from '@/ds';
-import { Empty } from '@/ds';
+import { Card, CardBody, CardHeader, Empty } from '@/ds';
 
 type MonthlyChartPoint = {
   monthStart: string;
@@ -41,6 +40,7 @@ export function MonthlyCharts({ data }: { data: MonthlyChartPoint[] }) {
     return (
       <Card>
         <Empty
+          size="sm"
           title="No data available"
           description="We couldn’t find any income or spending in the last 12 months."
         />
@@ -49,42 +49,43 @@ export function MonthlyCharts({ data }: { data: MonthlyChartPoint[] }) {
   }
 
   return (
-    <Card
-      header={<h3 className="text-base font-semibold text-text-strong">Income vs spending (last 12 months)</h3>}
-    >
-      <div className="mb-4 flex items-center gap-4 text-sm text-text-muted">
-        <LegendSwatch className="bg-success" label="Income" />
-        <LegendSwatch className="bg-danger" label="Spending" />
-      </div>
-      <div className="overflow-x-auto">
-        <div className="flex min-w-[720px] gap-4 pb-2">
-          {ordered.map((point) => {
-            const incomeHeight = Math.max((point.income / maxValue) * 100, 0);
-            const outgoingHeight = Math.max((point.outgoing / maxValue) * 100, 0);
-            const monthLabel = monthFormatter.format(new Date(point.monthStart));
-
-            return (
-              <div key={point.monthStart} className="flex flex-col items-center gap-2 text-xs">
-                <div className="flex h-64 w-16 items-end justify-center gap-1 rounded-md bg-success-soft/20 p-2">
-                  <Bar
-                    heightPercent={incomeHeight}
-                    colorClass="bg-success"
-                    value={point.income}
-                    ariaLabel={`${monthLabel} income ${currencyFormatter.format(point.income)}`}
-                  />
-                  <Bar
-                    heightPercent={outgoingHeight}
-                    colorClass="bg-danger"
-                    value={point.outgoing}
-                    ariaLabel={`${monthLabel} spending ${currencyFormatter.format(point.outgoing)}`}
-                  />
-                </div>
-                <span className="text-center font-medium text-text">{monthLabel}</span>
-              </div>
-            );
-          })}
+    <Card>
+      <CardHeader title="Income vs Spending (Last 12 Months)" />
+      <CardBody>
+        <div className="mb-4 flex items-center gap-4 text-sm text-text-muted">
+          <LegendSwatch className="bg-success" label="Income" />
+          <LegendSwatch className="bg-danger" label="Spending" />
         </div>
-      </div>
+        <div className="overflow-x-auto">
+          <div className="flex min-w-[720px] gap-4 pb-2">
+            {ordered.map((point) => {
+              const incomeHeight = Math.max((point.income / maxValue) * 100, 0);
+              const outgoingHeight = Math.max((point.outgoing / maxValue) * 100, 0);
+              const monthLabel = monthFormatter.format(new Date(point.monthStart));
+
+              return (
+                <div key={point.monthStart} className="flex flex-col items-center gap-2 text-xs">
+                  <div className="flex h-64 w-16 items-end justify-center gap-1 rounded-default bg-surface-2 p-2">
+                    <Bar
+                      heightPercent={incomeHeight}
+                      colorClass="bg-success"
+                      value={point.income}
+                      ariaLabel={`${monthLabel} income ${currencyFormatter.format(point.income)}`}
+                    />
+                    <Bar
+                      heightPercent={outgoingHeight}
+                      colorClass="bg-danger"
+                      value={point.outgoing}
+                      ariaLabel={`${monthLabel} spending ${currencyFormatter.format(point.outgoing)}`}
+                    />
+                  </div>
+                  <span className="text-center font-medium text-text">{monthLabel}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </CardBody>
     </Card>
   );
 }
@@ -105,7 +106,7 @@ function Bar({
 
   return (
     <div
-      className={`relative flex w-6 items-end justify-center rounded-md ${colorClass}`}
+      className={`relative flex w-6 items-end justify-center rounded-sm ${colorClass}`}
       style={{ height: `${clampedHeight}%` }}
       aria-label={ariaLabel}
     >
@@ -167,61 +168,61 @@ export function StackedBreakdownChart({
   const hasValues = ordered.some((point) => point.segments.some((segment) => segment.amount > 0));
 
   return (
-    <Card
-      header={<h3 className="text-base font-semibold text-text-strong">{title}</h3>}
-      className="h-full"
-    >
-      {!hasValues ? (
-        <Empty title="No data available" description={emptyDescription} />
-      ) : (
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
-            {legendLabels.map((label) => (
-              <LegendSwatch key={label} className={colorMap.get(label) ?? 'bg-border-strong'} label={label} />
-            ))}
-          </div>
+    <Card className="h-full">
+      <CardHeader title={title} />
+      <CardBody>
+        {!hasValues ? (
+          <Empty size="sm" title="No data available" description={emptyDescription} />
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
+              {legendLabels.map((label) => (
+                <LegendSwatch key={label} className={colorMap.get(label) ?? 'bg-border-strong'} label={label} />
+              ))}
+            </div>
 
-          <div className="flex flex-col gap-3">
-            {ordered.map((point) => {
-              const total = point.segments.reduce((sum, segment) => sum + segment.amount, 0);
-              const monthLabel = monthFormatter.format(new Date(point.monthStart));
+            <div className="flex flex-col gap-3">
+              {ordered.map((point) => {
+                const total = point.segments.reduce((sum, segment) => sum + segment.amount, 0);
+                const monthLabel = monthFormatter.format(new Date(point.monthStart));
 
-              return (
-                <div key={point.monthStart} className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-text-muted">
-                    <span>{monthLabel}</span>
-                    <span className="font-medium text-text">{currencyFormatter.format(total)}</span>
+                return (
+                  <div key={point.monthStart} className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-text-muted">
+                      <span>{monthLabel}</span>
+                      <span className="font-medium text-text">{currencyFormatter.format(total)}</span>
+                    </div>
+                    {total === 0 ? (
+                      <div className="flex h-10 items-center justify-center rounded-lg border border-dashed border-border text-xs text-text-soft">
+                        No activity recorded
+                      </div>
+                    ) : (
+                      <div className="flex h-10 overflow-hidden rounded-lg border border-border bg-surface">
+                        {point.segments
+                          .filter((segment) => segment.amount > 0)
+                          .map((segment) => {
+                            const width = (segment.amount / total) * 100;
+                            const colorClass = colorMap.get(segment.label) ?? 'bg-border-strong';
+                            const label = `${segment.label} · ${currencyFormatter.format(segment.amount)}`;
+
+                            return (
+                              <div
+                                key={segment.label}
+                                className={`h-full ${colorClass}`}
+                                style={{ width: `${width}%` }}
+                                title={label}
+                              />
+                            );
+                          })}
+                      </div>
+                    )}
                   </div>
-                  {total === 0 ? (
-                    <div className="flex h-10 items-center justify-center rounded-lg border border-dashed border-border text-xs text-text-soft">
-                      No activity recorded
-                    </div>
-                  ) : (
-                    <div className="flex h-10 overflow-hidden rounded-lg border border-border bg-surface">
-                      {point.segments
-                        .filter((segment) => segment.amount > 0)
-                        .map((segment) => {
-                          const width = (segment.amount / total) * 100;
-                          const colorClass = colorMap.get(segment.label) ?? 'bg-border-strong';
-                          const label = `${segment.label} · ${currencyFormatter.format(segment.amount)}`;
-
-                          return (
-                            <div
-                              key={segment.label}
-                              className={`h-full ${colorClass}`}
-                              style={{ width: `${width}%` }}
-                              title={label}
-                            />
-                          );
-                        })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </CardBody>
     </Card>
   );
 }

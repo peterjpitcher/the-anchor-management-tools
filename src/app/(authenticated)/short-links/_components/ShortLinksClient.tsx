@@ -2,9 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
-  PageHeader,
-  SectionNav,
+  PageLayout,
+  Alert,
   Card,
+  CardBody,
+  Empty,
+  Stat,
+  StatGrid,
   Table,
   TableHeader,
   TableBody,
@@ -23,7 +27,8 @@ import {
 import { ShortLinkFormModal } from './ShortLinkFormModal'
 import { ShortLinkAnalyticsModal } from './ShortLinkAnalyticsModal'
 import { ShortLinkActionsMenu } from './ShortLinkActionsMenu'
-import { SHORT_LINKS_NAV } from '../nav'
+import { SHORT_LINKS_NAV, SHORT_LINKS_TITLE } from '../_shared/nav'
+import { SHORT_LINK_KIND_TONE } from '../_shared/status-ui'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import { CHANNEL_MAP } from '@/lib/short-links/channels'
 import { formatDate } from '@/lib/dateUtils'
@@ -34,6 +39,8 @@ interface Props {
   initialLinks: ShortLink[]
   initialTotal: number
   initialLinkTotal: number
+  /** Set when the server could not read the list, so it is not shown as an empty one. */
+  initialError: string | null
   volume: unknown
   previousVolume: unknown
   canManage: boolean
@@ -52,7 +59,6 @@ type VolumeRow = {
   unique_visitors?: unknown
 }
 
-type TrendTone = 'success' | 'danger' | 'neutral'
 
 function getVariantLabel(link: ShortLink): string {
   const channelKey = typeof link.metadata?.channel === 'string' ? link.metadata.channel : null
@@ -114,67 +120,22 @@ function getTopDestination(rows: VolumeRow[]): { label: string; title: string } 
   }
 }
 
-function getClicksTrend(current: number, previous: number): { text: string; tone: TrendTone } {
-  if (previous === 0 && current === 0) return { text: 'No change vs prev 30d', tone: 'neutral' }
-  if (previous === 0) return { text: `Up from 0: ${current.toLocaleString('en-GB')} clicks`, tone: 'success' }
-
-  const percent = Math.round(((current - previous) / previous) * 100)
-  if (percent === 0) return { text: 'Flat vs prev 30d', tone: 'neutral' }
-  return {
-    text: `${percent > 0 ? 'Up' : 'Down'} ${Math.abs(percent)}% vs prev 30d`,
-    tone: percent > 0 ? 'success' : 'danger',
-  }
+/**
+ * Clicks in the last 30 days against the 30 before. A percentage needs a previous figure, so
+ * growth from nothing is said in words instead.
+ */
+function getClicksTrend(current: number, previous: number): { delta?: number; hint: string } {
+  if (previous === 0 && current === 0) return { hint: 'No change vs prev 30d' }
+  if (previous === 0) return { hint: `Up from 0: ${current.toLocaleString('en-GB')} clicks` }
+  return { delta: Math.round(((current - previous) / previous) * 100), hint: 'vs prev 30d' }
 }
 
-function CompactStat({
-  label,
-  value,
-  hint,
-  title,
-  trend,
-}: {
-  label: string
-  value: string | number
-  hint?: string
-  title?: string
-  trend?: { text: string; tone: TrendTone }
-}) {
-  const numericValue = typeof value === 'number'
-
-  return (
-    <div className="rounded-lg border border-border bg-surface px-3 py-2 shadow-sm">
-      <div className="flex min-h-8 items-center justify-between gap-3">
-        <span className="text-meta font-medium uppercase tracking-wider text-text-muted">{label}</span>
-        <span
-          className={
-            numericValue
-              ? 'font-mono text-lg font-bold leading-none text-text'
-              : 'min-w-0 max-w-[68%] whitespace-normal break-words text-right text-sm font-semibold leading-tight text-text [overflow-wrap:anywhere]'
-          }
-          title={title}
-        >
-          {numericValue ? value.toLocaleString('en-GB') : value}
-        </span>
-      </div>
-      {trend && (
-        <div
-          className={
-            trend.tone === 'success'
-              ? 'mt-0.5 text-meta leading-none text-success-fg'
-              : trend.tone === 'danger'
-                ? 'mt-0.5 text-meta leading-none text-danger-fg'
-                : 'mt-0.5 text-meta leading-none text-text-soft'
-          }
-        >
-          {trend.text}
-        </div>
-      )}
-      {hint && <div className="mt-0.5 text-meta leading-none text-text-soft">{hint}</div>}
-    </div>
-  )
+/** A long destination is cut for the figure; the hint carries it in full. */
+function shortenForStat(value: string, max = 40): string {
+  return value.length > max ? `${value.slice(0, max - 3)}...` : value
 }
 
-export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal, volume, previousVolume, canManage }: Props) {
+export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal, initialError, volume, previousVolume, canManage }: Props) {
   const [links, setLinks] = useState<ShortLink[]>(initialLinks)
   const [totalLinks, setTotalLinks] = useState(initialTotal)
   const [linkTotal, setLinkTotal] = useState(initialLinkTotal)
@@ -190,6 +151,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
   const [deleteTarget, setDeleteTarget] = useState<ShortLink | null>(null)
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(initialError)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300)
@@ -203,8 +165,12 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
       const result = await getShortLinks(page, pageSize, false, searchStr)
       if (!result || 'error' in result) {
         toast.error(result?.error || 'Failed to load short links')
+        // Only a list that never loaded is replaced by the error; a failed refresh keeps the
+        // rows already on screen and says so in the toast.
+        setLoadError((current) => (current ? result?.error || 'Failed to load short links' : current))
         return
       }
+      setLoadError(null)
       setLinks(Array.isArray(result.data) ? (result.data as ShortLink[]) : [])
       setTotalLinks(result.total ?? 0)
       setLinkTotal(result.linkTotal ?? 0)
@@ -250,7 +216,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
     await refreshLinks()
   }
 
-  // Skip the first run — page 1 is already rendered from the server-fetched
+  // Skip the first run: page 1 is already rendered from the server-fetched
   // initial props, so refetching on mount is redundant.
   const hasMountedRef = useRef(false)
   useEffect(() => {
@@ -304,61 +270,85 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
   const clicksTrend = useMemo(() => getClicksTrend(totalClicks, previousTotalClicks), [previousTotalClicks, totalClicks])
   const topDestination = useMemo(() => getTopDestination(currentVolumeRows), [currentVolumeRows])
 
+  const linkKind = (link: DisplayLink): 'link' | 'variant' => (link.isVariant ? 'variant' : 'link')
+
   return (
-    <div>
-      <PageHeader
-        title="Short Links"
-        subtitle="URL shortener and analytics"
-        className="mb-3 pb-3"
-        actions={
-          canManage ? (
-            <Button variant="primary" onClick={() => { setActiveLink(null); setFormModalOpen(true) }} icon={<Icon name="plus" size={16} />}>
-              Create Link
-            </Button>
-          ) : undefined
-        }
-      />
-      <SectionNav items={SHORT_LINKS_NAV} activeId="links" className="mb-3" />
+    <PageLayout
+      title={SHORT_LINKS_TITLE}
+      subtitle="URL shortener and analytics"
+      navItems={SHORT_LINKS_NAV}
+      headerActions={
+        canManage ? (
+          <Button variant="primary" size="sm" onClick={() => { setActiveLink(null); setFormModalOpen(true) }} icon={<Icon name="plus" size={16} />}>
+            Create Link
+          </Button>
+        ) : undefined
+      }
+    >
+      <StatGrid columns={4}>
+        <Stat label="Total links" value={linkTotal.toLocaleString('en-GB')} />
+        <Stat
+          label="Clicks 30d"
+          value={totalClicks.toLocaleString('en-GB')}
+          delta={clicksTrend.delta}
+          hint={clicksTrend.hint}
+        />
+        <Stat label="Unique 30d" value={uniqueVisitors.toLocaleString('en-GB')} />
+        <Stat
+          label="Top destination"
+          value={shortenForStat(topDestination.label)}
+          hint={topDestination.title && topDestination.title !== topDestination.label ? topDestination.title : undefined}
+          className="min-w-0 break-words"
+        />
+      </StatGrid>
 
-      <div className="mb-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <CompactStat label="Total links" value={linkTotal} />
-        <CompactStat label="Clicks 30d" value={totalClicks} trend={clicksTrend} />
-        <CompactStat label="Unique 30d" value={uniqueVisitors} />
-        <CompactStat label="Top destination" value={topDestination.label} title={topDestination.title} />
-      </div>
-
-      <div className="mb-2">
+      {/* Search sits directly above the list it filters. */}
+      <div className="flex flex-wrap items-end gap-3">
         <SearchInput
           value={search}
           onChange={setSearch}
           placeholder="Search links..."
-          className="max-w-md"
+          className="w-full max-w-md"
         />
       </div>
 
       {/* Links */}
-      <Card>
+      {loadError ? (
+        <Alert tone="danger" title="Could not load short links">
+          {loadError}
+          <div className="mt-3">
+            <Button variant="secondary" size="sm" onClick={() => void refreshLinks(currentPage)} loading={isRefreshing}>
+              Try again
+            </Button>
+          </div>
+        </Alert>
+      ) : (
+      <Card padding="none">
+        {displayLinks.length === 0 ? (
+          <CardBody>
+            <Empty size="sm" title="No short links found" />
+          </CardBody>
+        ) : (
         <div className={cn('transition-opacity', isRefreshing && 'pointer-events-none opacity-50')} aria-busy={isRefreshing}>
           {/* Mobile card list */}
           <div className="divide-y divide-border sm:hidden">
-            {displayLinks.length === 0 ? (
-              <div className="py-8 text-center text-sm text-text-muted">No short links found</div>
-            ) : (
-              displayLinks.map((link) => (
-                <div key={link.id} className={cn('space-y-2 p-4', link.isVariant && 'bg-surface-2/40 pl-7')}>
+            {displayLinks.map((link) => (
+                <div key={link.id} className={cn('space-y-2 p-4', link.isVariant && 'bg-surface-2 pl-7')}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1 space-y-1">
-                      <button
+                      <Button
                         type="button"
-                        className="inline-flex min-h-[34px] max-w-full items-center gap-1.5 rounded-sm bg-surface-2 px-2 text-left font-mono text-xs hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
+                        variant="secondary"
+                        size="sm"
+                        className="max-w-full justify-start font-mono font-medium"
                         onClick={() => handleCopyLink(link)}
                         title="Copy short URL"
+                        icon={<Icon name="copy" size={12} className="shrink-0 text-text-muted" />}
                       >
-                        <Icon name="copy" size={12} className="shrink-0 text-text-muted" />
                         <code className="min-w-0 truncate">{buildShortLinkUrl(link.short_code).replace(/^https?:\/\//, '')}</code>
-                      </button>
+                      </Button>
                       {link.isVariant ? (
-                        <div><Badge tone="neutral">{getVariantLabel(link)}</Badge></div>
+                        <div><Badge tone={SHORT_LINK_KIND_TONE.variant}>{getVariantLabel(link)}</Badge></div>
                       ) : (
                         link.name && <div className="truncate text-xs text-text-muted">{link.name}</div>
                       )}
@@ -372,34 +362,35 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                       onDelete={setDeleteTarget}
                     />
                   </div>
-                  <button
+                  <Button
                     type="button"
-                    className="flex min-h-[34px] w-full items-start gap-1.5 rounded-sm text-left text-xs text-text-muted hover:text-text focus-visible:outline-hidden focus-visible:shadow-ring"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto w-full items-start justify-start whitespace-normal py-1.5 text-left text-xs font-normal text-text-muted hover:text-text"
                     title="Copy destination URL"
                     onClick={() => handleCopyDestination(link.destination_url)}
+                    icon={<Icon name="copy" size={12} className="mt-0.5 shrink-0" />}
                   >
-                    <Icon name="copy" size={12} className="mt-0.5 shrink-0" />
                     <span className="min-w-0 [overflow-wrap:anywhere]">{formatUrlForDisplay(link.destination_url)}</span>
-                  </button>
+                  </Button>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
-                    <Badge tone={link.isVariant ? 'neutral' : 'info'}>{link.isVariant ? 'variant' : link.link_type}</Badge>
+                    <Badge tone={SHORT_LINK_KIND_TONE[linkKind(link)]}>{link.isVariant ? 'variant' : link.link_type}</Badge>
                     <span className="font-mono">{(link.click_count ?? 0).toLocaleString('en-GB')} clicks</span>
                     <span>{formatDate(link.created_at)}</span>
                     {!link.isVariant && (link.variantCount ?? 0) > 0 && (
-                      <button
+                      <Button
                         type="button"
-                        className="inline-flex min-h-[34px] items-center rounded-pill focus-visible:outline-hidden focus-visible:shadow-ring"
+                        variant="secondary"
+                        size="sm"
+                        aria-expanded={expandedParents.has(link.id)}
                         onClick={() => toggleExpanded(link.id)}
                       >
-                        <Badge tone="neutral">
-                          {expandedParents.has(link.id) ? 'Hide' : 'Show'} {link.variantCount} variants
-                        </Badge>
-                      </button>
+                        {expandedParents.has(link.id) ? 'Hide' : 'Show'} {link.variantCount} Variants
+                      </Button>
                     )}
                   </div>
                 </div>
-              ))
-            )}
+              ))}
           </div>
 
           {/* Desktop table */}
@@ -415,15 +406,8 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
             </TableRow>
           </TableHeader>
           <TableBody>
-            {displayLinks.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-text-muted py-8" align="center">
-                  No short links found
-                </TableCell>
-              </TableRow>
-            ) : (
-              displayLinks.map((link) => (
-                <TableRow key={link.id} className={link.isVariant ? 'bg-surface-2/40' : undefined}>
+            {displayLinks.map((link) => (
+                <TableRow key={link.id} className={link.isVariant ? 'bg-surface-2' : undefined}>
                   <TableCell className="min-w-0 py-2 align-middle">
                     <div className={link.isVariant ? 'pl-6' : undefined}>
                       <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
@@ -435,24 +419,33 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                             onClick={() => toggleExpanded(link.id)}
                           />
                         )}
-                        <button
+                        <Button
                           type="button"
-                          className="inline-flex min-h-[34px] min-w-0 flex-shrink-0 items-center gap-1.5 rounded-sm bg-surface-2 px-2 text-left font-mono text-xs hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset"
+                          variant="secondary"
+                          size="sm"
+                          className="min-w-0 flex-shrink-0 font-mono font-medium focus-visible:shadow-ring-inset"
                           onClick={() => handleCopyLink(link)}
                           title="Click to copy short URL"
+                          icon={<Icon name="copy" size={12} className="shrink-0 text-text-muted" />}
                         >
-                          <Icon name="copy" size={12} className="shrink-0 text-text-muted" />
                           <code>{buildShortLinkUrl(link.short_code).replace(/^https?:\/\//, '')}</code>
-                        </button>
+                        </Button>
                         {link.isVariant ? (
-                          <Badge tone="neutral">{getVariantLabel(link)}</Badge>
+                          <Badge tone={SHORT_LINK_KIND_TONE.variant}>{getVariantLabel(link)}</Badge>
                         ) : (
                           <>
                             {link.name && <span className="min-w-0 truncate text-xs text-text-muted">{link.name}</span>}
                             {(link.variantCount ?? 0) > 0 && (
-                              <button type="button" onClick={() => toggleExpanded(link.id)} className="flex-shrink-0 rounded-pill focus-visible:outline-hidden focus-visible:shadow-ring-inset">
-                                <Badge tone="neutral">{link.variantCount} variants</Badge>
-                              </button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="xs"
+                                className="flex-shrink-0 focus-visible:shadow-ring-inset"
+                                aria-expanded={expandedParents.has(link.id)}
+                                onClick={() => toggleExpanded(link.id)}
+                              >
+                                {link.variantCount} Variants
+                              </Button>
                             )}
                           </>
                         )}
@@ -460,15 +453,17 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                     </div>
                   </TableCell>
                   <TableCell className="min-w-0 py-2 align-middle">
-                    <button
+                    <Button
                       type="button"
-                      className="inline-flex min-h-[34px] max-w-full items-center gap-1.5 rounded-sm text-left text-xs text-text-muted hover:text-text focus-visible:outline-hidden focus-visible:shadow-ring-inset"
+                      variant="ghost"
+                      size="sm"
+                      className="max-w-full justify-start text-left text-xs font-normal text-text-muted hover:text-text focus-visible:shadow-ring-inset"
                       title={`${link.destination_url}\nClick to copy destination URL`}
                       onClick={() => handleCopyDestination(link.destination_url)}
+                      icon={<Icon name="copy" size={12} className="shrink-0" />}
                     >
-                      <Icon name="copy" size={12} className="shrink-0" />
                       <span className="min-w-0 truncate">{formatUrlForDisplay(link.destination_url)}</span>
-                    </button>
+                    </Button>
                   </TableCell>
                   <TableCell align="right" className="py-2 font-mono align-middle">
                     {link.click_count ?? 0}
@@ -477,7 +472,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                     {formatDate(link.created_at)}
                   </TableCell>
                   <TableCell className="py-2 align-middle">
-                    <Badge tone={link.isVariant ? 'neutral' : 'info'}>{link.isVariant ? 'variant' : link.link_type}</Badge>
+                    <Badge tone={SHORT_LINK_KIND_TONE[linkKind(link)]}>{link.isVariant ? 'variant' : link.link_type}</Badge>
                   </TableCell>
                   <TableCell align="right" className="py-2 align-middle">
                     <div className="flex items-center justify-end gap-1">
@@ -492,11 +487,11 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                     </div>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
+              ))}
           </TableBody>
           </Table>
         </div>
+        )}
         {totalPages > 1 && (
           <TablePagination
             page={currentPage}
@@ -507,6 +502,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
           />
         )}
       </Card>
+      )}
 
       {/* Modals */}
       <ShortLinkFormModal
@@ -531,6 +527,6 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
         confirmLabel="Delete"
         tone="danger"
       />
-    </div>
+    </PageLayout>
   )
 }

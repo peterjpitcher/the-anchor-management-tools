@@ -11,21 +11,26 @@ import {
 } from '@/app/actions/event-categories'
 import { EventCategory } from '@/types/event-categories'
 import { EventCategoryFormGrouped } from '@/components/features/events/EventCategoryFormGrouped'
-// New UI components
-import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-// import { Section } from '@/ds'
-import { Button, IconButton } from '@/ds'
-import { Badge } from '@/ds'
-import { toast } from '@/ds'
-import { Empty } from '@/ds'
-import { Alert } from '@/ds'
-import { ConfirmDialog } from '@/ds'
-import { DataTable } from '@/ds'
-// import { useRouter } from 'next/navigation';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  DataTable,
+  Empty,
+  Icon,
+  IconButton,
+  PageLayout,
+  toast,
+} from '@/ds'
+import { activeStateTone } from '../_shared/status-ui'
+
 export default function EventCategoriesPage() {
-const [categories, setCategories] = useState<EventCategory[]>([])
+  const [categories, setCategories] = useState<EventCategory[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  // A list that failed to load is an error, never shown as "no categories".
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingCategory, setEditingCategory] = useState<EventCategory | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -45,18 +50,19 @@ const [categories, setCategories] = useState<EventCategory[]>([])
       })
       
       if (!result) {
-        toast.error('Failed to load event categories')
+        setLoadError('Failed to load event categories')
         return
       }
 
       if ('error' in result && result.error) {
-        toast.error(result.error)
+        setLoadError(result.error)
       } else if ('data' in result && result.data) {
+        setLoadError(null)
         setCategories(result.data)
       }
     } catch (error) {
       console.error('Error loading categories:', error)
-      toast.error('Failed to load event categories')
+      setLoadError('Failed to load event categories')
     } finally {
       setIsLoading(false)
     }
@@ -170,7 +176,7 @@ const [categories, setCategories] = useState<EventCategory[]>([])
 
   const layoutProps = {
     title: 'Event Categories',
-    subtitle: 'Manage event categories to organize your events and track customer preferences',
+    subtitle: 'Organise your events and track customer preferences',
     backButton: { label: 'Back to Settings', href: '/settings' },
   }
 
@@ -180,7 +186,8 @@ const [categories, setCategories] = useState<EventCategory[]>([])
     return (
       <PageLayout
         title={formTitle}
-        backButton={{ label: 'Back to Categories', onBack: handleCloseForm }}
+        backButton={{ label: 'Back to Event Categories', onBack: handleCloseForm }}
+        containerSize="md"
       >
         <Card>
           <EventCategoryFormGrouped
@@ -227,9 +234,7 @@ const [categories, setCategories] = useState<EventCategory[]>([])
 
   if (isLoading) {
     return (
-      <PageLayout {...layoutProps} loading loadingLabel="Loading categories...">
-        {null}
-      </PageLayout>
+      <PageLayout {...layoutProps} loading loadingLabel="Loading categories" />
     )
   }
 
@@ -282,7 +287,7 @@ const [categories, setCategories] = useState<EventCategory[]>([])
       key: 'is_active',
       header: 'Status',
       cell: (category: EventCategory) => (
-        <Badge tone={category.is_active ? 'success' : 'neutral'}>
+        <Badge tone={activeStateTone(category.is_active)}>
           {category.is_active ? 'Active' : 'Inactive'}
         </Badge>
       ),
@@ -312,7 +317,7 @@ const [categories, setCategories] = useState<EventCategory[]>([])
   ]
 
   const headerActions = (
-    <div className="flex items-center gap-2">
+    <>
       <Button
         variant="secondary"
         size="sm"
@@ -320,17 +325,17 @@ const [categories, setCategories] = useState<EventCategory[]>([])
         disabled={isAnalyzing}
         loading={isAnalyzing}
       >
-        {isAnalyzing ? 'Analyzing...' : 'Analyze History'}
+        {isAnalyzing ? 'Analysing...' : 'Analyse History'}
       </Button>
       <Button
         variant="primary"
         size="sm"
         onClick={() => handleOpenForm()}
-        leftIcon={<Icon name="plus" size={16} />}
+        icon={<Icon name="plus" size={16} />}
       >
-        Add Category
+        New Category
       </Button>
-    </div>
+    </>
   )
 
   return (
@@ -338,36 +343,38 @@ const [categories, setCategories] = useState<EventCategory[]>([])
       {...layoutProps}
       headerActions={headerActions}
     >
-      <div className="space-y-6">
-        <ConfirmDialog
-          open={!!deleteConfirm}
-          onClose={() => setDeleteConfirm(null)}
-          onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
-          title="Delete Category"
-          message={`Are you sure you want to delete "${deleteConfirm?.name}"? This action cannot be undone.`}
-          confirmText="Delete"
-          type="danger"
-        />
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
+        title="Delete Category"
+        message={`Are you sure you want to delete "${deleteConfirm?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        type="danger"
+      />
 
-        <ConfirmDialog
-          open={analyzeConfirm}
-          onClose={() => setAnalyzeConfirm(false)}
-          onConfirm={handleAnalyzeHistory}
-          title="Analyze Historical Data"
-          message="This will analyze all historical events and categorize them based on their names. Continue?"
-          confirmText="Analyze"
-          type="info"
-        />
+      <ConfirmDialog
+        open={analyzeConfirm}
+        onClose={() => setAnalyzeConfirm(false)}
+        onConfirm={handleAnalyzeHistory}
+        title="Analyse Historical Data"
+        message="This will analyse all historical events and categorise them based on their names. Continue?"
+        confirmText="Analyse"
+        type="info"
+      />
 
-        <Card>
+      {loadError && categories.length === 0 ? (
+        <Alert tone="danger" title="Could not load event categories">{loadError}</Alert>
+      ) : (
+        <Card padding="none">
           {categories.length === 0 ? (
             <Empty
+              size="sm"
               title="No categories found"
-              description="Click 'Add Category' to create your first one."
+              description="Click 'New Category' to create your first one."
               action={
-                <Button onClick={() => handleOpenForm()}>
-                  <Icon name="plus" size={20} className="-ml-1 mr-2" />
-                  Add Category
+                <Button variant="primary" onClick={() => handleOpenForm()} icon={<Icon name="plus" size={16} />}>
+                  New Category
                 </Button>
               }
             />
@@ -376,17 +383,18 @@ const [categories, setCategories] = useState<EventCategory[]>([])
               data={categories}
               getRowKey={(category) => category.id}
               columns={columns}
+              bordered={false}
             />
           )}
         </Card>
+      )}
 
-        <Alert
-          tone="info"
-          title="About Historical Analysis"
-        >
-          {"The 'Analyze History' button will scan all your past events and automatically categorize them based on their names. It will also build customer preference profiles showing who regularly attends each type of event. This is a one-time process that helps populate your initial data."}
-        </Alert>
-      </div>
+      <Alert
+        tone="info"
+        title="About Historical Analysis"
+      >
+        {"The 'Analyse History' button will scan all your past events and automatically categorise them based on their names. It will also build customer preference profiles showing who regularly attends each type of event. This is a one-time process that helps populate your initial data."}
+      </Alert>
     </PageLayout>
   )
 }

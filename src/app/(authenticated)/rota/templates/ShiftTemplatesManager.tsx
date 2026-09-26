@@ -1,7 +1,24 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Alert, Badge, Button, Field, IconButton, Input, Select, toast, Icon } from '@/ds';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  ConfirmDialog,
+  Empty,
+  Field,
+  IconButton,
+  Input,
+  Modal,
+  PageLayout,
+  Section,
+  Select,
+  toast,
+  Icon,
+} from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import {
   createShiftTemplate,
@@ -19,10 +36,16 @@ import {
   getShiftColourLabel,
 } from '@/lib/rota/shift-template-colours';
 import { rotaDepartmentClasses } from '@/lib/rota/status-ui';
+import type { RotaLayoutProps } from '../_shared/layout';
+import { SHIFT_TEMPLATE_BADGE_TONE } from '../_shared/status-ui';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 interface ShiftTemplatesManagerProps {
+  /** The page header, built once by page.tsx. */
+  layout: RotaLayoutProps;
+  /** Shown above the page body, such as the alert for a secondary load that failed. */
+  notice?: React.ReactNode;
   canEdit: boolean;
   initialTemplates: ShiftTemplate[];
   employees: RotaEmployee[];
@@ -48,7 +71,8 @@ interface TemplateFormProps {
   onCancel: () => void;
 }
 
-function TemplateForm({ initial, employees, departments, onSave, onCancel }: TemplateFormProps) {
+/** The template form, in a dialog for both a new template and an edit. */
+function TemplateFormModal({ initial, employees, departments, onSave, onCancel }: TemplateFormProps) {
   const [name, setName] = useState(initial?.name ?? '');
   const [startTime, setStartTime] = useState(initial?.start_time ?? '');
   const [endTime, setEndTime] = useState(initial?.end_time ?? '');
@@ -108,145 +132,159 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
     });
   };
 
-  return (
-    <div className="p-4 bg-surface-2 rounded-lg border border-border space-y-4">
-      <p className="text-sm font-medium text-text">
-        {initial ? 'Edit template' : 'New shift template'}
-      </p>
-      {error && <Alert tone="danger">{error}</Alert>}
+  const swatchButton = (selected: boolean) =>
+    `relative h-auto min-h-11 w-full justify-start gap-2 px-2.5 py-2 text-left font-normal ${
+      selected ? 'border-primary bg-primary-soft hover:bg-primary-soft' : ''
+    }`;
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-        <div className="sm:col-span-2">
-          <Field label="Template name" htmlFor="tmpl-name" required>
-            <Input
-              id="tmpl-name"
-              placeholder='e.g. "Saturday Evening Bar"'
-              value={name}
-              onChange={e => setName(e.target.value)}
+  return (
+    <Modal
+      open
+      onClose={onCancel}
+      title={initial ? 'Edit Template' : 'New Shift Template'}
+      width="xl"
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+          <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
+            {isPending ? 'Saving…' : initial ? 'Save Changes' : 'Create Template'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {error && <Alert tone="danger">{error}</Alert>}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          <div className="sm:col-span-2">
+            <Field label="Template name" htmlFor="tmpl-name" required>
+              <Input
+                id="tmpl-name"
+                placeholder='e.g. "Saturday Evening Bar"'
+                value={name}
+                onChange={e => setName(e.target.value)}
+              />
+            </Field>
+          </div>
+
+          <Field label="Department" htmlFor="tmpl-dept">
+            <Select
+              id="tmpl-dept"
+              value={department}
+              onChange={e => setDepartment(e.target.value)}
+              options={departments.map(d => ({ value: d.name, label: d.label }))}
             />
           </Field>
-        </div>
 
-        <Field label="Department" htmlFor="tmpl-dept">
-          <Select
-            id="tmpl-dept"
-            value={department}
-            onChange={e => setDepartment(e.target.value)}
-            options={departments.map(d => ({ value: d.name, label: d.label }))}
-          />
-        </Field>
-
-        <Field label="Start time" htmlFor="tmpl-start" required>
-          <Input
-            id="tmpl-start"
-            type="time"
-            value={startTime}
-            onChange={e => setStartTime(e.target.value)}
-          />
-        </Field>
-
-        <Field label="End time" htmlFor="tmpl-end" required>
-          <Input
-            id="tmpl-end"
-            type="time"
-            value={endTime}
-            onChange={e => setEndTime(e.target.value)}
-          />
-        </Field>
-
-        <Field label="Unpaid break (mins)" htmlFor="tmpl-break">
-          <Input
-            id="tmpl-break"
-            type="number"
-            min="0"
-            max="120"
-            value={breakMins}
-            onChange={e => setBreakMins(e.target.value)}
-          />
-        </Field>
-
-        {startTime && endTime && (
-          <div className="flex items-end pb-0.5">
-            <p className="text-sm text-text-muted">
-              Paid: <strong>{formatPaidHours(startTime, endTime, parseInt(breakMins) || 0)}</strong>
-            </p>
-          </div>
-        )}
-      </div>
-
-      <fieldset className="space-y-2 border-t border-border pt-4">
-        <legend className="text-xs font-medium uppercase tracking-wider text-text-muted">
-          Shift colour
-        </legend>
-        <p className="text-xs text-text-soft">
-          Automatic uses the department and start time. Pick a colour below to override it.
-        </p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-          <button
-            id="tmpl-colour-auto"
-            type="button"
-            aria-pressed={colourMode === 'automatic'}
-            onClick={() => setColourMode('automatic')}
-            className={`relative flex min-h-11 items-center gap-2 rounded-default border px-2.5 py-2 text-left transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-              colourMode === 'automatic'
-                ? 'border-primary bg-primary-soft'
-                : 'border-border bg-surface hover:bg-surface-hover'
-            }`}
-          >
-            <span
-              className="h-5 w-5 shrink-0 rounded-full border border-black/20 shadow-xs"
-              style={{ backgroundColor: automaticColour ?? 'var(--color-border)' }}
+          <Field label="Start time" htmlFor="tmpl-start" required>
+            <Input
+              id="tmpl-start"
+              type="time"
+              value={startTime}
+              onChange={e => setStartTime(e.target.value)}
             />
-            <span className="min-w-0">
-              <span className="block text-xs font-medium text-text-strong">Automatic</span>
-              <span className="block truncate text-2xs text-text-soft">
-                {getShiftColourLabel(automaticColour) ?? 'No rule'}
+          </Field>
+
+          <Field label="End time" htmlFor="tmpl-end" required>
+            <Input
+              id="tmpl-end"
+              type="time"
+              value={endTime}
+              onChange={e => setEndTime(e.target.value)}
+            />
+          </Field>
+
+          <Field label="Unpaid break (mins)" htmlFor="tmpl-break">
+            <Input
+              id="tmpl-break"
+              type="number"
+              min="0"
+              max="120"
+              value={breakMins}
+              onChange={e => setBreakMins(e.target.value)}
+            />
+          </Field>
+
+          {startTime && endTime && (
+            <div className="flex items-end pb-0.5">
+              <p className="text-sm text-text-muted">
+                Paid: <strong>{formatPaidHours(startTime, endTime, parseInt(breakMins) || 0)}</strong>
+              </p>
+            </div>
+          )}
+        </div>
+
+        <fieldset className="space-y-2 border-t border-border pt-4">
+          <legend className="text-xs font-medium uppercase tracking-wider text-text-muted">
+            Shift colour
+          </legend>
+          <p className="text-xs text-text-soft">
+            Automatic uses the department and start time. Pick a colour below to override it.
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <Button
+              id="tmpl-colour-auto"
+              type="button"
+              variant="secondary"
+              aria-pressed={colourMode === 'automatic'}
+              onClick={() => setColourMode('automatic')}
+              className={swatchButton(colourMode === 'automatic')}
+            >
+              <span
+                className="h-5 w-5 shrink-0 rounded-full border border-border-strong shadow-xs"
+                style={{ backgroundColor: automaticColour ?? 'var(--color-border)' }}
+              />
+              <span className="min-w-0">
+                <span className="block text-xs font-medium text-text-strong">Automatic</span>
+                <span className="block truncate text-2xs text-text-soft">
+                  {getShiftColourLabel(automaticColour) ?? 'No rule'}
+                </span>
               </span>
-            </span>
-            {colourMode === 'automatic' && <Icon name="check" size={14} className="ml-auto shrink-0 text-primary" />}
-          </button>
+              {colourMode === 'automatic' && <Icon name="check" size={14} className="ml-auto shrink-0 text-primary" />}
+            </Button>
 
-          {SHIFT_TEMPLATE_COLOURS.map(option => {
-            const selected = colourMode === 'manual' && manualColour.toLowerCase() === option.value.toLowerCase();
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => { setManualColour(option.value); setColourMode('manual'); }}
-                className={`relative flex min-h-11 items-center gap-2 rounded-default border px-2.5 py-2 text-left transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                  selected
-                    ? 'border-primary bg-primary-soft'
-                    : 'border-border bg-surface hover:bg-surface-hover'
-                }`}
-              >
-                <span
-                  className="h-5 w-5 shrink-0 rounded-full border border-black/20 shadow-xs"
-                  style={{ backgroundColor: option.value }}
-                />
-                <span className="truncate text-xs font-medium text-text-strong">{option.label}</span>
-                {selected && <Icon name="check" size={14} className="ml-auto shrink-0 text-primary" />}
-              </button>
-            );
-          })}
-        </div>
+            {SHIFT_TEMPLATE_COLOURS.map(option => {
+              const selected = colourMode === 'manual' && manualColour.toLowerCase() === option.value.toLowerCase();
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  variant="secondary"
+                  aria-pressed={selected}
+                  onClick={() => { setManualColour(option.value); setColourMode('manual'); }}
+                  className={swatchButton(selected)}
+                >
+                  {/* The swatch is the saved colour itself: data, not a token. */}
+                  <span
+                    className="h-5 w-5 shrink-0 rounded-full border border-border-strong shadow-xs"
+                    style={{ backgroundColor: option.value }}
+                  />
+                  <span className="truncate text-xs font-medium text-text-strong">{option.label}</span>
+                  {selected && <Icon name="check" size={14} className="ml-auto shrink-0 text-primary" />}
+                </Button>
+              );
+            })}
+          </div>
 
-        <div className="flex items-center gap-2 pt-1">
-          <Input
-            id="tmpl-colour-custom"
-            type="color"
-            aria-label="Choose a custom shift colour"
-            value={manualColour}
-            onChange={e => { setManualColour(e.target.value); setColourMode('manual'); }}
-            className="h-9 w-11 cursor-pointer p-0.5"
-          />
-          <span className="text-xs text-text-soft">Custom colour</span>
-        </div>
-      </fieldset>
+          <div className="flex items-center gap-2 pt-1">
+            <Input
+              id="tmpl-colour-custom"
+              type="color"
+              aria-label="Choose a custom shift colour"
+              value={manualColour}
+              onChange={e => { setManualColour(e.target.value); setColourMode('manual'); }}
+              className="h-9 w-11 cursor-pointer p-0.5"
+            />
+            <span className="text-xs text-text-soft">Custom colour</span>
+          </div>
+        </fieldset>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 border-t border-border pt-4">
-        <div>
-          <Field label="Day of week (auto-schedule)" htmlFor="tmpl-day">
+        <div className="grid grid-cols-1 gap-4 border-t border-border pt-4 sm:grid-cols-2">
+          <Field
+            label="Day of week (auto-schedule)"
+            htmlFor="tmpl-day"
+            hint="Auto-populates on this day when you click “Apply Templates” on the rota."
+          >
             <Select
               id="tmpl-day"
               value={dayOfWeek}
@@ -257,11 +295,12 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
               ]}
             />
           </Field>
-          <p className="text-xs text-text-soft mt-1">Auto-populates on this day when you click &ldquo;Apply templates&rdquo;.</p>
-        </div>
 
-        <div>
-          <Field label="Pre-assigned employee (optional)" htmlFor="tmpl-emp">
+          <Field
+            label="Pre-assigned employee (optional)"
+            htmlFor="tmpl-emp"
+            hint="Creates an assigned shift instead of an open one."
+          >
             <Select
               id="tmpl-emp"
               value={employeeId}
@@ -272,61 +311,39 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
               ]}
             />
           </Field>
-          <p className="text-xs text-text-soft mt-1">Creates an assigned shift instead of an open one.</p>
         </div>
       </div>
-
-      <div className="flex gap-2">
-        <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>
-          {isPending ? 'Saving…' : initial ? 'Save changes' : 'Create template'}
-        </Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
 function TemplateRow({ template, employees, departments, canEdit }: { template: ShiftTemplate; employees: RotaEmployee[]; departments: Department[]; canEdit: boolean }) {
   const [editing, setEditing] = useState(false);
-  const [deactivating, startDeactivate] = useTransition();
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
   const [current, setCurrent] = useState(template);
 
-  const handleDeactivate = () => {
-    if (!confirm(`Deactivate "${current.name}"? It will no longer appear in the template palette.`)) return;
-    startDeactivate(async () => {
-      const result = await deactivateShiftTemplate(current.id);
-      if (!result.success) { toast.error(result.error); return; }
-      toast.success('Template deactivated');
-    });
+  const handleDeactivate = async () => {
+    const result = await deactivateShiftTemplate(current.id);
+    if (!result.success) { toast.error(result.error); return; }
+    toast.success('Template deactivated');
   };
 
-  if (editing) {
-    return (
-      <TemplateForm
-        initial={current}
-        employees={employees}
-        departments={departments}
-        onSave={saved => { setCurrent(saved); setEditing(false); }}
-        onCancel={() => setEditing(false)}
-      />
-    );
-  }
-
   const rowColour = current.colour ?? getAutomaticShiftColour(current.department, current.start_time);
+  // The left edge is the template's saved colour: data, not a token.
   const colourStyle = rowColour ? { borderLeftColor: rowColour, borderLeftWidth: 4 } : {};
   const assignedEmp = current.employee_id
     ? employees.find(e => e.employee_id === current.employee_id)
     : null;
 
   return (
-    <div
-      className={`flex items-center justify-between p-3 rounded-lg border ${rotaDepartmentClasses(current.department)} transition-colors`}
+    <li
+      className={`flex items-center justify-between px-pad-card py-3 ${rotaDepartmentClasses(current.department)} transition-colors`}
       style={colourStyle}
     >
       <div className="flex items-center gap-3 min-w-0">
         {rowColour && (
           <span
-            className="h-4 w-4 shrink-0 rounded-full border border-black/20 shadow-xs"
+            className="h-4 w-4 shrink-0 rounded-full border border-border-strong shadow-xs"
             style={{ backgroundColor: rowColour }}
             title={getShiftColourLabel(rowColour) ?? rowColour}
           />
@@ -341,17 +358,17 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
           </p>
           <div className="flex flex-wrap gap-1.5 mt-1">
             {current.day_of_week !== null && current.day_of_week !== undefined && (
-              <Badge tone="primary" size="sm">
+              <Badge tone={SHIFT_TEMPLATE_BADGE_TONE.day} size="sm">
                 {DAYS[current.day_of_week]}
               </Badge>
             )}
             {assignedEmp && (
-              <Badge tone="neutral" size="sm">
+              <Badge tone={SHIFT_TEMPLATE_BADGE_TONE.employee} size="sm">
                 {empName(assignedEmp)}
               </Badge>
             )}
             {!assignedEmp && current.day_of_week !== null && (
-              <Badge tone="warning" size="sm">
+              <Badge tone={SHIFT_TEMPLATE_BADGE_TONE.open_shift} size="sm">
                 Open shift
               </Badge>
             )}
@@ -374,8 +391,7 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
             <IconButton
               type="button"
               size="sm"
-              onClick={handleDeactivate}
-              disabled={deactivating}
+              onClick={() => setConfirmDeactivate(true)}
               className="text-text-subtle hover:bg-danger-soft hover:text-danger-fg"
               title="Deactivate template"
               label="Deactivate template"
@@ -384,11 +400,31 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
           </>
         )}
       </div>
-    </div>
+
+      {editing && (
+        <TemplateFormModal
+          initial={current}
+          employees={employees}
+          departments={departments}
+          onSave={saved => { setCurrent(saved); setEditing(false); }}
+          onCancel={() => setEditing(false)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirmDeactivate}
+        onClose={() => setConfirmDeactivate(false)}
+        onConfirm={handleDeactivate}
+        title="Deactivate Template?"
+        message={`Deactivate "${current.name}"? It will no longer appear in the template palette.`}
+        confirmLabel="Deactivate"
+        tone="danger"
+      />
+    </li>
   );
 }
 
-export default function ShiftTemplatesManager({ canEdit, initialTemplates, employees, departments }: ShiftTemplatesManagerProps) {
+export default function ShiftTemplatesManager({ layout, notice, canEdit, initialTemplates, employees, departments }: ShiftTemplatesManagerProps) {
   const [templates, setTemplates] = useState(initialTemplates);
   const [showNewForm, setShowNewForm] = useState(false);
 
@@ -399,77 +435,80 @@ export default function ShiftTemplatesManager({ canEdit, initialTemplates, emplo
     setShowNewForm(false);
   };
 
+  const byDayOfWeek = (a: ShiftTemplate, b: ShiftTemplate) => (a.day_of_week ?? 7) - (b.day_of_week ?? 7);
+
+  // One group per department in the departments list, then anything whose department is not
+  // in it, so no active template is ever hidden.
+  const knownDepts = new Set(departments.map(d => d.name));
+  const groups = [
+    ...departments.map(dept => ({
+      key: dept.name,
+      label: dept.label,
+      templates: activeTemplates.filter(t => t.department === dept.name).sort(byDayOfWeek),
+    })),
+    {
+      key: '__other__',
+      label: 'Other',
+      templates: activeTemplates.filter(t => !knownDepts.has(t.department)).sort(byDayOfWeek),
+    },
+  ].filter(group => group.templates.length > 0);
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-text-muted">
-          Templates appear in the rota palette. Assign a day of the week so they auto-populate
-          when you click &ldquo;Apply templates&rdquo; on the rota — open shifts unless an employee is pre-assigned.
-        </p>
-        {canEdit && (
+    <PageLayout
+      {...layout}
+      headerActions={
+        canEdit ? (
           <Button
             type="button"
             size="sm"
             variant="primary"
-            leftIcon={<Icon name="plus" size={16} />}
-            onClick={() => setShowNewForm(v => !v)}
+            icon={<Icon name="plus" size={16} />}
+            onClick={() => setShowNewForm(true)}
           >
-            New template
+            New Template
           </Button>
+        ) : undefined
+      }
+    >
+      {notice}
+
+      <Section
+        title="Templates"
+        description="Active templates appear in the drag-and-drop palette when building the weekly rota. Assign a day of the week to auto-populate shifts; assign an employee to pre-assign instead of creating an open shift."
+      >
+        {groups.length === 0 ? (
+          <Card padding="none">
+            <Empty
+              size="sm"
+              icon="calendar"
+              title="No templates yet"
+              description={canEdit ? 'Create your first template with New Template.' : undefined}
+            />
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {groups.map(group => (
+              <Card key={group.key}>
+                <CardHeader title={group.label} />
+                <ul className="divide-y divide-border">
+                  {group.templates.map(t => (
+                    <TemplateRow key={t.id} template={t} employees={employees} departments={departments} canEdit={canEdit} />
+                  ))}
+                </ul>
+              </Card>
+            ))}
+          </div>
         )}
-      </div>
+      </Section>
 
       {showNewForm && (
-        <TemplateForm
+        <TemplateFormModal
           employees={employees}
           departments={departments}
           onSave={onNewSaved}
           onCancel={() => setShowNewForm(false)}
         />
       )}
-
-      {activeTemplates.length === 0 && !showNewForm ? (
-        <p className="text-sm text-text-soft italic py-6 text-center">
-          No templates yet. Create your first template above.
-        </p>
-      ) : (
-        <div className="space-y-6">
-          {departments.map(dept => {
-            const deptTemplates = activeTemplates
-              .filter(t => t.department === dept.name)
-              .sort((a, b) => {
-                const aDow = a.day_of_week ?? 7;
-                const bDow = b.day_of_week ?? 7;
-                return aDow - bDow;
-              });
-            if (deptTemplates.length === 0) return null;
-            return (
-              <div key={dept.name}>
-                <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">{dept.label}</h3>
-                <div className="space-y-2">
-                  {deptTemplates.map(t => <TemplateRow key={t.id} template={t} employees={employees} departments={departments} canEdit={canEdit} />)}
-                </div>
-              </div>
-            );
-          })}
-          {/* Templates for departments not in the departments list */}
-          {(() => {
-            const knownDepts = new Set(departments.map(d => d.name));
-            const other = activeTemplates
-              .filter(t => !knownDepts.has(t.department))
-              .sort((a, b) => (a.day_of_week ?? 7) - (b.day_of_week ?? 7));
-            if (other.length === 0) return null;
-            return (
-              <div>
-                <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Other</h3>
-                <div className="space-y-2">
-                  {other.map(t => <TemplateRow key={t.id} template={t} employees={employees} departments={departments} canEdit={canEdit} />)}
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
-    </div>
+    </PageLayout>
   );
 }

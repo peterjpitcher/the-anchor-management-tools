@@ -19,7 +19,8 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Alert, Badge, Button, Card, Checkbox, Input, Select, Textarea, toast } from '@/ds'
+import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Checkbox, Empty, Input, Select, Textarea, toast } from '@/ds'
+import { PREORDER_COMPLETENESS_TONE } from './status-ui'
 import {
   saveSeasonalPreorderCovers,
   syncSeasonalPreorderCovers,
@@ -388,47 +389,42 @@ export default function SeasonalPreorderSection({
     }
   }
 
-  // A DS Card like the booking detail sections around it. Its own header rather than CardHeader,
-  // because CardHeader truncates the subtitle and this one is a full sentence staff need to read.
+  // The description is a full sentence staff need to read, so it opens the body rather than
+  // sitting in CardHeader's one-line subtitle, which truncates.
   return (
-    <Card padding="none">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-pad-card py-3">
-        <div>
-          <h2 className="text-sm font-semibold text-text-strong">
-            Seasonal Pre-Order{order.periodName ? ` · ${order.periodName}` : ''}
-          </h2>
-          <p className="mt-0.5 text-xs text-text-muted">
-            Every guest needs a main. A starter and a dessert are optional, and add-ons are extras
-            that never make an order complete.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={completeness.complete ? 'success' : 'warning'}>
-            {completeness.complete ? 'Complete' : 'Not complete'}
-          </Badge>
-          {editable && (
-            <Button
-              size="sm"
-              onClick={handleSave}
-              loading={saving}
-              disabled={saving || dirtyCoverIds.length === 0}
-            >
-              {dirtyCoverIds.length > 0 ? `Save ${dirtyCoverIds.length} seat${dirtyCoverIds.length === 1 ? '' : 's'}` : 'Saved'}
-            </Button>
-          )}
-        </div>
-      </div>
+    <Card>
+      <CardHeader
+        title={`Seasonal Pre-Order${order.periodName ? ` · ${order.periodName}` : ''}`}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={PREORDER_COMPLETENESS_TONE[completeness.complete ? 'complete' : 'incomplete']}>
+              {completeness.complete ? 'Complete' : 'Not complete'}
+            </Badge>
+            {editable && (
+              <Button
+                size="sm"
+                onClick={handleSave}
+                loading={saving}
+                disabled={saving || dirtyCoverIds.length === 0}
+              >
+                {dirtyCoverIds.length > 0 ? `Save ${dirtyCoverIds.length} Seat${dirtyCoverIds.length === 1 ? '' : 's'}` : 'Saved'}
+              </Button>
+            )}
+          </div>
+        }
+      />
 
-      <div className="space-y-4 p-pad-card">
+      <CardBody className="space-y-4">
+        <p className="text-xs text-text-muted">
+          Every guest needs a main. A starter and a dessert are optional, and add-ons are extras
+          that never make an order complete.
+        </p>
         <p className="text-sm text-text">{describePreorderGaps(completeness)}</p>
 
         {order.bookingAllergies.length > 0 && (
-          <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-              Allergies recorded on the booking
-            </p>
-            <p className="mt-1 text-sm text-text">{order.bookingAllergies.join(', ')}</p>
-          </div>
+          <Alert tone="info" role="status" title="Allergies recorded on the booking">
+            {order.bookingAllergies.join(', ')}
+          </Alert>
         )}
 
         {closed && (
@@ -455,26 +451,30 @@ export default function SeasonalPreorderSection({
 
         {seatsMismatched && (
           <Alert tone="warning" title="Seats do not match the party size">
-            <div className="space-y-2">
-              <p>
-                This booking is for {order.partySize} but has {order.covers.length} pre-order seat
-                {order.covers.length === 1 ? '' : 's'}.
-              </p>
-              {editable && (
+            This booking is for {order.partySize} but has {order.covers.length} pre-order seat
+            {order.covers.length === 1 ? '' : 's'}.
+            {editable && (
+              <div className="mt-3">
                 <Button size="sm" variant="secondary" onClick={handleSync} loading={syncing} disabled={syncing}>
-                  {order.covers.length === 0 ? 'Start the pre-order' : 'Put the seats right'}
+                  {order.covers.length === 0 ? 'Start the Pre-Order' : 'Put the Seats Right'}
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
           </Alert>
         )}
 
         {order.covers.length === 0 ? (
-          <p className="text-sm text-text-muted">No seats set up yet, so nothing has been chosen.</p>
+          <Empty size="sm" title="No seats set up yet" description="So nothing has been chosen." />
         ) : (
-          <div className="space-y-3">
+          <ul className="divide-y divide-border">
             {order.covers.map((cover) => {
-              if (cover.courseCount === 1) return <p key={cover.id} className="text-sm">Seat {cover.ordinal}: 1 course, no pre-order required.</p>
+              if (cover.courseCount === 1) {
+                return (
+                  <li key={cover.id} className="py-4 text-sm first:pt-0 last:pb-0">
+                    Seat {cover.ordinal}: 1 course, no pre-order required.
+                  </li>
+                )
+              }
               const coverDraft = draft[cover.id]
               if (!coverDraft) return null
               const missingMain = !coverDraft.choices.main
@@ -482,11 +482,8 @@ export default function SeasonalPreorderSection({
               const addons = addonsByCover.get(cover.id)
 
               return (
-                <div
-                  key={cover.id}
-                  className={`rounded-md border p-3 ${missingMain ? 'border-warning-border bg-warning-soft' : 'border-border bg-surface'}`}
-                >
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                <li key={cover.id} className="space-y-3 py-4 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                       Seat {cover.ordinal}
                     </span>
@@ -529,13 +526,11 @@ export default function SeasonalPreorderSection({
                   </div>
 
                   {addons && addons.rows.length > 0 && (
-                    <div className="mt-3 rounded-md border border-border bg-surface-2 px-3 py-2">
-                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                          Add-ons (extras, on top of the meal)
-                        </p>
-                        <p className="text-xs text-text">{describeSeatAddons(addons.summary)}</p>
-                      </div>
+                    <fieldset>
+                      <legend className="mb-1 text-xs font-medium uppercase tracking-wider text-text-muted">
+                        Add-ons (extras, on top of the meal)
+                      </legend>
+                      <p className="text-xs text-text">{describeSeatAddons(addons.summary)}</p>
                       <div className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
                         {addons.rows.map((row) => {
                           const ticked = coverDraft.addonMenuItemIds.includes(row.menuItemId)
@@ -554,10 +549,10 @@ export default function SeasonalPreorderSection({
                           )
                         })}
                       </div>
-                    </div>
+                    </fieldset>
                   )}
 
-                  <div className="mt-3">
+                  <div>
                     <Textarea
                       label="Dietary requirement (optional)"
                       rows={2}
@@ -571,48 +566,48 @@ export default function SeasonalPreorderSection({
                       {coverDraft.dietaryNote.length}/{DIETARY_NOTE_MAX_LENGTH}
                     </p>
                   </div>
-                </div>
+                </li>
               )
             })}
-          </div>
+          </ul>
         )}
+      </CardBody>
 
-        {(addonOptions.length > 0 || bookingAddons.count > 0) && order.covers.length > 0 && (
-          <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-              Add-ons to put on the bill
-            </p>
-            <p className="mt-1 text-sm font-semibold text-text">
-              {bookingAddons.count === 0
-                ? 'Nothing ticked yet.'
-                : `${bookingAddons.count} add-on${bookingAddons.count === 1 ? '' : 's'} across ${bookingAddons.seatsWithAddons} seat${bookingAddons.seatsWithAddons === 1 ? '' : 's'}: ${
-                    bookingAddons.hasUnpriced && bookingAddons.totalGbp === 0
-                      ? 'priced on the day'
-                      : formatPreorderMoney(bookingAddons.totalGbp)
-                  }`}
-              {bookingAddons.count > 0 && bookingAddons.hasUnpriced && bookingAddons.totalGbp > 0
-                ? ', plus items priced on the day'
-                : ''}
-            </p>
-            {bookingAddons.count > 0 && (
-              <ul className="mt-1 space-y-0.5 text-xs text-text">
-                {order.covers.map((cover) => {
-              if (cover.courseCount === 1) return <p key={cover.id} className="text-sm">Seat {cover.ordinal}: 1 course, no pre-order required.</p>
-                  const summary = addonsByCover.get(cover.id)?.summary
-                  if (!summary || summary.count === 0) return null
-                  return (
-                    <li key={cover.id}>
-                      Seat {cover.ordinal}
-                      {cover.guestName ? ` (${cover.guestName})` : ''}: {describeSeatAddons(summary)}
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-            <p className="mt-1 text-xs text-text-muted">{PREORDER_ADDON_STAFF_NOTE}</p>
-          </div>
-        )}
-      </div>
+      {(addonOptions.length > 0 || bookingAddons.count > 0) && order.covers.length > 0 && (
+        <CardFooter>
+          <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+            Add-ons to put on the bill
+          </p>
+          <p className="mt-1 text-sm font-semibold text-text">
+            {bookingAddons.count === 0
+              ? 'Nothing ticked yet.'
+              : `${bookingAddons.count} add-on${bookingAddons.count === 1 ? '' : 's'} across ${bookingAddons.seatsWithAddons} seat${bookingAddons.seatsWithAddons === 1 ? '' : 's'}: ${
+                  bookingAddons.hasUnpriced && bookingAddons.totalGbp === 0
+                    ? 'priced on the day'
+                    : formatPreorderMoney(bookingAddons.totalGbp)
+                }`}
+            {bookingAddons.count > 0 && bookingAddons.hasUnpriced && bookingAddons.totalGbp > 0
+              ? ', plus items priced on the day'
+              : ''}
+          </p>
+          {bookingAddons.count > 0 && (
+            <ul className="mt-1 space-y-0.5 text-xs text-text">
+              {order.covers.map((cover) => {
+                if (cover.courseCount === 1) return <li key={cover.id} className="text-sm">Seat {cover.ordinal}: 1 course, no pre-order required.</li>
+                const summary = addonsByCover.get(cover.id)?.summary
+                if (!summary || summary.count === 0) return null
+                return (
+                  <li key={cover.id}>
+                    Seat {cover.ordinal}
+                    {cover.guestName ? ` (${cover.guestName})` : ''}: {describeSeatAddons(summary)}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          <p className="mt-1 text-xs text-text-muted">{PREORDER_ADDON_STAFF_NOTE}</p>
+        </CardFooter>
+      )}
     </Card>
   )
 }

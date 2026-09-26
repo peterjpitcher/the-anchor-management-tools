@@ -23,6 +23,7 @@ vi.mock('next/navigation', () => ({
     push: routerPushMock,
     refresh: routerRefreshMock,
   }),
+  usePathname: () => '/cashing-up/daily',
 }))
 
 vi.mock('@/app/actions/cashing-up', () => ({
@@ -185,6 +186,15 @@ describe('DailyClient', () => {
     expect(row.queryByText('£3,670.76')).not.toBeInTheDocument()
   })
 
+  it('shows a failed week at a glance as a failure, not as a week with no takings', () => {
+    render(<DailyClient {...baseProps} weeklyError="Database unavailable" />)
+
+    const failure = screen.getByText('Database unavailable').closest('[role="alert"]')
+    expect(failure).not.toBeNull()
+    expect(within(failure as HTMLElement).getByText("Couldn't load this week")).toBeInTheDocument()
+    expect(screen.queryByText('No data for this week')).not.toBeInTheDocument()
+  })
+
   it('wires approve action for submitted sessions', async () => {
     render(
       <DailyClient
@@ -211,7 +221,8 @@ describe('DailyClient', () => {
       />
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    // Approve is a header action: PageLayout renders it in the desktop header and the phone nav row.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Approve' })[0])
 
     await waitFor(() => {
       expect(approveSessionActionMock).toHaveBeenCalledWith('session-1')
@@ -258,7 +269,8 @@ describe('DailyClient', () => {
       />
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    // Delete is a header action: PageLayout renders it in the desktop header and the phone nav row.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0])
     const deleteButtons = screen.getAllByRole('button', { name: 'Delete' })
     fireEvent.click(deleteButtons[deleteButtons.length - 1])
 

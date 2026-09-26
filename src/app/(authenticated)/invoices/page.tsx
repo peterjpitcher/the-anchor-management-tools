@@ -115,6 +115,7 @@ export default async function InvoicesPage({ searchParams }: Props) {
       initialEndDate={endDate}
       initialLimit={limit}
       initialError={initialError}
+      initialListFailed={Boolean(invoicesResult.error)}
       permissions={{
         canCreate,
         canEdit,

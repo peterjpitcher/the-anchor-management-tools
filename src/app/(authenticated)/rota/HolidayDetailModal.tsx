@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getLeaveRequestById, deleteLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave';
 import type { LeaveRequest } from '@/app/actions/leave';
-import { Badge, Button, Input, Modal, toast } from '@/ds';
+import { Alert, Badge, Button, ConfirmDialog, DescriptionList, Input, Modal, PageLoading, toast } from '@/ds';
 
 interface HolidayDetailModalProps {
   requestId: string;
@@ -27,9 +27,10 @@ function dayCount(start: string, end: string): number {
   return Math.round(diff / 86400000) + 1;
 }
 
-const STATUS_LABELS: Record<string, string> = { pending: 'Pending approval', approved: 'Approved', declined: 'Declined' };
-// The same meanings as the rota grid and the leave manager: approved success, waiting warning.
-const STATUS_TONES: Record<string, 'warning' | 'success' | 'danger'> = {
+const STATUS_LABELS: Record<LeaveRequest['status'], string> = { pending: 'Pending approval', approved: 'Approved', declined: 'Declined' };
+// The same tones as the leave manager (LeaveManagerClient STATUS_BADGE), keyed and typed the same
+// way: approved success, waiting warning, declined danger.
+const STATUS_TONES: Record<LeaveRequest['status'], 'warning' | 'success' | 'danger'> = {
   pending: 'warning',
   approved: 'success',
   declined: 'danger',
@@ -53,7 +54,6 @@ export default function HolidayDetailModal({
   const [isSaving, setIsSaving] = useState(false);
 
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     getLeaveRequestById(requestId).then(res => {
@@ -86,7 +86,6 @@ export default function HolidayDetailModal({
   };
 
   const handleDelete = async () => {
-    setIsDeleting(true);
     const res = await deleteLeaveRequest(requestId);
     if (res.success) {
       toast.success('Holiday request deleted');
@@ -94,7 +93,6 @@ export default function HolidayDetailModal({
       onClose();
     } else {
       toast.error(res.error);
-      setIsDeleting(false);
     }
   };
 
@@ -108,8 +106,8 @@ export default function HolidayDetailModal({
       width="md"
       footer={
         <>
-          {/* Left: delete trigger / confirm */}
-          {canEdit && !isEditing && !confirmDelete && (
+          {/* Left: the destructive action, confirmed in its own dialog. */}
+          {canEdit && request && !isEditing && (
             <Button
               type="button"
               variant="ghost"
@@ -119,36 +117,16 @@ export default function HolidayDetailModal({
               Delete
             </Button>
           )}
-          {confirmDelete && (
-            <>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setConfirmDelete(false)}
-                disabled={isDeleting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                onClick={handleDelete}
-                disabled={isDeleting}
-              >
-                {isDeleting ? 'Deleting…' : 'Confirm delete'}
-              </Button>
-            </>
-          )}
 
-          {/* Right: primary actions */}
-          {!isEditing && !confirmDelete && (
+          {/* Right: secondary, then primary. */}
+          {!isEditing && (
             <>
               <Button type="button" variant="secondary" onClick={onClose}>
                 Close
               </Button>
               {canEdit && request && (
                 <Button type="button" variant="primary" onClick={() => setIsEditing(true)}>
-                  Edit dates
+                  Edit Dates
                 </Button>
               )}
             </>
@@ -169,44 +147,45 @@ export default function HolidayDetailModal({
                 onClick={handleSave}
                 disabled={isSaving || !editStart || !editEnd || editStart > editEnd}
               >
-                {isSaving ? 'Saving…' : 'Save changes'}
+                {isSaving ? 'Saving…' : 'Save Changes'}
               </Button>
             </>
           )}
         </>
       }
     >
-      <div className="space-y-4 min-h-[120px]">
+      <div className="space-y-4">
         <p className="text-sm text-text-muted">{employeeName}</p>
-        {loading && <p className="text-sm text-text-soft">Loading…</p>}
-        {fetchError && <p className="text-sm text-danger-fg">{fetchError}</p>}
+        {loading && <PageLoading inline label="Loading the holiday request" />}
+        {fetchError && <Alert tone="danger">{fetchError}</Alert>}
 
         {request && !isEditing && (
-          <>
-            <div>
-              <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">Dates</p>
-              <p className="text-sm font-semibold text-text-strong">{formatDateRange(request.start_date, request.end_date)}</p>
-              <p className="text-xs text-text-muted mt-0.5">{days} day{days !== 1 ? 's' : ''}</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">Status</p>
-              <Badge tone={STATUS_TONES[request.status] ?? 'neutral'}>
-                {STATUS_LABELS[request.status] ?? request.status}
-              </Badge>
-            </div>
-            {request.note && (
-              <div>
-                <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">Employee note</p>
-                <p className="text-sm text-text">{request.note}</p>
-              </div>
-            )}
-            {request.manager_note && (
-              <div>
-                <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">Manager note</p>
-                <p className="text-sm text-text">{request.manager_note}</p>
-              </div>
-            )}
-          </>
+          <DescriptionList
+            columns={1}
+            items={[
+              {
+                key: 'dates',
+                label: 'Dates',
+                value: (
+                  <>
+                    <span className="block font-semibold text-text-strong">{formatDateRange(request.start_date, request.end_date)}</span>
+                    <span className="block text-xs text-text-muted">{days} day{days !== 1 ? 's' : ''}</span>
+                  </>
+                ),
+              },
+              {
+                key: 'status',
+                label: 'Status',
+                value: (
+                  <Badge tone={STATUS_TONES[request.status] ?? 'neutral'}>
+                    {STATUS_LABELS[request.status] ?? request.status}
+                  </Badge>
+                ),
+              },
+              ...(request.note ? [{ key: 'note', label: 'Employee note', value: request.note }] : []),
+              ...(request.manager_note ? [{ key: 'manager-note', label: 'Manager note', value: request.manager_note }] : []),
+            ]}
+          />
         )}
 
         {request && isEditing && (
@@ -231,16 +210,18 @@ export default function HolidayDetailModal({
             </p>
           </div>
         )}
-
-        {confirmDelete && (
-          <div className="rounded-lg bg-danger-soft border border-danger-border px-4 py-3">
-            <p className="text-sm font-semibold text-danger-fg">Delete this holiday request?</p>
-            <p className="text-xs text-danger-fg mt-1">
-              This removes {days} day{days !== 1 ? 's' : ''} of leave for {employeeName} and cannot be undone.
-            </p>
-          </div>
-        )}
       </div>
+
+      {/* Rendered inside this dialog so Headless UI stacks it on top as a nested dialog. */}
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDelete}
+        title="Delete Holiday Request?"
+        message={`This removes ${days} day${days !== 1 ? 's' : ''} of leave for ${employeeName} and cannot be undone.`}
+        confirmLabel="Delete"
+        tone="danger"
+      />
     </Modal>
   );
 }

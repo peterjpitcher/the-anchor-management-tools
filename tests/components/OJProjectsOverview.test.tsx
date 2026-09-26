@@ -13,7 +13,15 @@ vi.mock('next/navigation', () => ({
     replace: routerReplace,
     refresh: routerRefresh,
   }),
+  // PageLayout reads the path to pick the current tab.
+  usePathname: () => '/oj-projects',
 }))
+
+// PageLayout renders header actions twice, once for the phone header and once for the
+// desktop one, and CSS shows one of them. jsdom applies no CSS, so both are in the tree.
+function newEntryButton(): HTMLElement {
+  return screen.getAllByRole('button', { name: 'New Entry' })[0]
+}
 
 const toast = vi.hoisted(() => ({
   success: vi.fn(),
@@ -105,7 +113,7 @@ describe('ProjectsOverview', () => {
   it('keeps the submitted client selected for the next new entry', async () => {
     renderOverview()
 
-    fireEvent.click(screen.getByRole('button', { name: 'New Entry' }))
+    fireEvent.click(newEntryButton())
 
     const dialog = await screen.findByRole('dialog', { name: 'New Entry' })
     const clientSelect = within(dialog).getAllByRole('combobox')[0] as HTMLSelectElement
@@ -116,7 +124,7 @@ describe('ProjectsOverview', () => {
     await waitFor(() => expect(createTimeEntry).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New Entry' })).not.toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('button', { name: 'New Entry' }))
+    fireEvent.click(newEntryButton())
 
     const nextDialog = await screen.findByRole('dialog', { name: 'New Entry' })
     const nextClientSelect = within(nextDialog).getAllByRole('combobox')[0] as HTMLSelectElement
@@ -235,7 +243,7 @@ describe('ProjectsOverview', () => {
     expect(clientFilter.value).toBe('22222222-2222-2222-2222-222222222222')
 
     // Creating an entry for a different client must not move the filter.
-    fireEvent.click(screen.getByRole('button', { name: 'New Entry' }))
+    fireEvent.click(newEntryButton())
     expect(clientFilter.value).toBe('22222222-2222-2222-2222-222222222222')
   })
 

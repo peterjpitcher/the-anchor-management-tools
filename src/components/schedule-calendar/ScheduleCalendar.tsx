@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { addMonths, subMonths, format } from 'date-fns'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { Button } from '@/ds'
+import { Button, Segmented, SHELL_MEDIA_QUERY } from '@/ds'
 import { cn } from '@/lib/utils'
 import { ScheduleCalendarMonth } from './ScheduleCalendarMonth'
 import { ScheduleCalendarList } from './ScheduleCalendarList'
@@ -33,6 +33,11 @@ export interface ScheduleCalendarProps {
     className?: string
 }
 
+const CALENDAR_VIEW_OPTIONS: { id: ScheduleCalendarView; label: string }[] = [
+    { id: 'month', label: 'Month' },
+    { id: 'list', label: 'List' },
+]
+
 export function ScheduleCalendar({
     entries,
     view,
@@ -56,7 +61,8 @@ export function ScheduleCalendar({
         if (onAnchorChange) onAnchorChange(value)
         else setUncontrolledAnchor(value)
     }
-    const isMobile = useMediaQuery('(max-width: 639px)')
+    // Phone layout wherever the app shell is in its phone layout.
+    const isMobile = useMediaQuery(SHELL_MEDIA_QUERY)
 
     const effectiveView: ScheduleCalendarView = isMobile ? 'list' : view
 
@@ -90,27 +96,18 @@ export function ScheduleCalendar({
                 )}
                 <div className="flex-1" />
                 {!isMobile && (
-                    <div className="flex bg-surface-hover rounded-md p-1 gap-1" role="group" aria-label="Calendar view">
-                        {(['month', 'list'] as ScheduleCalendarView[]).map((v) => (
-                            <button
-                                key={v}
-                                type="button"
-                                onClick={() => onViewChange(v)}
-                                className={cn(
-                                    'px-3 py-1 text-xs rounded-sm capitalize focus-visible:outline-hidden focus-visible:shadow-ring',
-                                    view === v
-                                        ? 'bg-surface shadow-sm'
-                                        : 'text-text-muted hover:text-text'
-                                )}
-                            >
-                                {v}
-                            </button>
-                        ))}
+                    <div role="group" aria-label="Calendar view">
+                        <Segmented
+                            size="sm"
+                            options={CALENDAR_VIEW_OPTIONS}
+                            value={view}
+                            onChange={(id) => onViewChange(id as ScheduleCalendarView)}
+                        />
                     </div>
                 )}
             </div>
 
-            {/* Legend — hidden on mobile to keep the schedule compact */}
+            {/* Legend, hidden on mobile to keep the schedule compact */}
             {!isMobile && legendKinds && legendKinds.length > 0 && (
                 <div className="flex items-center gap-3 text-meta text-text-muted">
                     {legendKinds.map((k) => (

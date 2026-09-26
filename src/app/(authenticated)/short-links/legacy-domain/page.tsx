@@ -1,15 +1,16 @@
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getLegacyDomainUsage } from '@/app/actions/short-links'
 import {
+  Alert,
   Badge,
   Card,
   CardBody,
   CardHeader,
-  PageHeader,
-  SectionNav,
+  Empty,
+  PageLayout,
   Stat,
+  StatGrid,
   Table,
   TableBody,
   TableCell,
@@ -17,7 +18,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/ds'
-import { SHORT_LINKS_NAV } from '../nav'
+import { SHORT_LINKS_NAV, SHORT_LINKS_TITLE } from '../_shared/nav'
+import { LEGACY_REPORTER_TONE } from '../_shared/status-ui'
+import { LegacyRangePicker } from './_components/LegacyRangePicker'
 import type { LegacyDomainUsage } from '@/types/short-links'
 
 type PageProps = {
@@ -55,79 +58,30 @@ function sourceLabel(channel: string | null, source: string | null): string {
   return channel || source || '-'
 }
 
-function RangeSelector({ days }: { days: number }) {
-  return (
-    <div className="mb-6 flex flex-wrap items-center gap-2">
-      {RANGE_OPTIONS.map((option) => {
-        const active = option === days
-        return (
-          <Link
-            key={option}
-            href={`/short-links/legacy-domain?days=${option}`}
-            className={
-              active
-                ? 'rounded-md border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg focus-visible:outline-hidden focus-visible:shadow-ring'
-                : 'rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring'
-            }
-          >
-            {option} days
-          </Link>
-        )
-      })}
-    </div>
-  )
-}
-
-function ErrorState({ message }: { message: string }) {
-  return (
-    <Card>
-      <CardBody>
-        <p className="text-sm text-danger-fg">{message}</p>
-      </CardBody>
-    </Card>
-  )
-}
-
 function SummaryCards({ usage }: { usage: LegacyDomainUsage }) {
   return (
-    <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-      <Card>
-        <CardBody>
-          <Stat
-            label="Legacy Human"
-            value={formatNumber(usage.legacyHumanClicks)}
-            hint={`${formatNumber(usage.legacyClicks)} total vip-club clicks`}
-          />
-        </CardBody>
-      </Card>
-      <Card>
-        <CardBody>
-          <Stat
-            label="Canonical Human"
-            value={formatNumber(usage.canonicalHumanClicks)}
-            hint={`${formatNumber(usage.canonicalClicks)} total l.the-anchor clicks`}
-          />
-        </CardBody>
-      </Card>
-      <Card>
-        <CardBody>
-          <Stat
-            label="Untracked Human"
-            value={formatNumber(usage.untrackedHumanClicks)}
-            hint={`${formatNumber(usage.untrackedClicks)} clicks before host tracking`}
-          />
-        </CardBody>
-      </Card>
-      <Card>
-        <CardBody>
-          <Stat
-            label="All Human"
-            value={formatNumber(usage.humanClicks)}
-            hint={`${formatNumber(usage.totalClicks)} total short-link clicks`}
-          />
-        </CardBody>
-      </Card>
-    </div>
+    <StatGrid columns={4}>
+      <Stat
+        label="Legacy Human"
+        value={formatNumber(usage.legacyHumanClicks)}
+        hint={`${formatNumber(usage.legacyClicks)} total vip-club clicks`}
+      />
+      <Stat
+        label="Canonical Human"
+        value={formatNumber(usage.canonicalHumanClicks)}
+        hint={`${formatNumber(usage.canonicalClicks)} total l.the-anchor clicks`}
+      />
+      <Stat
+        label="Untracked Human"
+        value={formatNumber(usage.untrackedHumanClicks)}
+        hint={`${formatNumber(usage.untrackedClicks)} clicks before host tracking`}
+      />
+      <Stat
+        label="All Human"
+        value={formatNumber(usage.humanClicks)}
+        hint={`${formatNumber(usage.totalClicks)} total short-link clicks`}
+      />
+    </StatGrid>
   )
 }
 
@@ -143,8 +97,13 @@ function LinkUsageCard({
   emptyMessage: string
 }) {
   return (
-    <Card className="mb-6">
+    <Card>
       <CardHeader title={title} subtitle={subtitle} />
+      {links.length === 0 ? (
+        <CardBody>
+          <Empty size="sm" title={emptyMessage} />
+        </CardBody>
+      ) : (
       <Table>
         <TableHeader>
           <TableRow>
@@ -158,14 +117,7 @@ function LinkUsageCard({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {links.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={7} align="center" className="py-8 text-text-muted">
-                {emptyMessage}
-              </TableCell>
-            </TableRow>
-          ) : (
-            links.map((link) => (
+          {links.map((link) => (
               <TableRow key={link.shortCode}>
                 <TableCell>
                   <code className="font-mono text-xs">/{link.shortCode}</code>
@@ -185,10 +137,10 @@ function LinkUsageCard({
                 </TableCell>
                 <TableCell className="hidden md:table-cell">{formatDateTime(link.lastClickedAt)}</TableCell>
               </TableRow>
-            ))
-          )}
+            ))}
         </TableBody>
       </Table>
+      )}
     </Card>
   )
 }
@@ -196,23 +148,28 @@ function LinkUsageCard({
 function ReportsCard({ reports }: { reports: LegacyDomainUsage['reports'] }) {
   if (!reports.tableReady) {
     return (
-      <Card className="mb-6 border-warning-border bg-warning-soft">
-        <CardBody>
-          <p className="text-sm text-warning-fg">
-            The legacy link reports table has not been migrated yet. Apply the pending migration
-            to start collecting answers from the retirement interstitial.
-          </p>
-        </CardBody>
-      </Card>
+      <Alert tone="warning">
+        The legacy link reports table has not been migrated yet. Apply the pending migration
+        to start collecting answers from the retirement interstitial.
+      </Alert>
     )
   }
 
   return (
-    <Card className="mb-6">
+    <Card>
       <CardHeader
         title="Where People Found These Links"
         subtitle={`${formatNumber(reports.customerReports)} from customers, ${formatNumber(reports.staffReports)} from staff checks`}
       />
+      {reports.locations.length === 0 ? (
+        <CardBody>
+          <Empty
+            size="sm"
+            title="No answers yet"
+            description="They appear here as people tap through the retirement page."
+          />
+        </CardBody>
+      ) : (
       <Table>
         <TableHeader>
           <TableRow>
@@ -224,14 +181,7 @@ function ReportsCard({ reports }: { reports: LegacyDomainUsage['reports'] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {reports.locations.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={5} align="center" className="py-8 text-text-muted">
-                No answers yet. They appear here as people tap through the retirement page.
-              </TableCell>
-            </TableRow>
-          ) : (
-            reports.locations.map((location) => (
+          {reports.locations.map((location) => (
               <TableRow key={location.locationKey}>
                 <TableCell className="font-medium">{location.label}</TableCell>
                 <TableCell align="right" className="font-mono font-semibold">
@@ -247,10 +197,10 @@ function ReportsCard({ reports }: { reports: LegacyDomainUsage['reports'] }) {
                   {formatDateTime(location.lastReportedAt)}
                 </TableCell>
               </TableRow>
-            ))
-          )}
+            ))}
         </TableBody>
       </Table>
+      )}
     </Card>
   )
 }
@@ -259,7 +209,7 @@ function RecentReportsCard({ reports }: { reports: LegacyDomainUsage['reports'] 
   if (!reports.tableReady || reports.recent.length === 0) return null
 
   return (
-    <Card className="mb-6">
+    <Card>
       <CardHeader title="Recent Answers" subtitle="Most recent first, including any free-text detail" />
       <Table>
         <TableHeader>
@@ -283,7 +233,7 @@ function RecentReportsCard({ reports }: { reports: LegacyDomainUsage['reports'] 
                 {entry.locationDetail || '-'}
               </TableCell>
               <TableCell className="hidden sm:table-cell">
-                <Badge tone={entry.isStaff ? 'info' : 'success'}>
+                <Badge tone={LEGACY_REPORTER_TONE[entry.isStaff ? 'staff' : 'customer']}>
                   {entry.isStaff ? 'Staff' : 'Customer'}
                 </Badge>
               </TableCell>
@@ -305,23 +255,22 @@ export default async function LegacyDomainPage({ searchParams }: PageProps) {
   const usage = result && 'data' in result ? result.data : null
 
   return (
-    <div>
-      <PageHeader title="Short Links" subtitle="Legacy domain retirement tracking" />
-      <SectionNav items={SHORT_LINKS_NAV} activeId="legacy-domain" className="mb-6" />
-      <RangeSelector days={days} />
-
+    <PageLayout
+      title={SHORT_LINKS_TITLE}
+      subtitle="Legacy domain retirement tracking"
+      navItems={SHORT_LINKS_NAV}
+      headerActions={<LegacyRangePicker options={RANGE_OPTIONS} days={days} />}
+    >
       {!usage ? (
-        <ErrorState message={result && 'error' in result ? result.error || 'Failed to load legacy domain usage' : 'Failed to load legacy domain usage'} />
+        <Alert tone="danger" title="Could not load legacy domain usage">
+          {result && 'error' in result ? result.error || 'Failed to load legacy domain usage' : 'Failed to load legacy domain usage'}
+        </Alert>
       ) : (
         <>
           {!usage.trackingColumnReady && (
-            <Card className="mb-6 border-warning-border bg-warning-soft">
-              <CardBody>
-                <p className="text-sm text-warning-fg">
-                  Host tracking has not been migrated yet. These numbers show existing click activity, but legacy-domain clicks cannot be separated until the migration is applied.
-                </p>
-              </CardBody>
-            </Card>
+            <Alert tone="warning">
+              Host tracking has not been migrated yet. These numbers show existing click activity, but legacy-domain clicks cannot be separated until the migration is applied.
+            </Alert>
           )}
 
           <SummaryCards usage={usage} />
@@ -338,6 +287,11 @@ export default async function LegacyDomainPage({ searchParams }: PageProps) {
 
           <Card>
             <CardHeader title="Recent Legacy Clicks" subtitle="Latest tracked vip-club.uk requests" />
+            {usage.recentLegacyClicks.length === 0 ? (
+              <CardBody>
+                <Empty size="sm" title="No recent legacy-domain clicks" />
+              </CardBody>
+            ) : (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -350,14 +304,7 @@ export default async function LegacyDomainPage({ searchParams }: PageProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {usage.recentLegacyClicks.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center" className="py-8 text-text-muted">
-                      No recent legacy-domain clicks
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  usage.recentLegacyClicks.map((click, index) => (
+                {usage.recentLegacyClicks.map((click, index) => (
                     <TableRow key={`${click.shortCode}-${click.clickedAt}-${index}`}>
                       <TableCell>{formatDateTime(click.clickedAt)}</TableCell>
                       <TableCell className="hidden md:table-cell">{click.requestHost}</TableCell>
@@ -370,13 +317,13 @@ export default async function LegacyDomainPage({ searchParams }: PageProps) {
                       </TableCell>
                       <TableCell className="hidden md:table-cell">{click.deviceType || '-'}</TableCell>
                     </TableRow>
-                  ))
-                )}
+                  ))}
               </TableBody>
             </Table>
+            )}
           </Card>
         </>
       )}
-    </div>
+    </PageLayout>
   )
 }

@@ -4,11 +4,7 @@ import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/bala
 
 import { useEffect, useMemo, useState } from 'react'
 import { sendChasePaymentEmail, getInvoiceEmailLogs } from '@/app/actions/email'
-import { Modal, ModalActions, Icon } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Textarea } from '@/ds'
-import { Alert } from '@/ds'
+import { Modal, Icon, Button, Input, Textarea, Field, Alert } from '@/ds'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 
@@ -152,7 +148,7 @@ P.S. I've attached a copy of the invoice for your reference.`
       size="lg"
       mobileFullscreen
       footer={
-        <ModalActions>
+        <>
           <Button
             variant="secondary"
             onClick={onClose}
@@ -169,7 +165,7 @@ P.S. I've attached a copy of the invoice for your reference.`
           >
             Send Reminder
           </Button>
-        </ModalActions>
+        </>
       }
     >
       <div className="space-y-4">
@@ -182,10 +178,9 @@ P.S. I've attached a copy of the invoice for your reference.`
         </div>
 
         {recentChaseWarning && lastChaseDate && (
-          <Alert 
-            tone="warning" 
+          <Alert
+            tone="warning"
             title="Recent Reminder Sent"
-            className="mb-4"
           >
             {`A payment reminder was already sent on ${new Date(lastChaseDate).toLocaleDateString('en-GB')} at ${new Date(lastChaseDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}. Sending another one so soon might be aggressive.`}
           </Alert>
@@ -195,51 +190,37 @@ P.S. I've attached a copy of the invoice for your reference.`
           <Alert tone="danger">{error}</Alert>
         )}
 
-        <div>
-          <label className="block text-sm font-medium mb-1">To</label>
+        <Field label="To" hint="Primary recipient. Usually the vendor's primary contact.">
           <Input
             type="text"
             value={toEmails}
             onChange={(e) => setToEmails(e.target.value)}
             placeholder="primary.contact@example.com"
           />
-          <p className="text-xs text-text-muted mt-1">
-            Primary recipient. Usually the vendor&apos;s primary contact.
-          </p>
-        </div>
+        </Field>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">CC</label>
+        <Field label="CC" hint="Separate multiple emails with commas or semicolons.">
           <Input
             type="text"
             value={ccEmails}
             onChange={(e) => setCcEmails(e.target.value)}
             placeholder="accounts@example.com, ops@example.com"
           />
-          <p className="text-xs text-text-muted mt-1">Separate multiple emails with commas or semicolons.</p>
-        </div>
+        </Field>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Subject
-          </label>
-          <Input
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-          />
-        </div>
+        <Input
+          label="Subject"
+          type="text"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+        />
 
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Message
-          </label>
-          <Textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={12}
-          />
-        </div>
+        <Textarea
+          label="Message"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={12}
+        />
 
         <Alert tone="warning"
           title="Attachment"

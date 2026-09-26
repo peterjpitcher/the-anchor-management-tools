@@ -4,22 +4,34 @@ import { useEffect, useState } from 'react';
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { toast, Icon } from '@/ds';
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  Field,
+  FormFooter,
+  Icon,
+  Input,
+  LinkButton,
+  ProgressBar,
+  SHELL_MEDIA_QUERY,
+  Select,
+  Textarea,
+  toast,
+} from '@/ds';
+import { useMediaQuery } from '@/hooks/use-media-query';
 import type { ActionFormState } from '@/types/actions';
 import type { Employee } from '@/types/database';
-import { Input } from '@/ds';
-import { Textarea } from '@/ds';
-import { Select } from '@/ds';
-import { Checkbox } from '@/ds';
-import { Button, ProgressBar } from '@/ds';
 
 interface EmployeeFormProps {
   employee?: Employee; // For editing, not used in this initial "add" form
   formAction: (prevState: ActionFormState | null, formData: FormData) => Promise<ActionFormState | null>; // Can be addEmployee or an updateEmployee action
   initialFormState: ActionFormState | null;
-  showTitle?: boolean;
-  showCancel?: boolean;
+  /** Where Cancel goes. Without it the form has no Cancel button. */
+  cancelHref?: string;
   submitButtonText?: string;
   draftMode?: boolean;
 }
@@ -34,17 +46,14 @@ type FormField = {
   options?: string[];
   /** Shown under the input. Added for preferred name, where the distinction from the legal name needs explaining. */
   hint?: string;
+  /** Takes both columns of the field grid (long text). */
+  wide?: boolean;
 }
 
 function SubmitButton({ text = 'Save Employee' }: { text?: string }) {
   const { pending } = useFormStatus();
   return (
-    <Button
-      type="submit"
-      loading={pending}
-      variant="primary"
-      className="w-full sm:w-auto"
-    >
+    <Button type="submit" loading={pending} variant="primary">
       {text}
     </Button>
   );
@@ -54,24 +63,15 @@ export default function EmployeeForm({
   employee,
   formAction,
   initialFormState,
-  showTitle = true,
-  showCancel = true,
+  cancelHref,
   submitButtonText = 'Save Employee',
   draftMode = false,
 }: EmployeeFormProps) {
   const router = useRouter();
   const [state, dispatch] = useActionState(formAction, initialFormState);
   const [currentStep, setCurrentStep] = useState(0);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
+  // Phones fill the form in one step at a time; the switch matches the app shell's.
+  const isMobile = useMediaQuery(SHELL_MEDIA_QUERY);
 
   useEffect(() => {
     if (state?.type === 'success' && !draftMode) {
@@ -110,6 +110,7 @@ export default function EmployeeForm({
           type: 'text',
           defaultValue: employee?.preferred_name,
           hint: 'What the team calls this person, shown everywhere in the app. Their legal name above is still used for contracts and payroll. Leave blank to use their first name. Two active employees cannot share a preferred name, so use "Jacob H" and "Jacob W" where first names clash.',
+          wide: true,
         },
         { name: 'email_address', label: 'Email Address', type: 'email', required: true, defaultValue: employee?.email_address },
         { name: 'phone_number', label: 'Telephone', type: 'tel', defaultValue: employee?.phone_number },
@@ -132,7 +133,7 @@ export default function EmployeeForm({
       fields: [
         { name: 'date_of_birth', label: 'Date of Birth', type: 'date', defaultValue: employee?.date_of_birth?.split('T')[0] },
         { name: 'post_code', label: 'Post Code', type: 'text', defaultValue: employee?.post_code },
-        { name: 'address', label: 'Address', type: 'textarea', defaultValue: employee?.address },
+        { name: 'address', label: 'Address', type: 'textarea', defaultValue: employee?.address, wide: true },
       ]
     },
     {
@@ -149,24 +150,68 @@ export default function EmployeeForm({
   const isLastStep = currentStep === totalSteps - 1;
   const isFirstStep = currentStep === 0;
 
+  const fieldError = (name: string): string | undefined => state?.errors?.[name]?.join(' ') || undefined;
+
+  const renderControl = (field: FormField) => {
+    const error = fieldError(field.name);
+    if (field.type === 'textarea') {
+      return (
+        <Textarea
+          id={field.name}
+          name={field.name}
+          rows={3}
+          defaultValue={field.defaultValue || ''}
+          error={error}
+        />
+      );
+    }
+    if (field.type === 'checkbox') {
+      return (
+        <Checkbox
+          id={field.name}
+          name={field.name}
+          // The Field label above names it too; this keeps the name on the control itself.
+          aria-label={field.label}
+          defaultChecked={field.defaultChecked}
+          value="true"
+        />
+      );
+    }
+    if (field.type === 'select') {
+      return (
+        <Select
+          id={field.name}
+          name={field.name}
+          defaultValue={field.defaultValue || (field.name === 'status' ? 'Active' : '')}
+          required={field.required}
+          error={error}
+          options={field.options?.map(option => ({ label: option, value: option }))}
+        />
+      );
+    }
+    return (
+      <Input
+        type={field.type}
+        name={field.name}
+        id={field.name}
+        defaultValue={field.defaultValue || ''}
+        required={field.required}
+        error={error}
+      />
+    );
+  };
+
   return (
     <form action={dispatch} className="space-y-6">
       <input type="hidden" name="employee_id" value={employee?.employee_id || ''} />
-      {showTitle && (
-        <div>
-          <h3 className="text-lg sm:text-xl font-medium leading-6 text-text">
-            {employee ? 'Edit Employee' : 'Add New Employee'}
-          </h3>
-          <p className="mt-1 text-sm sm:text-base text-text-muted">
-            Please fill in the details of the employee.
-          </p>
-        </div>
-      )}
+      {/* An unticked checkbox sends nothing, so the hidden "false" goes first and a ticked box
+          overrides it. It sits outside the field so it does not steal the label. */}
+      <input type="hidden" name="keyholder_status" value="false" />
 
       {/* Progress Indicator */}
       {isMobile && (
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
+        <div>
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-xs text-text-muted">Step {currentStep + 1} of {totalSteps}</span>
             <span className="text-sm font-medium text-text">{currentStepData.title}</span>
           </div>
@@ -174,145 +219,80 @@ export default function EmployeeForm({
         </div>
       )}
 
-      <div className="space-y-4">
-        {/*
-          Every step stays mounted, on mobile as well as desktop, and inactive
-          steps are hidden with CSS. Rendering only the current step unmounted
-          the other inputs, so the submitted FormData held just that step's
-          fields and employeeSchema rejected every save on a narrow screen.
-        */}
-        {formSteps.map((step, stepIndex) => (
-          <div
-            key={step.title}
-            className={`space-y-4 ${isMobile && stepIndex !== currentStep ? 'hidden' : ''}`}
-            aria-hidden={isMobile && stepIndex !== currentStep}
-          >
+      {/*
+        Every step stays mounted, on mobile as well as desktop, and inactive
+        steps are hidden with CSS. Rendering only the current step unmounted
+        the other inputs, so the submitted FormData held just that step's
+        fields and employeeSchema rejected every save on a narrow screen.
+      */}
+      {formSteps.map((step, stepIndex) => (
+        <div
+          key={step.title}
+          className={isMobile && stepIndex !== currentStep ? 'hidden' : undefined}
+          aria-hidden={isMobile && stepIndex !== currentStep}
+        >
+          <Card>
             {/* The mobile step indicator above already names the current step. */}
-            <h4 className={`font-medium text-text border-b pb-2 ${isMobile ? 'hidden' : ''}`}>
-              {step.title}
-            </h4>
-            {step.fields.map((field) => (
-              <div key={field.name} className="space-y-2 sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2 sm:space-y-0">
-                <label htmlFor={field.name} className="block text-sm sm:text-base font-medium text-text sm:col-span-1">
-                  {field.label} {field.required && <span className="text-danger">*</span>}
-                </label>
-                <div className="mt-1 sm:col-span-3 sm:mt-0">
-                  {field.type === 'textarea' ? (
-                    <Textarea
-                      id={field.name}
-                      name={field.name}
-                      rows={3}
-                      defaultValue={field.defaultValue || ''}
-                      error={!!state?.errors?.[field.name]}
-                    />
-                  ) : field.type === 'checkbox' ? (
-                    <>
-                      <input type="hidden" name={field.name} value="false" />
-                      <Checkbox
-                        id={field.name}
-                        name={field.name}
-                        defaultChecked={field.defaultChecked}
-                        value="true"
-                        error={!!state?.errors?.[field.name]}
-                      />
-                    </>
-                  ) : field.type === 'select' ? (
-                    <Select
-                      id={field.name}
-                      name={field.name}
-                      defaultValue={field.defaultValue || (field.name === 'status' ? 'Active' : '')}
-                      required={field.required}
-                      error={!!state?.errors?.[field.name]}
-                      options={field.options?.map(option => ({ label: option, value: option }))}
-                    />
-                  ) : (
-                    <Input
-                      type={field.type}
-                      name={field.name}
-                      id={field.name}
-                      defaultValue={field.defaultValue || ''}
-                      required={field.required}
-                      error={!!state?.errors?.[field.name]}
-                    />
-                  )}
-                  {field.hint && !state?.errors?.[field.name] && (
-                    <p className="mt-1 text-xs text-text-muted">{field.hint}</p>
-                  )}
-                  {state?.errors?.[field.name] && (
-                    <p className="mt-2 text-sm text-danger" id={`${field.name}-error`}>
-                      {state.errors[field.name]}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        ))}
-
-      </div>
+            {!isMobile && <CardHeader title={step.title} />}
+            <CardBody className="grid gap-4 sm:grid-cols-2">
+              {step.fields.map((field) => {
+                const error = fieldError(field.name);
+                return (
+                  <Field
+                    key={field.name}
+                    label={field.label}
+                    required={field.required}
+                    hint={error ? undefined : field.hint}
+                    // Text fields show their own error; a checkbox has none, so the Field shows it.
+                    error={field.type === 'checkbox' ? error : undefined}
+                    className={field.wide ? 'sm:col-span-2' : undefined}
+                  >
+                    {renderControl(field)}
+                  </Field>
+                );
+              })}
+            </CardBody>
+          </Card>
+        </div>
+      ))}
 
       {state?.type === 'error' && !state.errors && (
-        <p className="mt-2 text-sm text-danger">{state.message}</p>
+        <Alert tone="danger">{state.message}</Alert>
       )}
-      {/* General success message can be shown here if needed, or use toasts */}
 
-      <div className="sticky bottom-0 -mx-4 sm:mx-0 bg-surface border-t sm:border-0 pt-5 px-4 sm:px-0 pb-4 sm:pb-0">
-        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 sm:gap-0 sm:space-x-3">
-          {/* Mobile navigation */}
-          {isMobile ? (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setCurrentStep(prev => Math.max(0, prev - 1))}
-                  disabled={isFirstStep}
-                  className="w-full"
-                  leftIcon={<Icon name="chevronLeft" size={20} />}
-                >
-                  Previous
-                </Button>
-                {!isLastStep ? (
-                  <Button
-                    type="button"
-                    variant="primary"
-                    onClick={() => setCurrentStep(prev => Math.min(totalSteps - 1, prev + 1))}
-                    className="w-full"
-                    rightIcon={<Icon name="chevronRight" size={20} />}
-                  >
-                    Next
-                  </Button>
-                ) : (
-                  <SubmitButton text={submitButtonText} />
-                )}
-              </div>
-              {showCancel && (
-                <Button
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => router.push(employee?.employee_id ? `/employees/${employee.employee_id}` : '/employees')}
-                >
-                  Cancel
-                </Button>
-              )}
-            </>
-          ) : (
-            /* Desktop layout */
-            <>
-              {showCancel && (
-                <Button
-                  variant="secondary"
-                  className="w-full sm:w-auto"
-                  onClick={() => router.push(employee?.employee_id ? `/employees/${employee.employee_id}` : '/employees')}
-                >
-                  Cancel
-                </Button>
-              )}
-              <SubmitButton text={submitButtonText} />
-            </>
+      {/* Phones step through the form; Save appears on the last step. */}
+      {isMobile && (
+        <div className="grid grid-cols-2 gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setCurrentStep(prev => Math.max(0, prev - 1))}
+            disabled={isFirstStep}
+            icon={<Icon name="chevronLeft" size={16} />}
+          >
+            Previous
+          </Button>
+          {!isLastStep && (
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => setCurrentStep(prev => Math.min(totalSteps - 1, prev + 1))}
+              iconRight={<Icon name="chevronRight" size={16} />}
+            >
+              Next
+            </Button>
           )}
         </div>
-      </div>
+      )}
+
+      <FormFooter>
+        {cancelHref && (
+          <LinkButton href={cancelHref} variant="secondary">
+            Cancel
+          </LinkButton>
+        )}
+        {(!isMobile || isLastStep) && <SubmitButton text={submitButtonText} />}
+      </FormFooter>
     </form>
   );
-} 
+}

@@ -7,15 +7,23 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, recordPayment } from '@/app/actions/invoices'
-import { PageLayout, Icon } from '@/ds'
-import { Card } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Field } from '@/ds'
-import { Alert } from '@/ds'
-import { toast } from '@/ds'
+import {
+  PageLayout,
+  Icon,
+  Card,
+  CardHeader,
+  CardBody,
+  Button,
+  Input,
+  Select,
+  Textarea,
+  Field,
+  Alert,
+  FormFooter,
+  StatGrid,
+  Stat,
+  toast,
+} from '@/ds'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import type { InvoiceWithDetails, PaymentMethod } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -33,7 +41,6 @@ export default function RecordPaymentPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
 
   // Form fields
   const todayIso = getTodayIsoDate()
@@ -129,7 +136,7 @@ export default function RecordPaymentPage() {
         throw new Error(result.error)
       }
 
-      setSuccess(true)
+      // The toast confirms it; the page redirects straight away, so an inline banner would never be read.
       toast.success('Payment recorded successfully!')
       router.push(`/invoices/${invoice.id}`)
     } catch (err) {
@@ -138,16 +145,15 @@ export default function RecordPaymentPage() {
     }
   }
 
+  const layoutProps = {
+    title: 'Record Payment',
+    subtitle: 'Update invoice balances',
+    backButton: { label: 'Back to Invoice', href: invoiceId ? `/invoices/${invoiceId}` : '/invoices' },
+    containerSize: 'md' as const,
+  }
+
   if (permissionsLoading || loading) {
-    return (
-      <PageLayout
-        title="Record Payment"
-        subtitle="Update invoice balances"
-        backButton={{ label: 'Back to Invoice', href: invoiceId ? `/invoices/${invoiceId}` : '/invoices' }}
-        loading
-        loadingLabel="Loading invoice..."
-      />
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading invoice" />
   }
 
   if (!permissionsLoading && !canEdit) {
@@ -155,135 +161,112 @@ export default function RecordPaymentPage() {
   }
 
   if (!invoice) {
-    return (
-      <PageLayout
-        title="Record Payment"
-        subtitle="Update invoice balances"
-        backButton={{ label: 'Back to Invoices', href: '/invoices' }}
-        error={error || 'Invoice not found'}
-      />
-    )
+    return <PageLayout {...layoutProps} error={error || 'Invoice not found'} />
   }
 
   const outstanding = invoiceBalanceDue(invoice)
 
   return (
-    <PageLayout
-      title="Record Payment"
-      subtitle={`Invoice ${invoice.invoice_number} - ${invoice.vendor?.name ?? 'Unknown vendor'}`}
-      backButton={{ label: 'Back to Invoice', href: `/invoices/${invoice.id}` }}
-    >
-      <div className="space-y-6">
-        {error && <Alert tone="danger">{error}</Alert>}
+    <PageLayout {...layoutProps}>
+      {error && <Alert tone="danger">{error}</Alert>}
 
-        {success && (
-          <Alert tone="success">Payment recorded successfully! Redirecting...</Alert>
-        )}
+      <StatGrid columns={3}>
+        <Stat label="Invoice Total" value={`£${invoice.total_amount.toFixed(2)}`} />
+        <Stat label="Already Paid" value={`£${invoice.paid_amount.toFixed(2)}`} />
+        <Stat
+          label="Outstanding"
+          value={`£${outstanding.toFixed(2)}`}
+          hint={invoice.status === 'overdue' ? 'Overdue' : undefined}
+        />
+      </StatGrid>
 
+      <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
-          <h2 className="mb-4 text-lg font-semibold">Payment Summary</h2>
-          <div className="grid grid-cols-1 gap-4 text-center sm:grid-cols-3">
-            <div>
-              <p className="text-sm text-text-muted">Invoice Total</p>
-              <p className="text-xl font-bold">£{invoice.total_amount.toFixed(2)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-text-muted">Already Paid</p>
-              <p className="text-xl font-bold text-success-fg">£{invoice.paid_amount.toFixed(2)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-text-muted">Outstanding</p>
-              {/* Red only once the invoice is overdue, the same rule as the invoice list. */}
-              <p className={`text-xl font-bold ${invoice.status === 'overdue' ? 'text-danger' : ''}`}>£{outstanding.toFixed(2)}</p>
-            </div>
-          </div>
+          <CardHeader
+            title="Payment Details"
+            subtitle={`Invoice ${invoice.invoice_number} - ${invoice.vendor?.name ?? 'Unknown vendor'}`}
+          />
+          <CardBody className="space-y-4">
+            <Field label="Payment Date" required>
+              <Input
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                max={todayIso}
+                required
+              />
+            </Field>
+
+            <Field label="Amount (£)" required hint={`Maximum: £${outstanding.toFixed(2)}`}>
+              <Input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                min="0.01"
+                max={outstanding.toFixed(2)}
+                step="0.01"
+                required
+              />
+            </Field>
+
+            <Field label="Payment Method" required>
+              <Select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                required
+              >
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="card">Card</option>
+                <option value="cash">Cash</option>
+                <option value="cheque">Cheque</option>
+                <option value="other">Other</option>
+              </Select>
+            </Field>
+
+            <Field label="Reference">
+              <Input
+                type="text"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="Transaction reference or cheque number"
+              />
+            </Field>
+
+            <Field label="Notes">
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                placeholder="Any additional notes about this payment"
+              />
+            </Field>
+          </CardBody>
         </Card>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <Card>
-            <h2 className="mb-4 text-lg font-semibold">Payment Details</h2>
-            <div className="space-y-4">
-              <Field label="Payment Date" required>
-                <Input
-                  type="date"
-                  value={paymentDate}
-                  onChange={(e) => setPaymentDate(e.target.value)}
-                  max={todayIso}
-                  required
-                />
-              </Field>
-
-              <Field label="Amount (£)" required help={`Maximum: £${outstanding.toFixed(2)}`}>
-                <Input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  min="0.01"
-                  max={outstanding.toFixed(2)}
-                  step="0.01"
-                  required
-                />
-              </Field>
-
-              <Field label="Payment Method" required>
-                <Select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-                  required
-                >
-                  <option value="bank_transfer">Bank Transfer</option>
-                  <option value="card">Card</option>
-                  <option value="cash">Cash</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="other">Other</option>
-                </Select>
-              </Field>
-
-              <Field label="Reference">
-                <Input
-                  type="text"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  placeholder="Transaction reference or cheque number"
-                />
-              </Field>
-
-              <Field label="Notes">
-                <Textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
-                  placeholder="Any additional notes about this payment"
-                />
-              </Field>
-            </div>
-          </Card>
-
-          <div className="flex flex-col justify-end gap-3 sm:flex-row">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => router.push(`/invoices/${invoice.id}`)}
-              disabled={submitting}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={
-                submitting ||
-                !canEdit ||
-                parseFloat(amount) <= 0 ||
-                parseFloat(amount) > outstanding
-              }
-              loading={submitting}
-              leftIcon={<Icon name="save" size={16} />}
-            >
-              Record Payment
-            </Button>
-          </div>
-        </form>
-      </div>
+        <FormFooter>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => router.push(`/invoices/${invoice.id}`)}
+            disabled={submitting}
+          >
+            Cancel
+          </Button>
+          <Button variant="primary"
+            type="submit"
+            disabled={
+              submitting ||
+              !canEdit ||
+              parseFloat(amount) <= 0 ||
+              parseFloat(amount) > outstanding
+            }
+            loading={submitting}
+            leftIcon={<Icon name="save" size={16} />}
+          >
+            Record Payment
+          </Button>
+        </FormFooter>
+      </form>
     </PageLayout>
   )
 }

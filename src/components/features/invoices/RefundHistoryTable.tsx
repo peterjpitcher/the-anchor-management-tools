@@ -1,16 +1,35 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Badge, Spinner } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Card,
+  CardHeader,
+  PageLoading,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/ds'
 import { formatCurrency } from '@/lib/format'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { getRefundHistory } from '@/app/actions/refundActions'
 
 type SourceType = 'private_booking' | 'table_booking' | 'parking'
+type RefundStatusTone = 'success' | 'warning' | 'danger' | 'neutral'
 
 export interface RefundHistoryTableProps {
   sourceType: SourceType
   sourceId: string
+  /**
+   * 'card' (the default) draws its own Card titled "Refund History", for a caller that drops it
+   * into a panel body (private bookings, table bookings). 'bare' is just the table and totals, for
+   * a caller that already frames it in a titled Card with a padding-free body (parking).
+   */
+  variant?: 'card' | 'bare'
 }
 
 interface RefundRow {
@@ -26,10 +45,21 @@ interface RefundRow {
   failure_message: string | null
 }
 
-const statusTone: Record<string, 'success' | 'warning' | 'danger'> = {
+/**
+ * How a refund's status looks, wherever refunds are listed (parking, private bookings, table
+ * bookings). Parking and the booking screens each had their own copy of this map until
+ * September 2026.
+ */
+export const REFUND_STATUS_TONE: Record<RefundRow['status'], RefundStatusTone> = {
   completed: 'success',
   pending: 'warning',
   failed: 'danger',
+}
+
+const REFUND_STATUS_LABEL: Record<RefundRow['status'], string> = {
+  completed: 'Completed',
+  pending: 'Pending',
+  failed: 'Failed',
 }
 
 const methodLabel: Record<string, string> = {
@@ -39,7 +69,7 @@ const methodLabel: Record<string, string> = {
   other: 'Other',
 }
 
-export function RefundHistoryTable({ sourceType, sourceId }: RefundHistoryTableProps) {
+export function RefundHistoryTable({ sourceType, sourceId, variant = 'card' }: RefundHistoryTableProps) {
   const [refunds, setRefunds] = useState<RefundRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -66,17 +96,14 @@ export function RefundHistoryTable({ sourceType, sourceId }: RefundHistoryTableP
   }, [sourceType, sourceId])
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-4">
-        <Spinner size="sm" />
-        <span className="ml-2 text-sm text-text-muted">Loading refund history...</span>
-      </div>
-    )
+    return <PageLoading inline label="Loading refund history" />
   }
 
   if (error) {
     return (
-      <p className="text-sm text-danger py-2">Failed to load refund history: {error}</p>
+      <Alert tone="danger" className={variant === 'bare' ? 'm-pad-card' : undefined}>
+        Failed to load refund history: {error}
+      </Alert>
     )
   }
 
@@ -92,75 +119,76 @@ export function RefundHistoryTable({ sourceType, sourceId }: RefundHistoryTableP
     .filter((r) => r.status === 'pending')
     .reduce((sum, r) => sum + Number(r.amount), 0)
 
-  return (
-    <div className="space-y-3">
-      <h4 className="text-sm font-semibold text-text">Refund History</h4>
-      <div className="overflow-x-auto rounded-md border border-border">
-        <table className="min-w-full divide-y divide-border">
-          <thead className="bg-surface-2">
-            <tr>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Date</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Amount</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Method</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Status</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Reason</th>
-              <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Reference</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border bg-surface">
-            {refunds.map((refund) => (
-              <tr
-                key={refund.id}
-                className={refund.status === 'failed' ? 'opacity-50' : undefined}
-              >
-                <td className="whitespace-nowrap px-3 py-2 text-sm text-text">
-                  {formatDateInLondon(refund.created_at, {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-sm font-medium text-text">
-                  {formatCurrency(Number(refund.amount))}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-sm text-text">
-                  {methodLabel[refund.refund_method] ?? refund.refund_method}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2">
-                  <Badge
-                    tone={statusTone[refund.status] ?? 'neutral'}
-                  >
-                    {refund.status}
-                  </Badge>
-                </td>
-                <td className="px-3 py-2 text-sm text-text-muted max-w-[200px] truncate" title={refund.reason ?? undefined}>
-                  {refund.reason || '—'}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-xs text-text-soft">
-                  {refund.initiated_by_type === 'system' ? 'System' : ''}
-                  {refund.paypal_refund_id ? ` ${refund.paypal_refund_id}` : refund.id.slice(0, 8)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+  const table = (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Date</TableHead>
+          <TableHead>Amount</TableHead>
+          <TableHead>Method</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead>Reason</TableHead>
+          <TableHead>Reference</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {refunds.map((refund) => (
+          <TableRow key={refund.id} className={refund.status === 'failed' ? 'opacity-50' : undefined}>
+            <TableCell>
+              {formatDateInLondon(refund.created_at, {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </TableCell>
+            <TableCell className="font-medium">{formatCurrency(Number(refund.amount))}</TableCell>
+            <TableCell>{methodLabel[refund.refund_method] ?? refund.refund_method}</TableCell>
+            <TableCell>
+              <Badge tone={REFUND_STATUS_TONE[refund.status] ?? 'neutral'}>
+                {REFUND_STATUS_LABEL[refund.status] ?? refund.status}
+              </Badge>
+            </TableCell>
+            <TableCell className="max-w-[200px] truncate text-text-muted">
+              <span title={refund.reason ?? undefined}>{refund.reason || '-'}</span>
+            </TableCell>
+            <TableCell className="text-xs text-text-soft">
+              {refund.initiated_by_type === 'system' ? 'System' : ''}
+              {refund.paypal_refund_id ? ` ${refund.paypal_refund_id}` : refund.id.slice(0, 8)}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
 
-      {/* Totals */}
-      <div className="flex gap-4 text-sm">
+  const totals =
+    completedTotal > 0 || pendingTotal > 0 ? (
+      <div className="flex gap-4 border-t border-border px-pad-card py-3 text-sm">
         {completedTotal > 0 && (
-          <span className="text-success-fg">
-            Refunded: {formatCurrency(completedTotal)}
-          </span>
+          <span className="text-success-fg">Refunded: {formatCurrency(completedTotal)}</span>
         )}
         {pendingTotal > 0 && (
-          <span className="text-warning-fg">
-            Pending: {formatCurrency(pendingTotal)}
-          </span>
+          <span className="text-warning-fg">Pending: {formatCurrency(pendingTotal)}</span>
         )}
       </div>
-    </div>
+    ) : null
+
+  if (variant === 'bare') {
+    return (
+      <>
+        {table}
+        {totals}
+      </>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Refund History" />
+      {table}
+      {totals}
+    </Card>
   )
 }

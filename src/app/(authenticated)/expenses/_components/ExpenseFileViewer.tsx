@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Alert, Button, LinkButton, Modal } from '@/ds'
+import { Alert, Button, ConfirmDialog, LinkButton, Modal } from '@/ds'
 
 interface ExpenseFileViewerFile {
   id: string
@@ -33,6 +33,7 @@ export function ExpenseFileViewer({
   const [currentIndex, setCurrentIndex] = useState(initialIndex)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const currentFile = files[currentIndex]
 
@@ -51,7 +52,6 @@ export function ExpenseFileViewer({
 
   const handleDelete = useCallback(async () => {
     if (!onDelete || !currentFile) return
-    if (!confirm(`Delete "${currentFile.file_name}"?`)) return
 
     setDeleting(true)
     setDeleteError(null)
@@ -116,13 +116,12 @@ export function ExpenseFileViewer({
             {onDelete && (
               <Button
                 type="button"
-                variant="ghost"
+                variant="danger"
                 size="sm"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="text-danger hover:bg-danger-soft"
+                onClick={() => setConfirmingDelete(true)}
+                loading={deleting}
               >
-                {deleting ? 'Deleting...' : 'Delete'}
+                Delete
               </Button>
             )}
             {currentFile.signed_url && (
@@ -130,9 +129,8 @@ export function ExpenseFileViewer({
                 href={currentFile.signed_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                variant="ghost"
+                variant="secondary"
                 size="sm"
-                className="text-primary hover:bg-primary-soft"
               >
                 Open
               </LinkButton>
@@ -169,6 +167,16 @@ export function ExpenseFileViewer({
           Unable to load file preview. The signed URL may have expired.
         </p>
       )}
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        title="Delete File"
+        message={`Delete "${currentFile.file_name}"?`}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={handleDelete}
+        onClose={() => setConfirmingDelete(false)}
+      />
     </Modal>
   )
 }

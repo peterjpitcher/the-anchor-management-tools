@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import BookingDetailClient, { type Booking } from '@/app/(authenticated)/table-bookings/[id]/BookingDetailClient'
 
@@ -148,7 +148,7 @@ describe('BookingDetailClient party size changes', () => {
       )
     })
 
-    await user.click(screen.getByRole('button', { name: 'Edit party size' }))
+    await user.click(screen.getByRole('button', { name: 'Edit Party Size' }))
     await user.clear(screen.getByLabelText('New party size'))
     await user.type(screen.getByLabelText('New party size'), '9')
 
@@ -173,7 +173,7 @@ describe('BookingDetailClient party size changes', () => {
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(`/api/boh/table-bookings/${BOOKING_ID}/move-table`, { cache: 'no-store' })
     })
-    await user.click(screen.getByRole('button', { name: 'Edit party size' }))
+    await user.click(screen.getByRole('button', { name: 'Edit Party Size' }))
     await user.clear(screen.getByLabelText('New party size'))
     await user.type(screen.getByLabelText('New party size'), size)
     await waitFor(() => {
@@ -192,7 +192,7 @@ describe('BookingDetailClient party size changes', () => {
       expect(fetch).toHaveBeenCalledWith(`/api/boh/table-bookings/${BOOKING_ID}/move-table`, { cache: 'no-store' })
     })
 
-    await user.click(screen.getByRole('button', { name: 'Edit party size' }))
+    await user.click(screen.getByRole('button', { name: 'Edit Party Size' }))
     const notify = screen.getByRole('checkbox', { name: 'Notify guest' })
     expect(notify).toBeChecked()
     expect(screen.queryByText(/Notify guest by SMS/)).not.toBeInTheDocument()
@@ -268,8 +268,9 @@ describe('BookingDetailClient party size changes', () => {
     const user = userEvent.setup()
     render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
 
-    await user.click(screen.getByRole('button', { name: 'Cancel booking' }))
-    await user.click(await screen.findByRole('button', { name: 'Cancel Booking' }))
+    // The Danger Zone button and the dialog's confirm button share the label "Cancel Booking".
+    await user.click(screen.getByRole('button', { name: 'Cancel Booking' }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel Booking' }))
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
@@ -287,8 +288,9 @@ describe('BookingDetailClient party size changes', () => {
     const user = userEvent.setup()
     render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
 
-    await user.click(screen.getByRole('button', { name: 'Cancel booking' }))
-    await user.click(await screen.findByRole('button', { name: 'Cancel Booking' }))
+    // The Danger Zone button and the dialog's confirm button share the label "Cancel Booking".
+    await user.click(screen.getByRole('button', { name: 'Cancel Booking' }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel Booking' }))
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith('Booking updated')
@@ -325,7 +327,7 @@ describe('BookingDetailClient party size changes', () => {
       )
     })
 
-    await user.click(screen.getByRole('button', { name: 'Edit party size' }))
+    await user.click(screen.getByRole('button', { name: 'Edit Party Size' }))
     await user.clear(screen.getByLabelText('New party size'))
     await user.type(screen.getByLabelText('New party size'), '9')
 

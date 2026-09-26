@@ -2,14 +2,18 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Modal } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Textarea } from '@/ds'
-import { Radio } from '@/ds'
-import { Checkbox } from '@/ds'
-import { Alert } from '@/ds'
-import { toast } from '@/ds'
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  Checkbox,
+  Input,
+  Modal,
+  Radio,
+  Textarea,
+  toast,
+} from '@/ds'
 import { formatCurrency } from '@/lib/format'
 import { processPayPalRefund, processManualRefund } from '@/app/actions/refundActions'
 
@@ -22,6 +26,10 @@ interface RadioOption {
   disabled?: boolean
 }
 
+/**
+ * The one refund dialog, used by parking, private bookings and table bookings (parking re-exports
+ * it from its own folder).
+ */
 export interface RefundDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -32,6 +40,12 @@ export interface RefundDialogProps {
   totalPending: number
   hasPayPalCapture: boolean
   captureExpired: boolean
+  /**
+   * Called after a refund is accepted. router.refresh() below only re-renders the server
+   * components, so a screen that keeps its rows in client state (parking) has to be told to
+   * refetch or it goes on showing the pre-refund figures.
+   */
+  onRefunded?: () => void | Promise<void>
 }
 
 export function RefundDialog({
@@ -44,6 +58,7 @@ export function RefundDialog({
   totalPending,
   hasPayPalCapture,
   captureExpired,
+  onRefunded,
 }: RefundDialogProps) {
   const router = useRouter()
   const remaining = Math.max(0, originalAmount - totalRefunded - totalPending)
@@ -152,6 +167,7 @@ export function RefundDialog({
 
       onOpenChange(false)
       router.refresh()
+      await onRefunded?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.')
     } finally {
@@ -165,7 +181,7 @@ export function RefundDialog({
       onClose={() => !loading && onOpenChange(false)}
       title="Process Refund"
       footer={
-        <div className="flex justify-end gap-3">
+        <>
           <Button
             variant="secondary"
             onClick={() => onOpenChange(false)}
@@ -181,33 +197,35 @@ export function RefundDialog({
           >
             Process Refund
           </Button>
-        </div>
+        </>
       }
     >
-      <div className="space-y-5">
+      <div className="space-y-4">
         {/* Amount summary */}
-        <div className="rounded-lg border border-border bg-surface-2 p-4 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-text-muted">Original amount</span>
-            <span className="font-medium text-text">{formatCurrency(originalAmount)}</span>
-          </div>
-          {totalRefunded > 0 && (
+        <Card variant="secondary">
+          <CardBody className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-text-muted">Already refunded</span>
-              <span className="font-medium text-success-fg">-{formatCurrency(totalRefunded)}</span>
+              <span className="text-text-muted">Original amount</span>
+              <span className="font-medium text-text">{formatCurrency(originalAmount)}</span>
             </div>
-          )}
-          {totalPending > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-text-muted">Pending refunds</span>
-              <span className="font-medium text-warning-fg">-{formatCurrency(totalPending)}</span>
+            {totalRefunded > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-text-muted">Already refunded</span>
+                <span className="font-medium text-success-fg">-{formatCurrency(totalRefunded)}</span>
+              </div>
+            )}
+            {totalPending > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-text-muted">Pending refunds</span>
+                <span className="font-medium text-warning-fg">-{formatCurrency(totalPending)}</span>
+              </div>
+            )}
+            <div className="border-t border-border pt-2 flex justify-between text-sm">
+              <span className="font-medium text-text">Refundable balance</span>
+              <span className="font-semibold text-text">{formatCurrency(remaining)}</span>
             </div>
-          )}
-          <div className="border-t border-border pt-2 flex justify-between text-sm">
-            <span className="font-medium text-text">Refundable balance</span>
-            <span className="font-semibold text-text">{formatCurrency(remaining)}</span>
-          </div>
-        </div>
+          </CardBody>
+        </Card>
 
         {remaining <= 0 && (
           <Alert tone="info">
@@ -217,81 +235,65 @@ export function RefundDialog({
 
         {remaining > 0 && (
           <>
-            {/* Refund method */}
-            <div>
-              <label className="block text-sm font-medium text-text mb-2">
+            {/* Refund method. A fieldset and legend name the radio group; the legend carries the
+                DS field label style because Field's <label> can only name a single control. */}
+            <fieldset className="space-y-2">
+              <legend className="mb-1.5 text-xs font-medium uppercase tracking-wider text-text-muted">
                 Refund method
-              </label>
-              <div className="space-y-2">
-                {methodOptions.map((option) => (
-                  <div
-                    key={option.value}
-                    className={`p-3 rounded-lg border transition-colors ${
-                      method === option.value
-                        ? 'border-primary bg-primary-soft'
-                        : 'border-border hover:bg-surface-hover'
-                    } ${option.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                  >
-                    <Radio
-                      name="refund-method"
-                      value={option.value}
-                      label={option.label}
-                      description={option.description}
-                      checked={method === option.value}
-                      onChange={(val) => setMethod(val)}
-                      disabled={option.disabled}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
+              </legend>
+              {methodOptions.map((option) => (
+                <Radio
+                  key={option.value}
+                  name="refund-method"
+                  value={option.value}
+                  label={option.label}
+                  description={option.description}
+                  checked={method === option.value}
+                  onChange={(val) => setMethod(val)}
+                  disabled={option.disabled}
+                />
+              ))}
+            </fieldset>
 
             {/* Amount input */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label htmlFor="refund-amount" className="block text-sm font-medium text-text">
-                  Refund amount
-                </label>
-                {parsedAmount !== remaining && (
-                  <Button
-                    type="button"
-                    variant="link"
-                    size="sm"
-                    onClick={handleRefundInFull}
-                  >
-                    Refund in full
-                  </Button>
-                )}
-              </div>
+            <div className="space-y-1">
               <Input
                 id="refund-amount"
+                label="Refund amount"
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 min="0.01"
                 max={remaining.toFixed(2)}
                 step="0.01"
+                error={
+                  amount && !isValidAmount
+                    ? `Enter an amount between £0.01 and ${formatCurrency(remaining)}`
+                    : undefined
+                }
               />
-              {amount && !isValidAmount && (
-                <p className="mt-1 text-sm text-danger">
-                  Enter an amount between £0.01 and {formatCurrency(remaining)}
-                </p>
+              {parsedAmount !== remaining && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  onClick={handleRefundInFull}
+                >
+                  Refund in Full
+                </Button>
               )}
             </div>
 
             {/* Reason */}
-            <div>
-              <label htmlFor="refund-reason" className="block text-sm font-medium text-text mb-1">
-                Reason <span className="text-text-soft font-normal">(internal only)</span>
-              </label>
-              <Textarea
-                id="refund-reason"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={3}
-                placeholder="Why is this refund being processed?"
-              />
-            </div>
+            <Textarea
+              id="refund-reason"
+              label="Reason"
+              hint="Internal only"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              placeholder="Why is this refund being processed?"
+            />
 
             {/* Seasonal refund cutoff: the promise the guest was given, and the way past it. */}
             {policyRefusal && (
@@ -305,26 +307,19 @@ export function RefundDialog({
                     disabled={loading}
                   />
                   {overridePolicy && (
-                    <div>
-                      <label
-                        htmlFor="refund-override-reason"
-                        className="block text-sm font-medium text-text mb-1"
-                      >
-                        Why are you overriding the refund terms?
-                      </label>
-                      <Textarea
-                        id="refund-override-reason"
-                        value={overrideReason}
-                        onChange={(e) => setOverrideReason(e.target.value)}
-                        rows={2}
-                        placeholder="For example: kitchen closed at short notice, so the deposit is being returned."
-                      />
-                      {overrideReason.trim().length === 0 && (
-                        <p className="mt-1 text-sm text-danger">
-                          A reason is required before the override can be used.
-                        </p>
-                      )}
-                    </div>
+                    <Textarea
+                      id="refund-override-reason"
+                      label="Why are you overriding the refund terms?"
+                      value={overrideReason}
+                      onChange={(e) => setOverrideReason(e.target.value)}
+                      rows={2}
+                      placeholder="For example: kitchen closed at short notice, so the deposit is being returned."
+                      error={
+                        overrideReason.trim().length === 0
+                          ? 'A reason is required before the override can be used.'
+                          : undefined
+                      }
+                    />
                   )}
                 </div>
               </Alert>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Button, Badge, Field, Input, Textarea, Alert, toast } from '@/ds'
+import { Button, Badge, ConfirmDialog, Field, Input, Textarea, Alert, toast } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
 import {
@@ -11,6 +11,7 @@ import {
 } from '@/app/actions/checklists'
 import type { ChecklistTaskView } from '@/app/actions/checklists'
 import type { Identity } from './AttributionPicker'
+import { CHECKLIST_CLOSED_TASK_STATUS } from '../_shared/status-ui'
 
 const UNDO_WINDOW_MS = 15 * 60 * 1000
 
@@ -44,6 +45,8 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
   const [submitting, setSubmitting] = useState(false)
   const [showSkipReason, setShowSkipReason] = useState(false)
   const [skipReason, setSkipReason] = useState('')
+  // A reading far outside the band waits here while the typo check asks whether it is right.
+  const [unusualReading, setUnusualReading] = useState<number | null>(null)
 
   // Every write path in this component goes through `submitting`, so mirroring it
   // is enough to tell the screen whether this row is busy. Reporting false on
@@ -83,16 +86,21 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
         const low = task.valueMin - 10 * band
         const high = task.valueMax + 10 * band
         if (parsed < low || parsed > high) {
-          if (!window.confirm('That reading looks unusual, is it correct?')) return
+          setUnusualReading(parsed)
+          return
         }
       }
       numValue = parsed
     }
 
+    await submitDone(identity, numValue)
+  }
+
+  async function submitDone(who: Identity, numValue: number | undefined) {
     setSubmitting(true)
     const res = await completeChecklistInstance({
       instanceId: task.id,
-      employeeId: identity.employeeId,
+      employeeId: who.employeeId,
       value: numValue,
       notes: notes.trim() || null,
     })
@@ -108,7 +116,7 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
       return
     }
     if (res.breach) toast.error('Out of range, contact Billy or Peter')
-    else toast.success(`Done, ${identity.name}`)
+    else toast.success(`Done, ${who.name}`)
     onChanged()
   }
 
@@ -177,7 +185,7 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
       Date.now() - new Date(task.completedAt).getTime() < UNDO_WINDOW_MS
 
     return (
-      <div className="rounded-md border border-border p-3">
+      <div className="rounded-default border border-border p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -226,17 +234,9 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
 
   // Missed / skipped / not applicable / locked-pending (read-only)
   if (!isActionable) {
-    const label =
-      task.state === 'missed'
-        ? 'Missed'
-        : task.state === 'skipped'
-          ? 'Skipped'
-          : task.state === 'not_applicable'
-            ? 'Not applicable'
-            : 'Locked'
-    const tone: 'danger' | 'neutral' = task.state === 'missed' ? 'danger' : 'neutral'
+    const { label, tone } = CHECKLIST_CLOSED_TASK_STATUS[task.state]
     return (
-      <div className="rounded-md border border-border p-3">
+      <div className="rounded-default border border-border p-3">
         <div className="flex items-center justify-between gap-3">
           <span className="min-w-0 flex-1 truncate text-sm text-text-muted">{task.title}</span>
           <Badge tone={tone}>{label}</Badge>
@@ -251,7 +251,7 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
 
   // Pending and actionable
   return (
-    <div className="rounded-md border border-border p-3">
+    <div className="rounded-default border border-border p-3">
       <div className="text-sm font-medium">{task.title}</div>
       {task.instruction && <p className="mt-1 text-xs text-text-muted">{task.instruction}</p>}
 
@@ -292,7 +292,7 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
           onClick={() => setShowNotes(true)}
           className="mt-2"
         >
-          Add a note
+          Add a Note
         </Button>
       )}
 
@@ -326,7 +326,7 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
           onClick={handleNotDone}
           disabled={submitting}
         >
-          {showSkipReason ? 'Save reason' : 'Not done'}
+          {showSkipReason ? 'Save Reason' : 'Not Done'}
         </Button>
         {showSkipReason && (
           <Button
@@ -342,6 +342,19 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
           </Button>
         )}
       </div>
+
+      <ConfirmDialog
+        open={unusualReading !== null}
+        onClose={() => setUnusualReading(null)}
+        onConfirm={async () => {
+          if (unusualReading === null || !identity) return
+          await submitDone(identity, unusualReading)
+        }}
+        title="Unusual Reading"
+        message="That reading looks unusual, is it correct?"
+        confirmLabel="Yes, Save It"
+        tone="warning"
+      />
     </div>
   )
 }

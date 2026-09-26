@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getExpenses, getExpenseStats } from '@/app/actions/expenses'
-import { PageHeader, Alert } from '@/ds'
+import { Alert, PageLayout } from '@/ds'
+import { EXPENSES_LIST_LAYOUT } from './_shared/nav'
 import { ExpensesClient } from './_components/ExpensesClient'
 
 export default async function ExpensesPage(): Promise<React.JSX.Element> {
@@ -26,32 +27,19 @@ export default async function ExpensesPage(): Promise<React.JSX.Element> {
 
   if (loadError) {
     return (
-      <div className="space-y-6">
-        <PageHeader
-          breadcrumbs={[{ label: 'Finance' }, { label: 'Expenses' }]}
-          title="Expenses"
-          subtitle="Track and manage business expenses with receipt images."
-          className="mb-0"
-        />
+      <PageLayout {...EXPENSES_LIST_LAYOUT}>
         <Alert tone="danger" title="Failed to load expenses">
           {loadError}
         </Alert>
-      </div>
+      </PageLayout>
     )
   }
 
+  // ExpensesClient renders the PageLayout, so the New Expense header action can open its form.
   return (
-    <div className="space-y-6">
-      <PageHeader
-        breadcrumbs={[{ label: 'Finance' }, { label: 'Expenses' }]}
-        title="Expenses"
-        subtitle="Track and manage business expenses with receipt images."
-        className="mb-0"
-      />
-      <ExpensesClient
-        initialExpenses={expensesResult.data ?? []}
-        initialStats={statsResult.data ?? { quarterTotal: 0, vatReclaimable: 0, missingReceipts: 0, supplierSpend: [] }}
-      />
-    </div>
+    <ExpensesClient
+      initialExpenses={expensesResult.data ?? []}
+      initialStats={statsResult.data ?? { quarterTotal: 0, vatReclaimable: 0, missingReceipts: 0, supplierSpend: [] }}
+    />
   )
 }

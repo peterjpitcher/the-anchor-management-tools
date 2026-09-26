@@ -2,18 +2,27 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { toast, Icon } from '@/ds'
-import { PageLayout } from '@/ds'
-import { Card } from '@/ds'
-import { Tabs } from '@/ds'
-import { Button } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { Textarea } from '@/ds'
-import { Checkbox } from '@/ds'
-import { RadioGroup } from '@/ds'
-import { Field } from '@/ds'
-import { Alert } from '@/ds'
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  Field,
+  FormFooter,
+  Icon,
+  Input,
+  LinkButton,
+  PageLayout,
+  Radio,
+  Section,
+  Select,
+  Tabs,
+  Textarea,
+  toast,
+} from '@/ds'
+import { EMPLOYEES_BACK_TO_LIST } from '../_shared/nav'
 import {
   addEmployee,
   addEmergencyContact,
@@ -506,13 +515,37 @@ export default function NewEmployeeOnboardingClient() {
     })
   }
 
+  const contactCard = (which: keyof EmployeeSetupState['emergency_contacts'], title: string) => {
+    const contact = state.emergency_contacts[which]
+    return (
+      <Card>
+        <CardHeader title={title} />
+        <CardBody className="grid gap-4 sm:grid-cols-2">
+          <Field label="Name">
+            <Input value={contact.name} onChange={(e) => updateContact(which, 'name', e.target.value)} />
+          </Field>
+          <Field label="Relationship">
+            <Input value={contact.relationship} onChange={(e) => updateContact(which, 'relationship', e.target.value)} />
+          </Field>
+          <Field label="Telephone">
+            <Input value={contact.phone_number} onChange={(e) => updateContact(which, 'phone_number', e.target.value)} />
+          </Field>
+          <Field label="Mobile">
+            <Input value={contact.mobile_number} onChange={(e) => updateContact(which, 'mobile_number', e.target.value)} />
+          </Field>
+        </CardBody>
+      </Card>
+    )
+  }
+
   const tabs = [
     {
-      key: 'employee',
+      id: 'employee',
       label: 'Employee Details',
       content: (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <Card>
+          <CardHeader title="Employee Details" />
+          <CardBody className="grid gap-4 sm:grid-cols-2">
             <Field label="First Name" required>
               <Input value={state.employee.first_name} onChange={(e) => updateEmployee('first_name', e.target.value)} />
             </Field>
@@ -522,7 +555,7 @@ export default function NewEmployeeOnboardingClient() {
             <Field
               label="Preferred Name"
               className="sm:col-span-2"
-              help="Optional. What the team calls this person. Used everywhere in the app. Their legal name is still used for contracts and payroll."
+              hint="Optional. What the team calls this person. Used everywhere in the app. Their legal name is still used for contracts and payroll."
             >
               <Input
                 value={state.employee.preferred_name}
@@ -581,102 +614,46 @@ export default function NewEmployeeOnboardingClient() {
             <Field label="Post Code">
               <Input value={state.employee.post_code} onChange={(e) => updateEmployee('post_code', e.target.value)} placeholder="e.g. KT..." />
             </Field>
-            <Field label="First Shift Date" help="For office use (can be set later).">
+            <Field label="First Shift Date" hint="For office use (can be set later).">
               <Input type="date" value={state.employee.first_shift_date} onChange={(e) => updateEmployee('first_shift_date', e.target.value)} />
             </Field>
 
             <Field label="Address" className="sm:col-span-2">
               <Textarea value={state.employee.address} onChange={(e) => updateEmployee('address', e.target.value)} rows={3} />
             </Field>
-          </div>
 
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <Field label="Uniform Preference" help="Optional (e.g. branded t-shirt, own clothes).">
+            <Field label="Uniform Preference" hint="Optional (e.g. branded t-shirt, own clothes).">
               <Input value={state.employee.uniform_preference} onChange={(e) => updateEmployee('uniform_preference', e.target.value)} />
             </Field>
-            <Field label="Keyholder Status" help="Mark if keys have been issued.">
+            <Field label="Keyholder Status" hint="Mark if keys have been issued.">
               <Checkbox
                 checked={state.employee.keyholder_status}
                 onChange={(checked) => updateEmployee('keyholder_status', checked)}
                 label="Employee is a keyholder"
               />
             </Field>
-          </div>
-        </div>
+          </CardBody>
+        </Card>
       )
     },
     {
-      key: 'contacts',
+      id: 'contacts',
       label: 'Emergency Contacts',
       content: (
-        <div className="space-y-8">
+        <div className="space-y-6">
           <Alert tone="info">
             Add at least one contact who can be reached quickly in an emergency.
           </Alert>
 
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-            <div className="space-y-4">
-              <h3 className="text-base font-medium text-text">Primary Contact</h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Name">
-                  <Input value={state.emergency_contacts.primary.name} onChange={(e) => updateContact('primary', 'name', e.target.value)} />
-                </Field>
-                <Field label="Relationship">
-                  <Input
-                    value={state.emergency_contacts.primary.relationship}
-                    onChange={(e) => updateContact('primary', 'relationship', e.target.value)}
-                  />
-                </Field>
-                <Field label="Telephone">
-                  <Input
-                    value={state.emergency_contacts.primary.phone_number}
-                    onChange={(e) => updateContact('primary', 'phone_number', e.target.value)}
-                  />
-                </Field>
-                <Field label="Mobile">
-                  <Input
-                    value={state.emergency_contacts.primary.mobile_number}
-                    onChange={(e) => updateContact('primary', 'mobile_number', e.target.value)}
-                  />
-                </Field>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-base font-medium text-text">Secondary Contact</h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Name">
-                  <Input
-                    value={state.emergency_contacts.secondary.name}
-                    onChange={(e) => updateContact('secondary', 'name', e.target.value)}
-                  />
-                </Field>
-                <Field label="Relationship">
-                  <Input
-                    value={state.emergency_contacts.secondary.relationship}
-                    onChange={(e) => updateContact('secondary', 'relationship', e.target.value)}
-                  />
-                </Field>
-                <Field label="Telephone">
-                  <Input
-                    value={state.emergency_contacts.secondary.phone_number}
-                    onChange={(e) => updateContact('secondary', 'phone_number', e.target.value)}
-                  />
-                </Field>
-                <Field label="Mobile">
-                  <Input
-                    value={state.emergency_contacts.secondary.mobile_number}
-                    onChange={(e) => updateContact('secondary', 'mobile_number', e.target.value)}
-                  />
-                </Field>
-              </div>
-            </div>
+          <div className="grid gap-6 lg:grid-cols-2">
+            {contactCard('primary', 'Primary Contact')}
+            {contactCard('secondary', 'Secondary Contact')}
           </div>
         </div>
       )
     },
     {
-      key: 'bank',
+      id: 'bank',
       label: 'Bank Details',
       content: (
         <div className="space-y-6">
@@ -684,88 +661,99 @@ export default function NewEmployeeOnboardingClient() {
             We authorise salary to be paid by direct credit transfer to the account below.
           </Alert>
 
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <Field label="NI Number" help="Format: AA123456A">
-              <Input value={state.financial.ni_number} onChange={(e) => updateFinancial('ni_number', e.target.value.toUpperCase())} />
-            </Field>
-            <Field label="Bank / Building Society">
-              <Input value={state.financial.bank_name} onChange={(e) => updateFinancial('bank_name', e.target.value)} />
-            </Field>
+          <Card>
+            <CardHeader title="Bank Details" />
+            <CardBody className="grid gap-4 sm:grid-cols-2">
+              <Field label="NI Number" hint="Format: AA123456A">
+                <Input value={state.financial.ni_number} onChange={(e) => updateFinancial('ni_number', e.target.value.toUpperCase())} />
+              </Field>
+              <Field label="Bank / Building Society">
+                <Input value={state.financial.bank_name} onChange={(e) => updateFinancial('bank_name', e.target.value)} />
+              </Field>
 
-            <Field
-              label="Sort Code"
-              help={sortCodeInWords ? `In words: ${sortCodeInWords}` : 'e.g. 00-00-00'}
-            >
-              <Input
-                value={state.financial.bank_sort_code}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, '').slice(0, 6)
-                  const formatted = digits.match(/.{1,2}/g)?.join('-') ?? digits
-                  updateFinancial('bank_sort_code', formatted)
-                }}
-                placeholder="00-00-00"
-              />
-            </Field>
+              <Field
+                label="Sort Code"
+                hint={sortCodeInWords ? `In words: ${sortCodeInWords}` : 'e.g. 00-00-00'}
+              >
+                <Input
+                  value={state.financial.bank_sort_code}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 6)
+                    const formatted = digits.match(/.{1,2}/g)?.join('-') ?? digits
+                    updateFinancial('bank_sort_code', formatted)
+                  }}
+                  placeholder="00-00-00"
+                />
+              </Field>
 
-            <Field
-              label="Account Number"
-              help={accountNumberInWords ? `In words: ${accountNumberInWords}` : '8 digits'}
-            >
-              <Input
-                value={state.financial.bank_account_number}
-                onChange={(e) => updateFinancial('bank_account_number', e.target.value.replace(/\D/g, '').slice(0, 8))}
-                placeholder="8 digits"
-              />
-            </Field>
+              <Field
+                label="Account Number"
+                hint={accountNumberInWords ? `In words: ${accountNumberInWords}` : '8 digits'}
+              >
+                <Input
+                  value={state.financial.bank_account_number}
+                  onChange={(e) => updateFinancial('bank_account_number', e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  placeholder="8 digits"
+                />
+              </Field>
 
-            <Field label="Account Name(s)">
-              <Input value={state.financial.payee_name} onChange={(e) => updateFinancial('payee_name', e.target.value)} />
-            </Field>
+              <Field label="Account Name(s)">
+                <Input value={state.financial.payee_name} onChange={(e) => updateFinancial('payee_name', e.target.value)} />
+              </Field>
 
-            <Field label="Branch Address" className="sm:col-span-2">
-              <Textarea value={state.financial.branch_address} onChange={(e) => updateFinancial('branch_address', e.target.value)} rows={2} />
-            </Field>
-          </div>
+              <Field label="Branch Address" className="sm:col-span-2">
+                <Textarea value={state.financial.branch_address} onChange={(e) => updateFinancial('branch_address', e.target.value)} rows={2} />
+              </Field>
+            </CardBody>
+          </Card>
         </div>
       )
     },
     {
-      key: 'health',
+      id: 'health',
       label: 'Health Information',
       content: (
-        <div className="space-y-8">
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <Field label="Doctor's Name">
-              <Input value={state.health.doctor_name} onChange={(e) => updateHealth('doctor_name', e.target.value)} />
-            </Field>
-            <Field label="Doctor's Address" className="sm:col-span-2">
-              <Textarea value={state.health.doctor_address} onChange={(e) => updateHealth('doctor_address', e.target.value)} rows={2} />
-            </Field>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-base font-medium text-text">Health Questionnaire</h3>
-
-            <Field label="Do you have any allergies?">
-              <RadioGroup
-                name="has_allergies"
-                variant="card"
-                value={state.health.has_allergies ? 'yes' : 'no'}
-                onChange={(value) => updateHealth('has_allergies', value === 'yes')}
-                options={[
-                  { value: 'yes', label: 'Yes' },
-                  { value: 'no', label: 'No' }
-                ]}
-              />
-            </Field>
-
-            {state.health.has_allergies && (
-              <Field label="If yes, please specify">
-                <Textarea value={state.health.allergies} onChange={(e) => updateHealth('allergies', e.target.value)} rows={2} />
+        <div className="space-y-6">
+          <Card>
+            <CardHeader title="Doctor" />
+            <CardBody className="grid gap-4 sm:grid-cols-2">
+              <Field label="Doctor's Name">
+                <Input value={state.health.doctor_name} onChange={(e) => updateHealth('doctor_name', e.target.value)} />
               </Field>
-            )}
+              <Field label="Doctor's Address" className="sm:col-span-2">
+                <Textarea value={state.health.doctor_address} onChange={(e) => updateHealth('doctor_address', e.target.value)} rows={2} />
+              </Field>
+            </CardBody>
+          </Card>
 
-            <div className="space-y-3 pt-2">
+          <Card>
+            <CardHeader title="Health Questionnaire" />
+            <CardBody className="space-y-4">
+              <Field label="Do you have any allergies?">
+                <div role="radiogroup" aria-label="Do you have any allergies?" className="flex flex-wrap gap-6">
+                  <Radio
+                    name="has_allergies"
+                    value="yes"
+                    label="Yes"
+                    checked={state.health.has_allergies}
+                    onChange={() => updateHealth('has_allergies', true)}
+                  />
+                  <Radio
+                    name="has_allergies"
+                    value="no"
+                    label="No"
+                    checked={!state.health.has_allergies}
+                    onChange={() => updateHealth('has_allergies', false)}
+                  />
+                </div>
+              </Field>
+
+              {state.health.has_allergies && (
+                <Field label="If yes, please specify">
+                  <Textarea value={state.health.allergies} onChange={(e) => updateHealth('allergies', e.target.value)} rows={2} />
+                </Field>
+              )}
+
               <Checkbox
                 checked={state.health.had_absence_over_2_weeks_last_3_years}
                 onChange={(checked) => updateHealth('had_absence_over_2_weeks_last_3_years', checked)}
@@ -776,62 +764,64 @@ export default function NewEmployeeOnboardingClient() {
                 onChange={(checked) => updateHealth('had_outpatient_treatment_over_3_months_last_3_years', checked)}
                 label="In the past 3 years, attended outpatient treatment for 3+ months?"
               />
-            </div>
 
-            {(state.health.had_absence_over_2_weeks_last_3_years || state.health.had_outpatient_treatment_over_3_months_last_3_years) && (
-              <Field label="If yes to either, please provide details">
-                <Textarea
-                  value={state.health.absence_or_treatment_details}
-                  onChange={(e) => updateHealth('absence_or_treatment_details', e.target.value)}
-                  rows={3}
-                />
-              </Field>
-            )}
-          </div>
+              {(state.health.had_absence_over_2_weeks_last_3_years || state.health.had_outpatient_treatment_over_3_months_last_3_years) && (
+                <Field label="If yes to either, please provide details">
+                  <Textarea
+                    value={state.health.absence_or_treatment_details}
+                    onChange={(e) => updateHealth('absence_or_treatment_details', e.target.value)}
+                    rows={3}
+                  />
+                </Field>
+              )}
+            </CardBody>
+          </Card>
 
-          <div className="space-y-4">
-            <h3 className="text-base font-medium text-text">Medical Conditions (tick if applicable)</h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Card>
+            <CardHeader title="Medical Conditions" subtitle="Tick if applicable" />
+            <CardBody className="grid gap-4 sm:grid-cols-2">
               <Checkbox checked={state.health.has_diabetes} onChange={(checked) => updateHealth('has_diabetes', checked)} label="Diabetes" />
               <Checkbox checked={state.health.has_epilepsy} onChange={(checked) => updateHealth('has_epilepsy', checked)} label="Epilepsy / Fits / Blackouts" />
               <Checkbox checked={state.health.has_skin_condition} onChange={(checked) => updateHealth('has_skin_condition', checked)} label="Eczema / Dermatitis / Skin Disease" />
               <Checkbox checked={state.health.has_depressive_illness} onChange={(checked) => updateHealth('has_depressive_illness', checked)} label="Depressive Illness" />
               <Checkbox checked={state.health.has_bowel_problems} onChange={(checked) => updateHealth('has_bowel_problems', checked)} label="Bowel Problems" />
               <Checkbox checked={state.health.has_ear_problems} onChange={(checked) => updateHealth('has_ear_problems', checked)} label="Ear Problems" />
-            </div>
-          </div>
+            </CardBody>
+          </Card>
 
-          <div className="space-y-4">
-            <h3 className="text-base font-medium text-text">Disability</h3>
-            <Checkbox
-              checked={state.health.is_registered_disabled}
-              onChange={(checked) => updateHealth('is_registered_disabled', checked)}
-              label="Registered disabled?"
-            />
+          <Card>
+            <CardHeader title="Disability" />
+            <CardBody className="space-y-4">
+              <Checkbox
+                checked={state.health.is_registered_disabled}
+                onChange={(checked) => updateHealth('is_registered_disabled', checked)}
+                label="Registered disabled?"
+              />
 
-            {state.health.is_registered_disabled && (
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <Field label="Registration number">
-                  <Input value={state.health.disability_reg_number} onChange={(e) => updateHealth('disability_reg_number', e.target.value)} />
-                </Field>
-                <Field label="Expiry">
-                  <Input
-                    type="date"
-                    value={state.health.disability_reg_expiry_date}
-                    onChange={(e) => updateHealth('disability_reg_expiry_date', e.target.value)}
-                  />
-                </Field>
-                <Field label="Details" className="sm:col-span-2">
-                  <Textarea value={state.health.disability_details} onChange={(e) => updateHealth('disability_details', e.target.value)} rows={3} />
-                </Field>
-              </div>
-            )}
-          </div>
+              {state.health.is_registered_disabled && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Registration number">
+                    <Input value={state.health.disability_reg_number} onChange={(e) => updateHealth('disability_reg_number', e.target.value)} />
+                  </Field>
+                  <Field label="Expiry">
+                    <Input
+                      type="date"
+                      value={state.health.disability_reg_expiry_date}
+                      onChange={(e) => updateHealth('disability_reg_expiry_date', e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Details" className="sm:col-span-2">
+                    <Textarea value={state.health.disability_details} onChange={(e) => updateHealth('disability_details', e.target.value)} rows={3} />
+                  </Field>
+                </div>
+              )}
+            </CardBody>
+          </Card>
         </div>
       )
     },
     {
-      key: 'rtw',
+      id: 'rtw',
       label: 'Right to Work',
       content: (
         <div className="space-y-6">
@@ -839,163 +829,173 @@ export default function NewEmployeeOnboardingClient() {
             To comply with UK law, employees must provide evidence of their legal right to work. You can add this now or later.
           </Alert>
 
-          <Checkbox
-            checked={state.right_to_work.enabled}
-            onChange={(checked) => updateRightToWork('enabled', checked)}
-            label="Right to Work check completed now"
-          />
+          <Card>
+            <CardHeader title="Right to Work Check" />
+            <CardBody className="space-y-4">
+              <Checkbox
+                checked={state.right_to_work.enabled}
+                onChange={(checked) => updateRightToWork('enabled', checked)}
+                label="Right to Work check completed now"
+              />
 
-          {state.right_to_work.enabled && (
-            <div className="space-y-6">
-              <Field label="Check method">
-                <Select
-                  value={state.right_to_work.check_method}
-                  onChange={(e) => updateRightToWork('check_method', e.target.value as RightToWorkCheckMethod)}
-                  options={[
-                    { value: '', label: 'Select method…' },
-                    { value: 'manual', label: 'Manual check (original documents)' },
-                    { value: 'online', label: 'Online Home Office check (eVisa)' },
-                    { value: 'digital', label: 'Digital check (IDSP)' }
-                  ]}
-                />
-              </Field>
+              {state.right_to_work.enabled && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Check method" className="sm:col-span-2">
+                    <Select
+                      value={state.right_to_work.check_method}
+                      onChange={(e) => updateRightToWork('check_method', e.target.value as RightToWorkCheckMethod)}
+                      options={[
+                        { value: '', label: 'Select method…' },
+                        { value: 'manual', label: 'Manual check (original documents)' },
+                        { value: 'online', label: 'Online Home Office check (eVisa)' },
+                        { value: 'digital', label: 'Digital check (IDSP)' }
+                      ]}
+                    />
+                  </Field>
 
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <Field label="Document type" required>
-                  <Select
-                    value={state.right_to_work.document_type}
-                    onChange={(e) => updateRightToWork('document_type', e.target.value as RightToWorkDocumentType)}
-                    options={[
-                      { value: '', label: 'Select type…' },
-                      { value: 'Passport', label: 'Passport' },
-                      { value: 'Biometric Residence Permit', label: 'Biometric Residence Permit' },
-                      { value: 'Share Code', label: 'Share Code' },
-                      { value: 'List A', label: 'List A (permanent)' },
-                      { value: 'List B', label: 'List B (temporary)' },
-                      { value: 'Other', label: 'Other' }
-                    ]}
-                  />
-                </Field>
+                  <Field label="Document type" required>
+                    <Select
+                      value={state.right_to_work.document_type}
+                      onChange={(e) => updateRightToWork('document_type', e.target.value as RightToWorkDocumentType)}
+                      options={[
+                        { value: '', label: 'Select type…' },
+                        { value: 'Passport', label: 'Passport' },
+                        { value: 'Biometric Residence Permit', label: 'Biometric Residence Permit' },
+                        { value: 'Share Code', label: 'Share Code' },
+                        { value: 'List A', label: 'List A (permanent)' },
+                        { value: 'List B', label: 'List B (temporary)' },
+                        { value: 'Other', label: 'Other' }
+                      ]}
+                    />
+                  </Field>
 
-                <Field label="Reference (passport no / share code)">
-                  <Input value={state.right_to_work.document_reference} onChange={(e) => updateRightToWork('document_reference', e.target.value)} />
-                </Field>
+                  <Field label="Reference (passport no / share code)">
+                    <Input value={state.right_to_work.document_reference} onChange={(e) => updateRightToWork('document_reference', e.target.value)} />
+                  </Field>
 
-                <Field label="Verification date" required>
-                  <Input
-                    type="date"
-                    value={state.right_to_work.verification_date}
-                    onChange={(e) => updateRightToWork('verification_date', e.target.value)}
-                  />
-                </Field>
+                  <Field label="Verification date" required>
+                    <Input
+                      type="date"
+                      value={state.right_to_work.verification_date}
+                      onChange={(e) => updateRightToWork('verification_date', e.target.value)}
+                    />
+                  </Field>
 
-                <Field label="Document expiry date">
-                  <Input
-                    type="date"
-                    value={state.right_to_work.document_expiry_date}
-                    onChange={(e) => updateRightToWork('document_expiry_date', e.target.value)}
-                  />
-                </Field>
+                  <Field label="Document expiry date">
+                    <Input
+                      type="date"
+                      value={state.right_to_work.document_expiry_date}
+                      onChange={(e) => updateRightToWork('document_expiry_date', e.target.value)}
+                    />
+                  </Field>
 
-                <Field label="Follow-up date">
-                  <Input type="date" value={state.right_to_work.follow_up_date} onChange={(e) => updateRightToWork('follow_up_date', e.target.value)} />
-                </Field>
+                  <Field label="Follow-up date">
+                    <Input type="date" value={state.right_to_work.follow_up_date} onChange={(e) => updateRightToWork('follow_up_date', e.target.value)} />
+                  </Field>
 
-                <Field label="Document photo / scan (PDF/JPG/PNG)" className="sm:col-span-2">
-                  <Input
-                    type="file"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] ?? null
-                      if (!file) {
-                        updateRightToWork('document_photo', null)
-                        return
-                      }
+                  <Field label="Document photo / scan (PDF/JPG/PNG)" className="sm:col-span-2">
+                    <Input
+                      type="file"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null
+                        if (!file) {
+                          updateRightToWork('document_photo', null)
+                          return
+                        }
 
-                      if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(file.type as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
-                        toast.error('Only PDF, JPG, and PNG files are allowed.')
-                        e.target.value = ''
-                        updateRightToWork('document_photo', null)
-                        return
-                      }
+                        if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(file.type as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
+                          toast.error('Only PDF, JPG, and PNG files are allowed.')
+                          e.target.value = ''
+                          updateRightToWork('document_photo', null)
+                          return
+                        }
 
-                      if (file.size >= MAX_FILE_SIZE) {
-                        toast.error('File size must be less than 10MB.')
-                        e.target.value = ''
-                        updateRightToWork('document_photo', null)
-                        return
-                      }
+                        if (file.size >= MAX_FILE_SIZE) {
+                          toast.error('File size must be less than 10MB.')
+                          e.target.value = ''
+                          updateRightToWork('document_photo', null)
+                          return
+                        }
 
-                      updateRightToWork('document_photo', file)
-                    }}
-                    accept=".pdf,.jpg,.jpeg,.png"
-                  />
-                </Field>
+                        updateRightToWork('document_photo', file)
+                      }}
+                      accept=".pdf,.jpg,.jpeg,.png"
+                    />
+                  </Field>
 
-                <Field label="Additional details" className="sm:col-span-2">
-                  <Textarea value={state.right_to_work.document_details} onChange={(e) => updateRightToWork('document_details', e.target.value)} rows={3} />
-                </Field>
-              </div>
-            </div>
-          )}
+                  <Field label="Additional details" className="sm:col-span-2">
+                    <Textarea value={state.right_to_work.document_details} onChange={(e) => updateRightToWork('document_details', e.target.value)} rows={3} />
+                  </Field>
+                </div>
+              )}
+            </CardBody>
+          </Card>
         </div>
       )
     },
     {
-      key: 'agreement',
+      id: 'agreement',
       label: 'Agreement & Setup',
       content: (
-        <div className="space-y-8">
+        <div className="space-y-6">
           <Alert tone="info">
             Use this section to confirm the employee has received the handbook and to record office setup tasks.
           </Alert>
 
-          <div className="space-y-4">
-            <h3 className="text-base font-medium text-text">Key Points (Quick Reference)</h3>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <div className="rounded-lg border border-border p-4">
-                <p className="text-sm font-medium text-text mb-2">Zero Tolerance</p>
-                <ul className="text-sm text-text list-disc pl-5 space-y-1">
-                  <li>Theft (immediate dismissal)</li>
-                  <li>Drugs/alcohol on duty (immediate dismissal)</li>
-                  <li>Giving/taking drinks without charging/paying (immediate dismissal)</li>
-                  <li>Free pouring drinks (immediate dismissal)</li>
-                  <li>No ID, no sale (under 25 check)</li>
-                </ul>
-              </div>
-              <div className="rounded-lg border border-border p-4">
-                <p className="text-sm font-medium text-text mb-2">Daily Essentials</p>
-                <ul className="text-sm text-text list-disc pl-5 space-y-1">
-                  <li>Arrive 15 minutes early</li>
-                  <li>Clock in/out every shift</li>
-                  <li>Complete daily checklist</li>
-                  <li>Phones off during shifts (except breaks)</li>
-                  <li>Report cash errors immediately</li>
-                </ul>
-              </div>
-              <div className="rounded-lg border border-border p-4">
-                <p className="text-sm font-medium text-text mb-2">Critical Procedures</p>
-                <ul className="text-sm text-text list-disc pl-5 space-y-1">
-                  <li>No discounts/refunds/tabs without approval</li>
-                  <li>Use correct measures (no free-pouring)</li>
-                  <li>Complete closing before clocking out</li>
-                  <li>Report incidents immediately</li>
-                </ul>
-              </div>
+          <Section title="Key Points (Quick Reference)">
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Card>
+                <CardHeader title="Zero Tolerance" />
+                <CardBody>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-text">
+                    <li>Theft (immediate dismissal)</li>
+                    <li>Drugs/alcohol on duty (immediate dismissal)</li>
+                    <li>Giving/taking drinks without charging/paying (immediate dismissal)</li>
+                    <li>Free pouring drinks (immediate dismissal)</li>
+                    <li>No ID, no sale (under 25 check)</li>
+                  </ul>
+                </CardBody>
+              </Card>
+              <Card>
+                <CardHeader title="Daily Essentials" />
+                <CardBody>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-text">
+                    <li>Arrive 15 minutes early</li>
+                    <li>Clock in/out every shift</li>
+                    <li>Complete daily checklist</li>
+                    <li>Phones off during shifts (except breaks)</li>
+                    <li>Report cash errors immediately</li>
+                  </ul>
+                </CardBody>
+              </Card>
+              <Card>
+                <CardHeader title="Critical Procedures" />
+                <CardBody>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-text">
+                    <li>No discounts/refunds/tabs without approval</li>
+                    <li>Use correct measures (no free-pouring)</li>
+                    <li>Complete closing before clocking out</li>
+                    <li>Report incidents immediately</li>
+                  </ul>
+                </CardBody>
+              </Card>
             </div>
-          </div>
+          </Section>
 
-          <div className="space-y-4">
-            <h3 className="text-base font-medium text-text">Employee Agreement</h3>
-            <Checkbox
-              checked={state.onboarding.employee_agreement_accepted}
-              onChange={(checked) => updateOnboarding('employee_agreement_accepted', checked)}
-              label="Employee has read, understood, and agreed to the staff handbook and rules"
-            />
-          </div>
+          <Card>
+            <CardHeader title="Employee Agreement" />
+            <CardBody>
+              <Checkbox
+                checked={state.onboarding.employee_agreement_accepted}
+                onChange={(checked) => updateOnboarding('employee_agreement_accepted', checked)}
+                label="Employee has read, understood, and agreed to the staff handbook and rules"
+              />
+            </CardBody>
+          </Card>
 
-          <div className="space-y-4">
-            <h3 className="text-base font-medium text-text">Office Use Checklist</h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Card>
+            <CardHeader title="Office Use Checklist" />
+            <CardBody className="grid gap-4 sm:grid-cols-2">
               <Checkbox
                 checked={state.onboarding.private_whatsapp_added}
                 onChange={(checked) => updateOnboarding('private_whatsapp_added', checked)}
@@ -1016,8 +1016,8 @@ export default function NewEmployeeOnboardingClient() {
                 onChange={(checked) => updateOnboarding('training_flow_setup', checked)}
                 label="Training setup in Flow"
               />
-            </div>
-          </div>
+            </CardBody>
+          </Card>
         </div>
       )
     }
@@ -1025,32 +1025,34 @@ export default function NewEmployeeOnboardingClient() {
 
   return (
     <PageLayout
-      title="New Employee Setup"
-      subtitle="Follow the onboarding document flow to capture all required details in one place."
-      backButton={{ label: 'Back to Employees', href: '/employees' }}
-      headerActions={
-        <Button onClick={handleCreateEmployee} disabled={isPending} loading={isPending} variant="primary">
-          {isPending ? (
-            'Saving…'
-          ) : (
-            <>
-              <Icon name="save" size={16} className="-ml-1 mr-2" />
-              Create Employee
-            </>
-          )}
-        </Button>
-      }
+      title="New Employee"
+      subtitle="Follow the onboarding document flow to capture every detail in one place"
+      backButton={EMPLOYEES_BACK_TO_LIST}
+      containerSize="md"
     >
-      <Card>
-        <Tabs items={tabs} activeKey={activeTab} onChange={setActiveTab} />
-      </Card>
+      {/* Six tabs are wider than the form column; wrap them rather than hide the last ones off
+          the edge, since the DS strip hides its scrollbar. */}
+      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} className="flex-wrap" />
 
-      <div className="pt-4">
-        <Alert tone="info">
-          You can move between tabs without losing your progress. Clicking “Create Employee” will create the employee and then save any
-          contacts, right-to-work info, and checklist items provided.
-        </Alert>
-      </div>
+      <Alert tone="info">
+        You can move between tabs without losing your progress. Clicking “Create Employee” will create the employee and then save any
+        contacts, right-to-work info, and checklist items provided.
+      </Alert>
+
+      <FormFooter>
+        <LinkButton href="/employees" variant="secondary">
+          Cancel
+        </LinkButton>
+        <Button
+          type="button"
+          variant="primary"
+          onClick={handleCreateEmployee}
+          loading={isPending}
+          icon={<Icon name="save" size={16} />}
+        >
+          {isPending ? 'Saving…' : 'Create Employee'}
+        </Button>
+      </FormFooter>
     </PageLayout>
   )
 }

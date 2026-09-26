@@ -1,9 +1,8 @@
 'use client'
 
 import { useCallback, useState, useTransition } from 'react'
-import { Alert, Button, Field, Input, Modal, toast } from '@/ds'
+import { Alert, Button, CardBody, ConfirmDialog, Field, FormFooter, Input, Modal, Tabs, toast } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { cn } from '@/lib/utils'
 import {
   createScheduledHoursVersion,
   publishHoursVersion,
@@ -44,6 +43,7 @@ export function HoursVersionStrip({
   const [newLabel, setNewLabel] = useState('')
   const [showPast, setShowPast] = useState(false)
   const [pending, startTransition] = useTransition()
+  const [confirming, setConfirming] = useState<{ kind: 'publish' | 'withdraw'; version: HoursVersionSummary } | null>(null)
 
   const today = new Date().toISOString().slice(0, 10)
   const future = versions.filter(v => v.effectiveFrom > today && v.status !== 'withdrawn')
@@ -70,13 +70,6 @@ export function HoursVersionStrip({
 
   const handlePublish = useCallback(
     (version: HoursVersionSummary) => {
-      const confirmed = window.confirm(
-        `Publish the schedule starting ${longDate(version.effectiveFrom)}?\n\n` +
-          'From the moment you publish, bookings on or after that date are checked against these hours, ' +
-          'and the website will show them as the hours for those dates. It does not wait until the date arrives.',
-      )
-      if (!confirmed) return
-
       startTransition(async () => {
         const result = await publishHoursVersion(version.id)
         if (result.error) {
@@ -92,12 +85,6 @@ export function HoursVersionStrip({
 
   const handleWithdraw = useCallback(
     (version: HoursVersionSummary) => {
-      const confirmed = window.confirm(
-        `Withdraw the schedule starting ${longDate(version.effectiveFrom)}?\n\n` +
-          'Those dates go back to the hours that applied before it.',
-      )
-      if (!confirmed) return
-
       startTransition(async () => {
         const result = await withdrawHoursVersion(version.id)
         if (result.error) {
@@ -111,56 +98,35 @@ export function HoursVersionStrip({
     [onChanged],
   )
 
-  const renderTab = (version: HoursVersionSummary) => {
-    const isSelected = version.id === selectedId
+  const tabLabel = (version: HoursVersionSummary): string => {
     const name = version.isActive
-      ? 'Current hours'
+      ? 'Current Hours'
       : `From ${formatDateInLondon(version.effectiveFrom, { day: 'numeric', month: 'long', year: 'numeric' })}`
-
-    return (
-      <button
-        key={version.id}
-        type="button"
-        role="tab"
-        aria-selected={isSelected}
-        onClick={() => onSelect(version.id)}
-        className={cn(
-          'min-h-touch rounded-md border px-3 py-2 text-sm font-medium focus-visible:outline-hidden focus-visible:shadow-ring',
-          isSelected
-            ? 'border-primary bg-primary text-primary-fg'
-            : 'border-border-strong bg-surface text-text hover:bg-surface-hover',
-        )}
-      >
-        {name}
-        {version.status === 'draft' && (
-          <span className={cn('ml-2 text-xs', isSelected ? 'text-on-dark-muted' : 'text-text-muted')}>Draft</span>
-        )}
-      </button>
-    )
+    return version.status === 'draft' ? `${name} (Draft)` : name
   }
 
+  const shownVersions = [...current, ...future, ...(showPast ? past : [])]
+
   return (
-    <div className="space-y-3 border-b border-border p-4">
-      <div role="tablist" aria-label="Opening-hours schedules" className="flex flex-wrap gap-2">
-        {current.map(renderTab)}
-        {future.map(renderTab)}
-        {showPast && past.map(renderTab)}
+    <CardBody className="space-y-3 border-b border-border">
+      <div role="group" aria-label="Opening-hours schedules">
+        <Tabs
+          tabs={shownVersions.map(version => ({ id: version.id, label: tabLabel(version) }))}
+          activeTab={selectedId ?? ''}
+          onTabChange={onSelect}
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
         {canManage && (
           <Button type="button" variant="secondary" onClick={() => setCreating(true)} disabled={pending}>
-            Schedule a change
+            Schedule a Change
           </Button>
         )}
         {past.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setShowPast(v => !v)}
-            className="rounded-sm text-sm text-text-muted underline focus-visible:outline-hidden focus-visible:shadow-ring"
-          >
-            {showPast ? 'Hide' : 'Show'} {past.length} past schedule{past.length === 1 ? '' : 's'}
-          </button>
+          <Button type="button" variant="link" size="sm" onClick={() => setShowPast(v => !v)}>
+            {showPast ? 'Hide' : 'Show'} {past.length} Past Schedule{past.length === 1 ? '' : 's'}
+          </Button>
         )}
       </div>
 
@@ -172,11 +138,21 @@ export function HoursVersionStrip({
           </p>
           {canManage && (
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button type="button" onClick={() => handlePublish(selected)} disabled={pending}>
-                Publish this schedule
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => handleWithdraw(selected)} disabled={pending}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setConfirming({ kind: 'withdraw', version: selected })}
+                disabled={pending}
+              >
                 Discard
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => setConfirming({ kind: 'publish', version: selected })}
+                disabled={pending}
+              >
+                Publish This Schedule
               </Button>
             </div>
           )}
@@ -191,7 +167,12 @@ export function HoursVersionStrip({
           </p>
           {canManage && (
             <div className="mt-3">
-              <Button type="button" variant="secondary" onClick={() => handleWithdraw(selected)} disabled={pending}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setConfirming({ kind: 'withdraw', version: selected })}
+                disabled={pending}
+              >
                 Withdraw
               </Button>
             </div>
@@ -209,7 +190,7 @@ export function HoursVersionStrip({
         </Alert>
       )}
 
-      <Modal open={creating} onClose={() => setCreating(false)} title="Schedule a change">
+      <Modal open={creating} onClose={() => setCreating(false)} title="Schedule a Change">
         <div className="space-y-4">
           <p className="text-sm text-text-muted">
             This copies the hours that apply the day before your chosen date, so you only change what
@@ -226,16 +207,47 @@ export function HoursVersionStrip({
           <Field label="Name (optional)" help="Something to recognise it by, for example: autumn hours">
             <Input value={newLabel} onChange={e => setNewLabel(e.target.value)} maxLength={80} />
           </Field>
-          <div className="flex justify-end gap-2">
+          <FormFooter>
             <Button type="button" variant="secondary" onClick={() => setCreating(false)}>
               Cancel
             </Button>
-            <Button type="button" onClick={handleCreate} disabled={!newDate || pending}>
-              Create draft
+            <Button type="button" variant="primary" onClick={handleCreate} disabled={!newDate || pending}>
+              Create Draft
             </Button>
-          </div>
+          </FormFooter>
         </div>
       </Modal>
-    </div>
+
+      <ConfirmDialog
+        open={confirming !== null}
+        onClose={() => setConfirming(null)}
+        onConfirm={() => {
+          if (!confirming) return
+          if (confirming.kind === 'publish') handlePublish(confirming.version)
+          else handleWithdraw(confirming.version)
+        }}
+        tone={confirming?.kind === 'publish' ? 'warning' : 'danger'}
+        title={confirming?.kind === 'publish' ? 'Publish Schedule' : 'Withdraw Schedule'}
+        confirmLabel={confirming?.kind === 'publish' ? 'Publish' : 'Withdraw'}
+        message={
+          confirming ? (
+            confirming.kind === 'publish' ? (
+              <>
+                <span className="block">Publish the schedule starting {longDate(confirming.version.effectiveFrom)}?</span>
+                <span className="mt-2 block">
+                  From the moment you publish, bookings on or after that date are checked against these hours,
+                  and the website will show them as the hours for those dates. It does not wait until the date arrives.
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="block">Withdraw the schedule starting {longDate(confirming.version.effectiveFrom)}?</span>
+                <span className="mt-2 block">Those dates go back to the hours that applied before it.</span>
+              </>
+            )
+          ) : undefined
+        }
+      />
+    </CardBody>
   )
 }

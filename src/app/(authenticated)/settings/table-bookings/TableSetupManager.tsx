@@ -1,7 +1,25 @@
 'use client'
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Alert, Badge, Button, Card, Checkbox, Input, Section } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  ConfirmDialog,
+  Empty,
+  Field,
+  FormFooter,
+  Icon,
+  Input,
+  PageLoading,
+  Section,
+  toast,
+} from '@/ds'
+import { activeStateTone } from '../_shared/status-ui'
 
 type TableSetupRow = {
   id: string
@@ -124,8 +142,13 @@ export function TableSetupManager() {
   const [venueSpaces, setVenueSpaces] = useState<VenueSpace[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingGroups, setLoadingGroups] = useState(true)
+  // Errors from saving. A block that failed to load shows its own error instead: never an empty
+  // list or the default values, which a save would then write over the real settings.
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [setupLoadError, setSetupLoadError] = useState<string | null>(null)
+  const [pacingLoadError, setPacingLoadError] = useState<string | null>(null)
+  const [kitchenPacingLoadError, setKitchenPacingLoadError] = useState<string | null>(null)
+  const [groupsLoadError, setGroupsLoadError] = useState<string | null>(null)
   const [savingTables, setSavingTables] = useState(false)
   const [savingGroup, setSavingGroup] = useState(false)
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null)
@@ -204,8 +227,9 @@ export function TableSetupManager() {
           )
         )
       )
+      setSetupLoadError(null)
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to load table setup')
+      setSetupLoadError(error instanceof Error ? error.message : 'Failed to load table setup')
     } finally {
       setLoading(false)
     }
@@ -224,8 +248,9 @@ export function TableSetupManager() {
         filling_threshold_covers: String(payload.data.filling_threshold_covers),
         window_minutes: String(payload.data.window_minutes)
       })
+      setPacingLoadError(null)
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to load pacing settings')
+      setPacingLoadError(error instanceof Error ? error.message : 'Failed to load pacing settings')
     } finally {
       setLoadingPacing(false)
     }
@@ -247,8 +272,9 @@ export function TableSetupManager() {
         walk_in_reserve_regular: String(payload.data.walk_in_reserve_regular),
         walk_in_reserve_sunday: String(payload.data.walk_in_reserve_sunday)
       })
+      setKitchenPacingLoadError(null)
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to load kitchen pacing settings')
+      setKitchenPacingLoadError(error instanceof Error ? error.message : 'Failed to load kitchen pacing settings')
     } finally {
       setLoadingKitchenPacing(false)
     }
@@ -263,8 +289,9 @@ export function TableSetupManager() {
         throw new Error(payload.error || 'Failed to load join groups')
       }
       setJoinGroups(payload.data.groups)
+      setGroupsLoadError(null)
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to load join groups')
+      setGroupsLoadError(error instanceof Error ? error.message : 'Failed to load join groups')
     } finally {
       setLoadingGroups(false)
     }
@@ -340,14 +367,13 @@ export function TableSetupManager() {
 
   async function saveAllTableChanges() {
     if (changedTableIds.length === 0) {
-      setStatusMessage('No table changes to save')
+      toast.info('No table changes to save')
       setErrorMessage(null)
       return
     }
 
     setSavingTables(true)
     setErrorMessage(null)
-    setStatusMessage(null)
 
     const idsToSave = [...changedTableIds]
 
@@ -392,7 +418,7 @@ export function TableSetupManager() {
       }
 
       await loadSetup()
-      setStatusMessage(
+      toast.success(
         `${idsToSave.length} table ${idsToSave.length === 1 ? 'change' : 'changes'} saved`
       )
     } catch (error) {
@@ -418,7 +444,6 @@ export function TableSetupManager() {
 
     setCreatingTable(true)
     setErrorMessage(null)
-    setStatusMessage(null)
 
     try {
       const response = await fetch('/api/settings/table-bookings/tables', {
@@ -446,7 +471,7 @@ export function TableSetupManager() {
         area: '',
         is_bookable: true
       })
-      setStatusMessage('Table created')
+      toast.success('Table created')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to create table')
     } finally {
@@ -465,7 +490,6 @@ export function TableSetupManager() {
 
     setSavingGroup(true)
     setErrorMessage(null)
-    setStatusMessage(null)
 
     try {
       const isNew = editingGroup.id === null
@@ -488,7 +512,7 @@ export function TableSetupManager() {
         setJoinGroups(payload.data.groups)
       }
       setEditingGroup(null)
-      setStatusMessage(isNew ? 'Join group created' : 'Join group updated')
+      toast.success(isNew ? 'Join group created' : 'Join group updated')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to save group')
     } finally {
@@ -499,7 +523,6 @@ export function TableSetupManager() {
   async function deleteGroup(id: string) {
     setDeletingGroupId(id)
     setErrorMessage(null)
-    setStatusMessage(null)
 
     try {
       const response = await fetch('/api/settings/table-bookings/join-groups', {
@@ -517,7 +540,7 @@ export function TableSetupManager() {
         setJoinGroups(payload.data.groups)
       }
       setConfirmDeleteId(null)
-      setStatusMessage('Join group deleted')
+      toast.success('Join group deleted')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to delete group')
     } finally {
@@ -541,7 +564,6 @@ export function TableSetupManager() {
   async function saveSpaceAreaLinks() {
     setSavingSpaceAreaLinks(true)
     setErrorMessage(null)
-    setStatusMessage(null)
 
     try {
       const space_area_links = Array.from(spaceAreaLinkKeys)
@@ -560,7 +582,7 @@ export function TableSetupManager() {
       }
 
       await loadSetup()
-      setStatusMessage('Private-booking area mappings saved')
+      toast.success('Private-booking area mappings saved')
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : 'Failed to save private-booking area mappings'
@@ -597,7 +619,6 @@ export function TableSetupManager() {
 
     setSavingPacing(true)
     setErrorMessage(null)
-    setStatusMessage(null)
 
     try {
       const response = await fetch('/api/settings/table-bookings/pacing', {
@@ -620,7 +641,7 @@ export function TableSetupManager() {
         filling_threshold_covers: String(payload.data.filling_threshold_covers),
         window_minutes: String(payload.data.window_minutes)
       })
-      setStatusMessage('Pacing settings saved')
+      toast.success('Pacing settings saved')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to save pacing settings')
     } finally {
@@ -662,7 +683,6 @@ export function TableSetupManager() {
 
     setSavingKitchenPacing(true)
     setErrorMessage(null)
-    setStatusMessage(null)
 
     try {
       const response = await fetch('/api/settings/table-bookings/kitchen-pacing', {
@@ -691,7 +711,7 @@ export function TableSetupManager() {
         walk_in_reserve_regular: String(payload.data.walk_in_reserve_regular),
         walk_in_reserve_sunday: String(payload.data.walk_in_reserve_sunday)
       })
-      setStatusMessage('Kitchen pacing settings saved')
+      toast.success('Kitchen pacing settings saved')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to save kitchen pacing settings')
     } finally {
@@ -710,103 +730,126 @@ export function TableSetupManager() {
       (Number.parseInt(kitchenPacingDraft.walk_in_reserve_sunday, 10) || 0)
   )
 
-  return (
-    <div className="space-y-6">
-      {statusMessage && (
-        <Alert tone="success" size="sm" closable onClose={() => setStatusMessage(null)}>
-          {statusMessage}
-        </Alert>
-      )}
+  const confirmDeleteGroup = joinGroups.find((group) => group.id === confirmDeleteId) ?? null
 
-      {errorMessage && (
-        <Alert tone="danger" size="sm" closable onClose={() => setErrorMessage(null)}>
-          {errorMessage}
-        </Alert>
-      )}
-
-      <datalist id="table-area-options">
-        {sortedAreas.map((area) => (
-          <option key={area.id} value={area.name} />
-        ))}
-      </datalist>
-
-      {/* Booking pacing */}
-      <Section
-        title="Booking pacing"
-        description="Tune the soft customer-facing busy labels. These settings do not block bookings."
+  /** A block whose data failed to load: the error and a retry, in place of the block's content. */
+  const loadFailure = (title: string, message: string, retry: () => void) => (
+    <CardBody>
+      <Alert
+        tone="danger"
+        title={title}
+        actions={
+          <Button size="sm" variant="secondary" onClick={retry}>
+            Try Again
+          </Button>
+        }
       >
+        {message}
+      </Alert>
+    </CardBody>
+  )
+
+  return (
+    <Section
+      title="Tables & Pacing"
+      description="The tables themselves, how they join, and the busy labels guests see."
+    >
+      <div className="space-y-6">
+        {errorMessage && (
+          <Alert tone="danger" size="sm" closable onClose={() => setErrorMessage(null)}>
+            {errorMessage}
+          </Alert>
+        )}
+
+        <datalist id="table-area-options">
+          {sortedAreas.map((area) => (
+            <option key={area.id} value={area.name} />
+          ))}
+        </datalist>
+
+        {/* Booking pacing */}
         <Card>
+          <CardHeader title="Booking Pacing" />
           {loadingPacing ? (
-            <p className="text-sm text-text-muted">Loading pacing settings...</p>
+            <PageLoading inline label="Loading pacing settings" />
+          ) : pacingLoadError ? (
+            loadFailure('Could not load pacing settings', pacingLoadError, () => { void loadPacingSettings() })
           ) : (
-            <div className="grid gap-4 md:grid-cols-3">
-              <Input
-                label="Filling up threshold"
-                type="number"
-                min={1}
-                max={199}
-                value={pacingDraft.filling_threshold_covers}
-                onChange={(event) =>
-                  setPacingDraft((current) => ({
-                    ...current,
-                    filling_threshold_covers: event.target.value
-                  }))
-                }
-              />
+            <CardBody className="space-y-4">
+              <p className="text-sm text-text-muted">
+                Tune the soft customer-facing busy labels. These settings do not block bookings.
+              </p>
+              <div className="grid gap-4 md:grid-cols-3">
+                <Input
+                  label="Filling up threshold"
+                  type="number"
+                  min={1}
+                  max={199}
+                  value={pacingDraft.filling_threshold_covers}
+                  onChange={(event) =>
+                    setPacingDraft((current) => ({
+                      ...current,
+                      filling_threshold_covers: event.target.value
+                    }))
+                  }
+                />
 
-              <Input
-                label="Busy threshold"
-                type="number"
-                min={2}
-                max={200}
-                value={pacingDraft.busy_threshold_covers}
-                onChange={(event) =>
-                  setPacingDraft((current) => ({
-                    ...current,
-                    busy_threshold_covers: event.target.value
-                  }))
-                }
-              />
+                <Input
+                  label="Busy threshold"
+                  type="number"
+                  min={2}
+                  max={200}
+                  value={pacingDraft.busy_threshold_covers}
+                  onChange={(event) =>
+                    setPacingDraft((current) => ({
+                      ...current,
+                      busy_threshold_covers: event.target.value
+                    }))
+                  }
+                />
 
-              <Input
-                label="Window minutes"
-                type="number"
-                min={30}
-                max={180}
-                step={2}
-                value={pacingDraft.window_minutes}
-                onChange={(event) =>
-                  setPacingDraft((current) => ({
-                    ...current,
-                    window_minutes: event.target.value
-                  }))
-                }
-              />
-
-              <div className="md:col-span-3">
+                <Input
+                  label="Window minutes"
+                  type="number"
+                  min={30}
+                  max={180}
+                  step={2}
+                  value={pacingDraft.window_minutes}
+                  onChange={(event) =>
+                    setPacingDraft((current) => ({
+                      ...current,
+                      window_minutes: event.target.value
+                    }))
+                  }
+                />
+              </div>
+              <FormFooter>
                 <Button
+                  variant="primary"
                   onClick={() => { void savePacingSettings() }}
                   disabled={savingPacing}
                   loading={savingPacing}
                 >
-                  Save pacing settings
+                  Save Pacing Settings
                 </Button>
-              </div>
-            </div>
+              </FormFooter>
+            </CardBody>
           )}
         </Card>
-      </Section>
 
-      {/* Kitchen pacing (cap) */}
-      <Section
-        title="Kitchen pacing (cap)"
-        description="When on, online bookings that would push food covers over the cap in the window are declined and asked to pick another time. Staff can override. Walk-ins bypass but use the reserve."
-      >
+        {/* Kitchen pacing (cap) */}
         <Card>
+          <CardHeader title="Kitchen Pacing (Cap)" />
           {loadingKitchenPacing ? (
-            <p className="text-sm text-text-muted">Loading kitchen pacing settings...</p>
+            <PageLoading inline label="Loading kitchen pacing settings" />
+          ) : kitchenPacingLoadError ? (
+            loadFailure('Could not load kitchen pacing settings', kitchenPacingLoadError, () => { void loadKitchenPacing() })
           ) : (
-            <div className="space-y-4">
+            <CardBody className="space-y-4">
+              <p className="text-sm text-text-muted">
+                When on, online bookings that would push food covers over the cap in the window are declined and
+                asked to pick another time. Staff can override. Walk-ins bypass but use the reserve.
+              </p>
               <Checkbox
                 label={`Kitchen pacing is ${kitchenPacingDraft.enabled ? 'on' : 'off'}`}
                 checked={kitchenPacingDraft.enabled}
@@ -897,310 +940,325 @@ export function TableSetupManager() {
                 <span className="font-medium text-text">{kitchenCeilingSunday}</span> Sunday
               </p>
 
-              <div>
+              <FormFooter>
                 <Button
+                  variant="primary"
                   onClick={() => { void saveKitchenPacing() }}
                   disabled={savingKitchenPacing}
                   loading={savingKitchenPacing}
                 >
-                  Save kitchen pacing settings
+                  Save Kitchen Pacing Settings
                 </Button>
-              </div>
-            </div>
+              </FormFooter>
+            </CardBody>
           )}
         </Card>
-      </Section>
 
-      {/* Existing tables */}
-      <Section
-        title="Existing tables"
-        description="Configure table name, number, capacity, bookable state and area for each table."
-      >
+        {/* Existing tables */}
         <Card>
-          {changedTableIds.length > 0 && (
-            <p className="mb-3 text-xs font-medium text-warning-fg">
-              Unsaved table changes: {changedTableIds.length}
-            </p>
-          )}
-
+          <CardHeader
+            title="Existing Tables"
+            action={
+              changedTableIds.length > 0 ? (
+                <span className="text-xs font-medium text-warning-fg">
+                  Unsaved table changes: {changedTableIds.length}
+                </span>
+              ) : undefined
+            }
+          />
           {loading ? (
-            <p className="text-sm text-text-muted">Loading table setup…</p>
+            <PageLoading inline label="Loading table setup" />
+          ) : setupLoadError ? (
+            loadFailure('Could not load tables', setupLoadError, () => { void loadSetup() })
           ) : sortedTables.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
-              No tables found. Add your first table below.
-            </p>
+            <Empty size="sm" title="No tables found" description="Add your first table below." />
           ) : (
-            <div className="space-y-3">
-              {sortedTables.map((table) => {
-                const draft = drafts[table.id]
-                if (!draft) return null
+            <>
+              <CardBody className="pb-0">
+                <p className="text-sm text-text-muted">
+                  Configure table name, number, capacity, bookable state and area for each table.
+                </p>
+              </CardBody>
+              <div className="divide-y divide-border">
+                {sortedTables.map((table) => {
+                  const draft = drafts[table.id]
+                  if (!draft) return null
 
-                return (
-                  <div key={table.id} className="rounded-md border border-border bg-surface-2 p-3">
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                      <Input
-                        label="Name"
-                        type="text"
-                        value={draft.name}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [table.id]: { ...current[table.id], name: event.target.value }
-                          }))
-                        }
-                      />
-
-                      <Input
-                        label="Table number"
-                        type="text"
-                        value={draft.table_number}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [table.id]: { ...current[table.id], table_number: event.target.value }
-                          }))
-                        }
-                      />
-
-                      <Input
-                        label="Capacity"
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={draft.capacity}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [table.id]: { ...current[table.id], capacity: event.target.value }
-                          }))
-                        }
-                      />
-
-                      <Input
-                        label="Area"
-                        type="text"
-                        list="table-area-options"
-                        value={draft.area}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [table.id]: { ...current[table.id], area: event.target.value }
-                          }))
-                        }
-                        placeholder="Main Bar"
-                      />
-
-                      {/* Sits level with the fields beside it: bottom of the row, field height. */}
-                      <div className="flex items-end">
-                        <Checkbox
-                          label="Bookable"
-                          checked={draft.is_bookable}
-                          onChange={(checked) =>
+                  return (
+                    <div key={table.id} className="px-pad-card py-4">
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                        <Input
+                          label="Name"
+                          type="text"
+                          value={draft.name}
+                          onChange={(event) =>
                             setDrafts((current) => ({
                               ...current,
-                              [table.id]: { ...current[table.id], is_bookable: checked }
+                              [table.id]: { ...current[table.id], name: event.target.value }
                             }))
                           }
-                          className="h-input-h items-center"
                         />
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-              <div className="flex justify-end">
-                <Button
-                  onClick={() => { void saveAllTableChanges() }}
-                  disabled={savingTables || changedTableIds.length === 0}
-                  loading={savingTables}
-                >
-                  Save all table changes
-                </Button>
-              </div>
-            </div>
-          )}
-        </Card>
-      </Section>
 
-      {/* Add table */}
-      <Section title="Add table">
-        <Card>
-          <form onSubmit={createTable} className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <Input
-              label="Name"
-              type="text"
-              required
-              value={newTable.name}
-              onChange={(event) => setNewTable((c) => ({ ...c, name: event.target.value }))}
-            />
-
-            <Input
-              label="Table number"
-              type="text"
-              required
-              value={newTable.table_number}
-              onChange={(event) => setNewTable((c) => ({ ...c, table_number: event.target.value }))}
-            />
-
-            <Input
-              label="Capacity"
-              type="number"
-              min={1}
-              max={100}
-              required
-              value={newTable.capacity}
-              onChange={(event) => setNewTable((c) => ({ ...c, capacity: event.target.value }))}
-            />
-
-            <Input
-              label="Area"
-              type="text"
-              list="table-area-options"
-              value={newTable.area}
-              onChange={(event) => setNewTable((c) => ({ ...c, area: event.target.value }))}
-              placeholder="Main Bar"
-            />
-
-            <div className="flex items-end">
-              <Checkbox
-                label="Bookable"
-                checked={newTable.is_bookable}
-                onChange={(checked) => setNewTable((c) => ({ ...c, is_bookable: checked }))}
-                className="h-input-h items-center"
-              />
-            </div>
-
-            <div className="md:col-span-2 xl:col-span-5">
-              <Button
-                type="submit"
-                disabled={creatingTable}
-                loading={creatingTable}
-              >
-                Create table
-              </Button>
-            </div>
-          </form>
-        </Card>
-      </Section>
-
-      {/* Join groups */}
-      <Section
-        title="Table join groups"
-        description="Tables in the same group can be booked together in any combination. The system automatically generates all valid multi-table options from each group."
-        actions={
-          !editingGroup ? (
-            <Button
-              onClick={() => {
-                setEditingGroup({ id: null, name: '', table_ids: [] })
-                setErrorMessage(null)
-              }}
-            >
-              + New group
-            </Button>
-          ) : undefined
-        }
-      >
-        <Card>
-          {/* Edit / create form */}
-          {editingGroup && (
-            <div className="mb-4 rounded-md border border-info-border bg-info-soft p-4">
-              <h4 className="mb-3 text-sm font-semibold text-info-fg">
-                {editingGroup.id ? 'Edit group' : 'New group'}
-              </h4>
-
-              <Input
-                label="Group name"
-                type="text"
-                value={editingGroup.name}
-                onChange={(event) =>
-                  setEditingGroup((current) =>
-                    current ? { ...current, name: event.target.value } : null
-                  )
-                }
-                placeholder="e.g. Dining Room"
-                className="max-w-xs"
-              />
-
-              <p className="mt-3 text-xs font-medium uppercase tracking-wider text-text-muted">Tables in this group</p>
-              {loading ? (
-                <p className="mt-2 text-xs text-text-muted">Loading tables…</p>
-              ) : (
-                <div className="mt-2 grid gap-2 sm:grid-cols-2 md:grid-cols-3">
-                  {sortedTables.map((table) => {
-                    const checked = editingGroup.table_ids.includes(table.id)
-                    return (
-                      <label
-                        key={table.id}
-                        className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() =>
-                            setEditingGroup((current) => {
-                              if (!current) return null
-                              return {
-                                ...current,
-                                table_ids: checked
-                                  ? current.table_ids.filter((id) => id !== table.id)
-                                  : [...current.table_ids, table.id]
-                              }
-                            })
+                        <Input
+                          label="Table number"
+                          type="text"
+                          value={draft.table_number}
+                          onChange={(event) =>
+                            setDrafts((current) => ({
+                              ...current,
+                              [table.id]: { ...current[table.id], table_number: event.target.value }
+                            }))
                           }
                         />
-                        <span>
-                          <span className="font-medium">{table.name || table.table_number}</span>
-                          {table.area && (
-                            <span className="ml-1 text-xs text-text-soft">({table.area})</span>
-                          )}
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
-              )}
 
-              <div className="mt-4 flex gap-2">
+                        <Input
+                          label="Capacity"
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={draft.capacity}
+                          onChange={(event) =>
+                            setDrafts((current) => ({
+                              ...current,
+                              [table.id]: { ...current[table.id], capacity: event.target.value }
+                            }))
+                          }
+                        />
+
+                        <Input
+                          label="Area"
+                          type="text"
+                          list="table-area-options"
+                          value={draft.area}
+                          onChange={(event) =>
+                            setDrafts((current) => ({
+                              ...current,
+                              [table.id]: { ...current[table.id], area: event.target.value }
+                            }))
+                          }
+                          placeholder="Main Bar"
+                        />
+
+                        {/* Sits level with the fields beside it: bottom of the row, field height. */}
+                        <div className="flex items-end">
+                          <Checkbox
+                            label="Bookable"
+                            checked={draft.is_bookable}
+                            onChange={(checked) =>
+                              setDrafts((current) => ({
+                                ...current,
+                                [table.id]: { ...current[table.id], is_bookable: checked }
+                              }))
+                            }
+                            className="h-input-h items-center"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <CardBody className="border-t border-border">
+                <FormFooter>
+                  <Button
+                    variant="primary"
+                    onClick={() => { void saveAllTableChanges() }}
+                    disabled={savingTables || changedTableIds.length === 0}
+                    loading={savingTables}
+                  >
+                    Save All Table Changes
+                  </Button>
+                </FormFooter>
+              </CardBody>
+            </>
+          )}
+        </Card>
+
+        {/* Add table */}
+        <Card>
+          <CardHeader title="Add Table" />
+          <CardBody>
+            <form onSubmit={createTable} className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <Input
+                label="Name"
+                type="text"
+                required
+                value={newTable.name}
+                onChange={(event) => setNewTable((c) => ({ ...c, name: event.target.value }))}
+              />
+
+              <Input
+                label="Table number"
+                type="text"
+                required
+                value={newTable.table_number}
+                onChange={(event) => setNewTable((c) => ({ ...c, table_number: event.target.value }))}
+              />
+
+              <Input
+                label="Capacity"
+                type="number"
+                min={1}
+                max={100}
+                required
+                value={newTable.capacity}
+                onChange={(event) => setNewTable((c) => ({ ...c, capacity: event.target.value }))}
+              />
+
+              <Input
+                label="Area"
+                type="text"
+                list="table-area-options"
+                value={newTable.area}
+                onChange={(event) => setNewTable((c) => ({ ...c, area: event.target.value }))}
+                placeholder="Main Bar"
+              />
+
+              <div className="flex items-end">
+                <Checkbox
+                  label="Bookable"
+                  checked={newTable.is_bookable}
+                  onChange={(checked) => setNewTable((c) => ({ ...c, is_bookable: checked }))}
+                  className="h-input-h items-center"
+                />
+              </div>
+
+              <FormFooter className="md:col-span-2 xl:col-span-5">
                 <Button
-                  onClick={() => { void saveGroup() }}
-                  disabled={savingGroup}
-                  loading={savingGroup}
+                  type="submit"
+                  variant="primary"
+                  disabled={creatingTable}
+                  loading={creatingTable}
                 >
-                  Save group
+                  Create Table
                 </Button>
+              </FormFooter>
+            </form>
+          </CardBody>
+        </Card>
+
+        {/* Join groups */}
+        <Card>
+          <CardHeader
+            title="Table Join Groups"
+            action={
+              !editingGroup ? (
                 <Button
-                  variant="secondary"
+                  size="sm"
+                  variant="primary"
+                  icon={<Icon name="plus" size={16} />}
                   onClick={() => {
-                    setEditingGroup(null)
+                    setEditingGroup({ id: null, name: '', table_ids: [] })
                     setErrorMessage(null)
                   }}
-                  disabled={savingGroup}
                 >
-                  Cancel
+                  New Group
                 </Button>
-              </div>
-            </div>
-          )}
+              ) : undefined
+            }
+          />
+          <CardBody className={editingGroup ? 'space-y-4' : undefined}>
+            <p className="text-sm text-text-muted">
+              Tables in the same group can be booked together in any combination. The system automatically
+              generates all valid multi-table options from each group.
+            </p>
+
+            {/* Edit / create form */}
+            {editingGroup && (
+              <Card variant="secondary">
+                <CardHeader title={editingGroup.id ? 'Edit Group' : 'New Group'} />
+                <CardBody className="space-y-4">
+                  <Input
+                    label="Group name"
+                    type="text"
+                    value={editingGroup.name}
+                    onChange={(event) =>
+                      setEditingGroup((current) =>
+                        current ? { ...current, name: event.target.value } : null
+                      )
+                    }
+                    placeholder="e.g. Dining Room"
+                    className="max-w-xs"
+                  />
+
+                  <Field label="Tables in this group">
+                    {loading ? (
+                      <PageLoading inline label="Loading tables" />
+                    ) : setupLoadError ? (
+                      <Alert tone="danger" size="sm">Could not load the tables: {setupLoadError}</Alert>
+                    ) : (
+                      <div role="group" aria-label="Tables in this group" className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+                        {sortedTables.map((table) => {
+                          const checked = editingGroup.table_ids.includes(table.id)
+                          return (
+                            <Checkbox
+                              key={table.id}
+                              label={table.name || table.table_number}
+                              description={table.area ?? undefined}
+                              checked={checked}
+                              onChange={() =>
+                                setEditingGroup((current) => {
+                                  if (!current) return null
+                                  return {
+                                    ...current,
+                                    table_ids: checked
+                                      ? current.table_ids.filter((id) => id !== table.id)
+                                      : [...current.table_ids, table.id]
+                                  }
+                                })
+                              }
+                              className="rounded-default border border-border bg-surface px-3 py-2"
+                            />
+                          )
+                        })}
+                      </div>
+                    )}
+                  </Field>
+
+                  <FormFooter>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setEditingGroup(null)
+                        setErrorMessage(null)
+                      }}
+                      disabled={savingGroup}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={() => { void saveGroup() }}
+                      disabled={savingGroup}
+                      loading={savingGroup}
+                    >
+                      Save Group
+                    </Button>
+                  </FormFooter>
+                </CardBody>
+              </Card>
+            )}
+          </CardBody>
 
           {/* Group list */}
           {loadingGroups ? (
-            <p className="text-sm text-text-muted">Loading join groups…</p>
+            <PageLoading inline label="Loading join groups" />
+          ) : groupsLoadError ? (
+            loadFailure('Could not load join groups', groupsLoadError, () => { void loadJoinGroups() })
           ) : joinGroups.length === 0 && !editingGroup ? (
-            <p className="rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
-              No join groups yet. Create one to allow tables to be booked together.
-            </p>
-          ) : (
-            <div className="space-y-3">
+            <Empty
+              size="sm"
+              title="No join groups yet"
+              description="Create one to allow tables to be booked together."
+            />
+          ) : joinGroups.length === 0 ? null : (
+            <div className="divide-y divide-border border-t border-border">
               {joinGroups.map((group) => {
                 const groupTables = sortedTables.filter((t) => group.table_ids.includes(t.id))
                 const pairCount = (group.table_ids.length * (group.table_ids.length - 1)) / 2
-                const isConfirmingDelete = confirmDeleteId === group.id
 
                 return (
-                  <div
-                    key={group.id}
-                    className="rounded-md border border-border bg-surface-2 px-4 py-3"
-                  >
+                  <div key={group.id} className="px-pad-card py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-text">{group.name}</p>
@@ -1217,53 +1275,31 @@ export function TableSetupManager() {
                         )}
                       </div>
 
-                      {!isConfirmingDelete ? (
-                        <div className="flex shrink-0 gap-2">
-                          <Button
-                            variant="secondary"
-                            size="xs"
-                            onClick={() => {
-                              setEditingGroup({
-                                id: group.id,
-                                name: group.name,
-                                table_ids: [...group.table_ids]
-                              })
-                              setErrorMessage(null)
-                            }}
-                            disabled={!!editingGroup}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="danger"
-                            size="xs"
-                            onClick={() => setConfirmDeleteId(group.id)}
-                            disabled={!!editingGroup}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex shrink-0 items-center gap-2">
-                          <span className="text-xs text-text-muted">Delete this group?</span>
-                          <Button
-                            variant="danger"
-                            size="xs"
-                            onClick={() => { void deleteGroup(group.id) }}
-                            disabled={deletingGroupId === group.id}
-                            loading={deletingGroupId === group.id}
-                          >
-                            Yes, delete
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="xs"
-                            onClick={() => setConfirmDeleteId(null)}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex shrink-0 gap-2">
+                        <Button
+                          variant="secondary"
+                          size="xs"
+                          onClick={() => {
+                            setEditingGroup({
+                              id: group.id,
+                              name: group.name,
+                              table_ids: [...group.table_ids]
+                            })
+                            setErrorMessage(null)
+                          }}
+                          disabled={!!editingGroup}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="xs"
+                          onClick={() => setConfirmDeleteId(group.id)}
+                          disabled={!!editingGroup || deletingGroupId === group.id}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )
@@ -1271,51 +1307,57 @@ export function TableSetupManager() {
             </div>
           )}
         </Card>
-      </Section>
 
-      {/* Private booking area mapping */}
-      <Section
-        title="Private booking area mapping"
-        description="Map private-booking spaces to table areas. During a mapped private booking, those table areas are blocked from table allocation."
-      >
+        <ConfirmDialog
+          open={confirmDeleteGroup !== null}
+          onClose={() => setConfirmDeleteId(null)}
+          onConfirm={() => (confirmDeleteGroup ? deleteGroup(confirmDeleteGroup.id) : undefined)}
+          tone="danger"
+          title="Delete Join Group"
+          message={confirmDeleteGroup ? `Delete the "${confirmDeleteGroup.name}" group?` : undefined}
+          confirmLabel="Delete"
+        />
+
+        {/* Private booking area mapping */}
         <Card>
+          <CardHeader title="Private Booking Area Mapping" />
+          <CardBody>
+            <p className="text-sm text-text-muted">
+              Map private-booking spaces to table areas. During a mapped private booking, those table areas
+              are blocked from table allocation.
+            </p>
+          </CardBody>
           {loading ? (
-            <p className="text-sm text-text-muted">Loading private-booking mappings…</p>
+            <PageLoading inline label="Loading private-booking mappings" />
+          ) : setupLoadError ? (
+            loadFailure('Could not load private-booking mappings', setupLoadError, () => { void loadSetup() })
           ) : sortedAreas.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
-              Add at least one table area before mapping private-booking spaces.
-            </p>
+            <Empty size="sm" title="No table areas yet" description="Add at least one table area before mapping private-booking spaces." />
           ) : sortedVenueSpaces.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border bg-surface-2 px-3 py-3 text-sm text-text-muted">
-              No private-booking spaces found.
-            </p>
+            <Empty size="sm" title="No private-booking spaces found" />
           ) : (
-            <div className="space-y-3">
+            <div className="divide-y divide-border border-t border-border">
               {sortedVenueSpaces.map((space) => (
-                <div key={space.id} className="rounded-md border border-border bg-surface-2 px-3 py-3">
+                <div key={space.id} className="px-pad-card py-3">
                   <div className="mb-2 flex items-center gap-2">
                     <p className="text-sm font-medium text-text">{space.name}</p>
                     {!space.active && (
-                      <Badge tone="neutral" size="sm">
+                      <Badge tone={activeStateTone(false)} size="sm">
                         Inactive
                       </Badge>
                     )}
                   </div>
-                  <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  <div role="group" aria-label={`Table areas for ${space.name}`} className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                     {sortedAreas.map((area) => {
                       const key = spaceAreaKey(space.id, area.id)
                       return (
-                        <label
+                        <Checkbox
                           key={key}
-                          className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={spaceAreaLinkKeys.has(key)}
-                            onChange={() => toggleSpaceAreaLink(space.id, area.id)}
-                          />
-                          <span>{area.name}</span>
-                        </label>
+                          label={area.name}
+                          checked={spaceAreaLinkKeys.has(key)}
+                          onChange={() => toggleSpaceAreaLink(space.id, area.id)}
+                          className="rounded-default border border-border bg-surface px-2.5 py-1.5"
+                        />
                       )
                     })}
                   </div>
@@ -1324,18 +1366,26 @@ export function TableSetupManager() {
             </div>
           )}
 
-          <div className="mt-4">
-            <Button
-              variant="secondary"
-              disabled={savingSpaceAreaLinks || loading || sortedAreas.length === 0 || sortedVenueSpaces.length === 0}
-              onClick={() => { void saveSpaceAreaLinks() }}
-              loading={savingSpaceAreaLinks}
-            >
-              Save private-booking area mapping
-            </Button>
-          </div>
+          <CardBody className="border-t border-border">
+            <FormFooter>
+              <Button
+                variant="primary"
+                disabled={
+                  savingSpaceAreaLinks ||
+                  loading ||
+                  setupLoadError !== null ||
+                  sortedAreas.length === 0 ||
+                  sortedVenueSpaces.length === 0
+                }
+                onClick={() => { void saveSpaceAreaLinks() }}
+                loading={savingSpaceAreaLinks}
+              >
+                Save Private-Booking Area Mapping
+              </Button>
+            </FormFooter>
+          </CardBody>
         </Card>
-      </Section>
-    </div>
+      </div>
+    </Section>
   )
 }

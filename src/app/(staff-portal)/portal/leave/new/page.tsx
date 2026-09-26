@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { Card, CardBody, CardHeader } from '@/ds';
+import { StandalonePageHeader } from '@/components/shells/StandaloneShell';
 import LeaveRequestForm from '../LeaveRequestForm';
 
 export const dynamic = 'force-dynamic';
@@ -19,15 +21,19 @@ export default async function NewLeaveRequestPage() {
   if (!employee) redirect('/portal/leave');
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-xl font-semibold text-text-strong">Request Holiday</h2>
-        <p className="text-sm text-text-muted mt-1">Select the dates you&apos;d like to request off.</p>
-      </div>
+    <>
+      <StandalonePageHeader
+        title="Request Holiday"
+        subtitle="Select the dates you'd like to request off"
+        backButton={{ label: 'Back to My Holiday', href: '/portal/leave' }}
+      />
 
-      <div className="bg-surface rounded-lg border border-border p-4">
-        <LeaveRequestForm employeeId={employee.employee_id} />
-      </div>
-    </div>
+      <Card>
+        <CardHeader title="Holiday Dates" />
+        <CardBody>
+          <LeaveRequestForm employeeId={employee.employee_id} />
+        </CardBody>
+      </Card>
+    </>
   );
 }

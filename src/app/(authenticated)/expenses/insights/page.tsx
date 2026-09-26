@@ -1,15 +1,9 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getExpenseInsights } from '@/app/actions/expenses'
-import { PageLayout } from '@/ds'
-import { Alert } from '@/ds'
+import { Alert, PageLayout } from '@/ds'
+import { EXPENSES_INSIGHTS_LAYOUT } from '../_shared/nav'
 import { ExpensesInsightsClient } from './_components/ExpensesInsightsClient'
-import type { HeaderNavItem } from '@/ds'
-
-const navItems: HeaderNavItem[] = [
-  { label: 'Expenses', href: '/expenses' },
-  { label: 'Insights', href: '/expenses/insights' },
-]
 
 export default async function ExpensesInsightsPage(): Promise<React.JSX.Element> {
   const canView = await checkUserPermission('expenses', 'view')
@@ -19,15 +13,12 @@ export default async function ExpensesInsightsPage(): Promise<React.JSX.Element>
 
   if (!result.success || !result.data) {
     return (
-      <PageLayout title="Expenses" subtitle="Insights" navItems={navItems}>
+      <PageLayout {...EXPENSES_INSIGHTS_LAYOUT}>
         <Alert tone="danger" title="Error loading insights">{result.error ?? 'Unknown error'}</Alert>
       </PageLayout>
     )
   }
 
-  return (
-    <PageLayout title="Expenses" subtitle="Insights" navItems={navItems}>
-      <ExpensesInsightsClient initialData={result.data} />
-    </PageLayout>
-  )
+  // The client renders the PageLayout, so the period switch can sit in the header.
+  return <ExpensesInsightsClient initialData={result.data} />
 }

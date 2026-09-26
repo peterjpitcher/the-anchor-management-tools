@@ -6,6 +6,8 @@ import {
   Card,
   CardHeader,
   CardBody,
+  PageLayout,
+  StatGrid,
   Table,
   TableHeader,
   TableBody,
@@ -14,7 +16,7 @@ import {
   TableCell,
   toast,
 } from '@/ds'
-import { ConfirmDialog, Field, Input, Button, Badge, Alert, Stat, Modal, Textarea } from '@/ds'
+import { ConfirmDialog, Empty, Field, FormFooter, Input, Button, Badge, Alert, Stat, Modal, Textarea } from '@/ds'
 import { Icon } from '@/ds/icons'
 import {
   approveSessionAction,
@@ -30,6 +32,12 @@ import { getDailySummaryAction } from '@/app/actions/daily-summary'
 import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups'
 import { format, parseISO } from 'date-fns'
 import type { CashupSalesCategory, CashupSession, CashupStatus, UpsertCashupSessionDTO } from '@/types/cashing-up'
+import { CASHING_UP_DAILY_SUBTITLE, cashingUpLayout } from '../../_shared/nav'
+import {
+  cashVarianceAlertTone,
+  cashVarianceTextClass,
+  cashupSessionStatusTone,
+} from '../../_shared/status-ui'
 
 const DENOMINATIONS = [
   { value: 50, label: '£50' },
@@ -46,7 +54,7 @@ const DENOMINATIONS = [
   { value: 0.01, label: '1p' },
 ]
 
-/** cashup_sessions void columns (migration 20260725030000) — not yet on the shared type. */
+/** cashup_sessions void columns (migration 20260725030000), not yet on the shared type. */
 type CashupSessionWithVoid = CashupSession & {
   voided_at?: string | null
   voided_by?: string | null
@@ -71,6 +79,8 @@ interface Props {
   dailySummary: string | null
   dailyTarget: number
   weeklyData: WeeklyRow[]
+  /** Why the week at a glance could not be loaded, if it could not. */
+  weeklyError?: string
   existingSession: CashupSessionWithVoid | null
   missingDates: string[]
   initialEditMode: boolean
@@ -78,15 +88,6 @@ interface Props {
 
 const fmt = (num: number): string =>
   num.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-const statusTone = (status: string) => {
-  switch (status) {
-    case 'approved': return 'success' as const
-    case 'submitted': return 'info' as const
-    case 'locked': return 'warning' as const
-    default: return 'neutral' as const
-  }
-}
 
 const dayName = (dateStr: string): string => {
   const d = new Date(dateStr + 'T12:00:00')
@@ -147,6 +148,7 @@ export function DailyClient({
   dailySummary,
   dailyTarget,
   weeklyData,
+  weeklyError,
   existingSession,
   missingDates: initialMissingDates,
   initialEditMode,
@@ -252,11 +254,7 @@ export function DailyClient({
   const cashVariance = cashCountedTotal - cashExpectedNum
   // Flag ANY non-zero variance (rounded to pence) so it surfaces inline for review.
   const varianceFlagged = Number(cashVariance.toFixed(2)) !== 0
-  const varianceClass = !varianceFlagged
-    ? 'text-text-muted'
-    : cashVariance < 0
-      ? 'text-danger-fg'
-      : 'text-warning-fg'
+  const varianceClass = cashVarianceTextClass(cashVariance)
   const totalRevenue = cashCountedTotal + cardNum + stripeNum
   const salesSplitTotal = drinksSalesNum + foodSalesNum + otherSalesNum
   const salesSplitVariance = Number((salesSplitTotal - totalRevenue).toFixed(2))
@@ -494,37 +492,90 @@ export function DailyClient({
     }
   }
 
+  const statusActions = (
+    <>
+      {sessionId && currentStatus !== 'locked' && (
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={() => setShowDeleteConfirm(true)}
+          loading={saving}
+        >
+          Delete
+        </Button>
+      )}
+      {sessionId && !isVoided && (
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={() => setShowVoidConfirm(true)}
+          loading={voiding}
+        >
+          Void…
+        </Button>
+      )}
+      {!isVoided && currentStatus === 'approved' && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => handleStatusAction('lock')}
+          loading={saving}
+        >
+          Lock
+        </Button>
+      )}
+      {!isVoided && currentStatus === 'locked' && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => handleStatusAction('unlock')}
+          loading={saving}
+        >
+          Unlock
+        </Button>
+      )}
+      {!isVoided && currentStatus === 'submitted' && (
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => handleStatusAction('approve')}
+          loading={saving}
+        >
+          Approve
+        </Button>
+      )}
+    </>
+  )
+
   return (
-    <div className="space-y-3">
-      {/* Date picker row */}
+    <PageLayout {...cashingUpLayout(CASHING_UP_DAILY_SUBTITLE)} headerActions={statusActions}>
+      {/* Date and target */}
       <Card>
-        <CardBody className="p-3">
-          <div className="flex flex-wrap items-center gap-3">
+        <CardBody>
+          <div className="flex flex-wrap items-end gap-3">
             <Field label="Date" className="flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={sessionDate}
-                  onChange={onDateChange}
-                  className="min-h-touch rounded-sm border border-border-strong bg-surface px-3 py-1 text-ui font-medium text-text outline-hidden focus:border-border-focus focus:shadow-ring sm:min-h-0"
-                />
-                <Badge tone="neutral">
-                  {format(parseISO(sessionDate), 'EEEE')}
-                </Badge>
-              </div>
+              <Input
+                type="date"
+                value={sessionDate}
+                onChange={onDateChange}
+                className="font-medium"
+              />
             </Field>
+            <Badge tone="neutral" className="mb-2">
+              {format(parseISO(sessionDate), 'EEEE')}
+            </Badge>
             {currentStatus && (
-              <Badge tone={statusTone(currentStatus)} dot>
+              <Badge tone={cashupSessionStatusTone(currentStatus)} dot className="mb-2">
                 {currentStatus}
               </Badge>
             )}
             {isVoided && (
-              <Badge tone="neutral" dot>
+              <Badge tone="neutral" dot className="mb-2">
                 Voided
               </Badge>
             )}
             <div className="ml-auto flex items-end gap-1.5 text-xs">
-              <Field label="Target" className="mb-0">
+              <Field label="Target">
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -532,7 +583,7 @@ export function DailyClient({
                   step="0.01"
                   value={targetAmount}
                   onChange={(event) => setTargetAmount(event.target.value)}
-                  className={`${numberInputNoSpinnerClass} h-7 min-h-touch w-24 py-1 text-right text-xs font-mono sm:min-h-0`}
+                  className={`${numberInputNoSpinnerClass} w-24 text-right font-mono`}
                 />
               </Field>
               <Button
@@ -549,118 +600,54 @@ export function DailyClient({
                 </div>
               )}
             </div>
-            {!isVoided && currentStatus === 'submitted' && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleStatusAction('approve')}
-                  loading={saving}
-                >
-                  Approve
-                </Button>
-              </div>
-            )}
-            {!isVoided && currentStatus === 'approved' && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => handleStatusAction('lock')}
-                  loading={saving}
-                >
-                  Lock
-                </Button>
-              </div>
-            )}
-            {!isVoided && currentStatus === 'locked' && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => handleStatusAction('unlock')}
-                  loading={saving}
-                >
-                  Unlock
-                </Button>
-              </div>
-            )}
-            {sessionId && !isVoided && (
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => setShowVoidConfirm(true)}
-                loading={voiding}
-              >
-                Void…
-              </Button>
-            )}
-            {sessionId && currentStatus !== 'locked' && (
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => setShowDeleteConfirm(true)}
-                loading={saving}
-              >
-                Delete
-              </Button>
-            )}
           </div>
         </CardBody>
       </Card>
 
       {/* Voided session notice */}
       {isVoided && (
-        <Alert tone="warning" className="p-3">
-          This cash-up session has been voided — it is kept for audit but excluded from totals.
+        <Alert tone="warning">
+          This cash-up session has been voided. It is kept for audit but excluded from totals.
           {voidReason ? ` Reason: ${voidReason}` : ''}
         </Alert>
       )}
 
       {/* Missing dates alert */}
       {missingDates.length > 0 && (
-        <Alert tone="warning" className="p-3">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <Icon name="alertTriangle" size={16} />
-              <span className="font-semibold text-sm">
-                {missingDates.length} missing cashing up {missingDates.length === 1 ? 'entry' : 'entries'}
+        <Alert
+          tone="warning"
+          icon={<Icon name="alertTriangle" size={16} />}
+          title={`${missingDates.length} missing cashing up ${missingDates.length === 1 ? 'entry' : 'entries'}`}
+        >
+          <div className="flex flex-wrap gap-1.5">
+            {missingDates.slice(0, 10).map(d => (
+              <Button
+                key={d}
+                size="xs"
+                variant={d === sessionDate ? 'primary' : 'secondary'}
+                aria-current={d === sessionDate ? 'date' : undefined}
+                onClick={() => router.push(`/cashing-up/daily?date=${d}&siteId=${siteId}`)}
+              >
+                {format(parseISO(d), 'EEE dd MMM')}
+              </Button>
+            ))}
+            {missingDates.length > 10 && (
+              <span className="text-xs text-text-muted self-center">
+                +{missingDates.length - 10} more
               </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {missingDates.slice(0, 10).map(d => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => router.push(`/cashing-up/daily?date=${d}&siteId=${siteId}`)}
-                  className={`inline-flex items-center gap-1 rounded-default border px-2 py-0.5 text-xs font-medium transition-colors focus-visible:outline-hidden focus-visible:shadow-ring ${
-                    d === sessionDate
-                      ? 'border-primary bg-primary-soft text-primary-soft-fg'
-                      : 'border-border bg-surface hover:bg-surface-2 text-text-muted hover:text-text'
-                  }`}
-                >
-                  {format(parseISO(d), 'EEE dd MMM')}
-                </button>
-              ))}
-              {missingDates.length > 10 && (
-                <span className="text-xs text-text-muted self-center">
-                  +{missingDates.length - 10} more
-                </span>
-              )}
-            </div>
+            )}
           </div>
         </Alert>
       )}
 
-      <div className={isVoided ? 'grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 opacity-60' : 'grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3'}>
-        {/* Column 1 — Cash and payment totals */}
+      <div className={isVoided ? 'grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 opacity-60' : 'grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6'}>
+        {/* Column 1: Cash and payment totals */}
         <Card>
           <CardHeader
             title="Cash, Card & Stripe"
             subtitle={lastSaved ? `Saved at ${lastSaved}` : 'Cash drawer and payment totals'}
-            className="py-2"
           />
-          <CardBody className="space-y-3 p-3">
+          <CardBody className="space-y-4">
             <p className="text-xs font-semibold text-text-muted uppercase mb-1">
               Cash drawer count (total value)
             </p>
@@ -677,9 +664,10 @@ export function DailyClient({
                       {denom.label}
                     </span>
                     <div className="flex items-center gap-0.5">
-                      <span className="text-text-subtle text-xs">£</span>
+                      <span className="text-text-soft text-xs" aria-hidden="true">£</span>
                       <Input
                         id={`input-denom-${denom.value}`}
+                        aria-label={`${denom.label} total`}
                         type="number"
                         inputMode="decimal"
                         step="0.01"
@@ -707,9 +695,10 @@ export function DailyClient({
               <div className="flex justify-between items-center pt-1.5 border-t border-border">
                 <span className="text-xs text-text-muted font-medium">Expected (Z-Read):</span>
                 <div className="flex items-center gap-1">
-                  <span className="text-text-subtle text-xs">£</span>
+                  <span className="text-text-soft text-xs" aria-hidden="true">£</span>
                   <Input
                     id="input-cash-expected"
+                    aria-label="Expected cash (Z-Read)"
                     type="number"
                     inputMode="decimal"
                     step="0.01"
@@ -768,10 +757,10 @@ export function DailyClient({
           </CardBody>
         </Card>
 
-        {/* Column 2 — Sales split, notes and actions */}
+        {/* Column 2: Sales split, notes and actions */}
         <Card>
-          <CardHeader title="Sales split" subtitle="Used for P&L health checks" className="py-2" />
-          <CardBody className="space-y-3 p-3">
+          <CardHeader title="Sales Split" subtitle="Used for P&L health checks" />
+          <CardBody className="space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-3">
               <Field label="Drinks sales">
                 <Input
@@ -821,10 +810,10 @@ export function DailyClient({
               </Field>
             </div>
 
-            {/* Variance summary — any non-zero variance is flagged for review */}
-            <Alert tone={varianceFlagged ? 'warning' : 'success'} className="p-3">
+            {/* Variance summary: any non-zero variance is flagged for review */}
+            <Alert tone={cashVarianceAlertTone(cashVariance)}>
               <div className="flex justify-between items-center">
-                <span>{varianceFlagged ? 'Cash variance — review before approving' : 'Cash balanced'}</span>
+                <span>{varianceFlagged ? 'Cash variance: review before approving' : 'Cash balanced'}</span>
                 <strong className={varianceClass}>
                   £{fmt(cashVariance)}
                 </strong>
@@ -844,42 +833,41 @@ export function DailyClient({
             </Field>
 
             {autoNotes && (
-              <div className="bg-warning-soft p-3 rounded-default border border-warning-border text-xs text-warning-fg whitespace-pre-wrap">
-                <strong>Auto-detected events:</strong>
-                <br />
-                {autoNotes}
-              </div>
+              <Alert tone="warning" role="status" size="sm" title="Auto-detected events:">
+                <span className="whitespace-pre-wrap">{autoNotes}</span>
+              </Alert>
             )}
 
-            {/* Action buttons */}
-            <div className="flex gap-2 pt-1">
-              {isVoided ? null : isReadOnlyStatus && !editMode ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleOpenForEditing}
-                  disabled={isLockedStatus}
-                  icon={<Icon name="edit" size={14} />}
-                >
-                  Edit takings
-                </Button>
-              ) : (
-                <>
-                  <Button variant="secondary" size="sm" onClick={handleSave} loading={saving} disabled={fieldsDisabled}>
-                    Save Draft
+            {/* The form's own actions: a voided session has none */}
+            {!isVoided && (
+              <FormFooter>
+                {isReadOnlyStatus && !editMode ? (
+                  <Button
+                    variant="secondary"
+                    onClick={handleOpenForEditing}
+                    disabled={isLockedStatus}
+                    icon={<Icon name="edit" size={14} />}
+                  >
+                    Edit Takings
                   </Button>
-                  <Button variant="primary" size="sm" onClick={handleSubmit} loading={saving} disabled={fieldsDisabled}>
-                    Submit
-                  </Button>
-                </>
-              )}
-            </div>
+                ) : (
+                  <>
+                    <Button variant="secondary" onClick={handleSave} loading={saving} disabled={fieldsDisabled}>
+                      Save Draft
+                    </Button>
+                    <Button variant="primary" onClick={handleSubmit} loading={saving} disabled={fieldsDisabled}>
+                      Submit
+                    </Button>
+                  </>
+                )}
+              </FormFooter>
+            )}
           </CardBody>
         </Card>
 
-        {/* Column 3 — Week at a glance */}
+        {/* Column 3: Week at a glance */}
         <Card>
-          <CardHeader title="Week at a glance" className="py-2" />
+          <CardHeader title="Week at a Glance" />
           <Table>
             <TableHeader>
               <TableRow>
@@ -890,10 +878,17 @@ export function DailyClient({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {weeklyData.length === 0 ? (
+              {weeklyError ? (
+                // A failed read is shown as a failure, never as a week with no takings.
                 <TableRow>
-                  <TableCell className="text-center text-text-muted py-6" align="center">
-                    No data for this week
+                  <TableCell colSpan={4} className="whitespace-normal">
+                    <Alert tone="danger" size="sm" title="Couldn't load this week">{weeklyError}</Alert>
+                  </TableCell>
+                </TableRow>
+              ) : weeklyData.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4}>
+                    <Empty size="sm" title="No data for this week" />
                   </TableCell>
                 </TableRow>
               ) : (
@@ -931,42 +926,22 @@ export function DailyClient({
       </div>
 
       {/* Revenue stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <Card>
-          <CardBody>
-            <Stat label="Cash counted" value={`£${fmt(cashCountedTotal)}`} />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody>
-            <Stat label="Card" value={`£${fmt(cardNum)}`} />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody>
-            <Stat label="Stripe" value={`£${fmt(stripeNum)}`} />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody>
-            <Stat
-              label="Total revenue"
-              value={`£${fmt(totalRevenue)}`}
-              delta={target > 0 ? Math.round((totalRevenue / target) * 100) - 100 : undefined}
-              hint={target > 0 ? `Target: £${fmt(target)}` : undefined}
-            />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody>
-            <Stat
-              label="Split difference"
-              value={`£${fmt(salesSplitVariance)}`}
-              hint="For P&L reference"
-            />
-          </CardBody>
-        </Card>
-      </div>
+      <StatGrid columns={3} className="xl:grid-cols-5">
+        <Stat label="Cash counted" value={`£${fmt(cashCountedTotal)}`} />
+        <Stat label="Card" value={`£${fmt(cardNum)}`} />
+        <Stat label="Stripe" value={`£${fmt(stripeNum)}`} />
+        <Stat
+          label="Total revenue"
+          value={`£${fmt(totalRevenue)}`}
+          delta={target > 0 ? Math.round((totalRevenue / target) * 100) - 100 : undefined}
+          hint={target > 0 ? `Target: £${fmt(target)}` : undefined}
+        />
+        <Stat
+          label="Split difference"
+          value={`£${fmt(salesSplitVariance)}`}
+          hint="For P&L reference"
+        />
+      </StatGrid>
       <ConfirmDialog
         open={showDeleteConfirm}
         title="Delete Cash-Up Session"
@@ -976,7 +951,7 @@ export function DailyClient({
         onConfirm={handleDeleteSession}
         onClose={() => setShowDeleteConfirm(false)}
       />
-      {/* Void dialog — ConfirmDialog pattern with a required reason field */}
+      {/* Void dialog: ConfirmDialog pattern with a required reason field */}
       <Modal
         open={showVoidConfirm}
         onClose={() => {
@@ -1005,12 +980,12 @@ export function DailyClient({
               disabled={!voidReasonInput.trim()}
               onClick={handleVoidSession}
             >
-              Void session
+              Void Session
             </Button>
           </>
         }
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
           <p className="text-sm text-text-muted">
             The session stays on record for audit but is excluded from totals and reports.
           </p>
@@ -1025,6 +1000,6 @@ export function DailyClient({
           </Field>
         </div>
       </Modal>
-    </div>
+    </PageLayout>
   )
 }

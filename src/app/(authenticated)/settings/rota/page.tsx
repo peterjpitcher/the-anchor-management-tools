@@ -1,7 +1,5 @@
 import { redirect } from 'next/navigation';
 import { PageLayout } from '@/ds';
-import { Section } from '@/ds';
-import { Card } from '@/ds';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import { buildRotaNavItems } from '@/app/(authenticated)/rota/nav';
@@ -34,21 +32,17 @@ export default async function RotaSettingsPage() {
       })
     : undefined;
 
+  // In the Rota tab row, so no back button. Somebody who can manage settings but cannot see the
+  // rota gets no tab row, and without a back button would have no way out: they keep one.
   return (
     <PageLayout
       title="Rota Settings"
       subtitle="Configure holiday year, allowances, and notification emails"
       navItems={navItems}
-      backButton={{ label: 'Back to Settings', href: '/settings' }}
+      backButton={navItems ? undefined : { label: 'Back to Settings', href: '/settings' }}
+      containerSize="md"
     >
-      <Section
-        title="Configuration"
-        description="These settings apply across the rota, leave, and payroll modules."
-      >
-        <Card>
-          <RotaSettingsManager initialSettings={settings} canManage={canManage} />
-        </Card>
-      </Section>
+      <RotaSettingsManager initialSettings={settings} canManage={canManage} />
     </PageLayout>
   );
 }

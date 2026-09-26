@@ -5,12 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
-import { toast, Icon } from '@/ds'
-import { Button } from '@/ds'
-import { IconButton } from '@/ds'
-import { Input } from '@/ds'
-import { Select } from '@/ds'
-import { ConfirmDialog } from '@/ds'
+import { Alert, Button, ConfirmDialog, Empty, Icon, IconButton, Input, Select, toast } from '@/ds'
 import { editPrivateBookingPayment, deletePrivateBookingPayment } from '@/app/actions/privateBookingActions'
 import type { PaymentHistoryEntry } from '@/types/private-bookings'
 
@@ -131,7 +126,7 @@ export default function PaymentHistoryTable({
   return (
     <>
       {/* Summary section — always rendered regardless of payments.length */}
-      <div className="rounded-md border border-border bg-surface-2 p-3 mb-3 text-xs">
+      <div className="rounded-default border border-border bg-surface-2 p-3 mb-3 text-xs">
         <div className="flex justify-between text-text-muted">
           <span>Total</span>
           <span className="font-medium">{formatCurrency(totalAmount)}</span>
@@ -149,11 +144,11 @@ export default function PaymentHistoryTable({
       <p className="text-xs font-medium text-text-muted mb-2">Payment history</p>
 
       {error && (
-        <p className="text-xs text-danger mb-2">{error}</p>
+        <Alert tone="danger" size="sm" className="mb-2">{error}</Alert>
       )}
 
       {payments.length === 0 ? (
-        <p className="text-xs text-text-soft">No payments recorded yet.</p>
+        <Empty size="sm" title="No payments recorded yet" />
       ) : (
         <div className="space-y-2">
           {payments.map((entry) => {
@@ -165,7 +160,7 @@ export default function PaymentHistoryTable({
               return (
                 <div
                   key={entry.id}
-                  className="rounded-md border border-border bg-surface-2 p-2 space-y-2"
+                  className="rounded-default border border-border bg-surface-2 p-2 space-y-2"
                 >
                   <div className="flex gap-2">
                     <div className="flex-1">
@@ -287,12 +282,10 @@ export default function PaymentHistoryTable({
         open={confirmDeleteId !== null}
         onClose={() => setConfirmDeleteId(null)}
         onConfirm={handleDeleteConfirm}
-        title="Delete payment"
+        title="Delete Payment?"
         message="Are you sure you want to delete this payment? This cannot be undone."
-        type="danger"
-        destructive
-        confirmText="Delete"
-        confirmVariant="danger"
+        confirmLabel="Delete Payment"
+        tone="danger"
       />
     </>
   )

@@ -15,6 +15,7 @@ import SeasonalPreorderSection, {
 } from '@/components/features/table-bookings/preorder/SeasonalPreorderSection'
 import { PREORDER_SELECTION_COURSES } from '@/types/preorders'
 import BookingDetailClient, { type Booking } from './BookingDetailClient'
+import { tableBookingsNav } from '../_shared/nav'
 import { resolveCustomerStaffEmailOption } from '@/lib/messaging/staff-email-option'
 
 interface Props {
@@ -24,11 +25,12 @@ interface Props {
 export default async function BookingDetailPage({ params }: Props) {
   const { id } = await params
 
-  const [canView, canEdit, canManage, canRefund, permissionsResult] = await Promise.all([
+  const [canView, canEdit, canManage, canRefund, canViewReports, permissionsResult] = await Promise.all([
     checkUserPermission('table_bookings', 'view'),
     checkUserPermission('table_bookings', 'edit'),
     checkUserPermission('table_bookings', 'manage'),
     checkUserPermission('table_bookings', 'refund'),
+    checkUserPermission('reports', 'view'),
     getUserPermissions(),
   ])
 
@@ -137,7 +139,8 @@ export default async function BookingDetailPage({ params }: Props) {
     <PageLayout
       title={title}
       subtitle={`${booking.booking_reference ?? ''} · ${booking.booking_date} · ${booking.booking_time ?? ''}`}
-      backButton={{ label: 'Back to BOH', href: '/table-bookings/boh' }}
+      navItems={tableBookingsNav({ canViewReports, activeHref: '/table-bookings/boh' })}
+      backButton={{ label: 'Back to Back of House', href: '/table-bookings/boh' }}
     >
       <BookingDetailClient
         booking={normalizedBooking}

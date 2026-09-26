@@ -268,7 +268,7 @@ describe('InvoicesClient', () => {
       />
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'This quarter' }))
+    fireEvent.click(screen.getByRole('button', { name: 'This Quarter' }))
 
     expect(routerPushMock).toHaveBeenCalledWith(
       '/invoices?start_date=2026-04-01&end_date=2026-06-30&page=1'

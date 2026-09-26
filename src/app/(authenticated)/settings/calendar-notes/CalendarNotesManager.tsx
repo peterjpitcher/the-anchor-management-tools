@@ -1,13 +1,28 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Button, Icon } from '@/ds'
-import { Field } from '@/ds'
-import { Input } from '@/ds'
-import { Textarea } from '@/ds'
-import { Alert } from '@/ds'
-import { Badge } from '@/ds'
-import { toast } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  ConfirmDialog,
+  Empty,
+  Field,
+  FormFooter,
+  Icon,
+  Input,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Textarea,
+  toast,
+} from '@/ds'
 import {
   createCalendarNote,
   deleteCalendarNote,
@@ -97,7 +112,8 @@ export default function CalendarNotesManager({
 }) {
   const todayIso = getLocalIsoDate()
   const [notes, setNotes] = useState<CalendarNote[]>(sortCalendarNotes(initialNotes))
-  const [errorMessage, setErrorMessage] = useState<string | null>(initialError)
+  // Errors from saving, deleting or generating. A failed load is shown in the list card instead.
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [noteForm, setNoteForm] = useState<CalendarNoteFormState>(createEmptyNoteForm(todayIso))
   const [generatorForm, setGeneratorForm] = useState<CalendarGeneratorState>({
@@ -107,6 +123,7 @@ export default function CalendarNotesManager({
   })
   const [isMutating, startMutatingTransition] = useTransition()
   const [isGenerating, startGenerateTransition] = useTransition()
+  const [deleteTarget, setDeleteTarget] = useState<CalendarNote | null>(null)
 
   function resetNoteForm(nextDefaultDate = todayIso) {
     setEditingNoteId(null)
@@ -183,9 +200,6 @@ export default function CalendarNotesManager({
   }
 
   function handleDelete(note: CalendarNote) {
-    const confirmed = window.confirm(`Delete "${note.title}" (${describeDateRange(note)})?`)
-    if (!confirmed) return
-
     setErrorMessage(null)
     startMutatingTransition(async () => {
       const result = await deleteCalendarNote(note.id)
@@ -234,229 +248,240 @@ export default function CalendarNotesManager({
   }
 
   return (
-    <div className="space-y-8">
+    <>
       {errorMessage && (
         <Alert tone="danger" title="Calendar notes">{errorMessage}</Alert>
       )}
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        {canManage && (
-        <section className="rounded-lg border border-border p-4 sm:p-5">
-          <h3 className="text-base font-semibold text-text">
-            {editingNoteId ? 'Edit calendar note' : 'Add manual calendar note'}
-          </h3>
-          <p className="mt-1 text-sm text-text-muted">
-            Add your own notes for holidays, campaigns, closures, and reminders.
-          </p>
-
-          <form onSubmit={handleNoteSave} className="mt-4 space-y-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Start date" required>
-                <Input
-                  type="date"
-                  value={noteForm.note_date}
-                  onChange={(event) => {
-                    const nextStart = event.target.value
-                    setNoteForm((current) => ({
-                      ...current,
-                      note_date: nextStart,
-                      end_date: current.end_date < nextStart ? nextStart : current.end_date,
-                    }))
-                  }}
-                  required
-                />
-              </Field>
-              <Field label="End date" required>
-                <Input
-                  type="date"
-                  value={noteForm.end_date}
-                  min={noteForm.note_date}
-                  onChange={(event) => setNoteForm((current) => ({ ...current, end_date: event.target.value }))}
-                  required
-                />
-              </Field>
-            </div>
-
-            <Field label="Title" required>
-              <Input
-                type="text"
-                placeholder="e.g. St Patrick's Day"
-                value={noteForm.title}
-                onChange={(event) => setNoteForm((current) => ({ ...current, title: event.target.value }))}
-                maxLength={160}
-                required
+      {(canManage || canGenerate) && (
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          {canManage && (
+            <Card>
+              <CardHeader
+                title={editingNoteId ? 'Edit Calendar Note' : 'Add Manual Calendar Note'}
+                subtitle="Your own notes for holidays, campaigns, closures, and reminders"
               />
-            </Field>
+              <CardBody>
+                <form onSubmit={handleNoteSave} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field label="Start date" required>
+                      <Input
+                        type="date"
+                        value={noteForm.note_date}
+                        onChange={(event) => {
+                          const nextStart = event.target.value
+                          setNoteForm((current) => ({
+                            ...current,
+                            note_date: nextStart,
+                            end_date: current.end_date < nextStart ? nextStart : current.end_date,
+                          }))
+                        }}
+                        required
+                      />
+                    </Field>
+                    <Field label="End date" required>
+                      <Input
+                        type="date"
+                        value={noteForm.end_date}
+                        min={noteForm.note_date}
+                        onChange={(event) => setNoteForm((current) => ({ ...current, end_date: event.target.value }))}
+                        required
+                      />
+                    </Field>
+                  </div>
 
-            <Field label="Color">
-              <Input
-                type="color"
-                value={normalizeColor(noteForm.color)}
-                onChange={(event) => setNoteForm((current) => ({ ...current, color: event.target.value }))}
-              />
-            </Field>
+                  <Field label="Title" required>
+                    <Input
+                      type="text"
+                      placeholder="e.g. St Patrick's Day"
+                      value={noteForm.title}
+                      onChange={(event) => setNoteForm((current) => ({ ...current, title: event.target.value }))}
+                      maxLength={160}
+                      required
+                    />
+                  </Field>
 
-            <Field label="Notes">
-              <Textarea
-                rows={3}
-                placeholder="Optional detail for the calendar tooltip."
-                value={noteForm.notes}
-                onChange={(event) => setNoteForm((current) => ({ ...current, notes: event.target.value }))}
-                maxLength={4000}
-              />
-            </Field>
+                  <Field label="Colour">
+                    <Input
+                      type="color"
+                      value={normalizeColor(noteForm.color)}
+                      onChange={(event) => setNoteForm((current) => ({ ...current, color: event.target.value }))}
+                    />
+                  </Field>
 
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {editingNoteId && (
-                <Button
-                  variant="ghost"
-                  onClick={() => resetNoteForm(noteForm.note_date || todayIso)}
-                  disabled={isMutating}
-                >
-                  Cancel
-                </Button>
-              )}
-              <Button
-                type="submit"
-                loading={isMutating}
-                leftIcon={<Icon name="calendar" size={16} />}
-              >
-                {editingNoteId ? 'Save changes' : 'Add note'}
-              </Button>
-            </div>
-          </form>
-        </section>
-        )}
+                  <Field label="Notes">
+                    <Textarea
+                      rows={3}
+                      placeholder="Optional detail for the calendar tooltip."
+                      value={noteForm.notes}
+                      onChange={(event) => setNoteForm((current) => ({ ...current, notes: event.target.value }))}
+                      maxLength={4000}
+                    />
+                  </Field>
 
-        {canGenerate && (
-        <section className="rounded-lg border border-border p-4 sm:p-5">
-          <h3 className="text-base font-semibold text-text">Generate with AI</h3>
-          <p className="mt-1 text-sm text-text-muted">
-            Generate important dates between two dates, including major holidays and hospitality-relevant observances.
-          </p>
-          <p className="mt-1 text-xs text-text-muted">
-            Uses your OpenAI key from Settings.
-          </p>
+                  <FormFooter>
+                    {editingNoteId && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => resetNoteForm(noteForm.note_date || todayIso)}
+                        disabled={isMutating}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      loading={isMutating}
+                      icon={<Icon name="calendar" size={16} />}
+                    >
+                      {editingNoteId ? 'Save Changes' : 'Add Note'}
+                    </Button>
+                  </FormFooter>
+                </form>
+              </CardBody>
+            </Card>
+          )}
 
-          <form onSubmit={handleGenerate} className="mt-4 space-y-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Start date" required>
-                <Input
-                  type="date"
-                  value={generatorForm.start_date}
-                  onChange={(event) => setGeneratorForm((current) => ({ ...current, start_date: event.target.value }))}
-                  required
-                />
-              </Field>
-              <Field label="End date" required>
-                <Input
-                  type="date"
-                  value={generatorForm.end_date}
-                  onChange={(event) => setGeneratorForm((current) => ({ ...current, end_date: event.target.value }))}
-                  required
-                />
-              </Field>
-            </div>
+          {canGenerate && (
+            <Card>
+              <CardHeader title="Generate with AI" subtitle="Uses your OpenAI key from Settings" />
+              <CardBody>
+                <form onSubmit={handleGenerate} className="space-y-4">
+                  <p className="text-sm text-text-muted">
+                    Generate important dates between two dates, including major holidays and hospitality-relevant observances.
+                  </p>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field label="Start date" required>
+                      <Input
+                        type="date"
+                        value={generatorForm.start_date}
+                        onChange={(event) => setGeneratorForm((current) => ({ ...current, start_date: event.target.value }))}
+                        required
+                      />
+                    </Field>
+                    <Field label="End date" required>
+                      <Input
+                        type="date"
+                        value={generatorForm.end_date}
+                        onChange={(event) => setGeneratorForm((current) => ({ ...current, end_date: event.target.value }))}
+                        required
+                      />
+                    </Field>
+                  </div>
 
-            <Field label="Extra guidance">
-              <Textarea
-                rows={4}
-                placeholder="Optional: include venue-specific reminders or campaign themes."
-                value={generatorForm.guidance}
-                onChange={(event) => setGeneratorForm((current) => ({ ...current, guidance: event.target.value }))}
-                maxLength={2000}
-              />
-            </Field>
+                  <Field label="Extra guidance">
+                    <Textarea
+                      rows={4}
+                      placeholder="Optional: include venue-specific reminders or campaign themes."
+                      value={generatorForm.guidance}
+                      onChange={(event) => setGeneratorForm((current) => ({ ...current, guidance: event.target.value }))}
+                      maxLength={2000}
+                    />
+                  </Field>
 
-            <div className="flex justify-end">
-              <Button
-                type="submit"
-                variant="secondary"
-                loading={isGenerating}
-                leftIcon={<Icon name="sparkles" size={16} />}
-              >
-                Generate notes
-              </Button>
-            </div>
-          </form>
-        </section>
-        )}
-      </div>
-
-      <section className="rounded-lg border border-border">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h3 className="text-sm font-semibold text-text">Saved calendar notes</h3>
-          <Badge tone="neutral">{notes.length} total</Badge>
+                  <FormFooter>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      loading={isGenerating}
+                      icon={<Icon name="sparkles" size={16} />}
+                    >
+                      Generate Notes
+                    </Button>
+                  </FormFooter>
+                </form>
+              </CardBody>
+            </Card>
+          )}
         </div>
+      )}
+
+      <Card padding="none">
+        <CardHeader title="Saved Calendar Notes" action={<Badge>{notes.length} total</Badge>} />
 
         {notes.length === 0 ? (
-          <div className="px-4 py-10 text-center text-sm text-text-muted">
-            No calendar notes yet.
-          </div>
+          // A failed load is an error, never shown as an empty list.
+          initialError ? (
+            <CardBody>
+              <Alert tone="danger" title="Calendar notes">{initialError}</Alert>
+            </CardBody>
+          ) : (
+            <Empty size="sm" title="No calendar notes yet" />
+          )
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-surface-2">
-                <tr>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Dates</th>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Title</th>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Source</th>
-                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">Notes</th>
-                  <th scope="col" className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-text-muted">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border bg-surface">
-                {notes.map((note) => (
-                  <tr key={note.id} className="hover:bg-surface-hover">
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-text">{describeDateRange(note)}</td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="inline-block h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: normalizeColor(note.color) }}
-                        />
-                        <span className="text-sm font-medium text-text">{note.title}</span>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Dates</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Notes</TableHead>
+                <TableHead align="right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {notes.map((note) => (
+                <TableRow key={note.id}>
+                  <TableCell>{describeDateRange(note)}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: normalizeColor(note.color) }}
+                      />
+                      <span className="font-medium">{note.title}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge>{note.source === 'ai' ? 'AI' : 'Manual'}</Badge>
+                  </TableCell>
+                  <TableCell className="max-w-sm whitespace-normal text-text-muted">
+                    <span className="line-clamp-2">{note.notes || '-'}</span>
+                  </TableCell>
+                  <TableCell align="right">
+                    {canManage && (
+                      <div className="inline-flex items-center gap-1">
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => beginEdit(note)}
+                          disabled={isMutating}
+                          icon={<Icon name="edit" size={14} />}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => setDeleteTarget(note)}
+                          disabled={isMutating}
+                          icon={<Icon name="trash" size={14} />}
+                        >
+                          Delete
+                        </Button>
                       </div>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <Badge tone="neutral">
-                        {note.source === 'ai' ? 'AI' : 'Manual'}
-                      </Badge>
-                    </td>
-                    <td className="max-w-sm px-4 py-3 text-sm text-text-muted">
-                      <span className="line-clamp-2">{note.notes || '—'}</span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right">
-                      {canManage && (
-                        <div className="inline-flex items-center gap-1">
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            onClick={() => beginEdit(note)}
-                            disabled={isMutating}
-                            leftIcon={<Icon name="edit" size={14} />}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            onClick={() => handleDelete(note)}
-                            disabled={isMutating}
-                            leftIcon={<Icon name="trash" size={14} />}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
-      </section>
-    </div>
+      </Card>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) handleDelete(deleteTarget)
+        }}
+        tone="danger"
+        title="Delete Calendar Note"
+        message={deleteTarget ? `Delete "${deleteTarget.title}" (${describeDateRange(deleteTarget)})?` : undefined}
+        confirmLabel="Delete"
+      />
+    </>
   )
 }

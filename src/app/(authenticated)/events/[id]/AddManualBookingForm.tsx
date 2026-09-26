@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useState, useTransition } from 'react'
-import { Button, Card, CardBody, CardHeader, Input, Select, Spinner, toast } from '@/ds'
+import { Button, Card, CardBody, CardHeader, Field, FormFooter, Input, Select, toast } from '@/ds'
 import { Icon } from '@/ds/icons'
 import type { Event } from '@/types/database'
 import { createEventManualBooking } from '@/app/actions/events'
@@ -213,10 +213,8 @@ export function AddManualBookingForm({
   return (
     <Card>
       <CardHeader title="Add Manual Booking" />
-      <CardBody>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-text-muted mb-1">Customer</label>
+      <CardBody className="space-y-4">
+          <Field label="Customer">
             <CustomerSearchInput
               onCustomerSelect={(customer) => {
                 if (customer) {
@@ -235,7 +233,7 @@ export function AddManualBookingForm({
               selectedCustomerId={selectedCustomerId}
               placeholder="Search by name or phone..."
             />
-          </div>
+          </Field>
 
           {!selectedCustomerId && (
             <div>
@@ -281,7 +279,7 @@ export function AddManualBookingForm({
                   return (
                     <div
                       key={type.id}
-                      className="flex items-center justify-between gap-2 rounded-md border border-border p-2.5"
+                      className="flex items-center justify-between gap-2 rounded-default border border-border p-2.5"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-text">{type.name}</p>
@@ -322,7 +320,7 @@ export function AddManualBookingForm({
                 })}
               </div>
               {basketErrorToShow && (
-                <p className="mt-1.5 text-xs text-danger" role="alert">{basketErrorToShow}</p>
+                <p className="mt-1.5 text-xs text-danger-fg" role="alert">{basketErrorToShow}</p>
               )}
               <p className="mt-2 text-sm font-medium text-text">
                 {basketSummary.error === null
@@ -333,7 +331,7 @@ export function AddManualBookingForm({
               {totalSeats > 0 && totalSeats <= MAX_MANUAL_BOOKING_SEATS && (
                 <div className="mt-3">
                   <p className="text-xs font-medium text-text-muted mb-1">
-                    Ticket names (optional — name every ticket or leave blank)
+                    Ticket names (optional: name every ticket or leave blank)
                   </p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {Array.from({ length: totalSeats }).map((_, index) => (
@@ -347,7 +345,7 @@ export function AddManualBookingForm({
                     ))}
                   </div>
                   {errors.names && (
-                    <p className="mt-1.5 text-xs text-danger" role="alert">{errors.names}</p>
+                    <p className="mt-1.5 text-xs text-danger-fg" role="alert">{errors.names}</p>
                   )}
                 </div>
               )}
@@ -385,16 +383,16 @@ export function AddManualBookingForm({
             </div>
           )}
 
-          <Button
-            variant="primary"
-            onClick={handleSubmit}
-            disabled={isPending}
-            icon={isPending ? <Spinner className="h-4 w-4" /> : <Icon name="plus" size={14} />}
-            className="w-full sm:w-auto"
-          >
-            Add Booking
-          </Button>
-        </div>
+          <FormFooter>
+            <Button
+              variant="primary"
+              onClick={handleSubmit}
+              loading={isPending}
+              icon={<Icon name="plus" size={14} />}
+            >
+              Add Booking
+            </Button>
+          </FormFooter>
       </CardBody>
     </Card>
   )

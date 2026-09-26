@@ -15,6 +15,8 @@ vi.mock('@/ds', () => ({
   Select: (props: React.SelectHTMLAttributes<HTMLSelectElement>) => <select {...props} />,
   ConfirmDialog: () => null,
   Icon: () => null,
+  Alert: ({ children }: { children?: React.ReactNode }) => <div role="alert">{children}</div>,
+  Empty: ({ title }: { title: string }) => <p>{title}</p>,
 }))
 
 describe('booking payment history from a linked invoice', () => {

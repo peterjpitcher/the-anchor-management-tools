@@ -10,7 +10,20 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Input, Modal } from '@/ds'
+import {
+  Alert,
+  Button,
+  Input,
+  Modal,
+  PageLoading,
+  Radio,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/ds'
 import type {
   DepositTreatment,
   PrivateBookingInvoicePreview,
@@ -85,7 +98,7 @@ export function InvoiceBookingModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={preview ? `Invoice ${preview.customerName}` : 'Invoice this booking'}
+      title={preview ? `Invoice ${preview.customerName}` : 'Invoice This Booking'}
       width="xl"
       footer={
         <>
@@ -106,13 +119,13 @@ export function InvoiceBookingModal({
             {sending
               ? 'Sending…'
               : preview
-                ? `Send invoice to ${preview.customerName.split(' ')[0]}`
-                : 'Send invoice'}
+                ? `Send Invoice to ${preview.customerName.split(' ')[0]}`
+                : 'Send Invoice'}
           </Button>
         </>
       }
     >
-      {loading && <p className="text-sm text-text-muted">Working out the figures…</p>}
+      {loading && <PageLoading inline label="Working out the figures…" />}
 
       {error && (
         <Alert tone="danger" title="This booking cannot be invoiced">
@@ -136,38 +149,35 @@ export function InvoiceBookingModal({
             </Alert>
           )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                {/* Same header look as the DS Table: small uppercase muted labels, medium weight. */}
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-text-muted">
-                  <th className="py-2 pr-2 font-medium">Item</th>
-                  <th className="py-2 px-2 text-right font-medium">Qty</th>
-                  <th className="py-2 px-2 text-right font-medium">Unit</th>
-                  <th className="py-2 pl-2 text-right font-medium">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.lines.map((line, index) => (
-                  <tr key={`${line.description}-${index}`} className="border-b border-border">
-                    <td className="py-2 pr-2 text-text">
-                      {line.description}
-                      {line.discountPercentage > 0 && (
-                        <span className="ml-2 text-xs font-medium text-success-fg">
-                          {line.discountPercentage}% off
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 px-2 text-right text-text-muted">
-                      {formatQuantity(line.quantity)}
-                    </td>
-                    <td className="py-2 px-2 text-right text-text-muted">{money(line.unitPrice)}</td>
-                    <td className="py-2 pl-2 text-right text-text">{money(line.lineTotal)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Item</TableHead>
+                <TableHead align="right">Qty</TableHead>
+                <TableHead align="right">Unit</TableHead>
+                <TableHead align="right">Amount</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {preview.lines.map((line, index) => (
+                <TableRow key={`${line.description}-${index}`}>
+                  <TableCell className="whitespace-normal">
+                    {line.description}
+                    {line.discountPercentage > 0 && (
+                      <span className="ml-2 text-xs font-medium text-success-fg">
+                        {line.discountPercentage}% off
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell align="right" className="text-text-muted">
+                    {formatQuantity(line.quantity)}
+                  </TableCell>
+                  <TableCell align="right" className="text-text-muted">{money(line.unitPrice)}</TableCell>
+                  <TableCell align="right">{money(line.lineTotal)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
 
           <dl className="space-y-1 text-sm">
             <div className="flex justify-between">
@@ -185,70 +195,41 @@ export function InvoiceBookingModal({
           </dl>
 
           {askAboutDeposit && deposit ? (
-            <fieldset className="rounded-lg border border-border p-4">
-              <legend className="px-1 text-sm font-medium text-text">
+            <fieldset className="space-y-3">
+              <legend className="mb-2 text-sm font-medium text-text">
                 How should the {money(deposit.amount)} deposit be treated?
               </legend>
 
-              <div className="mt-2 space-y-3">
-                <label className="flex cursor-pointer gap-3">
-                  <input
-                    type="radio"
-                    name="deposit-treatment"
-                    className="mt-1"
-                    checked={treatment === 'held_separately'}
-                    onChange={() => setTreatment('held_separately')}
-                    disabled={sending}
-                  />
-                  <span className="text-sm">
-                    <span className="font-medium text-text">
-                      Hold it separately (standard)
-                    </span>
-                    <span className="block text-text-muted">
-                      {preview.customerName.split(' ')[0]} pays{' '}
-                      {money(preview.balanceHoldingDeposit)} now. Deposit refunded within 48
-                      hours after the event.
-                    </span>
-                  </span>
-                </label>
+              <Radio
+                name="deposit-treatment"
+                value="held_separately"
+                label="Hold it separately (standard)"
+                description={`${preview.customerName.split(' ')[0]} pays ${money(preview.balanceHoldingDeposit)} now. Deposit refunded within 48 hours after the event.`}
+                checked={treatment === 'held_separately'}
+                onChange={() => setTreatment('held_separately')}
+                disabled={sending}
+              />
 
-                <label className="flex cursor-pointer gap-3">
-                  <input
-                    type="radio"
-                    name="deposit-treatment"
-                    className="mt-1"
-                    checked={treatment === 'deducted'}
-                    onChange={() => setTreatment('deducted')}
-                    disabled={sending || preview.depositWouldOverpay}
-                  />
-                  <span className="text-sm">
-                    <span className="font-medium text-text">
-                      Take it off this invoice (account customer)
-                    </span>
-                    <span className="block text-text-muted">
-                      {preview.depositWouldOverpay ? (
-                        <>
-                          Not possible here: the deposit and payments received are more than the
-                          invoice total, so this booking is owed a refund rather than an invoice.
-                        </>
-                      ) : (
-                        <>
-                          {preview.customerName.split(' ')[0]} pays{' '}
-                          {money(preview.balanceDeductingDeposit)} now. Deposit is used up,
-                          nothing refunded afterwards.
-                        </>
-                      )}
-                    </span>
-                  </span>
-                </label>
-              </div>
+              <Radio
+                name="deposit-treatment"
+                value="deducted"
+                label="Take it off this invoice (account customer)"
+                description={
+                  preview.depositWouldOverpay
+                    ? 'Not possible here: the deposit and payments received are more than the invoice total, so this booking is owed a refund rather than an invoice.'
+                    : `${preview.customerName.split(' ')[0]} pays ${money(preview.balanceDeductingDeposit)} now. Deposit is used up, nothing refunded afterwards.`
+                }
+                checked={treatment === 'deducted'}
+                onChange={() => setTreatment('deducted')}
+                disabled={sending || preview.depositWouldOverpay}
+              />
             </fieldset>
           ) : (
-            <p className="rounded-lg bg-surface-2 p-3 text-sm text-text-muted">
+            <Alert tone="info" size="sm" role="status">
               {deposit?.waived
                 ? 'The deposit was waived on this booking, so there is nothing to apply.'
                 : 'No deposit has been paid on this booking.'}
-            </p>
+            </Alert>
           )}
 
           <dl className="space-y-1 border-t border-border pt-3 text-sm">
@@ -270,26 +251,15 @@ export function InvoiceBookingModal({
             </div>
           </dl>
 
-          <div>
-            <label
-              htmlFor="invoice-reference"
-              className="block text-sm font-medium text-text"
-            >
-              Their reference or PO number
-            </label>
-            <Input
-              id="invoice-reference"
-              value={reference}
-              onChange={event => setReference(event.target.value)}
-              disabled={sending}
-              maxLength={100}
-            />
-            <p className="mt-1 text-xs text-text-muted">
-              Optional, and it prints on the invoice. Leave it as it is for a private customer.
-              Businesses often need their own PO number here or their finance team will not pay
-              it.
-            </p>
-          </div>
+          <Input
+            id="invoice-reference"
+            label="Their reference or PO number"
+            hint="Optional, and it prints on the invoice. Leave it as it is for a private customer. Businesses often need their own PO number here or their finance team will not pay it."
+            value={reference}
+            onChange={event => setReference(event.target.value)}
+            disabled={sending}
+            maxLength={100}
+          />
         </div>
       )}
     </Modal>

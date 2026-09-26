@@ -1,16 +1,9 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getMileageInsights } from '@/app/actions/mileage'
-import { PageLayout } from '@/ds'
-import { Alert } from '@/ds'
+import { Alert, PageLayout } from '@/ds'
+import { MILEAGE_INSIGHTS_LAYOUT } from '../_shared/nav'
 import { MileageInsightsClient } from './_components/MileageInsightsClient'
-import type { HeaderNavItem } from '@/ds'
-
-const navItems: HeaderNavItem[] = [
-  { label: 'Trips', href: '/mileage' },
-  { label: 'Destinations', href: '/mileage/destinations' },
-  { label: 'Insights', href: '/mileage/insights' },
-]
 
 export default async function MileageInsightsPage(): Promise<React.JSX.Element> {
   const canView = await checkUserPermission('mileage', 'view')
@@ -20,15 +13,12 @@ export default async function MileageInsightsPage(): Promise<React.JSX.Element> 
 
   if (!result.success || !result.data) {
     return (
-      <PageLayout title="Mileage" subtitle="Insights" navItems={navItems}>
+      <PageLayout {...MILEAGE_INSIGHTS_LAYOUT}>
         <Alert tone="danger" title="Error loading insights">{result.error ?? 'Unknown error'}</Alert>
       </PageLayout>
     )
   }
 
-  return (
-    <PageLayout title="Mileage" subtitle="Insights" navItems={navItems}>
-      <MileageInsightsClient initialData={result.data} />
-    </PageLayout>
-  )
+  // The client renders the PageLayout, so the period switch can sit in the header.
+  return <MileageInsightsClient initialData={result.data} />
 }

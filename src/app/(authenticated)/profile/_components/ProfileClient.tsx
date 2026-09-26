@@ -1,24 +1,20 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 
 import {
-  PageHeader,
-  Card,
-  CardHeader,
-  CardBody,
-} from '@/ds'
-import {
-  Button,
   Avatar,
-  Field,
-  Input,
-  Switch,
-  PageLoading,
-  Empty,
-  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
   ConfirmDialog,
+  Field,
+  FormFooter,
+  Input,
+  LinkButton,
+  PageLayout,
+  Switch,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { toast } from '@/ds'
@@ -53,8 +49,13 @@ interface Profile {
 /*  ProfileClient                                                      */
 /* ------------------------------------------------------------------ */
 
-export function ProfileClient() {
-  const router = useRouter()
+/** One header for every state, so the title never moves while the profile loads or fails. */
+const layoutProps = {
+  title: 'My Profile',
+  subtitle: 'Manage your account details',
+} as const
+
+export function ProfileClient(): React.JSX.Element {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -197,45 +198,26 @@ export function ProfileClient() {
     }
   }
 
-  /* ---- Loading state ---- */
+  /* ---- Loading and failure states ---- */
 
   if (loading) {
-    return (
-      <div>
-        <PageHeader
-          breadcrumbs={[{ label: 'Profile' }]}
-          title="My Profile"
-          subtitle="Manage your account details"
-        />
-        <PageLoading className="min-h-0 py-16" />
-      </div>
-    )
+    return <PageLayout {...layoutProps} loading loadingLabel="Loading your profile" />
   }
 
   if (!profile) {
     return (
-      <div>
-        <PageHeader
-          breadcrumbs={[{ label: 'Profile' }]}
-          title="My Profile"
-        />
-        <Card>
-          <Empty title="Profile not found" description="We could not load your profile information." />
-        </Card>
-      </div>
+      <PageLayout
+        {...layoutProps}
+        error="We could not load your profile information."
+        onRetry={() => void fetchProfile()}
+      />
     )
   }
 
   /* ---- Main render ---- */
 
   return (
-    <div>
-      <PageHeader
-        breadcrumbs={[{ label: 'Profile' }]}
-        title="My Profile"
-        subtitle="Manage your account details"
-      />
-
+    <PageLayout {...layoutProps}>
       {/* Delete confirmation */}
       <ConfirmDialog
         open={showDeleteConfirm}
@@ -280,7 +262,7 @@ export function ProfileClient() {
                   />
                 </Field>
 
-                <div className="flex justify-end">
+                <FormFooter>
                   <Button
                     variant="primary"
                     onClick={() => void handleUpdateProfile()}
@@ -288,7 +270,7 @@ export function ProfileClient() {
                   >
                     Save Changes
                   </Button>
-                </div>
+                </FormFooter>
               </div>
             </CardBody>
           </Card>
@@ -303,13 +285,9 @@ export function ProfileClient() {
                     <p className="text-ui font-medium text-text-strong">Password</p>
                     <p className="text-xs text-text-muted">Change your account password</p>
                   </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => router.push('/profile/change-password')}
-                  >
+                  <LinkButton href="/profile/change-password" variant="secondary" size="sm">
                     Change Password
-                  </Button>
+                  </LinkButton>
                 </div>
               </div>
             </CardBody>
@@ -398,9 +376,9 @@ export function ProfileClient() {
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-semibold text-text-strong">
+                  <p className="text-sm font-semibold text-text-strong">
                     {profile.full_name || profile.email}
-                  </h3>
+                  </p>
                   <p className="text-xs text-text-muted">{profile.email}</p>
                 </div>
 
@@ -424,12 +402,17 @@ export function ProfileClient() {
                       Remove Photo
                     </Button>
                   ) : null}
+                  {/* The file picker behind "Change Photo". The DS FileUpload is a drop zone, not a
+                      button, so a visually hidden native input stays here, out of the tab order
+                      and hidden from screen readers: the button above is the control. */}
                   <input
                     ref={avatarInputRef}
                     id="avatar-upload-ds"
                     type="file"
                     accept="image/*"
                     className="sr-only"
+                    tabIndex={-1}
+                    aria-hidden="true"
                     onChange={(e) => void handleUploadAvatar(e)}
                     disabled={uploading}
                   />
@@ -463,6 +446,6 @@ export function ProfileClient() {
           </Card>
         </div>
       </div>
-    </div>
+    </PageLayout>
   )
 }

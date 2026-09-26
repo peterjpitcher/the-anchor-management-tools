@@ -1,72 +1,143 @@
 'use client'
 
-import { useState } from 'react'
-import { Button } from '@/ds'
+import { Button, Dropdown, DropdownItem, Icon, LinkButton } from '@/ds'
+import { useDeleteEmployeeAction } from '@/components/features/employees/DeleteEmployeeButton'
+import { useEmployeeStatusActions } from '@/components/features/employees/EmployeeStatusActions'
+import {
+  EmployeeActionButton,
+  type EmployeeHeaderAction,
+} from '@/components/features/employees/employeeHeaderActions'
 
 interface EmployeeHeaderActionsProps {
-  /** The primary action shown inline on mobile (e.g. Edit). */
-  primary?: React.ReactNode
-  /** Secondary actions — inline on desktop, tucked into a "More" menu on mobile. */
-  secondary: React.ReactNode[]
+  employeeId: string
+  /** The name the delete dialog asks about. */
+  employeeName: string
+  status: string
+  employmentStartDate: string | null
+  canEdit: boolean
+  canDelete: boolean
+}
+
+interface DocumentLink {
+  key: string
+  label: string
+  href: string
 }
 
 /**
- * Employee-detail header actions. Desktop shows every action in a wrapping row.
- * Mobile shows the primary action plus a "More" disclosure so the header is one
- * tidy row instead of a three-row block of full-size buttons.
+ * Employee page header actions. Desktop shows every action in one row, secondary first and Edit
+ * Employee last. Phones show a "More" menu (the DS Dropdown) and Edit Employee, so the header is
+ * one tidy row instead of a block of full-size buttons.
+ *
+ * The status and delete actions open dialogs. A menu unmounts its items when it closes, which is
+ * the same click that chose the item, so the dialogs live here, outside the menu, and the menu
+ * items only open them.
  */
-export function EmployeeHeaderActions({ primary, secondary }: EmployeeHeaderActionsProps) {
-  const [open, setOpen] = useState(false)
-  const hasSecondary = secondary.filter(Boolean).length > 0
+export function EmployeeHeaderActions({
+  employeeId,
+  employeeName,
+  status,
+  employmentStartDate,
+  canEdit,
+  canDelete,
+}: EmployeeHeaderActionsProps): React.JSX.Element {
+  const statusActions = useEmployeeStatusActions({ employeeId, status, canEdit, employmentStartDate })
+  const deleteAction = useDeleteEmployeeAction({ employeeId, employeeName })
+
+  // An onboarding employee has no details to put in their starter pack or contract yet.
+  const documents: DocumentLink[] = status === 'Onboarding'
+    ? []
+    : [
+        { key: 'starter-pack', label: 'New Starter PDF', href: `/api/employees/${employeeId}/starter-pack` },
+        { key: 'contract', label: 'Casual Worker Agreement', href: `/api/employees/${employeeId}/employment-contract` },
+      ]
+
+  const actions: EmployeeHeaderAction[] = [
+    ...statusActions.actions,
+    ...(canDelete ? [deleteAction.action] : []),
+  ]
+
+  const editLink = canEdit ? (
+    <LinkButton href={`/employees/${employeeId}/edit`} size="sm" variant="primary">
+      Edit Employee
+    </LinkButton>
+  ) : null
+
+  const hasMenu = documents.length > 0 || actions.length > 0
+
+  const menu = (align: 'left' | 'right') => (
+    <Dropdown
+      align={align}
+      trigger={
+        <Button type="button" size="sm" variant="secondary" iconRight={<Icon name="chevronDown" size={14} />}>
+          More
+        </Button>
+      }
+    >
+      {documents.map((document) => (
+        <DropdownItem
+          key={document.key}
+          icon={<Icon name="download" size={16} />}
+          onClick={() => window.open(document.href, '_blank', 'noopener,noreferrer')}
+        >
+          {document.label}
+        </DropdownItem>
+      ))}
+      {actions.map((action) => (
+        <DropdownItem
+          key={action.key}
+          icon={action.icon}
+          danger={action.tone === 'danger'}
+          disabled={action.disabled || action.loading}
+          onClick={action.onSelect}
+        >
+          {action.label}
+        </DropdownItem>
+      ))}
+    </Dropdown>
+  )
 
   return (
     <>
-      {/* Mobile: primary + More. The row, not the More button, anchors the menu, because the
-          row always starts at the page gutter. More sits near the left of the screen, so a
-          menu hung from its right edge ran off the left side. */}
-      <div className="relative flex items-center gap-2 md:hidden">
-        {primary}
-        {hasSecondary && (
+      {/* Phones: More, then Edit Employee. The menu hangs from the More button, so it opens
+          towards the middle of the screen: below 640px the row starts at the left gutter and the
+          menu opens rightwards; from 640px up to the shell switch the page puts this row at the
+          right-hand side, so the menu opens leftwards. Either way it stays on screen, with or
+          without Edit Employee beside it. */}
+      <div className="flex items-center gap-2 shell:hidden">
+        {hasMenu && (
           <>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setOpen((v) => !v)}
-              aria-expanded={open}
-              aria-haspopup="menu"
-              iconRight={<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M5.5 7.5 10 12l4.5-4.5" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>}
-            >
-              More
-            </Button>
-            {open && (
-              <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden="true" />
-            )}
-            {/* Hidden, never unmounted, when closed. Begin Separation, Mark as Former and
-                Delete Employee own their dialogs, and choosing one closes this menu in the
-                same click; unmounting the items took the dialog with them, so nothing opened.
-                Those dialogs are DS Modals, which render on the body, so hiding the menu
-                does not hide them. */}
-            <div
-              role="menu"
-              hidden={!open}
-              className="absolute left-0 top-full z-40 mt-1 flex w-56 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-md border border-border bg-surface p-2 shadow-lg"
-              onClick={() => setOpen(false)}
-            >
-              {secondary.filter(Boolean).map((action, i) => (
-                <div key={i} className="[&_a]:w-full [&_button]:w-full [&>*]:w-full">
-                  {action}
-                </div>
-              ))}
-            </div>
+            <div className="sm:hidden">{menu('left')}</div>
+            <div className="hidden sm:block">{menu('right')}</div>
           </>
         )}
+        {editLink}
       </div>
 
-      {/* Desktop: full row */}
-      <div className="hidden flex-wrap items-center justify-end gap-2 md:flex">
-        {secondary}
-        {primary}
+      {/* Desktop: the full row */}
+      <div className="hidden flex-wrap items-center justify-end gap-2 shell:flex">
+        {documents.map((document) => (
+          <LinkButton
+            key={document.key}
+            href={document.href}
+            size="sm"
+            variant="secondary"
+            target="_blank"
+            icon={<Icon name="download" size={16} />}
+          >
+            {document.label}
+          </LinkButton>
+        ))}
+        {actions.map((action) => (
+          <EmployeeActionButton key={action.key} action={action} />
+        ))}
+        {editLink}
       </div>
+
+      {/* Rendered once, outside both the menu and the rows, so a dialog opened from a menu item
+          outlives the menu closing. DS Modals render on the body. */}
+      {statusActions.dialogs}
+      {canDelete && deleteAction.dialog}
     </>
   )
 }

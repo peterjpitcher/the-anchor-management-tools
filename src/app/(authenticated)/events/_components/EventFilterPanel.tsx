@@ -1,7 +1,6 @@
 'use client'
 
-import { Button, SearchInput, Select, DateTimePicker } from '@/ds'
-import { Icon } from '@/ds/icons'
+import { SearchInput, Select, DateTimePicker } from '@/ds'
 import type { EventCategory } from '@/types/event-categories'
 
 export interface EventFilters {
@@ -16,10 +15,6 @@ interface EventFilterPanelProps {
   filters: EventFilters
   onFilterChange: (filters: EventFilters) => void
   categories: EventCategory[]
-  onExportDateRange?: () => void
-  onExportQrPack?: () => void
-  isBuildingQrPack?: boolean
-  isExporting?: boolean
 }
 
 const STATUS_OPTIONS = [
@@ -35,10 +30,6 @@ export function EventFilterPanel({
   filters,
   onFilterChange,
   categories,
-  onExportDateRange,
-  onExportQrPack,
-  isBuildingQrPack,
-  isExporting = false,
 }: EventFilterPanelProps) {
   const categoryOptions = [
     { value: 'all', label: 'All Categories' },
@@ -61,6 +52,7 @@ export function EventFilterPanel({
 
       <div className="w-full sm:w-40">
         <Select
+          aria-label="Category"
           options={categoryOptions}
           value={filters.category}
           onChange={(e) => update({ category: e.target.value })}
@@ -69,6 +61,7 @@ export function EventFilterPanel({
 
       <div className="w-full sm:w-40">
         <Select
+          aria-label="Status"
           options={STATUS_OPTIONS}
           value={filters.status}
           onChange={(e) => update({ status: e.target.value })}
@@ -81,6 +74,7 @@ export function EventFilterPanel({
           value={filters.dateFrom}
           onChange={(v) => update({ dateFrom: v })}
           placeholder="From date"
+          aria-label="From date"
         />
       </div>
 
@@ -90,37 +84,9 @@ export function EventFilterPanel({
           value={filters.dateTo}
           onChange={(v) => update({ dateTo: v })}
           placeholder="To date"
+          aria-label="To date"
         />
       </div>
-
-      {onExportDateRange && (
-        <Button
-          type="button"
-          variant="secondary"
-          fullWidth
-          className="sm:w-auto"
-          icon={<Icon name="download" size={16} />}
-          loading={isExporting}
-          onClick={onExportDateRange}
-        >
-          Export CSV
-        </Button>
-      )}
-
-      {onExportQrPack && (
-        <Button
-          type="button"
-          variant="secondary"
-          fullWidth
-          className="sm:w-auto"
-          icon={<Icon name="download" size={16} />}
-          loading={isBuildingQrPack}
-          aria-busy={isBuildingQrPack || undefined}
-          onClick={onExportQrPack}
-        >
-          QR pack for designer
-        </Button>
-      )}
     </div>
   )
 }

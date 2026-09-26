@@ -1,9 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { Badge, Button } from '@/ds';
+import { Alert, Badge, Button, Icon } from '@/ds';
 import { submitOnboardingProfile } from '@/app/actions/employeeInvite';
 import { useRouter } from 'next/navigation';
+import {
+  ONBOARDING_SECTION_ICON,
+  ONBOARDING_SECTION_LABEL,
+  ONBOARDING_SECTION_TONE,
+  type OnboardingSectionState,
+} from '../../_shared/status-ui';
+import { StepFooter } from './StepParts';
 
 interface ReviewStepProps {
   token: string;
@@ -15,9 +22,10 @@ interface ReviewStepProps {
     health: boolean;
     right_to_work_notice: boolean;
   };
+  onBack?: () => void;
 }
 
-export default function ReviewStep({ token, savedSections }: ReviewStepProps) {
+export default function ReviewStep({ token, savedSections, onBack }: ReviewStepProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -56,43 +64,43 @@ export default function ReviewStep({ token, savedSections }: ReviewStepProps) {
         Please review your completed sections below. Once you submit, your profile will be activated and your manager will be notified.
       </p>
 
-      <div className="space-y-2">
-        {sections.map((section) => (
-          <div key={section.key} className="flex items-center gap-3 rounded-md border border-border px-4 py-3">
-            <span
-              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${
-                savedSections[section.key]
-                  ? 'border-success-border bg-success-soft text-success-fg'
-                  : 'border-warning-border bg-warning-soft text-warning-fg'
-              }`}
-            >
-              {savedSections[section.key] ? '✓' : '!'}
-            </span>
-            <span className="text-sm text-text">{section.label}</span>
-            <Badge tone={savedSections[section.key] ? 'success' : 'warning'} size="sm" className="ml-auto">
-              {savedSections[section.key] ? 'Complete' : 'Incomplete'}
-            </Badge>
-          </div>
-        ))}
-      </div>
+      <ul className="divide-y divide-border rounded-lg border border-border">
+        {sections.map((section) => {
+          const state: OnboardingSectionState = savedSections[section.key] ? 'complete' : 'incomplete';
+          return (
+            <li key={section.key} className="flex items-center gap-3 px-4 py-3">
+              <Icon
+                name={ONBOARDING_SECTION_ICON[state].name}
+                size={18}
+                className={ONBOARDING_SECTION_ICON[state].className}
+              />
+              <span className="text-sm text-text">{section.label}</span>
+              <Badge tone={ONBOARDING_SECTION_TONE[state]} size="sm" className="ml-auto">
+                {ONBOARDING_SECTION_LABEL[state]}
+              </Badge>
+            </li>
+          );
+        })}
+      </ul>
 
       {!allComplete && (
-        <p className="rounded-md border border-warning-border bg-warning-soft px-4 py-3 text-sm text-warning-fg">
+        <Alert tone="warning" role="status">
           Please complete all sections before submitting. Personal details (first and last name) must be completed before submitting.
-        </p>
+        </Alert>
       )}
 
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      <Button
-        type="button"
-        variant="primary"
-        className="w-full"
-        onClick={handleSubmit}
-        disabled={loading || !allComplete}
-      >
-        {loading ? 'Submitting...' : 'Complete Profile'}
-      </Button>
+      <StepFooter onBack={onBack}>
+        <Button
+          type="button"
+          variant="primary"
+          onClick={handleSubmit}
+          disabled={loading || !allComplete}
+        >
+          {loading ? 'Submitting...' : 'Complete Profile'}
+        </Button>
+      </StepFooter>
     </div>
   );
 }

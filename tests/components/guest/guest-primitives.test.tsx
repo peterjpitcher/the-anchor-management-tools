@@ -178,7 +178,7 @@ describe('GuestAmount', () => {
 
     expect(screen.getByText('Deposit due now')).toBeInTheDocument()
     const figure = screen.getByText('£30.00')
-    expect(figure.className).toContain('text-[48px]')
+    expect(figure.className).toContain('text-guest-amount')
     // DM Serif Display is single weight 400: never faux-bold it.
     expect(figure.className).toContain('font-normal')
     expect(screen.getByText('£10 per person')).toBeInTheDocument()
@@ -188,8 +188,8 @@ describe('GuestAmount', () => {
     render(<GuestAmount label="Balance remaining" value="£250.00" size="inline" />)
 
     const figure = screen.getByText('£250.00')
-    expect(figure.className).toContain('text-[22px]')
-    expect(figure.className).not.toContain('text-[48px]')
+    expect(figure.className).toContain('text-guest-h2')
+    expect(figure.className).not.toContain('text-guest-amount')
   })
 })
 
@@ -224,7 +224,8 @@ describe('DetailGrid', () => {
 
     const grid = container.firstElementChild as HTMLElement
     expect(grid.className).toContain('grid-cols-1')
-    expect(grid.className).toContain('min-[380px]:grid-cols-2')
+    // `guest-narrow` is the 380px guest breakpoint token.
+    expect(grid.className).toContain('guest-narrow:grid-cols-2')
   })
 
   it('renders nothing but the wrapper when given no items', () => {

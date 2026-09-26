@@ -3,8 +3,8 @@
 import { useState, Suspense } from 'react'
 // import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Button, Field, Input, LinkButton, Spinner, toast, Icon } from '@/ds'
-import { AuthCard } from '../_components/AuthCard'
+import { Button, Field, Input, LinkButton, PageLoading, toast, Icon } from '@/ds'
+import { AuthCard, AuthLink } from '../_components/AuthCard'
 
 // ResetPasswordForm component - Client Component
 function ResetPasswordForm() {
@@ -44,10 +44,15 @@ function ResetPasswordForm() {
 
   if (isSubmitted) {
     return (
-      <AuthCard title="Check your email" lead={`We've sent a password reset link to ${email}`}>
-        <LinkButton href="/auth/login" variant="secondary" size="lg" className="w-full">
-          <Icon name="arrowLeft" size={16} className="mr-2" />
-          Back to login
+      <AuthCard title="Check Your Email" lead={`We've sent a password reset link to ${email}`}>
+        <LinkButton
+          href="/auth/login"
+          variant="secondary"
+          size="lg"
+          className="w-full"
+          icon={<Icon name="arrowLeft" size={16} />}
+        >
+          Back to Login
         </LinkButton>
       </AuthCard>
     )
@@ -55,7 +60,7 @@ function ResetPasswordForm() {
 
   return (
     <AuthCard
-      title="Reset your password"
+      title="Reset Your Password"
       lead="Enter your email address and we'll send you a reset link."
     >
       <form onSubmit={handleSubmit} autoComplete="on" className="flex flex-col gap-4">
@@ -73,14 +78,14 @@ function ResetPasswordForm() {
         </Field>
 
         <Button type="submit" variant="primary" size="lg" disabled={isLoading} loading={isLoading} className="w-full">
-          Send reset email
+          Send Reset Email
         </Button>
 
         <div className="text-center">
-          <a href="/auth/login" className="auth__link inline-flex items-center text-xs">
-            <Icon name="arrowLeft" size={14} className="mr-1" />
-            Back to login
-          </a>
+          <AuthLink href="/auth/login">
+            <Icon name="arrowLeft" size={14} />
+            Back to Login
+          </AuthLink>
         </div>
       </form>
     </AuthCard>
@@ -91,9 +96,9 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <Suspense fallback={
-      <div className="auth">
-        <Spinner size="lg" />
-      </div>
+      <AuthCard title="Reset Your Password">
+        <PageLoading inline />
+      </AuthCard>
     }>
       <ResetPasswordForm />
     </Suspense>

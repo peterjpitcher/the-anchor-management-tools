@@ -2,10 +2,16 @@
 
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
-import { Button, toast, Icon } from '@/ds';
+import { Badge, Button, toast, Icon } from '@/ds';
 import { publishRotaWeek } from '@/app/actions/rota';
 import type { RotaShift, RotaWeek } from '@/app/actions/rota';
 import { shiftIsUnpublished, getRemovedPublishedShifts, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
+import {
+  ROTA_WEEK_PUBLISH_ICON,
+  ROTA_WEEK_PUBLISH_LABEL,
+  ROTA_WEEK_PUBLISH_TONE,
+  type RotaWeekPublishState,
+} from './_shared/status-ui';
 
 export default function RotaPublishStatus({
   week,
@@ -29,15 +35,11 @@ export default function RotaPublishStatus({
   const hasAnyPublished = unpublishedShifts.length < activeShifts.length && activeShifts.length > 0;
   const isPublished = week.status === 'published' && !hasAnyUnpublished;
   const isDraft = !isPublished && !hasAnyPublished;
-  const label = isPublished
-    ? 'Published'
+  const state: RotaWeekPublishState = isPublished
+    ? 'published'
     : isDraft
-      ? 'Draft'
-      : 'Unpublished changes';
-  const iconName = isPublished ? 'checkCircle' : 'alertTriangle';
-  const statusClasses = isPublished
-    ? 'border-success-border bg-success-soft text-success-fg'
-    : 'border-warning-border bg-warning-soft text-warning-fg';
+      ? 'draft'
+      : 'unpublished_changes';
 
   const handlePublish = () => {
     startPublishTransition(async () => {
@@ -51,22 +53,27 @@ export default function RotaPublishStatus({
     });
   };
 
+  // Rendered in the page's header actions: the status badge, then the primary Publish button,
+  // which is last in the row.
   return (
-    <div className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium ${statusClasses}`}>
-      <Icon name={iconName} size={16} className="shrink-0" />
-      <span>{label}</span>
+    <>
+      <Badge
+        tone={ROTA_WEEK_PUBLISH_TONE[state]}
+        icon={<Icon name={ROTA_WEEK_PUBLISH_ICON[state]} size={12} />}
+      >
+        {ROTA_WEEK_PUBLISH_LABEL[state]}
+      </Badge>
       {!isPublished && canPublish && (
         <Button
           type="button"
           variant="primary"
-          size="xs"
+          size="sm"
           onClick={handlePublish}
-          disabled={publishPending}
-          className="ml-1"
+          loading={publishPending}
         >
           {publishPending ? 'Publishing...' : 'Publish'}
         </Button>
       )}
-    </div>
+    </>
   );
 }

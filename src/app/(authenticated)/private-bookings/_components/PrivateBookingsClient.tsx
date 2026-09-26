@@ -21,6 +21,7 @@ import { formatDistanceToNowStrict } from 'date-fns'
 import { usePermissions } from '@/contexts/PermissionContext'
 
 import {
+  Alert,
   Badge,
   Button,
   LinkButton,
@@ -36,10 +37,11 @@ import {
 } from '@/ds/primitives'
 
 import {
-  PageHeader,
+  PageLayout,
+  FormFooter,
   Tabs,
   Card,
-  CardBody,
+  CardHeader,
   Table,
   TableHeader,
   TableBody,
@@ -56,18 +58,17 @@ import {
   privateBookingStatusLabel,
   privateBookingStatusTone,
 } from '../_shared/status-ui'
+import { privateBookingsNav } from '../_shared/nav'
 
 /* ---------- Constants ---------- */
 
 const DEFAULT_PAGE_SIZE = 20
 
-/* ---------- Icons ---------- */
-
-const PlusIcon = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 5v14" /><path d="M5 12h14" />
-  </svg>
-)
+const DATE_FILTER_OPTIONS = [
+  { value: 'all', label: 'All Dates' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'past', label: 'Past' },
+]
 
 /* ---------- Helpers ---------- */
 
@@ -138,8 +139,9 @@ export default function PrivateBookingsClient({
 }: PrivateBookingsClientProps) {
   const router = useRouter()
   const { hasPermission } = usePermissions()
-  const canManageSettings = hasPermission('private_bookings', 'manage')
   const canViewReports = hasPermission('reports', 'view')
+  const canViewSmsQueue =
+    hasPermission('private_bookings', 'view_sms_queue') || hasPermission('private_bookings', 'manage')
 
   /* --- Data state --- */
   const [bookings, setBookings] = useState<PrivateBookingDashboardItem[]>(initialBookings)
@@ -365,13 +367,75 @@ export default function PrivateBookingsClient({
     { id: 'cancelled', label: 'Cancelled' },
   ]
 
+  const extendHoldOptions = [
+    { value: '7', label: '+7 days' },
+    { value: '14', label: '+14 days' },
+    { value: '30', label: '+30 days' },
+  ]
+
+  // The extend-hold picker in each row: choosing a number of days opens the reason dialog.
+  const renderExtendHoldSelect = (bookingId: string) => (
+    <Select
+      aria-label="Extend hold"
+      title="Extend hold"
+      disabled={extendingHoldId === bookingId}
+      defaultValue=""
+      placeholder="Extend hold..."
+      options={extendHoldOptions}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        const days = Number(e.target.value) as 7 | 14 | 30
+        if (days) { handleExtendHoldRequest(bookingId, days); e.target.value = '' }
+      }}
+      className="h-btn-h-sm w-auto text-xs"
+    />
+  )
+
+  const activeFilterCount = [statusFilter !== 'all', dateFilter !== 'upcoming', Boolean(searchDraft)].filter(Boolean).length
+
   return (
-    <div className="flex flex-col gap-5">
+    <PageLayout
+      title="Private Bookings"
+      subtitle="Manage private venue bookings and events"
+      navItems={privateBookingsNav({ canViewSmsQueue, canViewReports })}
+      headerActions={
+        permissions.hasCreatePermission ? (
+          <LinkButton href="/private-bookings/new" variant="primary" size="sm" icon={<Icon name="plus" size={16} />}>
+            New Booking
+          </LinkButton>
+        ) : undefined
+      }
+    >
       {/* Cancel booking: same preview the booking page shows before committing */}
       <Modal
         open={cancelConfirmBookingId !== null}
         onClose={closeCancelDialog}
-        title="Cancel this booking?"
+        title="Cancel This Booking?"
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={closeCancelDialog} disabled={cancelling}>
+              Keep Booking
+            </Button>
+            {cancelPreview?.outcome && OUTCOMES_NEEDING_THE_BOOKING_PAGE.has(cancelPreview.outcome) ? (
+              <LinkButton
+                href={cancelConfirmBookingId ? `/private-bookings/${cancelConfirmBookingId}` : '/private-bookings'}
+                variant="primary"
+              >
+                Open the Booking
+              </LinkButton>
+            ) : (
+              <Button
+                type="button"
+                variant="danger"
+                onClick={handleCancelBookingConfirm}
+                loading={cancelling}
+                disabled={cancelling || cancelPreviewLoading}
+              >
+                Cancel Booking and Text the Customer
+              </Button>
+            )}
+          </>
+        }
       >
         <div className="space-y-4">
           {cancelPreviewLoading && (
@@ -382,7 +446,7 @@ export default function PrivateBookingsClient({
           )}
 
           {cancelPreview?.error && (
-            <p className="text-sm text-danger-fg">{cancelPreview.error}</p>
+            <Alert tone="danger" size="sm">{cancelPreview.error}</Alert>
           )}
 
           {cancelPreview && !cancelPreview.error && (
@@ -408,63 +472,25 @@ export default function PrivateBookingsClient({
               )}
 
               {cancelPreview.outcome && OUTCOMES_NEEDING_THE_BOOKING_PAGE.has(cancelPreview.outcome) && (
-                <p className="text-sm text-warning-fg">
+                <Alert tone="warning" size="sm">
                   This one needs a decision on the booking itself (how much of the deposit is
                   kept, or a payment dispute to review). Open the booking to cancel it.
-                </p>
+                </Alert>
               )}
             </div>
           )}
 
           <p className="text-sm text-text-muted">This cannot be undone.</p>
-
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={closeCancelDialog} disabled={cancelling}>
-              Keep booking
-            </Button>
-            {cancelPreview?.outcome && OUTCOMES_NEEDING_THE_BOOKING_PAGE.has(cancelPreview.outcome) ? (
-              <LinkButton
-                href={cancelConfirmBookingId ? `/private-bookings/${cancelConfirmBookingId}` : '/private-bookings'}
-                variant="primary"
-              >
-                Open the booking
-              </LinkButton>
-            ) : (
-              <Button
-                type="button"
-                variant="danger"
-                onClick={handleCancelBookingConfirm}
-                loading={cancelling}
-                disabled={cancelling || cancelPreviewLoading}
-              >
-                Cancel booking and text the customer
-              </Button>
-            )}
-          </div>
         </div>
       </Modal>
 
-      {/* Extend hold — a reason is required (recorded in the audit trail) */}
+      {/* Extend hold: a reason is required (recorded in the audit trail) */}
       <Modal
         open={extendHoldTarget !== null}
         onClose={() => setExtendHoldTarget(null)}
-        title={extendHoldTarget ? `Extend hold by ${extendHoldTarget.days} days` : 'Extend hold'}
-      >
-        <div className="space-y-4">
-          <Field
-            label="Reason for extending the hold"
-            required
-            hint="Recorded against the booking's audit trail."
-          >
-            <Textarea
-              value={extendHoldReason}
-              onChange={(e) => setExtendHoldReason(e.target.value)}
-              rows={2}
-              placeholder="e.g. Customer confirming numbers after the weekend"
-              disabled={extendingHold}
-            />
-          </Field>
-          <div className="flex justify-end gap-2">
+        title={extendHoldTarget ? `Extend Hold by ${extendHoldTarget.days} Days` : 'Extend Hold'}
+        footer={
+          <>
             <Button
               type="button"
               variant="secondary"
@@ -480,43 +506,39 @@ export default function PrivateBookingsClient({
               loading={extendingHold}
               disabled={extendingHold || !extendHoldReason.trim()}
             >
-              Extend hold
+              Extend Hold
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      >
+        <Field
+          label="Reason for extending the hold"
+          required
+          hint="Recorded against the booking's audit trail."
+        >
+          <Textarea
+            value={extendHoldReason}
+            onChange={(e) => setExtendHoldReason(e.target.value)}
+            rows={2}
+            placeholder="e.g. Customer confirming numbers after the weekend"
+            disabled={extendingHold}
+          />
+        </Field>
       </Modal>
 
-      <PageHeader
-        breadcrumbs={[{ label: 'Private Bookings' }]}
-        title="Private Bookings"
-        subtitle="Manage private venue bookings and events"
-        className="mb-0"
-        actions={
-          <div className="flex items-center gap-2">
-            {canViewReports && (
-              <LinkButton href="/private-bookings/reports" variant="secondary" size="sm">Growth report</LinkButton>
-            )}
-            {permissions.hasCreatePermission && (
-              <LinkButton href="/private-bookings/new" variant="primary" size="sm" icon={<PlusIcon />}>New Booking</LinkButton>
-            )}
-            {canManageSettings && (
-              <LinkButton href="/private-bookings/settings" variant="secondary" size="sm">PB Settings</LinkButton>
-            )}
-          </div>
-        }
-      />
-
       {loadError && (
-        <div className="p-3 bg-danger-soft text-danger-fg border border-danger-border rounded-lg text-sm flex items-center justify-between">
-          <span>{loadError}</span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => runFetch({ status: statusFilter, dateFilter, search: searchTerm, page: currentPage, includeCancelled })}
-          >
-            Retry
-          </Button>
-        </div>
+        <Alert tone="danger" title="Could not load private bookings">
+          {loadError}
+          <div className="mt-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => runFetch({ status: statusFilter, dateFilter, search: searchTerm, page: currentPage, includeCancelled })}
+            >
+              Retry
+            </Button>
+          </div>
+        </Alert>
       )}
 
       {/* Tabs for status filter */}
@@ -530,15 +552,13 @@ export default function PrivateBookingsClient({
       <div className="block sm:hidden">
         <Button
           variant="secondary"
-          className="w-full flex items-center justify-center gap-2"
+          className="w-full"
+          icon={<Icon name="filter" size={16} />}
           onClick={() => setMobileFiltersOpen(true)}
         >
-          <Icon name="filter" size={16} />
           Filters
-          {(statusFilter !== 'all' || dateFilter !== 'upcoming' || searchDraft) && (
-            <span className="ml-1 inline-flex items-center justify-center h-5 w-5 rounded-full bg-primary text-primary-fg text-xs">
-              {[statusFilter !== 'all', dateFilter !== 'upcoming', Boolean(searchDraft)].filter(Boolean).length}
-            </span>
+          {activeFilterCount > 0 && (
+            <Badge tone="primary" size="sm" className="ml-1">{activeFilterCount}</Badge>
           )}
         </Button>
       </div>
@@ -564,93 +584,77 @@ export default function PrivateBookingsClient({
             <Select
               value={dateFilter}
               onChange={(e) => handleDateFilterChange(e.target.value)}
-              options={[
-                { value: 'all', label: 'All Dates' },
-                { value: 'upcoming', label: 'Upcoming' },
-                { value: 'past', label: 'Past' },
-              ]}
+              options={DATE_FILTER_OPTIONS}
             />
           </Field>
 
-          <div className="flex gap-3 pt-4 border-t border-border">
+          <FormFooter>
             <Button
               variant="secondary"
-              className="flex-1"
               onClick={() => { handleClearFilters(); setMobileFiltersOpen(false) }}
             >
               Clear Filters
             </Button>
             <Button
               variant="primary"
-              className="flex-1"
               onClick={() => setMobileFiltersOpen(false)}
             >
               Apply
             </Button>
-          </div>
+          </FormFooter>
         </div>
       </Drawer>
 
-      {/* Desktop filter bar */}
-      <Card className="hidden sm:block">
-        <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Field label="Search">
-              <SearchInput
-                value={searchDraft}
-                onChange={setSearchDraft}
-                placeholder="Search customer name..."
-              />
-            </Field>
+      {/* Desktop filter row, directly above the list it filters */}
+      <div className="hidden sm:flex flex-wrap items-end gap-3">
+        <Field label="Search" className="w-full sm:w-72">
+          <SearchInput
+            value={searchDraft}
+            onChange={setSearchDraft}
+            placeholder="Search customer name..."
+          />
+        </Field>
 
-            <Field label="Date">
-              <Select
-                value={dateFilter}
-                onChange={(e) => handleDateFilterChange(e.target.value)}
-                options={[
-                  { value: 'all', label: 'All Dates' },
-                  { value: 'upcoming', label: 'Upcoming' },
-                  { value: 'past', label: 'Past' },
-                ]}
-              />
-            </Field>
+        <Field label="Date" className="w-48">
+          <Select
+            value={dateFilter}
+            onChange={(e) => handleDateFilterChange(e.target.value)}
+            options={DATE_FILTER_OPTIONS}
+          />
+        </Field>
 
-            <div className="flex items-end">
-              <Button onClick={handleClearFilters} variant="secondary" className="w-full">
-                Clear Filters
-              </Button>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
-
-      {/* Bookings count + actions bar */}
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-text-strong">Bookings ({totalCount})</span>
-        <div className="flex items-center gap-2">
-          {hiddenCount > 0 && (
-            <Button variant="secondary" size="sm" onClick={restoreHidden}>
-              {hiddenCount} hidden -- Restore
-            </Button>
-          )}
-          {canToggleCancelled && (
-            <Button variant="secondary" size="sm" onClick={handleToggleCancelledVisibility} disabled={loading}>
-              {includeCancelled ? 'Hide cancelled' : 'Show cancelled'}
-            </Button>
-          )}
-          {loading && <Spinner size="sm" />}
-        </div>
+        <Button onClick={handleClearFilters} variant="secondary">
+          Clear Filters
+        </Button>
       </div>
 
-      {/* Bookings table */}
-      <Card>
+      {/* Bookings table. A failed load shows the error above, never an empty list. */}
+      {!loadError && (
+      <Card padding="none">
+        <CardHeader
+          title={`Bookings (${totalCount})`}
+          action={
+            <div className="flex items-center gap-2">
+              {loading && <Spinner size="sm" />}
+              {hiddenCount > 0 && (
+                <Button variant="secondary" size="sm" onClick={restoreHidden}>
+                  Restore {hiddenCount} Hidden
+                </Button>
+              )}
+              {canToggleCancelled && (
+                <Button variant="secondary" size="sm" onClick={handleToggleCancelledVisibility} disabled={loading}>
+                  {includeCancelled ? 'Hide Cancelled' : 'Show Cancelled'}
+                </Button>
+              )}
+            </div>
+          }
+        />
         {visibleBookings.length === 0 ? (
-          <CardBody>
-            <Empty
-              title="No bookings found"
-              description={searchDraft ? `No results for "${searchDraft}"` : 'Create your first private booking.'}
-            />
-          </CardBody>
+          <Empty
+            size="sm"
+            title="No bookings found"
+            description={searchDraft ? `No results for "${searchDraft}"` : 'Create your first private booking.'}
+          />
         ) : (
           <>
             {/* Desktop table */}
@@ -766,22 +770,7 @@ export default function PrivateBookingsClient({
 
                           {booking.status === 'draft' && permissions.hasEditPermission && (
                             <>
-                              <select
-                                disabled={extendingHoldId === booking.id}
-                                defaultValue=""
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={(e) => {
-                                  const days = Number(e.target.value) as 7 | 14 | 30
-                                  if (days) { handleExtendHoldRequest(booking.id, days); e.target.value = '' }
-                                }}
-                                className="rounded-sm border border-border-strong bg-surface px-1.5 py-0.5 text-xs text-text outline-hidden focus:border-border-focus focus:shadow-ring disabled:opacity-50 cursor-pointer"
-                                title="Extend hold"
-                              >
-                                <option value="" disabled>Extend hold...</option>
-                                <option value="7">+7 days</option>
-                                <option value="14">+14 days</option>
-                                <option value="30">+30 days</option>
-                              </select>
+                              {renderExtendHoldSelect(booking.id)}
                               {extendingHoldId === booking.id && <Spinner size="sm" />}
                             </>
                           )}
@@ -913,21 +902,7 @@ export default function PrivateBookingsClient({
                     </Link>
                     {booking.status === 'draft' && permissions.hasEditPermission && (
                       <div className="flex items-center gap-1">
-                        <select
-                          disabled={extendingHoldId === booking.id}
-                          defaultValue=""
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            const days = Number(e.target.value) as 7 | 14 | 30
-                            if (days) { handleExtendHoldRequest(booking.id, days); e.target.value = '' }
-                          }}
-                          className="rounded-sm border border-border-strong bg-surface px-1.5 py-0.5 text-xs text-text outline-hidden focus:border-border-focus focus:shadow-ring disabled:opacity-50 cursor-pointer"
-                        >
-                          <option value="" disabled>Extend hold...</option>
-                          <option value="7">+7 days</option>
-                          <option value="14">+14 days</option>
-                          <option value="30">+30 days</option>
-                        </select>
+                        {renderExtendHoldSelect(booking.id)}
                         {extendingHoldId === booking.id && <Spinner size="sm" />}
                       </div>
                     )}
@@ -969,34 +944,35 @@ export default function PrivateBookingsClient({
           </>
         )}
       </Card>
+      )}
 
-      {/* Quick links */}
-      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Button
+      {/* Quick links to the settings the list is set up from */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <LinkButton
+          href="/private-bookings/settings/spaces"
           variant="secondary"
-          onClick={() => router.push('/private-bookings/settings/spaces')}
-          className="flex items-center justify-center gap-2 py-6"
+          size="lg"
+          icon={<Icon name="mapPin" size={20} />}
         >
-          <Icon name="mapPin" size={20} />
-          <span>Manage Spaces</span>
-        </Button>
-        <Button
+          Manage Spaces
+        </LinkButton>
+        <LinkButton
+          href="/private-bookings/settings/catering"
           variant="secondary"
-          onClick={() => router.push('/private-bookings/settings/catering')}
-          className="flex items-center justify-center gap-2 py-6"
+          size="lg"
+          icon={<Icon name="sparkles" size={20} />}
         >
-          <Icon name="sparkles" size={20} />
-          <span>Catering Options</span>
-        </Button>
-        <Button
+          Catering Options
+        </LinkButton>
+        <LinkButton
+          href="/private-bookings/settings/vendors"
           variant="secondary"
-          onClick={() => router.push('/private-bookings/settings/vendors')}
-          className="flex items-center justify-center gap-2 py-6"
+          size="lg"
+          icon={<Icon name="users" size={20} />}
         >
-          <Icon name="users" size={20} />
-          <span>Preferred Vendors</span>
-        </Button>
+          Preferred Vendors
+        </LinkButton>
       </div>
-    </div>
+    </PageLayout>
   )
 }

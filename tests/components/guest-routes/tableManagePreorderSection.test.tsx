@@ -129,7 +129,8 @@ describe('PreorderSection', () => {
     const { container } = render(<PreorderSection {...view()} {...baseProps} />)
 
     const note = screen.getByText(PREORDER_ADDON_GUEST_NOTE)
-    expect(note.id).toBe('preorder-addon-note')
+    // The note is a notice alert; the id every add-on group points at is on the alert itself.
+    expect(note.closest('#preorder-addon-note')).not.toBeNull()
 
     const groups = Array.from(container.querySelectorAll('fieldset[aria-describedby]'))
     expect(groups).toHaveLength(2)

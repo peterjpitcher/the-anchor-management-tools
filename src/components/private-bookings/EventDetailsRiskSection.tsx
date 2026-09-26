@@ -11,7 +11,7 @@
  */
 
 import { useState } from 'react'
-import { Section, Field, Input, Select, Textarea, Icon } from '@/ds'
+import { Card, CardBody, CardHeader, Checkbox, Field, Input, Select, Textarea } from '@/ds'
 import type { BookingLayout } from '@/types/private-bookings'
 
 interface EventDetailsRiskSectionProps {
@@ -40,9 +40,10 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
   const [barTabRequired, setBarTabRequired] = useState<boolean>(!!defaults?.barTabRequired)
 
   return (
-    <Section title="Event details & risk" icon={<Icon name="shieldAlert" size={20} />}>
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-4">
+    <Card>
+      <CardHeader title="Event Details & Risk" />
+      <CardBody className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Field label="Layout">
             <Select
               id="layout"
@@ -78,21 +79,17 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
           </Field>
         </div>
 
-        <div className="rounded-md border border-border bg-surface-2 p-3 space-y-3">
-          <label className="inline-flex items-center gap-2 text-sm font-medium text-text">
-            <input
-              type="checkbox"
-              id="bar_tab_required"
-              name="bar_tab_required"
-              value="true"
-              checked={barTabRequired}
-              onChange={(e) => setBarTabRequired(e.target.checked)}
-              className="h-4 w-4 accent-primary"
-            />
-            <span>Bar tab required</span>
-          </label>
+        <div className="space-y-3">
+          <Checkbox
+            id="bar_tab_required"
+            name="bar_tab_required"
+            value="true"
+            checked={barTabRequired}
+            onChange={setBarTabRequired}
+            label="Bar tab required"
+          />
           {barTabRequired && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Field label="Bar tab limit (£)">
                 <Input
                   type="number"
@@ -129,50 +126,35 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm text-text">
-            <input
-              type="checkbox"
-              id="outside_food"
-              name="outside_food"
-              value="true"
-              defaultChecked={!!defaults?.outsideFood}
-              className="mt-0.5 h-4 w-4 accent-primary"
-            />
-            <span>
-              <span className="font-medium">Outside food</span>
-              <span className="block text-xs text-text-muted">Requires the self-catering waiver.</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm text-text">
-            <input
-              type="checkbox"
-              id="high_power_equipment"
-              name="high_power_equipment"
-              value="true"
-              defaultChecked={!!defaults?.highPowerEquipment}
-              className="mt-0.5 h-4 w-4 accent-primary"
-            />
-            <span>
-              <span className="font-medium">High-power / amplified equipment</span>
-              <span className="block text-xs text-text-muted">£25 electricity charge applies; needs approval.</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm text-text">
-            <input
-              type="checkbox"
-              id="dogs_expected"
-              name="dogs_expected"
-              value="true"
-              defaultChecked={!!defaults?.dogsExpected}
-              className="mt-0.5 h-4 w-4 accent-primary"
-            />
-            <span>
-              <span className="font-medium">Dogs expected</span>
-            </span>
-          </label>
+          <Checkbox
+            id="outside_food"
+            name="outside_food"
+            value="true"
+            defaultChecked={!!defaults?.outsideFood}
+            label="Outside food"
+            description="Requires the self-catering waiver."
+            className="rounded-default border border-border p-3"
+          />
+          <Checkbox
+            id="high_power_equipment"
+            name="high_power_equipment"
+            value="true"
+            defaultChecked={!!defaults?.highPowerEquipment}
+            label="High-power / amplified equipment"
+            description="£25 electricity charge applies; needs approval."
+            className="rounded-default border border-border p-3"
+          />
+          <Checkbox
+            id="dogs_expected"
+            name="dogs_expected"
+            value="true"
+            defaultChecked={!!defaults?.dogsExpected}
+            label="Dogs expected"
+            className="rounded-default border border-border p-3"
+          />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Communication preference">
             <Select
               id="communication_preference"
@@ -187,7 +169,7 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
               ]}
             />
           </Field>
-          <Field label="Clear-down time" help="Standard is one hour after the event.">
+          <Field label="Clear-down time" hint="Standard is one hour after the event.">
             <Input
               type="time"
               id="cleardown_time"
@@ -216,7 +198,7 @@ export function EventDetailsRiskSection({ defaults }: EventDetailsRiskSectionPro
             placeholder="Anything that needs a risk assessment or extra care on the day..."
           />
         </Field>
-      </div>
-    </Section>
+      </CardBody>
+    </Card>
   )
 }

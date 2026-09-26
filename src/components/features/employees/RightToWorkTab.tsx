@@ -11,7 +11,7 @@ import {
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ActionFormState } from '@/types/actions'
 import type { EmployeeRightToWork } from '@/types/database'
-import { Alert, Button, ConfirmDialog, Input, Select, Textarea, toast, Icon } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, ConfirmDialog, Field, FormFooter, Icon, Input, LinkButton, Select, Spinner, Textarea, toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 import { formatDateInLondon, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 
@@ -26,6 +26,8 @@ interface RightToWorkTabProps {
   rightToWork: EmployeeRightToWork | null
   canEdit: boolean
   canViewDocuments: boolean
+  /** Where Cancel goes on the edit page. Without it the form has no Cancel button. */
+  cancelHref?: string
 }
 
 function SubmitButton({ disabled, pending }: { disabled: boolean; pending: boolean }) {
@@ -40,7 +42,8 @@ export default function RightToWorkTab({
   employeeId,
   rightToWork,
   canEdit,
-  canViewDocuments
+  canViewDocuments,
+  cancelHref,
 }: RightToWorkTabProps) {
   const router = useRouter()
   const supabase = useSupabase()
@@ -51,7 +54,6 @@ export default function RightToWorkTab({
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [loadingPhoto, setLoadingPhoto] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [selectedFileName, setSelectedFileName] = useState<string | null>(null)
   const [deletingPhoto, setDeletingPhoto] = useState(false)
   const [deletePhotoOpen, setDeletePhotoOpen] = useState(false)
 
@@ -159,7 +161,6 @@ export default function RightToWorkTab({
 
         if (result?.type === 'success') {
           setSelectedFile(null)
-          setSelectedFileName(null)
           if (fileInputRef.current) {
             fileInputRef.current.value = ''
           }
@@ -240,183 +241,141 @@ export default function RightToWorkTab({
         </p>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-6">
         <input type="hidden" name="employee_id" value={employeeId} />
 
-        <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="check_method" className="block text-sm font-medium text-text sm:col-span-1">
-            Check Method
-          </label>
-          <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <Select
-              id="check_method"
-              name="check_method"
-              defaultValue={rightToWorkData?.check_method ?? ''}
-              disabled={!canEdit}
-            >
-              <option value="">Select check method</option>
-              <option value="manual">Manual check (original documents)</option>
-              <option value="online">Online Home Office check (eVisa)</option>
-              <option value="digital">Digital check (IDSP)</option>
-            </Select>
-          </div>
-        </div>
+        <Card>
+          <CardHeader title="Right to Work Check" />
+          <CardBody className="grid gap-4 sm:grid-cols-2">
+            <Field label="Check Method" className="sm:col-span-2">
+              <Select
+                id="check_method"
+                name="check_method"
+                defaultValue={rightToWorkData?.check_method ?? ''}
+                disabled={!canEdit}
+              >
+                <option value="">Select check method</option>
+                <option value="manual">Manual check (original documents)</option>
+                <option value="online">Online Home Office check (eVisa)</option>
+                <option value="digital">Digital check (IDSP)</option>
+              </Select>
+            </Field>
 
-        <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_type" className="block text-sm font-medium text-text sm:col-span-1">
-            Document Type <span className="text-danger">*</span>
-          </label>
-          <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <Select
-              id="document_type"
-              name="document_type"
-              defaultValue={rightToWorkData?.document_type ?? ''}
-              disabled={!canEdit}
-              required
-            >
-              <option value="" disabled>
-                Select document type
-              </option>
-              {documentTypeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {isLegacyDocumentType(option) ? `Legacy – ${option}` : option}
+            <Field label="Document Type" required>
+              <Select
+                id="document_type"
+                name="document_type"
+                defaultValue={rightToWorkData?.document_type ?? ''}
+                disabled={!canEdit}
+                required
+              >
+                <option value="" disabled>
+                  Select document type
                 </option>
-              ))}
-            </Select>
-          </div>
-        </div>
+                {documentTypeOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {isLegacyDocumentType(option) ? `Legacy – ${option}` : option}
+                  </option>
+                ))}
+              </Select>
+            </Field>
 
-        <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="verification_date" className="block text-sm font-medium text-text sm:col-span-1">
-            Verification Date <span className="text-danger">*</span>
-          </label>
-          <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <Input
-              type="date"
-              id="verification_date"
-              name="verification_date"
-              defaultValue={rightToWorkData?.verification_date?.split('T')[0] ?? ''}
-              disabled={!canEdit}
-              required
-            />
-          </div>
-        </div>
+            <Field label="Verification Date" required>
+              <Input
+                type="date"
+                id="verification_date"
+                name="verification_date"
+                defaultValue={rightToWorkData?.verification_date?.split('T')[0] ?? ''}
+                disabled={!canEdit}
+                required
+              />
+            </Field>
 
-        <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_reference" className="block text-sm font-medium text-text sm:col-span-1">
-            Document Reference
-          </label>
-          <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <Input
-              type="text"
-              id="document_reference"
-              name="document_reference"
-              defaultValue={rightToWorkData?.document_reference ?? ''}
-              disabled={!canEdit}
-            />
-          </div>
-        </div>
+            <Field label="Document Reference">
+              <Input
+                type="text"
+                id="document_reference"
+                name="document_reference"
+                defaultValue={rightToWorkData?.document_reference ?? ''}
+                disabled={!canEdit}
+              />
+            </Field>
 
-        <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_expiry_date" className="block text-sm font-medium text-text sm:col-span-1">
-            Expiry Date
-          </label>
-          <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <Input
-              type="date"
-              id="document_expiry_date"
-              name="document_expiry_date"
-              defaultValue={rightToWorkData?.document_expiry_date?.split('T')[0] ?? ''}
-              disabled={!canEdit}
-            />
-          </div>
-        </div>
+            <Field label="Expiry Date">
+              <Input
+                type="date"
+                id="document_expiry_date"
+                name="document_expiry_date"
+                defaultValue={rightToWorkData?.document_expiry_date?.split('T')[0] ?? ''}
+                disabled={!canEdit}
+              />
+            </Field>
 
-        <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="follow_up_date" className="block text-sm font-medium text-text sm:col-span-1">
-            Follow-up Date
-          </label>
-          <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <Input
-              type="date"
-              id="follow_up_date"
-              name="follow_up_date"
-              defaultValue={rightToWorkData?.follow_up_date?.split('T')[0] ?? ''}
-              disabled={!canEdit}
-            />
-          </div>
-        </div>
+            <Field label="Follow-up Date">
+              <Input
+                type="date"
+                id="follow_up_date"
+                name="follow_up_date"
+                defaultValue={rightToWorkData?.follow_up_date?.split('T')[0] ?? ''}
+                disabled={!canEdit}
+              />
+            </Field>
 
-        <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_details" className="block text-sm font-medium text-text sm:col-span-1">
-            Additional Details
-          </label>
-          <div className="mt-1 sm:col-span-3 sm:mt-0">
-            <Textarea
-              id="document_details"
-              name="document_details"
-              rows={3}
-              defaultValue={rightToWorkData?.document_details ?? ''}
-              disabled={!canEdit}
-            />
-          </div>
-        </div>
+            <Field label="Additional Details" className="sm:col-span-2">
+              <Textarea
+                id="document_details"
+                name="document_details"
+                rows={3}
+                defaultValue={rightToWorkData?.document_details ?? ''}
+                disabled={!canEdit}
+              />
+            </Field>
 
-        <div className="sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2">
-          <label htmlFor="document_photo" className="block text-sm font-medium text-text sm:col-span-1">
-            Document Photo
-          </label>
-          <div className="mt-1 sm:col-span-3 sm:mt-0 space-y-3">
-            {/* The file input inside is sr-only, not hidden, so the Tab key still reaches it;
-                this box draws the DS focus ring for it. */}
-            <label className="relative flex items-center justify-between rounded-md border border-dashed border-border-strong px-4 py-3 text-sm text-text-muted has-[:focus-visible]:outline-hidden has-[:focus-visible]:shadow-ring">
-              <div className="flex items-center space-x-3">
-                <Icon name="upload" size={20} className="text-text-subtle" />
-                <span>{selectedFileName ?? 'Upload scan or photo (PDF/JPG/PNG)'}</span>
-              </div>
-	              <input
-	                type="file"
-	                id="document_photo"
-	                ref={fileInputRef}
-	                accept=".pdf,.jpg,.jpeg,.png"
-	                disabled={!canEdit || isSaving}
-	                className="sr-only"
-	                onChange={(event) => {
-	                  const file = event.target.files?.[0]
-	                  if (!file) {
-	                    setSelectedFile(null)
-	                    setSelectedFileName(null)
-	                    return
-	                  }
+            <Field label="Document Photo" hint="Upload scan or photo (PDF/JPG/PNG)" className="sm:col-span-2">
+              {/* The DS Input as a single-file picker, as on the new employee page: it can be
+                  disabled, takes its label from the Field, stays in the tab order and is cleared
+                  through the ref after a save. */}
+              <Input
+                type="file"
+                id="document_photo"
+                ref={fileInputRef}
+                accept=".pdf,.jpg,.jpeg,.png"
+                disabled={!canEdit || isSaving}
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (!file) {
+                    setSelectedFile(null)
+                    return
+                  }
 
-	                  if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(file.type as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
-	                    toast.error('Only PDF, JPG, and PNG files are allowed.')
-	                    event.target.value = ''
-	                    setSelectedFile(null)
-	                    setSelectedFileName(null)
-	                    return
-	                  }
+                  if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(file.type as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
+                    toast.error('Only PDF, JPG, and PNG files are allowed.')
+                    event.target.value = ''
+                    setSelectedFile(null)
+                    return
+                  }
 
-	                  if (file.size >= MAX_FILE_SIZE) {
-	                    toast.error('File size must be less than 10MB.')
-	                    event.target.value = ''
-	                    setSelectedFile(null)
-	                    setSelectedFileName(null)
-	                    return
-	                  }
+                  if (file.size >= MAX_FILE_SIZE) {
+                    toast.error('File size must be less than 10MB.')
+                    event.target.value = ''
+                    setSelectedFile(null)
+                    return
+                  }
 
-	                  setSelectedFile(file)
-	                  setSelectedFileName(file.name)
-	                }}
-	              />
-            </label>
+                  setSelectedFile(file)
+                }}
+              />
+            </Field>
 
             {canViewDocuments && rightToWorkData?.photo_storage_path && (
-              <div className="flex items-center space-x-3">
-                <div className="flex items-center space-x-2 rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
+              <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+                <div className="flex items-center gap-2 rounded-default bg-surface-2 px-3 py-2 text-sm text-text-muted">
                   <Icon name="eye" size={16} />
                   {loadingPhoto ? (
-                    <span>Generating preview…</span>
+                    <span className="inline-flex items-center gap-2" role="status">
+                      <Spinner size="sm" />
+                      Generating preview…
+                    </span>
                   ) : photoUrl ? (
                     <>
                       <a
@@ -454,8 +413,8 @@ export default function RightToWorkTab({
                 )}
               </div>
             )}
-          </div>
-        </div>
+          </CardBody>
+        </Card>
 
         {state?.type === 'error' && state.errors && (
           <Alert tone="danger" size="sm">
@@ -466,23 +425,28 @@ export default function RightToWorkTab({
           <Alert tone="danger" size="sm">
             {state.message}
           </Alert>
-	        )}
+        )}
 
-	        <div className="flex justify-end">
-	          <SubmitButton disabled={!canEdit} pending={isSaving} />
-	        </div>
-	      </form>
+        <FormFooter>
+          {cancelHref && (
+            <LinkButton href={cancelHref} variant="secondary">
+              Cancel
+            </LinkButton>
+          )}
+          <SubmitButton disabled={!canEdit} pending={isSaving} />
+        </FormFooter>
+      </form>
       <ConfirmDialog
         open={deletePhotoOpen}
         onClose={() => setDeletePhotoOpen(false)}
         onConfirm={handleDeletePhoto}
-        title="Delete right to work document?"
+        title="Delete Right to Work Document?"
         message="This removes the stored document from the employee record. This cannot be undone."
         confirmLabel="Delete"
         loadingText="Deleting..."
         tone="danger"
         closeOnConfirm={false}
       />
-	    </div>
-	  )
+    </div>
+  )
 }

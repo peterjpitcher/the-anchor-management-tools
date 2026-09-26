@@ -30,13 +30,16 @@ const COMPAT_INDEX = join(SRC, 'ds/compat/index.ts')
 const AUTHENTICATED = 'src/app/(authenticated)/'
 
 /**
- * Folders inside src/components that are guest pages, not staff screens. Guest pages use only
- * the Guest* components (UI_UX rule 7), so the staff rules never apply to them.
+ * Folders inside src/components that are not staff screens inside the app shell, so the staff
+ * rules never apply to them. Guest pages use only the Guest* components (UI_UX rule 7); the
+ * standalone shells are the whole page frame (their own <main> and h1) for routes that sit
+ * outside AppShell.
  */
 const GUEST_KIT: Array<{ prefix: string; reason: string }> = [
   { prefix: 'src/components/features/guest/', reason: 'The guest design system: GuestShell and the Guest* components.' },
   { prefix: 'src/components/features/shared/Guest', reason: 'The guest buttons and cancel flow of the public manage-booking page.' },
-  { prefix: 'src/components/features/feedback/', reason: 'StarRating, used only by the public feedback page and styled on the guest kit.' },
+  { prefix: 'src/components/features/feedback/', reason: 'StarRating: the public feedback page by default, with a tone="staff" variant for the feedback inbox; no page chrome.' },
+  { prefix: 'src/components/shells/', reason: 'Page frames for routes outside AppShell (sign-in, kiosk, staff standalone, Orange Jelly customer): each renders its page\'s only <main> and h1.' },
 ]
 
 /** Everything the app ships, except the design system itself. */

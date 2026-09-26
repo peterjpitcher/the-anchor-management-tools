@@ -24,6 +24,8 @@ import {
 } from '@/app/actions/marketing-contacts'
 import type { ImportContactsResult } from '@/services/marketing-contacts'
 
+import { CONTACT_IMPORT_FLAG_TONES } from '../_shared/marketing-ui'
+
 interface ImportModalProps {
   onClose: () => void
   onImported: () => void
@@ -223,16 +225,16 @@ export function ImportModal({ onClose, onImported }: ImportModalProps) {
     <Modal
       open
       onClose={onClose}
-      title="Import contacts"
+      title="Import Contacts"
       width="xl"
       footer={
-        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <>
           <Button variant="secondary" onClick={onClose} disabled={importing}>
             {result ? 'Close' : 'Cancel'}
           </Button>
           {result ? (
             <Button variant="primary" onClick={onImported}>
-              Review the new contacts
+              Review the New Contacts
             </Button>
           ) : (
             <Button
@@ -242,11 +244,11 @@ export function ImportModal({ onClose, onImported }: ImportModalProps) {
               disabled={importable.length === 0 || parsing}
             >
               {importable.length > 0
-                ? `Import ${importable.length} contacts`
-                : 'Import contacts'}
+                ? `Import ${importable.length} Contacts`
+                : 'Import Contacts'}
             </Button>
           )}
-        </div>
+        </>
       }
     >
       <div className="space-y-4">
@@ -306,7 +308,7 @@ export function ImportModal({ onClose, onImported }: ImportModalProps) {
                 />
               </div>
               <Button variant="secondary" onClick={downloadTemplate}>
-                Download template
+                Download Template
               </Button>
             </div>
 
@@ -326,15 +328,15 @@ export function ImportModal({ onClose, onImported }: ImportModalProps) {
             {rows.length > 0 && !parsing && (
               <>
                 <div className="flex flex-wrap gap-2">
-                  <Badge tone="success">{importable.length} ready to import</Badge>
+                  <Badge tone={CONTACT_IMPORT_FLAG_TONES.ready}>{importable.length} ready to import</Badge>
                   {problemCount > 0 && (
-                    <Badge tone="danger">{problemCount} will be left out</Badge>
+                    <Badge tone={CONTACT_IMPORT_FLAG_TONES.problem}>{problemCount} will be left out</Badge>
                   )}
                   {existingCount > 0 && (
-                    <Badge tone="info">{existingCount} already on the list</Badge>
+                    <Badge tone={CONTACT_IMPORT_FLAG_TONES.existing}>{existingCount} already on the list</Badge>
                   )}
                   {freemailCount > 0 && (
-                    <Badge tone="warning">{freemailCount} free-mail addresses</Badge>
+                    <Badge tone={CONTACT_IMPORT_FLAG_TONES.freemail}>{freemailCount} free-mail addresses</Badge>
                   )}
                 </div>
 
@@ -377,14 +379,14 @@ export function ImportModal({ onClose, onImported }: ImportModalProps) {
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
-                              {row.problem && <Badge tone="danger">{row.problem}</Badge>}
+                              {row.problem && <Badge tone={CONTACT_IMPORT_FLAG_TONES.problem}>{row.problem}</Badge>}
                               {row.duplicateInFile && (
-                                <Badge tone="danger">Repeated in this file</Badge>
+                                <Badge tone={CONTACT_IMPORT_FLAG_TONES.repeated}>Repeated in this file</Badge>
                               )}
                               {row.alreadyExists && (
-                                <Badge tone="info">Already on the list</Badge>
+                                <Badge tone={CONTACT_IMPORT_FLAG_TONES.existing}>Already on the list</Badge>
                               )}
-                              {row.isFreemail && <Badge tone="warning">Free-mail</Badge>}
+                              {row.isFreemail && <Badge tone={CONTACT_IMPORT_FLAG_TONES.freemail}>Free-mail</Badge>}
                             </div>
                           </TableCell>
                         </TableRow>

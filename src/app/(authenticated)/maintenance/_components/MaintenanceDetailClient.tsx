@@ -1,7 +1,20 @@
 'use client'
 
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { Alert, Badge, Button, Card, CardBody, Input, Select, Textarea, toast } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  FormFooter,
+  Input,
+  PageLayout,
+  Select,
+  Textarea,
+  toast,
+} from '@/ds'
 import { getMaintenanceItem, updateMaintenanceItem } from '@/app/actions/maintenance'
 import {
   MAINTENANCE_KINDS,
@@ -23,17 +36,24 @@ import {
 import { MaintenancePhotos } from './MaintenancePhotos'
 import { MaintenanceTimeline } from './MaintenanceTimeline'
 import {
-  MAINTENANCE_PRIORITY_TONES,
-  MAINTENANCE_RESPONSIBILITY_TONES,
-  MAINTENANCE_STATUS_TONES,
   formatMaintenanceDate,
   formatOptionalPounds,
   maintenanceActorLabel,
 } from './maintenanceDisplay'
+import {
+  MAINTENANCE_KIND_TONES,
+  MAINTENANCE_OVERDUE_TONE,
+  MAINTENANCE_PRIORITY_TONES,
+  MAINTENANCE_RESPONSIBILITY_TONES,
+  MAINTENANCE_STATUS_TONES,
+} from '../_shared/status-ui'
+import { MAINTENANCE_ITEM_LAYOUT } from '../_shared/layout'
 
 export interface MaintenanceDetailClientProps {
   item: MaintenanceItem
   areas: MaintenanceArea[]
+  /** The areas failed to load, so the area cannot be changed until they do. */
+  areasUnavailable?: boolean
   /** Today in London, resolved on the server so overdue never depends on the device clock. */
   todayIsoDate: string
 }
@@ -115,6 +135,7 @@ function isValidMoney(value: string): boolean {
 export function MaintenanceDetailClient({
   item,
   areas,
+  areasUnavailable = false,
   todayIsoDate,
 }: MaintenanceDetailClientProps): React.JSX.Element {
   // The record as we last saw it saved. expectedUpdatedAt always comes from here.
@@ -392,31 +413,35 @@ export function MaintenanceDetailClient({
     setReloaded(false)
   }, [baseline])
 
+  // The item's own title heads the page, read from the saved record so a saved rename shows
+  // straight away. The reference sits under it.
   return (
-    <div className="space-y-4">
+    <PageLayout {...MAINTENANCE_ITEM_LAYOUT} title={baseline.title} subtitle={baseline.reference}>
+      {areasUnavailable && (
+        <Alert tone="warning" title="Areas are unavailable">
+          The area cannot be changed at the moment because the list of areas could not be loaded.
+        </Alert>
+      )}
+
       <Card>
-        <CardBody>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs text-text-muted">{baseline.reference}</p>
-              <h1 className="mt-0.5 text-lg font-semibold text-text">{baseline.title}</h1>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              <Badge tone={MAINTENANCE_STATUS_TONES[baseline.status]}>
-                {MAINTENANCE_STATUS_LABELS[baseline.status]}
-              </Badge>
-              <Badge tone={MAINTENANCE_PRIORITY_TONES[baseline.priority]}>
-                {MAINTENANCE_PRIORITY_LABELS[baseline.priority]}
-              </Badge>
-              <Badge tone={MAINTENANCE_RESPONSIBILITY_TONES[baseline.responsibility]}>
-                {MAINTENANCE_RESPONSIBILITY_LABELS[baseline.responsibility]}
-              </Badge>
-              <Badge tone="neutral">{MAINTENANCE_KIND_LABELS[baseline.kind]}</Badge>
-              {overdue && <Badge tone="danger">Overdue</Badge>}
-            </div>
+        <CardBody className="space-y-4">
+          <div className="flex flex-wrap gap-1.5">
+            <Badge tone={MAINTENANCE_STATUS_TONES[baseline.status]}>
+              {MAINTENANCE_STATUS_LABELS[baseline.status]}
+            </Badge>
+            <Badge tone={MAINTENANCE_PRIORITY_TONES[baseline.priority]}>
+              {MAINTENANCE_PRIORITY_LABELS[baseline.priority]}
+            </Badge>
+            <Badge tone={MAINTENANCE_RESPONSIBILITY_TONES[baseline.responsibility]}>
+              {MAINTENANCE_RESPONSIBILITY_LABELS[baseline.responsibility]}
+            </Badge>
+            <Badge tone={MAINTENANCE_KIND_TONES[baseline.kind]}>
+              {MAINTENANCE_KIND_LABELS[baseline.kind]}
+            </Badge>
+            {overdue && <Badge tone={MAINTENANCE_OVERDUE_TONE}>Overdue</Badge>}
           </div>
 
-          <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 text-ui sm:grid-cols-2 lg:grid-cols-4">
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-ui sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <dt className="text-text-muted">Reported on</dt>
               <dd className="text-text">{formatMaintenanceDate(baseline.reportedOn)}</dd>
@@ -446,7 +471,7 @@ export function MaintenanceDetailClient({
             </div>
           </dl>
 
-          <p className="mt-3 text-xs text-text-muted">
+          <p className="text-xs text-text-muted">
             Logged by {maintenanceActorLabel(baseline.createdByEmail)}. All amounts are in pounds
             including VAT.
           </p>
@@ -463,11 +488,11 @@ export function MaintenanceDetailClient({
               </p>
               <p className="mt-2">
                 <Button size="sm" onClick={() => void handleReload()} loading={reloading}>
-                  Load the newer version
+                  Load the Newer Version
                 </Button>
               </p>
               {reloadError && (
-                <p className="mt-2 text-danger" role="alert">
+                <p className="mt-2 text-danger-fg" role="alert">
                   {reloadError}
                 </p>
               )}
@@ -494,9 +519,9 @@ export function MaintenanceDetailClient({
 
       <form onSubmit={handleSave} noValidate>
         <Card>
-          <CardBody>
-            <h2 className="text-sm font-semibold text-text">Details</h2>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <CardHeader title="Details" />
+          <CardBody className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <Input
                   ref={titleRef}
@@ -674,15 +699,14 @@ export function MaintenanceDetailClient({
               {saving ? 'Saving your changes' : dirty ? 'You have unsaved changes' : ''}
             </p>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <Button type="submit" variant="primary" loading={saving} disabled={saving || !dirty}>
-                Save changes
-              </Button>
+            <FormFooter start={dirty ? 'Unsaved changes' : undefined}>
               <Button type="button" variant="secondary" onClick={handleCancel} disabled={!dirty}>
                 Cancel
               </Button>
-              {dirty && <span className="text-xs text-text-muted">Unsaved changes</span>}
-            </div>
+              <Button type="submit" variant="primary" loading={saving} disabled={saving || !dirty}>
+                Save Changes
+              </Button>
+            </FormFooter>
           </CardBody>
         </Card>
       </form>
@@ -690,7 +714,7 @@ export function MaintenanceDetailClient({
       <MaintenancePhotos itemId={baseline.id} itemTitle={baseline.title} />
 
       <MaintenanceTimeline itemId={baseline.id} />
-    </div>
+    </PageLayout>
   )
 }
 
