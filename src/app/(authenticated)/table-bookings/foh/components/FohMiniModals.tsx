@@ -2,7 +2,8 @@
 
 import React from 'react'
 import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
-import { Button, Input, Modal, ModalActions } from '@/ds'
+import { Button, Input, Modal } from '@/ds'
+import { ModalActions } from '@/ds/compat'
 
 type FohPartySizeModalProps = {
   bookingId?: string | null

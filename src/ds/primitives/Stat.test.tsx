@@ -52,3 +52,55 @@ describe('Stat delta', () => {
     expect(container.querySelector('.sr-only')).toBeNull()
   })
 })
+
+describe('Stat deltaGood', () => {
+  it('shows a rise in the danger colour when down is good, and still says up', () => {
+    render(<Stat label="No-shows" value="9" delta={20} deltaGood="down" />)
+    const delta = screen.getByText('20%')
+
+    expect(delta).toHaveClass('text-danger-fg')
+    expect(delta).not.toHaveClass('text-success-fg')
+    expect(spokenText(delta)).toBe('up 20%')
+  })
+
+  it('shows a fall in the success colour when down is good, and still says down', () => {
+    render(<Stat label="Costs" value="£400" delta={-8} deltaGood="down" />)
+    const delta = screen.getByText('8%')
+
+    expect(delta).toHaveClass('text-success-fg')
+    expect(spokenText(delta)).toBe('down 8%')
+  })
+
+  it('keeps no change muted whichever way is good', () => {
+    render(<Stat label="Costs" value="£400" delta={0} deltaGood="down" />)
+
+    expect(screen.getByText('0%')).toHaveClass('text-text-muted')
+  })
+
+  it('draws the arrow in the colour of the delta text', () => {
+    render(<Stat label="Costs" value="£400" delta={-8} deltaGood="down" />)
+    const arrow = screen.getByText('8%').querySelector('svg')
+
+    expect(arrow).not.toBeNull()
+    expect(arrow?.getAttribute('class')).not.toMatch(/text-/)
+  })
+})
+
+describe('Stat tone', () => {
+  it.each([
+    ['default', 'text-text'],
+    ['success', 'text-success-fg'],
+    ['warning', 'text-warning-fg'],
+    ['danger', 'text-danger-fg'],
+  ] as const)('colours the value for the %s tone', (tone, colour) => {
+    render(<Stat label="Overdue" value="£1,200" tone={tone} />)
+
+    expect(screen.getByText('£1,200')).toHaveClass(colour)
+  })
+
+  it('uses the plain text colour when no tone is given', () => {
+    render(<Stat label="Covers" value="48" />)
+
+    expect(screen.getByText('48')).toHaveClass('text-text')
+  })
+})

@@ -1,7 +1,8 @@
 'use client'
 
 import React from 'react'
-import { Alert, Button, Modal, ModalActions } from '@/ds'
+import { Alert, Button, Modal } from '@/ds'
+import { ModalActions } from '@/ds/compat'
 import { cn } from '@/lib/utils'
 import type { TimeSlotOption } from '../utils'
 

@@ -3,9 +3,12 @@ import { redirect } from 'next/navigation';
 import { checkUserPermission } from '@/app/actions/rbac';
 import {
   getTeamReliabilityLeaderboard,
+  RELIABILITY_LEADERBOARD_LOAD_ERROR,
+  type TeamReliabilityRow,
   type TeamReliabilitySort,
 } from '@/services/employee-reliability';
 import {
+  Alert,
   Badge,
   Card,
   Empty,
@@ -84,24 +87,41 @@ export default async function EmployeeReliabilityLeaderboardPage({ searchParams 
   const params = await searchParams;
   const includeFormer = params.includeFormer === '1';
   const sortBy = normalizeSort(params.sort);
-  const rows = await getTeamReliabilityLeaderboard({ includeFormer, sortBy });
+  const layoutProps = {
+    title: 'Reliability',
+    navItems: EMPLOYEES_NAV,
+    headerActions: (
+      <LinkButton
+        href={includeFormer ? '/employees/reliability' : '/employees/reliability?includeFormer=1'}
+        variant="secondary"
+        size="sm"
+      >
+        {includeFormer ? 'Active Only' : 'Include Former'}
+      </LinkButton>
+    ),
+  };
+
+  // A failed read keeps the header and says so; it is never shown as "No employees found".
+  let rows: TeamReliabilityRow[];
+  try {
+    rows = await getTeamReliabilityLeaderboard({ includeFormer, sortBy });
+  } catch (error) {
+    // The service logs its own database errors; anything else is logged here.
+    if (!(error instanceof Error && error.message === RELIABILITY_LEADERBOARD_LOAD_ERROR)) {
+      console.error('[employees/reliability] leaderboard failed to load', error);
+    }
+    return (
+      <PageLayout {...layoutProps} subtitle="Last 90 days">
+        <Alert tone="danger" title="Could not load the leaderboard">
+          {RELIABILITY_LEADERBOARD_LOAD_ERROR}
+        </Alert>
+      </PageLayout>
+    );
+  }
   const rankedCount = rows.filter(row => !row.recent.isLowSample).length;
 
   return (
-    <PageLayout
-      title="Reliability"
-      subtitle={`${rankedCount} ranked staff · last 90 days`}
-      navItems={EMPLOYEES_NAV}
-      headerActions={
-        <LinkButton
-          href={includeFormer ? '/employees/reliability' : '/employees/reliability?includeFormer=1'}
-          variant="secondary"
-          size="sm"
-        >
-          {includeFormer ? 'Active Only' : 'Include Former'}
-        </LinkButton>
-      }
-    >
+    <PageLayout {...layoutProps} subtitle={`${rankedCount} ranked staff · last 90 days`}>
       <StatGrid columns={4}>
         <Stat label="Ranked" value={rankedCount} />
         <Stat label="Low sample" value={rows.length - rankedCount} />

@@ -2,6 +2,7 @@
 
 import { Fragment } from 'react'
 import {
+  Description,
   Dialog,
   DialogBackdrop,
   DialogPanel,
@@ -17,8 +18,11 @@ interface ModalProps {
   open: boolean
   onClose: () => void
   title?: string
-  /** @deprecated Use children instead */
-  description?: string
+  /**
+   * One short line under the title (muted, sentence case). The dialog names it as its
+   * description (`aria-describedby`), so screen readers read it with the title.
+   */
+  description?: React.ReactNode
   children: React.ReactNode
   footer?: React.ReactNode
   width?: ModalWidth
@@ -39,7 +43,7 @@ export function Modal({
   open,
   onClose,
   title,
-  description: _description,
+  description,
   children,
   footer,
   width,
@@ -83,11 +87,21 @@ export function Modal({
                   widthStyles[resolvedWidth]
                 )}
               >
-                {title && (
+                {(title || description) && (
                   <div className="px-4 py-4 border-b border-border sm:px-6">
-                    <DialogTitle className="text-base font-semibold text-text-strong">
-                      {title}
-                    </DialogTitle>
+                    {title && (
+                      <DialogTitle className="text-base font-semibold text-text-strong">
+                        {title}
+                      </DialogTitle>
+                    )}
+                    {description && (
+                      <Description
+                        as={typeof description === 'string' ? 'p' : 'div'}
+                        className={cn('text-sm text-text-muted', title && 'mt-1')}
+                      >
+                        {description}
+                      </Description>
+                    )}
                   </div>
                 )}
 

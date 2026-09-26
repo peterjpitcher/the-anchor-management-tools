@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { FormGroup } from '../compat/FormGroup'
 import { Input } from './Input'
 import { Select } from './Select'
 import { Textarea } from './Textarea'
@@ -29,10 +28,6 @@ describe('Field', () => {
     const input = screen.getByLabelText(/Email/)
     expect(input.getAttribute('aria-invalid')).toBe('true')
     expect(input.getAttribute('aria-describedby')).toContain(screen.getByRole('alert').id)
-  })
-
-  it('keeps the legacy FormGroup name as the same implementation', () => {
-    expect(FormGroup).toBe(Field)
   })
 
   it.each(controls)("keeps the $name's own error state when the Field has none", ({ role, renderControl }) => {
@@ -80,5 +75,19 @@ describe('Field', () => {
     const input = screen.getByRole('textbox', { name: 'Name' })
     expect(input).not.toHaveAttribute('aria-invalid')
     expect(input).not.toHaveAttribute('aria-describedby')
+  })
+})
+
+describe('Field error text', () => {
+  it('uses the readable danger text colour, not the base danger colour', () => {
+    render(
+      <Field label="Email" error="Email is required">
+        <input />
+      </Field>,
+    )
+
+    const error = screen.getByRole('alert')
+    expect(error).toHaveClass('text-xs', 'text-danger-fg')
+    expect(error).not.toHaveClass('text-danger')
   })
 })

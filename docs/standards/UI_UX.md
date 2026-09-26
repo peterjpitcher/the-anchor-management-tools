@@ -32,6 +32,7 @@ The FOH manager iPad kiosk (`/table-bookings/foh` signed in as the manager kiosk
 - Child pages (detail, new, edit) do not show their section's tab row: they show the back button. A record with several views of its own (a private booking's Overview, Items, Messages and Communications) has its own tab row, shown on each of those views together with the back button. A sub-area with its own tab row (Private Bookings Settings) works the same way.
 - `Tabs` switch panels inside one page. `Segmented` switches the view of the same data (list or calendar, 7 or 30 days). Never use a nav component with `onSelect` to switch panels.
 - A page shows at most one tab row.
+- Settings tiles come from `buildSettingsTileGroups` in `settings/_shared/tiles.ts`. A tile shows only when the user has the same permission its page checks, so no tile leads to the Unauthorised page; a new tile names that permission there.
 - Back navigation: `backButton` on every page below its section's top level: detail pages and their tabs, new and edit pages, sub-areas with their own tab row (Private Bookings Settings), and the pages you drill into from Settings. It is labelled "Back to <Parent>" and points at the direct parent. No back button on a section's top-level pages, whether or not they have a tab row. No breadcrumbs anywhere. **(guard)**
 
 ### Header actions
@@ -44,7 +45,7 @@ The FOH manager iPad kiosk (`/table-bookings/foh` signed in as the manager kiosk
 - `PageLayout` spaces its children 24px apart (`space-y-6`). Pass blocks as direct children; do not add margins between them or wrap them in another stack.
 - Panels are `Card`. A titled panel uses `CardHeader` (`title`, `subtitle`, `action`); its body is `CardBody`. Tables sit in `<Card padding="none">` or straight after a `CardHeader`. Never hand-build a panel from `bg-surface border rounded-* p-*`.
 - A heading over a group of cards is `Section` (`title`, `description`, `actions`). A default `Section` adds no padding, so its cards line up with every other card. Do not pass `padding` to a default `Section`.
-- Headings: page title `h1` (PageLayout), section title `h2` (Section, 16px semibold), card title `h3` (CardHeader, 14px semibold). No other heading styles in page code.
+- Headings: page title `h1` (PageLayout), section title `h2` (Section, 16px semibold), card title `h3` (CardHeader, 14px semibold), and a sub-heading inside a card body `h4` (`SubHeading`, 14px semibold; `as="h3"` in a card with no CardHeader). No other heading styles in page code.
 - Inside a card: `space-y-4` between blocks, `grid gap-4 sm:grid-cols-2` for side-by-side fields. Two-column page layouts use `gap-6`.
 - Figures: `StatGrid` with `Stat` children. Never hand-build a stat tile.
 
@@ -63,18 +64,65 @@ The FOH manager iPad kiosk (`/table-bookings/foh` signed in as the manager kiosk
 
 ### Components
 
-- Build from `@/ds` before writing markup. `src/ds/compat` is being removed; do not add uses.
+- Build from `@/ds` before writing markup. `@/ds` no longer re-exports `src/ds/compat`: the few legacy pieces left are imported from `@/ds/compat` by their last callers. Do not add uses.
 - **Tables:** `Table` (small uppercase muted headers on `bg-surface-2`) or `DataTable` (sorting, empty row, pagination). One pager: `TablePagination`.
-- **Buttons and links:** `Button`, `LinkButton`, `IconButton`. The primary colour is the Orange Jelly orange (`bg-primary`), used for buttons, the active tab, sub-navigation and links.
-- **Menus and overlays:** `Dropdown`, `Popover`, `Modal`, `Drawer`, `ConfirmDialog`. Never a hand-built `fixed inset-0` overlay.
+- **Sorting:** a sortable column is `<TableHead sortable sortDirection={...} onSort={...}>`: the label becomes a real button and the header carries `aria-sort`; `sortDirection` is `asc`, `desc` or `null` (sorted by another column) and the caller decides the next direction. A `DataTable` sorts its own rows, or takes controlled sorting for a list the server sorts and pages: `sortKey` (`null` for none), `sortDirection` and `onSortChange(key, direction)`. Never a hand-built sort header.
+- **Buttons and links:** `Button`, `LinkButton`, `IconButton`. The primary colour is the Orange Jelly orange (`bg-primary`), used for buttons, the active tab, sub-navigation and links. `LinkButton download` downloads instead of navigating (`true` keeps the server's file name, a string sets it).
+- **Files:** `FileButton` is a DS `Button` over a hidden file input, for a picker that is not a drop zone (`onFiles`, `accept`, `multiple`, `capture`, `loading`, `name`, `inputRef`). A drop zone is `FileUpload`. Never a hand-styled `<input type="file">` or a `<label>` dressed as a button.
+- **Fields:** `Input` takes `warning` for a soft problem that does not block saving (amber, with the message under the field); `error` wins when both are set. A group of radios, checkboxes or buttons that answers one question sits in `Fieldset` (`legend`, `hint`, `error`, `required`), whose legend looks exactly like a `Field` label.
+- **Figures:** `Stat` takes `tone` (`success`, `warning`, `danger`) when the figure itself is good or bad news, and `deltaGood="down"` when a fall is the good direction (costs, no-shows, wastage).
+- **Menus and overlays:** `Dropdown`, `Popover`, `Modal`, `Drawer`, `ConfirmDialog`. Never a hand-built `fixed inset-0` overlay. `Dropdown` and `Popover` panels are portalled to the end of the page and anchored to their trigger, so a scrolling table or an `overflow-hidden` card cannot clip them: never raise a `z-index` or drop `overflow-hidden` to make a menu show. `DropdownLabel` heads a group of items; `DropdownItem closeOnSelect={false}` keeps the menu open for an item that changes the menu itself, such as a toggle.
+- **Charts:** one approach, the DS chart composites in `src/ds/composites/Chart.tsx` (`BarChart`, `LineChart`, `ComboChart`, plus the compact `RevenueChart` and `Sparkline`). Series take the chart tokens in order (`CHART_COLOURS`, `chartColour(i)`), numbers print through `formatChartValue` (`number`, `currency`, `shorthandCurrency`, `percent`) and tooltips use `ChartTooltipFrame`. Never import `recharts` or draw an SVG chart in page code.
 - **Status:** `Badge` and `Alert` with a `tone`. Each status has one map, used everywhere it shows:
   - table bookings: `TABLE_BOOKING_STATUS_TONE` in `src/lib/table-bookings/ui.ts` (booked primary, seated success, pending payment warning, no-show danger; cancelled, left and completed neutral)
   - vouchers: `VOUCHER_STATUS_TONES` in `src/app/(authenticated)/vouchers/_shared/voucher-ui.tsx` (issued info, redeemed success)
   - private bookings: `privateBookingStatusTone` and `privateBookingPaymentTone` in `src/app/(authenticated)/private-bookings/_shared/status-ui.ts` (confirmed primary, draft warning because it is a hold waiting for its deposit, completed and cancelled neutral; overdue money is the only red)
   - events and event bookings: `eventStatusTone` and `eventBookingStatusTone` in `src/app/(authenticated)/events/_shared/status-ui.ts` (bookings follow the table booking colours)
   - invoices and quotes: `invoiceStatusTone` and `quoteStatusTone` in `src/lib/invoices/status-ui.ts`, which the invoice and quote PDFs use too
-  - rota shifts, holidays, departments, day notes and the hours report: `ROTA_SHIFT_STATUS_CLASSES`, `ROTA_HOLIDAY_CLASSES`, `rotaDepartmentClasses` (one department to category map, also used by the printed rota) and `ROTA_HOURS_SERIES_COLOURS` in `src/lib/rota/status-ui.ts`. A shift's own colour comes from `resolveShiftColour` in `src/lib/rota/shift-template-colours.ts`, on screen and on paper.
-  - Any other status gets a named map in its domain's `status-ui` file and is listed here. Never pick a tone inline at the call site.
+  - rota shifts, holidays, departments, day notes and the hours report: `ROTA_SHIFT_STATUS_CLASSES`, `ROTA_HOLIDAY_CLASSES`, `rotaDepartmentClasses` over `ROTA_DEPARTMENT_CLASSES` and `ROTA_DEPARTMENT_FALLBACK_CLASSES` (one department to category map, also used by the printed rota), `ROTA_DAY_INFO_CLASSES` and `ROTA_CALENDAR_NOTE_CLASSES` (day notes) and `ROTA_HOURS_SERIES_COLOURS` in `src/lib/rota/status-ui.ts`. A shift's own colour comes from `resolveShiftColour` in `src/lib/rota/shift-template-colours.ts`, on screen and on paper.
+  - holiday (leave) requests, on every screen that lists one (the rota dialog, `/rota/leave`, the employee Holidays tab, the staff portal): `ROTA_LEAVE_STATUS_TONE` and `ROTA_LEAVE_STATUS_LABEL` (`rotaLeaveStatusTone`, `rotaLeaveStatusLabel`) in `src/lib/rota/status-ui.ts` (pending warning, worded "Pending approval"; approved success; declined danger)
+  - text and email delivery, wherever a send is listed (event marketing texts, a private booking's Communications tab, marketing recipients, the inbox): `MESSAGE_DELIVERY_STATUS_TONE` and `MESSAGE_DELIVERY_STATUS_LABEL` (`messageDeliveryStatusTone`, `messageDeliveryStatusLabel`) in `src/lib/messages/status-ui.ts` (on its way info; sent, delivered, opened or read success; delayed or needs review warning; failed, undelivered, bounced, complained or suppressed danger; cancelled, skipped or received neutral)
+  - Any other status gets a named map in its domain's `status-ui` file and is listed below. Never pick a tone inline at the call site.
+
+  Every other named status map, by file:
+
+  | Area | File | Maps |
+  |---|---|---|
+  | Cashing up | `cashing-up/_shared/status-ui.ts` | `CASHUP_SESSION_STATUS_TONE` (`cashupSessionStatusTone`), `targetPerformanceTone`, `targetPerformanceRowClass`, `cashVarianceTextClass`, `cashVarianceAlertTone`, `signedAmountTextClass`, `cashupImportResultTone`, `weeklyProgressTone` |
+  | Checklists | `checklists/_shared/status-ui.ts` | `CHECKLIST_CLOSED_TASK_STATUS`, `CHECKLIST_GENERATION_STATUS`, `CHECKLIST_TODO_STATUS`, `CHECKLIST_SPOT_CHECK_STATUS`, `CHECKLIST_PRESENCE_STATUS`, `CHECKLIST_BAND_TONE` (`checklistBandTone`), `CHECKLIST_REVIEW_CELL_CLASSES` |
+  | Customers | `customers/_shared/status-ui.ts` | `CONTACT_CHANNEL_TONE`, `STRATEGIC_SIGNAL_TONE`, `CUSTOMER_IMPORT_ROW_TONE`, `CUSTOMER_IMPORT_ROW_LABEL`, `CUSTOMER_IMPORT_ROW_TINT` |
+  | Dashboard | `dashboard/_shared/status-ui.ts` | `EVENT_FILL_BADGE`, `ACTION_ITEM_SEVERITY_CLASSES` |
+  | Employees | `employees/_shared/status-ui.ts` | `employmentStatusTone`, `leaveStatusTone` (to be replaced by the leave map above), `holidayAllowanceTone`, `HOLIDAY_ALLOWANCE_TEXT_CLASSES`, `contactPriorityTone`, `RATE_OVERRIDE_TONES`, `birthdayCountdownTone`, `reliabilityScoreTone`, `RELIABILITY_LOW_SAMPLE_TONE`, `reliabilityEventTone`, `rotaWeekStatusTone`, `SEPARATION_SHIFT_DECISION_TONES`, `auditEntryIconClasses` |
+  | Events | `events/_shared/status-ui.ts` | also `eventTodoUrgencyTone`, `eventTodoUrgencyBorderClass`, `eventChecklistStatusTextClass`, `eventSeatingTypeTone`, `eventLinkTypeTone`, `eventTicketTypeSaleTone`, `eventMessageStatusTone` (to be replaced by the delivery map above), `eventCapacityFillClass`, `eventPreflightIssueTextClass`, `seoHealthStyles` |
+  | Feedback inbox | `feedback-inbox/_shared/status-ui.ts` | `FEEDBACK_STATUS_TONE`, `FEEDBACK_STATUS_LABEL` |
+  | Insights | `insights/_shared/status-ui.ts` | `INSIGHT_STATUS_WORD`, `INSIGHT_STATUS_EMOJI`, `INSIGHT_STATUS_TEXT` |
+  | Invoices | `invoices/_shared/status-ui.ts` | `RECURRING_SCHEDULE_TONE` (`recurringScheduleTone`), `VENDOR_CONTACT_FLAG_TONE` |
+  | Refunds (parking, private and table bookings) | `src/components/features/invoices/RefundHistoryTable.tsx` | `REFUND_STATUS_TONE` |
+  | Maintenance | `maintenance/_shared/status-ui.ts` | `MAINTENANCE_STATUS_TONES`, `MAINTENANCE_PRIORITY_TONES`, `MAINTENANCE_RESPONSIBILITY_TONES`, `MAINTENANCE_KIND_TONES`, `MAINTENANCE_OVERDUE_TONE`, `MAINTENANCE_PHOTO_EVENT_TONES` (words: `MAINTENANCE_STATUS_LABELS` in `src/types/maintenance.ts`) |
+  | Marketing email | `marketing/_shared/marketing-ui.tsx` | `CampaignStatusBadge`, `RecipientStatusBadge` (to be replaced by the delivery map above), `EligibilityBadge`, `MarketingStatusBadge`, `SUBSCRIBER_SUGGESTION_TONES`, `CONTACT_IMPORT_FLAG_TONES` |
+  | Menu management | `menu-management/_shared/status-ui.ts` | `menuActiveTone`, `menuAssignmentTone`, `purchaseDepartmentTone`, `menuGpTone`, `GP_TARGET_UI`, `DISH_COSTING_STATUS_UI`, `MENU_ALLERGEN_TONE`, `MENU_DIETARY_TONE`, `ALLERGEN_VERIFICATION_UI`, `inclusionTypeTone`, `optionGroupStyle` |
+  | Messages | `messages/_shared/status-ui.ts` | `REPLY_BLOCK_TONE`, `SMS_CONSENT_TONE`, `WHATSAPP_OPT_IN_TONE`, `MESSAGE_CHANNEL_BADGE_TONE`, `MESSAGE_ATTACHMENT_BADGE_TONE` |
+  | MGD | `mgd/_shared/status-ui.ts` | `MGD_RETURN_STATUS_TONE` |
+  | Mileage | `mileage/_shared/status-ui.ts` | `MILEAGE_TRIP_SOURCE_TONE`, `MILEAGE_TRIP_SOURCE_LABEL` |
+  | OJ Projects | `oj-projects/_shared/status-ui.ts` | `OJ_PROJECT_STATUS`, `OJ_ENTRY_STATUS`, `OJ_ENTRY_TYPE`, `OJ_BILLABLE`, `OJ_ACTIVE`, `OJ_MONEY_TEXT`, `ojBudgetTone` |
+  | Parking | `parking/_shared/status-ui.ts` | `PARKING_BOOKING_STATUS_TONE`, `PARKING_PAYMENT_STATUS_TONE` |
+  | Private bookings | `private-bookings/_shared/status-ui.ts` | also `privateBookingStatusBlockClasses`, `settingsActiveTone`, `PREFERRED_VENDOR_TONE`, `smsQueueTone`, `growthRecordSourceTone`, `SENT_MESSAGE_TRIGGER_TONE`, `WAIVER_STATUS_TONE`, `RISK_STATUS_TONE`, `SUPPLIER_STATUS_TONE`, `SUPPLIER_ROW_STATUS_TONE`, `FINAL_DETAILS_STATUS_TONE`, `POST_EVENT_STATUS_TONE`, `DEDUCTION_STATUS_TONE`, `COMPLAINT_STATUS_TONE`, `RECORD_LOCKED_TONE`, `CANCELLATION_OUTCOME_TONE`, `SCHEDULED_REMINDER_TONE` |
+  | Receipts and P&L | `receipts/_shared/status-ui.ts` | `RECEIPT_STATUS_TONE`, `RECEIPT_STATUS_LABEL`, `RECEIPT_FLOW_TONE`, `RECEIPT_FLOW_TEXT_CLASS`, `RECEIPT_INSIGHT_TONE`, `RECEIPT_SOURCE_TONE`, `RECEIPT_CLASSIFICATION_SOURCE_TONE`, `RECEIPT_RULE_STATE_TONE`, `RECEIPT_SUGGESTION_SOURCE_TONE`, `vendorSignalTone`, `spendMovementTextClass`, `PNL_HEALTH_TONE`, `pnlVarianceTone` |
+  | Recruitment | `recruitment/_shared/status-ui.ts` | `RECRUITMENT_SCORE_TONE`, `RECRUITMENT_SCORE_LABEL`, `RECRUITMENT_SCORE_ROW_CLASS`, `recruitmentCvStatusTone`, `recruitmentRightToWorkTone`, `RECRUITMENT_STAGE_TONE`, `RECRUITMENT_APPOINTMENT_STATUS_TONE`, `RECRUITMENT_FLAG_TONE`, `RECRUITMENT_TEMPLATE_TONE` |
+  | Roles | `roles/_shared/status-ui.ts` | `ROLE_NAME_BADGE_TONE`, `ROLE_SYSTEM_FLAG_TONE`, `ROLE_NONE_TONE` |
+  | Rota screens | `rota/_shared/status-ui.ts` | `ROTA_TONE_ICON_CLASSES`, `ROTA_WEEK_PUBLISH_TONE`, `ROTA_OPEN_SHIFTS_TONE`, `LABOUR_SHARE_TONE`, `LABOUR_SHARE_TEXT_CLASSES`, `LABOUR_SHARE_CELL_CLASSES`, `ROTA_WAGES_COSTING_TONE`, `ROTA_HOURS_LIMIT_TEXT_CLASSES`, `ROTA_CAPACITY_TEXT_CLASSES`, `ROTA_CAPACITY_BAR_TONE`, `OPEN_SHIFT_REQUEST_STATUS_TONE`, `ADD_SHIFTS_ITEM_TONE`, `ADD_SHIFTS_ASSIGNEE_TONE`, `budgetUsageTone`, `BUDGET_HOURS_TEXT_CLASSES`, `LEAVE_ALLOWANCE_TONE`, `LEAVE_ALLOWANCE_TEXT_CLASSES`, `PAYROLL_APPROVAL_TONE`, `PAYROLL_VARIANCE_TONE`, `PAYROLL_PAY_RATE_TONE`, `PAYROLL_DAY_FLAGGED_TONE`, `TIMECLOCK_FLAG_TONE`, `TIMECLOCK_REVIEWED_ROW_CLASSES`, `REASSIGN_ORIGIN_TONE`, `REASSIGN_OUTCOME_TONE`, `SHIFT_TEMPLATE_BADGE_TONE` |
+  | Settings | `settings/_shared/status-ui.ts` | `auditLogStatusTone`, `backgroundJobStatusTone`, `activeStateTone`, `SPECIAL_HOURS_DAY_CLASSES`, `SPECIAL_HOURS_TEXT_CLASSES`, `SPECIAL_HOURS_BADGE`, `DEFAULT_TEMPLATE_TONE`, `PAY_RATE_STATUS_BADGE`, `SMS_FAILURE_TONES`, `SEASONAL_PERIOD_STATUS_BADGE` |
+  | Short links | `short-links/_shared/status-ui.ts` | `SHORT_LINK_KIND_TONE`, `LEGACY_REPORTER_TONE` |
+  | Table bookings | `table-bookings/_shared/status-ui.ts` | `TABLE_BOOKING_REFUND_PROGRESS_TONE`; the booking status itself is `TABLE_BOOKING_STATUS_TONE` above, with `getTableBookingDepositBadgeClasses` beside it |
+  | Seasonal pre-orders | `src/components/features/table-bookings/preorder/status-ui.ts` | `PREORDER_COMPLETENESS_TONE` |
+  | Venue calendar | `src/components/schedule-calendar/status-ui.ts` | `CALENDAR_CLOSURE_CELL_CLASSES`, `CALENDAR_CLOSURE_BADGE` |
+  | Vouchers | `vouchers/_shared/voucher-ui.tsx` | also `REMINDER_STATUS_TONES` (the FOH kiosk reads the same maps through `vouchers/foh/components/voucher-status.ts`) |
+  | Staff portal | `src/app/(staff-portal)/portal/_shared/status-ui.ts` | `PORTAL_LEAVE_STATUS_TONE` (`portalLeaveStatusTone`, to be replaced by the leave map above), `OPEN_SHIFT_REQUESTED_TONE`, `SHIFT_CONFIRM_PANEL_CLASSES`, `shiftPremiumTone` |
+  | Onboarding | `src/app/(employee-onboarding)/onboarding/_shared/status-ui.ts` | `ONBOARDING_SECTION_TONE`, `ONBOARDING_SECTION_LABEL` |
+  | Timeclock kiosk | `src/app/(timeclock)/timeclock/_components/status-ui.ts` | `KIOSK_TILE_CLASSES`, `KIOSK_DOT_CLASSES` |
+  | Guest pages | `src/components/features/guest/status-ui.ts` | `GUEST_BANNER_TONE`, `GUEST_BADGE_TONE_FOR`, `guestBadgeToneForStatus`, `GUEST_ALERT_TONE_CLASS`, `GUEST_BADGE_TONE_CLASS`, `GUEST_MARK_TONE_CLASS` (guest tokens only) |
+
+  Paths without `src/` are under `src/app/(authenticated)/`. Emails and PDFs take the same meanings as palette values (`statusBadgeStyle` in `src/lib/pdf/document-chrome.ts`).
 - **Toasts:** `toast` from `@/ds` for transient confirmations (`success`, `error`, `warning`, `info`). A lasting result of a form sits in an inline `Alert`. One `Toaster`, in the root layout.
 - **Icons:** the DS `Icon` only. Add a missing glyph to `src/ds/icons/paths.tsx` rather than importing another icon set.
 - **Forms:** DS fields with Zod validation in the server action. There is no form library.
@@ -146,7 +194,28 @@ export const FINANCE_NAV: HeaderNavItem[] = [
 - **Shadows:** `shadow-xs` (buttons), `shadow-sm` (cards, tables), `shadow-default` (raised panels), `shadow-lg` (dialogs, drawers, menus, toasts), `shadow-ring` and `shadow-ring-inset` (focus).
 - **Sizes:** `min-h-touch` (44px), `h-input-h`, `h-btn-h`, `h-btn-h-sm`, `h-btn-h-lg`, `py-cell-y`, `p-pad-card`.
 - **Breakpoint:** `shell:` and `max-shell:` switch at 821px, where the app shell changes between phone and desktop.
-- `cn()` in `src/lib/utils.ts` knows the custom token names, so `cn('text-ui', 'text-text-muted')` keeps both. A new token namespace must be registered there too.
+- `cn()` in `src/lib/utils.ts` knows the custom token names, so `cn('text-ui', 'text-text-muted')` and `cn('text-guest-h1', 'text-anchor-gold')` keep both. A new token must be registered there too: `tests/lib/cn.test.ts` reads the `@theme` block and fails on any text, spacing, radius, shadow, leading, tracking, container or ease token `cn()` does not know.
+
+## Global phone overrides
+
+`src/app/globals.css` applies these to every page, whatever the component asks for. Check here before chasing a size that will not change on a phone.
+
+Under 821px (the `max-shell:` range, `@media (max-width: 820px)`):
+
+- The size tokens grow for thumbs: `h-input-h` 44px, `h-btn-h` 42px, `h-btn-h-sm` 34px, `h-btn-h-lg` 48px.
+- Every `input`, `select` and `textarea` is 16px (`!important`), because anything smaller makes iOS Safari zoom the page on focus.
+- Every `button` (except sidebar buttons, switches and `GuestButton`), `[role="button"]`, `select` and `.touch-target` is at least 44px by 44px.
+- Every `table` is at least 560px wide and scrolls inside its nearest `overflow-x-auto` wrapper.
+- A `[role="tablist"]` never wraps: it scrolls sideways with the scrollbar hidden.
+- `html` and `body` never scroll sideways; `main > div` and `.sm:flex-row` rows get `min-width: 0` so they can shrink.
+- The sidebar is hidden: the phone chrome takes over.
+
+Under 641px:
+
+- Every `[role="tab"]` gets 8px by 12px padding, a 44px minimum height and no wrapping.
+- `.truncate` also gets `max-width: 100%`, and `html`, `body` and `main` hide sideways overflow.
+
+On touch screens of any width (`pointer: coarse`), only inside an element marked `data-touch-targets` (FOH, BOH, messages, table booking detail, the voucher FOH and handout screens, DS `Modal` and `Drawer`): buttons, inputs, selects, options and text areas get a 44px minimum.
 
 ## Rules
 
@@ -171,9 +240,9 @@ The guard counts these in `src/`:
 
 | Rule | What it catches | Use instead |
 |---|---|---|
-| `raw-palette` | Tailwind colours such as `bg-gray-100`, `text-blue-600`, `border-emerald-200` | the token for the meaning |
+| `raw-palette` | Tailwind colours such as `bg-gray-100`, `text-blue-600`, `border-emerald-200`, and `white` or `black` (`bg-white`, `text-white`, `border-black/10`) outside emails and PDFs | the token for the meaning (`bg-surface`, `text-primary-fg`, `text-on-dark`, `bg-overlay`) |
 | `hex-colour` | `#rrggbb` anywhere outside `globals.css`, `src/lib/brand/palette.ts` and a short list of saved-colour files | a token, or the palette for emails and PDFs |
-| `px-text-size` | `text-[13px]` and other pixel sizes | the type scale above |
+| `px-text-size` | `text-[13px]`, `text-[22px]` and every other pixel size | the type scale above; the `text-guest-*` sizes on guest pages |
 | `bare-rounded` | `rounded` on its own (4px) | `rounded-sm` or larger |
 | `off-scale-radius` | `rounded-2xl`, `rounded-3xl` | `rounded-xl` or `rounded-lg` |
 | `off-scale-shadow` | `shadow` on its own, `shadow-md`, `shadow-xl`, `shadow-2xl` | the shadow scale above |
@@ -181,6 +250,11 @@ The guard counts these in `src/`:
 | `legacy-hsl-var` | `hsl(var(--...))` from the old shadcn setup | token utilities |
 | `raw-820-breakpoint` | hand-written 820px breakpoints | `shell:` or `max-shell:` |
 | `sidebar-outside-shell` | sidebar tokens outside `src/ds/shell` | `Button variant="primary"` or the `on-dark` tokens |
+| `legacy-focus-ring` | `focus:ring-*`, `focus-visible:ring-*`, `ring-offset-*`, `outline-none` | Rule 3: `focus-visible:outline-hidden focus-visible:shadow-ring` |
+| `guest-token-outside-guest` | `anchor-*` and `guest-*` classes outside `GuestShell`, `src/components/features/guest`, the public route folders and `StarRating`'s guest tone | the staff tokens (Rule 7) |
+| `brand-ramp-outside-shell` | `bg-brand-700`, `text-brand-50` and the rest of the brand ramp outside `src/ds/shell`, `src/components/shells` and `PageLayout`'s dark kiosk header | `primary`, `primary-soft`, `primary-soft-fg` or the `on-dark` tokens |
+| `status-opacity` | `bg-warning/10`, `border-primary/20` and other status colours at an opacity | the `-soft` fill and `-border` edge tokens |
+| `rounded-md` | `rounded-md` (10px here) on staff screens outside `src/ds` | `rounded-lg` (cards, panels), `rounded-default` (buttons, fields, clickable rows) or `rounded-sm` (chips) |
 
 ## The guard
 
@@ -188,4 +262,5 @@ The guard counts these in `src/`:
 
 - **"adds no new raw values"** fails when any count rises. Fix the code; never raise the baseline to get a change through.
 - **"has a baseline no looser than the code"** fails when a count fell and the baseline still holds the old number. Lower it with `UPDATE_DESIGN_TOKEN_BASELINE=1 npx vitest run tests/guards/design-tokens.test.ts` and commit the baseline with the change. The update refuses to raise any number.
+- **"records every rule at its current version"** fails when a rule was added or widened and the baseline has not recorded it yet. Adding a rule, or widening what one catches, means a new rule id or a higher `version` on the rule; the same update command then records the current counts for that rule only. Every other rule still only goes down, so a widened rule is never a way to raise the rest.
 - Comments are ignored. Bare `rounded` and `shadow` count only inside strings that read as class lists, so prose is safe.

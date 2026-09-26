@@ -41,9 +41,27 @@ export interface TabsProps {
   /** @deprecated Accepted for backward compatibility */
   destroyInactive?: boolean
   className?: string
+  /** Names the tab list for screen readers when no visible heading does. */
+  'aria-label'?: string
+  /** The id of a visible heading that names the tab list. */
+  'aria-labelledby'?: string
 }
 
-export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange, onChange, variant: _variant, bordered: _bordered, padded: _padded, destroyInactive: _destroyInactive, className }: TabsProps) {
+export function Tabs({
+  tabs: tabsProp,
+  items,
+  activeTab,
+  activeKey,
+  onTabChange,
+  onChange,
+  variant: _variant,
+  bordered: _bordered,
+  padded: _padded,
+  destroyInactive: _destroyInactive,
+  className,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledBy,
+}: TabsProps) {
   const tabsId = React.useId()
   // Resolve legacy items -> tabs
   const tabs: Tab[] = tabsProp ?? (items ? items.map((it) => ({ id: it.key, label: it.label, content: it.content })) : [])
@@ -83,10 +101,16 @@ export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange,
 
   // Find the active tab's content (for legacy items pattern)
   const activeContent = tabs.find((t) => t.id === resolvedActiveTab)?.content
+  // Only the active tab's panel is ever rendered, and only when it has content. As a plain
+  // tab strip (the page renders its own panels) there is no panel here to point at, so a
+  // tab only claims aria-controls when its panel is actually in the page.
+  const panelId = activeContent ? `${tabsId}-panel-${resolvedActiveTab}` : undefined
   return (
     <div>
       <div
         role="tablist"
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
         className={cn('flex items-center overflow-x-auto border-b border-border scrollbar-hide', className)}
       >
         {tabs.map((tab, index) => {
@@ -99,7 +123,7 @@ export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange,
               type="button"
               role="tab"
               aria-selected={isActive}
-              aria-controls={`${tabsId}-panel-${tab.id}`}
+              aria-controls={isActive ? panelId : undefined}
               tabIndex={isActive ? 0 : -1}
               className={cn(
                 'px-4 py-2.5 text-ui font-medium whitespace-nowrap relative transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset',
@@ -134,7 +158,7 @@ export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange,
       </div>
       {activeContent && (
         <div
-          id={`${tabsId}-panel-${resolvedActiveTab}`}
+          id={panelId}
           role="tabpanel"
           aria-labelledby={`${tabsId}-tab-${resolvedActiveTab}`}
           className="pt-4"

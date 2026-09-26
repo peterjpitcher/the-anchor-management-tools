@@ -19,7 +19,7 @@
  * The rejected entry brings its own `border border-dashed`, because the dashed line is what
  * sets it apart.
  *
- * Holiday, department and day-note colours for the rota screens are further down this file,
+ * Holiday, leave request, department and day-note colours for the rota screens are further down this file,
  * so /rota, /rota/hours, /rota/payroll, /rota/templates and the staff portal read one source.
  * The printed rota and hours report take their colours from here too, as palette values.
  */
@@ -60,6 +60,50 @@ export const ROTA_HOLIDAY_CLASSES: Readonly<Record<RotaHolidayStatus, string>> =
   approved: 'bg-success-soft text-success-fg border-success-border',
   pending: 'bg-warning-soft text-warning-fg border-warning-border',
 };
+
+/**
+ * A holiday (leave) request's status as a DS Badge, the same on every screen that lists one: the
+ * holiday dialog on the rota, the leave manager (/rota/leave), the employee's Holidays tab and the
+ * staff portal. Keys are the values the leave_requests.status check allows. The tones match
+ * ROTA_HOLIDAY_CLASSES: a request waiting for a manager is warning, approved is success, and
+ * declined is the one to notice (danger).
+ *
+ * Before 26 September 2026 those four screens each had their own copy, and the words differed
+ * ("Pending approval" in the rota dialog, "Pending" elsewhere). The label is the rota dialog's
+ * wording, because it says what the request is waiting for.
+ *
+ * Render a chip as
+ *   <Badge tone={rotaLeaveStatusTone(status)}>{rotaLeaveStatusLabel(status)}</Badge>
+ */
+export type RotaLeaveStatus = 'pending' | 'approved' | 'declined';
+export type RotaLeaveBadgeTone = 'warning' | 'success' | 'danger';
+
+export const ROTA_LEAVE_STATUS_TONE: Readonly<Record<RotaLeaveStatus, RotaLeaveBadgeTone>> = {
+  pending: 'warning',
+  approved: 'success',
+  declined: 'danger',
+};
+
+export const ROTA_LEAVE_STATUS_LABEL: Readonly<Record<RotaLeaveStatus, string>> = {
+  pending: 'Pending approval',
+  approved: 'Approved',
+  declined: 'Declined',
+};
+
+function isRotaLeaveStatus(status: string | null | undefined): status is RotaLeaveStatus {
+  return typeof status === 'string' && Object.prototype.hasOwnProperty.call(ROTA_LEAVE_STATUS_TONE, status);
+}
+
+/** The Badge tone for a leave status. A value the database does not allow reads as neutral, never as a fault. */
+export function rotaLeaveStatusTone(status: string | null | undefined): RotaLeaveBadgeTone | 'neutral' {
+  return isRotaLeaveStatus(status) ? ROTA_LEAVE_STATUS_TONE[status] : 'neutral';
+}
+
+/** The words for a leave status. An unknown value is shown as stored, so nothing renders blank. */
+export function rotaLeaveStatusLabel(status: string | null | undefined): string {
+  if (isRotaLeaveStatus(status)) return ROTA_LEAVE_STATUS_LABEL[status];
+  return status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown';
+}
 
 /**
  * The same meanings as CSS colours, for places a class cannot reach (chart fills and legend

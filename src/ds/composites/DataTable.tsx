@@ -35,6 +35,8 @@ export interface Column<T = unknown> {
   className?: string
 }
 
+export type DataTableSortDirection = 'asc' | 'desc'
+
 export interface DataTableProps<T = unknown> extends HTMLAttributes<HTMLDivElement> {
   data: T[]
   columns: Column<T>[]
@@ -58,6 +60,20 @@ export interface DataTableProps<T = unknown> extends HTMLAttributes<HTMLDivEleme
   expandable?: boolean
   renderExpandedContent?: (row: T) => ReactNode
   defaultExpandedKeys?: Array<string | number>
+  /**
+   * Controlled sorting, for a list the server sorts and pages: the key of the sorted column,
+   * or `null` for no sort. When this is set (even to `null`) the table shows the rows in the
+   * order given and only reports header clicks through `onSortChange`. Leave it undefined and
+   * the table sorts the rows itself, as before.
+   */
+  sortKey?: string | null
+  /** The controlled sort direction (default `asc`). Only read when `sortKey` is set. */
+  sortDirection?: DataTableSortDirection
+  /**
+   * Called when a sortable header is pressed, with the column key and the direction it asks
+   * for: `asc` for a new column, the opposite direction for the current one. Fires in both modes.
+   */
+  onSortChange?: (key: string, direction: DataTableSortDirection) => void
 }
 
 export function DataTable<T = unknown>({
@@ -83,11 +99,17 @@ export function DataTable<T = unknown>({
   renderExpandedContent,
   defaultExpandedKeys = [],
   rowClassName,
+  sortKey,
+  sortDirection: controlledSortDirection,
+  onSortChange,
   className,
   ...props
 }: DataTableProps<T>) {
-  const [sortColumn, setSortColumn] = useState<string | null>(null)
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [internalSortColumn, setSortColumn] = useState<string | null>(null)
+  const [internalSortDirection, setSortDirection] = useState<DataTableSortDirection>('asc')
+  const isSortControlled = sortKey !== undefined
+  const sortColumn = isSortControlled ? sortKey : internalSortColumn
+  const sortDirection = isSortControlled ? (controlledSortDirection ?? 'asc') : internalSortDirection
   const [isMobile, setIsMobile] = useState(false)
   const [internalSelectedKeys, setInternalSelectedKeys] = useState<Set<string | number>>(
     selectedKeys || new Set(),
@@ -118,8 +140,8 @@ export function DataTable<T = unknown>({
     })
   }, [data, getRowKey])
 
-  // Sort data
-  const sortedData = [...data].sort((a, b) => {
+  // Sort data. A controlled table shows the rows in the order the caller (the server) gave.
+  const sortedData = isSortControlled ? data : [...data].sort((a, b) => {
     if (!sortColumn) return 0
     const column = columns.find((col) => col.key === sortColumn)
     if (!column) return 0
@@ -137,12 +159,13 @@ export function DataTable<T = unknown>({
 
   const handleSort = (column: Column<T>) => {
     if (!column.sortable) return
-    if (sortColumn === column.key) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
+    const nextDirection: DataTableSortDirection =
+      sortColumn === column.key && sortDirection === 'asc' ? 'desc' : 'asc'
+    if (!isSortControlled) {
       setSortColumn(column.key)
-      setSortDirection('asc')
+      setSortDirection(nextDirection)
     }
+    onSortChange?.(column.key, nextDirection)
   }
 
   const handleSelectAll = (checked: boolean) => {
@@ -182,7 +205,7 @@ export function DataTable<T = unknown>({
     })
   }
 
-  // Loading state — minimal centred spinner
+  // Loading state: minimal centred spinner
   if (loading) {
     const loadingIndicator = (
       <div className="flex items-center justify-center py-12" role="status">

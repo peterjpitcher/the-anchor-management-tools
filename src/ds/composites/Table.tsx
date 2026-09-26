@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { Icon, type IconName } from '@/ds/icons'
 
 /* ------------------------------------------------------------------ */
-/*  Table — compound component with styled header, body, rows, cells  */
+/*  Table: compound component with styled header, body, rows, cells   */
 /*                                                                    */
 /*  Needs 'use client' because TableHead (sortable) and               */
 /*  TablePagination use event handlers.                               */
@@ -83,19 +83,28 @@ export function TableRow({ children, className, onClick }: TableRowProps) {
 
 /* --- TableHead (sortable) --- */
 
-type SortDirection = 'asc' | 'desc' | null
+export type TableSortDirection = 'asc' | 'desc' | null
 
-interface TableHeadProps {
+export interface TableHeadProps {
   children?: React.ReactNode
   className?: string
-  /** Enable sortable column header */
+  /**
+   * Makes the header a sort control: the label renders as a real `<button>` inside the
+   * `<th>`, so it is reachable by keyboard, and the `<th>` carries `aria-sort`.
+   */
   sortable?: boolean
-  /** Current sort direction for this column */
-  sortDirection?: SortDirection
-  /** Called when user clicks to toggle sort */
+  /** This column's current sort: `asc`, `desc`, or `null` when the table is sorted by another column. */
+  sortDirection?: TableSortDirection
+  /** Called when the header button is pressed. The caller decides the next direction. */
   onSort?: () => void
   /** Left-align (default) or right-align */
   align?: 'left' | 'right' | 'center'
+}
+
+const ARIA_SORT: Record<'asc' | 'desc' | 'none', 'ascending' | 'descending' | 'none'> = {
+  asc: 'ascending',
+  desc: 'descending',
+  none: 'none',
 }
 
 export function TableHead({
@@ -113,9 +122,19 @@ export function TableHead({
     sortDirection === 'desc' ? 'chevronDown' :
     null
 
-  if (sortable) {
+  const sortIndicator = sortIcon ? (
+    <Icon name={sortIcon} size={12} />
+  ) : (
+    <span className="w-3" aria-hidden="true" /> /* Placeholder to prevent layout shift */
+  )
+
+  // Older callers (the mileage trips and receipts lists) put their own <button> in the header to
+  // give it a tab stop. Keep their markup: the cell takes the click that bubbles from that button,
+  // so a press sorts once and no button sits inside another. New code passes plain text.
+  if (sortable && React.isValidElement(children) && children.type === 'button') {
     return (
       <th scope="col"
+        aria-sort={ARIA_SORT[sortDirection ?? 'none']}
         className={cn(
           'px-4 py-2 text-xs font-medium text-text-muted uppercase tracking-wider select-none cursor-pointer hover:text-text transition-colors',
           alignClass,
@@ -125,12 +144,36 @@ export function TableHead({
       >
         <span className="inline-flex items-center gap-1">
           {children}
-          {sortIcon ? (
-            <Icon name={sortIcon} size={12} />
-          ) : (
-            <span className="w-3" /> /* Placeholder to prevent layout shift */
-          )}
+          {sortIndicator}
         </span>
+      </th>
+    )
+  }
+
+  if (sortable) {
+    return (
+      <th scope="col"
+        aria-sort={ARIA_SORT[sortDirection ?? 'none']}
+        className={cn(
+          'px-4 py-2 text-xs font-medium text-text-muted uppercase tracking-wider select-none',
+          alignClass,
+          className,
+        )}
+      >
+        {/* The button inherits the header's colour, so a caller's highlight class on the <th>
+            still shows. Inset ring: a scrolling table would clip an outer one (Rules: Focus). */}
+        <button
+          type="button"
+          onClick={onSort}
+          className={cn(
+            'inline-flex cursor-pointer items-center gap-1 rounded-sm uppercase tracking-wider',
+            'transition-colors hover:text-text',
+            'focus-visible:outline-hidden focus-visible:shadow-ring-inset',
+          )}
+        >
+          {children}
+          {sortIndicator}
+        </button>
       </th>
     )
   }

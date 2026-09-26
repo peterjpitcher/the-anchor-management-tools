@@ -1,5 +1,5 @@
 /**
- * ModalActions — backward-compatible wrapper
+ * ModalActions: backward-compatible wrapper
  * @deprecated Use Modal footer prop instead
  */
 
