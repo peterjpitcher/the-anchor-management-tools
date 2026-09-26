@@ -19,6 +19,7 @@ import {
   PageLayout,
   PageLoading,
 } from '@/ds'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 
 type CategoriesClientProps = {
   initialCategories: AttachmentCategory[]
@@ -256,7 +257,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                     <div>
                       <p className="font-medium">{category.category_name}</p>
                       <p className="text-xs text-text-muted">
-                        Updated {new Date(category.updated_at).toLocaleString('en-GB')}
+                        Updated {formatDateTimeInLondon(category.updated_at)}
                       </p>
                       {!canManage && (
                         <p className="text-xs text-text-muted">

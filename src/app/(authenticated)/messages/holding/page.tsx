@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { PageLayout, Alert, Card, CardBody, Badge, Empty } from '@/ds'
 import { CommunicationsService } from '@/services/communications'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 import { HoldingQueueActions } from './_components/HoldingQueueActions'
 import { MESSAGE_ATTACHMENT_BADGE_TONE, MESSAGE_CHANNEL_BADGE_TONE } from '../_shared/status-ui'
 
@@ -61,7 +62,7 @@ export default async function HoldingQueuePage() {
                       <Badge tone={MESSAGE_ATTACHMENT_BADGE_TONE}>Attachment</Badge>
                     )}
                     <span className="text-xs text-text-muted">
-                      {new Date(row.received_at).toLocaleString('en-GB')}
+                      {formatDateTimeInLondon(row.received_at)}
                     </span>
                   </div>
                   <div className="grid gap-1 text-sm md:grid-cols-2">

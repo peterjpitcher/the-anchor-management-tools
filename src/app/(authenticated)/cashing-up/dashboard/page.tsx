@@ -14,8 +14,7 @@ export default async function CashupDashboardPage({ searchParams }: PageProps) {
   const siteId = site?.id
 
   const todayIso = getTodayIsoDate()
-  const now = new Date()
-  const currentYear = now.getFullYear()
+  const currentYear = Number(todayIso.slice(0, 4))
   const selectedYear = params.year ? parseInt(params.year, 10) : currentYear
   const compareYear = params.compareYear ? parseInt(params.compareYear, 10) : undefined
 
@@ -31,7 +30,7 @@ export default async function CashupDashboardPage({ searchParams }: PageProps) {
     const isCurrentYear = selectedYear === currentYear
     const compFrom = `${compareYear}-01-01`
     const compTo = isCurrentYear
-      ? `${compareYear}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      ? `${compareYear}${todayIso.slice(4)}`
       : `${compareYear}-12-31`
     fetches.push(getDashboardDataAction(siteId, compFrom, compTo))
   }

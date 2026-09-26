@@ -29,6 +29,7 @@ import {
   defaultRecipeRow,
 } from './CompositionRow';
 import type { DishListItem, IngredientSummary, RecipeSummary, MenuSummary } from './DishExpandedRow';
+import { formatDateInLondon } from '@/lib/dateUtils';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -629,7 +630,7 @@ export function DishDrawer({
                     <Badge
                       tone={ALLERGEN_VERIFICATION_UI.verified.tone}
                       icon={<Icon name="checkCircle" size={12} />}
-                      title={allergenVerifiedAt ? `Verified ${new Date(allergenVerifiedAt).toLocaleDateString('en-GB')}` : undefined}
+                      title={allergenVerifiedAt ? `Verified ${formatDateInLondon(allergenVerifiedAt)}` : undefined}
                     >
                       Allergens Verified
                     </Badge>

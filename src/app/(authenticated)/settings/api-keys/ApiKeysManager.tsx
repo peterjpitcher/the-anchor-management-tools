@@ -21,7 +21,7 @@ import {
   toast,
 } from '@/ds';
 import { deleteApiKey, generateApiKey, revokeApiKey, updateApiKey } from './actions';
-import { format } from 'date-fns';
+import { formatDateTime } from '@/lib/dateUtils';
 import type { ApiKey } from '@/types/api';
 import { activeStateTone } from '../_shared/status-ui';
 
@@ -353,7 +353,7 @@ export default function ApiKeysManager({ initialKeys, canManage, loadError = nul
               <div className="text-sm text-text">{k.permissions.includes('*') ? 'All permissions' : k.permissions.join(', ')}</div>
             ) },
             { key: 'rate', header: 'Rate Limit', align: 'right', cell: (k: ApiKey) => <span className="text-sm text-text">{k.rate_limit}/hour</span> },
-            { key: 'last', header: 'Last Used', cell: (k: ApiKey) => <span className="text-sm text-text-muted">{k.last_used_at ? format(new Date(k.last_used_at), 'MMM d, yyyy HH:mm') : 'Never'}</span> },
+            { key: 'last', header: 'Last Used', cell: (k: ApiKey) => <span className="text-sm text-text-muted">{k.last_used_at ? formatDateTime(k.last_used_at) : 'Never'}</span> },
             { key: 'status', header: 'Status', cell: (k: ApiKey) => <Badge tone={activeStateTone(k.is_active)}>{k.is_active ? 'Active' : 'Inactive'}</Badge> },
             ...(canManage ? [{
               key: 'actions',
