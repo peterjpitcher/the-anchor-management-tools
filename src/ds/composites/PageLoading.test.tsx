@@ -22,4 +22,11 @@ describe('PageLoading', () => {
     expect(status.className).toContain('min-h-0')
     expect(status.className).not.toContain('min-h-[50vh]')
   })
+
+  it('should sit inline under a header when inline is set', () => {
+    render(<PageLoading inline />)
+    const status = screen.getByRole('status')
+    expect(status.className).toContain('py-12')
+    expect(status.className).not.toContain('min-h-[50vh]')
+  })
 })
