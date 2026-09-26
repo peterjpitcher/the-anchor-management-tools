@@ -49,6 +49,21 @@ export function formatDateInLondon(
   return d.toLocaleDateString(locale, { ...options, timeZone: LONDON_TIMEZONE })
 }
 
+/**
+ * Formats an instant on the London clock with any Intl options, including time-only options
+ * and dateStyle/timeStyle, which formatDateInLondon cannot take. Use it instead of
+ * toLocaleString, toLocaleTimeString or Intl.DateTimeFormat without a timeZone: those read the
+ * host's zone, which is UTC on the server, so a page rendered there shows times an hour early
+ * during British Summer Time until the browser hydrates it.
+ */
+export function formatDateTimeInLondon(
+  date: string | Date,
+  options?: Intl.DateTimeFormatOptions,
+  locale: string = 'en-GB'
+): string {
+  return toDate(date).toLocaleString(locale, { ...options, timeZone: LONDON_TIMEZONE })
+}
+
 export function formatDate(date: string | Date): string {
   const d = toDate(date)
   // Format as "January 15, 2024" (US format for legacy UI sections)
