@@ -9,6 +9,7 @@ import {
   resolveTableBookingReportsWindow
 } from '@/lib/analytics/table-booking-reports'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-GB').format(value)
@@ -40,10 +41,10 @@ function describeCoverTrend(granularity: 'hour' | 'day' | 'week' | 'month'): str
 }
 
 function formatGeneratedAt(iso: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
+  return formatDateTimeInLondon(iso, {
     dateStyle: 'medium',
     timeStyle: 'short'
-  }).format(new Date(iso))
+  })
 }
 
 type TableBookingReportsPageProps = {
