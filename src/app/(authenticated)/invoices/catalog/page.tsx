@@ -2,16 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Button } from '@/ds'
 import { Modal, ModalActions } from '@/ds'
 import { Input } from '@/ds'
 import { Textarea } from '@/ds'
 import { Card } from '@/ds'
 import { Alert } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { DataTable } from '@/ds'
-import { Plus, Edit2, Trash2, Package } from 'lucide-react'
 import { getLineItemCatalog, createCatalogItem, updateCatalogItem, deleteCatalogItem } from '@/app/actions/invoices'
 import type { LineItemCatalogItem } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -208,7 +207,7 @@ export default function LineItemCatalogPage() {
           <Button
             variant="primary"
             onClick={() => openForm()}
-            leftIcon={<Plus className="h-4 w-4" />}
+            leftIcon={<Icon name="plus" size={16} />}
           >
             Add Item
           </Button>
@@ -218,22 +217,23 @@ export default function LineItemCatalogPage() {
       <div className="space-y-6">
         {isReadOnly && (
           <Alert
-            variant="info"
-            description="You have read-only access to the catalog. Create, edit, and delete actions are disabled."
+            tone="info"
             className="mb-6"
-          />
+          >
+            You have read-only access to the catalog. Create, edit, and delete actions are disabled.
+          </Alert>
         )}
         {error && (
-          <Alert variant="error" description={error} className="mb-6" />
+          <Alert tone="danger" className="mb-6">{error}</Alert>
         )}
 
         {items.length === 0 ? (
-          <EmptyState icon={<Package className="h-12 w-12" />}
+          <Empty icon={<Icon name="package" size={48} />}
             title="No catalog items found"
             description="Add common line items for quick reuse."
             action={
               canManage ? (
-                <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
+                <Button onClick={() => openForm()} leftIcon={<Icon name="plus" size={16} />}>
                   Add Your First Item
                 </Button>
               ) : undefined
@@ -260,7 +260,7 @@ export default function LineItemCatalogPage() {
                       disabled={!canManage}
                       title={!canManage ? 'You need invoice manage permission to edit catalog items.' : undefined}
                     >
-                      <Edit2 className="h-4 w-4" />
+                      <Icon name="edit" size={16} />
                     </Button>
                     <Button
                       variant="danger"
@@ -271,7 +271,7 @@ export default function LineItemCatalogPage() {
                       disabled={!canManage}
                       title={!canManage ? 'You need invoice manage permission to delete catalog items.' : undefined}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Icon name="trash" size={16} />
                     </Button>
                   </div>
                 ) },
@@ -294,7 +294,7 @@ export default function LineItemCatalogPage() {
                         disabled={!canManage}
                         title={!canManage ? 'You need invoice manage permission to edit catalog items.' : undefined}
                       >
-                        <Edit2 className="h-4 w-4" />
+                        <Icon name="edit" size={16} />
                       </Button>
                       <Button
                         variant="danger"
@@ -305,7 +305,7 @@ export default function LineItemCatalogPage() {
                         disabled={!canManage}
                         title={!canManage ? 'You need invoice manage permission to delete catalog items.' : undefined}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Icon name="trash" size={16} />
                       </Button>
                     </div>
                   </div>

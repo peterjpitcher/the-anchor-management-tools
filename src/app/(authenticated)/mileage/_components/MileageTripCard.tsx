@@ -2,8 +2,7 @@
 
 /** One trip on a phone (spec 7.1). Below 768px these cards replace the table, so nothing scrolls sideways. */
 
-import { PencilSquareIcon, TrashIcon } from '@heroicons/react/24/outline'
-import { Badge, IconButton } from '@/ds'
+import { Badge, IconButton, Icon } from '@/ds'
 import { formatLongDate } from '@/lib/mileage/periods'
 import type { MileageReportTrip } from '@/lib/mileage/report/dataset'
 import { formatMilesText, formatPoundsText } from '@/lib/mileage/report/format'
@@ -42,14 +41,14 @@ export function MileageTripCard({ trip, canManage, onEdit, onDelete }: TripRowAc
       {canManage && !isOjProjects && (
         <div className="mt-2 flex justify-end gap-1">
           <IconButton
-            icon={<PencilSquareIcon className="h-4 w-4" />}
+            icon={<Icon name="edit" size={16} />}
             label={`Edit trip on ${dateLabel}`}
             variant="ghost"
             size="sm"
             onClick={() => onEdit(trip)}
           />
           <IconButton
-            icon={<TrashIcon className="h-4 w-4 text-danger" />}
+            icon={<Icon name="trash" size={16} className="text-danger" />}
             label={`Delete trip on ${dateLabel}`}
             variant="ghost"
             size="sm"

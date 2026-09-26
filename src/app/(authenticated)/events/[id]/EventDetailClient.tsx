@@ -17,7 +17,7 @@ import {
   CustomerLink,
   toast,
 } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { Icon } from '@/ds/icons'
 import type { Event } from '@/types/database'
 import type { EventBookingRow } from '@/app/actions/events'
@@ -482,7 +482,7 @@ export default function EventDetailClient({
             { label: 'Not found' },
           ]}
         />
-        <EmptyState title="Not Found" description="Event not found." />
+        <Empty title="Not Found" description="Event not found." />
       </div>
     )
   }
@@ -895,7 +895,7 @@ function ShortLinksTab({ links, totalClicks }: { links: EventMarketingLink[]; to
         <CardHeader title="Click Breakdown by Channel" />
         <CardBody>
           {sortedLinks.length === 0 ? (
-            <EmptyState title="No Links" description="No marketing links have been generated for this event yet." />
+            <Empty title="No Links" description="No marketing links have been generated for this event yet." />
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -1284,7 +1284,7 @@ function AttendeesTab({
         />
         <CardBody>
           {visibleBookings.length === 0 ? (
-            <EmptyState title="No Bookings" description="No bookings yet for this event." />
+            <Empty title="No Bookings" description="No bookings yet for this event." />
           ) : (
             <>
               {/* Desktop table */}
@@ -1524,7 +1524,7 @@ function MarketingMessagesCard({ messages }: { messages: EventMarketingMessage[]
       />
       <CardBody>
         {sortedMessages.length === 0 ? (
-          <EmptyState
+          <Empty
             title="No Marketing Messages Sent"
             description="No event marketing SMS messages have been logged for this event yet."
           />

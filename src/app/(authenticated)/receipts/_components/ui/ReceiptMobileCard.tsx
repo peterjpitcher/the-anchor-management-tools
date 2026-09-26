@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useTransition, useRef, ChangeEvent } from 'react'
-import { toast } from 'react-hot-toast'
-import { Badge, Button, ConfirmDialog, Input, Select, Spinner } from '@/ds'
+import { Badge, Button, ConfirmDialog, Input, Select, Spinner, toast, Icon } from '@/ds'
 import {
   markReceiptTransaction,
   deleteReceiptFile,
@@ -13,11 +12,6 @@ import {
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ReceiptTransaction, ReceiptFile, ReceiptClassificationSource } from '@/types/database'
 import { receiptExpenseCategorySchema } from '@/lib/validation'
-import {
-  ArrowPathIcon,
-  SparklesIcon,
-  PencilSquareIcon,
-} from '@heroicons/react/24/outline'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { formatCurrency, formatDate, statusLabels, statusTone } from '@/app/(authenticated)/receipts/utils'
 import { RECEIPT_UPLOAD_ACCEPT, receiptUploadErrorMessage, uploadReceiptFile } from './receiptUploadClient'
@@ -246,7 +240,7 @@ export function ReceiptMobileCard({
                 <p className="text-meta text-text-muted">{transaction.card_member}</p>
                 )}
                 {transaction.rule_applied_id && (
-                <Badge tone="primary" size="sm" icon={<ArrowPathIcon />}>
+                <Badge tone="primary" size="sm" icon={<Icon name="refresh" size={12} />}>
                     Auto rule
                 </Badge>
                 )}
@@ -295,7 +289,7 @@ export function ReceiptMobileCard({
                 ) : (
                     <button type="button" onClick={() => startEditing('vendor')} className="rounded-sm text-left hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring" disabled={!canManageReceipts}>
                         {transaction.vendor_name || <span className="text-text-subtle">Add vendor</span>}
-                        {transaction.vendor_source === 'ai' && <SparklesIcon className="inline h-3 w-3 ml-1 text-info" />}
+                        {transaction.vendor_source === 'ai' && <Icon name="sparkles" size={12} className="inline ml-1 text-info" />}
                     </button>
                 )}
             </div>
@@ -316,7 +310,7 @@ export function ReceiptMobileCard({
                 ) : (
                     <button type="button" onClick={() => startEditing('expense')} className="rounded-sm text-left hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring" disabled={!canManageReceipts}>
                         {transaction.expense_category || <span className="text-text-subtle">Add category</span>}
-                         {transaction.expense_category_source === 'ai' && <SparklesIcon className="inline h-3 w-3 ml-1 text-info" />}
+                         {transaction.expense_category_source === 'ai' && <Icon name="sparkles" size={12} className="inline ml-1 text-info" />}
                     </button>
                 )}
             </div>
@@ -334,7 +328,7 @@ export function ReceiptMobileCard({
                 ) : (
                     <button type="button" onClick={startNoteEdit} className="rounded-sm text-left hover:text-primary w-full focus-visible:outline-hidden focus-visible:shadow-ring" disabled={!canManageReceipts}>
                         {transaction.notes ? transaction.notes.split(' — ').slice(1).join(' — ') || transaction.notes : <span className="text-text-subtle italic">Add note</span>}
-                        <PencilSquareIcon className="inline h-3 w-3 ml-1 text-text-subtle" />
+                        <Icon name="edit" size={12} className="inline ml-1 text-text-subtle" />
                     </button>
                 )}
             </div>

@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline'
 import type { MessageTemplateRecord } from '@/app/actions/messageTemplates'
 import {
   listMessageTemplates,
@@ -10,22 +9,21 @@ import {
   deleteMessageTemplate,
   toggleMessageTemplate,
 } from '@/app/actions/messageTemplates'
-import { PageLayout } from '@/ds'
+import { PageLayout, toast, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { Button } from '@/ds'
 import { Modal } from '@/ds'
 import { Form } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
 import { Badge } from '@/ds'
 import { Spinner } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { ConfirmDialog } from '@/ds'
 import { Alert } from '@/ds'
-import toast from 'react-hot-toast'
 
 const TEMPLATE_TYPES: Record<string, string> = {
   booking_confirmation: 'Booking Confirmation',
@@ -284,7 +282,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
       variant="primary"
       size="sm"
       onClick={openNewTemplateModal}
-      leftIcon={<PlusIcon className="h-4 w-4" />}
+      leftIcon={<Icon name="plus" size={16} />}
     >
       New Template
     </Button>
@@ -299,7 +297,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
       headerActions={headerActions}
     >
       <div className="space-y-6">
-        {error && <Alert variant="error" title="Error" description={error} />}
+        {error && <Alert tone="danger" title="Error">{error}</Alert>}
 
         {/*
           Nothing in the sending code reads the message_templates table: every
@@ -309,10 +307,11 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
           up to read these rows.
         */}
         <Alert
-          variant="warning"
+          tone="warning"
           title="Editing these does not change the messages customers receive"
-          description="Message wording is currently set in code. These templates are kept as reference copy only, so changes saved here have no effect on live sends. Ask a developer if you need the wording of an automated message changed."
-        />
+        >
+          Message wording is currently set in code. These templates are kept as reference copy only, so changes saved here have no effect on live sends. Ask a developer if you need the wording of an automated message changed.
+        </Alert>
 
         <Section>
           <Card>
@@ -321,13 +320,13 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                 <Spinner size="lg" />
               </div>
             ) : templates.length === 0 ? (
-              <EmptyState
+              <Empty
                 title="No templates yet"
                 description="Create your first template to start automating messages."
                 action={
                   canManage ? (
                     <Button onClick={openNewTemplateModal}>
-                      <PlusIcon className="mr-2 h-4 w-4" />
+                      <Icon name="plus" size={16} className="mr-2" />
                       New Template
                     </Button>
                   ) : undefined
@@ -345,7 +344,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                             {template.is_active ? 'Active' : 'Inactive'}
                           </Badge>
                           {template.is_default && (
-                            <Badge variant="info" size="sm">
+                            <Badge tone="info" size="sm">
                               Default
                             </Badge>
                           )}
@@ -363,7 +362,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                             <Button
                               variant="secondary"
                               size="sm"
-                              leftIcon={<PencilIcon className="h-4 w-4" />}
+                              leftIcon={<Icon name="edit" size={16} />}
                               onClick={() => editTemplate(template)}
                               disabled={isMutating}
                             >
@@ -383,7 +382,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                               <Button
                                 variant="danger"
                                 size="sm"
-                                leftIcon={<TrashIcon className="h-4 w-4" />}
+                                leftIcon={<Icon name="trash" size={16} />}
                                 onClick={() => handleDelete(template)}
                                 disabled={isMutating}
                               >
@@ -435,23 +434,23 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
               handleSave()
             }}
           >
-            <FormGroup label="Name" required>
+            <Field label="Name" required>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Description">
+            <Field label="Description">
               <Input
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
-            </FormGroup>
+            </Field>
 
             {!editingTemplate && (
-              <FormGroup label="Type">
+              <Field label="Type">
                 <Select
                   value={formData.template_type}
                   onChange={(e) => setFormData({ ...formData, template_type: e.target.value })}
@@ -462,10 +461,10 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                     </option>
                   ))}
                 </Select>
-              </FormGroup>
+              </Field>
             )}
 
-            <FormGroup label="Send Timing">
+            <Field label="Send Timing">
               <Select
                 value={formData.send_timing}
                 onChange={(e) =>
@@ -478,10 +477,10 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                   </option>
                 ))}
               </Select>
-            </FormGroup>
+            </Field>
 
             {formData.send_timing === 'custom' && (
-              <FormGroup label="Hours before event" help="Maximum 30 days (720 hours)">
+              <Field label="Hours before event" help="Maximum 30 days (720 hours)">
                 <Input
                   type="number"
                   min="1"
@@ -495,10 +494,10 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                   }
                   placeholder="Enter hours (1-720)"
                 />
-              </FormGroup>
+              </Field>
             )}
 
-            <FormGroup
+            <Field
               label="Template Content"
               help={`${formData.content.length} chars, ~${Math.ceil(Math.max(formData.content.length, 1) / 160)} segments`}
               required
@@ -527,7 +526,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                 rows={8}
                 required
               />
-            </FormGroup>
+            </Field>
 
             <Section title="Preview">
               <Card>

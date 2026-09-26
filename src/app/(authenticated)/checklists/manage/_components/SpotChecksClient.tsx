@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 import {
   Alert,
@@ -11,6 +10,7 @@ import {
   CardHeader,
   CardBody,
   Textarea,
+  toast,
 } from '@/ds'
 import { recordSpotCheck } from '@/app/actions/checklists-spotcheck'
 import type { SpotCheckView } from '@/app/actions/checklists-spotcheck'

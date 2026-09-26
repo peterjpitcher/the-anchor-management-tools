@@ -1,12 +1,6 @@
 import { redirect } from 'next/navigation'
-import {
-  ChatBubbleLeftRightIcon,
-  MapPinIcon,
-  SparklesIcon,
-  UserGroupIcon,
-} from '@heroicons/react/24/outline'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { LinkButton } from '@/ds'
 
@@ -49,7 +43,7 @@ export default async function PrivateBookingsSettingsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card>
             <div className="flex items-start gap-4">
-              <MapPinIcon className="h-6 w-6 text-text-muted" />
+              <Icon name="mapPin" size={24} className="text-text-muted" />
               <div className="flex-1">
                 <div className="text-lg font-semibold text-text">Venue Spaces</div>
                 <div className="mt-1 text-sm text-text-muted">Configure spaces available for private hire.</div>
@@ -68,7 +62,7 @@ export default async function PrivateBookingsSettingsPage() {
 
           <Card>
             <div className="flex items-start gap-4">
-              <SparklesIcon className="h-6 w-6 text-text-muted" />
+              <Icon name="sparkles" size={24} className="text-text-muted" />
               <div className="flex-1">
                 <div className="text-lg font-semibold text-text">Catering Packages</div>
                 <div className="mt-1 text-sm text-text-muted">Manage food and drink options for events.</div>
@@ -87,7 +81,7 @@ export default async function PrivateBookingsSettingsPage() {
 
           <Card>
             <div className="flex items-start gap-4">
-              <UserGroupIcon className="h-6 w-6 text-text-muted" />
+              <Icon name="users" size={24} className="text-text-muted" />
               <div className="flex-1">
                 <div className="text-lg font-semibold text-text">Vendors</div>
                 <div className="mt-1 text-sm text-text-muted">Maintain your preferred vendor list.</div>
@@ -106,7 +100,7 @@ export default async function PrivateBookingsSettingsPage() {
 
           <Card>
             <div className="flex items-start gap-4">
-              <ChatBubbleLeftRightIcon className="h-6 w-6 text-text-muted" />
+              <Icon name="message" size={24} className="text-text-muted" />
               <div className="flex-1">
                 <div className="text-lg font-semibold text-text">SMS Queue</div>
                 <div className="mt-1 text-sm text-text-muted">Approve and send queued SMS messages.</div>

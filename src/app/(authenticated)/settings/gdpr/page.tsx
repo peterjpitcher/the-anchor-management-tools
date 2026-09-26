@@ -1,13 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  ArrowDownTrayIcon,
-  TrashIcon,
-} from '@heroicons/react/24/outline'
 import { exportUserData, deleteUserData } from '@/app/actions/gdpr'
-import toast from 'react-hot-toast'
-import { PageLayout } from '@/ds'
+import { PageLayout, toast, Icon } from '@/ds'
 import { Section } from '@/ds'
 import { Card, CardHeader, CardTitle, CardDescription, CardBody } from '@/ds'
 import { Button } from '@/ds'
@@ -95,7 +90,7 @@ export default function GDPRSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <ArrowDownTrayIcon className="h-5 w-5 mr-2 text-text-subtle" />
+              <Icon name="download" size={20} className="mr-2 text-text-subtle" />
               Export Your Data
             </CardTitle>
             <CardDescription className="mt-2 max-w-xl">
@@ -107,7 +102,7 @@ export default function GDPRSettingsPage() {
             <Button variant="primary"
               onClick={handleExportData}
               loading={isExporting}
-              leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+              leftIcon={<Icon name="download" size={16} />}
             >
               {isExporting ? 'Exporting...' : 'Export My Data'}
             </Button>
@@ -118,7 +113,7 @@ export default function GDPRSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <TrashIcon className="h-5 w-5 mr-2 text-danger" />
+              <Icon name="trash" size={20} className="mr-2 text-danger" />
               Delete Your Data
             </CardTitle>
             <CardDescription className="mt-2 max-w-xl">
@@ -131,15 +126,14 @@ export default function GDPRSettingsPage() {
               <Button
                 variant="danger"
                 onClick={() => setShowDeleteConfirm(true)}
-                leftIcon={<TrashIcon className="h-4 w-4" />}
+                leftIcon={<Icon name="trash" size={16} />}
               >
                 Request Data Deletion
               </Button>
             ) : (
               <Alert
-                variant="error"
+                tone="danger"
                 title="Confirm Data Deletion"
-                description="This will permanently delete all your data. To confirm, please enter your email address."
               >
                 <div className="mt-4 space-y-4">
                   <Input

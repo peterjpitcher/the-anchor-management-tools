@@ -18,16 +18,12 @@ vi.mock('@/lib/download-file', () => ({
   ),
 }))
 
-vi.mock('react-hot-toast', () => {
-  const toast = Object.assign(vi.fn(), {
-    error: vi.fn(),
-    success: vi.fn(),
-  })
-  return { default: toast, toast }
-})
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}))
 
 import { downloadBlob } from '@/lib/download-file'
-import toast from 'react-hot-toast'
+import { toast } from '@/ds'
 
 const downloadBlobMock = vi.mocked(downloadBlob)
 const toastErrorMock = vi.mocked(toast.error)

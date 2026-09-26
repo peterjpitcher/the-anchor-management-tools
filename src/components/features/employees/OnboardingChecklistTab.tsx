@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { updateOnboardingChecklist, getOnboardingProgress } from '@/app/actions/employeeActions'
-import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
-import { ProgressBar, toast } from '@/ds'
+import { ProgressBar, Spinner, toast, Icon } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 
 interface OnboardingChecklistTabProps {
@@ -74,7 +73,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin text-text-subtle" />
+        <Spinner size="lg" />
       </div>
     )
   }
@@ -139,11 +138,11 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
                     className="flex-shrink-0 mt-0.5 rounded-full focus-visible:outline-hidden focus-visible:shadow-ring"
                   >
                     {isUpdating ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-text-subtle" />
+                      <Spinner size="md" />
                     ) : item.completed ? (
-                      <CheckCircle2 className="h-5 w-5 text-success" />
+                      <Icon name="checkCircle" size={20} className="block text-success" />
                     ) : (
-                      <Circle className="h-5 w-5 text-text-subtle hover:text-text-muted" />
+                      <Icon name="circle" size={20} className="block text-text-subtle hover:text-text-muted" />
                     )}
                   </button>
                   
@@ -184,7 +183,7 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
       {progress.completed === progress.total && (
         <div className="bg-success-soft border border-success-border rounded-lg p-4">
           <div className="flex">
-            <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0" />
+            <Icon name="checkCircle" size={20} className="text-success flex-shrink-0" />
             <div className="ml-3">
               <h4 className="text-sm font-medium text-success-fg">Onboarding Complete!</h4>
               <p className="text-sm text-success-fg mt-1">

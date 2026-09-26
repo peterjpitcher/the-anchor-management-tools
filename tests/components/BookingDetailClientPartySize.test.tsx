@@ -13,9 +13,8 @@ vi.mock('@/lib/table-bookings/client-actions', () => ({
   requestTableBookingAction: requestTableBookingActionMock,
 }))
 
-vi.mock('react-hot-toast', () => ({
-  __esModule: true,
-  default: toast,
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: toast,
 }))
 
 vi.mock('@/components/features/customers/CustomerSearchInput', () => ({

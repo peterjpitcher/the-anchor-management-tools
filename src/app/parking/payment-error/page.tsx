@@ -1,4 +1,3 @@
-import { CircleAlert } from 'lucide-react'
 import {
   GUEST_H1_CLASS,
   GUEST_INTRO_CLASS,
@@ -8,6 +7,7 @@ import {
   GuestShell,
 } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { Icon } from '@/ds'
 
 type ParkingPaymentErrorPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -51,7 +51,7 @@ export default async function ParkingPaymentErrorPage({ searchParams }: ParkingP
           aria-hidden="true"
           className="flex h-9 w-9 items-center justify-center rounded-full bg-anchor-danger/10 text-anchor-danger"
         >
-          <CircleAlert className="h-5 w-5" />
+          <Icon name="alertCircle" size={20} />
         </span>
 
         <p className="font-anchor-body text-guest-lead leading-[1.65] text-guest-text">{copy.body}</p>

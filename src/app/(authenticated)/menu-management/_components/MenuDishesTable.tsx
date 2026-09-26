@@ -1,9 +1,8 @@
 'use client';
 
 import { useMemo, useCallback, useState } from 'react';
-import { Card, Badge, Button, Input } from '@/ds';
+import { Card, Badge, Button, Input, Icon } from '@/ds';
 import { Pagination } from '@/ds';
-import { ExclamationTriangleIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid';
 import { useTablePipeline } from './useTablePipeline';
 
 // ---------------------------------------------------------------------------
@@ -406,7 +405,7 @@ export function MenuDishesTable({
             placeholder="Search dishes..."
             value={pipeline.searchQuery}
             onChange={(e) => pipeline.setSearchQuery(e.target.value)}
-            icon={<MagnifyingGlassIcon className="h-4 w-4" />}
+            icon={<Icon name="search" size={16} />}
           />
         </div>
         {hasAnyOptionGroups && (
@@ -521,10 +520,7 @@ export function MenuDishesTable({
                             className={`font-medium ${belowTarget ? 'text-danger' : 'text-text'}`}
                           >
                             {belowTarget && (
-                              <ExclamationTriangleIcon
-                                className="mr-1 inline h-3.5 w-3.5 text-danger"
-                                aria-label="Below target"
-                              />
+                              <Icon name="alertTriangle" size={14} className="mr-1 inline text-danger" label="Below target" />
                             )}
                             {formatGp(gpValue)}
                           </span>

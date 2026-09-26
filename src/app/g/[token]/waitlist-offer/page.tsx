@@ -1,5 +1,5 @@
 import { headers } from 'next/headers'
-import { Check, Clock } from 'lucide-react'
+import { Icon } from '@/ds/icons'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
@@ -142,7 +142,6 @@ function ResultPanel({
   body: string
 }): React.JSX.Element {
   const success = tone === 'success'
-  const Icon = success ? Check : Clock
 
   return (
     <GuestShell>
@@ -165,9 +164,9 @@ function ResultPanel({
                 }
               >
                 <Icon
-                  className={
-                    success ? 'h-4 w-4 text-anchor-success' : 'h-4 w-4 text-guest-accent-text'
-                  }
+                  name={success ? 'check' : 'clock'}
+                  size={16}
+                  className={success ? 'text-anchor-success' : 'text-guest-accent-text'}
                 />
               </span>
               <GuestBadge tone={success ? 'success' : 'outstanding'}>{badgeLabel}</GuestBadge>

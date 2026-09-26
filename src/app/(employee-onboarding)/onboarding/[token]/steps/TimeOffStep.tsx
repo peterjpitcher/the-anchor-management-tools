@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { Alert, Button, Checkbox, FormGroup, Input, Select } from '@/ds';
+import { Alert, Button, Checkbox, Field, Input, Select } from '@/ds';
 import { saveOnboardingTimeOff } from '@/app/actions/employeeInvite';
 import {
   getTimeOffDateBounds,
@@ -119,7 +119,7 @@ export default function TimeOffStep({
 
       {/* Focusable so validation can move the user straight to the problem. */}
       <div ref={errorRef} tabIndex={-1} aria-live="polite">
-        {error && <Alert variant="error">{error}</Alert>}
+        {error && <Alert tone="danger">{error}</Alert>}
       </div>
 
       <Checkbox
@@ -142,7 +142,7 @@ export default function TimeOffStep({
               </legend>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <FormGroup label="First day" htmlFor={`${row.key}-start`} required>
+                <Field label="First day" htmlFor={`${row.key}-start`} required>
                   <Input
                     id={`${row.key}-start`}
                     type="date"
@@ -151,8 +151,8 @@ export default function TimeOffStep({
                     value={row.startDate}
                     onChange={e => updateRow(index, { startDate: e.target.value })}
                   />
-                </FormGroup>
-                <FormGroup label="Last day" htmlFor={`${row.key}-end`} required>
+                </Field>
+                <Field label="Last day" htmlFor={`${row.key}-end`} required>
                   <Input
                     id={`${row.key}-end`}
                     type="date"
@@ -161,16 +161,16 @@ export default function TimeOffStep({
                     value={row.endDate}
                     onChange={e => updateRow(index, { endDate: e.target.value })}
                   />
-                </FormGroup>
-                <FormGroup label="What is it?" htmlFor={`${row.key}-type`}>
+                </Field>
+                <Field label="What is it?" htmlFor={`${row.key}-type`}>
                   <Select
                     id={`${row.key}-type`}
                     value={row.leaveType}
                     onChange={e => updateRow(index, { leaveType: e.target.value })}
                     options={LEAVE_TYPE_OPTIONS}
                   />
-                </FormGroup>
-                <FormGroup
+                </Field>
+                <Field
                   label="Note (optional)"
                   htmlFor={`${row.key}-note`}
                   help="Please do not include medical details."
@@ -182,7 +182,7 @@ export default function TimeOffStep({
                     value={row.note}
                     onChange={e => updateRow(index, { note: e.target.value })}
                   />
-                </FormGroup>
+                </Field>
               </div>
 
               {rows.length > 1 && (

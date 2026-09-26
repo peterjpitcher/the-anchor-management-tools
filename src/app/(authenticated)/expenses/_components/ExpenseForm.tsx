@@ -2,8 +2,7 @@
 
 import { useState, useRef, useCallback, type FormEvent, type DragEvent } from 'react'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { X } from 'lucide-react'
-import { Alert, Button, Checkbox, Field, IconButton, Input, Textarea } from '@/ds'
+import { Alert, Button, Checkbox, Field, IconButton, Input, Textarea, Icon } from '@/ds'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -338,7 +337,7 @@ export function ExpenseForm({
                     loading={deletingFileId === file.id}
                     onClick={() => handleDeleteExistingFile(file.id)}
                     label={`Delete ${file.file_name}`}
-                    icon={<X className="h-4 w-4" aria-hidden="true" />}
+                    icon={<Icon name="x" size={16} />}
                     className="ml-1 text-danger hover:text-danger-fg"
                   />
                 )}
@@ -403,7 +402,7 @@ export function ExpenseForm({
                   size="sm"
                   onClick={() => removePendingFile(idx)}
                   label={`Remove ${file.name}`}
-                  icon={<X className="h-4 w-4" aria-hidden="true" />}
+                  icon={<Icon name="x" size={16} />}
                   className="ml-2 text-danger hover:text-danger-fg"
                 />
               </div>

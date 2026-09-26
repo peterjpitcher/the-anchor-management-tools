@@ -5,10 +5,9 @@ import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import type { EmployeeAttachment } from '@/types/database'
 import { deleteEmployeeAttachment, getAttachmentSignedUrl } from '@/app/actions/employeeActions'
-import { PaperClipIcon, ArrowDownTrayIcon, TrashIcon, EyeIcon } from '@heroicons/react/24/outline'
 import { formatBytes } from '@/lib/utils'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import { Button, IconButton, Modal, toast } from '@/ds'
+import { Button, IconButton, Modal, toast, Icon } from '@/ds'
 
 interface EmployeeAttachmentsListProps {
   employeeId: string
@@ -64,7 +63,7 @@ function DeleteAttachmentButton({
         className="text-danger hover:bg-danger-soft hover:text-danger-fg"
         title="Delete Attachment"
         label={`Delete ${attachmentName}`}
-        icon={<TrashIcon className="h-5 w-5" />}
+        icon={<Icon name="trash" size={20} />}
       />
 
       {/* A DS Modal rather than ConfirmDialog: the delete is a server-action form, and the
@@ -180,7 +179,7 @@ export default function EmployeeAttachmentsList({
           <li key={attachment.attachment_id} className="py-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center space-x-3">
-                <PaperClipIcon className="h-5 w-5 flex-shrink-0 text-text-subtle" />
+                <Icon name="paperclip" size={20} className="flex-shrink-0 text-text-subtle" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-text">{attachment.file_name}</p>
                   <p className="truncate text-xs text-text-muted">
@@ -198,7 +197,7 @@ export default function EmployeeAttachmentsList({
                     className="text-text-muted hover:text-text"
                     disabled={viewing === attachment.attachment_id}
                     label={`View ${attachment.file_name}`}
-                    icon={<EyeIcon className="h-5 w-5" />}
+                    icon={<Icon name="eye" size={20} />}
                   />
                 )}
                 <IconButton
@@ -208,7 +207,7 @@ export default function EmployeeAttachmentsList({
                   className="text-text-muted hover:text-text"
                   disabled={downloading === attachment.attachment_id}
                   label={`Download ${attachment.file_name}`}
-                  icon={<ArrowDownTrayIcon className="h-5 w-5" />}
+                  icon={<Icon name="download" size={20} />}
                 />
                 {canDelete && attachment.storage_path && (
                   <DeleteAttachmentButton

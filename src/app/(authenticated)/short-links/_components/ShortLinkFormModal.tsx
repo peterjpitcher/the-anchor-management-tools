@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Modal, Button, Field, Input, Select, Alert } from '@/ds'
+import { Modal, Button, Field, Input, Select, Alert, toast } from '@/ds'
 import { createShortLink, updateShortLink } from '@/app/actions/short-links'
-import toast from 'react-hot-toast'
 import { applyUtmParams } from './utm-url'
 import type { ShortLink } from '@/types/short-links'
 

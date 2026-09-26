@@ -1,12 +1,10 @@
 'use client';
 
 import { Role } from '@/types/rbac'
-import { PencilIcon, TrashIcon, ShieldCheckIcon } from '@heroicons/react/24/outline'
 import { deleteRole } from '@/app/actions/rbac'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import toast from 'react-hot-toast'
-import { Card, CardHeader, CardTitle, CardDescription } from '@/ds'
+import { Card, CardHeader, CardTitle, CardDescription, toast, Icon } from '@/ds'
 import { Button, IconButton, LinkButton } from '@/ds'
 import { Badge } from '@/ds'
 
@@ -50,7 +48,7 @@ export default function RoleCard({ role, onEditPermissions, canManage }: RoleCar
             <CardTitle className="flex items-center">
               {role.name}
               {role.is_system && (
-                <Badge variant="default" size="sm" className="ml-2">
+                <Badge tone="neutral" size="sm" className="ml-2">
                   System
                 </Badge>
               )}
@@ -67,7 +65,7 @@ export default function RoleCard({ role, onEditPermissions, canManage }: RoleCar
           onClick={onEditPermissions}
           variant="secondary"
           size="sm"
-          leftIcon={<ShieldCheckIcon className="h-4 w-4" />}
+          leftIcon={<Icon name="shieldCheck" size={16} />}
         >
           {canManage ? 'Permissions' : 'View Permissions'}
         </Button>
@@ -78,7 +76,7 @@ export default function RoleCard({ role, onEditPermissions, canManage }: RoleCar
               href={`/roles/${role.id}/edit`}
               variant="secondary"
               size="sm"
-              icon={<PencilIcon className="h-4 w-4" />}
+              icon={<Icon name="edit" size={16} />}
             >
               Edit
             </LinkButton>
@@ -91,7 +89,7 @@ export default function RoleCard({ role, onEditPermissions, canManage }: RoleCar
               size="sm"
               aria-label="Delete role"
             >
-              <TrashIcon className="h-4 w-4" />
+              <Icon name="trash" size={16} />
             </IconButton>
           )}
         </div>

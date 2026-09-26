@@ -1,9 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { TrashIcon } from '@heroicons/react/24/outline'
 
-import { Button, IconButton } from '@/ds'
+import { Button, IconButton, Icon } from '@/ds'
 import { Input } from '@/ds'
 import { Modal, ModalActions } from '@/ds'
 import { getBookingDeleteEligibility } from '@/app/actions/privateBookingActions'
@@ -127,7 +126,7 @@ export default function DeleteBookingButton({
           e.stopPropagation()
           void handleOpen()
         }}
-        icon={<TrashIcon className="h-5 w-5" />}
+        icon={<Icon name="trash" size={20} />}
       />
 
       <Modal

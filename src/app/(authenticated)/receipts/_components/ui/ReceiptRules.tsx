@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition, FormEvent, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { toast } from 'react-hot-toast'
-import { Button, Checkbox, ConfirmDialog, Input, SearchInput, Select, Card, Badge, Spinner } from '@/ds'
+import { Button, Checkbox, ConfirmDialog, Input, SearchInput, Select, Card, Badge, Spinner, toast } from '@/ds'
 import { Accordion } from '@/ds'
 import {
   toggleReceiptRule,

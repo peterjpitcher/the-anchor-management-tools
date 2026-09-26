@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Drawer, DrawerActions } from '@/ds';
 import { FormSection } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Field } from '@/ds';
 import { Input } from '@/ds';
 import { Select } from '@/ds';
 import { Textarea } from '@/ds';
@@ -524,20 +524,21 @@ export function IngredientDrawer({
         {/* Server error */}
         {serverError && (
           <Alert
-            variant="error"
+            tone="danger"
             title="Save Error"
-            description={serverError}
             closable
             onClose={() => setServerError(null)}
             className="mb-4"
-          />
+          >
+            {serverError}
+          </Alert>
         )}
 
         {/* AI Review results */}
         {reviewResult && (
           <div className="space-y-4 mb-6">
             {reviewResult.issues.length > 0 && (
-              <Alert variant="warning" title="AI Review Findings">
+              <Alert tone="warning" title="AI Review Findings">
                 <ul className="list-disc list-inside text-sm space-y-1">
                   {reviewResult.issues.map((issue, idx) => (
                     <li key={idx}>{issue}</li>
@@ -546,7 +547,7 @@ export function IngredientDrawer({
               </Alert>
             )}
             {reviewResult.suggestions.length > 0 && (
-              <Alert variant="info" title="Suggested Corrections">
+              <Alert tone="info" title="Suggested Corrections">
                 <div className="mt-2 space-y-2">
                   {reviewResult.suggestions.map((suggestion, idx) => (
                     <div
@@ -582,7 +583,7 @@ export function IngredientDrawer({
             {!reviewResult.valid &&
               reviewResult.issues.length === 0 &&
               reviewResult.suggestions.length === 0 && (
-                <Alert variant="error" title="Review Failed">
+                <Alert tone="danger" title="Review Failed">
                   The AI marked this data as invalid but provided no specific reasons. Please
                   check the fields manually.
                 </Alert>
@@ -590,7 +591,7 @@ export function IngredientDrawer({
             {reviewResult.valid &&
               reviewResult.issues.length === 0 &&
               reviewResult.suggestions.length === 0 && (
-                <Alert variant="success" title="AI Review Passed">
+                <Alert tone="success" title="AI Review Passed">
                   No logical inconsistencies found.
                 </Alert>
               )}
@@ -600,14 +601,14 @@ export function IngredientDrawer({
         {/* Section 1: Basics */}
         <FormSection title="Basics" description="Core details used across dishes and reports.">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormGroup label="Name" required help="Appears in dish builders and cost reports.">
+            <Field label="Name" required help="Appears in dish builders and cost reports.">
               <Input
                 value={formState.name}
                 onChange={(e) => update({ name: e.target.value })}
                 required
               />
-            </FormGroup>
-            <FormGroup
+            </Field>
+            <Field
               label="Brand"
               help="Optional brand or range to help the kitchen pick the right product."
             >
@@ -615,8 +616,8 @@ export function IngredientDrawer({
                 value={formState.brand}
                 onChange={(e) => update({ brand: e.target.value })}
               />
-            </FormGroup>
-            <FormGroup
+            </Field>
+            <Field
               label="Default Unit"
               required
               help="Used when adding the ingredient to dishes."
@@ -631,8 +632,8 @@ export function IngredientDrawer({
                   </option>
                 ))}
               </Select>
-            </FormGroup>
-            <FormGroup
+            </Field>
+            <Field
               label="Storage Type"
               required
               help="Appears on prep sheets so the team knows where to find it."
@@ -647,8 +648,8 @@ export function IngredientDrawer({
                   </option>
                 ))}
               </Select>
-            </FormGroup>
-            <FormGroup
+            </Field>
+            <Field
               label="Purchase Department"
               required
               help="Separates kitchen food purchases from bar drink purchases."
@@ -666,8 +667,8 @@ export function IngredientDrawer({
                   </option>
                 ))}
               </Select>
-            </FormGroup>
-            <FormGroup
+            </Field>
+            <Field
               label="ABV %"
               help="Alcohol by volume. Only relevant for drinks ingredients."
             >
@@ -680,15 +681,15 @@ export function IngredientDrawer({
                 onChange={(e) => update({ abv: e.target.value })}
                 placeholder="e.g. 4.6"
               />
-            </FormGroup>
+            </Field>
           </div>
-          <FormGroup label="Description" help="Optional supplier or tasting notes.">
+          <Field label="Description" help="Optional supplier or tasting notes.">
             <Textarea
               rows={2}
               value={formState.description}
               onChange={(e) => update({ description: e.target.value })}
             />
-          </FormGroup>
+          </Field>
         </FormSection>
 
         {/* Section 2: Supplier & Pack */}
@@ -698,19 +699,19 @@ export function IngredientDrawer({
           className="mt-6"
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormGroup label="Supplier Name" help="Who you usually buy this from.">
+            <Field label="Supplier Name" help="Who you usually buy this from.">
               <Input
                 value={formState.supplier_name}
                 onChange={(e) => update({ supplier_name: e.target.value })}
               />
-            </FormGroup>
-            <FormGroup label="Supplier SKU" help="Optional stock code to speed up re-ordering.">
+            </Field>
+            <Field label="Supplier SKU" help="Optional stock code to speed up re-ordering.">
               <Input
                 value={formState.supplier_sku}
                 onChange={(e) => update({ supplier_sku: e.target.value })}
               />
-            </FormGroup>
-            <FormGroup label="Pack Size" help="Full case size as supplied (e.g. 2.5 for 2.5kg).">
+            </Field>
+            <Field label="Pack Size" help="Full case size as supplied (e.g. 2.5 for 2.5kg).">
               <Input
                 type="number"
                 min="0"
@@ -718,8 +719,8 @@ export function IngredientDrawer({
                 value={formState.pack_size}
                 onChange={(e) => update({ pack_size: e.target.value })}
               />
-            </FormGroup>
-            <FormGroup label="Pack Size Unit" help="Matches the measurement above.">
+            </Field>
+            <Field label="Pack Size Unit" help="Matches the measurement above.">
               <Select
                 value={formState.pack_size_unit}
                 onChange={(e) => update({ pack_size_unit: e.target.value })}
@@ -730,8 +731,8 @@ export function IngredientDrawer({
                   </option>
                 ))}
               </Select>
-            </FormGroup>
-            <FormGroup
+            </Field>
+            <Field
               label="Pack Cost (\u00a3)"
               required
               help="Latest price paid, excluding VAT if reclaimable."
@@ -744,8 +745,8 @@ export function IngredientDrawer({
                 onChange={(e) => update({ pack_cost: e.target.value })}
                 required
               />
-            </FormGroup>
-            <FormGroup
+            </Field>
+            <Field
               label="Portions Per Pack"
               help="How many usable portions you usually prep from one pack."
             >
@@ -756,7 +757,7 @@ export function IngredientDrawer({
                 value={formState.portions_per_pack}
                 onChange={(e) => update({ portions_per_pack: e.target.value })}
               />
-            </FormGroup>
+            </Field>
           </div>
         </FormSection>
 
@@ -767,7 +768,7 @@ export function IngredientDrawer({
           className="mt-6"
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormGroup label="Wastage %" help="Allowance for trim or loss during prep.">
+            <Field label="Wastage %" help="Allowance for trim or loss during prep.">
               <Input
                 type="number"
                 step="0.1"
@@ -776,8 +777,8 @@ export function IngredientDrawer({
                 value={formState.wastage_pct}
                 onChange={(e) => update({ wastage_pct: e.target.value })}
               />
-            </FormGroup>
-            <FormGroup
+            </Field>
+            <Field
               label="Shelf Life (days)"
               help="Optional. Helps with prep planning and rotation."
             >
@@ -787,7 +788,7 @@ export function IngredientDrawer({
                 value={formState.shelf_life_days}
                 onChange={(e) => update({ shelf_life_days: e.target.value })}
               />
-            </FormGroup>
+            </Field>
           </div>
         </FormSection>
 
@@ -798,7 +799,7 @@ export function IngredientDrawer({
           className="mt-6"
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormGroup
+            <Field
               label="Allergens"
               help="Tick every allergen present in the supplied product."
             >
@@ -831,8 +832,8 @@ export function IngredientDrawer({
                   </div>
                 )}
               </div>
-            </FormGroup>
-            <FormGroup
+            </Field>
+            <Field
               label="Dietary Flags"
               help="Tick how the ingredient should be treated on customer menus."
             >
@@ -865,13 +866,13 @@ export function IngredientDrawer({
                   </div>
                 )}
               </div>
-            </FormGroup>
+            </Field>
           </div>
         </FormSection>
 
         {/* Section 5: Notes */}
         <FormSection title="Notes" className="mt-6">
-          <FormGroup
+          <Field
             label="Internal Notes"
             help="Optional prep tips, storage reminders, or ordering instructions."
           >
@@ -880,7 +881,7 @@ export function IngredientDrawer({
               value={formState.notes}
               onChange={(e) => update({ notes: e.target.value })}
             />
-          </FormGroup>
+          </Field>
 
           <div className="space-y-2 rounded-lg border border-border bg-surface p-4 mt-4">
             <div className="text-sm font-medium text-text">Ingredient availability</div>

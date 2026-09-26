@@ -6,16 +6,15 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, updateInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Alert } from '@/ds'
 import { toast } from '@/ds'
-import { Plus, Trash2, Save, Package } from 'lucide-react'
 import type { InvoiceVendor, InvoiceWithDetails, LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
@@ -242,14 +241,14 @@ export default function EditInvoicePage() {
       backButton={{ label: 'Back to Invoice', href: backHref }}
     >
       <div className="space-y-6">
-        {error && <Alert variant="error" description={error} />}
+        {error && <Alert tone="danger">{error}</Alert>}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <Card>
             <h2 className="mb-4 text-lg font-semibold">Invoice Details</h2>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <FormGroup label="Vendor" required>
+              <Field label="Vendor" required>
                 <Select
                   value={vendorId}
                   onChange={(e) => setVendorId(e.target.value)}
@@ -262,34 +261,34 @@ export default function EditInvoicePage() {
                     </option>
                   ))}
                 </Select>
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Reference">
+              <Field label="Reference">
                 <Input
                   type="text"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                   placeholder="PO number or reference"
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Invoice Date" required>
+              <Field label="Invoice Date" required>
                 <Input
                   type="date"
                   value={invoiceDate}
                   onChange={(e) => setInvoiceDate(e.target.value)}
                   required
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Due Date" required>
+              <Field label="Due Date" required>
                 <Input
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
                   required
                 />
-              </FormGroup>
+              </Field>
             </div>
           </Card>
 
@@ -300,7 +299,7 @@ export default function EditInvoicePage() {
                 type="button"
                 variant="secondary"
                 onClick={addLineItem}
-                leftIcon={<Plus className="h-4 w-4" />}
+                leftIcon={<Icon name="plus" size={16} />}
               >
                 Add Item
               </Button>
@@ -343,7 +342,7 @@ export default function EditInvoicePage() {
                       title="Manage Catalog"
                       iconOnly
                     >
-                      <Package className="h-4 w-4" />
+                      <Icon name="package" size={16} />
                     </Button>
                   </div>
                   <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-12 lg:gap-2">
@@ -415,7 +414,7 @@ export default function EditInvoicePage() {
                         iconOnly
                         aria-label="Remove line item"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Icon name="trash" size={16} />
                       </Button>
                     </div>
                   </div>
@@ -428,7 +427,7 @@ export default function EditInvoicePage() {
             <h2 className="mb-4 text-lg font-semibold">Additional Details</h2>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <FormGroup label="Invoice Discount (%)">
+              <Field label="Invoice Discount (%)">
                 <Input
                   type="number"
                   value={invoiceDiscountPercentage}
@@ -437,27 +436,27 @@ export default function EditInvoicePage() {
                   min="0"
                   max="100"
                 />
-              </FormGroup>
+              </Field>
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-              <FormGroup label="Notes (visible on invoice)">
+              <Field label="Notes (visible on invoice)">
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
                   placeholder="Any notes for the customer..."
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Internal Notes">
+              <Field label="Internal Notes">
                 <Textarea
                   value={internalNotes}
                   onChange={(e) => setInternalNotes(e.target.value)}
                   rows={3}
                   placeholder="Internal notes (not shown on invoice)..."
                 />
-              </FormGroup>
+              </Field>
             </div>
           </Card>
 
@@ -499,7 +498,7 @@ export default function EditInvoicePage() {
               type="submit"
               disabled={submitting || !canEditInvoice}
               loading={submitting}
-              leftIcon={!submitting && <Save className="h-4 w-4" />}
+              leftIcon={!submitting && <Icon name="save" size={16} />}
             >
               {submitting ? 'Saving...' : 'Save Changes'}
             </Button>

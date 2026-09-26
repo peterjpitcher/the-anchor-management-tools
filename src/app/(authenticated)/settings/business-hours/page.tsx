@@ -52,7 +52,7 @@ export default async function BusinessHoursPage() {
           <Card>
             {businessHoursError ? (
               <div className="p-4">
-                <Alert variant="error">
+                <Alert tone="danger">
                   {businessHoursError}
                 </Alert>
               </div>

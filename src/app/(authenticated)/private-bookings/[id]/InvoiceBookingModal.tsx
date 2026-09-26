@@ -115,7 +115,7 @@ export function InvoiceBookingModal({
       {loading && <p className="text-sm text-text-muted">Working out the figures…</p>}
 
       {error && (
-        <Alert variant="error" title="This booking cannot be invoiced">
+        <Alert tone="danger" title="This booking cannot be invoiced">
           {error}
         </Alert>
       )}
@@ -127,7 +127,7 @@ export function InvoiceBookingModal({
           </p>
 
           {preview.warnings.length > 0 && (
-            <Alert variant="warning" title="Worth a look before you send">
+            <Alert tone="warning" title="Worth a look before you send">
               <ul className="list-disc space-y-1 pl-4">
                 {preview.warnings.map(warning => (
                   <li key={warning}>{warning}</li>

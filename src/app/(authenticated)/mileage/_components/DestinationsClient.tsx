@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Alert, Badge, Button, Input, Modal, ConfirmDialog, Select } from '@/ds'
+import { Alert, Badge, Button, Input, Modal, ConfirmDialog, Select, Icon } from '@/ds'
 import {
   createDestination,
   updateDestination,
@@ -11,13 +11,6 @@ import {
   type MileageDestination,
   type MileageDistance,
 } from '@/app/actions/mileage'
-import {
-  PlusIcon,
-  PencilSquareIcon,
-  TrashIcon,
-  MapPinIcon,
-  ArrowsRightLeftIcon,
-} from '@heroicons/react/24/outline'
 
 interface DestinationsClientProps {
   initialDestinations: MileageDestination[]
@@ -358,7 +351,7 @@ export function DestinationsClient({
           <Button
             variant="primary"
             size="sm"
-            icon={<PlusIcon />}
+            icon={<Icon name="plus" size={16} />}
             onClick={openCreate}
           >
             Add Destination
@@ -375,7 +368,7 @@ export function DestinationsClient({
       {homeBase && (
         <div className="rounded-lg border border-success-border bg-success-soft p-4">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <MapPinIcon className="h-5 w-5 text-success" />
+            <Icon name="mapPin" size={20} className="text-success" />
             <span className="font-medium text-success-fg">{homeBase.name}</span>
             <Badge tone="success" className="ml-2">
               Home Base
@@ -390,7 +383,7 @@ export function DestinationsClient({
       {/* Destinations table */}
       {nonHomeDestinations.length === 0 ? (
         <div className="rounded-lg border border-border bg-surface p-8 text-center">
-          <MapPinIcon className="mx-auto h-12 w-12 text-text-subtle" />
+          <Icon name="mapPin" size={48} className="block mx-auto text-text-subtle" />
           <p className="mt-2 text-sm text-text-muted">
             No destinations saved yet. Add your first destination above.
           </p>
@@ -458,7 +451,7 @@ export function DestinationsClient({
                           <Button
                             variant="ghost"
                             size="sm"
-                            icon={<TrashIcon className="h-4 w-4 text-danger" />}
+                            icon={<Icon name="trash" size={16} className="text-danger" />}
                             aria-label={`Clear miles from ${homeBase.name} to ${dest.name}`}
                             onClick={() =>
                               setDistanceDeleteTarget({
@@ -485,14 +478,14 @@ export function DestinationsClient({
                         <Button
                           variant="ghost"
                           size="sm"
-                          icon={<PencilSquareIcon className="h-4 w-4" />}
+                          icon={<Icon name="edit" size={16} />}
                           aria-label={`Edit ${dest.name}`}
                           onClick={() => openEdit(dest)}
                         />
                         <Button
                           variant="ghost"
                           size="sm"
-                          icon={<TrashIcon className="h-4 w-4 text-danger" />}
+                          icon={<Icon name="trash" size={16} className="text-danger" />}
                           aria-label={`Delete ${dest.name}`}
                           disabled={dest.tripCount > 0}
                           onClick={() => setDeleteTarget(dest)}
@@ -520,14 +513,14 @@ export function DestinationsClient({
                     <Button
                       variant="ghost"
                       size="sm"
-                      icon={<PencilSquareIcon className="h-4 w-4" />}
+                      icon={<Icon name="edit" size={16} />}
                       aria-label={`Edit ${dest.name}`}
                       onClick={() => openEdit(dest)}
                     />
                     <Button
                       variant="ghost"
                       size="sm"
-                      icon={<TrashIcon className="h-4 w-4 text-danger" />}
+                      icon={<Icon name="trash" size={16} className="text-danger" />}
                       aria-label={`Delete ${dest.name}`}
                       disabled={dest.tripCount > 0}
                       onClick={() => setDeleteTarget(dest)}
@@ -571,7 +564,7 @@ export function DestinationsClient({
                       <Button
                         variant="ghost"
                         size="sm"
-                        icon={<TrashIcon className="h-4 w-4 text-danger" />}
+                        icon={<Icon name="trash" size={16} className="text-danger" />}
                         aria-label={`Clear miles from ${homeBase.name} to ${dest.name}`}
                         onClick={() =>
                           setDistanceDeleteTarget({
@@ -597,7 +590,7 @@ export function DestinationsClient({
 
       <div className="space-y-3">
         <div className="flex items-center gap-2">
-          <ArrowsRightLeftIcon className="h-5 w-5 text-text-muted" />
+          <Icon name="arrowLeftRight" size={20} className="text-text-muted" />
           <h2 className="text-sm font-semibold text-text">Location-to-location distances</h2>
         </div>
 
@@ -718,7 +711,7 @@ export function DestinationsClient({
                         <Button
                           variant="ghost"
                           size="sm"
-                          icon={<TrashIcon className="h-4 w-4 text-danger" />}
+                          icon={<Icon name="trash" size={16} className="text-danger" />}
                           aria-label={`Delete distance from ${distance.fromDestinationName} to ${distance.toDestinationName}`}
                           onClick={() =>
                             setDistanceDeleteTarget({
@@ -755,7 +748,7 @@ export function DestinationsClient({
                       variant="ghost"
                       size="sm"
                       className="shrink-0"
-                      icon={<TrashIcon className="h-4 w-4 text-danger" />}
+                      icon={<Icon name="trash" size={16} className="text-danger" />}
                       aria-label={`Delete distance from ${distance.fromDestinationName} to ${distance.toDestinationName}`}
                       onClick={() =>
                         setDistanceDeleteTarget({

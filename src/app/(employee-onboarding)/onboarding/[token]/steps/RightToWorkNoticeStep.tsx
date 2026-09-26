@@ -85,7 +85,7 @@ export default function RightToWorkNoticeStep({
         <li>We cannot accept a biometric residence permit on its own any more.</li>
       </ul>
 
-      {error && <Alert variant="error">{error}</Alert>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       <Checkbox
         checked={acknowledged}

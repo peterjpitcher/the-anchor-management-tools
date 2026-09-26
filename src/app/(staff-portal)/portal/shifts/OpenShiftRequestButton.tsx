@@ -2,8 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import toast from 'react-hot-toast';
-import { Badge, Button, Textarea } from '@/ds';
+import { Badge, Button, Textarea, toast } from '@/ds';
 import { requestOpenShift } from '@/app/actions/rota';
 
 type Props = {

@@ -120,8 +120,8 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
           {canIssue && canAddExtras && <Button disabled={busy} onClick={() => openEditor()}>Add extra charges</Button>}
         </div>
       </div>
-      {error && !editor && !paymentOpen && !cancelInvoiceId && !discardBatch && <Alert variant="error">{error}</Alert>}
-      {notice && <Alert variant="success">{notice}</Alert>}
+      {error && !editor && !paymentOpen && !cancelInvoiceId && !discardBatch && <Alert tone="danger">{error}</Alert>}
+      {notice && <Alert tone="success">{notice}</Alert>}
       <Card>
         {!billing ? <p className="text-sm text-text-muted">{error ? 'Billing is unavailable.' : 'Loading invoices…'}</p> : <div className="space-y-4">
           <p className="text-sm text-text-muted">Additional charges: {money(billing.supplementaryTotal)}. Credits: {money(billing.creditsTotal)}. Outstanding across invoices: {money(billing.collectibleBalance)}.</p>
@@ -164,12 +164,12 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
         })}>{busy ? 'Issuing…' : 'Issue and send additional invoice'}</Button>}
       </>}>
         <div className="space-y-4">
-          {error && <Alert variant="error">{error}</Alert>}
+          {error && <Alert tone="danger">{error}</Alert>}
           {preview ? <>
             <p>Send to {preview.recipientEmail}. Due {formatDateFull(preview.batch.due_date)}.</p>
             <p className="text-sm text-text-muted">This invoice contains only the extras below. Original charges and payments remain on their existing invoice.</p>
             {preview.batch.lines.map((line, index) => <p key={index} className="text-sm">{line.description} · {line.quantity} × {money(line.unit_price)} excluding VAT · {line.discount_percentage}% discount · {line.vat_rate}% VAT</p>)}
-            {!preview.paypalEnabled && <Alert variant="warning" title="Online payments are not enabled">
+            {!preview.paypalEnabled && <Alert tone="warning" title="Online payments are not enabled">
               <p>Enable PayPal in the invoice customer settings to include a payment link.</p>
               <label className="mt-3 flex items-start gap-2"><input type="checkbox" checked={allowWithoutOnlinePayment} onChange={event => setAllowWithoutOnlinePayment(event.target.checked)} />Issue without an online payment link</label>
             </Alert>}
@@ -205,7 +205,7 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
         })}>Record payment</Button>
       </>}>
         <div className="space-y-3">
-          {error && <Alert variant="error">{error}</Alert>}
+          {error && <Alert tone="danger">{error}</Alert>}
           <Input label="Total payment received" type="number" step="0.01" min="0.01" value={paymentAmount} onChange={event => setPaymentAmount(event.target.value)} />
           <Input label="Date payment received" type="date" value={paymentDate} onChange={event => setPaymentDate(event.target.value)} />
           <Select label="Payment method" value={paymentMethod} onChange={event => setPaymentMethod(event.target.value as AllocatedBookingPaymentInput['method'])} options={[{ value: 'bank_transfer', label: 'Bank transfer' }, { value: 'cash', label: 'Cash' }, { value: 'card', label: 'Card' }, { value: 'cheque', label: 'Cheque' }, { value: 'other', label: 'Other' }]} />
@@ -222,7 +222,7 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
           if (result.error) throw new Error(result.error)
           setCancelInvoiceId(null); await changed(); setNotice('Additional invoice cancelled. Its payment link is no longer payable.')
         })}>Cancel invoice</Button>
-      </>}><div className="space-y-3">{error && <Alert variant="error">{error}</Alert>}<p className="text-sm">This withdraws this unpaid additional invoice and its charge. It does not change the original invoice or send a customer message.</p><Input label="Reason for cancellation" value={cancelReason} onChange={event => setCancelReason(event.target.value)} /></div></Modal>
+      </>}><div className="space-y-3">{error && <Alert tone="danger">{error}</Alert>}<p className="text-sm">This withdraws this unpaid additional invoice and its charge. It does not change the original invoice or send a customer message.</p><Input label="Reason for cancellation" value={cancelReason} onChange={event => setCancelReason(event.target.value)} /></div></Modal>
 
       <Modal open={Boolean(discardBatch)} onClose={() => { if (!busy) setDiscardBatch(null) }} title="Discard draft extras" footer={<>
         <Button variant="secondary" disabled={busy} onClick={() => setDiscardBatch(null)}>Keep draft</Button><Button disabled={busy} onClick={() => void act(async () => {
@@ -230,7 +230,7 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
           if (result.error) throw new Error(result.error)
           setDiscardBatch(null); await changed(); setNotice('Draft discarded.')
         })}>Discard draft</Button>
-      </>}><div className="space-y-3">{error && <Alert variant="error">{error}</Alert>}<p>Discard these unissued extras? No invoice or payment will be changed.</p></div></Modal>
+      </>}><div className="space-y-3">{error && <Alert tone="danger">{error}</Alert>}<p>Discard these unissued extras? No invoice or payment will be changed.</p></div></Modal>
     </section>
   )
 }

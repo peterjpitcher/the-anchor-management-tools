@@ -1,5 +1,4 @@
 import { render, screen, within } from '@testing-library/react'
-import { Clock } from 'lucide-react'
 import { describe, expect, it, vi } from 'vitest'
 import {
   DetailGrid,
@@ -77,7 +76,7 @@ describe('GuestAlert', () => {
 
   it('renders each tone with its title, and hides the icon from assistive tech', () => {
     const { container } = render(
-      <GuestAlert tone="notice" title="Your hold expires soon" icon={Clock}>
+      <GuestAlert tone="notice" title="Your hold expires soon" icon="clock">
         We are holding your table.
       </GuestAlert>
     )

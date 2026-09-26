@@ -1,13 +1,12 @@
 'use client'
 
 import type { ScheduledSmsPreview, ScheduledSmsSuppressionReason } from '@/services/private-bookings/scheduled-sms'
-import { Card } from '@/ds'
+import { Card, Icon } from '@/ds'
 import { Section } from '@/ds'
 import { Badge } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { Alert } from '@/ds'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
-import { ChatBubbleLeftRightIcon, ClockIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
 
 export type CommunicationsHistoryRow = {
   id: string
@@ -34,16 +33,16 @@ export type CommunicationsEmailRow = {
 
 const UNDELIVERED_EMAIL_STATUSES = new Set(['bounced', 'complained', 'failed', 'suppressed'])
 
-function emailStatusVariant(status: string): StatusVariant {
-  if (UNDELIVERED_EMAIL_STATUSES.has(status)) return 'error'
+function emailStatusTone(status: string): StatusTone {
+  if (UNDELIVERED_EMAIL_STATUSES.has(status)) return 'danger'
   if (status === 'delivered' || status === 'opened' || status === 'clicked') return 'success'
   if (status === 'sent' || status === 'queued') return 'info'
-  return 'default'
+  return 'neutral'
 }
 
-type StatusVariant = 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' | 'secondary' | 'neutral'
+type StatusTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
 
-function statusVariant(status: string): StatusVariant {
+function statusTone(status: string): StatusTone {
   switch (status) {
     case 'sent':
       return 'success'
@@ -51,11 +50,11 @@ function statusVariant(status: string): StatusVariant {
     case 'pending':
       return 'info'
     case 'failed':
-      return 'error'
+      return 'danger'
     case 'cancelled':
       return 'neutral'
     default:
-      return 'default'
+      return 'neutral'
   }
 }
 
@@ -103,8 +102,8 @@ export function CommunicationsTab({
       >
         <Card>
           {history.length === 0 ? (
-            <EmptyState
-              icon={<ChatBubbleLeftRightIcon className="h-10 w-10" aria-hidden="true" />}
+            <Empty
+              icon={<Icon name="message" size={40} />}
               title="No messages sent yet"
               description="Once a message is queued or sent, it will appear here."
             />
@@ -117,7 +116,7 @@ export function CommunicationsTab({
                       <span className="text-sm font-medium text-text">
                         {row.trigger_type ?? row.template_key ?? 'Manual'}
                       </span>
-                      <Badge variant={statusVariant(row.status)} size="sm">
+                      <Badge tone={statusTone(row.status)} size="sm">
                         {row.delivered_by === 'email' && row.status === 'sent' ? 'Sent by email' : statusLabel(row.status)}
                       </Badge>
                     </div>
@@ -152,10 +151,10 @@ export function CommunicationsTab({
       >
         <Card>
           {emailsError ? (
-            <Alert variant="error" description={`Emails could not be loaded: ${emailsError}`} />
+            <Alert tone="danger">{`Emails could not be loaded: ${emailsError}`}</Alert>
           ) : emails.length === 0 ? (
-            <EmptyState
-              icon={<EnvelopeIcon className="h-10 w-10" aria-hidden="true" />}
+            <Empty
+              icon={<Icon name="mail" size={40} />}
               title="No emails sent yet"
               description="Emails about this booking will appear here."
             />
@@ -166,7 +165,7 @@ export function CommunicationsTab({
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-text">{email.subject || '(no subject)'}</span>
-                      <Badge variant={emailStatusVariant(email.status)} size="sm">
+                      <Badge tone={emailStatusTone(email.status)} size="sm">
                         {statusLabel(email.status)}
                       </Badge>
                     </div>
@@ -195,8 +194,8 @@ export function CommunicationsTab({
       >
         <Card>
           {scheduled.length === 0 ? (
-            <EmptyState
-              icon={<ClockIcon className="h-10 w-10" aria-hidden="true" />}
+            <Empty
+              icon={<Icon name="clock" size={40} />}
               title={
                 isDateTbd
                   ? 'No date-based reminders scheduled'
@@ -223,9 +222,9 @@ export function CommunicationsTab({
                           {item.trigger_type}
                         </span>
                         {suppressed ? (
-                          <Badge variant="warning" size="sm">Suppressed</Badge>
+                          <Badge tone="warning" size="sm">Suppressed</Badge>
                         ) : (
-                          <Badge variant="info" size="sm">Eligible</Badge>
+                          <Badge tone="info" size="sm">Eligible</Badge>
                         )}
                       </div>
                       <span className="text-xs text-text-muted">
@@ -239,10 +238,11 @@ export function CommunicationsTab({
                     </p>
                     {item.suppression_reason && (
                       <Alert
-                        variant="warning"
+                        tone="warning"
                         className="mt-2"
-                        description={labelForSuppression(item.suppression_reason)}
-                      />
+                      >
+                        {labelForSuppression(item.suppression_reason)}
+                      </Alert>
                     )}
                   </li>
                 )

@@ -1,8 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import toast from 'react-hot-toast'
-import { Button, Card, Checkbox, Input, Section, Textarea } from '@/ds'
+import { Button, Card, Checkbox, Input, Section, Textarea, toast } from '@/ds'
 
 /**
  * Everything that decides how tables are handed out.
@@ -93,7 +92,7 @@ export function AllocationSettings() {
     }
 
     if (Object.keys(payload).length === 0) {
-      toast('Nothing to save in this section')
+      toast.info('Nothing to save in this section')
       return
     }
 

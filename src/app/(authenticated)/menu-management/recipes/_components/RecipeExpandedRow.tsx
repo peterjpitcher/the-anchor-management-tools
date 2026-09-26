@@ -110,7 +110,7 @@ export function RecipeExpandedRow({ recipe }: RecipeExpandedRowProps): React.Rea
                     <div className="font-medium text-text">{usageRow.dish_name}</div>
                     <div className="text-xs text-text-muted">Qty per dish: {usageRow.quantity}</div>
                   </div>
-                  <Badge variant={usageRow.dish_is_active ? 'success' : 'neutral'}>
+                  <Badge tone={usageRow.dish_is_active ? 'success' : 'neutral'}>
                     {usageRow.dish_is_active ? 'Active' : 'Inactive'}
                   </Badge>
                 </div>
@@ -119,7 +119,7 @@ export function RecipeExpandedRow({ recipe }: RecipeExpandedRowProps): React.Rea
                     {usageRow.assignments.map((assignment, idx) => (
                       <Badge
                         key={`${assignment.menu_code}-${assignment.category_code}-${idx}`}
-                        variant="neutral"
+                        tone="neutral"
                         size="sm"
                       >
                         {assignment.menu_code}:{assignment.category_code}

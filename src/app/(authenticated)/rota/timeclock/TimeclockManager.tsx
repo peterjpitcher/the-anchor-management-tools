@@ -1,20 +1,11 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
-import {
-  PencilSquareIcon,
-  CheckIcon,
-  CheckCircleIcon,
-  XMarkIcon,
-  PlusIcon,
-  TrashIcon,
-} from '@heroicons/react/24/outline';
 import { createTimeclockSession, updateTimeclockSession, deleteTimeclockSession, approveTimeclockSession } from '@/app/actions/timeclock';
 import type { SessionPremiumInput, TimeclockSessionWithEmployee } from '@/app/actions/timeclock';
 import type { RotaEmployee } from '@/app/actions/rota';
-import { Badge, Button, ConfirmDialog, IconButton, Input, Select } from '@/ds';
+import { Badge, Button, ConfirmDialog, IconButton, Input, Select, toast, Icon } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { resolvePremiumBoundaryIso } from '@/lib/timeclock/session-times';
 import { displayName } from '@/lib/employees/display-name';
@@ -329,7 +320,7 @@ export default function TimeclockManager({
             type="button"
             size="sm"
             variant="secondary"
-            leftIcon={<PlusIcon className="h-4 w-4" />}
+            leftIcon={<Icon name="plus" size={16} />}
             onClick={() => { setShowAddForm(v => !v); setAddDate(periodStart); }}
           >
             Add entry
@@ -575,9 +566,9 @@ export default function TimeclockManager({
                               </div>
                             ) : (
                               <div className="flex flex-wrap gap-1">
-                                {s.is_auto_close && <Badge variant="warning" size="sm">auto-close</Badge>}
-                                {s.is_unscheduled && <Badge variant="error" size="sm">unscheduled</Badge>}
-                                {s.is_reviewed && <Badge variant="success" size="sm">approved</Badge>}
+                                {s.is_auto_close && <Badge tone="warning" size="sm">auto-close</Badge>}
+                                {s.is_unscheduled && <Badge tone="danger" size="sm">unscheduled</Badge>}
+                                {s.is_reviewed && <Badge tone="success" size="sm">approved</Badge>}
                                 {(() => {
                                   // The session's own explicit override wins. When there is none, fall
                                   // back to the linked shift's premium — it is what actually gets paid
@@ -590,7 +581,7 @@ export default function TimeclockManager({
                                       ? ` ${formatTime12Hour(s.premium_start_local ?? s.clock_in_local)}–${s.premium_end_local ? formatTime12Hour(s.premium_end_local) : 'out'}`
                                       : '';
                                     return (
-                                      <Badge variant="info" size="sm">
+                                      <Badge tone="info" size="sm">
                                         {label}{windowNote}
                                       </Badge>
                                     );
@@ -598,7 +589,7 @@ export default function TimeclockManager({
                                   const inherited = inheritedShiftPremiumLabel(s);
                                   if (!inherited) return null;
                                   return (
-                                    <Badge variant="neutral" size="sm" title="Inherited from the linked shift">
+                                    <Badge tone="neutral" size="sm" title="Inherited from the linked shift">
                                       {inherited} (shift)
                                     </Badge>
                                   );
@@ -639,7 +630,7 @@ export default function TimeclockManager({
                                   className="text-success-fg hover:bg-success-soft"
                                   title="Save"
                                   label="Save"
-                                  icon={<CheckIcon className="h-4 w-4" />}
+                                  icon={<Icon name="check" size={16} />}
                                 />
                                 <IconButton
                                   type="button"
@@ -648,7 +639,7 @@ export default function TimeclockManager({
                                   className="text-text-subtle"
                                   title="Cancel"
                                   label="Cancel"
-                                  icon={<XMarkIcon className="h-4 w-4" />}
+                                  icon={<Icon name="x" size={16} />}
                                 />
                               </div>
                             ) : (
@@ -660,7 +651,7 @@ export default function TimeclockManager({
                                   className="text-text-subtle hover:text-text-muted"
                                   title="Edit"
                                   label="Edit"
-                                  icon={<PencilSquareIcon className="h-4 w-4" />}
+                                  icon={<Icon name="edit" size={16} />}
                                 />
                                 {!s.is_reviewed && (
                                   <IconButton
@@ -671,7 +662,7 @@ export default function TimeclockManager({
                                     className="text-text-subtle hover:bg-success-soft hover:text-success-fg"
                                     title="Approve"
                                     label="Approve"
-                                    icon={<CheckCircleIcon className="h-4 w-4" />}
+                                    icon={<Icon name="checkCircle" size={16} />}
                                   />
                                 )}
                                 <IconButton
@@ -681,7 +672,7 @@ export default function TimeclockManager({
                                   className="text-text-subtle hover:bg-danger-soft hover:text-danger-fg"
                                   title="Delete"
                                   label="Delete"
-                                  icon={<TrashIcon className="h-4 w-4" />}
+                                  icon={<Icon name="trash" size={16} />}
                                 />
                               </div>
                             )}

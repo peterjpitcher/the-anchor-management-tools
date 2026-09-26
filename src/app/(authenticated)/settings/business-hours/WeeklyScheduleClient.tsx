@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import toast from 'react-hot-toast'
-import { Alert } from '@/ds'
+import { Alert, toast } from '@/ds'
 import type { BusinessHours } from '@/types/business-hours'
 import { getHoursVersionRows, type HoursVersionSummary } from '@/app/actions/business-hours'
 import { BusinessHoursManager } from './BusinessHoursManager'
@@ -81,7 +80,7 @@ export function WeeklyScheduleClient({
         <p className="p-4 text-sm text-text-muted">Loading that schedule...</p>
       ) : rows.length === 0 ? (
         <div className="p-4">
-          <Alert variant="warning">This schedule has no days set up.</Alert>
+          <Alert tone="warning">This schedule has no days set up.</Alert>
         </div>
       ) : (
         <BusinessHoursManager

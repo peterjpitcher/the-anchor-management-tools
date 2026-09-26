@@ -2,10 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, MessageSquare } from 'lucide-react'
-import { Alert, Badge, Button, Input, Segmented, Select } from '@/ds'
-import { EmptyState } from '@/ds'
-import toast from 'react-hot-toast'
+import { Alert, Badge, Button, Input, Segmented, Select, toast, Icon } from '@/ds'
+import { Empty } from '@/ds'
 import { MessageGuestsModal } from './MessageGuestsModal'
 import { FohCreateBookingModal } from '../foh/components/FohCreateBookingModal'
 import { useFohCreateBooking } from '../foh/hooks/useFohCreateBooking'
@@ -618,7 +616,7 @@ export function BohBookingsClient({
 
       setFocusDate(todayDate)
       setLastInteractionAtMs(Date.now())
-      toast('Returned to today after inactivity')
+      toast.info('Returned to today after inactivity')
     }, BOH_AUTO_RETURN_POLL_MS)
 
     return () => {
@@ -835,7 +833,7 @@ export function BohBookingsClient({
                 variant="primary"
                 size="sm"
                 className="w-full sm:w-auto"
-                icon={<Plus className="h-4 w-4" aria-hidden="true" />}
+                icon={<Icon name="plus" size={16} />}
                 onClick={() => createBooking.openCreateModal({ mode: 'booking', prefill: { booking_date: focusDate } })}
               >
                 Book table
@@ -846,7 +844,7 @@ export function BohBookingsClient({
                 variant="secondary"
                 size="sm"
                 className="w-full sm:w-auto"
-                icon={<MessageSquare className="h-4 w-4" aria-hidden="true" />}
+                icon={<Icon name="message" size={16} />}
                 onClick={() => setIsMessageModalOpen(true)}
               >
                 Message guests
@@ -1079,7 +1077,7 @@ export function BohBookingsClient({
             </div>
           )}
           {!loading && !error && sortedBookings.length === 0 && (
-            <EmptyState
+            <Empty
               icon="calendar"
               title="No bookings"
               description={searchTerm || statusFilter !== 'all' ? 'No bookings match the selected filters.' : 'There are no bookings for this period.'}

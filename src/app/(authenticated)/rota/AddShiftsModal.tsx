@@ -1,9 +1,7 @@
 'use client';
 
 import { useState, useMemo, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { XMarkIcon } from '@heroicons/react/24/outline';
-import { Badge, Button, IconButton } from '@/ds';
+import { Badge, Button, IconButton, toast, Icon } from '@/ds';
 import { addShiftsFromTemplates } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
@@ -232,7 +230,7 @@ export default function AddShiftsModal({
       if (result.opened > 0) parts.push(`${result.opened} left open, staff on leave`);
       if (result.skipped > 0) parts.push(`${result.skipped} already existed and skipped`);
       if (parts.length) toast.success(parts.join(' · '));
-      else toast('No new shifts were added', { icon: 'ℹ️' });
+      else toast.info('No new shifts were added');
       onShiftsAdded(result.shifts);
       onClose();
     });
@@ -376,7 +374,7 @@ export default function AddShiftsModal({
             size="sm"
             onClick={onClose}
             label="Close"
-            icon={<XMarkIcon className="h-5 w-5" />}
+            icon={<Icon name="x" size={20} />}
           />
         </div>
 

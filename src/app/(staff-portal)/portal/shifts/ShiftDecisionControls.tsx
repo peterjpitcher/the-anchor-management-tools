@@ -2,9 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import toast from 'react-hot-toast';
-import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { Button, IconButton, Textarea } from '@/ds';
+import { Button, IconButton, Textarea, toast, Icon } from '@/ds';
 import { acceptPortalShift, rejectPortalShift, type ShiftAcceptanceStatus } from '@/app/actions/rota';
 import { rotaShiftStatusClasses } from '@/lib/rota/status-ui';
 import { validateShiftRejectionReason } from '@/lib/rota/shift-rejection-validation';
@@ -112,7 +110,7 @@ export default function ShiftDecisionControls({
               disabled={isPending}
               label="Accept shift"
               title="Accept shift"
-              icon={<CheckIcon className="h-4 w-4" />}
+              icon={<Icon name="check" size={16} />}
               className="rounded-pill"
             />
             <IconButton
@@ -122,7 +120,7 @@ export default function ShiftDecisionControls({
               disabled={isPending}
               label="Reject shift"
               title="Reject shift"
-              icon={<XMarkIcon className="h-4 w-4" />}
+              icon={<Icon name="x" size={16} />}
               className="rounded-pill border-danger-border text-danger-fg shadow-xs hover:bg-danger-soft"
             />
           </div>

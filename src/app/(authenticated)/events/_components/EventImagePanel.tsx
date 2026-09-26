@@ -1,16 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import {
-  ArrowDownTrayIcon,
-  CheckIcon,
-  ClipboardDocumentIcon,
-  DocumentIcon,
-  PhotoIcon,
-  TrashIcon,
-} from '@heroicons/react/24/outline'
-import toast from 'react-hot-toast'
-import { Button, ConfirmDialog, IconButton } from '@/ds'
+import { Button, ConfirmDialog, IconButton, toast, Icon } from '@/ds'
 import { cn } from '@/lib/utils'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import {
@@ -457,7 +448,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                 )}
                 {isPdf && (
                   <div className="flex h-full w-full flex-col items-center justify-center p-2 text-center">
-                    <DocumentIcon className="h-8 w-8 text-text-subtle" />
+                    <Icon name="file" size={32} className="text-text-subtle" />
                     <span className="mt-1 break-all text-xs text-text-muted">
                       {state?.fileName ?? 'PDF'}
                     </span>
@@ -465,7 +456,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                 )}
                 {!previewUrl && !isPdf && (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center">
-                    <PhotoIcon className="h-8 w-8 text-text-subtle" aria-hidden="true" />
+                    <Icon name="image" size={32} className="text-text-subtle" />
                     <span className="text-xs text-text-soft">Drop a file here</span>
                   </div>
                 )}
@@ -540,7 +531,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                     download={state.fileName ?? undefined}
                     className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-default border border-border-strong bg-surface px-2 text-text hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
                   >
-                    <ArrowDownTrayIcon className="h-4 w-4" aria-hidden="true" />
+                    <Icon name="download" size={16} />
                     <span className="sr-only">Download {config.label}</span>
                   </a>
                 )}
@@ -553,7 +544,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                     variant="secondary"
                     onClick={() => setPendingDelete(variant)}
                     disabled={tile.uploading}
-                    icon={<TrashIcon className="h-4 w-4" aria-hidden="true" />}
+                    icon={<Icon name="trash" size={16} />}
                     label={`Delete ${config.label}`}
                     className="min-h-touch min-w-touch text-danger hover:bg-danger-soft"
                   />
@@ -720,9 +711,9 @@ function VariantPromptBox() {
           onClick={copy}
           icon={
             copied ? (
-              <CheckIcon className="h-4 w-4 text-success" aria-hidden="true" />
+              <Icon name="check" size={16} className="text-success" />
             ) : (
-              <ClipboardDocumentIcon className="h-4 w-4" aria-hidden="true" />
+              <Icon name="copy" size={16} />
             )
           }
           className="min-h-touch shrink-0"

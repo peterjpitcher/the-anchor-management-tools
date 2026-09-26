@@ -78,16 +78,16 @@ export function SmartImportModal({ open, onClose, onImport }: SmartImportModalPr
   return (
     <Modal open={open} onClose={onClose} title="Smart Ingredient Import" size="lg">
       <div className="space-y-4">
-        <Alert variant="info">
+        <Alert tone="info">
           <div className="space-y-2">
             <p>
               Paste <strong>any</strong> product text, HTML source, or JSON below. Our AI will extract the details for you.
             </p>
             <div className="flex gap-2">
-              <Badge variant="neutral" size="sm">Booker HTML</Badge>
-              <Badge variant="neutral" size="sm">Supplier Emails</Badge>
-              <Badge variant="neutral" size="sm">Spreadsheet Rows</Badge>
-              <Badge variant="neutral" size="sm">Website Text</Badge>
+              <Badge tone="neutral" size="sm">Booker HTML</Badge>
+              <Badge tone="neutral" size="sm">Supplier Emails</Badge>
+              <Badge tone="neutral" size="sm">Spreadsheet Rows</Badge>
+              <Badge tone="neutral" size="sm">Website Text</Badge>
             </div>
           </div>
         </Alert>
@@ -102,7 +102,7 @@ export function SmartImportModal({ open, onClose, onImport }: SmartImportModalPr
         />
 
         {error && (
-          <Alert variant="error" title="Parsing Failed">
+          <Alert tone="danger" title="Parsing Failed">
             {error}
           </Alert>
         )}

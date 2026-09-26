@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useTransition, useRef, ChangeEvent } from 'react'
-import { toast } from 'react-hot-toast'
-import { Badge, Button, ConfirmDialog, IconButton, Input, Select, Spinner } from '@/ds'
+import { Badge, Button, ConfirmDialog, IconButton, Input, Select, Spinner, toast, Icon } from '@/ds'
 import {
   markReceiptTransaction,
   deleteReceiptFile,
@@ -13,18 +12,6 @@ import {
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ReceiptTransaction, ReceiptFile, ReceiptExpenseCategory, ReceiptClassificationSource } from '@/types/database'
 import { receiptExpenseCategorySchema } from '@/lib/validation'
-import {
-  ArrowPathIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  PencilSquareIcon,
-  SparklesIcon,
-  ArrowUpTrayIcon,
-  ArrowUturnLeftIcon,
-  CheckIcon,
-  ForwardIcon,
-  QuestionMarkCircleIcon,
-} from '@heroicons/react/24/outline'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { formatCurrency, formatDate, statusLabels, statusTone } from '@/app/(authenticated)/receipts/utils'
 import { RECEIPT_UPLOAD_ACCEPT, receiptUploadErrorMessage, uploadReceiptFile } from './receiptUploadClient'
@@ -304,7 +291,7 @@ export function ReceiptTableRow({
           <p className="text-xs text-text-muted">{transaction.card_member}</p>
         )}
         {transaction.rule_applied_id && (
-          <Badge tone="primary" icon={<ArrowPathIcon />} className="mt-1">
+          <Badge tone="primary" icon={<Icon name="refresh" size={12} />} className="mt-1">
             Auto rule
           </Badge>
         )}
@@ -343,7 +330,7 @@ export function ReceiptTableRow({
             </button>
             <div className="flex items-center gap-2">
               <ClassificationBadge source={transaction.vendor_source} />
-              {transaction.vendor_source === 'ai' && <SparklesIcon className="h-3 w-3 text-info" />}
+              {transaction.vendor_source === 'ai' && <Icon name="sparkles" size={12} className="text-info" />}
             </div>
           </div>
         )}
@@ -369,7 +356,7 @@ export function ReceiptTableRow({
             </button>
             <div className="flex items-center gap-2">
               <ClassificationBadge source={transaction.expense_category_source} />
-              {transaction.expense_category_source === 'ai' && <SparklesIcon className="h-3 w-3 text-info" />}
+              {transaction.expense_category_source === 'ai' && <Icon name="sparkles" size={12} className="text-info" />}
             </div>
           </div>
         )}
@@ -382,7 +369,7 @@ export function ReceiptTableRow({
         <Badge
           tone={statusTone[transaction.status]}
           icon={
-            transaction.status === 'completed' ? <CheckCircleIcon /> : transaction.status === 'pending' ? <XCircleIcon /> : undefined
+            transaction.status === 'completed' ? <Icon name="checkCircle" size={12} /> : transaction.status === 'pending' ? <Icon name="xCircle" size={12} /> : undefined
           }
           className="whitespace-nowrap"
         >
@@ -440,7 +427,7 @@ export function ReceiptTableRow({
             {/* Always visible: this table is used on an iPad, where there is no
                 hover and a hover-only control is simply unreachable. */}
             <button type="button" onClick={startNoteEdit} className="rounded-sm text-xs text-text-muted flex items-center gap-1 hover:text-primary focus-visible:outline-hidden focus-visible:shadow-ring" disabled={!canManageReceipts}>
-              <PencilSquareIcon className="h-3 w-3" /> Edit
+              <Icon name="edit" size={12} /> Edit
             </button>
           </div>
         )}
@@ -456,7 +443,7 @@ export function ReceiptTableRow({
             disabled={isPending || !canManageReceipts}
             title="Upload receipt"
             label="Upload receipt"
-            icon={<ArrowUpTrayIcon className="h-4 w-4" />}
+            icon={<Icon name="upload" size={16} />}
           />
           <input type="file" className="hidden" ref={fileInputRef} accept={RECEIPT_UPLOAD_ACCEPT} onChange={handleUpload} />
 
@@ -467,7 +454,7 @@ export function ReceiptTableRow({
               disabled={isPending || !canManageReceipts}
               title="Mark as done"
               label="Mark as done"
-              icon={<CheckIcon className="h-4 w-4" />}
+              icon={<Icon name="check" size={16} />}
             />
           )}
 
@@ -478,7 +465,7 @@ export function ReceiptTableRow({
               disabled={isPending || !canManageReceipts}
               title="Skip (no receipt needed)"
               label="Skip (no receipt needed)"
-              icon={<ForwardIcon className="h-4 w-4" />}
+              icon={<Icon name="fastForward" size={16} />}
             />
           )}
 
@@ -490,7 +477,7 @@ export function ReceiptTableRow({
               disabled={isPending || !canManageReceipts}
               title="Mark as missing"
               label="Mark as missing"
-              icon={<QuestionMarkCircleIcon className="h-4 w-4" />}
+              icon={<Icon name="helpCircle" size={16} />}
             />
           )}
 
@@ -501,7 +488,7 @@ export function ReceiptTableRow({
               disabled={isPending || !canManageReceipts}
               title="Reopen"
               label="Reopen"
-              icon={<ArrowUturnLeftIcon className="h-4 w-4" />}
+              icon={<Icon name="undo" size={16} />}
             />
           )}
         </div>

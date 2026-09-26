@@ -5,7 +5,6 @@ import BookingDetailClient, { type Booking } from '@/app/(authenticated)/table-b
 import { MessageGuestsModal } from '@/app/(authenticated)/table-bookings/boh/MessageGuestsModal'
 
 const requestTableBookingActionMock = vi.hoisted(() => vi.fn())
-const hotToast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 const dsToast = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
@@ -22,11 +21,6 @@ const sendMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/table-bookings/client-actions', () => ({
   requestTableBookingAction: requestTableBookingActionMock,
-}))
-
-vi.mock('react-hot-toast', () => ({
-  __esModule: true,
-  default: hotToast,
 }))
 
 vi.mock('@/ds', async (importOriginal) => {
@@ -128,7 +122,7 @@ describe('single-guest message card (P7)', () => {
         body: { subject: 'A message about your booking at The Anchor', message: 'Your table is ready early.' },
       })
     })
-    expect(hotToast.success).toHaveBeenCalledWith('Email sent to guest')
+    expect(dsToast.success).toHaveBeenCalledWith('Email sent to guest')
   })
 
   it('shows the real failure from the email route', async () => {
@@ -140,7 +134,7 @@ describe('single-guest message card (P7)', () => {
     await user.click(screen.getByRole('button', { name: 'Send email' }))
 
     await waitFor(() => {
-      expect(hotToast.error).toHaveBeenCalledWith('This guest has no usable email address')
+      expect(dsToast.error).toHaveBeenCalledWith('This guest has no usable email address')
     })
   })
 

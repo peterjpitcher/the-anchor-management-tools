@@ -69,10 +69,11 @@ export default async function CateringPackagesPage({
       <div className="space-y-6">
         {errorMessage && (
           <Alert
-            variant="error"
+            tone="danger"
             title="Error"
-            description={errorMessage}
-          />
+          >
+            {errorMessage}
+          </Alert>
         )}
 
         <CateringManager initialPackages={packages} />

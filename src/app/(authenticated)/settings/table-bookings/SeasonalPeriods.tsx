@@ -1,8 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import toast from 'react-hot-toast'
-import { Badge, Button, Card, Checkbox, Input, Section, Select, Textarea } from '@/ds'
+import { Badge, Button, Card, Checkbox, Input, Section, Select, Textarea, toast } from '@/ds'
 import {
   MENU_COURSES,
   MENU_COURSE_ADDON,

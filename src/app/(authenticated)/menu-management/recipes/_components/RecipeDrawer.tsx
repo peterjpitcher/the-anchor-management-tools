@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Drawer, DrawerActions } from '@/ds';
 import { FormSection } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Field } from '@/ds';
 import { Input } from '@/ds';
 import { Select } from '@/ds';
 import { Textarea } from '@/ds';
@@ -382,27 +382,28 @@ export function RecipeDrawer({
         {/* Server error */}
         {serverError && (
           <Alert
-            variant="error"
+            tone="danger"
             title="Save Error"
-            description={serverError}
             closable
             onClose={() => setServerError(null)}
             className="mb-4"
-          />
+          >
+            {serverError}
+          </Alert>
         )}
 
         {/* Top zone: Recipe overview (fixed) */}
         <FormSection title="Recipe Overview" description="Name, yield, and basic settings.">
-          <FormGroup label="Name" required>
+          <Field label="Name" required>
             <Input
               value={formState.name}
               onChange={(e) => update({ name: e.target.value })}
               required
             />
-          </FormGroup>
+          </Field>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormGroup label="Yield quantity" required>
+            <Field label="Yield quantity" required>
               <Input
                 type="number"
                 min="0.01"
@@ -411,8 +412,8 @@ export function RecipeDrawer({
                 onChange={(e) => update({ yield_quantity: e.target.value })}
                 required
               />
-            </FormGroup>
-            <FormGroup label="Yield unit" required>
+            </Field>
+            <Field label="Yield unit" required>
               <Select
                 value={formState.yield_unit}
                 onChange={(e) => update({ yield_unit: e.target.value })}
@@ -423,7 +424,7 @@ export function RecipeDrawer({
                   </option>
                 ))}
               </Select>
-            </FormGroup>
+            </Field>
           </div>
 
           <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
@@ -448,28 +449,28 @@ export function RecipeDrawer({
 
           {showTextareas && (
             <div className="space-y-3">
-              <FormGroup label="Description">
+              <Field label="Description">
                 <Textarea
                   rows={2}
                   value={formState.description}
                   onChange={(e) => update({ description: e.target.value })}
                 />
-              </FormGroup>
-              <FormGroup label="Instructions">
+              </Field>
+              <Field label="Instructions">
                 <Textarea
                   rows={3}
                   value={formState.instructions}
                   onChange={(e) => update({ instructions: e.target.value })}
                   placeholder="Explain prep steps, cooking temperatures, or holding notes."
                 />
-              </FormGroup>
-              <FormGroup label="Notes">
+              </Field>
+              <Field label="Notes">
                 <Textarea
                   rows={2}
                   value={formState.notes}
                   onChange={(e) => update({ notes: e.target.value })}
                 />
-              </FormGroup>
+              </Field>
             </div>
           )}
         </FormSection>

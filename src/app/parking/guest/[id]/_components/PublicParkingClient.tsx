@@ -1,4 +1,4 @@
-import { Bell, Check, Clock, type LucideIcon } from 'lucide-react'
+import { Icon, type IconName } from '@/ds/icons'
 import {
   DetailGrid,
   GUEST_H1_CLASS,
@@ -52,10 +52,10 @@ interface PublicParkingClientProps {
 }
 
 /** Reassurance rows, rendered as one sunk box under the booking card. */
-const ASSURANCES: Array<{ icon: LucideIcon; title: string; sub: string }> = [
-  { icon: Check, title: 'Secure Booking', sub: 'Your details are stored securely' },
-  { icon: Bell, title: 'Confirmation', sub: 'You will receive email confirmation' },
-  { icon: Clock, title: 'Support', sub: 'Contact us anytime' },
+const ASSURANCES: Array<{ icon: IconName; title: string; sub: string }> = [
+  { icon: 'check', title: 'Secure Booking', sub: 'Your details are stored securely' },
+  { icon: 'bell', title: 'Confirmation', sub: 'You will receive email confirmation' },
+  { icon: 'clock', title: 'Support', sub: 'Contact us anytime' },
 ]
 
 function formatVehicle(booking: PublicParkingBooking): string {
@@ -169,13 +169,13 @@ export default function PublicParkingClient({ booking, paymentNotice, canRetryPa
       </GuestCard>
 
       <div className={cn(GUEST_SUNK_BOX_CLASS, 'flex flex-col gap-3')}>
-        {ASSURANCES.map(({ icon: AssuranceIcon, title, sub }) => (
+        {ASSURANCES.map(({ icon, title, sub }) => (
           <div key={title} className="flex items-start gap-2.5">
             <span
               aria-hidden="true"
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-anchor-green/10 text-anchor-green"
             >
-              <AssuranceIcon className="h-[15px] w-[15px]" />
+              <Icon name={icon} size={15} />
             </span>
             <div className="flex min-w-0 flex-col">
               <p className="text-ui font-semibold leading-[1.4] text-guest-text">{title}</p>

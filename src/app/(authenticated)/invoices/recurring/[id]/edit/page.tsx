@@ -6,16 +6,15 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import { getRecurringInvoice, updateRecurringInvoice } from '@/app/actions/recurring-invoices'
 import { getVendors } from '@/app/actions/vendors'
 import { getLineItemCatalog } from '@/app/actions/invoices'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Alert } from '@/ds'
 import { toast } from '@/ds'
-import { Plus, Trash2 } from 'lucide-react'
 import type { InvoiceVendor, InvoiceLineItemInput, RecurringFrequency, LineItemCatalogItem, RecurringInvoiceWithDetails } from '@/types/invoices'
 
 export default function EditRecurringInvoicePage() {
@@ -253,13 +252,13 @@ export default function EditRecurringInvoicePage() {
       backButton={{ label: 'Back to Recurring Invoices', href: '/invoices/recurring' }}
     >
       <div className="space-y-6">
-        {error && <Alert variant="error" description={error} />}
+        {error && <Alert tone="danger">{error}</Alert>}
 
         <form onSubmit={handleSubmit} className="space-y-6">
 
           <Card title="Template Details">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormGroup label="Vendor" required>
+              <Field label="Vendor" required>
                 <Select
                   value={vendorId}
                   onChange={(e) => setVendorId(e.target.value)}
@@ -272,9 +271,9 @@ export default function EditRecurringInvoicePage() {
                     </option>
                   ))}
                 </Select>
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Frequency" required>
+              <Field label="Frequency" required>
                 <Select
                   value={frequency}
                   onChange={(e) => setFrequency(e.target.value as RecurringFrequency)}
@@ -285,18 +284,18 @@ export default function EditRecurringInvoicePage() {
                   <option value="quarterly">Quarterly</option>
                   <option value="yearly">Yearly</option>
                 </Select>
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Start Date" required>
+              <Field label="Start Date" required>
                 <Input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   required
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup
+              <Field
                 label="Next Invoice Date"
                 required
                 help="Controls when the next invoice will be generated."
@@ -308,18 +307,18 @@ export default function EditRecurringInvoicePage() {
                   min={startDate}
                   required
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="End Date" help="Leave blank for ongoing">
+              <Field label="End Date" help="Leave blank for ongoing">
                 <Input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
                   min={startDate}
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Days Before Due" required>
+              <Field label="Days Before Due" required>
                 <Input
                   type="number"
                   value={daysBefore}
@@ -327,18 +326,18 @@ export default function EditRecurringInvoicePage() {
                   min="0"
                   required
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Reference">
+              <Field label="Reference">
                 <Input
                   type="text"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                   placeholder="Optional reference"
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Invoice Discount (%)" className="md:col-span-1">
+              <Field label="Invoice Discount (%)" className="md:col-span-1">
                 <Input
                   type="number"
                   value={invoiceDiscount}
@@ -347,9 +346,9 @@ export default function EditRecurringInvoicePage() {
                   max="100"
                   step="0.01"
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Status" className="md:col-span-1">
+              <Field label="Status" className="md:col-span-1">
                 <Select
                   value={isActive ? 'active' : 'inactive'}
                   onChange={(e) => setIsActive(e.target.value === 'active')}
@@ -357,7 +356,7 @@ export default function EditRecurringInvoicePage() {
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </Select>
-              </FormGroup>
+              </Field>
             </div>
           </Card>
 
@@ -367,7 +366,7 @@ export default function EditRecurringInvoicePage() {
                 <div key={index} className="border border-border rounded-lg p-4 space-y-4">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                     <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-4">
-                      <FormGroup label="Catalog Item" className="md:col-span-2">
+                      <Field label="Catalog Item" className="md:col-span-2">
                         <Select
                           value={item.catalog_item_id || ''}
                           onChange={(e) => {
@@ -394,18 +393,18 @@ export default function EditRecurringInvoicePage() {
                             </option>
                           ))}
                         </Select>
-                      </FormGroup>
+                      </Field>
 
-                      <FormGroup label="Description" required className="md:col-span-4">
+                      <Field label="Description" required className="md:col-span-4">
                         <Input
                           type="text"
                           value={item.description}
                           onChange={(e) => updateLineItem(index, 'description', e.target.value)}
                           required
                         />
-                      </FormGroup>
+                      </Field>
 
-                      <FormGroup label="Quantity" required>
+                      <Field label="Quantity" required>
                         <Input
                           type="number"
                           value={item.quantity}
@@ -414,9 +413,9 @@ export default function EditRecurringInvoicePage() {
                           step="0.001"
                           required
                         />
-                      </FormGroup>
+                      </Field>
 
-                      <FormGroup label="Unit Price" required>
+                      <Field label="Unit Price" required>
                         <Input
                           type="number"
                           value={item.unit_price}
@@ -425,9 +424,9 @@ export default function EditRecurringInvoicePage() {
                           step="0.01"
                           required
                         />
-                      </FormGroup>
+                      </Field>
 
-                      <FormGroup label="Discount (%)">
+                      <Field label="Discount (%)">
                         <Input
                           type="number"
                           value={item.discount_percentage}
@@ -436,9 +435,9 @@ export default function EditRecurringInvoicePage() {
                           max="100"
                           step="0.01"
                         />
-                      </FormGroup>
+                      </Field>
 
-                      <FormGroup label="VAT Rate (%)">
+                      <Field label="VAT Rate (%)">
                         <Input
                           type="number"
                           value={item.vat_rate}
@@ -446,7 +445,7 @@ export default function EditRecurringInvoicePage() {
                           min="0"
                           step="0.01"
                         />
-                      </FormGroup>
+                      </Field>
 
                       <div className="md:col-span-2 text-right pt-6">
                         <div className="text-sm text-text-muted">
@@ -463,7 +462,7 @@ export default function EditRecurringInvoicePage() {
                         className="sm:mt-6"
                         aria-label="Remove line item"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Icon name="trash" size={16} />
                       </Button>
                     )}
                   </div>
@@ -474,7 +473,7 @@ export default function EditRecurringInvoicePage() {
                 type="button"
                 variant="secondary"
                 onClick={addLineItem}
-                leftIcon={<Plus className="h-4 w-4" />}
+                leftIcon={<Icon name="plus" size={16} />}
               >
                 Add Line Item
               </Button>
@@ -483,21 +482,21 @@ export default function EditRecurringInvoicePage() {
 
           <Card title="Additional Information">
             <div className="space-y-4">
-              <FormGroup label="Notes" help="Will appear on invoices">
+              <Field label="Notes" help="Will appear on invoices">
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Internal Notes" help="For internal use only">
+              <Field label="Internal Notes" help="For internal use only">
                 <Textarea
                   value={internalNotes}
                   onChange={(e) => setInternalNotes(e.target.value)}
                   rows={3}
                 />
-              </FormGroup>
+              </Field>
             </div>
           </Card>
 

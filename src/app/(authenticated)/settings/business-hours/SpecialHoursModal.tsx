@@ -1,15 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Modal, ModalActions, ConfirmDialog } from '@/ds'
+import { Modal, ModalActions, ConfirmDialog, toast, Icon } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Checkbox } from '@/ds'
 import { createSpecialHours, updateSpecialHours, deleteSpecialHours, getBusinessHoursByDay } from '@/app/actions/business-hours'
 import { SpecialHours, ScheduleConfigItem } from '@/types/business-hours'
 import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
-import toast from 'react-hot-toast'
-import { TrashIcon } from '@heroicons/react/24/outline'
 
 /** Minutes since midnight from "HH:MM" or "HH:MM:SS". Null when unparseable. */
 function toMinutes(value: string | null | undefined): number | null {
@@ -315,7 +313,7 @@ export function SpecialHoursModal({
     })
 
     if (dropped.length > 0) {
-      toast(
+      toast.info(
         `${dropped.length === 1 ? 'One service was' : `${dropped.length} services were`} removed because they fall outside these hours: ${dropped.join(', ')}.`,
         { duration: 8000 }
       )
@@ -370,7 +368,7 @@ export function SpecialHoursModal({
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={loading || !canManage}
               >
-                <TrashIcon className="w-4 h-4 mr-2" />
+                <Icon name="trash" size={16} className="mr-2" />
                 Revert to Regular
               </Button>
             )}

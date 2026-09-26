@@ -37,7 +37,7 @@ export default async function MgdInsightsPage(): Promise<React.ReactElement> {
         />
         <SectionNav items={MGD_SECTION_NAV} activeId="insights" />
         <Card>
-          <Alert variant="error" title="Error loading insights" description={error} />
+          <Alert tone="danger" title="Error loading insights">{error}</Alert>
         </Card>
       </div>
     )

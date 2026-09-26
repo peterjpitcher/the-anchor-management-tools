@@ -3,8 +3,7 @@
 import { ChristmasCourseFields } from '@/components/features/table-bookings/ChristmasCourseFields'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import toast from 'react-hot-toast'
-import { Badge, Button, Card, ConfirmDialog, Input, Modal, Radio, Select, Textarea } from '@/ds'
+import { Badge, Button, Card, ConfirmDialog, Input, Modal, Radio, Select, Textarea, toast } from '@/ds'
 import { cn } from '@/lib/utils'
 import {
   STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT,
@@ -1260,7 +1259,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
 
               {refundTotals.totalRefunded > 0 && (
                 <Badge
-                  variant={refundTotals.totalRefunded >= refundableDepositAmount ? 'info' : 'warning'}
+                  tone={refundTotals.totalRefunded >= refundableDepositAmount ? 'info' : 'warning'}
                   size="sm"
                 >
                   {refundTotals.totalRefunded >= refundableDepositAmount ? 'Refunded' : 'Partially refunded'}

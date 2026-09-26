@@ -90,7 +90,7 @@ export function IngredientExpandedRow({ ingredient }: IngredientExpandedRowProps
               {dish.assignments.map((assignment, idx) => (
                 <Badge
                   key={`${dish.dish_id}-${assignment.menu_code}-${assignment.category_code}-${idx}`}
-                  variant={assignment.is_special ? 'warning' : 'neutral'}
+                  tone={assignment.is_special ? 'warning' : 'neutral'}
                 >
                   {assignment.menu_code}/{assignment.category_name || assignment.category_code}
                 </Badge>

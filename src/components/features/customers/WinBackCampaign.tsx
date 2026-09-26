@@ -14,8 +14,7 @@
  */
 
 import { useState, useTransition } from 'react'
-import { MegaphoneIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline'
-import { Badge, Button, Textarea } from '@/ds'
+import { Badge, Button, Textarea, Icon } from '@/ds'
 import { Select } from '@/ds'
 import { ConfirmDialog } from '@/ds'
 import { toast } from '@/ds'
@@ -101,7 +100,7 @@ export function WinBackCampaign() {
         aria-expanded={open}
       >
         <div className="flex items-center gap-2">
-          <MegaphoneIcon className="h-5 w-5 text-primary" aria-hidden="true" />
+          <Icon name="megaphone" size={20} className="text-primary" />
           <span className="text-sm font-semibold text-text">Win-Back Campaign</span>
           {lastResult !== null && (
             <Badge tone="success" size="sm">
@@ -110,9 +109,9 @@ export function WinBackCampaign() {
           )}
         </div>
         {open ? (
-          <ChevronUpIcon className="h-4 w-4 text-text-muted" aria-hidden="true" />
+          <Icon name="chevronUp" size={16} className="text-text-muted" />
         ) : (
-          <ChevronDownIcon className="h-4 w-4 text-text-muted" aria-hidden="true" />
+          <Icon name="chevronDown" size={16} className="text-text-muted" />
         )}
       </button>
 

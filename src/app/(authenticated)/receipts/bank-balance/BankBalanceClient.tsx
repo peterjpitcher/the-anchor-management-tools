@@ -12,9 +12,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { ArrowTrendingDownIcon, ArrowTrendingUpIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
-import { EmptyState } from '@/ds'
+import { Empty, Icon } from '@/ds'
 import {
   BANK_BALANCE_RANGES,
   filterBankBalancePoints,
@@ -106,7 +105,7 @@ export function BankBalanceClient({ points, sourceRowCount }: Props) {
   if (points.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-surface">
-        <EmptyState
+        <Empty
           title="No bank balances available"
           description="Import a bank statement with a Balance column to start this chart."
         />
@@ -141,8 +140,8 @@ export function BankBalanceClient({ points, sourceRowCount }: Props) {
                 positiveChange ? 'text-success-fg' : 'text-danger-fg',
               )}>
                 {positiveChange
-                  ? <ArrowTrendingUpIcon className="h-4 w-4" aria-hidden="true" />
-                  : <ArrowTrendingDownIcon className="h-4 w-4" aria-hidden="true" />}
+                  ? <Icon name="trendUp" size={16} />
+                  : <Icon name="trendDown" size={16} />}
                 {change >= 0 ? '+' : '-'}{currencyFormatter.format(Math.abs(change))}
               </span>
             </div>

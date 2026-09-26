@@ -9,8 +9,7 @@
 
 import { useState, useTransition } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { ArrowDownTrayIcon, DocumentArrowDownIcon, MapPinIcon, PlusIcon } from '@heroicons/react/24/outline'
-import { Alert, Button, ConfirmDialog, Empty, Stat, TablePagination, toast } from '@/ds'
+import { Alert, Button, ConfirmDialog, Empty, Stat, TablePagination, toast, Icon } from '@/ds'
 import {
   deleteTrip,
   exportMileageListCsv,
@@ -180,14 +179,14 @@ export function MileageClient({
 
       <div className="flex flex-wrap items-center gap-2">
         {canManage && (
-          <Button variant="primary" size="sm" icon={<PlusIcon className="h-4 w-4" />} onClick={openNewTrip}>
+          <Button variant="primary" size="sm" icon={<Icon name="plus" size={16} />} onClick={openNewTrip}>
             New Trip
           </Button>
         )}
         <Button
           variant="secondary"
           size="sm"
-          icon={<ArrowDownTrayIcon className="h-4 w-4" />}
+          icon={<Icon name="download" size={16} />}
           onClick={() => void handleExport()}
           loading={isExporting}
           disabled={isExporting}
@@ -197,7 +196,7 @@ export function MileageClient({
         <Button
           variant="secondary"
           size="sm"
-          icon={<DocumentArrowDownIcon className="h-4 w-4" />}
+          icon={<Icon name="download" size={16} />}
           onClick={() => setShowReportDialog(true)}
         >
           Download report
@@ -218,7 +217,7 @@ export function MileageClient({
 
       {trips.rows.length === 0 ? (
         <Empty
-          icon={<MapPinIcon className="h-12 w-12" />}
+          icon={<Icon name="mapPin" size={48} />}
           title={filtered ? 'No trips match these filters' : 'No trips recorded'}
           description={filtered ? 'Change or clear the filters to see more trips.' : 'Add your first trip to start tracking mileage.'}
         />

@@ -1,27 +1,17 @@
-import type { ComponentType, SVGProps } from 'react'
-import {
-    BanknotesIcon,
-    CakeIcon,
-    CalendarDaysIcon,
-    ClockIcon,
-    EnvelopeIcon,
-    MapPinIcon,
-    PencilSquareIcon,
-    UsersIcon,
-} from '@heroicons/react/20/solid'
+import { Icon, type IconName } from '@/ds'
 import { cn } from '@/lib/utils'
 import { kindShortLabel } from './appearance'
 import type { CalendarEntryKind } from './types'
 
-const KIND_ICONS: Record<CalendarEntryKind, ComponentType<SVGProps<SVGSVGElement>>> = {
-    event: CalendarDaysIcon,
-    private_booking: UsersIcon,
-    balance_due: BanknotesIcon,
-    birthday: CakeIcon,
-    special_hours: ClockIcon,
-    calendar_note: PencilSquareIcon,
-    parking: MapPinIcon,
-    marketing_email: EnvelopeIcon,
+const KIND_ICONS: Record<CalendarEntryKind, IconName> = {
+    event: 'calendar',
+    private_booking: 'users',
+    balance_due: 'cash',
+    birthday: 'cake',
+    special_hours: 'clock',
+    calendar_note: 'edit',
+    parking: 'mapPin',
+    marketing_email: 'mail',
 }
 
 interface CalendarKindBadgeProps {
@@ -31,8 +21,6 @@ interface CalendarKindBadgeProps {
 }
 
 export function CalendarKindBadge({ kind, lightText, className }: CalendarKindBadgeProps) {
-    const KindIcon = KIND_ICONS[kind]
-
     return (
         <span
             className={cn(
@@ -41,7 +29,7 @@ export function CalendarKindBadge({ kind, lightText, className }: CalendarKindBa
                 className,
             )}
         >
-            <KindIcon className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+            <Icon name={KIND_ICONS[kind]} size={10} />
             <span className="truncate">{kindShortLabel(kind)}</span>
         </span>
     )

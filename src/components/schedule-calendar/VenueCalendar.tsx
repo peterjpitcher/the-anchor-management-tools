@@ -7,8 +7,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { cn } from '@/lib/utils'
-import { CalendarDaysIcon, EnvelopeIcon, LockClosedIcon, TruckIcon } from '@heroicons/react/20/solid'
-import { Modal, Button, FormGroup, Input, Textarea, toast } from '@/ds'
+import { Modal, Button, Field, Input, Textarea, toast, Icon } from '@/ds'
 import { createCalendarNote, updateCalendarNote, deleteCalendarNote } from '@/app/actions/calendar-notes'
 import { ScheduleCalendar } from './ScheduleCalendar'
 import {
@@ -291,7 +290,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
     return (
       <div className="space-y-1 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
-          <CalendarDaysIcon className="h-3.5 w-3.5" />
+          <Icon name="calendar" size={14} />
           <span>Event</span>
         </div>
         <div className="whitespace-pre-wrap">{td.name}</div>
@@ -329,7 +328,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
     return (
       <div className="space-y-1 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
-          <LockClosedIcon className="h-3.5 w-3.5" />
+          <Icon name="lock" size={14} />
           <span>Private booking{entry.statusLabel ? ` · ${entry.statusLabel}` : ''}</span>
         </div>
         <div className="whitespace-pre-wrap">{td.customerName}</div>
@@ -352,7 +351,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
     return (
       <div className="space-y-1 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
-          <LockClosedIcon className="h-3.5 w-3.5" />
+          <Icon name="lock" size={14} />
           <span>Private booking balance due</span>
         </div>
         <div className="whitespace-pre-wrap">{td.customerName}</div>
@@ -413,7 +412,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
     return (
       <div className="space-y-1 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
-          <TruckIcon className="h-3.5 w-3.5" />
+          <Icon name="truck" size={14} />
           <span>Parking</span>
         </div>
         {td.reference && (
@@ -446,7 +445,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
     return (
       <div className="space-y-1 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
-          <EnvelopeIcon className="h-3.5 w-3.5" />
+          <Icon name="mail" size={14} />
           <span>Marketing email · {td.statusLabel}</span>
         </div>
         <div className="whitespace-pre-wrap">{td.name}</div>
@@ -799,7 +798,7 @@ export function VenueCalendar({
         >
           <form onSubmit={handleNoteSubmit} className="space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <FormGroup label="Start date" required>
+              <Field label="Start date" required>
                 <Input
                   type="date"
                   value={noteEditor.note_date}
@@ -814,8 +813,8 @@ export function VenueCalendar({
                   }}
                   required
                 />
-              </FormGroup>
-              <FormGroup label="End date" required>
+              </Field>
+              <Field label="End date" required>
                 <Input
                   type="date"
                   value={noteEditor.end_date}
@@ -825,9 +824,9 @@ export function VenueCalendar({
                   }
                   required
                 />
-              </FormGroup>
+              </Field>
             </div>
-            <FormGroup label="Title" required>
+            <Field label="Title" required>
               <Input
                 type="text"
                 placeholder="e.g. St Patrick's Day"
@@ -837,8 +836,8 @@ export function VenueCalendar({
                 required
                 autoFocus
               />
-            </FormGroup>
-            <FormGroup label="Colour">
+            </Field>
+            <Field label="Colour">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {CALENDAR_COLOUR_OPTIONS.map((option) => {
                   const selected = noteEditor.color.toUpperCase() === option.value
@@ -873,8 +872,8 @@ export function VenueCalendar({
                   This note uses a colour outside the palette. It is kept unless you pick a new one.
                 </p>
               )}
-            </FormGroup>
-            <FormGroup label="Notes">
+            </Field>
+            <Field label="Notes">
               <Textarea
                 rows={3}
                 placeholder="Optional detail."
@@ -882,7 +881,7 @@ export function VenueCalendar({
                 onChange={(e) => setNoteEditor((f) => (f ? { ...f, notes: e.target.value } : f))}
                 maxLength={4000}
               />
-            </FormGroup>
+            </Field>
 
             {confirmingDelete && (
               <div className="rounded-md border border-danger-border bg-danger-soft p-3 text-xs text-danger-fg">
@@ -938,7 +937,7 @@ export function VenueCalendar({
                 type="submit"
                 loading={isSavingNote}
                 disabled={isDeletingNote}
-                leftIcon={<CalendarDaysIcon className="h-4 w-4" />}
+                leftIcon={<Icon name="calendar" size={16} />}
               >
                 {noteEditor.mode === 'edit' ? 'Save changes' : 'Add note'}
               </Button>

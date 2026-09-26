@@ -4,13 +4,12 @@ import { useEffect, useState, useCallback } from 'react';
 import type { Role, UserSummaryWithRoles } from '@/types/rbac';
 import { getUserRoles, assignRolesToUser } from '@/app/actions/rbac';
 import { useRouter } from 'next/navigation';
-import { Modal, ModalActions } from '@/ds';
+import { Modal, ModalActions, toast } from '@/ds';
 import { Button } from '@/ds';
 import { Checkbox } from '@/ds';
 import { Badge } from '@/ds';
 import { Spinner } from '@/ds';
 import { Alert } from '@/ds';
-import toast from 'react-hot-toast';
 
 type UserSummary = Pick<UserSummaryWithRoles, 'id' | 'email'>;
 
@@ -129,18 +128,20 @@ export default function UserRolesModal({
         <div className="space-y-3">
           {readOnly && (
             <Alert
-              variant="info"
+              tone="info"
               title="Read-only access"
-              description="You need the users:manage_roles permission to modify role assignments."
-            />
+            >
+              You need the users:manage_roles permission to modify role assignments.
+            </Alert>
           )}
 
           {loadError && (
             <Alert
-              variant="error"
+              tone="danger"
               title="Unable to load roles"
-              description={loadError}
-            />
+            >
+              {loadError}
+            </Alert>
           )}
 
           {!readOnly && !loadError && allRoles.map((role) => (
@@ -160,7 +161,7 @@ export default function UserRolesModal({
                     {role.name}
                   </span>
                   {role.is_system && (
-                    <Badge variant="default" size="sm" className="ml-2">
+                    <Badge tone="neutral" size="sm" className="ml-2">
                       System
                     </Badge>
                   )}
@@ -174,10 +175,11 @@ export default function UserRolesModal({
 
           {!readOnly && !loadError && allRoles.length === 0 && (
             <Alert
-              variant="info"
+              tone="info"
               title="No roles available"
-              description="Create roles before assigning them to users."
-            />
+            >
+              Create roles before assigning them to users.
+            </Alert>
           )}
         </div>
       )}

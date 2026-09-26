@@ -2,10 +2,10 @@
 
 import { ReactNode, HTMLAttributes, useState, useEffect, Fragment } from 'react'
 import { cn } from '@/lib/utils'
-import { ChevronUpIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/20/solid'
 import { Checkbox } from '@/ds/primitives/Checkbox'
 import { Spinner } from '@/ds/primitives/Spinner'
 import { Empty } from '@/ds/primitives/Empty'
+import { Icon } from '../icons'
 
 const ROW_CLICK_IGNORE_SELECTOR = [
   'a',
@@ -342,12 +342,7 @@ export function DataTable<T = unknown>({
                     className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                     aria-expanded={isExpanded}
                   >
-                    <ChevronRightIcon
-                      className={cn(
-                        'h-4 w-4 transition-transform duration-200',
-                        isExpanded && 'rotate-90',
-                      )}
-                    />
+                    <Icon name="chevronRight" size={16} className={cn('transition-transform duration-200', isExpanded && 'rotate-90')} />
                     {isExpanded ? 'Hide details' : 'View details'}
                   </button>
                   {isExpanded && (
@@ -423,17 +418,21 @@ export function DataTable<T = unknown>({
                         >
                           {column.header}
                           <span className="flex flex-col" aria-hidden="true">
-                            <ChevronUpIcon
+                            <Icon
+                              name="chevronUp"
+                              size={12}
                               className={cn(
-                                'h-3 w-3 -mb-1',
+                                '-mb-1',
                                 isSorted && sortDirection === 'asc'
                                   ? 'text-text'
                                   : 'text-text-subtle',
                               )}
                             />
-                            <ChevronDownIcon
+                            <Icon
+                              name="chevronDown"
+                              size={12}
                               className={cn(
-                                'h-3 w-3 -mt-1',
+                                '-mt-1',
                                 isSorted && sortDirection === 'desc'
                                   ? 'text-text'
                                   : 'text-text-subtle',
@@ -505,12 +504,7 @@ export function DataTable<T = unknown>({
                             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border-strong text-text-muted hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset"
                             aria-expanded={isExpanded}
                           >
-                            <ChevronRightIcon
-                              className={cn(
-                                'h-4 w-4 transition-transform duration-200',
-                                isExpanded && 'rotate-90',
-                              )}
-                            />
+                            <Icon name="chevronRight" size={16} className={cn('transition-transform duration-200', isExpanded && 'rotate-90')} />
                           </button>
                         </td>
                       )}

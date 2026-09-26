@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 import { calculateAge, calculateLengthOfService } from '@/lib/employeeUtils'
 import { displayNameWithLegal } from '@/lib/employees/display-name'
-import { Badge } from '@/ds'
+import { Badge, Icon } from '@/ds'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
@@ -25,7 +25,6 @@ import { EmployeeRecentChanges } from '@/components/features/employees/EmployeeR
 import EmployeeStatusActions from '@/components/features/employees/EmployeeStatusActions'
 import { getEmployeeDetailData } from '@/app/actions/employeeDetails'
 import { LinkButton } from '@/ds'
-import { ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import EmployeePayTab from '@/components/features/employees/EmployeePayTab'
 import EmployeeHolidaysTab from '@/components/features/employees/EmployeeHolidaysTab'
 import EmployeeReliabilityTab from '@/components/features/employees/EmployeeReliabilityTab'
@@ -44,13 +43,13 @@ interface EmployeeDetailPageProps {
   }>
 }
 
-function statusBadgeVariant(status: string): 'success' | 'info' | 'warning' | 'error' | 'default' {
+function statusBadgeTone(status: string): 'success' | 'info' | 'warning' | 'danger' | 'neutral' {
   switch (status) {
     case 'Active': return 'success'
     case 'Onboarding': return 'info'
     case 'Started Separation': return 'warning'
-    case 'Former': return 'error'
-    default: return 'default'
+    case 'Former': return 'danger'
+    default: return 'neutral'
   }
 }
 
@@ -176,7 +175,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
               <dt className="text-sm font-medium text-text-muted mb-1 sm:mb-0">{field.label}</dt>
               <dd className={`text-sm text-text ${field.isFullWidth ? '' : 'sm:col-span-3'}`}>
                 {field.isBadge ? (
-                  <Badge variant={statusBadgeVariant(employee.status)}>
+                  <Badge tone={statusBadgeTone(employee.status)}>
                     {employee.status}
                   </Badge>
                 ) : field.isEmail ? (
@@ -303,7 +302,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
         size="sm"
         variant="secondary"
         target="_blank"
-        leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+        leftIcon={<Icon name="download" size={16} />}
       >
         New Starter PDF
       </LinkButton>
@@ -315,7 +314,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
         size="sm"
         variant="secondary"
         target="_blank"
-        leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+        leftIcon={<Icon name="download" size={16} />}
       >
         Casual Worker Agreement
       </LinkButton>
@@ -369,7 +368,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                     </p>
                   )}
                 </div>
-                <Badge variant={statusBadgeVariant(employee.status)} dot>
+                <Badge tone={statusBadgeTone(employee.status)} dot>
                   {employee.status}
                 </Badge>
               </div>
@@ -377,13 +376,13 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           </section>
 
           {isOnboarding && (
-            <Alert variant="info" title="Onboarding in progress">
+            <Alert tone="info" title="Onboarding in progress">
               This employee has been invited but has not yet completed their profile. Use the &ldquo;Resend Invite&rdquo; button to send them a new invite link.
             </Alert>
           )}
 
           {setupMissingItems.length > 0 && (
-            <Alert variant="warning" title="Setup incomplete">
+            <Alert tone="warning" title="Setup incomplete">
               <ul className="list-disc pl-5 space-y-1">
                 {setupMissingItems.map((item) => (
                   <li key={item}>{item} missing</li>

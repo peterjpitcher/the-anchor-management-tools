@@ -1,24 +1,18 @@
 import { redirect } from 'next/navigation'
-import { 
-  PlusIcon, 
-  UserGroupIcon,
-  CheckIcon,
-  StarIcon
-} from '@heroicons/react/24/outline'
 import { createVendor, updateVendor, deleteVendor, getVendorsForManagement } from '@/app/actions/privateBookingActions'
 import { VendorDeleteButton } from '@/components/features/invoices/VendorDeleteButton'
 import type { Vendor, VendorServiceType } from '@/types/private-bookings'
 import { VENDOR_SERVICE_TYPE_LABELS } from '@/lib/private-bookings/item-labels'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Badge } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { Alert } from '@/ds'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 
@@ -192,17 +186,17 @@ export default async function VendorsPage({
     >
       <div className="space-y-6">
       {errorMessage && (
-        <Alert variant="error" title="Error" description={errorMessage} />
+        <Alert tone="danger" title="Error">{errorMessage}</Alert>
       )}
       {/* Add New Vendor Form */}
       <Card>
         <Section 
           title="Add New Vendor"
-          icon={<PlusIcon className="h-5 w-5 text-primary" />}
+          icon={<Icon name="plus" size={20} className="text-primary" />}
         >
           <form action={handleCreateVendor} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <FormGroup label="Vendor Name" required>
+              <Field label="Vendor Name" required>
                 <Input
                   type="text"
                   id="name"
@@ -210,51 +204,51 @@ export default async function VendorsPage({
                   required
                   placeholder="e.g., DJ Mike's Entertainment"
                 />
-              </FormGroup>
-              <FormGroup label="Type" required>
+              </Field>
+              <Field label="Type" required>
                 <Select
                   id="service_type"
                   name="service_type"
                   required
                   options={vendorTypeOptions}
                 />
-              </FormGroup>
-              <FormGroup label="Contact Name">
+              </Field>
+              <Field label="Contact Name">
                 <Input
                   type="text"
                   id="contact_name"
                   name="contact_name"
                   placeholder="Mike Johnson"
                 />
-              </FormGroup>
+              </Field>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <FormGroup label="Phone">
+              <Field label="Phone">
                 <Input
                   type="tel"
                   id="contact_phone"
                   name="contact_phone"
                   placeholder="07700 900000"
                 />
-              </FormGroup>
-              <FormGroup label="Email">
+              </Field>
+              <Field label="Email">
                 <Input
                   type="email"
                   id="contact_email"
                   name="contact_email"
                   placeholder="mike@djmike.com"
                 />
-              </FormGroup>
-              <FormGroup label="Website">
+              </Field>
+              <Field label="Website">
                 <Input
                   type="url"
                   id="website"
                   name="website"
                   placeholder="https://www.djmike.com"
                 />
-              </FormGroup>
-              <FormGroup label="Typical Rate (£)">
+              </Field>
+              <Field label="Typical Rate (£)">
                 <Input
                   type="number"
                   id="typical_rate"
@@ -263,34 +257,34 @@ export default async function VendorsPage({
                   step="0.01"
                   placeholder="250.00"
                 />
-              </FormGroup>
+              </Field>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormGroup label="Preferred Status">
+              <Field label="Preferred Status">
                 <Select
                   id="preferred"
                   name="preferred"
                   options={preferredOptions}
                 />
-              </FormGroup>
-              <FormGroup label="Status">
+              </Field>
+              <Field label="Status">
                 <Select
                   id="active"
                   name="active"
                   options={statusOptions}
                 />
-              </FormGroup>
+              </Field>
             </div>
             
-            <FormGroup label="Notes">
+            <Field label="Notes">
               <Textarea
                 id="notes"
                 name="notes"
                 rows={3}
                 placeholder="Additional notes about this vendor..."
               />
-            </FormGroup>
+            </Field>
             
             <Button type="submit">
               Add Vendor
@@ -302,7 +296,7 @@ export default async function VendorsPage({
       {/* Existing Vendors */}
       {Object.keys(vendorsByType || {}).length === 0 ? (
         <Card>
-          <EmptyState icon={<UserGroupIcon className="h-12 w-12" />}
+          <Empty icon={<Icon name="users" size={48} />}
             title="No vendors configured yet"
             description="Add your first vendor using the form above."
           />
@@ -327,43 +321,43 @@ export default async function VendorsPage({
                         <div className="flex flex-wrap items-center gap-2 mb-4">
                           <h4 className="text-lg font-medium text-text">{vendor.name}</h4>
                           {vendor.preferred && (
-                            <Badge variant="warning" icon={<StarIcon className="h-3 w-3" />}>
+                            <Badge tone="warning" icon={<Icon name="star" size={12} />}>
                               Preferred
                             </Badge>
                           )}
-                          <Badge variant={vendor.active ? 'success' : 'secondary'}>
+                          <Badge tone={vendor.active ? 'success' : 'neutral'}>
                             {vendor.active ? 'Active' : 'Inactive'}
                           </Badge>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          <FormGroup label="Vendor Name">
+                          <Field label="Vendor Name">
                             <Input
                               type="text"
                               name="name"
                               defaultValue={vendor.name}
                               required
                             />
-                          </FormGroup>
-                          <FormGroup label="Type">
+                          </Field>
+                          <Field label="Type">
                             <Select
                               name="service_type"
                               defaultValue={vendor.service_type}
                               required
                               options={vendorTypeOptions.filter(opt => opt.value !== '')}
                             />
-                          </FormGroup>
-                          <FormGroup label="Contact Name">
+                          </Field>
+                          <Field label="Contact Name">
                             <Input
                               type="text"
                               name="contact_name"
                               defaultValue={vendor.contact_name || ''}
                             />
-                          </FormGroup>
+                          </Field>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                          <FormGroup 
+                          <Field 
                             label="Phone"
                           >
                             <Input
@@ -371,8 +365,8 @@ export default async function VendorsPage({
                               name="contact_phone"
                               defaultValue={vendor.contact_phone || ''}
                             />
-                          </FormGroup>
-                          <FormGroup 
+                          </Field>
+                          <Field 
                             label="Email"
                           >
                             <Input
@@ -380,8 +374,8 @@ export default async function VendorsPage({
                               name="contact_email"
                               defaultValue={vendor.contact_email || ''}
                             />
-                          </FormGroup>
-                          <FormGroup 
+                          </Field>
+                          <Field 
                             label="Website"
                           >
                             <Input
@@ -389,8 +383,8 @@ export default async function VendorsPage({
                               name="website"
                               defaultValue={vendor.website || ''}
                             />
-                          </FormGroup>
-                          <FormGroup label="Typical Rate (£)">
+                          </Field>
+                          <Field label="Typical Rate (£)">
                             <Input
                               type="number"
                               name="typical_rate"
@@ -398,38 +392,38 @@ export default async function VendorsPage({
                               min="0"
                               step="0.01"
                             />
-                          </FormGroup>
+                          </Field>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <FormGroup label="Preferred Status">
+                          <Field label="Preferred Status">
                             <Select
                               name="preferred"
                               defaultValue={vendor.preferred ? 'true' : 'false'}
                               options={preferredOptions}
                             />
-                          </FormGroup>
-                          <FormGroup label="Status">
+                          </Field>
+                          <Field label="Status">
                             <Select
                               name="active"
                               defaultValue={vendor.active ? 'true' : 'false'}
                               options={statusOptions}
                             />
-                          </FormGroup>
+                          </Field>
                         </div>
                         
-                        <FormGroup label="Notes">
+                        <Field label="Notes">
                           <Textarea
                             name="notes"
                             defaultValue={vendor.notes || ''}
                             rows={2}
                           />
-                        </FormGroup>
+                        </Field>
                         
                         <Button type="submit"
                           variant="primary"
                           size="sm"
-                          leftIcon={<CheckIcon className="h-4 w-4" />}
+                          leftIcon={<Icon name="check" size={16} />}
                         >
                           Update Vendor
                         </Button>

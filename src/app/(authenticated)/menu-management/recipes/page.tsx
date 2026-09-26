@@ -10,7 +10,7 @@ import { DataTable, type Column } from '@/ds';
 import { Badge } from '@/ds';
 import { FilterPanel, type FilterDefinition } from '@/ds';
 import { Pagination } from '@/ds';
-import { EmptyState } from '@/ds';
+import { Empty } from '@/ds';
 import { ConfirmDialog } from '@/ds';
 import { toast } from '@/ds';
 import { LinkButton } from '@/ds';
@@ -278,7 +278,7 @@ export default function MenuRecipesPage(): React.ReactElement {
         },
         cell: (row) => {
           const recipe = row as unknown as RecipeListItem;
-          return <Badge variant="secondary">{recipe.ingredients.length}</Badge>;
+          return <Badge tone="neutral">{recipe.ingredients.length}</Badge>;
         },
       },
       {
@@ -293,7 +293,7 @@ export default function MenuRecipesPage(): React.ReactElement {
         },
         cell: (row) => {
           const recipe = row as unknown as RecipeListItem;
-          return <Badge variant="secondary">{recipe.usage.length}</Badge>;
+          return <Badge tone="neutral">{recipe.usage.length}</Badge>;
         },
       },
       {
@@ -406,7 +406,7 @@ export default function MenuRecipesPage(): React.ReactElement {
         {/* Data table */}
         <Card className="mt-4">
           {!loading && recipes.length === 0 ? (
-            <EmptyState
+            <Empty
               title="No recipes yet"
               description="Create a recipe to combine ingredients into reusable prep items."
               icon="inbox"

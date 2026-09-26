@@ -16,16 +16,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  ShieldCheckIcon,
-  TruckIcon,
-  BanknotesIcon,
-  ChatBubbleBottomCenterTextIcon,
-  LockClosedIcon,
-  LockOpenIcon,
-  PlusIcon,
-  PencilIcon,
-} from '@heroicons/react/24/outline'
-import {
   Section,
   Card,
   Button,
@@ -35,10 +25,11 @@ import {
   Textarea,
   Badge,
   Modal,
-  FormGroup,
+  Field,
   Form,
-  EmptyState,
+  Empty,
   toast,
+  Icon,
 } from '@/ds'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
@@ -77,7 +68,7 @@ import {
 // Shared badge helpers
 // ---------------------------------------------------------------------------
 
-type BadgeVariant = 'default' | 'success' | 'warning' | 'error' | 'info'
+type BadgeTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 
 const humanise = (value: string): string =>
   value
@@ -86,57 +77,57 @@ const humanise = (value: string): string =>
     .join(' ')
 
 function StatusBadge({
-  variant,
+  tone,
   children,
 }: {
-  variant: BadgeVariant
+  tone: BadgeTone
   children: React.ReactNode
 }) {
-  return <Badge variant={variant}>{children}</Badge>
+  return <Badge tone={tone}>{children}</Badge>
 }
 
-const WAIVER_VARIANT: Record<WaiverStatus, BadgeVariant> = {
-  not_required: 'default',
-  required: 'error',
+const WAIVER_TONE: Record<WaiverStatus, BadgeTone> = {
+  not_required: 'neutral',
+  required: 'danger',
   sent: 'warning',
   signed: 'success',
-  overdue: 'error',
+  overdue: 'danger',
 }
 
-const RISK_VARIANT: Record<RiskStatus, BadgeVariant> = {
+const RISK_TONE: Record<RiskStatus, BadgeTone> = {
   low: 'success',
-  normal: 'default',
-  high: 'error',
+  normal: 'neutral',
+  high: 'danger',
   gm_approval_required: 'warning',
   approved: 'success',
-  rejected: 'error',
+  rejected: 'danger',
 }
 
-const SUPPLIER_BOOKING_VARIANT: Record<string, BadgeVariant> = {
-  not_applicable: 'default',
+const SUPPLIER_BOOKING_TONE: Record<string, BadgeTone> = {
+  not_applicable: 'neutral',
   requested: 'warning',
   incomplete: 'warning',
   approved: 'success',
-  rejected: 'error',
+  rejected: 'danger',
 }
 
-const SUPPLIER_ROW_VARIANT: Record<WorkflowSupplierStatus, BadgeVariant> = {
+const SUPPLIER_ROW_TONE: Record<WorkflowSupplierStatus, BadgeTone> = {
   requested: 'warning',
   incomplete: 'warning',
   approved: 'success',
-  rejected: 'error',
+  rejected: 'danger',
 }
 
-const FINAL_DETAILS_VARIANT: Record<string, BadgeVariant> = {
-  not_requested: 'default',
+const FINAL_DETAILS_TONE: Record<string, BadgeTone> = {
+  not_requested: 'neutral',
   requested: 'warning',
   complete: 'success',
   incomplete: 'warning',
-  overdue: 'error',
+  overdue: 'danger',
   manager_reviewed: 'success',
 }
 
-const POST_EVENT_VARIANT: Record<string, BadgeVariant> = {
+const POST_EVENT_TONE: Record<string, BadgeTone> = {
   awaiting_inspection: 'warning',
   inspection_complete: 'info',
   deduction_discussion: 'warning',
@@ -144,20 +135,20 @@ const POST_EVENT_VARIANT: Record<string, BadgeVariant> = {
   complete: 'success',
 }
 
-const DEDUCTION_VARIANT: Record<DeductionStatus, BadgeVariant> = {
+const DEDUCTION_TONE: Record<DeductionStatus, BadgeTone> = {
   proposed: 'warning',
   discussed: 'info',
   approved: 'success',
-  rejected: 'error',
+  rejected: 'danger',
   applied: 'info',
 }
 
-const COMPLAINT_VARIANT: Record<ComplaintStatus, BadgeVariant> = {
-  open: 'error',
+const COMPLAINT_TONE: Record<ComplaintStatus, BadgeTone> = {
+  open: 'danger',
   acknowledged: 'warning',
   responded: 'info',
   resolved: 'success',
-  closed: 'default',
+  closed: 'neutral',
 }
 
 // ---------------------------------------------------------------------------
@@ -176,21 +167,21 @@ export function WorkflowStatusPanel({
   const postEvent = booking.post_event_status
   const isLocked = !!booking.locked_at
 
-  const rows: { label: string; variant: BadgeVariant; text: string }[] = []
+  const rows: { label: string; tone: BadgeTone; text: string }[] = []
   if (waiver && waiver !== 'not_required') {
-    rows.push({ label: 'Self-catering waiver', variant: WAIVER_VARIANT[waiver], text: humanise(waiver) })
+    rows.push({ label: 'Self-catering waiver', tone: WAIVER_TONE[waiver], text: humanise(waiver) })
   }
   if (supplier && supplier !== 'not_applicable') {
-    rows.push({ label: 'Suppliers', variant: SUPPLIER_BOOKING_VARIANT[supplier] ?? 'default', text: humanise(supplier) })
+    rows.push({ label: 'Suppliers', tone: SUPPLIER_BOOKING_TONE[supplier] ?? 'neutral', text: humanise(supplier) })
   }
   if (risk && risk !== 'normal') {
-    rows.push({ label: 'Risk review', variant: RISK_VARIANT[risk] ?? 'default', text: humanise(risk) })
+    rows.push({ label: 'Risk review', tone: RISK_TONE[risk] ?? 'neutral', text: humanise(risk) })
   }
   if (finalDetails) {
-    rows.push({ label: 'Final details', variant: FINAL_DETAILS_VARIANT[finalDetails] ?? 'default', text: humanise(finalDetails) })
+    rows.push({ label: 'Final details', tone: FINAL_DETAILS_TONE[finalDetails] ?? 'neutral', text: humanise(finalDetails) })
   }
   if (postEvent) {
-    rows.push({ label: 'Post-event', variant: POST_EVENT_VARIANT[postEvent] ?? 'default', text: humanise(postEvent) })
+    rows.push({ label: 'Post-event', tone: POST_EVENT_TONE[postEvent] ?? 'neutral', text: humanise(postEvent) })
   }
 
   if (rows.length === 0 && !isLocked) {
@@ -202,8 +193,8 @@ export function WorkflowStatusPanel({
       <Card>
         {isLocked && (
           <div className="mb-3 flex items-center gap-2">
-            <LockClosedIcon className="h-4 w-4 text-danger" aria-hidden="true" />
-            <StatusBadge variant="error">Record locked</StatusBadge>
+            <Icon name="lock" size={16} className="text-danger" />
+            <StatusBadge tone="danger">Record locked</StatusBadge>
           </div>
         )}
         {rows.length === 0 ? (
@@ -214,7 +205,7 @@ export function WorkflowStatusPanel({
               <div key={row.label} className="flex items-center justify-between gap-3">
                 <dt className="text-sm text-text-muted">{row.label}</dt>
                 <dd>
-                  <StatusBadge variant={row.variant}>{row.text}</StatusBadge>
+                  <StatusBadge tone={row.tone}>{row.text}</StatusBadge>
                 </dd>
               </div>
             ))}
@@ -234,7 +225,7 @@ export function RecordLockBanner({ booking }: { booking: PrivateBookingWithDetai
   return (
     <div className="mb-6 rounded-lg border border-danger-soft bg-danger-soft p-4">
       <div className="flex items-start gap-2">
-        <LockClosedIcon className="mt-0.5 h-5 w-5 shrink-0 text-danger-fg" aria-hidden="true" />
+        <Icon name="lock" size={20} className="mt-0.5 shrink-0 text-danger-fg" />
         <div>
           <p className="text-sm font-medium text-danger-fg">Record locked</p>
           <p className="text-sm text-danger-fg">
@@ -300,22 +291,22 @@ export function RecordLockControl({
               This record is locked ({booking.locked_reason || 'no reason recorded'}).
             </p>
             <Button type="button" variant="secondary" onClick={handleUnlock} loading={busy} disabled={busy}>
-              <LockOpenIcon className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              <Icon name="lockOpen" size={16} className="mr-1.5" />
               Unlock record
             </Button>
           </div>
         ) : (
           <div className="space-y-3">
-            <FormGroup label="Reason for locking" help="Locking restricts deletion and edits (SOP §27).">
+            <Field label="Reason for locking" help="Locking restricts deletion and edits (SOP §27).">
               <Textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 rows={2}
                 placeholder="e.g. Dispute under investigation"
               />
-            </FormGroup>
+            </Field>
             <Button type="button" variant="secondary" onClick={handleLock} loading={busy} disabled={busy}>
-              <LockClosedIcon className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              <Icon name="lock" size={16} className="mr-1.5" />
               Lock record
             </Button>
           </div>
@@ -410,18 +401,18 @@ export function WaiverRiskPanel({
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-medium text-text">Self-catering waiver</h3>
-                <StatusBadge variant={WAIVER_VARIANT[waiver]}>{humanise(waiver)}</StatusBadge>
+                <StatusBadge tone={WAIVER_TONE[waiver]}>{humanise(waiver)}</StatusBadge>
               </div>
               {canManage && (
                 <>
-                  <FormGroup label="Upload signed waiver" help="PDF or image (JPEG, PNG, WebP, HEIC), max 10 MB.">
+                  <Field label="Upload signed waiver" help="PDF or image (JPEG, PNG, WebP, HEIC), max 10 MB.">
                     <input
                       type="file"
                       accept="application/pdf,image/jpeg,image/png,image/webp,image/heic"
                       onChange={(e) => setWaiverFile(e.target.files?.[0] ?? null)}
                       className="block w-full text-sm text-text file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-2 file:text-sm file:font-medium file:text-text hover:file:bg-surface-hover"
                     />
-                  </FormGroup>
+                  </Field>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
@@ -465,11 +456,11 @@ export function WaiverRiskPanel({
           <div className="space-y-3 border-t border-border pt-4">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-medium text-text">Risk review</h3>
-              <StatusBadge variant={RISK_VARIANT[risk]}>{humanise(risk)}</StatusBadge>
+              <StatusBadge tone={RISK_TONE[risk]}>{humanise(risk)}</StatusBadge>
             </div>
             {canManage && (
               <div className="space-y-3">
-                <FormGroup label="Risk decision">
+                <Field label="Risk decision">
                   <Select
                     value={riskDecision}
                     onChange={(e) => setRiskDecision(e.target.value as RiskStatus)}
@@ -480,15 +471,15 @@ export function WaiverRiskPanel({
                       { value: 'rejected', label: 'Reject (GM)' },
                     ]}
                   />
-                </FormGroup>
-                <FormGroup label="Reason" help="Recorded against the booking. Approving or rejecting is a GM decision.">
+                </Field>
+                <Field label="Reason" help="Recorded against the booking. Approving or rejecting is a GM decision.">
                   <Textarea
                     value={riskReason}
                     onChange={(e) => setRiskReason(e.target.value)}
                     rows={2}
                     placeholder="e.g. High-power equipment approved by GM"
                   />
-                </FormGroup>
+                </Field>
                 <Button
                   type="button"
                   size="sm"
@@ -496,7 +487,7 @@ export function WaiverRiskPanel({
                   loading={settingRisk}
                   disabled={settingRisk}
                 >
-                  <ShieldCheckIcon className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                  <Icon name="shieldCheck" size={16} className="mr-1.5" />
                   Update risk status
                 </Button>
               </div>
@@ -612,33 +603,33 @@ function SupplierModal({
   return (
     <Modal open={open} onClose={onClose} title={supplier ? 'Edit Supplier' : 'Add Supplier'} size="lg">
       <Form onSubmit={handleSubmit} className="space-y-4">
-        <FormGroup label="Name" required>
+        <Field label="Name" required>
           <Input value={form.name} onChange={(e) => update('name', e.target.value)} required placeholder="e.g. Sound & Light Co." />
-        </FormGroup>
+        </Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormGroup label="Type">
+          <Field label="Type">
             <Input value={form.supplierType} onChange={(e) => update('supplierType', e.target.value)} placeholder="DJ, caterer, florist..." />
-          </FormGroup>
-          <FormGroup label="Contact details">
+          </Field>
+          <Field label="Contact details">
             <Input value={form.contactDetails} onChange={(e) => update('contactDetails', e.target.value)} placeholder="Name / phone / email" />
-          </FormGroup>
-          <FormGroup label="Arrival time">
+          </Field>
+          <Field label="Arrival time">
             <Input type="time" value={form.arrivalTime} onChange={(e) => update('arrivalTime', e.target.value)} />
-          </FormGroup>
-          <FormGroup label="Departure time">
+          </Field>
+          <Field label="Departure time">
             <Input type="time" value={form.departureTime} onChange={(e) => update('departureTime', e.target.value)} />
-          </FormGroup>
+          </Field>
         </div>
-        <FormGroup label="Power requirements">
+        <Field label="Power requirements">
           <Input value={form.powerRequirements} onChange={(e) => update('powerRequirements', e.target.value)} placeholder="e.g. 2x 13A sockets" />
-        </FormGroup>
+        </Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormGroup label="Documents required" help="Comma-separated (e.g. PLI, PAT).">
+          <Field label="Documents required" help="Comma-separated (e.g. PLI, PAT).">
             <Input value={form.documentsRequired} onChange={(e) => update('documentsRequired', e.target.value)} placeholder="PLI, PAT certificate" />
-          </FormGroup>
-          <FormGroup label="Documents received" help="Comma-separated.">
+          </Field>
+          <Field label="Documents received" help="Comma-separated.">
             <Input value={form.documentsReceived} onChange={(e) => update('documentsReceived', e.target.value)} placeholder="PLI" />
-          </FormGroup>
+          </Field>
         </div>
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>
@@ -714,7 +705,7 @@ export function SuppliersPanel({
               setModalOpen(true)
             }}
           >
-            <PlusIcon className="mr-1 h-4 w-4" aria-hidden="true" />
+            <Icon name="plus" size={16} className="mr-1" />
             Add supplier
           </Button>
         ) : null
@@ -724,8 +715,8 @@ export function SuppliersPanel({
         {loading ? (
           <p className="text-sm text-text-muted">Loading suppliers…</p>
         ) : suppliers.length === 0 ? (
-          <EmptyState
-            icon={<TruckIcon className="h-12 w-12 text-text-subtle" />}
+          <Empty
+            icon={<Icon name="truck" size={48} className="text-text-subtle" />}
             title="No suppliers yet"
             description={canEdit ? 'Add each supplier attending the event (SOP §20).' : 'Suppliers will appear here once added.'}
           />
@@ -737,7 +728,7 @@ export function SuppliersPanel({
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-medium text-text">{supplier.name}</p>
-                      <StatusBadge variant={SUPPLIER_ROW_VARIANT[supplier.status]}>{humanise(supplier.status)}</StatusBadge>
+                      <StatusBadge tone={SUPPLIER_ROW_TONE[supplier.status]}>{humanise(supplier.status)}</StatusBadge>
                     </div>
                     <div className="mt-1 space-y-0.5 text-xs text-text-muted">
                       {supplier.supplier_type && <p>Type: {supplier.supplier_type}</p>}
@@ -768,7 +759,7 @@ export function SuppliersPanel({
                       }}
                       className="shrink-0 text-text-muted"
                       label={`Edit supplier ${supplier.name}`}
-                      icon={<PencilIcon className="h-4 w-4" />}
+                      icon={<Icon name="edit" size={16} />}
                     />
                   )}
                 </div>
@@ -937,8 +928,8 @@ export function DeductionsPanel({
         {loading ? (
           <p className="text-sm text-text-muted">Loading deductions…</p>
         ) : deductions.length === 0 ? (
-          <EmptyState
-            icon={<BanknotesIcon className="h-12 w-12 text-text-subtle" />}
+          <Empty
+            icon={<Icon name="cash" size={48} className="text-text-subtle" />}
             title="No deductions proposed"
             description="Damage or extra-cost deductions from the deposit will appear here."
           />
@@ -961,12 +952,12 @@ export function DeductionsPanel({
                         </p>
                       )}
                     </div>
-                    <StatusBadge variant={DEDUCTION_VARIANT[deduction.status]}>{humanise(deduction.status)}</StatusBadge>
+                    <StatusBadge tone={DEDUCTION_TONE[deduction.status]}>{humanise(deduction.status)}</StatusBadge>
                   </div>
 
                   {!decided && canManage && (
                     <div className="mt-3 space-y-3 border-t border-border pt-3">
-                      <FormGroup label="Record customer discussion">
+                      <Field label="Record customer discussion">
                         <Textarea
                           value={noteDrafts[deduction.id] ?? ''}
                           onChange={(e) =>
@@ -975,7 +966,7 @@ export function DeductionsPanel({
                           rows={2}
                           placeholder="What was agreed with the customer"
                         />
-                      </FormGroup>
+                      </Field>
                       <div className="flex flex-wrap gap-2">
                         <Button
                           type="button"
@@ -1019,7 +1010,7 @@ export function DeductionsPanel({
           <div className="mt-4 space-y-3 border-t border-border pt-4">
             <h3 className="text-sm font-medium text-text">Propose a deduction</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <FormGroup label="Amount (£)">
+              <Field label="Amount (£)">
                 <Input
                   type="number"
                   min="0"
@@ -1028,15 +1019,15 @@ export function DeductionsPanel({
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
                 />
-              </FormGroup>
+              </Field>
               <div className="sm:col-span-2">
-                <FormGroup label="Reason">
+                <Field label="Reason">
                   <Input
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                     placeholder="e.g. Damage to furniture"
                   />
-                </FormGroup>
+                </Field>
               </div>
             </div>
             <Button type="button" size="sm" onClick={handlePropose} loading={proposing} disabled={proposing}>
@@ -1106,21 +1097,21 @@ function ComplaintRow({
             Received {formatDateTime12Hour(complaint.received_at)}
           </p>
         </div>
-        <StatusBadge variant={COMPLAINT_VARIANT[complaint.status]}>{humanise(complaint.status)}</StatusBadge>
+        <StatusBadge tone={COMPLAINT_TONE[complaint.status]}>{humanise(complaint.status)}</StatusBadge>
       </div>
 
       <div className="mt-3 space-y-3 border-t border-border pt-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <FormGroup label="Status">
+          <Field label="Status">
             <Select
               value={status}
               onChange={(e) => setStatus(e.target.value as ComplaintStatus)}
               options={COMPLAINT_STATUS_OPTIONS}
             />
-          </FormGroup>
-          <FormGroup label="Resolution">
+          </Field>
+          <Field label="Resolution">
             <Input value={resolution} onChange={(e) => setResolution(e.target.value)} placeholder="How it was resolved" />
-          </FormGroup>
+          </Field>
         </div>
         <Button type="button" size="sm" variant="secondary" onClick={handleSave} loading={saving} disabled={saving}>
           Save complaint
@@ -1191,8 +1182,8 @@ export function ComplaintsPanel({
         {loading ? (
           <p className="text-sm text-text-muted">Loading complaints…</p>
         ) : complaints.length === 0 ? (
-          <EmptyState
-            icon={<ChatBubbleBottomCenterTextIcon className="h-12 w-12 text-text-subtle" />}
+          <Empty
+            icon={<Icon name="message" size={48} className="text-text-subtle" />}
             title="No complaints logged"
             description="Any complaint about this booking will appear here."
           />
@@ -1212,13 +1203,13 @@ export function ComplaintsPanel({
         <div className="mt-4 space-y-3 border-t border-border pt-4">
           <h3 className="text-sm font-medium text-text">Log a complaint</h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <FormGroup label="Channel">
+            <Field label="Channel">
               <Select value={channel} onChange={(e) => setChannel(e.target.value)} options={COMPLAINT_CHANNEL_OPTIONS} />
-            </FormGroup>
+            </Field>
             <div className="sm:col-span-2">
-              <FormGroup label="Summary">
+              <Field label="Summary">
                 <Input value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="What the customer complained about" />
-              </FormGroup>
+              </Field>
             </div>
           </div>
           <Button type="button" size="sm" onClick={handleLog} loading={logging} disabled={logging}>

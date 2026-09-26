@@ -3,14 +3,13 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { getRecurringInvoice, deleteRecurringInvoice, toggleRecurringInvoiceStatus, generateInvoiceFromRecurring } from '@/app/actions/recurring-invoices'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Button } from '@/ds'
 import { Alert } from '@/ds'
 import { Badge } from '@/ds'
 import { toast } from '@/ds'
 import { ConfirmDialog } from '@/ds'
-import { Edit2, Trash2, Play, Pause, FileText, Calendar, Clock } from 'lucide-react'
 import { DataTable } from '@/ds'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -247,7 +246,7 @@ export default function RecurringInvoiceDetailPage() {
           variant="secondary"
           size="sm"
           onClick={() => router.push(`/invoices/recurring/${recurringInvoice.id}/edit`)}
-          leftIcon={<Edit2 className="h-4 w-4" />}
+          leftIcon={<Icon name="edit" size={16} />}
         >
           Edit
         </Button>
@@ -258,7 +257,7 @@ export default function RecurringInvoiceDetailPage() {
           size="sm"
           onClick={handleToggleStatus}
           disabled={actionLoading}
-          leftIcon={recurringInvoice.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          leftIcon={recurringInvoice.is_active ? <Icon name="pause" size={16} /> : <Icon name="play" size={16} />}
         >
           {recurringInvoice.is_active ? 'Deactivate' : 'Activate'}
         </Button>
@@ -270,7 +269,7 @@ export default function RecurringInvoiceDetailPage() {
           onClick={handleGenerateNow}
           disabled={!recurringInvoice.is_active || actionLoading}
           loading={actionLoading}
-          leftIcon={<FileText className="h-4 w-4" />}
+          leftIcon={<Icon name="fileText" size={16} />}
           title={
             !recurringInvoice.is_active
               ? 'Activate this template before generating.'
@@ -297,10 +296,11 @@ export default function RecurringInvoiceDetailPage() {
     >
       {isReadOnly && (
         <Alert
-          variant="info"
-          description="You have read-only access to this recurring invoice. Management actions are disabled."
+          tone="info"
           className="mb-6"
-        />
+        >
+          You have read-only access to this recurring invoice. Management actions are disabled.
+        </Alert>
       )}
 
       <div className="space-y-6">
@@ -323,7 +323,7 @@ export default function RecurringInvoiceDetailPage() {
             <div>
               <div className="text-sm text-text-muted">Frequency</div>
               <div className="mt-1 flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-text-subtle" />
+                <Icon name="calendar" size={16} className="text-text-subtle" />
                 <span className="capitalize">{recurringInvoice.frequency}</span>
               </div>
             </div>
@@ -331,7 +331,7 @@ export default function RecurringInvoiceDetailPage() {
             <div>
               <div className="text-sm text-text-muted">Payment Terms</div>
               <div className="mt-1 flex items-center gap-2">
-                <Clock className="h-4 w-4 text-text-subtle" />
+                <Icon name="clock" size={16} className="text-text-subtle" />
                 <span>{recurringInvoice.days_before_due} days</span>
               </div>
             </div>
@@ -494,7 +494,7 @@ export default function RecurringInvoiceDetailPage() {
             <Button
               variant="secondary"
               onClick={() => router.push(`/invoices/recurring/${recurringInvoice.id}/edit`)}
-              leftIcon={<Edit2 className="h-4 w-4" />}
+              leftIcon={<Icon name="edit" size={16} />}
               disabled={!canEdit}
             >
               Edit schedule
@@ -526,7 +526,7 @@ export default function RecurringInvoiceDetailPage() {
             <Button
               variant="danger"
               onClick={() => setShowDeleteDialog(true)}
-              leftIcon={<Trash2 className="h-4 w-4" />}
+              leftIcon={<Icon name="trash" size={16} />}
               disabled={!canDelete}
               title={!canDelete ? 'You need invoice delete permission to remove recurring invoices.' : undefined}
             >

@@ -32,7 +32,7 @@ export default async function ApiKeysPage() {
       backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
       {errorMessage ? (
-        <Alert variant="error" title="Failed to load API keys" description={errorMessage} />
+        <Alert tone="danger" title="Failed to load API keys">{errorMessage}</Alert>
       ) : (
         <ApiKeysManager initialKeys={apiKeys} canManage={!!canManage} />
       )}

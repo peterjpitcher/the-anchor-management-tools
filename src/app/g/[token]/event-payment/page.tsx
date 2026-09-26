@@ -1,5 +1,4 @@
 import { headers } from 'next/headers'
-import { Check, Clock } from 'lucide-react'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getEventPaymentPreviewByRawToken } from '@/lib/events/event-payments'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
@@ -20,6 +19,7 @@ import {
 } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { EventPayPalPaymentClient } from './EventPayPalPaymentClient'
+import { Icon } from '@/ds'
 
 type EventPaymentPageProps = {
   params: Promise<{ token: string }>
@@ -145,7 +145,7 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
                   aria-hidden="true"
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-anchor-success/[0.12]"
                 >
-                  <Check className="h-4 w-4 text-anchor-success" />
+                  <Icon name="check" size={16} className="text-anchor-success" />
                 </span>
                 <GuestBadge tone="success">Paid</GuestBadge>
               </div>
@@ -207,7 +207,7 @@ export default async function EventPaymentPage({ params, searchParams }: EventPa
         </div>
 
         {state === 'cancelled' && (
-          <GuestAlert tone="notice" icon={Clock}>
+          <GuestAlert tone="notice" icon="clock">
             Payment was not completed. Your seats are still reserved if you pay before the hold expiry time below.
           </GuestAlert>
         )}

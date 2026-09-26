@@ -5,7 +5,7 @@ import { EventCategory } from '@/types/event-categories'
 import { KeywordStrategyCard } from './KeywordStrategyCard'
 import { FaqEditor } from './FaqEditor'
 import { parseKeywords, keywordsToDisplay } from '@/lib/keywords'
-import { Button } from '@/ds'
+import { Button, toast, Icon, type IconName } from '@/ds'
 import { Card } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
@@ -14,15 +14,6 @@ import { Checkbox } from '@/ds'
 import { cn } from '@/lib/utils'
 import { SquareImageUpload } from '@/components/features/shared/SquareImageUpload'
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '@/types/event-categories'
-import toast from 'react-hot-toast'
-import { 
-  ChevronDownIcon, 
-  ChevronUpIcon,
-  InformationCircleIcon,
-  CalendarIcon,
-  MegaphoneIcon,
-  CogIcon
-} from '@heroicons/react/24/outline'
 
 const MAX_NAME_LENGTH = 100
 const MAX_DESCRIPTION_LENGTH = 500
@@ -44,12 +35,12 @@ interface EventCategoryFormGroupedProps {
 interface SectionProps {
   title: string
   description?: string
-  icon?: React.ComponentType<{ className?: string }>
+  icon?: IconName
   children: React.ReactNode
   defaultOpen?: boolean
 }
 
-function CollapsibleSection({ title, description, icon: Icon, children, defaultOpen = true }: SectionProps) {
+function CollapsibleSection({ title, description, icon, children, defaultOpen = true }: SectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
   
   return (
@@ -60,16 +51,16 @@ function CollapsibleSection({ title, description, icon: Icon, children, defaultO
         className="w-full px-4 py-6 sm:p-8 flex items-center justify-between hover:bg-surface-hover transition-colors focus-visible:outline-hidden focus-visible:shadow-ring-inset"
       >
         <div className="flex items-center space-x-3">
-          {Icon && <Icon className="h-5 w-5 text-text-subtle" />}
+          {icon && <Icon name={icon} size={20} className="text-text-subtle" />}
           <div className="text-left">
             <h3 className="text-lg font-medium leading-6 text-text">{title}</h3>
             {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
           </div>
         </div>
         {isOpen ? (
-          <ChevronUpIcon className="h-5 w-5 text-text-subtle" />
+          <Icon name="chevronUp" size={20} className="text-text-subtle" />
         ) : (
-          <ChevronDownIcon className="h-5 w-5 text-text-subtle" />
+          <Icon name="chevronDown" size={20} className="text-text-subtle" />
         )}
       </button>
       {isOpen && (
@@ -205,7 +196,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
     }
   }
 
-  const IconComponent = CATEGORY_ICONS.find(i => i.value === icon)?.icon || CATEGORY_ICONS[0].icon
+  const previewIcon = CATEGORY_ICONS.find(i => i.value === icon)?.icon || CATEGORY_ICONS[0].icon
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -213,7 +204,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
       <CollapsibleSection 
         title="Basic Information" 
         description="Essential details about this event category"
-        icon={InformationCircleIcon}
+        icon="info"
         defaultOpen={true}
       >
         <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
@@ -314,7 +305,6 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
             </label>
             <div role="group" aria-labelledby={`${pickerId}-icon`} className="mt-2 flex flex-wrap gap-2">
               {CATEGORY_ICONS.map((iconOption) => {
-                const Icon = iconOption.icon
                 return (
                   <button
                     key={iconOption.value}
@@ -329,7 +319,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                     )}
                     title={iconOption.label}
                   >
-                    <Icon className="h-5 w-5" style={{ color }} />
+                    <Icon name={iconOption.icon} size={20} style={{ color }} className="block" />
                   </button>
                 )
               })}
@@ -362,7 +352,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 className="p-2 rounded-lg"
                 style={{ backgroundColor: `${color}20` }}
               >
-                <IconComponent className="h-6 w-6" style={{ color }} />
+                <Icon name={previewIcon} size={24} style={{ color }} className="block" />
               </div>
               <div>
                 <p className="font-medium text-text">{name || 'Category Name'}</p>
@@ -377,7 +367,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
       <CollapsibleSection 
         title="Event Defaults" 
         description="Default settings for events in this category"
-        icon={CalendarIcon}
+        icon="calendar"
         defaultOpen={false}
       >
         <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
@@ -674,7 +664,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
       <CollapsibleSection 
         title="SEO & Content" 
         description="Search engine optimization and content details"
-        icon={MegaphoneIcon}
+        icon="megaphone"
         defaultOpen={false}
       >
         <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">

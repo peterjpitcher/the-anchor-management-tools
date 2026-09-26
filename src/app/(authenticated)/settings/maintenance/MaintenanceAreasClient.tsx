@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Alert, Badge, Button, Card, EmptyState, Form, Input, PageLayout, Section } from '@/ds'
+import { Alert, Badge, Button, Card, Empty, Form, Input, PageLayout, Section } from '@/ds'
 import {
   createMaintenanceArea,
   listMaintenanceAreasForAdmin,
@@ -195,7 +195,7 @@ export default function MaintenanceAreasClient({
         <Section title="Areas" description="Shown to staff in this order.">
           <Card>
             {areas.length === 0 ? (
-              <EmptyState
+              <Empty
                 title="No areas yet"
                 description="Add the first area above before logging any maintenance."
               />

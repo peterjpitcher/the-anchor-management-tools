@@ -1,5 +1,5 @@
-import { TagIcon } from '@heroicons/react/24/outline'
 import { CustomerLabel, CustomerLabelAssignment } from '@/app/actions/customer-labels'
+import { Icon } from '@/ds'
 
 interface CustomerLabelDisplayProps {
   assignments: CustomerLabelAssignment[]
@@ -25,7 +25,7 @@ export function CustomerLabelDisplay({ assignments }: CustomerLabelDisplayProps)
               color: label.color
             }}
           >
-            <TagIcon className="h-3 w-3 mr-0.5" />
+            <Icon name="tag" size={12} className="mr-0.5" />
             {label.name}
             {assignment.auto_assigned && (
               <span className="ml-0.5 opacity-70">(auto)</span>

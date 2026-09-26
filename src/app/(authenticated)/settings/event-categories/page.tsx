@@ -10,16 +10,15 @@ import {
   rebuildCustomerCategoryStats 
 } from '@/app/actions/event-categories'
 import { EventCategory } from '@/types/event-categories'
-import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { EventCategoryFormGrouped } from '@/components/features/events/EventCategoryFormGrouped'
 // New UI components
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 // import { Section } from '@/ds'
 import { Button, IconButton } from '@/ds'
 import { Badge } from '@/ds'
 import { toast } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { Alert } from '@/ds'
 import { ConfirmDialog } from '@/ds'
 import { DataTable } from '@/ds'
@@ -283,7 +282,7 @@ const [categories, setCategories] = useState<EventCategory[]>([])
       key: 'is_active',
       header: 'Status',
       cell: (category: EventCategory) => (
-        <Badge variant={category.is_active ? 'success' : 'default'}>
+        <Badge tone={category.is_active ? 'success' : 'neutral'}>
           {category.is_active ? 'Active' : 'Inactive'}
         </Badge>
       ),
@@ -297,14 +296,14 @@ const [categories, setCategories] = useState<EventCategory[]>([])
             type="button"
             label="Edit"
             onClick={() => handleOpenForm(category)}
-            icon={<PencilIcon className="h-5 w-5" />}
+            icon={<Icon name="edit" size={20} />}
             className="text-primary hover:text-primary-hover"
           />
           <IconButton
             type="button"
             label="Delete"
             onClick={() => setDeleteConfirm(category)}
-            icon={<TrashIcon className="h-5 w-5" />}
+            icon={<Icon name="trash" size={20} />}
             className="text-danger hover:text-danger-fg"
           />
         </div>
@@ -327,7 +326,7 @@ const [categories, setCategories] = useState<EventCategory[]>([])
         variant="primary"
         size="sm"
         onClick={() => handleOpenForm()}
-        leftIcon={<PlusIcon className="h-4 w-4" />}
+        leftIcon={<Icon name="plus" size={16} />}
       >
         Add Category
       </Button>
@@ -362,12 +361,12 @@ const [categories, setCategories] = useState<EventCategory[]>([])
 
         <Card>
           {categories.length === 0 ? (
-            <EmptyState
+            <Empty
               title="No categories found"
               description="Click 'Add Category' to create your first one."
               action={
                 <Button onClick={() => handleOpenForm()}>
-                  <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
+                  <Icon name="plus" size={20} className="-ml-1 mr-2" />
                   Add Category
                 </Button>
               }
@@ -382,10 +381,11 @@ const [categories, setCategories] = useState<EventCategory[]>([])
         </Card>
 
         <Alert
-          variant="info"
+          tone="info"
           title="About Historical Analysis"
-          description="The 'Analyze History' button will scan all your past events and automatically categorize them based on their names. It will also build customer preference profiles showing who regularly attends each type of event. This is a one-time process that helps populate your initial data."
-        />
+        >
+          {"The 'Analyze History' button will scan all your past events and automatically categorize them based on their names. It will also build customer preference profiles showing who regularly attends each type of event. This is a one-time process that helps populate your initial data."}
+        </Alert>
       </div>
     </PageLayout>
   )

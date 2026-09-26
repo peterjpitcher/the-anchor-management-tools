@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { Alert, Button, FormGroup, Input, Modal } from '@/ds';
+import { Alert, Button, Field, Input, Modal, toast } from '@/ds';
 import { bookApprovedHoliday } from '@/app/actions/leave';
 
 interface BookHolidayModalProps {
@@ -77,18 +76,18 @@ export default function BookHolidayModal({
     >
       <div className="space-y-3">
         <p className="text-sm text-text-muted">Book holiday</p>
-        {error && <Alert variant="error">{error}</Alert>}
+        {error && <Alert tone="danger">{error}</Alert>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FormGroup label="From" htmlFor="bh-start" required>
+          <Field label="From" htmlFor="bh-start" required>
             <Input id="bh-start" type="date" value={startDate} onChange={e => {
               setStartDate(e.target.value);
               if (e.target.value > endDate) setEndDate(e.target.value);
             }} />
-          </FormGroup>
-          <FormGroup label="To" htmlFor="bh-end" required>
+          </Field>
+          <Field label="To" htmlFor="bh-end" required>
             <Input id="bh-end" type="date" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} />
-          </FormGroup>
+          </Field>
         </div>
 
         {days > 0 && (
@@ -100,14 +99,14 @@ export default function BookHolidayModal({
           </p>
         )}
 
-        <FormGroup label="Note (optional)" htmlFor="bh-note">
+        <Field label="Note (optional)" htmlFor="bh-note">
           <Input
             id="bh-note"
             placeholder="Optional reason or note"
             value={note}
             onChange={e => setNote(e.target.value)}
           />
-        </FormGroup>
+        </Field>
       </div>
     </Modal>
   );

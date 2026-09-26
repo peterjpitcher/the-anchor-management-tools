@@ -2,8 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Save } from 'lucide-react'
-import { toast } from '@/ds'
+import { toast, Icon } from '@/ds'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Tabs } from '@/ds'
@@ -13,7 +12,7 @@ import { Select } from '@/ds'
 import { Textarea } from '@/ds'
 import { Checkbox } from '@/ds'
 import { RadioGroup } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Alert } from '@/ds'
 import {
   addEmployee,
@@ -514,13 +513,13 @@ export default function NewEmployeeOnboardingClient() {
       content: (
         <div className="space-y-6">
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <FormGroup label="First Name" required>
+            <Field label="First Name" required>
               <Input value={state.employee.first_name} onChange={(e) => updateEmployee('first_name', e.target.value)} />
-            </FormGroup>
-            <FormGroup label="Last Name" required>
+            </Field>
+            <Field label="Last Name" required>
               <Input value={state.employee.last_name} onChange={(e) => updateEmployee('last_name', e.target.value)} />
-            </FormGroup>
-            <FormGroup
+            </Field>
+            <Field
               label="Preferred Name"
               className="sm:col-span-2"
               help="Optional. What the team calls this person. Used everywhere in the app. Their legal name is still used for contracts and payroll."
@@ -530,26 +529,26 @@ export default function NewEmployeeOnboardingClient() {
                 onChange={(e) => updateEmployee('preferred_name', e.target.value)}
                 placeholder="e.g. Mandy"
               />
-            </FormGroup>
-            <FormGroup label="Email Address" required>
+            </Field>
+            <Field label="Email Address" required>
               <Input
                 type="email"
                 value={state.employee.email_address}
                 onChange={(e) => updateEmployee('email_address', e.target.value)}
               />
-            </FormGroup>
-            <FormGroup label="Job Title" required>
+            </Field>
+            <Field label="Job Title" required>
               <Input value={state.employee.job_title} onChange={(e) => updateEmployee('job_title', e.target.value)} />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Employment Start Date" required>
+            <Field label="Employment Start Date" required>
               <Input
                 type="date"
                 value={state.employee.employment_start_date}
                 onChange={(e) => updateEmployee('employment_start_date', e.target.value)}
               />
-            </FormGroup>
-            <FormGroup label="Status" required>
+            </Field>
+            <Field label="Status" required>
               <Select
                 value={state.employee.status}
                 onChange={(e) => updateEmployee('status', e.target.value as EmployeeStatus)}
@@ -559,49 +558,49 @@ export default function NewEmployeeOnboardingClient() {
                   { value: 'Former', label: 'Former' }
                 ]}
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Employment End Date">
+            <Field label="Employment End Date">
               <Input
                 type="date"
                 value={state.employee.employment_end_date}
                 onChange={(e) => updateEmployee('employment_end_date', e.target.value)}
               />
-            </FormGroup>
-            <FormGroup label="Date of Birth">
+            </Field>
+            <Field label="Date of Birth">
               <Input type="date" value={state.employee.date_of_birth} onChange={(e) => updateEmployee('date_of_birth', e.target.value)} />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Telephone">
+            <Field label="Telephone">
               <Input value={state.employee.phone_number} onChange={(e) => updateEmployee('phone_number', e.target.value)} placeholder="e.g. 01372..." />
-            </FormGroup>
-            <FormGroup label="Mobile">
+            </Field>
+            <Field label="Mobile">
               <Input value={state.employee.mobile_number} onChange={(e) => updateEmployee('mobile_number', e.target.value)} placeholder="e.g. 07..." />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Post Code">
+            <Field label="Post Code">
               <Input value={state.employee.post_code} onChange={(e) => updateEmployee('post_code', e.target.value)} placeholder="e.g. KT..." />
-            </FormGroup>
-            <FormGroup label="First Shift Date" help="For office use (can be set later).">
+            </Field>
+            <Field label="First Shift Date" help="For office use (can be set later).">
               <Input type="date" value={state.employee.first_shift_date} onChange={(e) => updateEmployee('first_shift_date', e.target.value)} />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Address" className="sm:col-span-2">
+            <Field label="Address" className="sm:col-span-2">
               <Textarea value={state.employee.address} onChange={(e) => updateEmployee('address', e.target.value)} rows={3} />
-            </FormGroup>
+            </Field>
           </div>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <FormGroup label="Uniform Preference" help="Optional (e.g. branded t-shirt, own clothes).">
+            <Field label="Uniform Preference" help="Optional (e.g. branded t-shirt, own clothes).">
               <Input value={state.employee.uniform_preference} onChange={(e) => updateEmployee('uniform_preference', e.target.value)} />
-            </FormGroup>
-            <FormGroup label="Keyholder Status" help="Mark if keys have been issued.">
+            </Field>
+            <Field label="Keyholder Status" help="Mark if keys have been issued.">
               <Checkbox
                 checked={state.employee.keyholder_status}
                 onChange={(checked) => updateEmployee('keyholder_status', checked)}
                 label="Employee is a keyholder"
               />
-            </FormGroup>
+            </Field>
           </div>
         </div>
       )
@@ -611,7 +610,7 @@ export default function NewEmployeeOnboardingClient() {
       label: 'Emergency Contacts',
       content: (
         <div className="space-y-8">
-          <Alert variant="info">
+          <Alert tone="info">
             Add at least one contact who can be reached quickly in an emergency.
           </Alert>
 
@@ -619,57 +618,57 @@ export default function NewEmployeeOnboardingClient() {
             <div className="space-y-4">
               <h3 className="text-base font-medium text-text">Primary Contact</h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormGroup label="Name">
+                <Field label="Name">
                   <Input value={state.emergency_contacts.primary.name} onChange={(e) => updateContact('primary', 'name', e.target.value)} />
-                </FormGroup>
-                <FormGroup label="Relationship">
+                </Field>
+                <Field label="Relationship">
                   <Input
                     value={state.emergency_contacts.primary.relationship}
                     onChange={(e) => updateContact('primary', 'relationship', e.target.value)}
                   />
-                </FormGroup>
-                <FormGroup label="Telephone">
+                </Field>
+                <Field label="Telephone">
                   <Input
                     value={state.emergency_contacts.primary.phone_number}
                     onChange={(e) => updateContact('primary', 'phone_number', e.target.value)}
                   />
-                </FormGroup>
-                <FormGroup label="Mobile">
+                </Field>
+                <Field label="Mobile">
                   <Input
                     value={state.emergency_contacts.primary.mobile_number}
                     onChange={(e) => updateContact('primary', 'mobile_number', e.target.value)}
                   />
-                </FormGroup>
+                </Field>
               </div>
             </div>
 
             <div className="space-y-4">
               <h3 className="text-base font-medium text-text">Secondary Contact</h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormGroup label="Name">
+                <Field label="Name">
                   <Input
                     value={state.emergency_contacts.secondary.name}
                     onChange={(e) => updateContact('secondary', 'name', e.target.value)}
                   />
-                </FormGroup>
-                <FormGroup label="Relationship">
+                </Field>
+                <Field label="Relationship">
                   <Input
                     value={state.emergency_contacts.secondary.relationship}
                     onChange={(e) => updateContact('secondary', 'relationship', e.target.value)}
                   />
-                </FormGroup>
-                <FormGroup label="Telephone">
+                </Field>
+                <Field label="Telephone">
                   <Input
                     value={state.emergency_contacts.secondary.phone_number}
                     onChange={(e) => updateContact('secondary', 'phone_number', e.target.value)}
                   />
-                </FormGroup>
-                <FormGroup label="Mobile">
+                </Field>
+                <Field label="Mobile">
                   <Input
                     value={state.emergency_contacts.secondary.mobile_number}
                     onChange={(e) => updateContact('secondary', 'mobile_number', e.target.value)}
                   />
-                </FormGroup>
+                </Field>
               </div>
             </div>
           </div>
@@ -681,19 +680,19 @@ export default function NewEmployeeOnboardingClient() {
       label: 'Bank Details',
       content: (
         <div className="space-y-6">
-          <Alert variant="info">
+          <Alert tone="info">
             We authorise salary to be paid by direct credit transfer to the account below.
           </Alert>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <FormGroup label="NI Number" help="Format: AA123456A">
+            <Field label="NI Number" help="Format: AA123456A">
               <Input value={state.financial.ni_number} onChange={(e) => updateFinancial('ni_number', e.target.value.toUpperCase())} />
-            </FormGroup>
-            <FormGroup label="Bank / Building Society">
+            </Field>
+            <Field label="Bank / Building Society">
               <Input value={state.financial.bank_name} onChange={(e) => updateFinancial('bank_name', e.target.value)} />
-            </FormGroup>
+            </Field>
 
-            <FormGroup
+            <Field
               label="Sort Code"
               help={sortCodeInWords ? `In words: ${sortCodeInWords}` : 'e.g. 00-00-00'}
             >
@@ -706,9 +705,9 @@ export default function NewEmployeeOnboardingClient() {
                 }}
                 placeholder="00-00-00"
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup
+            <Field
               label="Account Number"
               help={accountNumberInWords ? `In words: ${accountNumberInWords}` : '8 digits'}
             >
@@ -717,15 +716,15 @@ export default function NewEmployeeOnboardingClient() {
                 onChange={(e) => updateFinancial('bank_account_number', e.target.value.replace(/\D/g, '').slice(0, 8))}
                 placeholder="8 digits"
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Account Name(s)">
+            <Field label="Account Name(s)">
               <Input value={state.financial.payee_name} onChange={(e) => updateFinancial('payee_name', e.target.value)} />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Branch Address" className="sm:col-span-2">
+            <Field label="Branch Address" className="sm:col-span-2">
               <Textarea value={state.financial.branch_address} onChange={(e) => updateFinancial('branch_address', e.target.value)} rows={2} />
-            </FormGroup>
+            </Field>
           </div>
         </div>
       )
@@ -736,18 +735,18 @@ export default function NewEmployeeOnboardingClient() {
       content: (
         <div className="space-y-8">
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <FormGroup label="Doctor's Name">
+            <Field label="Doctor's Name">
               <Input value={state.health.doctor_name} onChange={(e) => updateHealth('doctor_name', e.target.value)} />
-            </FormGroup>
-            <FormGroup label="Doctor's Address" className="sm:col-span-2">
+            </Field>
+            <Field label="Doctor's Address" className="sm:col-span-2">
               <Textarea value={state.health.doctor_address} onChange={(e) => updateHealth('doctor_address', e.target.value)} rows={2} />
-            </FormGroup>
+            </Field>
           </div>
 
           <div className="space-y-4">
             <h3 className="text-base font-medium text-text">Health Questionnaire</h3>
 
-            <FormGroup label="Do you have any allergies?">
+            <Field label="Do you have any allergies?">
               <RadioGroup
                 name="has_allergies"
                 variant="card"
@@ -758,12 +757,12 @@ export default function NewEmployeeOnboardingClient() {
                   { value: 'no', label: 'No' }
                 ]}
               />
-            </FormGroup>
+            </Field>
 
             {state.health.has_allergies && (
-              <FormGroup label="If yes, please specify">
+              <Field label="If yes, please specify">
                 <Textarea value={state.health.allergies} onChange={(e) => updateHealth('allergies', e.target.value)} rows={2} />
-              </FormGroup>
+              </Field>
             )}
 
             <div className="space-y-3 pt-2">
@@ -780,13 +779,13 @@ export default function NewEmployeeOnboardingClient() {
             </div>
 
             {(state.health.had_absence_over_2_weeks_last_3_years || state.health.had_outpatient_treatment_over_3_months_last_3_years) && (
-              <FormGroup label="If yes to either, please provide details">
+              <Field label="If yes to either, please provide details">
                 <Textarea
                   value={state.health.absence_or_treatment_details}
                   onChange={(e) => updateHealth('absence_or_treatment_details', e.target.value)}
                   rows={3}
                 />
-              </FormGroup>
+              </Field>
             )}
           </div>
 
@@ -812,19 +811,19 @@ export default function NewEmployeeOnboardingClient() {
 
             {state.health.is_registered_disabled && (
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <FormGroup label="Registration number">
+                <Field label="Registration number">
                   <Input value={state.health.disability_reg_number} onChange={(e) => updateHealth('disability_reg_number', e.target.value)} />
-                </FormGroup>
-                <FormGroup label="Expiry">
+                </Field>
+                <Field label="Expiry">
                   <Input
                     type="date"
                     value={state.health.disability_reg_expiry_date}
                     onChange={(e) => updateHealth('disability_reg_expiry_date', e.target.value)}
                   />
-                </FormGroup>
-                <FormGroup label="Details" className="sm:col-span-2">
+                </Field>
+                <Field label="Details" className="sm:col-span-2">
                   <Textarea value={state.health.disability_details} onChange={(e) => updateHealth('disability_details', e.target.value)} rows={3} />
-                </FormGroup>
+                </Field>
               </div>
             )}
           </div>
@@ -836,7 +835,7 @@ export default function NewEmployeeOnboardingClient() {
       label: 'Right to Work',
       content: (
         <div className="space-y-6">
-          <Alert variant="info">
+          <Alert tone="info">
             To comply with UK law, employees must provide evidence of their legal right to work. You can add this now or later.
           </Alert>
 
@@ -848,7 +847,7 @@ export default function NewEmployeeOnboardingClient() {
 
           {state.right_to_work.enabled && (
             <div className="space-y-6">
-              <FormGroup label="Check method">
+              <Field label="Check method">
                 <Select
                   value={state.right_to_work.check_method}
                   onChange={(e) => updateRightToWork('check_method', e.target.value as RightToWorkCheckMethod)}
@@ -859,10 +858,10 @@ export default function NewEmployeeOnboardingClient() {
                     { value: 'digital', label: 'Digital check (IDSP)' }
                   ]}
                 />
-              </FormGroup>
+              </Field>
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <FormGroup label="Document type" required>
+                <Field label="Document type" required>
                   <Select
                     value={state.right_to_work.document_type}
                     onChange={(e) => updateRightToWork('document_type', e.target.value as RightToWorkDocumentType)}
@@ -876,33 +875,33 @@ export default function NewEmployeeOnboardingClient() {
                       { value: 'Other', label: 'Other' }
                     ]}
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Reference (passport no / share code)">
+                <Field label="Reference (passport no / share code)">
                   <Input value={state.right_to_work.document_reference} onChange={(e) => updateRightToWork('document_reference', e.target.value)} />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Verification date" required>
+                <Field label="Verification date" required>
                   <Input
                     type="date"
                     value={state.right_to_work.verification_date}
                     onChange={(e) => updateRightToWork('verification_date', e.target.value)}
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Document expiry date">
+                <Field label="Document expiry date">
                   <Input
                     type="date"
                     value={state.right_to_work.document_expiry_date}
                     onChange={(e) => updateRightToWork('document_expiry_date', e.target.value)}
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Follow-up date">
+                <Field label="Follow-up date">
                   <Input type="date" value={state.right_to_work.follow_up_date} onChange={(e) => updateRightToWork('follow_up_date', e.target.value)} />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Document photo / scan (PDF/JPG/PNG)" className="sm:col-span-2">
+                <Field label="Document photo / scan (PDF/JPG/PNG)" className="sm:col-span-2">
                   <Input
                     type="file"
                     onChange={(e) => {
@@ -930,11 +929,11 @@ export default function NewEmployeeOnboardingClient() {
                     }}
                     accept=".pdf,.jpg,.jpeg,.png"
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Additional details" className="sm:col-span-2">
+                <Field label="Additional details" className="sm:col-span-2">
                   <Textarea value={state.right_to_work.document_details} onChange={(e) => updateRightToWork('document_details', e.target.value)} rows={3} />
-                </FormGroup>
+                </Field>
               </div>
             </div>
           )}
@@ -946,7 +945,7 @@ export default function NewEmployeeOnboardingClient() {
       label: 'Agreement & Setup',
       content: (
         <div className="space-y-8">
-          <Alert variant="info">
+          <Alert tone="info">
             Use this section to confirm the employee has received the handbook and to record office setup tasks.
           </Alert>
 
@@ -1030,15 +1029,12 @@ export default function NewEmployeeOnboardingClient() {
       subtitle="Follow the onboarding document flow to capture all required details in one place."
       backButton={{ label: 'Back to Employees', href: '/employees' }}
       headerActions={
-        <Button onClick={handleCreateEmployee} disabled={isPending} variant="primary">
+        <Button onClick={handleCreateEmployee} disabled={isPending} loading={isPending} variant="primary">
           {isPending ? (
-            <>
-              <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
-              Saving…
-            </>
+            'Saving…'
           ) : (
             <>
-              <Save className="-ml-1 mr-2 h-4 w-4" />
+              <Icon name="save" size={16} className="-ml-1 mr-2" />
               Create Employee
             </>
           )}
@@ -1050,7 +1046,7 @@ export default function NewEmployeeOnboardingClient() {
       </Card>
 
       <div className="pt-4">
-        <Alert variant="info">
+        <Alert tone="info">
           You can move between tabs without losing your progress. Clicking “Create Employee” will create the employee and then save any
           contacts, right-to-work info, and checklist items provided.
         </Alert>

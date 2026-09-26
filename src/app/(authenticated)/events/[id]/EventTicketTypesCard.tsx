@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardHeader, CardBody, Badge, Button, Input, Checkbox, EmptyState, ConfirmDialog, toast } from '@/ds'
+import { Card, CardHeader, CardBody, Badge, Button, Input, Checkbox, Empty, ConfirmDialog, toast } from '@/ds'
 import { resolveTicketTypeSellPrice, type EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { createEventTicketType, updateEventTicketType, deleteEventTicketType } from '@/app/actions/eventTicketTypes'
 import type { TicketSettingsEvent } from './EventTicketSettings'
@@ -80,7 +80,7 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage, a
     <CardHeader title="Ticket prices" subtitle="Set the full price here. Online discounts are applied below. Existing bookings keep their agreed price." />
     <CardBody>
       <div className="space-y-3">
-        {!types.length && <EmptyState title="No ticket prices yet" description="Add your first ticket to set the entry price." />}
+        {!types.length && <Empty title="No ticket prices yet" description="Add your first ticket to set the entry price." />}
         {types.map(row => <div key={row.id} className="rounded-default border border-border p-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div><h3 className="font-semibold text-text-strong">{row.name}</h3><p className="mt-1 text-sm text-text-muted">{row.capacity == null ? 'Shares the event capacity' : `${row.capacity} tickets available in this type`}</p></div>

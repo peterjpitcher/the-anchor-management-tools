@@ -21,7 +21,7 @@ export default async function MileageInsightsPage(): Promise<React.JSX.Element> 
   if (!result.success || !result.data) {
     return (
       <PageLayout title="Mileage" subtitle="Insights" navItems={navItems}>
-        <Alert variant="error" title="Error loading insights" description={result.error ?? 'Unknown error'} />
+        <Alert tone="danger" title="Error loading insights">{result.error ?? 'Unknown error'}</Alert>
       </PageLayout>
     )
   }

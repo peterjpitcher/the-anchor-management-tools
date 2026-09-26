@@ -4,22 +4,20 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuote, updateQuote } from '@/app/actions/quotes'
 import { getVendors } from '@/app/actions/vendors'
-import { Plus, Trash2 } from 'lucide-react'
 import type { InvoiceVendor, InvoiceLineItemInput, QuoteWithDetails } from '@/types/invoices'
 // UI v2 components
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Alert } from '@/ds'
 import { Spinner } from '@/ds'
 import { toast } from '@/ds'
 
-import { BackButton } from '@/ds';
 import { usePermissions } from '@/contexts/PermissionContext'
 export default function EditQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -293,7 +291,7 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
     >
       <div className="space-y-6">
         {error && (
-          <Alert variant="error" title="Error" description={error} />
+          <Alert tone="danger" title="Error">{error}</Alert>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-8">
@@ -301,7 +299,7 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
         <Section title="Quote Details">
           <Card>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormGroup label="Vendor" required>
+              <Field label="Vendor" required>
                 <Select
                   value={selectedVendor}
                   onChange={(e) => setSelectedVendor(e.target.value)}
@@ -314,34 +312,34 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
                     </option>
                   ))}
                 </Select>
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Reference/PO Number">
+              <Field label="Reference/PO Number">
                 <Input
                   type="text"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                   placeholder="Optional reference"
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Quote Date" required>
+              <Field label="Quote Date" required>
                 <Input
                   type="date"
                   value={quoteDate}
                   onChange={(e) => setQuoteDate(e.target.value)}
                   required
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Valid Until" required>
+              <Field label="Valid Until" required>
                 <Input
                   type="date"
                   value={validUntil}
                   onChange={(e) => setValidUntil(e.target.value)}
                   required
                 />
-              </FormGroup>
+              </Field>
             </div>
           </Card>
         </Section>
@@ -350,7 +348,7 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
         <Section 
           title="Line Items"
           actions={
-            <Button type="button" onClick={addLineItem} size="sm" leftIcon={<Plus className="h-4 w-4" />}>
+            <Button type="button" onClick={addLineItem} size="sm" leftIcon={<Icon name="plus" size={16} />}>
               Add Item
             </Button>
           }
@@ -361,18 +359,18 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
                 <div key={index} className="border border-border rounded-lg p-4">
                   <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                     <div className="md:col-span-3">
-                      <FormGroup label="Description" required>
+                      <Field label="Description" required>
                         <Input
                           type="text"
                           value={item.description}
                           onChange={(e) => updateLineItem(index, { description: e.target.value })}
                           required
                         />
-                      </FormGroup>
+                      </Field>
                     </div>
 
                     <div>
-                      <FormGroup label="Qty" required>
+                      <Field label="Qty" required>
                         <Input
                           type="number"
                           value={item.quantity}
@@ -381,11 +379,11 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
                           step="0.001"
                           required
                         />
-                      </FormGroup>
+                      </Field>
                     </div>
 
                     <div>
-                      <FormGroup label="Unit Price" required>
+                      <Field label="Unit Price" required>
                         <Input
                           type="number"
                           value={item.unit_price}
@@ -394,11 +392,11 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
                           step="0.01"
                           required
                         />
-                      </FormGroup>
+                      </Field>
                     </div>
 
                     <div>
-                      <FormGroup label="Discount %">
+                      <Field label="Discount %">
                         <Input
                           type="number"
                           value={item.discount_percentage}
@@ -407,11 +405,11 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
                           max="100"
                           step="0.01"
                         />
-                      </FormGroup>
+                      </Field>
                     </div>
 
                     <div>
-                      <FormGroup label="VAT %">
+                      <Field label="VAT %">
                         <Select
                           value={item.vat_rate}
                           onChange={(e) => updateLineItem(index, { vat_rate: parseFloat(e.target.value) })}
@@ -420,7 +418,7 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
                           <option value="5">5%</option>
                           <option value="20">20%</option>
                         </Select>
-                      </FormGroup>
+                      </Field>
                     </div>
 
                     {lineItems.length > 1 && (
@@ -431,7 +429,7 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
                           size="sm"
                           onClick={() => removeLineItem(index)}
                           iconOnly
-                          leftIcon={<Trash2 className="h-4 w-4" />}
+                          leftIcon={<Icon name="trash" size={16} />}
                         />
                       </div>
                     )}
@@ -446,7 +444,7 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
         <Section title="Discount & Notes">
           <Card>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormGroup 
+              <Field 
                 label="Quote Discount %"
                 help="Applied to subtotal after line item discounts"
               >
@@ -458,29 +456,29 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
                   max="100"
                   step="0.01"
                 />
-              </FormGroup>
+              </Field>
             </div>
 
             <div className="mt-4">
-              <FormGroup label="Notes (visible on quote)">
+              <Field label="Notes (visible on quote)">
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
                   placeholder="Any notes to include on the quote..."
                 />
-              </FormGroup>
+              </Field>
             </div>
 
             <div className="mt-4">
-              <FormGroup label="Internal Notes (not visible on quote)">
+              <Field label="Internal Notes (not visible on quote)">
                 <Textarea
                   value={internalNotes}
                   onChange={(e) => setInternalNotes(e.target.value)}
                   rows={3}
                   placeholder="Internal notes for your reference..."
                 />
-              </FormGroup>
+              </Field>
             </div>
           </Card>
         </Section>

@@ -1,12 +1,10 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { Button, IconButton } from '@/ds';
+import { Button, IconButton, toast, Icon } from '@/ds';
 import { cn } from '@/lib/utils';
 import { Input } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Field } from '@/ds';
 import { upsertDepartmentBudget, addDepartment, deleteDepartment, type DepartmentBudget, type Department } from '@/app/actions/budgets';
 import { deriveBudgetTargets } from '@/lib/rota/budget-utils';
 
@@ -84,7 +82,7 @@ function BudgetRow({
             disabled={deletePending}
             label="Delete department"
             title="Delete department"
-            icon={<TrashIcon className="h-4 w-4" />}
+            icon={<Icon name="trash" size={16} />}
             className="shrink-0 text-text-subtle hover:text-danger"
           />
         )}
@@ -94,7 +92,7 @@ function BudgetRow({
         <div className="mt-2 sm:mt-0 sm:col-span-3">
           {error && <p className="text-xs text-danger mb-2">{error}</p>}
           <div className="flex items-end gap-3">
-            <FormGroup label="Annual hours" htmlFor={`budget-${department}`} className="flex-1 max-w-xs">
+            <Field label="Annual hours" htmlFor={`budget-${department}`} className="flex-1 max-w-xs">
               <Input
                 id={`budget-${department}`}
                 type="number"
@@ -104,7 +102,7 @@ function BudgetRow({
                 value={value}
                 onChange={e => setValue(e.target.value)}
               />
-            </FormGroup>
+            </Field>
             <div className="flex gap-2 pb-0.5">
               <Button type="button" size="sm" onClick={handleSave} disabled={isPending}>
                 {isPending ? 'Saving…' : 'Save'}
@@ -174,7 +172,7 @@ function AddDepartmentForm({ onAdded }: { onAdded: (dept: Department) => void })
     <div className="pt-4 border-t border-border">
       {error && <p className="text-xs text-danger mb-2">{error}</p>}
       <div className="flex items-end gap-3">
-        <FormGroup label="New department name" htmlFor="new-dept" className="flex-1 max-w-xs">
+        <Field label="New department name" htmlFor="new-dept" className="flex-1 max-w-xs">
           <Input
             id="new-dept"
             placeholder='e.g. "Runner"'
@@ -182,9 +180,9 @@ function AddDepartmentForm({ onAdded }: { onAdded: (dept: Department) => void })
             onChange={e => setLabel(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
           />
-        </FormGroup>
+        </Field>
         <div className="pb-0.5">
-          <Button type="button" size="sm" onClick={handleAdd} disabled={isPending} leftIcon={<PlusIcon className="h-4 w-4" />}>
+          <Button type="button" size="sm" onClick={handleAdd} disabled={isPending} leftIcon={<Icon name="plus" size={16} />}>
             {isPending ? 'Adding…' : 'Add department'}
           </Button>
         </div>
@@ -257,7 +255,7 @@ export default function BudgetsManager({ canManage, initialBudgets, initialDepar
             variant="ghost"
             size="sm"
             onClick={() => setShowAddForm(true)}
-            icon={<PlusIcon className="h-4 w-4" />}
+            icon={<Icon name="plus" size={16} />}
             className="text-text-muted hover:text-text"
           >
             Add department

@@ -43,8 +43,8 @@ vi.mock('@/app/actions/missing-cashups', () => ({
   getMissingCashupDatesAction: getMissingCashupDatesActionMock,
 }))
 
-vi.mock('react-hot-toast', () => ({
-  default: toastMock,
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: toastMock,
 }))
 
 const baseProps = {

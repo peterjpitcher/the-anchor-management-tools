@@ -49,10 +49,11 @@ export default async function RolesPage() {
     >
       {errorMessage && (
         <Alert
-          variant="error"
+          tone="danger"
           title="Error loading data"
-          description={errorMessage}
-        />
+        >
+          {errorMessage}
+        </Alert>
       )}
 
       <RoleList roles={roles} permissions={permissions} canManage={!!canManage} />

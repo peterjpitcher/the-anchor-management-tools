@@ -1,25 +1,15 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import {
-  ChatBubbleLeftRightIcon,
-  CheckIcon,
-  XMarkIcon,
-  ClockIcon,
-  PhoneIcon,
-  CalendarIcon,
-  ExclamationTriangleIcon,
-  PaperAirplaneIcon
-} from '@heroicons/react/24/outline'
 
 import { approveSms, rejectSms, sendApprovedSms } from '@/app/actions/privateBookingActions'
 import { SmsQueueService } from '@/services/sms-queue'
 import { formatDateFull, formatDateTime12Hour } from '@/lib/dateUtils'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { Alert } from '@/ds'
 import { Badge } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { SmsQueueActionForm } from '@/components/private-bookings/SmsQueueActionForm'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import type { SmsQueueActionState } from '@/components/private-bookings/SmsQueueActionForm'
@@ -159,23 +149,23 @@ export default async function SmsQueuePage() {
     >
       <div className="space-y-6">
       {!canApproveSms && !canSendSms && (
-        <Alert variant="info">
+        <Alert tone="info">
           You can view the SMS queue but do not currently have permission to approve or send messages.
         </Alert>
       )}
       {error && (
-        <Alert variant="error">
+        <Alert tone="danger">
           We could not refresh the SMS queue. The latest list may be incomplete.
         </Alert>
       )}
       {/* Pending Messages */}
       <Section 
         title="Pending Approval"
-        icon={<ClockIcon className="h-6 w-6 text-warning" />}
+        icon={<Icon name="clock" size={24} className="text-warning" />}
         description={`${pendingSms.length} message${pendingSms.length !== 1 ? 's' : ''}`}
       >
         {pendingSms.length === 0 ? (
-          <EmptyState icon={<ChatBubbleLeftRightIcon className="h-12 w-12" />}
+          <Empty icon={<Icon name="message" size={48} />}
             title="No messages pending approval"
           />
         ) : (
@@ -185,7 +175,7 @@ export default async function SmsQueuePage() {
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <Badge variant="warning">
+                      <Badge tone="warning">
                         {formatTriggerType(sms.trigger_type)}
                       </Badge>
                       {sms.booking && (
@@ -206,12 +196,12 @@ export default async function SmsQueuePage() {
                     
                     <div className="flex items-center gap-4 text-sm text-text-muted mb-3">
                       <span className="flex items-center gap-1">
-                        <PhoneIcon className="h-4 w-4" />
+                        <Icon name="phone" size={16} />
                         {sms.recipient_phone}
                       </span>
                       {sms.booking && (
                         <span className="flex items-center gap-1">
-                          <CalendarIcon className="h-4 w-4" />
+                          <Icon name="calendar" size={16} />
                           {formatDateFull(sms.booking.event_date)}
                         </span>
                       )}
@@ -232,7 +222,7 @@ export default async function SmsQueuePage() {
                     action={handleApproveSms}
                     smsId={sms.id}
                     confirmMessage="Approve this SMS for sending?"
-                    leftIcon={<CheckIcon className="h-4 w-4" />}
+                    leftIcon={<Icon name="check" size={16} />}
                     variant="primary"
                     successMessage="SMS approved"
                     disabled={!canApproveSms}
@@ -244,7 +234,7 @@ export default async function SmsQueuePage() {
                     action={handleRejectSms}
                     smsId={sms.id}
                     confirmMessage="Reject this SMS?"
-                    leftIcon={<XMarkIcon className="h-4 w-4" />}
+                    leftIcon={<Icon name="x" size={16} />}
                     variant="danger"
                     successMessage="SMS rejected"
                     disabled={!canApproveSms}
@@ -261,11 +251,11 @@ export default async function SmsQueuePage() {
       {/* Approved Messages */}
       <Section 
         title="Approved Messages"
-        icon={<CheckIcon className="h-6 w-6 text-success" />}
+        icon={<Icon name="check" size={24} className="text-success" />}
         description={`${approvedSms.length} message${approvedSms.length !== 1 ? 's' : ''}`}
       >
         {approvedSms.length === 0 ? (
-          <EmptyState icon={<PaperAirplaneIcon className="h-12 w-12" />}
+          <Empty icon={<Icon name="send" size={48} />}
             title="No approved messages ready to send"
           />
         ) : (
@@ -275,7 +265,7 @@ export default async function SmsQueuePage() {
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <Badge variant="success">Approved</Badge>
+                      <Badge tone="success">Approved</Badge>
                       <span className="text-xs text-text-muted">
                         by {sms.approved_by} at {formatDateTime12Hour(sms.approved_at)}
                       </span>
@@ -289,7 +279,7 @@ export default async function SmsQueuePage() {
                     
                     <div className="flex items-center gap-4 text-sm text-text-muted mb-3">
                       <span className="flex items-center gap-1">
-                        <PhoneIcon className="h-4 w-4" />
+                        <Icon name="phone" size={16} />
                         {sms.recipient_phone}
                       </span>
                     </div>
@@ -308,7 +298,7 @@ export default async function SmsQueuePage() {
                       ? 'Send this approved message now? It goes by email when the guest has a usable email address, otherwise by text.'
                       : 'Send this approved SMS now?'
                   }
-                  leftIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+                  leftIcon={<Icon name="send" size={16} />}
                   successMessage="SMS sent"
                   disabled={!canSendSms}
                 >
@@ -324,7 +314,7 @@ export default async function SmsQueuePage() {
       {cancelledSms.length > 0 && (
         <Section 
           title="Cancelled Messages"
-          icon={<XMarkIcon className="h-6 w-6 text-danger" />}
+          icon={<Icon name="x" size={24} className="text-danger" />}
           description={`${cancelledSms.length} message${cancelledSms.length !== 1 ? 's' : ''}`}
         >
           <div className="space-y-4">
@@ -342,7 +332,7 @@ export default async function SmsQueuePage() {
                       <div className="flex items-center gap-3 mb-2">
                         <Badge tone="neutral">Cancelled</Badge>
                         {isDateChange && (
-                          <Badge variant="warning">Date Changed</Badge>
+                          <Badge tone="warning">Date Changed</Badge>
                         )}
                       </div>
                       
@@ -353,7 +343,7 @@ export default async function SmsQueuePage() {
                       </h3>
                       
                       {isDateChange && old_date && new_date && (
-                        <Alert variant="warning" className="mb-3">
+                        <Alert tone="warning" className="mb-3">
                           <strong>Booking rescheduled:</strong> {formatDateFull(old_date)} → {formatDateFull(new_date)}
                         </Alert>
                       )}
@@ -375,7 +365,7 @@ export default async function SmsQueuePage() {
       )}
 
       {/* Info Box */}
-      <Alert variant="info" icon={<ExclamationTriangleIcon className="h-6 w-6" />}>
+      <Alert tone="info" icon={<Icon name="alertTriangle" size={24} />}>
         <div>
           <h3 className="text-base font-medium mb-2">SMS Approval Process</h3>
           <ul className="text-sm space-y-1 list-disc list-inside">

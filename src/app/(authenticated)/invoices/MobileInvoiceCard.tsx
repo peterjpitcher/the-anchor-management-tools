@@ -1,9 +1,8 @@
 import { invoiceBalanceDue } from '@/lib/invoices/balance'
 import type { InvoiceWithDetails } from '@/types/invoices'
-import { Card } from '@/ds'
+import { Card, Icon } from '@/ds'
 import { Badge } from '@/ds'
 import { IconButton } from '@/ds'
-import { Download } from 'lucide-react'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 
 interface MobileInvoiceCardProps {
@@ -61,7 +60,7 @@ export function MobileInvoiceCard({
               event.stopPropagation()
               onDownload?.(invoice)
             }}
-            icon={<Download className="h-4 w-4" aria-hidden="true" />}
+            icon={<Icon name="download" size={16} />}
             className="text-text-muted hover:text-text"
           />
           <Badge tone={invoiceStatusTone(invoice.status)} size="sm" dot>

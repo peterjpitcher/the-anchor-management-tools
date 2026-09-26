@@ -1,14 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { DocumentDuplicateIcon, PlusIcon, PencilIcon, NoSymbolIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { Button, IconButton } from '@/ds';
+import { Button, IconButton, toast, Icon } from '@/ds';
 import { Input } from '@/ds';
 import { Checkbox } from '@/ds';
 import { Card } from '@/ds';
 import { Badge } from '@/ds';
 import { DataTable } from '@/ds';
-import toast from 'react-hot-toast';
 import { deleteApiKey, generateApiKey, revokeApiKey, updateApiKey } from './actions';
 import { format } from 'date-fns';
 import type { ApiKey } from '@/types/api';
@@ -235,15 +233,16 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
     <div className="space-y-6">
       {!canManage && (
         <Alert
-          variant="info"
+          tone="info"
           title="Read-only access"
-          description="You can review existing API keys, but creating or revoking keys requires the settings manage permission."
-        />
+        >
+          You can review existing API keys, but creating or revoking keys requires the settings manage permission.
+        </Alert>
       )}
 
       {/* Create Button */}
       {canManage && !showCreateForm && !editingKeyId && (
-        <Button onClick={() => setShowCreateForm(true)} leftIcon={<PlusIcon className="h-4 w-4" />}>
+        <Button onClick={() => setShowCreateForm(true)} leftIcon={<Icon name="plus" size={16} />}>
           Create API Key
         </Button>
       )}
@@ -299,7 +298,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
               label="Copy API key"
               onClick={() => handleCopyKey(showKey)}
             >
-              <DocumentDuplicateIcon className="h-5 w-5 text-warning-fg" />
+              <Icon name="copy" size={20} className="text-warning-fg" />
             </IconButton>
           </div>
         </Alert>
@@ -336,7 +335,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
                     onClick={() => { setEditingKeyId(k.id); setShowCreateForm(false); }}
                     title="Edit key details"
                   >
-                    <PencilIcon className="h-4 w-4" />
+                    <Icon name="edit" size={16} />
                   </IconButton>
                   {k.is_active && (
                     <IconButton
@@ -345,7 +344,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
                       onClick={() => setRevokeTarget(k)}
                       title="Revoke API key"
                     >
-                      <NoSymbolIcon className="h-4 w-4" />
+                      <Icon name="ban" size={16} />
                     </IconButton>
                   )}
                   <IconButton
@@ -354,7 +353,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
                     onClick={() => setDeleteTarget(k)}
                     title="Delete API key"
                   >
-                    <TrashIcon className="h-4 w-4" />
+                    <Icon name="trash" size={16} />
                   </IconButton>
                 </div>
               ),

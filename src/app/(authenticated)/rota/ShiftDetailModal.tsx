@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { Alert, Badge, Button, Checkbox, FormGroup, Input, Modal, Select } from '@/ds';
+import { Alert, Badge, Button, Checkbox, Field, Input, Modal, Select, toast } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { updateShift, deleteShift } from '@/app/actions/rota';
 import type { RotaShift, RotaEmployee, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
@@ -426,35 +425,35 @@ export default function ShiftDetailModal({
         ) : (
           /* Edit view */
           <div className="space-y-3">
-            {error && <Alert variant="error">{error}</Alert>}
+            {error && <Alert tone="danger">{error}</Alert>}
 
-            <FormGroup label="Shift label (optional)" htmlFor="sd-name">
+            <Field label="Shift label (optional)" htmlFor="sd-name">
               <Input
                 id="sd-name"
                 placeholder='e.g. "Evening Bar"'
                 value={name}
                 onChange={e => setName(e.target.value)}
               />
-            </FormGroup>
+            </Field>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormGroup label="Start time" htmlFor="sd-start" required>
+              <Field label="Start time" htmlFor="sd-start" required>
                 <Input id="sd-start" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
-              </FormGroup>
-              <FormGroup label="End time" htmlFor="sd-end" required>
+              </Field>
+              <Field label="End time" htmlFor="sd-end" required>
                 <Input id="sd-end" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
-              </FormGroup>
-              <FormGroup label="Break (mins)" htmlFor="sd-break">
+              </Field>
+              <Field label="Break (mins)" htmlFor="sd-break">
                 <Input id="sd-break" type="number" min="0" max="120" value={breakMins} onChange={e => setBreakMins(e.target.value)} />
-              </FormGroup>
-              <FormGroup label="Department" htmlFor="sd-dept">
+              </Field>
+              <Field label="Department" htmlFor="sd-dept">
                 <Select
                   id="sd-dept"
                   value={department}
                   onChange={e => setDepartment(e.target.value)}
                   options={departments.map(d => ({ value: d.name, label: d.label }))}
                 />
-              </FormGroup>
+              </Field>
             </div>
 
             <Checkbox
@@ -466,14 +465,14 @@ export default function ShiftDetailModal({
 
             <PremiumControl state={premium} idPrefix="sd" />
 
-            <FormGroup label="Notes (optional)" htmlFor="sd-notes">
+            <Field label="Notes (optional)" htmlFor="sd-notes">
               <Input
                 id="sd-notes"
                 placeholder="Optional notes"
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
               />
-            </FormGroup>
+            </Field>
 
             {startTime && endTime && (
               <p className="text-sm text-text-muted">

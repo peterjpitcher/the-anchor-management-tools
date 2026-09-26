@@ -2,14 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { 
-  ChevronLeftIcon, 
-  ChevronRightIcon,
-  ClockIcon
-} from '@heroicons/react/24/outline'
 import type { BookingStatus } from '@/types/private-bookings'
 import { formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
-import { Badge, Button, Card, IconButton, Segmented, Select } from '@/ds'
+import { Badge, Button, Card, IconButton, Segmented, Select, Icon } from '@/ds'
 import {
   privateBookingStatusBlockClasses,
   privateBookingStatusLabel,
@@ -177,14 +172,14 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                 type="button"
                 variant="secondary"
                 label="Previous month"
-                icon={<ChevronLeftIcon className="h-4 w-4" />}
+                icon={<Icon name="chevronLeft" size={16} />}
                 onClick={() => navigateMonth('prev')}
               />
               <IconButton
                 type="button"
                 variant="secondary"
                 label="Next month"
-                icon={<ChevronRightIcon className="h-4 w-4" />}
+                icon={<Icon name="chevronRight" size={16} />}
                 onClick={() => navigateMonth('next')}
               />
             </div>
@@ -276,7 +271,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                     >
                       <div className="font-medium truncate hidden sm:block">{booking.customer_name}</div>
                       <div className="flex items-center gap-1 sm:mt-0.5">
-                        <ClockIcon className="h-3 w-3 hidden sm:block" />
+                        <Icon name="clock" size={12} className="hidden sm:block" />
                         <span className="sm:hidden">{formatTime12Hour(booking.start_time).replace(':00', '')}</span>
                         <span className="hidden sm:inline">{formatTime12Hour(booking.start_time)}</span>
                       </div>
@@ -331,7 +326,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                           {bookingDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
                         </span>
                         <span className="flex items-center gap-1">
-                          <ClockIcon className="h-4 w-4" />
+                          <Icon name="clock" size={16} />
                           {formatTime12Hour(booking.start_time)}
                           {booking.end_time && (
                             <>
@@ -346,7 +341,7 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
                         )}
                       </div>
                     </div>
-                    <ChevronRightIcon className="h-5 w-5 text-text-subtle flex-shrink-0 ml-2" />
+                    <Icon name="chevronRight" size={20} className="text-text-subtle flex-shrink-0 ml-2" />
                   </div>
                 </Link>
               )

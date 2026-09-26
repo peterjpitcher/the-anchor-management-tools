@@ -19,8 +19,7 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import toast from 'react-hot-toast'
-import { Alert, Badge, Button, Card, Checkbox, Input, Select, Textarea } from '@/ds'
+import { Alert, Badge, Button, Card, Checkbox, Input, Select, Textarea, toast } from '@/ds'
 import {
   saveSeasonalPreorderCovers,
   syncSeasonalPreorderCovers,

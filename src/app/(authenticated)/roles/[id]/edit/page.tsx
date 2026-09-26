@@ -23,7 +23,7 @@ export default async function EditRolePage({ params }: EditRolePageProps) {
         subtitle="Update a role name and description"
         backButton={{ label: 'Back to Roles', href: '/roles' }}
       >
-        <Alert variant="error" title="Unable to load role" description={rolesResult.error} />
+        <Alert tone="danger" title="Unable to load role">{rolesResult.error}</Alert>
       </PageLayout>
     )
   }

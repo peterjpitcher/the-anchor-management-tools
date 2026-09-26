@@ -26,7 +26,7 @@ export default async function MileageDestinationsPage(): Promise<React.JSX.Eleme
   if (loadError) {
     return (
       <PageLayout title="Mileage" subtitle="Destinations" navItems={navItems}>
-        <Alert variant="error" title="Couldn't load destinations" description={loadError} />
+        <Alert tone="danger" title="Couldn't load destinations">{loadError}</Alert>
       </PageLayout>
     )
   }

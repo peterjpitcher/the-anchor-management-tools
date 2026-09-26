@@ -3,14 +3,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { saveHoursVersionDraft, updateBusinessHours } from '@/app/actions/business-hours'
 import { BusinessHours, DAY_NAMES } from '@/types/business-hours'
-import { Button } from '@/ds'
+import { Button, toast } from '@/ds'
 import { FoodServiceEditor } from './FoodServiceEditor'
 import { validateServiceWindows, readServiceWindows } from '@/lib/business-hours/service-windows'
 import { Input } from '@/ds'
 import { Checkbox } from '@/ds'
 import { Card } from '@/ds'
 import { DataTable } from '@/ds'
-import toast from 'react-hot-toast'
 
 interface BusinessHoursManagerProps {
   canManage: boolean

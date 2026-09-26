@@ -44,11 +44,11 @@ export function PrivateBookingReceiptPanel({ bookingId, canGenerate }: Props): R
       })}>Generate {model?.kind === 'final_receipt' ? 'final receipt' : 'statement'}</Button>}
     </>}>
       <div className="space-y-4">
-        {error && <Alert variant="error">{error}</Alert>}
-        {notice && <Alert variant="success">{notice}</Alert>}
+        {error && <Alert tone="danger">{error}</Alert>}
+        {notice && <Alert tone="success">{notice}</Alert>}
         {busy && !model && <p>Loading charges and payments…</p>}
         {model && <>
-          {model.blockers.length > 0 && <Alert variant="warning" title="A final receipt is not ready"><ul className="list-disc pl-5">{model.blockers.map(reason => <li key={reason}>{reason}</li>)}</ul><p className="mt-2">You can generate a payment statement showing the current position.</p></Alert>}
+          {model.blockers.length > 0 && <Alert tone="warning" title="A final receipt is not ready"><ul className="list-disc pl-5">{model.blockers.map(reason => <li key={reason}>{reason}</li>)}</ul><p className="mt-2">You can generate a payment statement showing the current position.</p></Alert>}
           <dl className="grid grid-cols-2 gap-2 text-sm">{([
             ['Charges', model.totals.charges], ['Credits', model.totals.credits], ['Payments received', model.totals.receipts],
             ['Refunds completed', model.totals.refunds], ['Applied to charges', model.totals.applied], ['Balance due', model.totals.balanceDue],

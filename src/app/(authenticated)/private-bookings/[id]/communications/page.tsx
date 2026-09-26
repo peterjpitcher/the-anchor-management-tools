@@ -74,9 +74,8 @@ export default async function PrivateBookingCommunicationsPage({ params }: PageP
     >
       {!booking ? (
         <Alert
-          variant="error"
+          tone="danger"
           title="We couldn’t load this booking"
-          description="Head back to the booking list and try again."
         >
           <Link
             href="/private-bookings"

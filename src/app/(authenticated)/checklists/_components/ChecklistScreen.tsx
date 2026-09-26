@@ -214,21 +214,21 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
 
   if (error) {
     return (
-      <Alert variant="danger" title="Could not load the checklist">
+      <Alert tone="danger" title="Could not load the checklist">
         {error}. Please use the paper list and tell Peter.
       </Alert>
     )
   }
   if (!initial) {
     return (
-      <Alert variant="danger" title="Could not load the checklist">
+      <Alert tone="danger" title="Could not load the checklist">
         Please use the paper list and tell Peter.
       </Alert>
     )
   }
   if (!initial.moduleEnabled) {
     return (
-      <Alert variant="info" title="Checklists are not switched on yet.">
+      <Alert tone="info" title="Checklists are not switched on yet.">
         There is nothing to do here for now.
       </Alert>
     )
@@ -272,12 +272,12 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
         {notice === 'window' ? 'New tasks have just appeared.' : ''}
       </div>
       {notice === 'boundary' && (
-        <Alert variant="info" title="Moved on to today&rsquo;s checklist">
+        <Alert tone="info" title="Moved on to today&rsquo;s checklist">
           Last night&rsquo;s list has closed. This is today&rsquo;s.
         </Alert>
       )}
       {notice === 'window' && (
-        <Alert variant="info" title="New tasks have just appeared">
+        <Alert tone="info" title="New tasks have just appeared">
           They have been added to the list below.
         </Alert>
       )}
@@ -311,17 +311,17 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
       )}
 
       {unavailable && (
-        <Alert variant="warning" title="Today's checklist is not available">
+        <Alert tone="warning" title="Today's checklist is not available">
           Please use the paper list and tell Peter.
         </Alert>
       )}
       {generationStatus === 'skipped_closed' && (
-        <Alert variant="info" title="Closed today, no checklist.">
+        <Alert tone="info" title="Closed today, no checklist.">
           There is nothing to complete today.
         </Alert>
       )}
       {generationStatus === 'running' && (
-        <Alert variant="info" title="Today's checklist is being prepared.">
+        <Alert tone="info" title="Today's checklist is being prepared.">
           Refresh in a moment if a task is missing.
         </Alert>
       )}
@@ -356,7 +356,7 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
       )}
 
       {allDone && (
-        <Alert variant="success" title="All done for now.">
+        <Alert tone="success" title="All done for now.">
           Everything due so far is ticked off. {comingLater}
         </Alert>
       )}
@@ -380,7 +380,7 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
       ))}
 
       {groups.length === 0 && !unavailable && generationStatus !== 'skipped_closed' && (
-        <Alert variant="info" title="Nothing needs doing right now.">
+        <Alert tone="info" title="Nothing needs doing right now.">
           {nextWindowLabel && hiddenCount > 0
             ? `The first tasks appear at ${nextWindowLabel}. Leave this screen open and it will update on its own.`
             : `There is nothing else due before ${dayEndsLabel}.`}

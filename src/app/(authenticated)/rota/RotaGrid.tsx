@@ -15,20 +15,7 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import toast from 'react-hot-toast';
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  PlusIcon,
-  CalendarDaysIcon,
-  CheckIcon,
-  ClockIcon,
-  ExclamationTriangleIcon,
-  PrinterIcon,
-  PencilSquareIcon,
-  XMarkIcon,
-} from '@heroicons/react/24/outline';
-import { Badge, Button, Card, CardBody, CardHeader } from '@/ds';
+import { Badge, Button, Card, CardBody, CardHeader, toast, Icon, type IconName } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { moveShift, autoPopulateWeekFromTemplates, upsertRotaSalesTargetOverride } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
@@ -240,11 +227,11 @@ function ShiftAcceptanceIcon({ shift }: { shift: RotaShift }) {
   const display = shiftAcceptanceDisplay(shift);
   if (!display) return null;
 
-  const Icon = display.icon === 'check'
-    ? CheckIcon
+  const iconName: IconName = display.icon === 'check'
+    ? 'check'
     : display.icon === 'x'
-      ? XMarkIcon
-      : ClockIcon;
+      ? 'x'
+      : 'clock';
 
   return (
     <span
@@ -252,7 +239,7 @@ function ShiftAcceptanceIcon({ shift }: { shift: RotaShift }) {
       title={display.title}
       aria-label={display.title}
     >
-      <Icon className="h-3 w-3" />
+      <Icon name={iconName} size={12} />
       {display.auto && (
         <span className="absolute -bottom-1 -right-1 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-success text-2xs font-bold leading-none text-on-dark">
           A
@@ -560,7 +547,7 @@ function DroppableCell({
               title="Mark as Couldn't Work"
               aria-label="Mark as Couldn't Work"
             >
-              <ExclamationTriangleIcon className="h-3 w-3" />
+              <Icon name="alertTriangle" size={12} className="block" />
             </button>
           )}
           {onBookHoliday && (
@@ -571,7 +558,7 @@ function DroppableCell({
               title="Book holiday"
               aria-label="Book holiday"
             >
-              <CalendarDaysIcon className="h-3 w-3" />
+              <Icon name="calendar" size={12} className="block" />
             </button>
           )}
           {onAdd && (
@@ -582,7 +569,7 @@ function DroppableCell({
               title="Add shift"
               aria-label="Add shift"
             >
-              <PlusIcon className="h-3 w-3" />
+              <Icon name="plus" size={12} className="block" />
             </button>
           )}
         </div>
@@ -769,7 +756,7 @@ export default function RotaGrid({
         if (isOpenRow) {
           toast.success('Shift moved to open');
         } else if (leaveMap.has(`${empId}:${date}`)) {
-          toast('Employee has approved leave on this date', { icon: '⚠️' });
+          toast.warning('Employee has approved leave on this date');
         } else {
           toast.success('Shift moved');
         }
@@ -831,7 +818,7 @@ export default function RotaGrid({
       const result = await autoPopulateWeekFromTemplates(week.id);
       if (!result.success) { toast.error(result.error); return; }
       if (result.created === 0) {
-        toast('All scheduled shifts already exist for this week', { icon: 'ℹ️' });
+        toast.info('All scheduled shifts already exist for this week');
       } else {
         setShifts(prev => [...prev, ...result.shifts]);
         router.refresh();
@@ -946,7 +933,7 @@ export default function RotaGrid({
                 onClick={() => setEditingTarget(null)}
                 disabled={targetSavePending}
                 aria-label="Cancel target edit"
-                icon={<XMarkIcon className="h-3 w-3" />}
+                icon={<Icon name="x" size={12} />}
               />
             </div>
           </div>
@@ -968,7 +955,7 @@ export default function RotaGrid({
                   title="Edit sales target"
                   aria-label="Edit sales target"
                 >
-                  <PencilSquareIcon className="h-3 w-3" />
+                  <Icon name="edit" size={12} className="block" />
                 </button>
               )}
             </div>
@@ -1033,7 +1020,7 @@ export default function RotaGrid({
                     onClick={() => navigateToWeek(addWeeks(weekStart, -1))}
                     variant="ghost"
                     size="sm"
-                    icon={<ChevronLeftIcon className="h-4 w-4" />}
+                    icon={<Icon name="chevronLeft" size={16} />}
                     aria-label="Previous week"
                     disabled={navPending}
                   />
@@ -1051,7 +1038,7 @@ export default function RotaGrid({
                     onClick={() => navigateToWeek(addWeeks(weekStart, 1))}
                     variant="ghost"
                     size="sm"
-                    icon={<ChevronRightIcon className="h-4 w-4" />}
+                    icon={<Icon name="chevronRight" size={16} />}
                     aria-label="Next week"
                     disabled={navPending}
                   />
@@ -1098,7 +1085,7 @@ export default function RotaGrid({
                     title="Download rota as PDF"
                     className="inline-flex h-btn-h-sm items-center justify-center gap-1.5 rounded-sm border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text no-underline transition-colors hover:bg-surface-hover max-shell:min-h-touch focus-visible:outline-hidden focus-visible:shadow-ring"
                   >
-                    <PrinterIcon className="h-3.5 w-3.5" />
+                    <Icon name="printer" size={14} />
                     Download PDF
                   </a>
                 </div>
@@ -1538,26 +1525,26 @@ export default function RotaGrid({
         <CardBody className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 text-xs text-text-muted">
           <span className="flex items-center gap-1.5">
             <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${ROTA_SHIFT_STATUS_CLASSES.pending}`}>
-              <ClockIcon className="h-3 w-3" />
+              <Icon name="clock" size={12} />
             </span>
             Waiting
           </span>
           <span className="flex items-center gap-1.5">
             <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${ROTA_SHIFT_STATUS_CLASSES.accepted}`}>
-              <CheckIcon className="h-3 w-3" />
+              <Icon name="check" size={12} />
             </span>
             Accepted
           </span>
           <span className="flex items-center gap-1.5">
             <span className={`relative inline-flex h-4 w-4 items-center justify-center rounded-full border ${ROTA_SHIFT_STATUS_CLASSES.auto_accepted}`}>
-              <CheckIcon className="h-3 w-3" />
+              <Icon name="check" size={12} />
               <span className="absolute -bottom-1 -right-1 flex h-2.5 min-w-2.5 items-center justify-center rounded-full bg-success text-2xs font-bold leading-none text-on-dark">A</span>
             </span>
             Auto accepted
           </span>
           <span className="flex items-center gap-1.5">
             <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${ROTA_SHIFT_STATUS_CLASSES.rejected}`}>
-              <XMarkIcon className="h-3 w-3" />
+              <Icon name="x" size={12} />
             </span>
             Rejected
           </span>
@@ -1613,12 +1600,12 @@ export default function RotaGrid({
             setShifts(prev => {
               if (empId) {
                 const hasDuplicate = prev.some(sh => sh.employee_id === empId && sh.shift_date === date);
-                if (hasDuplicate) toast('Employee already has a shift on this date', { icon: '⚠️' });
+                if (hasDuplicate) toast.warning('Employee already has a shift on this date');
               }
               return [...prev, shift];
             });
             if (empId && leaveMap.has(`${empId}:${date}`)) {
-              toast('Employee has approved leave on this date', { icon: '⚠️' });
+              toast.warning('Employee has approved leave on this date');
             } else {
               toast.success(shift.is_open_shift ? 'Open shift added' : 'Shift created');
             }

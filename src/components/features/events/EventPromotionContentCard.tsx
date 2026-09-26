@@ -1,13 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Card, CardBody } from '@/ds'
+import { Card, CardBody, Icon } from '@/ds'
 import { Textarea } from '@/ds'
 import { Input } from '@/ds'
 import { Button } from '@/ds'
 import { Spinner } from '@/ds'
 import { toast } from '@/ds'
-import { ClipboardDocumentIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { generateEventPromotionContent, type EventPromotionContentType } from '@/app/actions/event-content'
 import { Select } from '@/ds'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
@@ -368,7 +367,7 @@ export function EventPromotionContentCard({
               variant="secondary"
               disabled={!selectedCtaUrl}
               onClick={() => selectedCtaUrl && handleCopy(selectedCtaUrl, 'CTA link')}
-              leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+              leftIcon={<Icon name="copy" size={16} />}
             >
               Copy link
             </Button>
@@ -397,7 +396,7 @@ export function EventPromotionContentCard({
           className="h-auto min-h-btn-h w-full whitespace-normal py-2 sm:w-auto"
           onClick={handleGenerate}
           disabled={isGenerating || Boolean(aiUnavailableMessage)}
-          leftIcon={isGenerating ? <Spinner size="sm" color="gray" /> : <ArrowPathIcon className="h-4 w-4" />}
+          leftIcon={isGenerating ? <Spinner size="sm" color="gray" /> : <Icon name="refresh" size={16} />}
         >
           {isGenerating ? 'Working...' : `Generate ${selectedTypeMeta?.label ?? eventName} copy`}
         </Button>
@@ -422,7 +421,7 @@ export function EventPromotionContentCard({
                       size="xs"
                       variant="ghost"
                       onClick={() => handleCopy(`${content.name}\n\n${content.description}`.trim(), 'Facebook copy')}
-                      leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                      leftIcon={<Icon name="copy" size={16} />}
                     >
                       Copy all
                     </Button>
@@ -439,7 +438,7 @@ export function EventPromotionContentCard({
                           title="Copy event name"
                           disabled={content.name.trim().length === 0}
                           onClick={() => handleCopy(content.name.trim(), 'Event name')}
-                          leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                          leftIcon={<Icon name="copy" size={16} />}
                         />
                       </div>
                       <p className="break-words rounded-lg border border-border bg-surface p-3 text-sm text-text-strong">
@@ -459,7 +458,7 @@ export function EventPromotionContentCard({
                           title="Copy description"
                           disabled={content.description.trim().length === 0}
                           onClick={() => handleCopy(content.description, 'Description')}
-                          leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                          leftIcon={<Icon name="copy" size={16} />}
                         />
                       </div>
                       <Textarea
@@ -487,7 +486,7 @@ export function EventPromotionContentCard({
                       size="xs"
                       variant="ghost"
                       onClick={() => handleCopy(`${content.title}\n\n${content.description}`.trim(), copyLabel)}
-                      leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                      leftIcon={<Icon name="copy" size={16} />}
                     >
                       Copy all
                     </Button>
@@ -504,7 +503,7 @@ export function EventPromotionContentCard({
                           title="Copy title"
                           disabled={content.title.trim().length === 0}
                           onClick={() => handleCopy(content.title.trim(), 'Title')}
-                          leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                          leftIcon={<Icon name="copy" size={16} />}
                         />
                       </div>
                       <p className="break-words rounded-lg border border-border bg-surface p-3 text-sm text-text-strong">
@@ -524,7 +523,7 @@ export function EventPromotionContentCard({
                           title="Copy description"
                           disabled={content.description.trim().length === 0}
                           onClick={() => handleCopy(content.description, 'Description')}
-                          leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                          leftIcon={<Icon name="copy" size={16} />}
                         />
                       </div>
                       <Textarea

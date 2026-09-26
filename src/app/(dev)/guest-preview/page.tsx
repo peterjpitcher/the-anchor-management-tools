@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { Bell, Check, Clock } from 'lucide-react'
+import { Icon, type IconName } from '@/ds/icons'
 import {
   DetailGrid,
   DetailRow,
@@ -131,7 +131,7 @@ export default function GuestPreviewPage(): React.JSX.Element {
         <GuestAlert tone="success" title="Payment received">
           We have emailed your confirmation.
         </GuestAlert>
-        <GuestAlert tone="notice" title="Your hold expires soon" icon={Clock}>
+        <GuestAlert tone="notice" title="Your hold expires soon" icon="clock">
           We are holding your table until 7:15pm.
         </GuestAlert>
         <GuestAlert tone="problem" title="We could not take that payment">
@@ -260,14 +260,14 @@ export default function GuestPreviewPage(): React.JSX.Element {
         <TrustLine>Secure payment via PayPal</TrustLine>
         <div className={GUEST_SUNK_BOX_CLASS}>
           <div className="flex flex-col gap-3">
-            {[
-              { Icon: Check, title: 'Secure booking', sub: 'Your details are encrypted.' },
-              { Icon: Bell, title: 'Confirmation', sub: 'We text you when it is done.' },
-              { Icon: Clock, title: 'Support', sub: 'Call us any time we are open.' },
-            ].map(({ Icon, title, sub }) => (
+            {([
+              { icon: 'check', title: 'Secure booking', sub: 'Your details are encrypted.' },
+              { icon: 'bell', title: 'Confirmation', sub: 'We text you when it is done.' },
+              { icon: 'clock', title: 'Support', sub: 'Call us any time we are open.' },
+            ] satisfies { icon: IconName; title: string; sub: string }[]).map(({ icon, title, sub }) => (
               <div key={title} className="flex items-center gap-3">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-anchor-green/10">
-                  <Icon aria-hidden="true" className="h-[15px] w-[15px] text-anchor-green" />
+                  <Icon name={icon} size={15} className="text-anchor-green" />
                 </span>
                 <span className="flex flex-col">
                   <span className="text-ui font-semibold">{title}</span>

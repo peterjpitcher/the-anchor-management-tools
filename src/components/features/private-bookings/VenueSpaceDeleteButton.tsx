@@ -1,7 +1,6 @@
 'use client'
 
-import { TrashIcon } from '@heroicons/react/24/outline'
-import { IconButton } from '@/ds'
+import { IconButton, Icon } from '@/ds'
 
 interface VenueSpaceDeleteButtonProps {
   spaceName: string
@@ -16,7 +15,7 @@ export function VenueSpaceDeleteButton({ spaceName, spaceId, deleteAction }: Ven
       <IconButton
         type="submit"
         label={`Delete ${spaceName}`}
-        icon={<TrashIcon className="h-5 w-5" />}
+        icon={<Icon name="trash" size={20} />}
         className="text-danger hover:text-danger-fg"
         onClick={(e) => {
           if (!confirm(`Are you sure you want to delete "${spaceName}"? This action cannot be undone.`)) {

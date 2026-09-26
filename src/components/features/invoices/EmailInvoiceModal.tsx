@@ -2,12 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { sendInvoiceViaEmail } from '@/app/actions/email'
-import { Modal, ModalActions } from '@/ds'
+import { Modal, ModalActions, Icon } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Textarea } from '@/ds'
 import { Alert } from '@/ds'
-import { Send } from 'lucide-react'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import {
@@ -136,7 +135,7 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
           <Button onClick={handleSend}
             disabled={!toEmails && !ccEmails}
             loading={sending}
-            leftIcon={<Send className="h-4 w-4" />}
+            leftIcon={<Icon name="send" size={16} />}
           >
             Send Email
           </Button>
@@ -145,7 +144,7 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
     >
       <div className="space-y-4">
         {error && (
-          <Alert variant="error" description={error} />
+          <Alert tone="danger">{error}</Alert>
         )}
 
         <div>
@@ -195,10 +194,11 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
           />
         </div>
 
-        <Alert variant="info"
+        <Alert tone="info"
           title="Attachment"
-          description={`Invoice ${invoice.invoice_number} (PDF format) will be attached for professional presentation and easy printing.`}
-        />
+        >
+          {`Invoice ${invoice.invoice_number} (PDF format) will be attached for professional presentation and easy printing.`}
+        </Alert>
       </div>
     </Modal>
   )

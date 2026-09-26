@@ -19,7 +19,8 @@ The FOH manager iPad kiosk (`/table-bookings/foh` signed in as the manager kiosk
 ### Page chrome
 
 - Every page renders `PageLayout` once, as its outermost element. **(guard)** `PageHeader` is retired.
-- `title`: the section name on section pages ("Invoices", "Rota"), the record name on detail pages (the customer, the invoice number). Title Case. The same title while loading, on error and when loaded: build one `layoutProps` object and spread it into every state.
+- `title`: the section name on section pages ("Invoices", "Rota"), the record name on detail pages (the customer, the invoice number). The same title while loading, on error and when loaded: build one `layoutProps` object and spread it into every state. On a detail page with tabs, every tab shows the same title.
+- Capitalisation on staff screens: Title Case for page, section, card and dialog titles, tab labels, back labels and button labels ("New Invoice", "Back to Roles", "Save Changes"). Sentence case for subtitles, descriptions, help text, messages and table cells. Field labels and table headers are uppercased by the components. Guest pages follow the website's voice rules instead.
 - `subtitle`: optional, one short line, sentence case, no full stop. On a tab page it names the tab or says what the page is for.
 - Never pass spacing classes to `PageLayout` (`className`, `headerClassName`, `contentClassName`) and never wrap it in padding, `max-w-*`, `mx-auto` or `min-h-screen`. **(guard)** The only `<main>` is the app shell's. **(guard)**
 - Width: leave `containerSize` at `full`, except a page whose content is one form with no table (change password, a role, a maintenance item, a campaign, a simple settings form), which uses `containerSize="md"`.
@@ -29,7 +30,8 @@ The FOH manager iPad kiosk (`/table-bookings/foh` signed in as the manager kiosk
 - A section with more than one page has one nav constant in `<section>/_shared/nav.ts` (for example `FINANCE_NAV`, `EMPLOYEES_NAV`), passed as `navItems` on every page in that tab row. Never copy the array into a page. **(guard: no `SectionNav` outside `src/ds`)**
 - The active tab comes from the path (longest matching prefix). A page that sits under a tab but is not itself in the list (a detail page) sets `active: true` on its parent tab.
 - `Tabs` switch panels inside one page. `Segmented` switches the view of the same data (list or calendar, 7 or 30 days). Never use a nav component with `onSelect` to switch panels.
-- Back navigation: `backButton` on child pages only (detail, new, edit, and the pages you drill into from Settings), labelled "Back to <Parent>" in Title Case, pointing at the direct parent. No back button on a page that is in a tab row, and none on top-level pages. No breadcrumbs anywhere. **(guard)**
+- A page shows at most one tab row.
+- Back navigation: `backButton` on every page below its section's top level: detail pages and their tabs, new and edit pages, sub-areas with their own tab row (Private Bookings Settings), and the pages you drill into from Settings. It is labelled "Back to <Parent>" and points at the direct parent. No back button on a section's top-level pages, whether or not they have a tab row. No breadcrumbs anywhere. **(guard)**
 
 ### Header actions
 
@@ -103,7 +105,7 @@ export const FINANCE_NAV: HeaderNavItem[] = [
 // a form page
 <PageLayout title="New Role" backButton={{ label: 'Back to Roles', href: '/roles' }} containerSize="md">
   <Card>
-    <CardHeader title="Role details" />
+    <CardHeader title="Role Details" />
     <CardBody className="space-y-4">
       <Input label="Name" ... />
     </CardBody>

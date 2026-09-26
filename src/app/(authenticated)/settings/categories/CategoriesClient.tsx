@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import type { AttachmentCategory } from '@/app/actions/attachmentCategories'
 import { createAttachmentCategory, deleteAttachmentCategory, listAttachmentCategories, updateAttachmentCategory } from '@/app/actions/attachmentCategories'
-import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { Form } from '@/ds'
@@ -13,7 +12,7 @@ import { Button } from '@/ds'
 import { Checkbox } from '@/ds'
 import { Alert } from '@/ds'
 import { Spinner } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 
 type CategoriesClientProps = {
   initialCategories: AttachmentCategory[]
@@ -154,14 +153,15 @@ export default function CategoriesClient({ initialCategories, canManage, initial
         </p>
 
         {error && (
-          <Alert variant="error" title="Error" description={error} />
+          <Alert tone="danger" title="Error">{error}</Alert>
         )}
 
         {!canManage && (
           <Alert
-            variant="info"
-            description="You have read-only access to attachment categories."
-          />
+            tone="info"
+          >
+            You have read-only access to attachment categories.
+          </Alert>
         )}
 
         <Section title="Add New Category">
@@ -184,7 +184,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                 />
                 <Button
                   type="submit"
-                  leftIcon={<PlusIcon className="h-4 w-4" />}
+                  leftIcon={<Icon name="plus" size={16} />}
                   disabled={!canManage || isMutating}
                 >
                   Add Category
@@ -201,7 +201,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                 <Spinner />
               </div>
             ) : sortedCategories.length === 0 ? (
-              <EmptyState
+              <Empty
                 title="No categories defined"
                 description="Add your first category above to get started."
               />
@@ -271,7 +271,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                             <Button
                               variant="secondary"
                               size="sm"
-                              leftIcon={<PencilIcon className="h-4 w-4" />}
+                              leftIcon={<Icon name="edit" size={16} />}
                               onClick={() => handleStartEdit(category.category_id, category.category_name)}
                               disabled={isMutating}
                             >
@@ -280,7 +280,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                             <Button
                               variant="danger"
                               size="sm"
-                              leftIcon={<TrashIcon className="h-4 w-4" />}
+                              leftIcon={<Icon name="trash" size={16} />}
                               onClick={() => handleDeleteCategory(category.category_id, category.category_name)}
                               disabled={isMutating}
                             >

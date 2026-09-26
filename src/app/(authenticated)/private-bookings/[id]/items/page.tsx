@@ -5,16 +5,6 @@ import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
 import { formatDateFull } from '@/lib/dateUtils'
 import { 
-  PlusIcon, 
-  TrashIcon,
-  PencilIcon,
-  MapPinIcon,
-  SparklesIcon,
-  UserGroupIcon,
-  ClipboardDocumentListIcon,
-  // XMarkIcon
-} from '@heroicons/react/24/outline'
-import { 
   getPrivateBooking, 
   addBookingItem, 
   updateBookingItem, 
@@ -25,16 +15,16 @@ import {
   getVendorRate
 } from '@/app/actions/privateBookingActions'
 import type { VenueSpace, CateringPackage, Vendor, ItemType, PrivateBookingItem, PrivateBookingWithDetails } from '@/types/private-bookings'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 // import { Section } from '@/ds'
 import { Button, IconButton } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Modal } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { Spinner } from '@/ds'
 import { ConfirmDialog } from '@/ds'
 import { toast } from '@/ds'
@@ -373,7 +363,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                   : 'border-border hover:border-border-strong'
               }`}
             >
-              <MapPinIcon className="h-6 w-6 mb-1" />
+              <Icon name="mapPin" size={24} className="mb-1" />
               <span className="text-sm">Space</span>
             </button>
             <button
@@ -386,7 +376,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                   : 'border-border hover:border-border-strong'
               }`}
             >
-              <SparklesIcon className="h-6 w-6 mb-1" />
+              <Icon name="sparkles" size={24} className="mb-1" />
               <span className="text-sm">Catering</span>
             </button>
             <button
@@ -399,7 +389,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                   : 'border-border hover:border-border-strong'
               }`}
             >
-              <UserGroupIcon className="h-6 w-6 mb-1" />
+              <Icon name="users" size={24} className="mb-1" />
               <span className="text-sm">Vendor</span>
             </button>
             <button
@@ -412,7 +402,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                   : 'border-border hover:border-border-strong'
               }`}
             >
-              <ClipboardDocumentListIcon className="h-6 w-6 mb-1" />
+              <Icon name="clipboardList" size={24} className="mb-1" />
               <span className="text-sm">Other</span>
             </button>
           </div>
@@ -420,7 +410,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
 
         {/* Item Selection */}
         {itemType !== 'other' && (
-          <FormGroup
+          <Field
             label={`Select ${itemType === 'space' ? 'Space' : itemType === 'catering' ? 'Package' : 'Vendor'}`}
             required
           >
@@ -463,24 +453,24 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               ]}
               required
             />
-          </FormGroup>
+          </Field>
         )}
 
         {/* Custom Description (for 'other' items) */}
         {itemType === 'other' && (
-          <FormGroup label="Description" required>
+          <Field label="Description" required>
             <Input
               type="text"
               value={customDescription}
               onChange={(e) => setCustomDescription(e.target.value)}
               required
             />
-          </FormGroup>
+          </Field>
         )}
 
         {/* Quantity and Price - Different layouts based on pricing model */}
         {itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value' ? (
-          <FormGroup label="Total Price (£)" required>
+          <Field label="Total Price (£)" required>
             <Input
               type="number"
               value={customPrice || selectedItem.cost_per_head || ''}
@@ -490,10 +480,10 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               required
               placeholder="Enter total price"
             />
-          </FormGroup>
+          </Field>
         ) : (
           <div className="grid grid-cols-2 gap-4">
-            <FormGroup 
+            <Field 
               label={itemType === 'catering' ? 'Number of Guests' : 'Quantity'}
               required
             >
@@ -505,8 +495,8 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                 step={itemType === 'catering' ? '1' : '0.01'}
                 required
               />
-            </FormGroup>
-            <FormGroup label="Unit Price (£)" required>
+            </Field>
+            <Field label="Unit Price (£)" required>
               <Input
                 type="number"
                 value={customPrice !== '' ? customPrice : (
@@ -527,7 +517,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
                 required={itemType === 'other' || itemType === 'vendor'}
                 readOnly={itemType !== 'other' && itemType !== 'vendor' && !!selectedItem}
               />
-            </FormGroup>
+            </Field>
           </div>
         )}
 
@@ -557,13 +547,13 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
         </div>
 
         {/* Notes */}
-        <FormGroup label="Notes (optional)">
+        <Field label="Notes (optional)">
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
           />
-        </FormGroup>
+        </Field>
 
         {/* Total Preview */}
         {(customPrice || selectedItem) && (
@@ -661,7 +651,7 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <FormGroup label="Quantity" required>
+          <Field label="Quantity" required>
             <Input
               type="number"
               value={quantity}
@@ -670,8 +660,8 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
               step={item.item_type === 'catering' ? '1' : '0.01'}
               required
             />
-          </FormGroup>
-          <FormGroup label="Unit Price (£)" required>
+          </Field>
+          <Field label="Unit Price (£)" required>
             <Input
               type="number"
               value={unitPrice}
@@ -680,7 +670,7 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
               min="0"
               required
             />
-          </FormGroup>
+          </Field>
         </div>
 
         <div className="space-y-2">
@@ -707,13 +697,13 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
           </div>
         </div>
 
-        <FormGroup label="Notes">
+        <Field label="Notes">
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
           />
-        </FormGroup>
+        </Field>
 
         <div className="flex justify-end gap-3 pt-4">
           <Button
@@ -795,10 +785,10 @@ export default function ItemsPage() {
 
   const getItemIcon = (type: ItemType) => {
     switch (type) {
-      case 'space': return <MapPinIcon className="h-5 w-5" />
-      case 'catering': return <SparklesIcon className="h-5 w-5" />
-      case 'vendor': return <UserGroupIcon className="h-5 w-5" />
-      default: return <ClipboardDocumentListIcon className="h-5 w-5" />
+      case 'space': return <Icon name="mapPin" size={20} className="block" />
+      case 'catering': return <Icon name="sparkles" size={20} className="block" />
+      case 'vendor': return <Icon name="users" size={20} className="block" />
+      default: return <Icon name="clipboardList" size={20} className="block" />
     }
   }
 
@@ -843,7 +833,7 @@ export default function ItemsPage() {
       backButton={{ label: 'Back to Booking', href: `/private-bookings/${bookingId}` }}
       navItems={navItems}
       headerActions={
-        <Button onClick={() => setShowAddModal(true)} leftIcon={<PlusIcon className="h-4 w-4" />}>
+        <Button onClick={() => setShowAddModal(true)} leftIcon={<Icon name="plus" size={16} />}>
           Add Item
         </Button>
       }
@@ -852,13 +842,13 @@ export default function ItemsPage() {
         {booking?.invoice_id && <Card><p className="text-sm text-text">Original invoiced prices are locked. Included items with no charge can still be added here.</p><Link className="mt-2 inline-block text-sm text-primary underline" href={`/private-bookings/${bookingId}#booking-billing`}>Add chargeable extras on a separate invoice</Link></Card>}
         <Card>
         {items.length === 0 ? (
-          <EmptyState icon={<ClipboardDocumentListIcon className="h-12 w-12" />}
+          <Empty icon={<Icon name="clipboardList" size={48} />}
             title="No items added yet"
             description="Click 'Add Item' to get started."
             action={
               <Button
                 onClick={() => setShowAddModal(true)}
-                leftIcon={<PlusIcon className="h-5 w-5" />}
+                leftIcon={<Icon name="plus" size={20} />}
               >
                 Add Item
               </Button>
@@ -903,14 +893,14 @@ export default function ItemsPage() {
                         type="button"
                         onClick={() => setEditingItem(item)}
                         label="Edit item"
-                        icon={<PencilIcon className="h-5 w-5" />}
+                        icon={<Icon name="edit" size={20} />}
                         className="text-text-muted"
                       />
                       <IconButton
                         type="button"
                         onClick={() => setDeletingItemId(item.id)}
                         label="Delete item"
-                        icon={<TrashIcon className="h-5 w-5" />}
+                        icon={<Icon name="trash" size={20} />}
                         className="text-danger hover:text-danger-fg"
                       />
                     </div>
