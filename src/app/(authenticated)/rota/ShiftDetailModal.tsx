@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { Alert, Badge, Button, Checkbox, FormGroup, Input, Modal, Select } from '@/ds';
-import { formatTime12Hour } from '@/lib/dateUtils';
+import { formatDateTimeInLondon, formatTime12Hour } from '@/lib/dateUtils';
 import { updateShift, deleteShift } from '@/app/actions/rota';
 import type { RotaShift, RotaEmployee, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';
@@ -95,7 +95,7 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', {
+  return formatDateTimeInLondon(iso, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
