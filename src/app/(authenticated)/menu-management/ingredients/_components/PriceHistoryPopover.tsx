@@ -5,6 +5,7 @@ import { Popover, PopoverHeader, PopoverContent } from '@/ds';
 import { Spinner } from '@/ds';
 import { getMenuIngredientPrices } from '@/app/actions/menu-management';
 import { toast } from '@/ds';
+import { formatDateInLondon } from '@/lib/dateUtils';
 
 interface IngredientPriceEntry {
   id: string;
@@ -81,7 +82,7 @@ export function PriceHistoryPopover({
                     £{entry.pack_cost.toFixed(2)} per pack
                   </div>
                   <div className="text-xs text-text-muted">
-                    Effective {new Date(entry.effective_from).toLocaleDateString()}
+                    Effective {formatDateInLondon(entry.effective_from)}
                   </div>
                 </div>
                 {entry.supplier_name && (
