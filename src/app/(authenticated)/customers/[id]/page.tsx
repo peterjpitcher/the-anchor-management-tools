@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
-import toast from 'react-hot-toast'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { Customer } from '@/types/database'
@@ -25,7 +23,7 @@ import {
 } from '@/app/actions/emailSuppressionActions'
 import { updateCustomer as updateCustomerAction, updateCustomerNotes } from '@/app/actions/customers'
 import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, type CustomerLabelAssignment } from '@/app/actions/customer-labels'
-import { PageLayout } from '@/ds'
+import { PageLayout, toast, Icon } from '@/ds'
 import { Card, CardBody, CardDescription, CardTitle } from '@/ds'
 import { Alert } from '@/ds'
 import { Badge } from '@/ds'
@@ -1391,7 +1389,7 @@ export default function CustomerViewPage() {
               <CardBody>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <ChatBubbleLeftRightIcon className="h-5 w-5 text-text-subtle" />
+                    <Icon name="message" size={20} className="text-text-subtle" />
                     <span
                       className={`text-sm font-medium ${customer.sms_opt_in !== false ? 'text-success-fg' : 'text-danger-fg'}`}
                     >
@@ -1411,7 +1409,7 @@ export default function CustomerViewPage() {
               <CardBody>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <ChatBubbleLeftRightIcon className="h-5 w-5 text-text-subtle" />
+                    <Icon name="message" size={20} className="text-text-subtle" />
                     <span
                       className={`text-sm font-medium ${customer.whatsapp_opt_in === true ? 'text-success-fg' : 'text-danger-fg'}`}
                     >
@@ -1572,7 +1570,7 @@ export default function CustomerViewPage() {
               )}
 
               {customer.sms_deactivation_reason && (
-                <Alert variant="error" title="Auto-deactivated" className="mt-4">
+                <Alert tone="danger" title="Auto-deactivated" className="mt-4">
                   {customer.sms_deactivation_reason}
                   {customer.last_sms_failure_reason && (
                     <p className="mt-1 text-sm text-danger-fg">

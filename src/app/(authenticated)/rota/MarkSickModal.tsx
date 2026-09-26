@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { Alert, Button, FormGroup, Modal, Textarea } from '@/ds';
+import { Alert, Button, Field, Modal, Textarea, toast } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import { markEmployeeCouldntWork, markShiftSick } from '@/app/actions/rota';
 import type { RotaShift } from '@/app/actions/rota';
@@ -97,9 +96,9 @@ export default function MarkSickModal({
           )}
         </div>
 
-        {error && <Alert variant="error">{error}</Alert>}
+        {error && <Alert tone="danger">{error}</Alert>}
 
-        <FormGroup label="Reason" htmlFor="sick-reason" required>
+        <Field label="Reason" htmlFor="sick-reason" required>
           <Textarea
             id="sick-reason"
             value={reason}
@@ -108,7 +107,7 @@ export default function MarkSickModal({
             rows={4}
             placeholder="e.g. Unable to work, flu symptoms"
           />
-        </FormGroup>
+        </Field>
       </div>
     </Modal>
   );

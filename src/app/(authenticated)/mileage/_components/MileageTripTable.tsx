@@ -5,8 +5,7 @@
  * for a new order. The table shows from 768px; phones get MileageTripCard instead.
  */
 
-import { PencilSquareIcon, TrashIcon } from '@heroicons/react/24/outline'
-import { Badge, IconButton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ds'
+import { Badge, IconButton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Icon } from '@/ds'
 import type { MileageListDirection, MileageListSort } from '@/lib/mileage/list-query'
 import { formatLongDate } from '@/lib/mileage/periods'
 import type { MileageReportTrip } from '@/lib/mileage/report/dataset'
@@ -108,14 +107,14 @@ export function MileageTripTable({ trips, sort, dir, onSort, canManage, onEdit, 
                     {!isOjProjects && (
                       <div className="flex items-center justify-end gap-1">
                         <IconButton
-                          icon={<PencilSquareIcon className="h-4 w-4" />}
+                          icon={<Icon name="edit" size={16} />}
                           label={`Edit trip on ${dateLabel}`}
                           variant="ghost"
                           size="sm"
                           onClick={() => onEdit(trip)}
                         />
                         <IconButton
-                          icon={<TrashIcon className="h-4 w-4 text-danger" />}
+                          icon={<Icon name="trash" size={16} className="text-danger" />}
                           label={`Delete trip on ${dateLabel}`}
                           variant="ghost"
                           size="sm"

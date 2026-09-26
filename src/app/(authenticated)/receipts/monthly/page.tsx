@@ -1,7 +1,7 @@
 import { getMonthlyReceiptInsights } from '@/app/actions/receipts'
 import { MonthlyCharts, StackedBreakdownChart } from './MonthlyCharts'
 import { Badge, Card } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
@@ -102,7 +102,7 @@ export default async function ReceiptsMonthlyPage() {
         subtitle="Track income and spending trends across recent months."
         navState={{ view: 'monthly' }}
       >
-        <EmptyState
+        <Empty
           title="No receipt data yet"
           description="Upload a bank statement to start tracking monthly trends."
           action={<Link href="/receipts" className="rounded-sm font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:shadow-ring">Go to receipts workspace</Link>}
@@ -447,7 +447,7 @@ function InsightsFeed({
       header={<h3 className="text-base font-semibold text-text-strong">What changed this month</h3>}
     >
       {items.length === 0 ? (
-        <EmptyState title="Steady month" description="No significant changes detected. Keep an eye on receipts for any anomalies." />
+        <Empty title="Steady month" description="No significant changes detected. Keep an eye on receipts for any anomalies." />
       ) : (
         <ol className="space-y-3">
           {items.map((item, index) => {

@@ -1,9 +1,7 @@
 'use client'
 
 import { FormEvent } from 'react'
-import { toast } from 'react-hot-toast'
-import { Button, Select, Card, CardBody, CardHeader } from '@/ds'
-import { DocumentArrowDownIcon } from '@heroicons/react/24/outline'
+import { Button, Select, Card, CardBody, CardHeader, toast, Icon } from '@/ds'
 import { getLastCompletedQuarter } from '@/lib/receipts/export/default-period'
 
 export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
@@ -55,7 +53,7 @@ export function ReceiptExport({ canExport = false }: { canExport?: boolean }) {
             />
           </div>
           <Button type="submit" size="sm" className="w-full">
-            <DocumentArrowDownIcon className="mr-2 h-4 w-4" />
+            <Icon name="download" size={16} className="mr-2" />
             Download bundle
           </Button>
         </form>

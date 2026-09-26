@@ -7,16 +7,15 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getInvoice, recordPayment } from '@/app/actions/invoices'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Alert } from '@/ds'
 import { toast } from '@/ds'
-import { Save } from 'lucide-react'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import type { InvoiceWithDetails, PaymentMethod } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -175,10 +174,10 @@ export default function RecordPaymentPage() {
       backButton={{ label: 'Back to Invoice', href: `/invoices/${invoice.id}` }}
     >
       <div className="space-y-6">
-        {error && <Alert variant="error" description={error} />}
+        {error && <Alert tone="danger">{error}</Alert>}
 
         {success && (
-          <Alert variant="success" description="Payment recorded successfully! Redirecting..." />
+          <Alert tone="success">Payment recorded successfully! Redirecting...</Alert>
         )}
 
         <Card>
@@ -204,7 +203,7 @@ export default function RecordPaymentPage() {
           <Card>
             <h2 className="mb-4 text-lg font-semibold">Payment Details</h2>
             <div className="space-y-4">
-              <FormGroup label="Payment Date" required>
+              <Field label="Payment Date" required>
                 <Input
                   type="date"
                   value={paymentDate}
@@ -212,9 +211,9 @@ export default function RecordPaymentPage() {
                   max={todayIso}
                   required
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Amount (£)" required help={`Maximum: £${outstanding.toFixed(2)}`}>
+              <Field label="Amount (£)" required help={`Maximum: £${outstanding.toFixed(2)}`}>
                 <Input
                   type="number"
                   value={amount}
@@ -224,9 +223,9 @@ export default function RecordPaymentPage() {
                   step="0.01"
                   required
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Payment Method" required>
+              <Field label="Payment Method" required>
                 <Select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
@@ -238,25 +237,25 @@ export default function RecordPaymentPage() {
                   <option value="cheque">Cheque</option>
                   <option value="other">Other</option>
                 </Select>
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Reference">
+              <Field label="Reference">
                 <Input
                   type="text"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                   placeholder="Transaction reference or cheque number"
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Notes">
+              <Field label="Notes">
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
                   placeholder="Any additional notes about this payment"
                 />
-              </FormGroup>
+              </Field>
             </div>
           </Card>
 
@@ -278,7 +277,7 @@ export default function RecordPaymentPage() {
                 parseFloat(amount) > outstanding
               }
               loading={submitting}
-              leftIcon={<Save className="h-4 w-4" />}
+              leftIcon={<Icon name="save" size={16} />}
             >
               Record Payment
             </Button>

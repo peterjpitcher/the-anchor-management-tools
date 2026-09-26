@@ -4,11 +4,10 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuote, updateQuoteStatus, convertQuoteToInvoice, deleteQuote } from '@/app/actions/quotes'
 import { getEmailConfigStatus } from '@/app/actions/email'
-import { FileText, Download, Mail, CheckCircle, XCircle, Edit, Copy, Trash2 } from 'lucide-react'
 import { EmailQuoteModal } from '@/components/modals/EmailQuoteModal'
 import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
 // UI v2 components
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { Button } from '@/ds'
@@ -229,7 +228,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
   if (error && !quote) {
     return (
       <PageLayout {...layoutProps}>
-        <Alert variant="error" title="Error loading quote" description={error} />
+        <Alert tone="danger" title="Error loading quote">{error}</Alert>
       </PageLayout>
     )
   }
@@ -279,7 +278,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           onClick={() => handleStatusChange('sent')}
           disabled={processing || !canEdit}
           title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
-          leftIcon={<Mail className="h-4 w-4" />}
+          leftIcon={<Icon name="mail" size={16} />}
         >
           <span className="hidden sm:inline">Mark as Sent</span>
           <span className="sm:hidden">Send</span>
@@ -291,7 +290,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           href={`/quotes/${quote.id}/edit`}
           variant="secondary"
           size="sm"
-          leftIcon={<Edit className="h-4 w-4" />}
+          leftIcon={<Icon name="edit" size={16} />}
         >
           Edit
         </LinkButton>
@@ -304,7 +303,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           onClick={() => handleStatusChange('accepted')}
           disabled={processing || !canEdit}
           title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
-          leftIcon={<CheckCircle className="h-4 w-4" />}
+          leftIcon={<Icon name="checkCircle" size={16} />}
         >
           <span className="hidden sm:inline">Mark as Accepted</span>
           <span className="sm:hidden">Accept</span>
@@ -318,7 +317,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           onClick={() => handleStatusChange('rejected')}
           disabled={processing || !canEdit}
           title={!canEdit ? 'You need invoice edit permission to update quotes.' : undefined}
-          leftIcon={<XCircle className="h-4 w-4" />}
+          leftIcon={<Icon name="xCircle" size={16} />}
         >
           <span className="hidden sm:inline">Mark as Rejected</span>
           <span className="sm:hidden">Reject</span>
@@ -332,7 +331,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           onClick={handleConvertToInvoice}
           disabled={processing || !canCreate}
           title={!canCreate ? 'You need invoice create permission to convert quotes.' : undefined}
-          leftIcon={<FileText className="h-4 w-4" />}
+          leftIcon={<Icon name="fileText" size={16} />}
         >
           <span className="hidden sm:inline">Convert to Invoice</span>
           <span className="sm:hidden">Convert</span>
@@ -346,7 +345,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           onClick={() => setShowEmailModal(true)}
           disabled={processing || !canEdit}
           title={!canEdit ? 'You need invoice edit permission to email quotes.' : undefined}
-          leftIcon={<Mail className="h-4 w-4" />}
+          leftIcon={<Icon name="mail" size={16} />}
         >
           <span className="hidden sm:inline">Send Email</span>
           <span className="sm:hidden">Email</span>
@@ -358,7 +357,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
         size="sm"
         onClick={() => window.open(`/api/quotes/${quote.id}/pdf`, '_blank')}
         disabled={processing}
-        leftIcon={<Download className="h-4 w-4" />}
+        leftIcon={<Icon name="download" size={16} />}
       >
         <span className="hidden sm:inline">Download PDF</span>
         <span className="sm:hidden">PDF</span>
@@ -371,7 +370,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
           onClick={() => setShowDeleteDialog(true)}
           disabled={processing || !canDelete}
           title={!canDelete ? 'You need invoice delete permission to delete quotes.' : undefined}
-          leftIcon={<Trash2 className="h-4 w-4" />}
+          leftIcon={<Icon name="trash" size={16} />}
         >
           Delete
         </Button>
@@ -388,7 +387,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
       </div>
 
       {error && (
-        <Alert variant="error" title="Error" description={error} />
+        <Alert tone="danger" title="Error">{error}</Alert>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
@@ -567,7 +566,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               )}
 
               {isExpired && quote.status === 'sent' && (
-                <Alert variant="warning" description="This quote has expired" />
+                <Alert tone="warning">This quote has expired</Alert>
               )}
             </div>
             </Card>
@@ -583,7 +582,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
                   navigator.clipboard.writeText(window.location.href)
                   toast.success('Link copied to clipboard!')
                 }}
-                leftIcon={<Copy className="h-4 w-4" />}
+                leftIcon={<Icon name="copy" size={16} />}
               >
                 Copy Link
               </Button>

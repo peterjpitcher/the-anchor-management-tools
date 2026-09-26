@@ -4,8 +4,7 @@ import { useActionState, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { addEmployeeNote } from '@/app/actions/employeeActions'
 import type { NoteFormState } from '@/types/actions'
-import { Modal, Button, Textarea, toast } from '@/ds'
-import { PlusIcon } from '@heroicons/react/24/outline'
+import { Modal, Button, Textarea, toast, Icon } from '@/ds'
 
 interface QuickAddNoteSheetProps {
   employeeId: string
@@ -41,7 +40,7 @@ export function QuickAddNoteSheet({ employeeId, className }: QuickAddNoteSheetPr
         type="button"
         variant="primary"
         onClick={() => setOpen(true)}
-        icon={<PlusIcon className="h-4 w-4" />}
+        icon={<Icon name="plus" size={16} />}
         className={className}
       >
         Add note

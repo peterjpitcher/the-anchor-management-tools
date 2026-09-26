@@ -1,13 +1,12 @@
 'use client'
 
 import { useState, useCallback, useMemo } from 'react'
-import { Card } from '@/ds'
+import { Card, Icon } from '@/ds'
 import { Button } from '@/ds'
 import { Badge } from '@/ds'
 import { Select } from '@/ds'
 import { Spinner } from '@/ds'
 import { toast } from '@/ds'
-import { ClipboardDocumentIcon, ArrowDownTrayIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
 import { generateSingleMarketingLink } from '@/app/actions/event-marketing-links'
 import {
@@ -220,7 +219,7 @@ export function EventMarketingLinksCard({
                   size="xs"
                   variant="secondary"
                   onClick={() => handleCopy(link.shortUrl, `${link.label} link`)}
-                  leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                  leftIcon={<Icon name="copy" size={16} />}
                 >
                   Copy link
                 </Button>
@@ -228,7 +227,7 @@ export function EventMarketingLinksCard({
                   size="xs"
                   variant="secondary"
                   onClick={() => handleDownloadQr(link)}
-                  leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+                  leftIcon={<Icon name="download" size={16} />}
                   disabled={!link.qrCode}
                 >
                   Download QR
@@ -243,7 +242,7 @@ export function EventMarketingLinksCard({
               size="xs"
               variant="ghost"
               onClick={() => handleCopy(link.destinationUrl, `${link.label} destination`)}
-              leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+              leftIcon={<Icon name="copy" size={16} />}
             >
               Copy URL
             </Button>
@@ -278,7 +277,7 @@ export function EventMarketingLinksCard({
               size="sm"
               onClick={handleGenerateAllQr}
               disabled={loading || generatingAllQr}
-              leftIcon={<ArrowPathIcon className="h-4 w-4" />}
+              leftIcon={<Icon name="refresh" size={16} />}
             >
               {generatingAllQr ? 'Generating QR links…' : 'Generate missing QR links'}
             </Button>
@@ -292,7 +291,7 @@ export function EventMarketingLinksCard({
                 await onRegenerate()
               }}
               disabled={loading}
-              leftIcon={<ArrowPathIcon className="h-4 w-4" />}
+              leftIcon={<Icon name="refresh" size={16} />}
             >
               Refresh links
             </Button>
@@ -394,7 +393,7 @@ export function EventMarketingLinksCard({
                       size="xs"
                       variant="secondary"
                       onClick={() => handleCopy(link.shortUrl, `${link.label} link`)}
-                      leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                      leftIcon={<Icon name="copy" size={16} />}
                     >
                       Copy link
                     </Button>
@@ -406,7 +405,7 @@ export function EventMarketingLinksCard({
                       size="xs"
                       variant="ghost"
                       onClick={() => handleCopy(link.destinationUrl, `${link.label} destination`)}
-                      leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                      leftIcon={<Icon name="copy" size={16} />}
                     >
                       Copy URL
                     </Button>
@@ -451,7 +450,7 @@ export function EventMarketingLinksCard({
                       size="xs"
                       variant="secondary"
                       onClick={() => handleCopy(link.shortUrl, `${link.label} link`)}
-                      leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                      leftIcon={<Icon name="copy" size={16} />}
                     >
                       Copy link
                     </Button>
@@ -463,7 +462,7 @@ export function EventMarketingLinksCard({
                       size="xs"
                       variant="ghost"
                       onClick={() => handleCopy(link.destinationUrl, `${link.label} destination`)}
-                      leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                      leftIcon={<Icon name="copy" size={16} />}
                     >
                       Copy URL
                     </Button>

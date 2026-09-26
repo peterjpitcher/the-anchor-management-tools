@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Form / FormSection / FormActions: backward-compatible wrappers
+ * Form / FormSection: backward-compatible wrappers
  * @deprecated Use standard <form> + ds/ components instead
  */
 
@@ -113,7 +113,7 @@ export const Form = forwardRef<HTMLFormElement, FormProps>(
     return (
       <form ref={ref} onSubmit={handleSubmit} className={cn(spacingClasses[spacing], className)} {...props}>
         {error && showErrors && (
-          <Alert variant="error" title="Error" description={error} />
+          <Alert tone="danger" title="Error">{error}</Alert>
         )}
         <fieldset disabled={disableOnSubmit && isSubmitting} className="min-w-0">
           {children}
@@ -151,35 +151,6 @@ export function FormSection({
         </div>
       )}
       <div className="space-y-4">{children}</div>
-    </div>
-  )
-}
-
-export function FormActions({
-  children,
-  align = 'right',
-  className,
-}: {
-  children: ReactNode
-  align?: 'left' | 'center' | 'right' | 'between'
-  className?: string
-}) {
-  const alignClasses = {
-    left: 'sm:justify-start',
-    center: 'sm:justify-center',
-    right: 'sm:justify-end',
-    between: 'sm:justify-between',
-  }
-
-  return (
-    <div
-      className={cn(
-        'flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-4',
-        alignClasses[align],
-        className,
-      )}
-    >
-      {children}
     </div>
   )
 }

@@ -1,12 +1,10 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { PlusIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/ds';
+import { Button, toast, Icon } from '@/ds';
 import { Input } from '@/ds';
 import { Select } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Field } from '@/ds';
 import { Alert } from '@/ds';
 import { Badge } from '@/ds';
 import {
@@ -116,7 +114,7 @@ function RateHistory({
             type="button"
             size="sm"
             variant="ghost"
-            leftIcon={<PlusIcon className="h-3.5 w-3.5" />}
+            leftIcon={<Icon name="plus" size={14} />}
             onClick={() => setShowForm(v => !v)}
           >
             Add rate
@@ -162,9 +160,9 @@ function RateHistory({
                 </td>
                 <td className="py-1.5">
                   {r.effective_from > today ? (
-                    <Badge variant="warning" size="sm">Upcoming</Badge>
+                    <Badge tone="warning" size="sm">Upcoming</Badge>
                   ) : r.id === current?.id ? (
-                    <Badge variant="success" size="sm">Current</Badge>
+                    <Badge tone="success" size="sm">Current</Badge>
                   ) : (
                     <Badge tone="neutral" size="sm">Historical</Badge>
                   )}
@@ -199,7 +197,7 @@ function RateHistory({
           <p className="text-xs font-medium text-text-muted">Add new effective-dated rate</p>
           {error && <p className="text-xs text-danger">{error}</p>}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <FormGroup label="Hourly rate (£)" htmlFor={`rate-${bandId}`}>
+            <Field label="Hourly rate (£)" htmlFor={`rate-${bandId}`}>
               <Input
                 id={`rate-${bandId}`}
                 type="number"
@@ -209,15 +207,15 @@ function RateHistory({
                 value={rate}
                 onChange={e => setRate(e.target.value)}
               />
-            </FormGroup>
-            <FormGroup label="Effective from" htmlFor={`eff-${bandId}`}>
+            </Field>
+            <Field label="Effective from" htmlFor={`eff-${bandId}`}>
               <Input
                 id={`eff-${bandId}`}
                 type="date"
                 value={effectiveFrom}
                 onChange={e => setEffectiveFrom(e.target.value)}
               />
-            </FormGroup>
+            </Field>
           </div>
           <div className="flex gap-2">
             <Button type="button" size="sm" onClick={handleAddRate} disabled={isPending}>
@@ -293,8 +291,8 @@ function BandCard({
       >
         <div className="flex items-center gap-3">
           {expanded
-            ? <ChevronDownIcon className="h-4 w-4 text-text-subtle" />
-            : <ChevronRightIcon className="h-4 w-4 text-text-subtle" />
+            ? <Icon name="chevronDown" size={16} className="text-text-subtle" />
+            : <Icon name="chevronRight" size={16} className="text-text-subtle" />
           }
           <div>
             <p className="font-medium text-text">{band.label}</p>
@@ -309,7 +307,7 @@ function BandCard({
           ) : (
             <span className="text-sm text-text-soft italic">No rate set</span>
           )}
-          {!band.is_active && <Badge variant="default" size="sm">Inactive</Badge>}
+          {!band.is_active && <Badge tone="neutral" size="sm">Inactive</Badge>}
         </div>
       </button>
 
@@ -437,7 +435,7 @@ export default function PayBandsManager({ canManage, initialBands, initialRates 
           <Button
             type="button"
             size="sm"
-            leftIcon={<PlusIcon className="h-4 w-4" />}
+            leftIcon={<Icon name="plus" size={16} />}
             onClick={() => setShowNewBandForm(v => !v)}
           >
             New band
@@ -448,19 +446,19 @@ export default function PayBandsManager({ canManage, initialBands, initialRates 
       {showNewBandForm && canManage && (
         <div className="p-4 bg-surface-2 rounded-lg border border-border space-y-4">
           <p className="text-sm font-medium text-text">New age band</p>
-          {formError && <Alert variant="error">{formError}</Alert>}
+          {formError && <Alert tone="danger">{formError}</Alert>}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
             <div className="sm:col-span-2">
-              <FormGroup label="Band label" htmlFor="band-label" required>
+              <Field label="Band label" htmlFor="band-label" required>
                 <Input
                   id="band-label"
                   placeholder='e.g. "Under 18" or "23+"'
                   value={label}
                   onChange={e => setLabel(e.target.value)}
                 />
-              </FormGroup>
+              </Field>
             </div>
-            <FormGroup label="Min age" htmlFor="band-min">
+            <Field label="Min age" htmlFor="band-min">
               <Input
                 id="band-min"
                 type="number"
@@ -470,8 +468,8 @@ export default function PayBandsManager({ canManage, initialBands, initialRates 
                 value={minAge}
                 onChange={e => setMinAge(e.target.value)}
               />
-            </FormGroup>
-            <FormGroup label="Max age (blank = no limit)" htmlFor="band-max">
+            </Field>
+            <Field label="Max age (blank = no limit)" htmlFor="band-max">
               <Input
                 id="band-max"
                 type="number"
@@ -481,7 +479,7 @@ export default function PayBandsManager({ canManage, initialBands, initialRates 
                 value={maxAge}
                 onChange={e => setMaxAge(e.target.value)}
               />
-            </FormGroup>
+            </Field>
           </div>
           <div className="flex gap-2">
             <Button type="button" onClick={handleCreateBand} disabled={isPending}>

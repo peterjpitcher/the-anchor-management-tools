@@ -24,9 +24,8 @@ vi.mock('@/app/actions/rbac', () => ({
   assignRolesToUser: (...args: unknown[]) => mockAssignRolesToUser(...args),
 }))
 
-vi.mock('react-hot-toast', () => ({
-  __esModule: true,
-  default: toast,
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: toast,
 }))
 
 describe('User management UI gating', () => {

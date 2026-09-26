@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getQuote, convertQuoteToInvoice } from '@/app/actions/quotes'
-import { AlertTriangle } from 'lucide-react'
 import type { QuoteWithDetails } from '@/types/invoices'
 // UI v2 components
 import { PageLayout } from '@/ds'
@@ -161,7 +160,7 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
     >
       <div className="space-y-6">
       {error && (
-        <Alert variant="error" title="Error" description={error} />
+        <Alert tone="danger" title="Error">{error}</Alert>
       )}
 
       <Section title="Quote Details">
@@ -199,10 +198,11 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
         </Card>
       </Section>
 
-      <Alert variant="info"
+      <Alert tone="info"
         title="What happens next?"
-        description="A new invoice will be created with the same details as this quote. The invoice will have status 'Draft' and can be edited if needed. The invoice date will be today's date with payment due in 30 days. This quote will be marked as converted."
-      />
+      >
+        {"A new invoice will be created with the same details as this quote. The invoice will have status 'Draft' and can be edited if needed. The invoice date will be today's date with payment due in 30 days. This quote will be marked as converted."}
+      </Alert>
 
       <div className="flex gap-4">
         <Button

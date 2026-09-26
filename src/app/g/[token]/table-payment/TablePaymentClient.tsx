@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { Clock } from 'lucide-react'
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js'
 // Imported file by file rather than through '@/components/features/guest': the
 // barrel re-exports GuestShell, which loads the guest webfonts, and a font
@@ -92,7 +91,7 @@ export function TablePaymentClient({
   return (
     <>
       {showCancelledMessage && paymentState === 'idle' && (
-        <GuestAlert tone="notice" role="alert" icon={Clock}>
+        <GuestAlert tone="notice" role="alert" icon="clock">
           Payment was not completed. Your {isOutsideSeating ? 'booking' : 'table'} is still
           reserved if you pay before the hold expiry time below.
         </GuestAlert>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Drawer, DrawerActions } from '@/ds';
+import { Drawer, DrawerActions, Icon } from '@/ds';
 import { Tabs } from '@/ds';
 import { Badge, Button } from '@/ds';
 import { Checkbox } from '@/ds';
@@ -9,7 +9,6 @@ import { Alert } from '@/ds';
 import { ConfirmDialog } from '@/ds';
 import { toast } from '@/ds';
 import { useMediaQuery } from '@/hooks/use-media-query';
-import { ExclamationTriangleIcon, CheckCircleIcon } from '@heroicons/react/20/solid';
 import {
   createMenuDish,
   updateMenuDish,
@@ -586,13 +585,14 @@ export function DishDrawer({
         {/* Server error */}
         {serverError && (
           <Alert
-            variant="error"
+            tone="danger"
             title="Save Error"
-            description={serverError}
             closable
             onClose={() => setServerError(null)}
             className="mb-4"
-          />
+          >
+            {serverError}
+          </Alert>
         )}
 
         {/* Live header summary: cost / price / GP */}
@@ -606,7 +606,7 @@ export function DishDrawer({
           <span className={`text-sm font-semibold ${gpBelowTarget ? 'text-danger' : 'text-text'}`}>
             GP: {gpDisplayPct}
             {gpBelowTarget && (
-              <ExclamationTriangleIcon className="ml-1 inline h-4 w-4 text-danger" />
+              <Icon name="alertTriangle" size={16} className="ml-1 inline text-danger" />
             )}
           </span>
 
@@ -627,7 +627,7 @@ export function DishDrawer({
               allergenVerified ? (
                 <Badge
                   tone="success"
-                  icon={<CheckCircleIcon />}
+                  icon={<Icon name="checkCircle" size={12} />}
                   title={allergenVerifiedAt ? `Verified ${new Date(allergenVerifiedAt).toLocaleDateString('en-GB')}` : undefined}
                 >
                   Allergens Verified
@@ -641,7 +641,7 @@ export function DishDrawer({
                   size="xs"
                   onClick={() => void handleVerifyAllergens()}
                   disabled={verifying}
-                  icon={<ExclamationTriangleIcon className="h-3.5 w-3.5 text-warning" />}
+                  icon={<Icon name="alertTriangle" size={14} className="text-warning" />}
                 >
                   {verifying ? 'Verifying...' : 'Verify Allergens'}
                 </Button>

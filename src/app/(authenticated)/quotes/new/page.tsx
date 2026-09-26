@@ -5,19 +5,18 @@ import { useRouter } from 'next/navigation'
 import { createQuote } from '@/app/actions/quotes'
 import { getVendors } from '@/app/actions/vendors'
 import { getLineItemCatalog } from '@/app/actions/invoices'
-import { PlusCircle, Trash2 } from 'lucide-react'
 import type { InvoiceVendor, InvoiceLineItemInput, LineItemCatalogItem } from '@/types/invoices'
 // UI v2 components
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Alert } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { Dropdown } from '@/ds'
 import { toast } from '@/ds'
 
@@ -247,14 +246,14 @@ export default function NewQuotePage() {
   return (
     <PageLayout {...layoutProps}>
       {error && (
-        <Alert variant="error" title="Error" description={error} />
+        <Alert tone="danger" title="Error">{error}</Alert>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Section title="Quote Details">
           <Card>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormGroup label="Vendor" required>
+              <Field label="Vendor" required>
                 <Select
                   value={vendorId}
                   onChange={(e) => setVendorId(e.target.value)}
@@ -267,34 +266,34 @@ export default function NewQuotePage() {
                     </option>
                   ))}
                 </Select>
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Reference">
+              <Field label="Reference">
                 <Input
                   type="text"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                   placeholder="PO number or reference"
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Quote Date" required>
+              <Field label="Quote Date" required>
                 <Input
                   type="date"
                   value={quoteDate}
                   onChange={(e) => setQuoteDate(e.target.value)}
                   required
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Valid Until" required>
+              <Field label="Valid Until" required>
                 <Input
                   type="date"
                   value={validUntil}
                   onChange={(e) => setValidUntil(e.target.value)}
                   required
                 />
-              </FormGroup>
+              </Field>
             </div>
           </Card>
         </Section>
@@ -325,7 +324,7 @@ export default function NewQuotePage() {
                   }))}
                 />
               )}
-              <Button type="button" onClick={addLineItem} leftIcon={<PlusCircle className="h-4 w-4" />} size="sm">
+              <Button type="button" onClick={addLineItem} leftIcon={<Icon name="plusCircle" size={16} />} size="sm">
                 Add Line Item
               </Button>
             </div>
@@ -333,11 +332,11 @@ export default function NewQuotePage() {
         >
           <Card>
             {lineItems.length === 0 ? (
-              <EmptyState title="No line items added yet"
+              <Empty title="No line items added yet"
                 action={
                   <Button type="button"
                     onClick={addLineItem}
-                    leftIcon={<PlusCircle className="h-4 w-4" />}
+                    leftIcon={<Icon name="plusCircle" size={16} />}
                   >
                     Add Line Item
                   </Button>
@@ -349,7 +348,7 @@ export default function NewQuotePage() {
                   <div key={item.id} className="border border-border rounded-lg p-4">
                     <div className="grid grid-cols-12 gap-4">
                       <div className="col-span-12 md:col-span-5">
-                        <FormGroup label="Description">
+                        <Field label="Description">
                           <Input
                             type="text"
                             value={item.description}
@@ -357,11 +356,11 @@ export default function NewQuotePage() {
                             placeholder="Item description"
                             required
                           />
-                        </FormGroup>
+                        </Field>
                       </div>
 
                       <div className="col-span-12 md:col-span-2">
-                        <FormGroup label="Quantity">
+                        <Field label="Quantity">
                           <Input
                             type="number"
                             value={item.quantity}
@@ -370,11 +369,11 @@ export default function NewQuotePage() {
                             step="0.01"
                             required
                           />
-                        </FormGroup>
+                        </Field>
                       </div>
 
                       <div className="col-span-12 md:col-span-2">
-                        <FormGroup label="Unit Price (£)">
+                        <Field label="Unit Price (£)">
                           <Input
                             type="number"
                             value={item.unit_price}
@@ -383,11 +382,11 @@ export default function NewQuotePage() {
                             step="0.01"
                             required
                           />
-                        </FormGroup>
+                        </Field>
                       </div>
 
                       <div className="col-span-12 md:col-span-1">
-                        <FormGroup label="Disc %">
+                        <Field label="Disc %">
                           <Input
                             type="number"
                             value={item.discount_percentage}
@@ -396,11 +395,11 @@ export default function NewQuotePage() {
                             max="100"
                             step="0.01"
                           />
-                        </FormGroup>
+                        </Field>
                       </div>
 
                       <div className="col-span-12 md:col-span-1">
-                        <FormGroup label="VAT %">
+                        <Field label="VAT %">
                           <Input
                             type="number"
                             value={item.vat_rate}
@@ -408,7 +407,7 @@ export default function NewQuotePage() {
                             min="0"
                             step="0.01"
                           />
-                        </FormGroup>
+                        </Field>
                       </div>
 
                       <div className="col-span-12 md:col-span-1 flex items-end">
@@ -419,7 +418,7 @@ export default function NewQuotePage() {
                           size="sm"
                           iconOnly
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Icon name="trash" size={16} />
                         </Button>
                       </div>
                     </div>
@@ -438,7 +437,7 @@ export default function NewQuotePage() {
           <Card>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               <div className="space-y-4">
-                <FormGroup label="Quote Discount (%)">
+                <Field label="Quote Discount (%)">
                   <Input
                     type="number"
                     value={quoteDiscountPercentage}
@@ -447,25 +446,25 @@ export default function NewQuotePage() {
                     max="100"
                     step="0.01"
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Notes (visible on quote)">
+                <Field label="Notes (visible on quote)">
                   <Textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     rows={3}
                     placeholder="Terms, conditions, special instructions, etc."
                   />
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Internal Notes">
+                <Field label="Internal Notes">
                   <Textarea
                     value={internalNotes}
                     onChange={(e) => setInternalNotes(e.target.value)}
                     rows={3}
                     placeholder="Private notes about this quote"
                   />
-                </FormGroup>
+                </Field>
               </div>
 
               <div className="bg-surface-2 rounded-lg p-3 sm:p-4">

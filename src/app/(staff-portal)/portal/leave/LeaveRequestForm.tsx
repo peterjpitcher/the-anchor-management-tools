@@ -2,10 +2,9 @@
 
 import { useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import toast from 'react-hot-toast';
-import { Button } from '@/ds';
+import { Button, toast } from '@/ds';
 import { Input } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Field } from '@/ds';
 import { Alert } from '@/ds';
 import { submitLeaveRequest } from '@/app/actions/leave';
 
@@ -50,10 +49,10 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
 
   return (
     <div className="space-y-4">
-      {error && <Alert variant="error">{error}</Alert>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="grid grid-cols-2 gap-3">
-        <FormGroup label="First day" htmlFor="lr-start" required>
+        <Field label="First day" htmlFor="lr-start" required>
           <Input
             id="lr-start"
             type="date"
@@ -61,8 +60,8 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
             min={todayLocal}
             onChange={e => setStartDate(e.target.value)}
           />
-        </FormGroup>
-        <FormGroup label="Last day" htmlFor="lr-end" required>
+        </Field>
+        <Field label="Last day" htmlFor="lr-end" required>
           <Input
             id="lr-end"
             type="date"
@@ -70,7 +69,7 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
             min={startDate || todayLocal}
             onChange={e => setEndDate(e.target.value)}
           />
-        </FormGroup>
+        </Field>
       </div>
 
       {days > 0 && (
@@ -79,14 +78,14 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
         </div>
       )}
 
-      <FormGroup label="Note (optional)" htmlFor="lr-note">
+      <Field label="Note (optional)" htmlFor="lr-note">
         <Input
           id="lr-note"
           placeholder="Any context for your manager…"
           value={note}
           onChange={e => setNote(e.target.value)}
         />
-      </FormGroup>
+      </Field>
 
       <div className="flex gap-2">
         <Button type="button" variant="primary" onClick={handleSubmit} disabled={isPending}>

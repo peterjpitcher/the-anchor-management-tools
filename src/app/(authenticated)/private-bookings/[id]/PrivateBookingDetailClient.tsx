@@ -7,36 +7,6 @@ import { formatDateFull, formatTime12Hour, formatDateTime12Hour, toLondonDateTim
 import { isBookingDateTbd } from "@/lib/private-bookings/tbd-detection";
 import { DATE_TBD_NOTE } from "@/services/private-bookings/types";
 import {
-  PencilIcon,
-  UserGroupIcon,
-  CurrencyPoundIcon,
-  DocumentTextIcon,
-  EnvelopeIcon,
-  PhoneIcon,
-  ClockIcon,
-  CheckIcon,
-  CheckCircleIcon,
-  BanknotesIcon,
-  CreditCardIcon,
-  ChevronRightIcon,
-  PlusIcon,
-  TrashIcon,
-  XMarkIcon,
-  MapPinIcon,
-  SparklesIcon,
-  ClipboardDocumentListIcon,
-  PercentBadgeIcon,
-  ChatBubbleLeftRightIcon,
-  DocumentIcon,
-  CalendarDaysIcon,
-  BuildingOfficeIcon,
-  BoltIcon,
-  Bars3Icon,
-  LinkIcon,
-  ArrowTopRightOnSquareIcon,
-  ArrowDownTrayIcon,
-} from "@heroicons/react/24/outline";
-import {
   DndContext,
   type DragEndEvent,
   closestCenter,
@@ -91,8 +61,8 @@ import type {
 import PaymentHistoryTable from './PaymentHistoryTable'
 import { ConfirmDepositPanel } from './ConfirmDepositPanel'
 // Design system components
-import { FormGroup, Form, PageLayout, Section, Card, CardHeader, CardBody } from '@/ds'
-import { Button, IconButton, LinkButton, Input, Select, Textarea, Badge, Checkbox, Modal, ConfirmDialog, Empty, EmptyState, Alert, toast } from '@/ds'
+import { Field, Form, PageLayout, Section, Card, CardHeader, CardBody, Icon, type IconName } from '@/ds'
+import { Button, IconButton, LinkButton, Input, Select, Textarea, Badge, Checkbox, Modal, ConfirmDialog, Empty, Alert, toast } from '@/ds'
 import { InvoiceBookingModal } from './InvoiceBookingModal'
 import {
   generatePrivateBookingInvoice,
@@ -130,24 +100,24 @@ const statusConfig: Record<
   BookingStatus,
   {
     label: string;
-    icon: React.ComponentType<{ className?: string }>;
+    icon: IconName;
   }
 > = {
   draft: {
     label: "Draft",
-    icon: PencilIcon,
+    icon: "edit",
   },
   confirmed: {
     label: "Confirmed",
-    icon: CheckCircleIcon,
+    icon: "checkCircle",
   },
   completed: {
     label: "Completed",
-    icon: CheckCircleIcon,
+    icon: "checkCircle",
   },
   cancelled: {
     label: "Cancelled",
-    icon: XMarkIcon,
+    icon: "x",
   },
 };
 
@@ -336,7 +306,7 @@ function PaymentModal({
       title={type === "deposit" ? "Record Deposit Payment" : "Record Payment"}
     >
       <Form onSubmit={handleSubmit} className="space-y-4">
-        <FormGroup label="Payment Amount (£)">
+        <Field label="Payment Amount (£)">
           {type === "deposit" ? (
             <>
               <input type="hidden" name="amount" value={customAmount} />
@@ -366,15 +336,15 @@ function PaymentModal({
               )}
             </>
           )}
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Payment Method">
+        <Field label="Payment Method">
           <div className="space-y-2">
-            {[
-              { value: "card", label: "Card", icon: CreditCardIcon },
-              { value: "cash", label: "Cash", icon: BanknotesIcon },
-              { value: "invoice", label: "Invoice", icon: DocumentTextIcon },
-            ].map((method) => (
+            {([
+              { value: "card", label: "Card", icon: "creditCard" },
+              { value: "cash", label: "Cash", icon: "cash" },
+              { value: "invoice", label: "Invoice", icon: "fileText" },
+            ] satisfies { value: string; label: string; icon: IconName }[]).map((method) => (
               <label key={method.value} className="flex items-center">
                 <input
                   type="radio"
@@ -387,12 +357,12 @@ function PaymentModal({
                   }
                   className="mr-3 h-5 w-5"
                 />
-                <method.icon className="h-5 w-5 mr-2 text-text-subtle" />
+                <Icon name={method.icon} size={20} className="mr-2 text-text-subtle" />
                 <span className="text-sm text-text">{method.label}</span>
               </label>
             ))}
           </div>
-        </FormGroup>
+        </Field>
 
         <div className="flex justify-end gap-3 pt-4">
           <Button type="button" onClick={onClose} variant="secondary">
@@ -456,7 +426,7 @@ function SortableBookingItem({
             {...attributes}
             {...listeners}
           >
-            <Bars3Icon className="h-5 w-5" />
+            <Icon name="menu" size={20} className="block" />
           </button>
         )}
         <div className="text-text-subtle pt-1">
@@ -504,7 +474,7 @@ function SortableBookingItem({
               label="Edit item"
               title="Edit item"
               type="button"
-              icon={<PencilIcon className="h-4 w-4" />}
+              icon={<Icon name="edit" size={16} />}
               className="text-text-muted"
             />
             <IconButton
@@ -513,7 +483,7 @@ function SortableBookingItem({
               label="Delete item"
               title="Delete item"
               type="button"
-              icon={<TrashIcon className="h-4 w-4" />}
+              icon={<Icon name="trash" size={16} />}
               className="text-danger hover:text-danger-fg"
             />
           </>
@@ -761,7 +731,6 @@ function StatusModal({
             <div className="space-y-2">
               <p className="text-sm font-medium text-text">Change to:</p>
               {availableStatuses.map((status) => {
-                const StatusIcon = statusConfig[status].icon;
                 return (
                   <label
                     key={status}
@@ -776,7 +745,7 @@ function StatusModal({
                       }
                       className="mr-3 h-5 w-5"
                     />
-                    <StatusIcon className="h-5 w-5 mr-2 text-text-subtle" />
+                    <Icon name={statusConfig[status].icon} size={20} className="mr-2 text-text-subtle" />
                     <div className="flex-1">
                       <p className="text-sm font-medium text-text">
                         {statusConfig[status].label}
@@ -816,7 +785,7 @@ function StatusModal({
                       </div>
                     )}
                     <div className="grid grid-cols-1 gap-3 rounded-sm border border-border bg-surface p-3 sm:grid-cols-2">
-                      <FormGroup label="How was the cancellation received?">
+                      <Field label="How was the cancellation received?">
                         <Select
                           value={cancelChannel}
                           onChange={(e) =>
@@ -840,22 +809,22 @@ function StatusModal({
                             { value: 'other', label: 'Other' },
                           ]}
                         />
-                      </FormGroup>
-                      <FormGroup label="Received at">
+                      </Field>
+                      <Field label="Received at">
                         <Input
                           type="datetime-local"
                           value={cancelReceivedAt}
                           onChange={(e) => setCancelReceivedAt(e.target.value)}
                           disabled={isSubmitting}
                         />
-                      </FormGroup>
+                      </Field>
                       <p className="text-xs text-text-muted sm:col-span-2">
                         A phone call on its own is not a written cancellation — ask the customer to confirm in writing where you can.
                       </p>
                     </div>
                     {cancelPreview.outcome === 'gm_review_required' && (
                       <div className="space-y-3 rounded-sm border border-warning-border bg-warning-soft p-3">
-                        <FormGroup
+                        <Field
                           label="Deposit to retain (£)"
                           help={`Manager decision — up to ${formatCurrency(cancelPreview.max_retainable)} of the paid deposit. Retaining anything requires manager permission.`}
                         >
@@ -868,9 +837,9 @@ function StatusModal({
                             onChange={(e) => setRetainedAmountStr(e.target.value)}
                             disabled={isSubmitting}
                           />
-                        </FormGroup>
+                        </Field>
                         {Number(retainedAmountStr) > 0 && (
-                          <FormGroup label="Reason for retaining the deposit">
+                          <Field label="Reason for retaining the deposit">
                             <Textarea
                               value={retentionReason}
                               onChange={(e) => setRetentionReason(e.target.value)}
@@ -879,7 +848,7 @@ function StatusModal({
                               disabled={isSubmitting}
                               placeholder="Required when retaining any of the deposit"
                             />
-                          </FormGroup>
+                          </Field>
                         )}
                       </div>
                     )}
@@ -1147,7 +1116,7 @@ function AddItemModal({
     >
       <Form onSubmit={handleSubmit} className="space-y-4">
         {/* Item Type Selection */}
-        <FormGroup label="Item Type">
+        <Field label="Item Type">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <button
               type="button"
@@ -1159,7 +1128,7 @@ function AddItemModal({
                   : "border-border hover:border-border-strong"
               }`}
             >
-              <MapPinIcon className="h-6 w-6 mb-1" />
+              <Icon name="mapPin" size={24} className="mb-1" />
               <span className="text-sm">Space</span>
             </button>
             <button
@@ -1172,7 +1141,7 @@ function AddItemModal({
                   : "border-border hover:border-border-strong"
               }`}
             >
-              <SparklesIcon className="h-6 w-6 mb-1" />
+              <Icon name="sparkles" size={24} className="mb-1" />
               <span className="text-sm">Catering</span>
             </button>
             <button
@@ -1185,7 +1154,7 @@ function AddItemModal({
                   : "border-border hover:border-border-strong"
               }`}
             >
-              <UserGroupIcon className="h-6 w-6 mb-1" />
+              <Icon name="users" size={24} className="mb-1" />
               <span className="text-sm">Vendor</span>
             </button>
             <button
@@ -1198,7 +1167,7 @@ function AddItemModal({
                   : "border-border hover:border-border-strong"
               }`}
             >
-              <BoltIcon className="h-6 w-6 mb-1" />
+              <Icon name="bolt" size={24} className="mb-1" />
               <span className="text-sm">Electricity</span>
             </button>
             <button
@@ -1211,15 +1180,15 @@ function AddItemModal({
                   : "border-border hover:border-border-strong"
               }`}
             >
-              <ClipboardDocumentListIcon className="h-6 w-6 mb-1" />
+              <Icon name="clipboardList" size={24} className="mb-1" />
               <span className="text-sm">Other</span>
             </button>
           </div>
-        </FormGroup>
+        </Field>
 
         {/* Item Selection */}
         {itemType !== "other" && itemType !== "electricity" && (
-          <FormGroup
+          <Field
             label={`Select ${itemType === "space" ? "Space" : itemType === "catering" ? "Package" : "Vendor"}`}
           >
             <Select
@@ -1260,12 +1229,12 @@ function AddItemModal({
                 </option>
               ))}
             </Select>
-          </FormGroup>
+          </Field>
         )}
 
         {/* Custom Description (for 'other' and 'electricity' items) */}
         {(itemType === "other" || itemType === "electricity") && (
-          <FormGroup label="Description">
+          <Field label="Description">
             <Input
               type="text"
               value={customDescription}
@@ -1273,7 +1242,7 @@ function AddItemModal({
               required
               readOnly={itemType === "electricity"}
             />
-          </FormGroup>
+          </Field>
         )}
 
         {/* Quantity and Price - Different layouts based on pricing model */}
@@ -1282,7 +1251,7 @@ function AddItemModal({
         "pricing_model" in selectedItem &&
         selectedItem.pricing_model === "total_value" ? (
           // Total Value Layout - Single price field
-          <FormGroup label="Total Price (£)">
+          <Field label="Total Price (£)">
             <Input
               type="number"
               value={customPrice || selectedItem.cost_per_head || ""}
@@ -1292,11 +1261,11 @@ function AddItemModal({
               required
               placeholder="Enter total price"
             />
-          </FormGroup>
+          </Field>
         ) : (
           // Standard Layout - Quantity and Unit Price
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormGroup
+            <Field
               label={itemType === "catering" ? "Number of Guests" : "Quantity"}
             >
               <Input
@@ -1308,8 +1277,8 @@ function AddItemModal({
                 required
                 readOnly={itemType === "electricity"}
               />
-            </FormGroup>
-            <FormGroup label="Unit Price (£)">
+            </Field>
+            <Field label="Unit Price (£)">
               <Input
                 type="number"
                 value={
@@ -1338,7 +1307,7 @@ function AddItemModal({
                   itemType === "electricity"
                 }
               />
-            </FormGroup>
+            </Field>
           </div>
         )}
 
@@ -1348,7 +1317,7 @@ function AddItemModal({
             Discount (optional)
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormGroup>
+            <Field>
               <Input
                 type="number"
                 value={discountAmount}
@@ -1357,8 +1326,8 @@ function AddItemModal({
                 min="0"
                 step="0.01"
               />
-            </FormGroup>
-            <FormGroup>
+            </Field>
+            <Field>
               <Select
                 value={discountType}
                 onChange={(e) =>
@@ -1368,18 +1337,18 @@ function AddItemModal({
                 <option value="percent">Percentage (%)</option>
                 <option value="fixed">Fixed Amount (£)</option>
               </Select>
-            </FormGroup>
+            </Field>
           </div>
         </div>
 
         {/* Notes */}
-        <FormGroup label="Notes (optional)">
+        <Field label="Notes (optional)">
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
           />
-        </FormGroup>
+        </Field>
 
         {/* Actions */}
         <div className="flex justify-end gap-3 pt-4">
@@ -1450,7 +1419,7 @@ function DiscountModal({
   return (
     <Modal open={isOpen} onClose={onClose} title="Apply Booking Discount" mobileFullscreen>
       <Form onSubmit={handleSubmit} className="space-y-4">
-        <FormGroup label="Discount Type">
+        <Field label="Discount Type">
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -1462,7 +1431,7 @@ function DiscountModal({
                   : "border-border hover:border-border-strong"
               }`}
             >
-              <PercentBadgeIcon className="h-6 w-6 mx-auto mb-1" />
+              <Icon name="percent" size={24} className="block mx-auto mb-1" />
               <span className="text-sm">Percentage</span>
             </button>
             <button
@@ -1475,13 +1444,13 @@ function DiscountModal({
                   : "border-border hover:border-border-strong"
               }`}
             >
-              <CurrencyPoundIcon className="h-6 w-6 mx-auto mb-1" />
+              <Icon name="pound" size={24} className="block mx-auto mb-1" />
               <span className="text-sm">Fixed Amount</span>
             </button>
           </div>
-        </FormGroup>
+        </Field>
 
-        <FormGroup
+        <Field
           label={discountType === "percent" ? "Percentage (%)" : "Amount (£)"}
         >
           <Input
@@ -1493,9 +1462,9 @@ function DiscountModal({
             max={discountType === "percent" ? "100" : undefined}
             required
           />
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Reason for Discount">
+        <Field label="Reason for Discount">
           <Textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -1503,7 +1472,7 @@ function DiscountModal({
             required
             placeholder="e.g., Early bird discount, loyalty customer, etc."
           />
-        </FormGroup>
+        </Field>
 
         {/* Preview */}
         {discountAmount && (
@@ -1628,14 +1597,14 @@ function EditItemModal({
   return (
     <Modal open={isOpen} onClose={onClose} title="Edit Item" mobileFullscreen>
       <Form onSubmit={handleSubmit} className="space-y-4">
-        <FormGroup label="Description">
+        <Field label="Description">
           <p className="text-sm text-text bg-surface-2 px-3 py-2 rounded-sm">
             {item.description}
           </p>
-        </FormGroup>
+        </Field>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FormGroup label="Quantity">
+          <Field label="Quantity">
             <Input
               type="number"
               value={quantity}
@@ -1644,9 +1613,9 @@ function EditItemModal({
               step={item.item_type === "catering" ? "1" : "0.01"}
               required
             />
-          </FormGroup>
+          </Field>
 
-          <FormGroup label="Unit Price (£)">
+          <Field label="Unit Price (£)">
             <Input
               type="number"
               value={unitPrice}
@@ -1655,10 +1624,10 @@ function EditItemModal({
               step="0.01"
               required
             />
-          </FormGroup>
+          </Field>
         </div>
 
-        <FormGroup label="Discount (optional)">
+        <Field label="Discount (optional)">
           <div className="flex gap-2">
             <Input
               type="number"
@@ -1681,16 +1650,16 @@ function EditItemModal({
               <option value="fixed">£</option>
             </Select>
           </div>
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Notes (optional)">
+        <Field label="Notes (optional)">
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
             placeholder="e.g., Special pricing agreement, discount reason, etc."
           />
-        </FormGroup>
+        </Field>
 
         <div className="bg-surface-2 p-3 rounded-lg">
           <div className="flex justify-between text-sm">
@@ -2293,13 +2262,13 @@ export default function PrivateBookingDetailClient({
   const getItemIcon = (type: string) => {
     switch (type) {
       case "space":
-        return <MapPinIcon className="h-5 w-5" />;
+        return <Icon name="mapPin" size={20} className="block" />;
       case "catering":
-        return <SparklesIcon className="h-5 w-5" />;
+        return <Icon name="sparkles" size={20} className="block" />;
       case "vendor":
-        return <UserGroupIcon className="h-5 w-5" />;
+        return <Icon name="users" size={20} className="block" />;
       default:
-        return <ClipboardDocumentListIcon className="h-5 w-5" />;
+        return <Icon name="clipboardList" size={20} className="block" />;
     }
   };
 
@@ -2553,7 +2522,7 @@ export default function PrivateBookingDetailClient({
             loading={isCopyingLink}
             aria-label="Copy customer portal link to clipboard"
           >
-            <LinkIcon className="h-4 w-4 mr-1.5" aria-hidden="true" />
+            <Icon name="link" size={16} className="mr-1.5" />
             Share Link
           </Button>
           {canEdit && (
@@ -2567,11 +2536,12 @@ export default function PrivateBookingDetailClient({
     >
       {pageError && (
         <Alert
-          variant="error"
+          tone="danger"
           title="We couldn’t refresh the booking"
-          description={pageError}
           className="mb-6"
-        />
+        >
+          {pageError}
+        </Alert>
       )}
 
       <RecordLockBanner booking={booking} />
@@ -2589,7 +2559,7 @@ export default function PrivateBookingDetailClient({
 
       {isDateTbd && (
         <Alert
-          variant="warning"
+          tone="warning"
           title="Event date and time still to be confirmed"
           className="mb-6"
         >
@@ -2608,13 +2578,13 @@ export default function PrivateBookingDetailClient({
                   </label>
                   {isDateTbd ? (
                     <div className="mt-1 flex items-center text-sm font-medium text-warning-fg">
-                      <CalendarDaysIcon className="h-5 w-5 text-warning mr-2" />
+                      <Icon name="calendar" size={20} className="text-warning mr-2" />
                       <span>To be confirmed</span>
                     </div>
                   ) : (
                     <>
                       <div className="mt-1 flex items-center text-sm text-text">
-                        <CalendarDaysIcon className="h-5 w-5 text-text-subtle mr-2" />
+                        <Icon name="calendar" size={20} className="text-text-subtle mr-2" />
                         {formatDateFull(booking.event_date)}
                       </div>
                       {booking.setup_date && (
@@ -2632,13 +2602,13 @@ export default function PrivateBookingDetailClient({
                   </label>
                   {isDateTbd ? (
                     <div className="mt-1 flex items-center text-sm font-medium text-warning-fg">
-                      <ClockIcon className="h-5 w-5 text-warning mr-2" />
+                      <Icon name="clock" size={20} className="text-warning mr-2" />
                       <span>To be confirmed</span>
                     </div>
                   ) : (
                     <>
                       <div className="mt-1 flex items-center text-sm text-text">
-                        <ClockIcon className="h-5 w-5 text-text-subtle mr-2" />
+                        <Icon name="clock" size={20} className="text-text-subtle mr-2" />
                         {formatTime12Hour(booking.start_time)} -{' '}
                         {formatEndTime(booking)}
                       </div>
@@ -2656,7 +2626,7 @@ export default function PrivateBookingDetailClient({
                     Guest Count
                   </label>
                   <div className="mt-1 flex items-center text-sm text-text">
-                    <UserGroupIcon className="h-5 w-5 text-text-subtle mr-2" />
+                    <Icon name="users" size={20} className="text-text-subtle mr-2" />
                     {booking.guest_count ?? "TBC"} guests
                   </div>
                 </div>
@@ -2666,7 +2636,7 @@ export default function PrivateBookingDetailClient({
                     Event Type
                   </label>
                   <div className="mt-1 flex items-center text-sm text-text">
-                    <SparklesIcon className="h-5 w-5 text-text-subtle mr-2" />
+                    <Icon name="sparkles" size={20} className="text-text-subtle mr-2" />
                     {booking.event_type || "Private Event"}
                   </div>
                 </div>
@@ -2676,7 +2646,7 @@ export default function PrivateBookingDetailClient({
                     Contact Phone
                   </label>
                   <div className="mt-1 flex items-center text-sm">
-                    <PhoneIcon className="h-5 w-5 text-text-subtle mr-2" />
+                    <Icon name="phone" size={20} className="text-text-subtle mr-2" />
                     {booking.contact_phone ? (
                       <a
                         href={`tel:${booking.contact_phone}`}
@@ -2695,7 +2665,7 @@ export default function PrivateBookingDetailClient({
                     Contact Email
                   </label>
                   <div className="mt-1 flex items-center text-sm">
-                    <EnvelopeIcon className="h-5 w-5 text-text-subtle mr-2" />
+                    <Icon name="mail" size={20} className="text-text-subtle mr-2" />
                     {booking.contact_email ? (
                       <a
                         href={`mailto:${booking.contact_email}`}
@@ -2719,7 +2689,7 @@ export default function PrivateBookingDetailClient({
                           disabled={sendingCalendarInvite}
                           onClick={handleResendCalendarInvite}
                         >
-                          <CalendarDaysIcon className="h-4 w-4 mr-1.5" />
+                          <Icon name="calendar" size={16} className="mr-1.5" />
                           Resend Calendar Invite
                         </Button>
                       </div>
@@ -2731,7 +2701,7 @@ export default function PrivateBookingDetailClient({
                     Booking Source
                   </label>
                   <div className="mt-1 flex items-center text-sm text-text">
-                    <BuildingOfficeIcon className="h-5 w-5 text-text-subtle mr-2" />
+                    <Icon name="building" size={20} className="text-text-subtle mr-2" />
                     {booking.source || "Direct"}
                   </div>
                 </div>
@@ -2740,7 +2710,7 @@ export default function PrivateBookingDetailClient({
               {booking.balance_due_date && (
                 <div className="mt-6">
                   <Alert
-                    variant="warning"
+                    tone="warning"
                     title={`Balance & final details due by ${formatDateFull(booking.balance_due_date)}`}
                   />
                 </div>
@@ -2759,7 +2729,7 @@ export default function PrivateBookingDetailClient({
                     <span className="text-xs text-text-muted">Saving order…</span>
                   )}
                   <Button onClick={() => setShowAddItemModal(true)} size="sm">
-                    <PlusIcon className="h-4 w-4 mr-1" />
+                    <Icon name="plus" size={16} className="mr-1" />
                     Add Item
                   </Button>
                 </div>
@@ -2768,7 +2738,7 @@ export default function PrivateBookingDetailClient({
           >
             <Card>
               {items.length === 0 ? (
-                <EmptyState icon={<ClipboardDocumentListIcon className="h-12 w-12" />}
+                <Empty icon={<Icon name="clipboardList" size={48} />}
                   title="No items added yet"
                   description={
                     canEdit
@@ -3083,7 +3053,7 @@ export default function PrivateBookingDetailClient({
                             disabled={savingDeposit}
                             aria-label="Save deposit amount"
                           >
-                            <CheckIcon className="h-4 w-4" />
+                            <Icon name="check" size={16} />
                           </Button>
                           <Button
                             variant="secondary"
@@ -3093,7 +3063,7 @@ export default function PrivateBookingDetailClient({
                             type="button"
                             aria-label="Cancel edit"
                           >
-                            <XMarkIcon className="h-4 w-4" />
+                            <Icon name="x" size={16} />
                           </Button>
                         </div>
                         {showDepositReductionReason && (
@@ -3148,7 +3118,7 @@ export default function PrivateBookingDetailClient({
                             }}
                             className="text-text-muted"
                             label="Edit deposit amount"
-                            icon={<PencilIcon className="h-3.5 w-3.5" />}
+                            icon={<Icon name="edit" size={14} />}
                           />
                         )}
                       </div>
@@ -3350,10 +3320,10 @@ export default function PrivateBookingDetailClient({
                     className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
                   >
                     <div className="flex items-center">
-                      <ChatBubbleLeftRightIcon className="h-5 w-5 mr-3 text-primary" />
+                      <Icon name="message" size={20} className="mr-3 text-primary" />
                       Send SMS Message
                     </div>
-                    <ChevronRightIcon className="h-4 w-4 text-text-subtle" />
+                    <Icon name="chevronRight" size={16} className="text-text-subtle" />
                   </Link>
                 )}
 
@@ -3364,10 +3334,10 @@ export default function PrivateBookingDetailClient({
                   className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
-                    <DocumentIcon className="h-5 w-5 mr-3 text-primary" />
+                    <Icon name="file" size={20} className="mr-3 text-primary" />
                     {downloadingContract ? 'Preparing contract…' : 'Download Contract'}
                   </div>
-                  <ArrowDownTrayIcon className="h-4 w-4 text-text-subtle" aria-hidden="true" />
+                  <Icon name="download" size={16} className="text-text-subtle" />
                 </button>
 
                 <a
@@ -3377,10 +3347,10 @@ export default function PrivateBookingDetailClient({
                   className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring"
                 >
                   <div className="flex items-center">
-                    <ClipboardDocumentListIcon className="h-5 w-5 mr-3 text-primary" />
+                    <Icon name="clipboardList" size={20} className="mr-3 text-primary" />
                     Staff event sheet
                   </div>
-                  <ArrowTopRightOnSquareIcon className="h-4 w-4 text-text-subtle" aria-hidden="true" />
+                  <Icon name="externalLink" size={16} className="text-text-subtle" />
                 </a>
 
                 <button
@@ -3390,10 +3360,10 @@ export default function PrivateBookingDetailClient({
                   className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
-                    <DocumentIcon className="h-5 w-5 mr-3 text-primary" />
+                    <Icon name="file" size={20} className="mr-3 text-primary" />
                     {sendingContract ? 'Sending contract…' : 'Send Contract to Customer'}
                   </div>
-                  <ChevronRightIcon className="h-4 w-4 text-text-subtle" />
+                  <Icon name="chevronRight" size={16} className="text-text-subtle" />
                 </button>
                 {booking.contract_sent_at ? (
                   <p className="text-xs text-text-muted px-1">
@@ -3481,10 +3451,10 @@ export default function PrivateBookingDetailClient({
                         className="flex items-center justify-between w-full px-3 py-2 text-sm font-medium text-text bg-surface-2 rounded-lg hover:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <div className="flex items-center">
-                          <DocumentIcon className="h-5 w-5 mr-3 text-primary" />
+                          <Icon name="file" size={20} className="mr-3 text-primary" />
                           Generate and send invoice
                         </div>
-                        <ChevronRightIcon className="h-4 w-4 text-text-subtle" />
+                        <Icon name="chevronRight" size={16} className="text-text-subtle" />
                       </button>
                       {blockedReason && (
                         <p className="mt-1 px-1 text-xs text-warning-fg">{blockedReason}</p>
@@ -3555,8 +3525,8 @@ export default function PrivateBookingDetailClient({
       <Section id="audit-trail" title="Audit Trail" className="mt-4">
         <Card>
           {auditTrail.length === 0 ? (
-            <EmptyState
-              icon={<ClockIcon className="h-12 w-12 text-text-subtle" />}
+            <Empty
+              icon={<Icon name="clock" size={48} className="text-text-subtle" />}
               title="No history yet"
               description="Updates and actions for this booking will appear here."
             />

@@ -170,5 +170,5 @@ Left as they are on purpose: the global phone overrides in `globals.css` (forced
 - The invoice portal's Orange Jelly look is an approved third public style.
 - Customer-label preset colours count as saved data, like shift-template colours, so the guard allows them.
 - Guest pages get their own type sizes instead of borrowing the staff 13px and 11px sizes.
-- The Rota week view keeps its compact header, so the grid gets the height.
+- The Rota week view loses its compact header: after the owner asked for absolute consistency, the FOH kiosk is the only page with a different header.
 - `/settings/import-messages` gets a Settings tile back rather than being deleted.

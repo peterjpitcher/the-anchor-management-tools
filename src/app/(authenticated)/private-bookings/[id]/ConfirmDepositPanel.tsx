@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Alert, Button, FormGroup, Input, Modal, Textarea, toast } from '@/ds'
+import { Alert, Button, Field, Input, Modal, Textarea, toast } from '@/ds'
 import { formatDateFull } from '@/lib/dateUtils'
 import { confirmPrivateBookingDeposit } from '@/app/actions/privateBookingActions'
 
@@ -120,7 +120,7 @@ export function ConfirmDepositPanel({
         }
       >
         <div className="space-y-4">
-          <FormGroup label="Deposit amount (£)" required>
+          <Field label="Deposit amount (£)" required>
             <Input
               id="confirm-deposit-amount"
               type="number"
@@ -130,9 +130,9 @@ export function ConfirmDepositPanel({
               onChange={(event) => setAmount(event.target.value)}
               disabled={pending}
             />
-          </FormGroup>
+          </Field>
           {needsReason && (
-            <FormGroup label="Reason for the reduced deposit (General Manager)" required>
+            <Field label="Reason for the reduced deposit (General Manager)" required>
               <Textarea
                 id="confirm-deposit-reason"
                 rows={2}
@@ -141,7 +141,7 @@ export function ConfirmDepositPanel({
                 disabled={pending}
                 placeholder="The standard deposit is £250"
               />
-            </FormGroup>
+            </Field>
           )}
           <div className="space-y-2 text-sm text-text">
             {deadline && <p>{deadline}</p>}

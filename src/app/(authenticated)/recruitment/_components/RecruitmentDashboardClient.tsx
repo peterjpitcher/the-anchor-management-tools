@@ -3,20 +3,6 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  ArrowPathIcon,
-  CheckCircleIcon,
-  ClockIcon,
-  DocumentTextIcon,
-  EllipsisHorizontalIcon,
-  EnvelopeIcon,
-  ExclamationTriangleIcon,
-  PlusIcon,
-  PrinterIcon,
-  SparklesIcon,
-  TrashIcon,
-  UserPlusIcon,
-} from '@heroicons/react/24/outline'
-import {
   Badge,
   Button,
   Card,
@@ -40,6 +26,7 @@ import {
   TablePagination,
   TableRow,
   Textarea,
+  Icon,
 } from '@/ds'
 import type { RecruitmentCandidate } from '@/types/recruitment'
 import { displayName } from '@/lib/employees/display-name'
@@ -1434,13 +1421,13 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             <div className="flex flex-wrap items-start gap-2">
               <form action={cvBatchAction}>
                 <input type="hidden" name="limit" value="10" />
-                <Button type="submit" size="sm" variant="secondary" icon={<ArrowPathIcon className="h-4 w-4" />}>
+                <Button type="submit" size="sm" variant="secondary" icon={<Icon name="refresh" size={16} />}>
                   Retry CV reviews
                 </Button>
                 <ActionStateMessage state={cvBatchState} />
               </form>
               <form action={retentionAction}>
-                <Button type="submit" size="sm" variant="secondary" icon={<TrashIcon className="h-4 w-4" />}>
+                <Button type="submit" size="sm" variant="secondary" icon={<Icon name="trash" size={16} />}>
                   Run retention
                 </Button>
                 <ActionStateMessage state={retentionState} />
@@ -1458,12 +1445,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   <p className="mt-1 text-2xl font-semibold text-text-strong">{item.count}</p>
                 </div>
                 <div className="rounded-md border border-border bg-surface-2 p-2">
-                  {item.id === 'new' && <DocumentTextIcon className="h-5 w-5" />}
-                  {item.id === 'fast_track' && <CheckCircleIcon className="h-5 w-5" />}
-                  {item.id === 'manual_review' && <ExclamationTriangleIcon className="h-5 w-5" />}
-                  {item.id === 'awaiting_booking' && <EnvelopeIcon className="h-5 w-5" />}
-                  {item.id === 'appointments' && <ClockIcon className="h-5 w-5" />}
-                  {item.id !== 'new' && item.id !== 'fast_track' && item.id !== 'manual_review' && item.id !== 'awaiting_booking' && item.id !== 'appointments' && <UserPlusIcon className="h-5 w-5" />}
+                  {item.id === 'new' && <Icon name="fileText" size={20} className="block" />}
+                  {item.id === 'fast_track' && <Icon name="checkCircle" size={20} className="block" />}
+                  {item.id === 'manual_review' && <Icon name="alertTriangle" size={20} className="block" />}
+                  {item.id === 'awaiting_booking' && <Icon name="mail" size={20} className="block" />}
+                  {item.id === 'appointments' && <Icon name="clock" size={20} className="block" />}
+                  {item.id !== 'new' && item.id !== 'fast_track' && item.id !== 'manual_review' && item.id !== 'awaiting_booking' && item.id !== 'appointments' && <Icon name="userPlus" size={20} className="block" />}
                 </div>
               </>
             )
@@ -1580,7 +1567,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             </div>
                             {nextAppt && (
                               <p className="mt-1 truncate text-xs text-primary">
-                                <ClockIcon className="mr-1 inline h-3 w-3" aria-hidden="true" />
+                                <Icon name="clock" size={12} className="mr-1 inline" />
                                 {nextAppt.type === 'trial_shift' ? 'Trial' : 'Interview'} {formatSlotDateTime(nextAppt.scheduled_start)}
                               </p>
                             )}
@@ -1755,7 +1742,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       {secondaryStageAction && renderStageAction(secondaryStageAction, 'secondary')}
                       <Dropdown
                         trigger={
-                          <Button type="button" size="sm" variant="secondary" icon={<EllipsisHorizontalIcon className="h-4 w-4" />} aria-label="More actions">
+                          <Button type="button" size="sm" variant="secondary" icon={<Icon name="moreHorizontal" size={16} />} aria-label="More actions">
                             More
                           </Button>
                         }
@@ -1843,7 +1830,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           {selectedApplication.candidate?.cv_file_path && (
                             <ActionFeedbackForm action={cvRetryFormAction} className="mt-2 flex flex-wrap items-center gap-2" successMessage="CV extraction retry queued.">
                               <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
-                              <Button type="submit" size="xs" variant="secondary" icon={<ArrowPathIcon className="h-4 w-4" />}>
+                              <Button type="submit" size="xs" variant="secondary" icon={<Icon name="refresh" size={16} />}>
                                 Retry extraction
                               </Button>
                             </ActionFeedbackForm>
@@ -1888,7 +1875,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         </div>
                       )}
                       {selectedApplication.candidate?.cv_file_path && (
-                        <Button type="button" size="sm" variant="secondary" icon={<DocumentTextIcon className="h-4 w-4" />} onClick={() => openCv(selectedApplication.candidate_id)}>
+                        <Button type="button" size="sm" variant="secondary" icon={<Icon name="fileText" size={16} />} onClick={() => openCv(selectedApplication.candidate_id)}>
                           Open CV
                         </Button>
                       )}
@@ -2012,8 +1999,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-xs font-semibold uppercase text-text-muted">Interviews and trials</p>
                           <div className="flex flex-wrap gap-2">
-                            <Button type="button" size="xs" variant="secondary" icon={<PrinterIcon className="h-4 w-4" />} onClick={() => buildPrintable(selectedApplication.id, 'interview')}>Interview kit</Button>
-                            <Button type="button" size="xs" variant="secondary" icon={<PrinterIcon className="h-4 w-4" />} onClick={() => buildPrintable(selectedApplication.id, 'trial')}>Trial brief</Button>
+                            <Button type="button" size="xs" variant="secondary" icon={<Icon name="printer" size={16} />} onClick={() => buildPrintable(selectedApplication.id, 'interview')}>Interview kit</Button>
+                            <Button type="button" size="xs" variant="secondary" icon={<Icon name="printer" size={16} />} onClick={() => buildPrintable(selectedApplication.id, 'trial')}>Trial brief</Button>
                           </div>
                         </div>
                         {selectedApplicationAppointments.length === 0 && (
@@ -2245,7 +2232,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                 type="button"
                                 size="sm"
                                 variant={selectedApplicationStatus === 'offered' ? 'primary' : 'secondary'}
-                                icon={<UserPlusIcon className="h-4 w-4" />}
+                                icon={<Icon name="userPlus" size={16} />}
                                 onClick={() => setHireDialogOpen(true)}
                               >
                                 Create employee invite
@@ -2285,7 +2272,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                 type="button"
                                 size="sm"
                                 variant="secondary"
-                                icon={<SparklesIcon className="h-4 w-4" />}
+                                icon={<Icon name="sparkles" size={16} />}
                                 onClick={() => draftEmail(selectedApplication.id, type)}
                               >
                                 Draft {type.replaceAll('_', ' ')}
@@ -2488,7 +2475,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                 <>
                                   <Input name="email_subject" value={decisionEmail.subject} onChange={e => setDecisionEmail(prev => ({ ...prev, subject: e.target.value }))} placeholder="Subject" />
                                   <Textarea name="email_body" rows={6} value={decisionEmail.body} onChange={e => setDecisionEmail(prev => ({ ...prev, body: e.target.value }))} placeholder="Email body" />
-                                  <Button type="button" size="xs" variant="secondary" icon={<SparklesIcon className="h-4 w-4" />} onClick={improveDecisionEmailWithAi}>Improve with AI</Button>
+                                  <Button type="button" size="xs" variant="secondary" icon={<Icon name="sparkles" size={16} />} onClick={improveDecisionEmailWithAi}>Improve with AI</Button>
                                 </>
                               )}
                             </div>
@@ -2536,7 +2523,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     </label>
                     <input type="hidden" name="future_recruitment_consent" value="false" />
                     <div className="md:col-span-4 flex items-center gap-3">
-                      <Button type="submit" variant="primary" icon={<PlusIcon className="h-4 w-4" />}>Add application</Button>
+                      <Button type="submit" variant="primary" icon={<Icon name="plus" size={16} />}>Add application</Button>
                       <ActionStateMessage state={applicationState} />
                     </div>
                   </form>

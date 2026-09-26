@@ -65,10 +65,11 @@ export default async function ReceiptsBulkPage({ searchParams }: PageProps) {
         navState={{ view: 'bulk' }}
       >
         <Alert
-          variant="error"
+          tone="danger"
           title="Failed to load bulk review"
-          description={loadError ?? 'An unexpected error occurred. Please try again.'}
-        />
+        >
+          {loadError ?? 'An unexpected error occurred. Please try again.'}
+        </Alert>
       </ReceiptsPageChrome>
     )
   }

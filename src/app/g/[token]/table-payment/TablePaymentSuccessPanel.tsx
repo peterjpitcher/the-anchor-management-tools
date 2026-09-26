@@ -1,4 +1,3 @@
-import { Check } from 'lucide-react'
 import { GuestBadge } from '@/components/features/guest/GuestBadge'
 import { GuestButton } from '@/components/features/guest/GuestButton'
 import { GuestCard } from '@/components/features/guest/GuestCard'
@@ -10,6 +9,7 @@ import {
 } from '@/components/features/guest/styles'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { formatGuestGreeting } from '@/lib/guest/names'
+import { Icon } from '@/ds'
 
 type TablePaymentSuccessPanelProps = {
   guestFirstName: string | null
@@ -47,7 +47,7 @@ export function TablePaymentSuccessPanel({
               aria-hidden="true"
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-anchor-success/[0.12] text-anchor-success"
             >
-              <Check className="h-[18px] w-[18px]" />
+              <Icon name="check" size={18} />
             </span>
             <GuestBadge tone="success">Paid</GuestBadge>
           </div>

@@ -8,13 +8,13 @@ import { formatDate } from '@/lib/dateUtils'
 import { PageLayout } from '@/ds'
 import { Section } from '@/ds'
 import { Card } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Select } from '@/ds'
 import { Input } from '@/ds'
 import { Button } from '@/ds'
 import { Badge } from '@/ds'
 import { DataTable } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { Spinner } from '@/ds'
 import { Alert } from '@/ds'
 import { Pagination } from '@/ds'
@@ -97,8 +97,8 @@ function getOperationIcon(type: string) {
   }
 }
 
-function getStatusVariant(status: string): 'success' | 'error' {
-  return status === 'success' ? 'success' : 'error'
+function getStatusTone(status: string): 'success' | 'danger' {
+  return status === 'success' ? 'success' : 'danger'
 }
 
 function escapeCsvCell(value: string | null | undefined): string {
@@ -230,12 +230,12 @@ export default function AuditLogsClient({
       backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
       <div className="space-y-6">
-        {error && <Alert variant="error" title="Error" description={error} />}
+        {error && <Alert tone="danger" title="Error">{error}</Alert>}
 
         <Section id="filters" title="Filters">
           <Card>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              <FormGroup label="Operation">
+              <Field label="Operation">
                 <Select
                   value={filters.operationType}
                   onChange={(event) => handleFilterChange({ operationType: event.target.value })}
@@ -247,9 +247,9 @@ export default function AuditLogsClient({
                     </option>
                   ))}
                 </Select>
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Resource">
+              <Field label="Resource">
                 <Select
                   value={filters.resourceType}
                   onChange={(event) => handleFilterChange({ resourceType: event.target.value })}
@@ -261,9 +261,9 @@ export default function AuditLogsClient({
                     </option>
                   ))}
                 </Select>
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Status">
+              <Field label="Status">
                 <Select
                   value={filters.status}
                   onChange={(event) => handleFilterChange({ status: event.target.value })}
@@ -275,9 +275,9 @@ export default function AuditLogsClient({
                     </option>
                   ))}
                 </Select>
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="User">
+              <Field label="User">
                 <Select
                   value={filters.userId}
                   onChange={(event) => handleFilterChange({ userId: event.target.value })}
@@ -290,27 +290,27 @@ export default function AuditLogsClient({
                     </option>
                   ))}
                 </Select>
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="From date">
+              <Field label="From date">
                 <Input
                   type="date"
                   value={filters.dateFrom}
                   onChange={(event) => handleFilterChange({ dateFrom: event.target.value })}
                   disabled={isRefreshing}
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="To date">
+              <Field label="To date">
                 <Input
                   type="date"
                   value={filters.dateTo}
                   onChange={(event) => handleFilterChange({ dateTo: event.target.value })}
                   disabled={isRefreshing}
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Resource ID">
+              <Field label="Resource ID">
                 <Input
                   type="text"
                   placeholder="Search resource ID…"
@@ -318,7 +318,7 @@ export default function AuditLogsClient({
                   onChange={(event) => handleFilterChange({ resourceId: event.target.value })}
                   disabled={isRefreshing}
                 />
-              </FormGroup>
+              </Field>
             </div>
             <div className="mt-4 flex items-center justify-between gap-2">
               <Button
@@ -343,7 +343,7 @@ export default function AuditLogsClient({
                 <Spinner size="lg" />
               </div>
             ) : logs.length === 0 ? (
-              <EmptyState
+              <Empty
                 title="No audit logs found"
                 description="No audit logs match your current filters."
                 action={
@@ -403,7 +403,7 @@ export default function AuditLogsClient({
                     header: 'Status',
                     cell: (log: AuditLog) => (
                       <div>
-                        <Badge variant={getStatusVariant(log.operation_status)} size="sm">
+                        <Badge tone={getStatusTone(log.operation_status)} size="sm">
                           {log.operation_status}
                         </Badge>
                         {log.error_message && (

@@ -1,9 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { CheckIcon, PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { Alert, Badge, Button, FormGroup, IconButton, Input, Select } from '@/ds';
+import { Alert, Badge, Button, Field, IconButton, Input, Select, toast, Icon } from '@/ds';
 import { formatTime12Hour } from '@/lib/dateUtils';
 import {
   createShiftTemplate,
@@ -115,48 +113,48 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
       <p className="text-sm font-medium text-text">
         {initial ? 'Edit template' : 'New shift template'}
       </p>
-      {error && <Alert variant="error">{error}</Alert>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <div className="sm:col-span-2">
-          <FormGroup label="Template name" htmlFor="tmpl-name" required>
+          <Field label="Template name" htmlFor="tmpl-name" required>
             <Input
               id="tmpl-name"
               placeholder='e.g. "Saturday Evening Bar"'
               value={name}
               onChange={e => setName(e.target.value)}
             />
-          </FormGroup>
+          </Field>
         </div>
 
-        <FormGroup label="Department" htmlFor="tmpl-dept">
+        <Field label="Department" htmlFor="tmpl-dept">
           <Select
             id="tmpl-dept"
             value={department}
             onChange={e => setDepartment(e.target.value)}
             options={departments.map(d => ({ value: d.name, label: d.label }))}
           />
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Start time" htmlFor="tmpl-start" required>
+        <Field label="Start time" htmlFor="tmpl-start" required>
           <Input
             id="tmpl-start"
             type="time"
             value={startTime}
             onChange={e => setStartTime(e.target.value)}
           />
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="End time" htmlFor="tmpl-end" required>
+        <Field label="End time" htmlFor="tmpl-end" required>
           <Input
             id="tmpl-end"
             type="time"
             value={endTime}
             onChange={e => setEndTime(e.target.value)}
           />
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Unpaid break (mins)" htmlFor="tmpl-break">
+        <Field label="Unpaid break (mins)" htmlFor="tmpl-break">
           <Input
             id="tmpl-break"
             type="number"
@@ -165,7 +163,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
             value={breakMins}
             onChange={e => setBreakMins(e.target.value)}
           />
-        </FormGroup>
+        </Field>
 
         {startTime && endTime && (
           <div className="flex items-end pb-0.5">
@@ -205,7 +203,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
                 {getShiftColourLabel(automaticColour) ?? 'No rule'}
               </span>
             </span>
-            {colourMode === 'automatic' && <CheckIcon className="ml-auto h-3.5 w-3.5 shrink-0 text-primary" />}
+            {colourMode === 'automatic' && <Icon name="check" size={14} className="ml-auto shrink-0 text-primary" />}
           </button>
 
           {SHIFT_TEMPLATE_COLOURS.map(option => {
@@ -227,7 +225,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
                   style={{ backgroundColor: option.value }}
                 />
                 <span className="truncate text-xs font-medium text-text-strong">{option.label}</span>
-                {selected && <CheckIcon className="ml-auto h-3.5 w-3.5 shrink-0 text-primary" />}
+                {selected && <Icon name="check" size={14} className="ml-auto shrink-0 text-primary" />}
               </button>
             );
           })}
@@ -248,7 +246,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 border-t border-border pt-4">
         <div>
-          <FormGroup label="Day of week (auto-schedule)" htmlFor="tmpl-day">
+          <Field label="Day of week (auto-schedule)" htmlFor="tmpl-day">
             <Select
               id="tmpl-day"
               value={dayOfWeek}
@@ -258,12 +256,12 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
                 ...DAYS.map((d, i) => ({ value: String(i), label: d })),
               ]}
             />
-          </FormGroup>
+          </Field>
           <p className="text-xs text-text-soft mt-1">Auto-populates on this day when you click &ldquo;Apply templates&rdquo;.</p>
         </div>
 
         <div>
-          <FormGroup label="Pre-assigned employee (optional)" htmlFor="tmpl-emp">
+          <Field label="Pre-assigned employee (optional)" htmlFor="tmpl-emp">
             <Select
               id="tmpl-emp"
               value={employeeId}
@@ -273,7 +271,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
                 ...employees.map(e => ({ value: e.employee_id, label: empName(e) })),
               ]}
             />
-          </FormGroup>
+          </Field>
           <p className="text-xs text-text-soft mt-1">Creates an assigned shift instead of an open one.</p>
         </div>
       </div>
@@ -371,7 +369,7 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
               className="text-text-subtle hover:text-text"
               title="Edit template"
               label="Edit template"
-              icon={<PencilIcon className="h-4 w-4" />}
+              icon={<Icon name="edit" size={16} />}
             />
             <IconButton
               type="button"
@@ -381,7 +379,7 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
               className="text-text-subtle hover:bg-danger-soft hover:text-danger-fg"
               title="Deactivate template"
               label="Deactivate template"
-              icon={<TrashIcon className="h-4 w-4" />}
+              icon={<Icon name="trash" size={16} />}
             />
           </>
         )}
@@ -413,7 +411,7 @@ export default function ShiftTemplatesManager({ canEdit, initialTemplates, emplo
             type="button"
             size="sm"
             variant="primary"
-            leftIcon={<PlusIcon className="h-4 w-4" />}
+            leftIcon={<Icon name="plus" size={16} />}
             onClick={() => setShowNewForm(v => !v)}
           >
             New template

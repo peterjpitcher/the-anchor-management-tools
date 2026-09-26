@@ -2,18 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { 
-  CalendarIcon, 
-  // ClockIcon, 
-  UserIcon,
-  DocumentTextIcon,
-  BuildingOfficeIcon,
-  CurrencyPoundIcon
-} from '@heroicons/react/24/outline'
 import { createPrivateBooking } from '@/app/actions/privateBookingActions'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import { EventDetailsRiskSection } from '@/components/private-bookings/EventDetailsRiskSection'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { Button } from '@/ds'
@@ -21,7 +13,7 @@ import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
 import { Checkbox } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Alert } from '@/ds'
 import { LinkButton } from '@/ds'
 import { toast } from '@/ds'
@@ -140,7 +132,7 @@ export default function NewPrivateBookingPage() {
           {/* Customer Information */}
           <Section 
             title="Customer Information"
-            icon={<UserIcon className="h-5 w-5" />}
+            icon={<Icon name="user" size={20} />}
           >
             <div className="space-y-4">
               {/* Customer Search */}
@@ -158,7 +150,7 @@ export default function NewPrivateBookingPage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
-                <FormGroup
+                <Field
                   label="First Name"
                   required
                 >
@@ -171,8 +163,8 @@ export default function NewPrivateBookingPage() {
                     required
                     placeholder="John"
                   />
-                </FormGroup>
-                <FormGroup
+                </Field>
+                <Field
                   label="Last Name"
                 >
                   <Input
@@ -183,11 +175,11 @@ export default function NewPrivateBookingPage() {
                     onChange={(e) => setCustomerLastName(e.target.value)}
                     placeholder="Smith"
                   />
-                </FormGroup>
+                </Field>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
-                <FormGroup
+                <Field
                   label="Phone Number"
                   required={!selectedCustomer}
                 >
@@ -202,10 +194,10 @@ export default function NewPrivateBookingPage() {
                     autoComplete="tel"
                     inputMode="tel"
                   />
-                </FormGroup>
+                </Field>
               </div>
               
-              <FormGroup
+              <Field
                 label="Email Address"
               >
                 <Input
@@ -217,14 +209,14 @@ export default function NewPrivateBookingPage() {
                   placeholder="john@example.com"
                   autoComplete="email"
                 />
-              </FormGroup>
+              </Field>
             </div>
           </Section>
 
           {/* Event Details */}
           <Section
             title="Event Details"
-            icon={<CalendarIcon className="h-5 w-5" />}
+            icon={<Icon name="calendar" size={20} />}
           >
             <div className="space-y-4">
               <div>
@@ -245,7 +237,7 @@ export default function NewPrivateBookingPage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
-              <FormGroup
+              <Field
                 label="Event Date"
                 required={!dateTbd}
               >
@@ -259,8 +251,8 @@ export default function NewPrivateBookingPage() {
                   max={maxDate}
                   disabled={dateTbd}
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="Event Type"
               >
                 <Input
@@ -269,8 +261,8 @@ export default function NewPrivateBookingPage() {
                   name="event_type"
                   placeholder="Birthday Party, Wedding, Corporate Event..."
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="Booking Source"
               >
                 <Select
@@ -288,11 +280,11 @@ export default function NewPrivateBookingPage() {
                     { value: 'other', label: 'Other' }
                   ]}
                 />
-              </FormGroup>
+              </Field>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-4 mt-6 sm:mt-4">
-              <FormGroup
+              <Field
                 label="Start Time"
                 required={!dateTbd}
               >
@@ -304,8 +296,8 @@ export default function NewPrivateBookingPage() {
                   defaultValue="18:00"
                   disabled={dateTbd}
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="End Time"
               >
                 <Input
@@ -315,8 +307,8 @@ export default function NewPrivateBookingPage() {
                   defaultValue="23:00"
                   disabled={dateTbd}
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="Guest Count"
               >
                 <Input
@@ -326,7 +318,7 @@ export default function NewPrivateBookingPage() {
                   min="1"
                   placeholder="50"
                 />
-              </FormGroup>
+              </Field>
             </div>
             </div>
           </Section>
@@ -337,10 +329,10 @@ export default function NewPrivateBookingPage() {
           {/* Setup Details */}
           <Section
             title="Setup Details"
-            icon={<BuildingOfficeIcon className="h-5 w-5" />}
+            icon={<Icon name="building" size={20} />}
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
-              <FormGroup
+              <Field
                 label="Setup Date"
                 help="Leave blank if same as event date"
               >
@@ -349,8 +341,8 @@ export default function NewPrivateBookingPage() {
                   id="setup_date"
                   name="setup_date"
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="Setup Time"
                 help="When vendors can start setup"
               >
@@ -359,17 +351,17 @@ export default function NewPrivateBookingPage() {
                   id="setup_time"
                   name="setup_time"
                 />
-              </FormGroup>
+              </Field>
             </div>
           </Section>
 
           {/* Financial Details */}
           <Section
             title="Financial Details (Optional)"
-            icon={<CurrencyPoundIcon className="h-5 w-5" />}
+            icon={<Icon name="pound" size={20} />}
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-4">
-              <FormGroup
+              <Field
                 label="Deposit Amount (£)"
                 help="Default is £250"
               >
@@ -382,8 +374,8 @@ export default function NewPrivateBookingPage() {
                   value={depositAmountInput}
                   onChange={(e) => setDepositAmountInput(e.target.value)}
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="Deposit Due (Hold Expiry)"
                 help="The provisional hold is released if the deposit hasn't arrived by this date"
               >
@@ -393,8 +385,8 @@ export default function NewPrivateBookingPage() {
                   name="deposit_due_date"
                   defaultValue={defaultDepositDateIso}
                 />
-              </FormGroup>
-              <FormGroup
+              </Field>
+              <Field
                 label="Balance & Final Details Due"
                 help="Balance and final details are due 14 days before the event — leave blank to auto-calculate"
               >
@@ -403,11 +395,11 @@ export default function NewPrivateBookingPage() {
                   id="balance_due_date"
                   name="balance_due_date"
                 />
-              </FormGroup>
+              </Field>
             </div>
             {showDepositReduction && (
               <div className="mt-4">
-                <FormGroup
+                <Field
                   label="Reason for reduced deposit (GM discretion)"
                   help="The standard deposit is £250 — reducing it needs a recorded reason"
                 >
@@ -418,7 +410,7 @@ export default function NewPrivateBookingPage() {
                     required
                     placeholder="e.g. Repeat corporate client"
                   />
-                </FormGroup>
+                </Field>
               </div>
             )}
             {showDepositWaiver && (
@@ -430,7 +422,7 @@ export default function NewPrivateBookingPage() {
                   onChange={(checked) => setDepositWaived(checked)}
                   label="Deposit waived (GM approved — venue-hosted/internal event)"
                 />
-                <FormGroup label="Reason for waiving the deposit">
+                <Field label="Reason for waiving the deposit">
                   <Input
                     type="text"
                     id="deposit_waived_reason"
@@ -438,7 +430,7 @@ export default function NewPrivateBookingPage() {
                     required
                     placeholder="e.g. Venue-hosted event"
                   />
-                </FormGroup>
+                </Field>
               </div>
             )}
           </Section>
@@ -446,10 +438,10 @@ export default function NewPrivateBookingPage() {
           {/* Additional Information */}
           <Section
             title="Additional Information"
-            icon={<DocumentTextIcon className="h-5 w-5" />}
+            icon={<Icon name="fileText" size={20} />}
           >
             <div className="space-y-4">
-              <FormGroup
+              <Field
                 label="Customer Requests"
               >
                 <Textarea
@@ -458,9 +450,9 @@ export default function NewPrivateBookingPage() {
                   rows={3}
                   placeholder="Special requests, dietary requirements, decorations..."
                 />
-              </FormGroup>
+              </Field>
               
-              <FormGroup
+              <Field
                 label="Internal Notes"
               >
                 <Textarea
@@ -469,9 +461,9 @@ export default function NewPrivateBookingPage() {
                   rows={3}
                   placeholder="Staff notes, setup requirements, important reminders..."
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup
+              <Field
                 label="Contract Note"
                 help="Shown on the contract exactly as entered"
               >
@@ -481,9 +473,9 @@ export default function NewPrivateBookingPage() {
                   rows={3}
                   placeholder="Add a plain-text note to appear on the contract..."
                 />
-              </FormGroup>
+              </Field>
               
-              <FormGroup
+              <Field
                 label="Special Requirements"
               >
                 <Textarea
@@ -492,9 +484,9 @@ export default function NewPrivateBookingPage() {
                   rows={2}
                   placeholder="Equipment needs, layout preferences, technical requirements..."
                 />
-              </FormGroup>
+              </Field>
               
-              <FormGroup
+              <Field
                 label="Accessibility Needs"
               >
                 <Textarea
@@ -503,13 +495,13 @@ export default function NewPrivateBookingPage() {
                   rows={2}
                   placeholder="Wheelchair access, hearing loops, dietary restrictions..."
                 />
-              </FormGroup>
+              </Field>
             </div>
           </Section>
 
           {/* Error Message */}
           {error && (
-            <Alert variant="error">
+            <Alert tone="danger">
               {error}
             </Alert>
           )}

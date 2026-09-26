@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getLeaveRequestById, deleteLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave';
 import type { LeaveRequest } from '@/app/actions/leave';
-import toast from 'react-hot-toast';
-import { Badge, Button, Input, Modal } from '@/ds';
+import { Badge, Button, Input, Modal, toast } from '@/ds';
 
 interface HolidayDetailModalProps {
   requestId: string;

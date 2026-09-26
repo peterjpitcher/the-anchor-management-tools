@@ -4,8 +4,6 @@ type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'inf
 
 interface BadgeProps {
   tone?: BadgeTone
-  /** @deprecated Use `tone` instead. Maps variant names to tones for backward compatibility. */
-  variant?: string
   /** `sm` is the compact badge (11px text, tighter padding). Any other value, including `md`, keeps the default size. */
   size?: string
   /** Sets the HTML title attribute, shown by the browser as a tooltip. */
@@ -46,20 +44,8 @@ const toneStyles: Record<BadgeTone, { badge: string; dot: string }> = {
   },
 }
 
-const variantToTone: Record<string, BadgeTone> = {
-  default: 'neutral',
-  neutral: 'neutral',
-  primary: 'primary',
-  success: 'success',
-  warning: 'warning',
-  danger: 'danger',
-  error: 'danger',
-  info: 'info',
-}
-
-export function Badge({ tone, variant, size, title, icon, dot = false, children, className }: BadgeProps) {
-  const resolvedTone: BadgeTone = tone ?? variantToTone[variant ?? ''] ?? 'neutral'
-  const styles = toneStyles[resolvedTone]
+export function Badge({ tone = 'neutral', size, title, icon, dot = false, children, className }: BadgeProps) {
+  const styles = toneStyles[tone]
 
   return (
     <span

@@ -1,9 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { CheckIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { Badge, Button, ConfirmDialog, IconButton, Input, ProgressBar } from '@/ds';
+import { Badge, Button, ConfirmDialog, IconButton, Input, ProgressBar, toast, Icon } from '@/ds';
 import { deleteLeaveRequest, reviewLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave';
 import type { LeaveRequest } from '@/app/actions/leave';
 
@@ -15,10 +13,10 @@ interface LeaveManagerClientProps {
   usageMap: Record<string, { count: number; allowance: number }>; // `${emp_id}:${year}` -> usage
 }
 
-const STATUS_BADGE: Record<string, 'warning' | 'success' | 'error'> = {
+const STATUS_BADGE: Record<string, 'warning' | 'success' | 'danger'> = {
   pending: 'warning',
   approved: 'success',
-  declined: 'error',
+  declined: 'danger',
 };
 
 function daysBetween(start: string, end: string): number {
@@ -113,7 +111,7 @@ function LeaveRequestRow({
         onClick={() => setExpanded(v => !v)}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <Badge variant={STATUS_BADGE[request.status] ?? 'default'} size="sm">
+          <Badge tone={STATUS_BADGE[request.status] ?? 'neutral'} size="sm">
             {request.status}
           </Badge>
           <div className="min-w-0">
@@ -134,7 +132,7 @@ function LeaveRequestRow({
                 className="text-success-fg hover:bg-success-soft"
                 title="Approve"
                 label={`Approve ${empName} holiday request`}
-                icon={<CheckIcon className="h-4 w-4" />}
+                icon={<Icon name="check" size={16} />}
               />
               <IconButton
                 type="button"
@@ -144,7 +142,7 @@ function LeaveRequestRow({
                 className="text-danger-fg hover:bg-danger-soft"
                 title="Decline"
                 label={`Decline ${empName} holiday request`}
-                icon={<XMarkIcon className="h-4 w-4" />}
+                icon={<Icon name="x" size={16} />}
               />
             </>
           )}
@@ -157,7 +155,7 @@ function LeaveRequestRow({
                 className="text-text-muted hover:text-text-strong"
                 title="Edit dates"
                 label={`Edit ${empName} holiday request`}
-                icon={<PencilIcon className="h-4 w-4" />}
+                icon={<Icon name="edit" size={16} />}
               />
               <IconButton
                 type="button"
@@ -166,14 +164,14 @@ function LeaveRequestRow({
                 className="text-danger-fg hover:bg-danger-soft"
                 title="Delete request"
                 label={`Delete ${empName} holiday request`}
-                icon={<TrashIcon className="h-4 w-4" />}
+                icon={<Icon name="trash" size={16} />}
               />
             </>
           )}
           {expanded ? (
-            <ChevronUpIcon className="h-4 w-4 text-text-subtle" />
+            <Icon name="chevronUp" size={16} className="text-text-subtle" />
           ) : (
-            <ChevronDownIcon className="h-4 w-4 text-text-subtle" />
+            <Icon name="chevronDown" size={16} className="text-text-subtle" />
           )}
         </div>
       </div>

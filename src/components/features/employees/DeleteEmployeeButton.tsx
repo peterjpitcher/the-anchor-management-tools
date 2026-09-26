@@ -3,8 +3,7 @@
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { deleteEmployee } from '@/app/actions/employeeActions';
-import { Button, Modal } from '@/ds';
-import { TrashIcon } from '@heroicons/react/24/outline';
+import { Button, Modal, Icon } from '@/ds';
 import { useState, useEffect } from 'react';
 
 interface DeleteEmployeeButtonProps {
@@ -38,7 +37,7 @@ export default function DeleteEmployeeButton({ employeeId, employeeName }: Delet
         type="button"
         size="sm"
         variant="danger"
-        icon={<TrashIcon className="h-4 w-4" aria-hidden="true" />}
+        icon={<Icon name="trash" size={16} />}
       >
         Delete Employee
       </Button>

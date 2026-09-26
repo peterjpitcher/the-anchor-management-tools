@@ -3,11 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import LeaveManagerClient from '@/app/(authenticated)/rota/leave/LeaveManagerClient'
 import { deleteLeaveRequest, reviewLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave'
 
-vi.mock('react-hot-toast', () => ({
-  default: {
-    success: vi.fn(),
-    error: vi.fn(),
-  },
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }))
 
 vi.mock('@/app/actions/leave', () => ({

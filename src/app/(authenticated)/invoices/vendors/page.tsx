@@ -3,19 +3,18 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getVendors, createVendor, updateVendor, deleteVendor } from '@/app/actions/vendors'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Button } from '@/ds'
 import { Modal, ModalActions } from '@/ds'
 import { Input } from '@/ds'
 import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Card } from '@/ds'
 import { Checkbox } from '@/ds'
 import { Alert } from '@/ds'
 import { Badge } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { DataTable } from '@/ds'
-import { Plus, Edit2, Trash2, Users } from 'lucide-react'
 import { getVendorContacts, createVendorContact, updateVendorContact, deleteVendorContact } from '@/app/actions/vendor-contacts'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -376,7 +375,7 @@ export default function VendorsPage() {
           <Button
             variant="primary"
             onClick={() => openForm()}
-            leftIcon={<Plus className="h-4 w-4" />}
+            leftIcon={<Icon name="plus" size={16} />}
           >
             Add Vendor
           </Button>
@@ -386,22 +385,23 @@ export default function VendorsPage() {
       <div className="space-y-6">
       {isReadOnly && (
         <Alert
-          variant="info"
-          description="You have read-only access to vendors. Create, edit, delete, and contact management actions are disabled."
+          tone="info"
           className="mb-6"
-        />
+        >
+          You have read-only access to vendors. Create, edit, delete, and contact management actions are disabled.
+        </Alert>
       )}
       {error && (
-        <Alert variant="error" description={error} className="mb-6" />
+        <Alert tone="danger" className="mb-6">{error}</Alert>
       )}
 
       {vendors.length === 0 ? (
-        <EmptyState
+        <Empty
           title="No vendors found"
           description="Add your first vendor to get started."
           action={
             canCreate ? (
-              <Button onClick={() => openForm()} leftIcon={<Plus className="h-4 w-4" />}>
+              <Button onClick={() => openForm()} leftIcon={<Icon name="plus" size={16} />}>
                 Add Your First Vendor
               </Button>
             ) : undefined
@@ -430,7 +430,7 @@ export default function VendorsPage() {
                     size="sm"
                     onClick={() => openContacts(v)}
                     aria-label="Manage contacts"
-                    leftIcon={<Users className="h-4 w-4" />}
+                    leftIcon={<Icon name="users" size={16} />}
                   >
                     Contacts
                   </Button>
@@ -443,7 +443,7 @@ export default function VendorsPage() {
                     disabled={!canEdit}
                     title={!canEdit ? 'You need invoice edit permission to update vendors.' : undefined}
                   >
-                    <Edit2 className="h-4 w-4" />
+                    <Icon name="edit" size={16} />
                   </Button>
                   <Button
                     size="sm"
@@ -454,7 +454,7 @@ export default function VendorsPage() {
                     disabled={!canDelete}
                     title={!canDelete ? 'You need invoice delete permission to remove vendors.' : undefined}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Icon name="trash" size={16} />
                   </Button>
                 </div>
               ) },
@@ -479,7 +479,7 @@ export default function VendorsPage() {
                       disabled={!canEdit}
                       title={!canEdit ? 'You need invoice edit permission to update vendors.' : undefined}
                     >
-                      <Edit2 className="h-4 w-4" />
+                      <Icon name="edit" size={16} />
                     </Button>
                     <Button
                       size="sm"
@@ -490,7 +490,7 @@ export default function VendorsPage() {
                       disabled={!canDelete}
                       title={!canDelete ? 'You need invoice delete permission to remove vendors.' : undefined}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Icon name="trash" size={16} />
                     </Button>
                   </div>
                 </div>
@@ -499,7 +499,7 @@ export default function VendorsPage() {
                   fullWidth
                   onClick={() => openContacts(v)}
                   aria-label="Manage contacts"
-                  leftIcon={<Users className="h-4 w-4" />}
+                  leftIcon={<Icon name="users" size={16} />}
                 >
                   Contacts
                 </Button>
@@ -543,17 +543,17 @@ export default function VendorsPage() {
 
         <form id="vendor-form" onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormGroup label="Company Name" required className="md:col-span-2">
+                <Field label="Company Name" required className="md:col-span-2">
                   <Input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     required
                   />
-                </FormGroup>
+                </Field>
 
                 <div className="md:col-span-2">
-                  <Alert variant="info" title="Contacts moved">
+                  <Alert tone="info" title="Contacts moved">
                     Manage people and email recipients via the Contacts button above. The vendor’s default email remains visible in the list for legacy invoices.
                   </Alert>
                 </div>
@@ -639,7 +639,7 @@ export default function VendorsPage() {
         size="lg"
       >
         {error && (
-          <Alert variant="error" description={error} className="mb-4" />)
+          <Alert tone="danger" className="mb-4">{error}</Alert>)
         }
         {contactsLoading ? (
           <div className="py-10 text-center text-text-muted">Loading contacts…</div>
@@ -707,20 +707,21 @@ export default function VendorsPage() {
 
             {!canEdit && (
               <Alert
-                variant="info"
-                description="You have read-only access to contacts. Editing and adding contacts is disabled."
-              />
+                tone="info"
+              >
+                You have read-only access to contacts. Editing and adding contacts is disabled.
+              </Alert>
             )}
             <form onSubmit={saveContact} className="space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <FormGroup label="Name">
+                <Field label="Name">
                   <Input
                     value={contactForm.name}
                     onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
                     disabled={!canEdit}
                   />
-                </FormGroup>
-                <FormGroup label="Email" required>
+                </Field>
+                <Field label="Email" required>
                   <Input
                     type="email"
                     required
@@ -728,21 +729,21 @@ export default function VendorsPage() {
                     onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
                     disabled={!canEdit}
                   />
-                </FormGroup>
-                <FormGroup label="Phone">
+                </Field>
+                <Field label="Phone">
                   <Input
                     value={contactForm.phone}
                     onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
                     disabled={!canEdit}
                   />
-                </FormGroup>
-                <FormGroup label="Role">
+                </Field>
+                <Field label="Role">
                   <Input
                     value={contactForm.role}
                     onChange={(e) => setContactForm({ ...contactForm, role: e.target.value })}
                     disabled={!canEdit}
                   />
-                </FormGroup>
+                </Field>
                 <div className="md:col-span-2">
                   <Checkbox
                     checked={contactForm.is_primary}

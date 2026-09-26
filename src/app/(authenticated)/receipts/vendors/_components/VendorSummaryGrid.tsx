@@ -19,16 +19,8 @@ import {
   type ReceiptVendorMonthTransaction,
   type ReceiptVendorWatchlistItem,
 } from '@/app/actions/receipts'
-import { Alert, Badge, Button, Card, Drawer, IconButton, Select, Spinner } from '@/ds'
+import { Alert, Badge, Button, Card, Drawer, IconButton, Select, Spinner, Icon } from '@/ds'
 import { statusLabels, statusTone } from '@/app/(authenticated)/receipts/utils'
-import {
-  ArrowTrendingDownIcon,
-  ArrowTrendingUpIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  SparklesIcon,
-  StarIcon,
-} from '@heroicons/react/20/solid'
 
 const MONTH_WINDOW = 12
 const DEFAULT_MOVEMENT_RANGE: ReceiptVendorMovementRange = '36m'
@@ -569,8 +561,8 @@ function VendorMovementPanel({
                 <p className="mt-1 text-xs text-text-muted">Top vendors ranked by absolute pound movement.</p>
               </div>
               <div className="hidden items-center gap-4 text-xs sm:flex">
-                <span className="inline-flex items-center gap-1 text-success-fg"><ArrowTrendingDownIcon className="h-4 w-4" /> Spend down</span>
-                <span className="inline-flex items-center gap-1 text-danger-fg"><ArrowTrendingUpIcon className="h-4 w-4" /> Spend up</span>
+                <span className="inline-flex items-center gap-1 text-success-fg"><Icon name="trendDown" size={16} /> Spend down</span>
+                <span className="inline-flex items-center gap-1 text-danger-fg"><Icon name="trendUp" size={16} /> Spend up</span>
               </div>
             </div>
             <div className="mt-5"><DivergingMovementChart movements={state.movements} /></div>
@@ -645,7 +637,7 @@ function VendorMovementPanel({
                                   onClick={() => onToggleWatched(movement.vendorLabel, !watched)}
                                   className={watched ? 'bg-warning-soft text-warning-fg hover:bg-warning-soft' : 'text-text-subtle hover:text-warning-fg'}
                                   label={`${watched ? 'Stop watching' : 'Watch'} ${movement.vendorLabel}`}
-                                  icon={<StarIcon className="h-4 w-4" />}
+                                  icon={<Icon name="star" size={16} className="fill-current" />}
                                 />
                                 <Button type="button" variant="link" size="sm" onClick={() => onViewDetails(movement.vendorLabel)}>View details</Button>
                               </div>
@@ -691,7 +683,7 @@ function VendorMovementPanel({
                             onClick={() => onToggleWatched(movement.vendorLabel, !watched)}
                             className={watched ? 'border-warning-border bg-warning-soft text-warning-fg hover:bg-warning-soft' : 'text-text-muted'}
                             label={`${watched ? 'Stop watching' : 'Watch'} ${movement.vendorLabel}`}
-                            icon={<StarIcon className="h-4 w-4" />}
+                            icon={<Icon name="star" size={16} className="fill-current" />}
                           />
                           <Button type="button" variant="primary" size="sm" onClick={() => onViewDetails(movement.vendorLabel)}>Details</Button>
                         </div>
@@ -702,7 +694,7 @@ function VendorMovementPanel({
               </>
             ) : (
               <div className="mt-6 rounded-lg bg-surface-2 p-6 text-center">
-                {view === 'attention' ? <CheckCircleIcon className="mx-auto h-8 w-8 text-success" /> : <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-text-subtle" />}
+                {view === 'attention' ? <Icon name="checkCircle" size={32} className="block mx-auto text-success" /> : <Icon name="alertTriangle" size={32} className="block mx-auto text-text-subtle" />}
                 <p className="mt-2 text-sm font-medium text-text">No vendors in this view.</p>
               </div>
             )}
@@ -758,7 +750,7 @@ function VendorDetailDrawer({
               type="button"
               size="sm"
               variant={watched ? 'primary' : 'secondary'}
-              icon={<StarIcon className="h-4 w-4" />}
+              icon={<Icon name="star" size={16} className="fill-current" />}
               loading={watchLoading}
               onClick={onToggleWatched}
             >
@@ -779,7 +771,7 @@ function VendorDetailDrawer({
                 type="button"
                 size="sm"
                 variant="secondary"
-                icon={<SparklesIcon className="h-4 w-4" />}
+                icon={<Icon name="sparkles" size={16} />}
                 loading={aiLoading}
                 onClick={onGenerateAi}
               >

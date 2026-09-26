@@ -14,11 +14,7 @@ import {
   qrStripRect,
 } from '@/lib/events/artwork/geometry'
 import { EVENT_IMAGE_VARIANTS, type EventImageVariant } from '@/lib/events/imageVariants'
-import toast from 'react-hot-toast'
-
-vi.mock('react-hot-toast', () => ({
-  default: { success: vi.fn(), error: vi.fn() },
-}))
+import { toast } from '@/ds'
 
 // The preview QR is a placement guide, so the real encoder is not needed and a
 // stub keeps the suite off a PNG encoder it does not assert anything about.
@@ -76,6 +72,8 @@ vi.mock('@dnd-kit/core', async () => {
 vi.mock('@/ds', async () => {
   const React = await import('react')
   return {
+    toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+    Icon: () => null,
     Button: ({
       children,
       onClick,

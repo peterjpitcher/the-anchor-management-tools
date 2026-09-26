@@ -219,7 +219,7 @@ export function DishExpandedRow({ dish }: DishExpandedRowProps): React.ReactElem
                       )}
                     </div>
                     <div className="flex flex-col items-start sm:items-end">
-                      <Badge variant="primary">Qty {quantityLabel}</Badge>
+                      <Badge tone="primary">Qty {quantityLabel}</Badge>
                       {ingredient.measure_ml != null && (
                         <span className="mt-1 text-xs text-text-muted">{ingredient.measure_ml}ml</span>
                       )}

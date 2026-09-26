@@ -1,9 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Button, Badge, Field, Input, Textarea, Alert } from '@/ds'
+import { Button, Badge, Field, Input, Textarea, Alert, toast } from '@/ds'
 import { Icon } from '@/ds/icons'
-import toast from 'react-hot-toast'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
 import {
   completeChecklistInstance,
@@ -100,7 +99,7 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
     setSubmitting(false)
 
     if (res.alreadyDone) {
-      toast('Already done by someone else')
+      toast.info('Already done by someone else')
       onChanged()
       return
     }
@@ -141,7 +140,7 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
     setSubmitting(false)
 
     if (res.alreadyResolved) {
-      toast('Already handled by someone else')
+      toast.info('Already handled by someone else')
       onChanged()
       return
     }
@@ -200,7 +199,7 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
             {task.valueBreach && (
               <div className="mt-2">
                 <Alert
-                  variant="danger"
+                  tone="danger"
                   icon={<Icon name="alertTriangle" size={16} />}
                   title="Out of range"
                 >

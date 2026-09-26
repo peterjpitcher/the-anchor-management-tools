@@ -11,12 +11,8 @@ vi.mock('next/navigation', () => ({
   }),
 }))
 
-vi.mock('react-hot-toast', () => ({
-  __esModule: true,
-  default: {
-    success: vi.fn(),
-    error: vi.fn(),
-  },
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }))
 
 vi.mock('@/components/ui-v2/feedback/Toast', () => ({

@@ -5,8 +5,7 @@ import { PNL_METRICS, PNL_TIMEFRAMES, MANUAL_METRIC_KEYS } from '@/lib/pnl/const
 import { buildPnlReportViewModel, formatPnlMetricValue, type PnlReportRow } from '@/lib/pnl/report-view-model'
 import type { PnlDashboardData, PnlTimeframeKey } from '@/app/actions/pnl'
 import { savePlManualActualsAction, savePlTargetsAction } from '@/app/actions/pnl'
-import { Alert, Button, Card, CardBody, CardHeader, Input, Select, Spinner, toast } from '@/ds'
-import { DocumentArrowDownIcon } from '@heroicons/react/24/outline'
+import { Alert, Button, Card, CardBody, CardHeader, Input, Select, Spinner, toast, Icon } from '@/ds'
 import clsx from 'clsx'
 
 const TARGET_TIMEFRAME: PnlTimeframeKey = '12m'
@@ -301,7 +300,7 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
                 onClick={() => downloadReport('pdf')}
                 data-export-url={`/api/receipts/pnl/export?timeframe=${selectedTimeframe}&format=pdf`}
               >
-                <DocumentArrowDownIcon className="mr-2 h-4 w-4" />
+                <Icon name="download" size={16} className="mr-2" />
                 PDF
               </Button>
               <Button
@@ -309,7 +308,7 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
                 onClick={() => downloadReport('xlsx')}
                 data-export-url={`/api/receipts/pnl/export?timeframe=${selectedTimeframe}&format=xlsx`}
               >
-                <DocumentArrowDownIcon className="mr-2 h-4 w-4" />
+                <Icon name="download" size={16} className="mr-2" />
                 Spreadsheet
               </Button>
             </>

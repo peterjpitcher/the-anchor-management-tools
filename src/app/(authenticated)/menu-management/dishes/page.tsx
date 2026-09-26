@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { PageLayout } from '@/ds';
+import { PageLayout, Icon } from '@/ds';
 import { Section } from '@/ds';
 import { Card } from '@/ds';
 import { Button } from '@/ds';
@@ -12,13 +12,12 @@ import { DataTable, type Column } from '@/ds';
 import { Badge } from '@/ds';
 import { FilterPanel, type FilterDefinition } from '@/ds';
 import { Pagination } from '@/ds';
-import { EmptyState } from '@/ds';
+import { Empty } from '@/ds';
 import { ConfirmDialog } from '@/ds';
 import { toast } from '@/ds';
 import { LinkButton } from '@/ds';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { Stat, StatGroup } from '@/ds';
-import { ExclamationTriangleIcon } from '@heroicons/react/20/solid';
 import { useTablePipeline } from '../_components/useTablePipeline';
 import { EditableCurrencyCell } from '../_components/EditableCurrencyCell';
 import { StatusToggleCell } from '../_components/StatusToggleCell';
@@ -487,7 +486,7 @@ export default function MenuDishesPage(): React.ReactElement {
           return (
             <div className="flex flex-col items-end">
               <span className={belowTarget || dish.is_gp_alert ? 'text-danger font-semibold' : ''}>
-                {belowTarget && <ExclamationTriangleIcon className="mr-1 inline h-3.5 w-3.5 text-danger" />}
+                {belowTarget && <Icon name="alertTriangle" size={14} className="mr-1 inline text-danger" />}
                 {dish.gp_pct !== null ? `${Math.round(dish.gp_pct * 100)}%` : '\u2014'}
               </span>
               {targetNote}
@@ -506,7 +505,7 @@ export default function MenuDishesPage(): React.ReactElement {
               {dish.assignments.map((a, idx) => (
                 <div key={`${a.menu_code}-${a.category_code}-${idx}`} className="flex items-center gap-1">
                   <Badge
-                    variant={a.is_special ? 'warning' : 'neutral'}
+                    tone={a.is_special ? 'warning' : 'neutral'}
                     size="sm"
                   >
                     {a.menu_code === 'website_food' ? 'Website' : a.menu_code === 'sunday_lunch' ? 'Sunday' : a.menu_code}
@@ -719,7 +718,7 @@ export default function MenuDishesPage(): React.ReactElement {
         {/* Data table */}
         <Card className="mt-4">
           {!loading && dishes.length === 0 ? (
-            <EmptyState
+            <Empty
               title="No dishes yet"
               description="Add a dish to start tracking costs and GP%."
               icon="inbox"

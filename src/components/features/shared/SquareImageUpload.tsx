@@ -2,9 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { uploadEventImage, deleteEventImage, deleteCategoryImage } from '@/app/actions/event-images'
-import { Button, ConfirmDialog } from '@/ds'
-import { TrashIcon, PhotoIcon } from '@heroicons/react/24/outline'
-import toast from 'react-hot-toast'
+import { Button, ConfirmDialog, toast, Icon } from '@/ds'
 
 interface SquareImageUploadProps {
   entityId: string
@@ -177,7 +175,7 @@ export function SquareImageUpload({
               className="absolute -top-2 -right-2 p-2 sm:p-1.5 bg-danger text-white rounded-full hover:brightness-95 disabled:opacity-50 shadow-default touch-manipulation min-w-touch min-h-touch sm:min-w-0 sm:min-h-0 flex items-center justify-center focus-visible:outline-hidden focus-visible:shadow-ring"
               title="Delete image"
             >
-              <TrashIcon className="h-5 w-5 sm:h-4 sm:w-4" />
+              <Icon name="trash" size={20} className="sm:h-4 sm:w-4" />
             </button>
           )}
         </div>
@@ -193,7 +191,7 @@ export function SquareImageUpload({
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-0 sm:space-x-4">
           <label className={`relative ${entityId === 'new' || isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} rounded-md font-medium focus-within:shadow-ring`}>
             <span className="inline-flex items-center px-4 py-3 sm:py-2 border border-border-strong rounded-md shadow-xs text-base sm:text-sm font-medium text-text bg-surface hover:bg-surface-hover active:bg-surface-hover min-h-touch touch-manipulation">
-              <PhotoIcon className="h-5 w-5 mr-2" />
+              <Icon name="image" size={20} className="mr-2" />
               {isUploading ? 'Uploading...' : previewUrl ? 'Replace Image' : 'Choose Image'}
             </span>
             <input

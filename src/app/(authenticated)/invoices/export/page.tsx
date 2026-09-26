@@ -2,15 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Card } from '@/ds'
 import { Alert } from '@/ds'
 import { toast } from '@/ds'
-import { Download, Calendar } from 'lucide-react'
 import { toLocalIsoDate } from '@/lib/dateUtils'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
@@ -132,7 +131,7 @@ export default function InvoiceExportPage() {
     >
       <div className="space-y-6">
         {error && (
-          <Alert variant="error" description={error} />
+          <Alert tone="danger">{error}</Alert>
         )}
 
         <Card>
@@ -147,7 +146,7 @@ export default function InvoiceExportPage() {
                   variant="secondary"
                   size="sm"
                   onClick={() => setQuarterDates(0)}
-                  leftIcon={<Calendar className="h-4 w-4" />}
+                  leftIcon={<Icon name="calendar" size={16} />}
                 >
                   Current Quarter
                 </Button>
@@ -156,7 +155,7 @@ export default function InvoiceExportPage() {
                   variant="secondary"
                   size="sm"
                   onClick={() => setQuarterDates(-1)}
-                  leftIcon={<Calendar className="h-4 w-4" />}
+                  leftIcon={<Icon name="calendar" size={16} />}
                 >
                   Last Quarter
                 </Button>
@@ -171,7 +170,7 @@ export default function InvoiceExportPage() {
                     setStartDate(toLocalIsoDate(yearStart))
                     setEndDate(toLocalIsoDate(yearEnd))
                   }}
-                  leftIcon={<Calendar className="h-4 w-4" />}
+                  leftIcon={<Icon name="calendar" size={16} />}
                 >
                   Current Year
                 </Button>
@@ -204,7 +203,7 @@ export default function InvoiceExportPage() {
               </div>
             </div>
 
-            <FormGroup label="Invoice Status">
+            <Field label="Invoice Status">
               <Select
                 value={exportType}
                 onChange={(e) => setExportType(e.target.value as typeof exportType)}
@@ -213,7 +212,7 @@ export default function InvoiceExportPage() {
                 <option value="paid">Paid Only</option>
                 <option value="unpaid">Unpaid Only</option>
               </Select>
-            </FormGroup>
+            </Field>
           </div>
 
           <div className="mt-6 rounded-lg border border-info-border bg-info-soft p-4">
@@ -239,7 +238,7 @@ export default function InvoiceExportPage() {
               onClick={handleExport}
               disabled={loading || !startDate || !endDate || !canExport}
               loading={loading}
-              leftIcon={<Download className="h-4 w-4" />}
+              leftIcon={<Icon name="download" size={16} />}
             >
               Export Invoices
             </Button>

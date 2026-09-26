@@ -2,8 +2,7 @@
 
 import { useState, useTransition, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { toast } from 'react-hot-toast'
-import { Button, Input, Select, Card, CardBody, CardHeader, Spinner } from '@/ds'
+import { Button, Input, Select, Card, CardBody, CardHeader, Spinner, toast } from '@/ds'
 import { importReceiptStatement } from '@/app/actions/receipts'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { ReceiptBatch } from '@/types/database'

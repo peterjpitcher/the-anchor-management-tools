@@ -401,7 +401,7 @@ export function DishCompositionTab({
         </div>
 
         {recipes.length === 0 && (
-          <Alert variant="warning" className="mb-3">
+          <Alert tone="warning" className="mb-3">
             No recipes available yet. Add recipes from the Recipes tab or continue with direct ingredients.
           </Alert>
         )}
@@ -461,7 +461,7 @@ export function DishCompositionTab({
 
       {/* Duplicate warnings */}
       {duplicateWarnings.length > 0 && (
-        <Alert variant="warning">
+        <Alert tone="warning">
           The following ingredients appear more than once: {duplicateWarnings.join(', ')}.
           Consider consolidating them into a single row.
         </Alert>

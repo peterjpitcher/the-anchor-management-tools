@@ -1,13 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2 } from 'lucide-react'
-import { Card } from '@/ds'
+import { Card, Spinner } from '@/ds'
 import { Badge } from '@/ds'
 import { ProgressBar } from '@/ds'
 import { Checkbox } from '@/ds'
 import { Button } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { toast } from '@/ds'
 import { getTodayIsoDate, formatDate } from '@/lib/dateUtils'
 import type { EventChecklistItem } from '@/lib/event-checklist'
@@ -174,7 +173,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-text-subtle" />
+          <Spinner size="lg" />
         </div>
       ) : error ? (
         <div className="rounded-md border border-danger-border bg-danger-soft p-4 text-sm text-danger-fg">
@@ -186,7 +185,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
             <h3 className="text-sm font-semibold text-text uppercase tracking-wide">Outstanding Tasks</h3>
             <div className="mt-3 space-y-3">
               {outstandingItems.length === 0 ? (
-                <EmptyState
+                <Empty
                   size="sm"
                   variant="minimal"
                   centered={false}

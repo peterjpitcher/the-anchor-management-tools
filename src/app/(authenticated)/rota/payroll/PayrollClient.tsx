@@ -2,9 +2,7 @@
 
 import { useEffect, useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import toast from 'react-hot-toast';
-import { CheckCircleIcon, ArrowDownTrayIcon, EnvelopeIcon, ChevronDownIcon, ChevronRightIcon, PencilSquareIcon, TrashIcon, ChatBubbleBottomCenterTextIcon } from '@heroicons/react/24/outline';
-import { Alert, Badge, Button, IconButton } from '@/ds';
+import { Alert, Badge, Button, IconButton, toast, Icon } from '@/ds';
 import { approvePayrollMonth, sendPayrollEmail, updatePayrollPeriod, upsertShiftNote, updatePayrollRowTimes, deletePayrollRow } from '@/app/actions/payroll';
 import type { PayrollRow } from '@/lib/rota/excel-export';
 import type { PayrollEmployeeSummary } from '@/lib/rota/email-templates';
@@ -389,14 +387,14 @@ export default function PayrollClient({
         <div className="flex items-center gap-3">
           {approval ? (
             <div className="flex items-center gap-2 text-sm text-success-fg bg-success-soft border border-success-border rounded-lg px-3 py-2">
-              <CheckCircleIcon className="h-4 w-4 shrink-0" />
+              <Icon name="checkCircle" size={16} className="shrink-0" />
               <span>Approved {formatDateInLondon(approval.approved_at, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
               {approval.email_sent_at && (
                 <span className="text-success-fg">· Emailed {formatDateInLondon(approval.email_sent_at)}</span>
               )}
             </div>
           ) : (
-            <Badge variant="warning" size="sm">Pending approval</Badge>
+            <Badge tone="warning" size="sm">Pending approval</Badge>
           )}
           {approval && (editingKey !== null || confirmDeleteKey !== null) && (
             <span className="text-xs text-warning-fg">Editing after approval — re-approve to update the snapshot</span>
@@ -409,12 +407,12 @@ export default function PayrollClient({
               className="inline-flex h-btn-h-sm items-center justify-center gap-1.5 rounded-sm border border-border-strong bg-surface px-2.5 text-xs font-semibold text-text no-underline transition-colors hover:bg-surface-hover max-shell:min-h-touch focus-visible:outline-hidden focus-visible:shadow-ring"
               download
             >
-              <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+              <Icon name="download" size={14} />
               Download Excel
             </a>
           )}
           {canSend && approval && !approval.email_sent_at && (
-            <Button type="button" size="sm" variant="secondary" leftIcon={<EnvelopeIcon className="h-3.5 w-3.5" />} onClick={handleSend} disabled={sendPending}>
+            <Button type="button" size="sm" variant="secondary" leftIcon={<Icon name="mail" size={14} />} onClick={handleSend} disabled={sendPending}>
               {sendPending ? 'Sending…' : 'Email accountant'}
             </Button>
           )}
@@ -431,7 +429,7 @@ export default function PayrollClient({
 
       {/* Pivot table: dates → employees */}
       {initialRows.length === 0 ? (
-        <Alert variant="info">
+        <Alert tone="info">
           No hourly shifts found for this month. Salaried employees are excluded from payroll calculations.
         </Alert>
       ) : (
@@ -481,8 +479,8 @@ export default function PayrollClient({
                     >
                       <td className="px-3 py-2 text-text-subtle">
                         {isExpanded
-                          ? <ChevronDownIcon className="h-3.5 w-3.5" />
-                          : <ChevronRightIcon className="h-3.5 w-3.5" />}
+                          ? <Icon name="chevronDown" size={14} className="block" />
+                          : <Icon name="chevronRight" size={14} className="block" />}
                       </td>
                       <td className="px-3 py-2 font-semibold text-text-strong">
                         {formatDate(date)}
@@ -579,7 +577,7 @@ export default function PayrollClient({
                                   className="text-text-subtle hover:text-text"
                                   title="Edit times"
                                   label="Edit times"
-                                  icon={<PencilSquareIcon className="h-3.5 w-3.5" />}
+                                  icon={<Icon name="edit" size={14} />}
                                 />
                                 {row.shiftId && (
                                   <IconButton
@@ -589,7 +587,7 @@ export default function PayrollClient({
                                     className={row.note ? 'text-info-fg' : 'text-text-subtle hover:text-text'}
                                     title={row.note ? 'Edit note' : 'Add note'}
                                     label={row.note ? 'Edit note' : 'Add note'}
-                                    icon={<ChatBubbleBottomCenterTextIcon className="h-3.5 w-3.5" />}
+                                    icon={<Icon name="message" size={14} />}
                                   />
                                 )}
                                 <IconButton
@@ -599,7 +597,7 @@ export default function PayrollClient({
                                   className="text-text-subtle hover:bg-danger-soft hover:text-danger-fg"
                                   title="Delete row"
                                   label="Delete row"
-                                  icon={<TrashIcon className="h-3.5 w-3.5" />}
+                                  icon={<Icon name="trash" size={14} />}
                                 />
                               </div>
                             )}

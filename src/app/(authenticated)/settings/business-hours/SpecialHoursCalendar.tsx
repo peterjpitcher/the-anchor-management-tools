@@ -16,13 +16,11 @@ import {
   startOfMonth,
   startOfWeek,
 } from 'date-fns'
-import { Badge, Button, IconButton } from '@/ds'
+import { Badge, Button, IconButton, toast, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { cn } from '@/lib/utils'
 import { Section } from '@/ds'
-import { ArrowLeftIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import { SpecialHoursModal } from './SpecialHoursModal'
-import toast from 'react-hot-toast'
 
 interface SpecialHoursCalendarProps {
   canManage: boolean
@@ -178,7 +176,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
               variant="secondary"
               label="Previous month"
               onClick={() => setCurrentMonth((prev) => addMonths(prev, -1))}
-              icon={<ArrowLeftIcon className="h-4 w-4" />}
+              icon={<Icon name="arrowLeft" size={16} />}
             />
             <Button
               type="button"
@@ -192,7 +190,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
               variant="secondary"
               label="Next month"
               onClick={() => setCurrentMonth((prev) => addMonths(prev, 1))}
-              icon={<ArrowRightIcon className="h-4 w-4" />}
+              icon={<Icon name="arrowRight" size={16} />}
             />
           </div>
         </div>

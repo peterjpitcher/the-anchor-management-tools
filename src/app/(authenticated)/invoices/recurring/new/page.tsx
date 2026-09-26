@@ -5,16 +5,15 @@ import { useRouter } from 'next/navigation'
 import { createRecurringInvoice } from '@/app/actions/recurring-invoices'
 import { getVendors } from '@/app/actions/vendors'
 import { getLineItemCatalog } from '@/app/actions/invoices'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Alert } from '@/ds'
 import { toast } from '@/ds'
-import { Plus, Trash2, Package } from 'lucide-react'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import type { InvoiceVendor, InvoiceLineItemInput, RecurringFrequency, LineItemCatalogItem } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -214,7 +213,7 @@ export default function NewRecurringInvoicePage() {
     >
       <div className="space-y-6">
         {error && (
-          <Alert variant="error" description={error} />
+          <Alert tone="danger">{error}</Alert>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -223,7 +222,7 @@ export default function NewRecurringInvoicePage() {
           <h2 className="text-xl font-semibold mb-4">Recurring Details</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormGroup label="Vendor" required>
+            <Field label="Vendor" required>
               <Select
                 value={vendorId}
                 onChange={(e) => setVendorId(e.target.value)}
@@ -236,9 +235,9 @@ export default function NewRecurringInvoicePage() {
                   </option>
                 ))}
               </Select>
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Frequency" required>
+            <Field label="Frequency" required>
               <Select
                 value={frequency}
                 onChange={(e) => setFrequency(e.target.value as RecurringFrequency)}
@@ -249,9 +248,9 @@ export default function NewRecurringInvoicePage() {
                 <option value="quarterly">Quarterly</option>
                 <option value="yearly">Yearly</option>
               </Select>
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Start Date" required>
+            <Field label="Start Date" required>
               <Input
                 type="date"
                 value={startDate}
@@ -264,9 +263,9 @@ export default function NewRecurringInvoicePage() {
                 }}
                 required
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup
+            <Field
               label="Next Invoice Date"
               required
               help="Controls when the next invoice will be generated. This can be adjusted without changing the start date."
@@ -281,18 +280,18 @@ export default function NewRecurringInvoicePage() {
                 min={startDate}
                 required
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="End Date (Optional)">
+            <Field label="End Date (Optional)">
               <Input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 min={startDate}
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Days Before Due" required help="Number of days after invoice date until payment is due">
+            <Field label="Days Before Due" required help="Number of days after invoice date until payment is due">
               <Input
                 type="number"
                 value={daysBefore}
@@ -301,16 +300,16 @@ export default function NewRecurringInvoicePage() {
                 max="365"
                 required
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Reference">
+            <Field label="Reference">
               <Input
                 type="text"
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
                 placeholder="PO number or reference"
               />
-            </FormGroup>
+            </Field>
           </div>
         </Card>
 
@@ -359,20 +358,20 @@ export default function NewRecurringInvoicePage() {
                         title="Manage Catalog"
                         iconOnly
                       >
-                        <Package className="h-4 w-4" />
+                        <Icon name="package" size={16} />
                       </Button>
                     </div>
-                    <FormGroup label="Description" required>
+                    <Field label="Description" required>
                       <Input
                         type="text"
                         value={item.description}
                         onChange={(e) => updateLineItem(index, 'description', e.target.value)}
                         required
                       />
-                    </FormGroup>
+                    </Field>
                   </div>
 
-                  <FormGroup label="Quantity">
+                  <Field label="Quantity">
                     <Input
                       type="number"
                       value={item.quantity}
@@ -381,9 +380,9 @@ export default function NewRecurringInvoicePage() {
                       min="0"
                       required
                     />
-                  </FormGroup>
+                  </Field>
 
-                  <FormGroup label="Unit Price (ex VAT)">
+                  <Field label="Unit Price (ex VAT)">
                     <Input
                       type="number"
                       value={item.unit_price}
@@ -392,9 +391,9 @@ export default function NewRecurringInvoicePage() {
                       min="0"
                       required
                     />
-                  </FormGroup>
+                  </Field>
 
-                  <FormGroup label="Discount %">
+                  <Field label="Discount %">
                     <Input
                       type="number"
                       value={item.discount_percentage}
@@ -403,9 +402,9 @@ export default function NewRecurringInvoicePage() {
                       min="0"
                       max="100"
                     />
-                  </FormGroup>
+                  </Field>
 
-                  <FormGroup label="VAT Rate %">
+                  <Field label="VAT Rate %">
                     <Select
                       value={item.vat_rate}
                       onChange={(e) => updateLineItem(index, 'vat_rate', parseFloat(e.target.value))}
@@ -414,7 +413,7 @@ export default function NewRecurringInvoicePage() {
                       <option value="5">5%</option>
                       <option value="20">20%</option>
                     </Select>
-                  </FormGroup>
+                  </Field>
 
                   <div className="md:col-span-2 flex items-end justify-between">
                     <div>
@@ -432,7 +431,7 @@ export default function NewRecurringInvoicePage() {
                         iconOnly
                         aria-label="Remove line item"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Icon name="trash" size={16} />
                       </Button>
                     )}
                   </div>
@@ -445,7 +444,7 @@ export default function NewRecurringInvoicePage() {
             variant="secondary"
             onClick={addLineItem}
             className="mt-4"
-            leftIcon={<Plus className="h-4 w-4" />}
+            leftIcon={<Icon name="plus" size={16} />}
           >
             Add Line Item
           </Button>
@@ -456,7 +455,7 @@ export default function NewRecurringInvoicePage() {
           <h2 className="text-xl font-semibold mb-4">Invoice Settings</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormGroup label="Invoice Discount %" help="Discount applied to entire invoice after line discounts">
+            <Field label="Invoice Discount %" help="Discount applied to entire invoice after line discounts">
               <Input
                 type="number"
                 value={invoiceDiscount}
@@ -465,25 +464,25 @@ export default function NewRecurringInvoicePage() {
                 min="0"
                 max="100"
               />
-            </FormGroup>
+            </Field>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <FormGroup label="Notes (Visible on Invoice)">
+            <Field label="Notes (Visible on Invoice)">
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Internal Notes">
+            <Field label="Internal Notes">
               <Textarea
                 value={internalNotes}
                 onChange={(e) => setInternalNotes(e.target.value)}
                 rows={3}
               />
-            </FormGroup>
+            </Field>
           </div>
         </Card>
 

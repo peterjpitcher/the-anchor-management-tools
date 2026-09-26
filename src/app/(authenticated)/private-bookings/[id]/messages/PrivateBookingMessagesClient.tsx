@@ -1,22 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import {
-  ChatBubbleLeftRightIcon,
-  PaperAirplaneIcon,
-  ClockIcon,
-  CheckCircleIcon,
-  ExclamationCircleIcon,
-  XCircleIcon,
-  DevicePhoneMobileIcon
-} from '@heroicons/react/24/outline'
 import { getPrivateBooking, sendPrivateBookingEmail, sendPrivateBookingSms } from '@/app/actions/privateBookingActions'
 import {
   STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT,
   defaultStaffMessageChannel,
   type StaffMessageChannel,
 } from '@/lib/messaging/staff-email-defaults'
-import { Input, Radio } from '@/ds'
+import { Input, Radio, Icon } from '@/ds'
 import type { PrivateBookingWithDetails, PrivateBookingSmsQueue } from '@/types/private-bookings'
 import { formatDateFull, formatTime12Hour, formatDateTime12Hour } from '@/lib/dateUtils'
 import { PageLayout } from '@/ds'
@@ -24,7 +15,7 @@ import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { Button } from '@/ds'
 import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Alert } from '@/ds'
 import { Spinner } from '@/ds'
 import { Badge } from '@/ds'
@@ -332,7 +323,7 @@ export default function PrivateBookingMessagesClient({
             <Card>
               {!canSendSms && (
                 <Alert
-                  variant="warning"
+                  tone="warning"
                   title="SMS sending disabled"
                   className="mb-4"
                 >
@@ -342,7 +333,7 @@ export default function PrivateBookingMessagesClient({
 
               {isDraft && (
                 <Alert
-                  variant="warning"
+                  tone="warning"
                   title="Booking still in draft"
                   className="mb-4"
                 >
@@ -351,7 +342,7 @@ export default function PrivateBookingMessagesClient({
               )}
 
               <div className="space-y-6">
-                <FormGroup label="Choose a template">
+                <Field label="Choose a template">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {smsTemplates.map((template) => (
                       <button
@@ -366,17 +357,17 @@ export default function PrivateBookingMessagesClient({
                         }`}
                       >
                         <h3 className="font-medium text-text flex items-center gap-2">
-                          <DevicePhoneMobileIcon className="h-5 w-5 text-primary" />
+                          <Icon name="smartphone" size={20} className="text-primary" />
                           {template.name}
                         </h3>
                         <p className="mt-1 text-sm text-text-muted">{template.message}</p>
                       </button>
                     ))}
                   </div>
-                </FormGroup>
+                </Field>
 
                 {emailOption?.enabled && (
-                  <FormGroup label="Send by">
+                  <Field label="Send by">
                     <div className="space-y-2">
                       <Radio
                         name="private-booking-message-channel"
@@ -396,7 +387,7 @@ export default function PrivateBookingMessagesClient({
                         disabled={!canSendSms}
                       />
                     </div>
-                  </FormGroup>
+                  </Field>
                 )}
 
                 {emailChosen && (
@@ -409,7 +400,7 @@ export default function PrivateBookingMessagesClient({
                   />
                 )}
 
-                <FormGroup label="Custom message">
+                <Field label="Custom message">
                   <Textarea
                     value={messageToSend || customMessage}
                     onChange={(event) => {
@@ -426,7 +417,7 @@ export default function PrivateBookingMessagesClient({
                       ? "Sent by email from The Anchor, with the venue's address, phone number and email added at the end."
                       : 'Messages are sent via the venue SMS number. Reply instructions are added automatically.'}
                   </p>
-                </FormGroup>
+                </Field>
 
                 <div className="flex items-center justify-end gap-3">
                   <Button
@@ -445,7 +436,7 @@ export default function PrivateBookingMessagesClient({
                     loading={sending}
                     disabled={!canSend || sending}
                   >
-                    <PaperAirplaneIcon className="h-4 w-4 mr-2" />
+                    <Icon name="send" size={16} className="mr-2" />
                     Send Message
                   </Button>
                 </div>
@@ -464,7 +455,7 @@ export default function PrivateBookingMessagesClient({
                 </div>
               ) : sentMessages.length === 0 ? (
                 <div className="text-center py-12">
-                  <ChatBubbleLeftRightIcon className="mx-auto h-12 w-12 text-text-subtle" />
+                  <Icon name="message" size={48} className="block mx-auto text-text-subtle" />
                   <p className="mt-3 text-sm text-text-muted">
                     No messages have been sent for this booking yet.
                   </p>
@@ -480,10 +471,10 @@ export default function PrivateBookingMessagesClient({
                         <div key={messageKey} className="border border-border rounded-lg p-4 bg-surface-2">
                           <div className="flex items-center justify-between text-sm text-text-muted">
                             <span className="flex items-center gap-2">
-                              <ClockIcon className="h-4 w-4" />
+                              <Icon name="clock" size={16} />
                               Sent {formatDateTime12Hour(message.sent_at ?? message.created_at ?? '')}
                             </span>
-                            <Badge size="sm" variant="info">
+                            <Badge size="sm" tone="info">
                               {message.trigger_type?.replace(/_/g, ' ') || 'Manual message'}
                             </Badge>
                           </div>
@@ -510,7 +501,7 @@ export default function PrivateBookingMessagesClient({
                   </p>
                   {booking.contact_phone && (
                     <p className="text-xs text-text-muted flex items-center gap-1">
-                      <DevicePhoneMobileIcon className="h-4 w-4" />
+                      <Icon name="smartphone" size={16} />
                       {booking.contact_phone}
                     </p>
                   )}
@@ -538,21 +529,21 @@ export default function PrivateBookingMessagesClient({
           <Section title="SMS Delivery Status">
             <Card className="space-y-3">
               <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
-                <CheckCircleIcon className="h-5 w-5 text-success" />
+                <Icon name="checkCircle" size={20} className="text-success" />
                 <div>
                   <p className="text-sm font-medium text-text">Delivered</p>
                   <p className="text-xs text-text-muted">Messages confirmed by Twilio.</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
-                <ExclamationCircleIcon className="h-5 w-5 text-info" />
+                <Icon name="alertCircle" size={20} className="text-info" />
                 <div>
                   <p className="text-sm font-medium text-text">Queued</p>
                   <p className="text-xs text-text-muted">Awaiting automatic send.</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg">
-                <XCircleIcon className="h-5 w-5 text-danger" />
+                <Icon name="xCircle" size={20} className="text-danger" />
                 <div>
                   <p className="text-sm font-medium text-text">Failed</p>
                   <p className="text-xs text-text-muted">Requires manual attention.</p>

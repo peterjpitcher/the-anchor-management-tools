@@ -2,13 +2,20 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
-  PageHeader, SectionNav,
+  PageHeader,
+  SectionNav,
   Card,
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TablePagination,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  TablePagination,
+  toast,
 } from '@/ds'
 import { Button, Badge, SearchInput, IconButton, ConfirmDialog } from '@/ds'
 import { Icon } from '@/ds/icons'
-import toast from 'react-hot-toast'
 import {
   deleteShortLink,
   getShortLinks,

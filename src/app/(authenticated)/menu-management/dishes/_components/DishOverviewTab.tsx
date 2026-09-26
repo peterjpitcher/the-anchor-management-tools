@@ -1,7 +1,7 @@
 'use client';
 
 import { FormSection } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Field } from '@/ds';
 import { Input } from '@/ds';
 import { Textarea } from '@/ds';
 import { Checkbox } from '@/ds';
@@ -79,16 +79,16 @@ export function DishOverviewTab({
   return (
     <div className="space-y-6">
       <FormSection title="Dish Details" description="Core details used for menu display and costing.">
-        <FormGroup label="Name" required help="Shown on the website and kitchen reports.">
+        <Field label="Name" required help="Shown on the website and kitchen reports.">
           <Input
             value={formState.name}
             onChange={(e) => onChange({ name: e.target.value })}
             required
           />
-        </FormGroup>
+        </Field>
 
         <div className="space-y-1">
-          <FormGroup label="Selling Price (£)" required help="Gross selling price visible to guests.">
+          <Field label="Selling Price (£)" required help="Gross selling price visible to guests.">
             <Input
               type="number"
               min="0"
@@ -97,7 +97,7 @@ export function DishOverviewTab({
               onChange={(e) => onChange({ selling_price: e.target.value })}
               required
             />
-          </FormGroup>
+          </Field>
           {targetPriceDisplay && (
             <p className="text-xs text-text-muted">
               Target price for {Math.round(targetGpPct * 100)}% GP: {targetPriceDisplay}
@@ -105,32 +105,32 @@ export function DishOverviewTab({
           )}
         </div>
 
-        <FormGroup label="Calories" help="Optional. Displayed on menus where calorie information is required.">
+        <Field label="Calories" help="Optional. Displayed on menus where calorie information is required.">
           <Input
             type="number"
             min="0"
             value={formState.calories}
             onChange={(e) => onChange({ calories: e.target.value })}
           />
-        </FormGroup>
+        </Field>
       </FormSection>
 
       <FormSection title="Descriptions" description="Public and internal descriptions for the dish.">
-        <FormGroup label="Guest Description" help="Visible on website/menus.">
+        <Field label="Guest Description" help="Visible on website/menus.">
           <Textarea
             rows={3}
             value={formState.description}
             onChange={(e) => onChange({ description: e.target.value })}
           />
-        </FormGroup>
+        </Field>
 
-        <FormGroup label="Internal Notes" help="Staff only — plating guidance, prep notes, etc.">
+        <Field label="Internal Notes" help="Staff only — plating guidance, prep notes, etc.">
           <Textarea
             rows={3}
             value={formState.notes}
             onChange={(e) => onChange({ notes: e.target.value })}
           />
-        </FormGroup>
+        </Field>
       </FormSection>
 
       <FormSection
@@ -155,15 +155,15 @@ export function DishOverviewTab({
 
         {isMarkedNew && (
           <>
-            <FormGroup label="New from" help="First day the badge appears. Defaults to today.">
+            <Field label="New from" help="First day the badge appears. Defaults to today.">
               <Input
                 type="date"
                 value={formState.new_from}
                 onChange={(e) => onChange({ new_from: e.target.value })}
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup
+            <Field
               label="New until"
               help="Last day the badge appears. Defaults to 8 weeks after launch, then it clears itself."
               error={newWindowError}
@@ -174,7 +174,7 @@ export function DishOverviewTab({
                 min={formState.new_from || undefined}
                 onChange={(e) => onChange({ new_until: e.target.value })}
               />
-            </FormGroup>
+            </Field>
           </>
         )}
       </FormSection>

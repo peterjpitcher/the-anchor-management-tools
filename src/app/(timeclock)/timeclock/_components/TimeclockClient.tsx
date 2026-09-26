@@ -2,9 +2,8 @@
 
 import { useState, useTransition, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import toast from 'react-hot-toast'
 import { clockIn, clockOut } from '@/app/actions/timeclock'
-import { Avatar, Button } from '@/ds'
+import { Avatar, Button, toast } from '@/ds'
 import { disambiguatedNames } from '@/lib/employees/display-name'
 
 interface Employee {

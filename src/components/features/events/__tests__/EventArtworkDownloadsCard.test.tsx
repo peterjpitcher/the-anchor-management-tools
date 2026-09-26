@@ -3,8 +3,8 @@ import { render, screen } from '@testing-library/react'
 import type { Event } from '@/types/database'
 import { EventArtworkDownloadsCard } from '../EventArtworkDownloadsCard'
 
-vi.mock('react-hot-toast', () => ({
-  default: { success: vi.fn(), error: vi.fn() },
+vi.mock('@/ds/primitives/Toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }))
 
 const EVENT_ID = '3f1d9e2c-7b4a-4c8e-9a11-2d5f6b7c8d90'

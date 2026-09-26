@@ -3,14 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import {
-  UserGroupIcon,
-  PhoneIcon,
-  MapPinIcon,
-  SparklesIcon,
-  FunnelIcon,
-} from '@heroicons/react/24/outline'
-import { toast } from '@/ds'
+import { toast, Icon } from '@/ds'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import {
   deletePrivateBooking,
@@ -540,7 +533,7 @@ export default function PrivateBookingsClient({
           className="w-full flex items-center justify-center gap-2"
           onClick={() => setMobileFiltersOpen(true)}
         >
-          <FunnelIcon className="h-4 w-4" />
+          <Icon name="filter" size={16} />
           Filters
           {(statusFilter !== 'all' || dateFilter !== 'upcoming' || searchDraft) && (
             <span className="ml-1 inline-flex items-center justify-center h-5 w-5 rounded-full bg-primary text-primary-fg text-xs">
@@ -709,7 +702,7 @@ export default function PrivateBookingsClient({
                         </div>
                         {booking.contact_phone && (
                           <div className="text-xs text-text-muted flex items-center gap-1">
-                            <PhoneIcon className="h-3 w-3" />
+                            <Icon name="phone" size={12} />
                             {booking.contact_phone}
                           </div>
                         )}
@@ -717,7 +710,7 @@ export default function PrivateBookingsClient({
 
                       <TableCell>
                         <div className="text-ui text-text flex items-center gap-1">
-                          <UserGroupIcon className="h-4 w-4 text-text-muted" />
+                          <Icon name="users" size={16} className="text-text-muted" />
                           {booking.guest_count ?? 0} guests
                         </div>
                         {booking.event_type && (
@@ -869,7 +862,7 @@ export default function PrivateBookingsClient({
 
                   {booking.contact_phone && (
                     <div className="text-sm text-text-muted mb-2 flex items-center gap-1">
-                      <PhoneIcon className="h-3 w-3" />
+                      <Icon name="phone" size={12} />
                       {booking.contact_phone}
                     </div>
                   )}
@@ -877,7 +870,7 @@ export default function PrivateBookingsClient({
                   <div className="grid grid-cols-2 gap-2 text-sm mb-3">
                     <div className="text-text-muted">
                       <div className="flex items-center gap-1">
-                        <UserGroupIcon className="h-4 w-4" />
+                        <Icon name="users" size={16} />
                         <span>{booking.guest_count ?? 0} guests</span>
                       </div>
                       {booking.event_type && (
@@ -984,7 +977,7 @@ export default function PrivateBookingsClient({
           onClick={() => router.push('/private-bookings/settings/spaces')}
           className="flex items-center justify-center gap-2 py-6"
         >
-          <MapPinIcon className="h-5 w-5" />
+          <Icon name="mapPin" size={20} />
           <span>Manage Spaces</span>
         </Button>
         <Button
@@ -992,7 +985,7 @@ export default function PrivateBookingsClient({
           onClick={() => router.push('/private-bookings/settings/catering')}
           className="flex items-center justify-center gap-2 py-6"
         >
-          <SparklesIcon className="h-5 w-5" />
+          <Icon name="sparkles" size={20} />
           <span>Catering Options</span>
         </Button>
         <Button
@@ -1000,7 +993,7 @@ export default function PrivateBookingsClient({
           onClick={() => router.push('/private-bookings/settings/vendors')}
           className="flex items-center justify-center gap-2 py-6"
         >
-          <UserGroupIcon className="h-5 w-5" />
+          <Icon name="users" size={20} />
           <span>Preferred Vendors</span>
         </Button>
       </div>

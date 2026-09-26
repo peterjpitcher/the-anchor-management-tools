@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
@@ -16,12 +16,6 @@ import { ConfirmDialog } from '@/ds'
 import { fetchBulkRecipients, sendBulkMessages } from '@/app/actions/bulk-messages'
 import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours'
 import { formatDateInLondon } from '@/lib/dateUtils'
-import {
-  ChatBubbleLeftRightIcon,
-  MagnifyingGlassIcon,
-  PaperAirplaneIcon,
-  FunnelIcon,
-} from '@heroicons/react/24/outline'
 import type { BulkRecipientFilters, BulkRecipient } from '@/types/bulk-messages'
 import type { EventCategory } from '@/types/event-categories'
 
@@ -356,7 +350,7 @@ export default function BulkMessagesClient({
       <div className="space-y-6">
         {/* Quiet hours warning */}
         {quietHoursEval.inQuietHours && (
-          <Alert variant="warning" title="SMS Quiet Hours Active">
+          <Alert tone="warning" title="SMS Quiet Hours Active">
             Messages sent now will be queued and delivered after{' '}
             {formatDateInLondon(quietHoursEval.nextAllowedSendAt, {
               hour: 'numeric',
@@ -371,7 +365,7 @@ export default function BulkMessagesClient({
         <Card
           header={
             <div className="flex items-center gap-2">
-              <FunnelIcon className="h-5 w-5 text-text-muted" />
+              <Icon name="filter" size={20} className="text-text-muted" />
               <h3 className="text-lg font-medium text-text">Filters</h3>
             </div>
           }
@@ -486,7 +480,7 @@ export default function BulkMessagesClient({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name or mobile number..."
-              leftIcon={<MagnifyingGlassIcon />}
+              leftIcon={<Icon name="search" size={16} />}
             />
           </div>
         </Card>
@@ -510,7 +504,7 @@ export default function BulkMessagesClient({
           }
         >
           {error && (
-            <Alert variant="error" title="Error loading recipients" description={error} className="mb-4" />
+            <Alert tone="danger" title="Error loading recipients" className="mb-4">{error}</Alert>
           )}
 
           <DataTable<BulkRecipient>
@@ -542,7 +536,7 @@ export default function BulkMessagesClient({
         <Card
           header={
             <div className="flex items-center gap-2">
-              <ChatBubbleLeftRightIcon className="h-5 w-5 text-text-muted" />
+              <Icon name="message" size={20} className="text-text-muted" />
               <h3 className="text-lg font-medium text-text">Compose Message</h3>
             </div>
           }
@@ -616,7 +610,7 @@ export default function BulkMessagesClient({
             </div>
             <Button
               variant="primary"
-              leftIcon={<PaperAirplaneIcon />}
+              leftIcon={<Icon name="send" size={16} />}
               onClick={() => setShowConfirm(true)}
               disabled={!canSend}
               loading={sending}

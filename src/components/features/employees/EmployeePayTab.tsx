@@ -1,12 +1,10 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { PlusIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/ds';
+import { Button, toast, Icon } from '@/ds';
 import { Input } from '@/ds';
 import { Select } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Field } from '@/ds';
 import { Alert } from '@/ds';
 import { Badge } from '@/ds';
 import {
@@ -169,7 +167,7 @@ export default function EmployeePayTab({
             <p className="text-xs text-success-fg font-medium uppercase tracking-wide">Current hourly rate</p>
             <p className="text-2xl font-bold text-success-fg mt-0.5">{formatRate(currentRate.rate)}</p>
           </div>
-          <Badge variant="success" size="sm">
+          <Badge tone="success" size="sm">
             {currentRate.source === 'override' ? 'Individual override' : 'Age band'}
           </Badge>
         </div>
@@ -231,7 +229,7 @@ export default function EmployeePayTab({
 
       {settingsEditing && (
         <div className="space-y-3">
-          {settingsError && <Alert variant="error">{settingsError}</Alert>}
+          {settingsError && <Alert tone="danger">{settingsError}</Alert>}
           <div className="flex gap-2">
             <Button type="button" variant="primary" onClick={handleSaveSettings} disabled={settingsIsPending}>
               {settingsIsPending ? 'Saving…' : 'Save settings'}
@@ -267,7 +265,7 @@ export default function EmployeePayTab({
                 type="button"
                 size="sm"
                 variant="ghost"
-                leftIcon={<PlusIcon className="h-3.5 w-3.5" />}
+                leftIcon={<Icon name="plus" size={14} />}
                 onClick={() => setShowOverrideForm(v => !v)}
               >
                 Add override
@@ -280,7 +278,7 @@ export default function EmployeePayTab({
               <p className="text-xs font-medium text-text-muted">New effective-dated rate override</p>
               {overrideError && <p className="text-xs text-danger-fg">{overrideError}</p>}
               <div className="grid grid-cols-2 gap-3">
-                <FormGroup label="Hourly rate (£)" htmlFor="override-rate">
+                <Field label="Hourly rate (£)" htmlFor="override-rate">
                   <Input
                     id="override-rate"
                     type="number"
@@ -290,15 +288,15 @@ export default function EmployeePayTab({
                     value={overrideRate}
                     onChange={e => setOverrideRate(e.target.value)}
                   />
-                </FormGroup>
-                <FormGroup label="Effective from" htmlFor="override-eff">
+                </Field>
+                <Field label="Effective from" htmlFor="override-eff">
                   <Input
                     id="override-eff"
                     type="date"
                     value={overrideEffectiveFrom}
                     onChange={e => setOverrideEffectiveFrom(e.target.value)}
                   />
-                </FormGroup>
+                </Field>
               </div>
               <div className="flex gap-2">
                 <Button type="button" size="sm" variant="primary" onClick={handleAddOverride} disabled={overrideIsPending}>
@@ -353,9 +351,9 @@ export default function EmployeePayTab({
                       </td>
                       <td className="py-2">
                         {isUpcoming
-                          ? <Badge variant="warning" size="sm">Upcoming</Badge>
+                          ? <Badge tone="warning" size="sm">Upcoming</Badge>
                           : isCurrent
-                          ? <Badge variant="success" size="sm">Current</Badge>
+                          ? <Badge tone="success" size="sm">Current</Badge>
                           : <span className="text-text-soft text-xs">Historical</span>
                         }
                       </td>

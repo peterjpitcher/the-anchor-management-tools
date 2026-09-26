@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import Papa from 'papaparse'
-import { DataTable } from '@/ds'
-import { CloudArrowUpIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
+import { DataTable, Icon } from '@/ds'
 import { Customer } from '@/types/database'
 import { toast } from '@/ds'
 import { Badge, Button } from '@/ds'
@@ -266,7 +265,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
             variant="secondary"
             onClick={downloadTemplate}
           >
-            <ArrowDownTrayIcon className="-ml-1 mr-2 h-5 w-5" />
+            <Icon name="download" size={20} className="-ml-1 mr-2" />
             Download Template
           </Button>
           {!isPreviewMode && (
@@ -278,7 +277,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
               htmlFor="csv-upload"
               className="relative inline-flex h-btn-h max-shell:min-h-touch items-center justify-center gap-1.5 whitespace-nowrap rounded-default border border-primary bg-primary px-3 text-ui font-semibold text-primary-fg shadow-xs transition-[background,border-color] duration-[120ms] hover:border-primary-hover hover:bg-primary-hover cursor-pointer has-[:focus-visible]:outline-hidden has-[:focus-visible]:shadow-ring"
             >
-              <CloudArrowUpIcon className="w-4 h-4" />
+              <Icon name="upload" size={16} />
               <span>Upload CSV</span>
               <input
                 id="csv-upload"

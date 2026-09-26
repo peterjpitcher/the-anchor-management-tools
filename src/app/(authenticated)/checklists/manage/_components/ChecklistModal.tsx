@@ -1,9 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
-import { Button, Field, Input, Textarea, Select, Modal, ModalActions } from '@/ds'
+import { Button, Field, Input, Textarea, Select, Modal, ModalActions, toast } from '@/ds'
 import { createChecklist, updateChecklist } from '@/app/actions/checklists-admin'
 import type { AdminChecklist } from '@/app/actions/checklists-admin'
 import { DEPARTMENT_OPTIONS } from './format'

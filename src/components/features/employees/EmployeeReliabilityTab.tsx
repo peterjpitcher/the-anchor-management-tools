@@ -42,7 +42,7 @@ function ScorePanel({ title, score }: { title: string; score: ReliabilityScoreBr
           <p className="text-sm font-medium text-text-muted">{title}</p>
           <p className="mt-1 text-3xl font-semibold text-text">{score.score}</p>
         </div>
-        {score.isLowSample && <Badge variant="warning">Low sample</Badge>}
+        {score.isLowSample && <Badge tone="warning">Low sample</Badge>}
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
         <Metric label="Acceptance" value={`${score.components.acceptance}/45`} />
@@ -140,7 +140,7 @@ export default function EmployeeReliabilityTab({ reliability }: EmployeeReliabil
               <div key={event.id} className="flex items-start justify-between gap-4 py-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={eventTone(event.event_type)}>{eventTypeLabel(event.event_type)}</Badge>
+                    <Badge tone={eventTone(event.event_type)}>{eventTypeLabel(event.event_type)}</Badge>
                     <p className="text-sm font-medium text-text">{formatDateTime(event.event_at)}</p>
                   </div>
                   {eventDetail(event) && (

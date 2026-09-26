@@ -1,6 +1,6 @@
 import type { EmployeeNoteWithAuthor } from '@/app/actions/employeeDetails'
 import { formatDate } from '@/lib/dateUtils'
-import { UserCircleIcon } from '@heroicons/react/24/solid'
+import { Icon } from '@/ds'
 
 interface EmployeeNotesListProps {
   notes: EmployeeNoteWithAuthor[]
@@ -23,7 +23,7 @@ export default function EmployeeNotesList({ notes }: EmployeeNotesListProps) {
               <div className="relative flex space-x-2 sm:space-x-3">
                 <div className="flex-shrink-0">
                   <span className="h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-text-subtle flex items-center justify-center ring-4 sm:ring-8 ring-surface">
-                    <UserCircleIcon className="h-3 w-3 sm:h-5 sm:w-5 text-on-dark" aria-hidden="true" />
+                    <Icon name="userCircle" size={12} className="sm:h-5 sm:w-5 text-on-dark" />
                   </span>
                 </div>
                 <div className="min-w-0 flex-1 pt-0.5 sm:pt-1.5">

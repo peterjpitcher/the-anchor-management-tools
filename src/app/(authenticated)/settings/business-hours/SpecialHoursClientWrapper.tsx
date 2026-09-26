@@ -3,11 +3,10 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { SpecialHours } from '@/types/business-hours'
-import { Button } from '@/ds'
+import { Button, Icon } from '@/ds'
 import { Section } from '@/ds'
 import { Card } from '@/ds'
 import { Alert } from '@/ds'
-import { PlusIcon, PencilIcon } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { SpecialHoursModal } from './SpecialHoursModal'
 import { SpecialHoursCalendar } from './SpecialHoursCalendar'
@@ -58,7 +57,7 @@ export function SpecialHoursClientWrapper({
       {specialHoursError ? (
         <Section title="Calendar & Exceptions">
           <Card padding="lg">
-            <Alert variant="error">{specialHoursError}</Alert>
+            <Alert tone="danger">{specialHoursError}</Alert>
           </Card>
         </Section>
       ) : (
@@ -75,7 +74,7 @@ export function SpecialHoursClientWrapper({
               <div className="flex justify-end p-4">
                   <Button
                       onClick={handleCreateNew}
-                      leftIcon={<PlusIcon className="h-5 w-5" />}
+                      leftIcon={<Icon name="plus" size={20} />}
                       disabled={!canManage}
                   >
                       Add New Exception
@@ -83,7 +82,7 @@ export function SpecialHoursClientWrapper({
               </div>
               {specialHoursError ? (
                 <div className="p-4">
-                  <Alert variant="error">{specialHoursError}</Alert>
+                  <Alert tone="danger">{specialHoursError}</Alert>
                 </div>
               ) : initialSpecialHours.length === 0 ? (
                   <p className="p-4 text-center text-text-muted">No special hours configured.</p>
@@ -120,7 +119,7 @@ export function SpecialHoursClientWrapper({
                                   onClick={() => handleEditException(exception)}
                                   variant="secondary"
                                   size="sm"
-                                  leftIcon={<PencilIcon className="h-4 w-4" />}
+                                  leftIcon={<Icon name="edit" size={16} />}
                                   disabled={!canManage}
                                 >
                                   Edit

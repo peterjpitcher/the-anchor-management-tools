@@ -1,13 +1,5 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import {
-  ArrowPathIcon,
-  ExclamationTriangleIcon,
-  UserPlusIcon,
-  UsersIcon,
-  UserGroupIcon,
-  UserMinusIcon,
-} from '@heroicons/react/24/outline'
 import { checkUserPermission } from '@/app/actions/rbac'
 import {
   loadCustomerInsightsSnapshot,
@@ -16,7 +8,7 @@ import {
   type CustomerInsightsWindow,
   type StrategicSignal
 } from '@/lib/analytics/customer-insights'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Stat, StatGroup } from '@/ds'
 import { Badge } from '@/ds'
@@ -189,27 +181,27 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                 <Stat
                   label="Total Customers"
                   value={formatNumber(snapshot.kpis.total_customers)}
-                  icon={<UsersIcon className="h-5 w-5" />}
+                  icon={<Icon name="users" size={20} />}
                   variant="bordered"
                 />
                 <Stat
                   label="New Customers"
                   value={formatNumber(snapshot.kpis.new_customers)}
                   delta={snapshot.kpis.new_customer_growth_percent}
-                  icon={<UserPlusIcon className="h-5 w-5" />}
+                  icon={<Icon name="userPlus" size={20} />}
                   variant="bordered"
                 />
                 <Stat
                   label="Active Customers"
                   value={formatNumber(snapshot.kpis.active_customers)}
                   description={`${formatNumber(snapshot.kpis.repeat_active_customers)} repeat in-window`}
-                  icon={<UserGroupIcon className="h-5 w-5" />}
+                  icon={<Icon name="users" size={20} />}
                   variant="bordered"
                 />
                 <Stat
                   label="Repeat Rate"
                   value={formatPercent(snapshot.kpis.repeat_rate_percent)}
-                  icon={<ArrowPathIcon className="h-5 w-5" />}
+                  icon={<Icon name="refresh" size={20} />}
                   variant="bordered"
                 />
               </StatGroup>
@@ -218,13 +210,13 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                 <Stat
                   label="Dormant Customers (90d+)"
                   value={formatNumber(snapshot.kpis.dormant_customers_90d)}
-                  icon={<UserMinusIcon className="h-5 w-5 text-warning" />}
+                  icon={<Icon name="userMinus" size={20} className="text-warning" />}
                   variant="bordered"
                 />
                 <Stat
                   label="Dormant High-Value Customers"
                   value={formatNumber(snapshot.kpis.dormant_high_value_customers_90d)}
-                  icon={<ExclamationTriangleIcon className="h-5 w-5 text-danger" />}
+                  icon={<Icon name="alertTriangle" size={20} className="text-danger" />}
                   variant="bordered"
                 />
               </div>

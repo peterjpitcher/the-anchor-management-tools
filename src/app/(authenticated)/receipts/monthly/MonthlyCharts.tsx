@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { Card } from '@/ds';
-import { EmptyState } from '@/ds';
+import { Empty } from '@/ds';
 
 type MonthlyChartPoint = {
   monthStart: string;
@@ -40,7 +40,7 @@ export function MonthlyCharts({ data }: { data: MonthlyChartPoint[] }) {
   if (ordered.length === 0) {
     return (
       <Card>
-        <EmptyState
+        <Empty
           title="No data available"
           description="We couldn’t find any income or spending in the last 12 months."
         />
@@ -172,7 +172,7 @@ export function StackedBreakdownChart({
       className="h-full"
     >
       {!hasValues ? (
-        <EmptyState title="No data available" description={emptyDescription} />
+        <Empty title="No data available" description={emptyDescription} />
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">

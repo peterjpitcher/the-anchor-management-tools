@@ -2,12 +2,11 @@
 
 import { useState } from 'react'
 import { CateringPackage } from '@/types/private-bookings'
-import { Tabs } from '@/ds'
+import { Tabs, Icon } from '@/ds'
 import { Button } from '@/ds'
 import { Badge } from '@/ds'
 import { DataTable, Column } from '@/ds'
-import { EmptyState } from '@/ds'
-import { PlusIcon, SparklesIcon, PencilIcon } from '@heroicons/react/24/outline'
+import { Empty } from '@/ds'
 import { CateringPackageModal } from './CateringPackageModal'
 import { useRouter } from 'next/navigation'
 
@@ -87,7 +86,7 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
             header: 'Status',
             align: 'center',
             cell: (pkg: CateringPackage) => (
-                <Badge variant={pkg.active ? 'success' : 'secondary'} size="sm">
+                <Badge tone={pkg.active ? 'success' : 'neutral'} size="sm">
                     {pkg.active ? 'Active' : 'Inactive'}
                 </Badge>
             )
@@ -101,7 +100,7 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
                     variant="ghost"
                     size="sm"
                     onClick={() => handleEdit(pkg)}
-                    leftIcon={<PencilIcon className="h-3.5 w-3.5" />}
+                    leftIcon={<Icon name="edit" size={14} />}
                 >
                     Edit
                 </Button>
@@ -124,12 +123,12 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
         if (packages.length === 0) {
             return (
                 <div className="py-12">
-                    <EmptyState
-                        icon={<SparklesIcon className="h-12 w-12 text-text-subtle" />}
+                    <Empty
+                        icon={<Icon name="sparkles" size={48} className="text-text-subtle" />}
                         title={`No ${categoryLabel.toLowerCase()} packages yet`}
                         description="Get started by creating your first package."
                         action={
-                            <Button onClick={handleAdd} leftIcon={<PlusIcon className="h-4 w-4" />}>
+                            <Button onClick={handleAdd} leftIcon={<Icon name="plus" size={16} />}>
                                 Add {categoryLabel} Package
                             </Button>
                         }
@@ -152,7 +151,7 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
     return (
         <div className="space-y-6">
             <div className="flex justify-end">
-                <Button onClick={handleAdd} leftIcon={<PlusIcon className="h-4 w-4" />}>
+                <Button onClick={handleAdd} leftIcon={<Icon name="plus" size={16} />}>
                     Add Package
                 </Button>
             </div>

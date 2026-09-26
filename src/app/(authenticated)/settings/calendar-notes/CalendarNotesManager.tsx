@@ -1,14 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import {
-  CalendarDaysIcon,
-  PencilSquareIcon,
-  SparklesIcon,
-  TrashIcon,
-} from '@heroicons/react/24/outline'
-import { Button } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Button, Icon } from '@/ds'
+import { Field } from '@/ds'
 import { Input } from '@/ds'
 import { Textarea } from '@/ds'
 import { Alert } from '@/ds'
@@ -242,7 +236,7 @@ export default function CalendarNotesManager({
   return (
     <div className="space-y-8">
       {errorMessage && (
-        <Alert variant="error" title="Calendar notes" description={errorMessage} />
+        <Alert tone="danger" title="Calendar notes">{errorMessage}</Alert>
       )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -257,7 +251,7 @@ export default function CalendarNotesManager({
 
           <form onSubmit={handleNoteSave} className="mt-4 space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <FormGroup label="Start date" required>
+              <Field label="Start date" required>
                 <Input
                   type="date"
                   value={noteForm.note_date}
@@ -271,8 +265,8 @@ export default function CalendarNotesManager({
                   }}
                   required
                 />
-              </FormGroup>
-              <FormGroup label="End date" required>
+              </Field>
+              <Field label="End date" required>
                 <Input
                   type="date"
                   value={noteForm.end_date}
@@ -280,10 +274,10 @@ export default function CalendarNotesManager({
                   onChange={(event) => setNoteForm((current) => ({ ...current, end_date: event.target.value }))}
                   required
                 />
-              </FormGroup>
+              </Field>
             </div>
 
-            <FormGroup label="Title" required>
+            <Field label="Title" required>
               <Input
                 type="text"
                 placeholder="e.g. St Patrick's Day"
@@ -292,17 +286,17 @@ export default function CalendarNotesManager({
                 maxLength={160}
                 required
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Color">
+            <Field label="Color">
               <Input
                 type="color"
                 value={normalizeColor(noteForm.color)}
                 onChange={(event) => setNoteForm((current) => ({ ...current, color: event.target.value }))}
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Notes">
+            <Field label="Notes">
               <Textarea
                 rows={3}
                 placeholder="Optional detail for the calendar tooltip."
@@ -310,7 +304,7 @@ export default function CalendarNotesManager({
                 onChange={(event) => setNoteForm((current) => ({ ...current, notes: event.target.value }))}
                 maxLength={4000}
               />
-            </FormGroup>
+            </Field>
 
             <div className="flex flex-wrap items-center justify-end gap-2">
               {editingNoteId && (
@@ -325,7 +319,7 @@ export default function CalendarNotesManager({
               <Button
                 type="submit"
                 loading={isMutating}
-                leftIcon={<CalendarDaysIcon className="h-4 w-4" />}
+                leftIcon={<Icon name="calendar" size={16} />}
               >
                 {editingNoteId ? 'Save changes' : 'Add note'}
               </Button>
@@ -346,25 +340,25 @@ export default function CalendarNotesManager({
 
           <form onSubmit={handleGenerate} className="mt-4 space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <FormGroup label="Start date" required>
+              <Field label="Start date" required>
                 <Input
                   type="date"
                   value={generatorForm.start_date}
                   onChange={(event) => setGeneratorForm((current) => ({ ...current, start_date: event.target.value }))}
                   required
                 />
-              </FormGroup>
-              <FormGroup label="End date" required>
+              </Field>
+              <Field label="End date" required>
                 <Input
                   type="date"
                   value={generatorForm.end_date}
                   onChange={(event) => setGeneratorForm((current) => ({ ...current, end_date: event.target.value }))}
                   required
                 />
-              </FormGroup>
+              </Field>
             </div>
 
-            <FormGroup label="Extra guidance">
+            <Field label="Extra guidance">
               <Textarea
                 rows={4}
                 placeholder="Optional: include venue-specific reminders or campaign themes."
@@ -372,14 +366,14 @@ export default function CalendarNotesManager({
                 onChange={(event) => setGeneratorForm((current) => ({ ...current, guidance: event.target.value }))}
                 maxLength={2000}
               />
-            </FormGroup>
+            </Field>
 
             <div className="flex justify-end">
               <Button
                 type="submit"
                 variant="secondary"
                 loading={isGenerating}
-                leftIcon={<SparklesIcon className="h-4 w-4" />}
+                leftIcon={<Icon name="sparkles" size={16} />}
               >
                 Generate notes
               </Button>
@@ -392,7 +386,7 @@ export default function CalendarNotesManager({
       <section className="rounded-lg border border-border">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h3 className="text-sm font-semibold text-text">Saved calendar notes</h3>
-          <Badge variant="secondary">{notes.length} total</Badge>
+          <Badge tone="neutral">{notes.length} total</Badge>
         </div>
 
         {notes.length === 0 ? (
@@ -425,7 +419,7 @@ export default function CalendarNotesManager({
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      <Badge variant={note.source === 'ai' ? 'secondary' : 'default'}>
+                      <Badge tone="neutral">
                         {note.source === 'ai' ? 'AI' : 'Manual'}
                       </Badge>
                     </td>
@@ -440,7 +434,7 @@ export default function CalendarNotesManager({
                             variant="ghost"
                             onClick={() => beginEdit(note)}
                             disabled={isMutating}
-                            leftIcon={<PencilSquareIcon className="h-3.5 w-3.5" />}
+                            leftIcon={<Icon name="edit" size={14} />}
                           >
                             Edit
                           </Button>
@@ -449,7 +443,7 @@ export default function CalendarNotesManager({
                             variant="ghost"
                             onClick={() => handleDelete(note)}
                             disabled={isMutating}
-                            leftIcon={<TrashIcon className="h-3.5 w-3.5" />}
+                            leftIcon={<Icon name="trash" size={14} />}
                           >
                             Delete
                           </Button>

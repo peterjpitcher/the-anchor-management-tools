@@ -4,12 +4,11 @@ import { invoiceBalanceDue, invoiceIssuedCreditTotal } from '@/lib/invoices/bala
 
 import { useEffect, useMemo, useState } from 'react'
 import { sendChasePaymentEmail, getInvoiceEmailLogs } from '@/app/actions/email'
-import { Modal, ModalActions } from '@/ds'
+import { Modal, ModalActions, Icon } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Textarea } from '@/ds'
 import { Alert } from '@/ds'
-import { Send, Clock, AlertTriangle } from 'lucide-react'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 
@@ -166,7 +165,7 @@ P.S. I've attached a copy of the invoice for your reference.`
             onClick={handleSend}
             disabled={!toEmails}
             loading={sending}
-            leftIcon={<Send className="h-4 w-4" />}
+            leftIcon={<Icon name="send" size={16} />}
           >
             Send Reminder
           </Button>
@@ -176,7 +175,7 @@ P.S. I've attached a copy of the invoice for your reference.`
       <div className="space-y-4">
         {/* Chase Payment Header */}
         <div className="flex items-center gap-3 pb-4 border-b border-border">
-          <Clock className="h-6 w-6 text-warning" />
+          <Icon name="clock" size={24} className="text-warning" />
           <div>
             <p className="text-sm text-text-muted">Invoice is {daysOverdue} {daysOverdue === 1 ? 'day' : 'days'} overdue</p>
           </div>
@@ -184,15 +183,16 @@ P.S. I've attached a copy of the invoice for your reference.`
 
         {recentChaseWarning && lastChaseDate && (
           <Alert 
-            variant="warning" 
+            tone="warning" 
             title="Recent Reminder Sent"
-            description={`A payment reminder was already sent on ${new Date(lastChaseDate).toLocaleDateString('en-GB')} at ${new Date(lastChaseDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}. Sending another one so soon might be aggressive.`}
             className="mb-4"
-          />
+          >
+            {`A payment reminder was already sent on ${new Date(lastChaseDate).toLocaleDateString('en-GB')} at ${new Date(lastChaseDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}. Sending another one so soon might be aggressive.`}
+          </Alert>
         )}
 
         {error && (
-          <Alert variant="error">{error}</Alert>
+          <Alert tone="danger">{error}</Alert>
         )}
 
         <div>
@@ -241,9 +241,8 @@ P.S. I've attached a copy of the invoice for your reference.`
           />
         </div>
 
-        <Alert variant="warning"
+        <Alert tone="warning"
           title="Attachment"
-          description={`Invoice ${invoice.invoice_number} (PDF format) will be attached as a reminder.`}
         >
           <p className="text-sm text-warning-fg mt-2">
             <strong>Outstanding:</strong> £{outstandingAmount.toFixed(2)} • <strong>Due:</strong> {dueDate.toLocaleDateString('en-GB')}

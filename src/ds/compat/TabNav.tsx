@@ -21,8 +21,8 @@ export interface TabItem {
   disabled?: boolean
   icon?: ReactNode
   badge?: string | number
-  /** Omitted or 'default' shows the DS Tabs count pill; any other value shows a Badge in that tone. */
-  badgeVariant?: 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info'
+  /** Omitted shows the DS Tabs count pill; a tone shows a Badge in that tone. */
+  badgeTone?: 'primary' | 'success' | 'warning' | 'danger' | 'info'
 }
 
 export interface TabNavProps {
@@ -102,8 +102,8 @@ export function TabNav({
         <span className="hidden sm:inline">{tab.label}</span>
       </span>
       {tab.badge !== undefined &&
-        (tab.badgeVariant && tab.badgeVariant !== 'default' ? (
-          <Badge variant={tab.badgeVariant}>{tab.badge}</Badge>
+        (tab.badgeTone ? (
+          <Badge tone={tab.badgeTone}>{tab.badge}</Badge>
         ) : (
           <span
             className={cn(

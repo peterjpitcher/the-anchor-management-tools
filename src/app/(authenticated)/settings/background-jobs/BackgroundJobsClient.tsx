@@ -6,25 +6,15 @@ import type { BackgroundJob, BackgroundJobFilters, BackgroundJobSummary } from '
 import { listBackgroundJobs, retryBackgroundJob, deleteBackgroundJob } from '@/app/actions/backgroundJobs'
 import { runCronJob } from '@/app/actions/cronJobs'
 import { formatDate } from '@/lib/dateUtils'
-import toast from 'react-hot-toast'
-import {
-  ClockIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  ExclamationCircleIcon,
-  ArrowPathIcon,
-  TrashIcon,
-  PlayIcon,
-} from '@heroicons/react/24/outline'
-import { PageLayout } from '@/ds'
+import { PageLayout, toast, Icon } from '@/ds'
 import { Section } from '@/ds'
 import { Card } from '@/ds'
 import { Button, IconButton } from '@/ds'
 import { Badge } from '@/ds'
 import { DataTable } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { Select } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Pagination } from '@/ds'
 import { Stat } from '@/ds'
 import { Spinner } from '@/ds'
@@ -109,7 +99,7 @@ export default function BackgroundJobsClient({
     fetchJobs(next)
   }
 
-  const getStatusVariant = (status: string): 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' => {
+  const getStatusTone = (status: string): 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info' => {
     switch (status) {
       case 'pending':
         return 'warning'
@@ -118,27 +108,27 @@ export default function BackgroundJobsClient({
       case 'completed':
         return 'success'
       case 'failed':
-        return 'error'
+        return 'danger'
       case 'cancelled':
-        return 'default'
+        return 'neutral'
       default:
-        return 'default'
+        return 'neutral'
     }
   }
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending':
-        return <ClockIcon className="h-4 w-4" />
+        return <Icon name="clock" size={16} />
       case 'processing':
-        return <ArrowPathIcon className="h-4 w-4 animate-spin" />
+        return <Icon name="refresh" size={16} className="animate-spin" />
       case 'completed':
-        return <CheckCircleIcon className="h-4 w-4" />
+        return <Icon name="checkCircle" size={16} />
       case 'failed':
       case 'cancelled':
-        return <XCircleIcon className="h-4 w-4" />
+        return <Icon name="xCircle" size={16} />
       default:
-        return <ExclamationCircleIcon className="h-4 w-4" />
+        return <Icon name="alertCircle" size={16} />
     }
   }
 
@@ -276,7 +266,7 @@ export default function BackgroundJobsClient({
       key: 'status',
       header: 'Status',
       cell: (job: BackgroundJob) => (
-        <Badge variant={getStatusVariant(job.status)} icon={getStatusIcon(job.status)}>
+        <Badge tone={getStatusTone(job.status)} icon={getStatusIcon(job.status)}>
           {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
         </Badge>
       ),
@@ -331,7 +321,7 @@ export default function BackgroundJobsClient({
               title="Retry job"
               disabled={isMutating}
             >
-              <ArrowPathIcon className="h-4 w-4" />
+              <Icon name="refresh" size={16} />
             </IconButton>
           )}
           {canManage && (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') && (
@@ -343,7 +333,7 @@ export default function BackgroundJobsClient({
               title="Delete job"
               disabled={isMutating}
             >
-              <TrashIcon className="h-4 w-4" />
+              <Icon name="trash" size={16} />
             </IconButton>
           )}
         </div>
@@ -364,7 +354,7 @@ export default function BackgroundJobsClient({
         onClick={processCommunicationsMonitor}
         disabled={!canManage || isProcessingCommsMonitor}
         loading={isProcessingCommsMonitor}
-        leftIcon={!isProcessingCommsMonitor && <PlayIcon />}
+        leftIcon={!isProcessingCommsMonitor && <Icon name="play" size={16} />}
         title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
       >
         {isProcessingCommsMonitor ? 'Running Monitor...' : 'Run Comms Monitor'}
@@ -375,7 +365,7 @@ export default function BackgroundJobsClient({
         onClick={processCommunicationsRetention}
         disabled={!canManage || isProcessingCommsRetention}
         loading={isProcessingCommsRetention}
-        leftIcon={!isProcessingCommsRetention && <PlayIcon />}
+        leftIcon={!isProcessingCommsRetention && <Icon name="play" size={16} />}
         title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
       >
         {isProcessingCommsRetention ? 'Running Retention...' : 'Run Comms Retention'}
@@ -386,7 +376,7 @@ export default function BackgroundJobsClient({
         onClick={processEventGuestEngagement}
         disabled={!canManage || isProcessingEngagement}
         loading={isProcessingEngagement}
-        leftIcon={!isProcessingEngagement && <PlayIcon />}
+        leftIcon={!isProcessingEngagement && <Icon name="play" size={16} />}
         title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
       >
         {isProcessingEngagement ? 'Running Event Messaging...' : 'Run Event Messaging'}
@@ -397,7 +387,7 @@ export default function BackgroundJobsClient({
         onClick={processJobs}
         disabled={!canManage || isProcessing}
         loading={isProcessing}
-        leftIcon={!isProcessing && <PlayIcon />}
+        leftIcon={!isProcessing && <Icon name="play" size={16} />}
         title={!canManage ? 'You need settings manage permission to process jobs.' : undefined}
       >
         {isProcessing ? 'Processing...' : 'Process Jobs'}
@@ -416,7 +406,7 @@ export default function BackgroundJobsClient({
       headerActions={headerActions}
     >
       <div className="space-y-6">
-        {error && <Alert variant="error" title="Error" description={error} />}
+        {error && <Alert tone="danger" title="Error">{error}</Alert>}
 
         <Section id="summary" title="Summary">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -434,7 +424,7 @@ export default function BackgroundJobsClient({
         <Section title="Filters">
           <Card>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <FormGroup label="Status Filter">
+              <Field label="Status Filter">
                 <Select
                   value={filters.status || ''}
                   onChange={(e) => handleFilterChange({ ...filters, status: e.target.value || undefined })}
@@ -447,9 +437,9 @@ export default function BackgroundJobsClient({
                     { value: 'cancelled', label: 'Cancelled' },
                   ]}
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Type Filter">
+              <Field label="Type Filter">
                 <Select
                   value={filters.type || ''}
                   onChange={(e) => handleFilterChange({ ...filters, type: e.target.value || undefined })}
@@ -458,7 +448,7 @@ export default function BackgroundJobsClient({
                     ...Object.entries(jobTypeLabels).map(([value, label]) => ({ value, label })),
                   ]}
                 />
-              </FormGroup>
+              </Field>
             </div>
             <div className="mt-4 flex justify-end">
               <Button variant="secondary" onClick={() => handleFilterChange({})} disabled={isRefreshing}>
@@ -475,8 +465,8 @@ export default function BackgroundJobsClient({
                 <Spinner />
               </div>
             ) : pagedJobs.length === 0 ? (
-              <EmptyState
-                icon={<ExclamationCircleIcon />}
+              <Empty
+                icon={<Icon name="alertCircle" size={48} />}
                 title="No jobs found"
                 description="No background jobs match your current filters."
                 action={
@@ -521,7 +511,7 @@ export default function BackgroundJobsClient({
                   {
                     key: 'priority',
                     label: 'Priority',
-                    value: <Badge variant="secondary">{selectedJobDetails.priority}</Badge>,
+                    value: <Badge tone="neutral">{selectedJobDetails.priority}</Badge>,
                   },
                   ...(selectedJobDetails.started_at
                     ? [{

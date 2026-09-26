@@ -2,9 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { sendSmsReply } from '@/app/actions/messageActions'
-import toast from 'react-hot-toast'
-import { PaperAirplaneIcon } from '@heroicons/react/24/solid'
-import { Badge, Textarea } from '@/ds'
+import { Badge, Textarea, toast, Icon } from '@/ds'
 import { cn } from '@/lib/utils'
 
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
@@ -243,7 +241,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                     : 'scale-0'
                 }`}
               >
-                <PaperAirplaneIcon className="h-5 w-5 sm:h-4 sm:w-4 -rotate-45" />
+                <Icon name="send" size={20} className="block sm:h-4 sm:w-4" />
               </button>
             </div>
           </div>

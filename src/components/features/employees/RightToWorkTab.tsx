@@ -11,10 +11,9 @@ import {
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ActionFormState } from '@/types/actions'
 import type { EmployeeRightToWork } from '@/types/database'
-import { Alert, Button, ConfirmDialog, Input, Select, Textarea, toast } from '@/ds'
+import { Alert, Button, ConfirmDialog, Input, Select, Textarea, toast, Icon } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 import { formatDateInLondon, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
-import { AlertCircle, CheckCircle, Clock, Upload, Eye, Download, Trash2 } from 'lucide-react'
 
 const DOCUMENT_TYPE_OPTIONS = ['Passport', 'Biometric Residence Permit', 'Share Code', 'List A', 'List B', 'Other'] as const
 const LEGACY_DOCUMENT_TYPES: readonly string[] = []
@@ -205,7 +204,7 @@ export default function RightToWorkTab({
       {rightToWorkData && (
         <div className="space-y-3">
           {isExpired && (
-            <Alert tone="danger" title="Document Expired" icon={<AlertCircle className="h-5 w-5" />}>
+            <Alert tone="danger" title="Document Expired" icon={<Icon name="alertCircle" size={20} />}>
               This document expired on{' '}
               {formatDateInLondon(rightToWorkData.document_expiry_date!)}.
               Obtain and record updated documentation now.
@@ -213,7 +212,7 @@ export default function RightToWorkTab({
           )}
 
           {isExpiringSoon && (
-            <Alert tone="warning" title="Document Expiring Soon" icon={<Clock className="h-5 w-5" />}>
+            <Alert tone="warning" title="Document Expiring Soon" icon={<Icon name="clock" size={20} />}>
               This document expires on{' '}
               {formatDateInLondon(rightToWorkData.document_expiry_date!)}.
               Please obtain updated documentation before expiry.
@@ -221,14 +220,14 @@ export default function RightToWorkTab({
           )}
 
           {isFollowUpDue && (
-            <Alert tone="danger" title="Follow-up Required" icon={<AlertCircle className="h-5 w-5" />}>
+            <Alert tone="danger" title="Follow-up Required" icon={<Icon name="alertCircle" size={20} />}>
               A follow-up check was due on{' '}
               {formatDateInLondon(rightToWorkData.follow_up_date!)}.
             </Alert>
           )}
 
           {rightToWorkData.document_type && !isExpired && !isExpiringSoon && !isFollowUpDue && (
-            <Alert tone="success" role="status" title="Right to Work Verified" icon={<CheckCircle className="h-5 w-5" />}>
+            <Alert tone="success" role="status" title="Right to Work Verified" icon={<Icon name="checkCircle" size={20} />}>
               This employee&apos;s right to work has been verified and is currently valid.
             </Alert>
           )}
@@ -372,7 +371,7 @@ export default function RightToWorkTab({
                 this box draws the DS focus ring for it. */}
             <label className="relative flex items-center justify-between rounded-md border border-dashed border-border-strong px-4 py-3 text-sm text-text-muted has-[:focus-visible]:outline-hidden has-[:focus-visible]:shadow-ring">
               <div className="flex items-center space-x-3">
-                <Upload className="h-5 w-5 text-text-subtle" />
+                <Icon name="upload" size={20} className="text-text-subtle" />
                 <span>{selectedFileName ?? 'Upload scan or photo (PDF/JPG/PNG)'}</span>
               </div>
 	              <input
@@ -415,7 +414,7 @@ export default function RightToWorkTab({
             {canViewDocuments && rightToWorkData?.photo_storage_path && (
               <div className="flex items-center space-x-3">
                 <div className="flex items-center space-x-2 rounded-md bg-surface-2 px-3 py-2 text-sm text-text-muted">
-                  <Eye className="h-4 w-4" />
+                  <Icon name="eye" size={16} />
                   {loadingPhoto ? (
                     <span>Generating preview…</span>
                   ) : photoUrl ? (
@@ -433,7 +432,7 @@ export default function RightToWorkTab({
                         download
                         className="inline-flex items-center text-primary hover:underline"
                       >
-                        <Download className="mr-1 h-4 w-4" /> Download
+                        <Icon name="download" size={16} className="mr-1" /> Download
                       </a>
                     </>
                   ) : (
@@ -448,7 +447,7 @@ export default function RightToWorkTab({
                     className="text-danger-fg border-danger-border hover:bg-danger-soft"
                     onClick={() => setDeletePhotoOpen(true)}
                     disabled={deletingPhoto}
-                    icon={<Trash2 className="h-4 w-4" />}
+                    icon={<Icon name="trash" size={16} />}
                   >
                     {deletingPhoto ? 'Deleting…' : 'Delete'}
                   </Button>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Star } from 'lucide-react'
+import { Icon } from '@/ds/icons'
 import { cn } from '@/lib/utils'
 
 interface StarRatingProps {
@@ -50,14 +50,15 @@ export function StarRating({ value, onChange, max = 5 }: StarRatingProps) {
             className="flex h-11 w-11 items-center justify-center rounded-guest-field"
           >
             {/*
-              Lucide ships `fill="none" stroke="currentColor"` as presentation
+              The DS icon ships `fill="none" stroke="currentColor"` as presentation
               attributes. `fill-current` and `stroke-none` are CSS, which wins,
               turning the outline star into the solid one the design calls for.
             */}
-            <Star
-              aria-hidden="true"
+            <Icon
+              name="star"
+              size={30}
               className={cn(
-                'h-[30px] w-[30px] fill-current stroke-none transition-colors duration-200',
+                'fill-current stroke-none transition-colors duration-200',
                 active ? 'text-anchor-gold' : 'text-guest-border-strong'
               )}
             />

@@ -2,8 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { formatDateInLondon, formatDateTime } from '@/lib/dateUtils'
-import { Button, toast } from '@/ds'
-import { ClockIcon, UserIcon, ChatBubbleLeftRightIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline'
+import { Button, toast, Icon } from '@/ds'
 import type { AuditLogEntry, EmployeeNoteWithAuthor } from '@/app/actions/employeeDetails'
 
 interface EmployeeAuditTrailProps {
@@ -282,14 +281,14 @@ export function EmployeeAuditTrail({
         <div className="px-4 py-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="flex items-center text-lg font-medium leading-6 text-text">
-              <ClockIcon className="mr-2 h-5 w-5" />
+              <Icon name="clock" size={20} className="mr-2" />
               Audit Trail
             </h3>
             <Button
               type="button"
               size="sm"
               variant="secondary"
-              icon={<ClipboardDocumentIcon className="h-4 w-4" />}
+              icon={<Icon name="copy" size={16} />}
               onClick={handleCopyAll}
             >
               {copied ? 'Copied' : 'Copy all'}
@@ -318,9 +317,9 @@ export function EmployeeAuditTrail({
                             }`}
                           >
                             {isAudit ? (
-                              <UserIcon className="h-5 w-5" />
+                              <Icon name="user" size={20} />
                             ) : (
-                              <ChatBubbleLeftRightIcon className="h-5 w-5" />
+                              <Icon name="message" size={20} />
                             )}
                           </span>
                         </div>

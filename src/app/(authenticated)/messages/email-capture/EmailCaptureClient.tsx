@@ -105,8 +105,8 @@ export default function EmailCaptureClient() {
         </div>
       </Card>
 
-      {error ? <Alert variant="error">{error}</Alert> : null}
-      {result ? <Alert variant="success">{result}</Alert> : null}
+      {error ? <Alert tone="danger">{error}</Alert> : null}
+      {result ? <Alert tone="success">{result}</Alert> : null}
 
       <Card title="Who this would reach">
         {loading ? (
@@ -121,7 +121,7 @@ export default function EmailCaptureClient() {
             </div>
 
             {preview.eligibleCount > preview.thisRunCount ? (
-              <Alert variant="info">
+              <Alert tone="info">
                 {preview.eligibleCount} guests are waiting in total. This run takes the first{' '}
                 {preview.thisRunCount}; the rest stay on the list for the next run.
               </Alert>

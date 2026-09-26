@@ -5,7 +5,7 @@ import { importMissedMessages } from '@/app/actions/import-messages'
 import { PageLayout } from '@/ds'
 import { Section } from '@/ds'
 import { Card } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Input } from '@/ds'
 import { Button } from '@/ds'
 import { Alert } from '@/ds'
@@ -78,23 +78,25 @@ export default function ImportMessagesClient({
       <Section>
         <div className="space-y-4">
           <Alert
-            variant="warning"
+            tone="warning"
             title="About this tool"
-            description="Imports inbound and outbound SMS from Twilio for the selected window. Existing records are skipped automatically."
-          />
+          >
+            Imports inbound and outbound SMS from Twilio for the selected window. Existing records are skipped automatically.
+          </Alert>
 
           {!canManage && (
             <Alert
-              variant="info"
+              tone="info"
               title="Read-only access"
-              description="You can review import results, but only users with the messages manage permission can run imports."
-            />
+            >
+              You can review import results, but only users with the messages manage permission can run imports.
+            </Alert>
           )}
         </div>
 
         <Card className="mt-6">
           <div className="space-y-4">
-            <FormGroup label="Start Date" htmlFor="startDate">
+            <Field label="Start Date" htmlFor="startDate">
               <Input
                 type="date"
                 id="startDate"
@@ -102,9 +104,9 @@ export default function ImportMessagesClient({
                 onChange={(e) => setStartDate(e.target.value)}
                 disabled={loading || !canManage}
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="End Date" htmlFor="endDate">
+            <Field label="End Date" htmlFor="endDate">
               <Input
                 type="date"
                 id="endDate"
@@ -112,7 +114,7 @@ export default function ImportMessagesClient({
                 onChange={(e) => setEndDate(e.target.value)}
                 disabled={loading || !canManage}
               />
-            </FormGroup>
+            </Field>
           </div>
 
           <div className="mt-6">
@@ -134,17 +136,19 @@ export default function ImportMessagesClient({
             <div className="space-y-4">
             {'error' in result ? (
               <Alert
-                variant="error"
+                tone="danger"
                 title="Import Failed"
-                description={result.error}
-              />
+              >
+                {result.error}
+              </Alert>
             ) : (
               <>
                 <Alert
-                  variant="success"
+                  tone="success"
                   title="Import Complete"
-                  description="Messages were reconciled with Twilio successfully."
-                />
+                >
+                  Messages were reconciled with Twilio successfully.
+                </Alert>
                 <div className="space-y-2 text-sm">
                   <p>
                     Total messages found:{' '}
@@ -180,7 +184,7 @@ export default function ImportMessagesClient({
 
                 {result.errors && result.errors.length > 0 && (
                   <Alert
-                    variant="error"
+                    tone="danger"
                     title="Errors occurred during import"
                   >
                     <ul className="list-disc list-inside space-y-1 mt-2">

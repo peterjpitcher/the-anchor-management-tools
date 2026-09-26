@@ -92,7 +92,7 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
             </div>
 
             {generalProblem && (
-              <Alert variant="warning" className="mb-2">
+              <Alert tone="warning" className="mb-2">
                 {generalProblem.message}
               </Alert>
             )}

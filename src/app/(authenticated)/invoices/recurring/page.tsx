@@ -3,15 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getRecurringInvoices, deleteRecurringInvoice, generateInvoiceFromRecurring, toggleRecurringInvoiceStatus } from '@/app/actions/recurring-invoices'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Button } from '@/ds'
 import { Badge } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { DataTable } from '@/ds'
 import { toast } from '@/ds'
 import { ConfirmDialog } from '@/ds'
-import { Plus, Calendar, Trash2, Edit, Play, Pause } from 'lucide-react'
 import type { RecurringInvoiceWithDetails } from '@/types/invoices'
 import { Alert } from '@/ds'
 import { usePermissions } from '@/contexts/PermissionContext'
@@ -205,7 +204,7 @@ export default function RecurringInvoicesPage() {
           <Button
             variant="primary"
             onClick={() => router.push('/invoices/recurring/new')}
-            leftIcon={<Plus className="h-4 w-4" />}
+            leftIcon={<Icon name="plus" size={16} />}
           >
             New Recurring Invoice
           </Button>
@@ -215,19 +214,20 @@ export default function RecurringInvoicesPage() {
       <div className="space-y-6">
         {isReadOnly && (
           <Alert
-            variant="info"
-            description="You have read-only access to recurring invoices; creation and management actions are disabled."
-          />
+            tone="info"
+          >
+            You have read-only access to recurring invoices; creation and management actions are disabled.
+          </Alert>
         )}
 
         {recurringInvoices.length === 0 ? (
-          <EmptyState
-            icon={<Calendar className="h-12 w-12" />}
+          <Empty
+            icon={<Icon name="calendar" size={48} />}
             title="No recurring invoices"
             description="Create recurring invoices to automate your billing"
             action={
               canCreate ? (
-                <Button onClick={() => router.push('/invoices/recurring/new')} leftIcon={<Plus className="h-4 w-4" />}>
+                <Button onClick={() => router.push('/invoices/recurring/new')} leftIcon={<Icon name="plus" size={16} />}>
                   Create schedule
                 </Button>
               ) : undefined
@@ -275,9 +275,9 @@ export default function RecurringInvoicesPage() {
                 key: 'status',
                 header: 'Status',
                 cell: (r) => r.is_active ? (
-                  <Badge tone="success" icon={<Play />}>Active</Badge>
+                  <Badge tone="success" icon={<Icon name="play" size={12} />}>Active</Badge>
                 ) : (
-                  <Badge tone="neutral" icon={<Pause />}>Inactive</Badge>
+                  <Badge tone="neutral" icon={<Icon name="pause" size={12} />}>Inactive</Badge>
                 )
               },
               {
@@ -302,9 +302,9 @@ export default function RecurringInvoicesPage() {
                       iconOnly
                     >
                       {r.is_active ? (
-                        <Pause className="h-4 w-4" />
+                        <Icon name="pause" size={16} />
                       ) : (
-                        <Play className="h-4 w-4" />
+                        <Icon name="play" size={16} />
                       )}
                     </Button>
                     <Button
@@ -322,7 +322,7 @@ export default function RecurringInvoicesPage() {
                       }
                       iconOnly
                     >
-                      <Calendar className="h-4 w-4" />
+                      <Icon name="calendar" size={16} />
                     </Button>
                     <Button
                       variant="secondary"
@@ -332,7 +332,7 @@ export default function RecurringInvoicesPage() {
                       title="View details"
                       iconOnly
                     >
-                      <Edit className="h-4 w-4" />
+                      <Icon name="edit" size={16} />
                     </Button>
                     <Button
                       variant="danger"
@@ -347,7 +347,7 @@ export default function RecurringInvoicesPage() {
                       }
                       iconOnly
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Icon name="trash" size={16} />
                     </Button>
                   </div>
                 )
@@ -363,9 +363,9 @@ export default function RecurringInvoicesPage() {
                       )}
                     </div>
                     {r.is_active ? (
-                      <Badge tone="success" icon={<Play />} className="shrink-0">Active</Badge>
+                      <Badge tone="success" icon={<Icon name="play" size={12} />} className="shrink-0">Active</Badge>
                     ) : (
-                      <Badge tone="neutral" icon={<Pause />} className="shrink-0">Inactive</Badge>
+                      <Badge tone="neutral" icon={<Icon name="pause" size={12} />} className="shrink-0">Inactive</Badge>
                     )}
                   </div>
                   <dl className="grid gap-2 text-sm">
@@ -402,7 +402,7 @@ export default function RecurringInvoicesPage() {
                       aria-label={r.is_active ? 'Deactivate recurring invoice' : 'Activate recurring invoice'}
                       iconOnly
                     >
-                      {r.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                      {r.is_active ? <Icon name="pause" size={16} /> : <Icon name="play" size={16} />}
                     </Button>
                     <Button
                       variant="secondary"
@@ -420,7 +420,7 @@ export default function RecurringInvoicesPage() {
                       aria-label="Generate invoice now"
                       iconOnly
                     >
-                      <Calendar className="h-4 w-4" />
+                      <Icon name="calendar" size={16} />
                     </Button>
                     <Button
                       variant="secondary"
@@ -431,7 +431,7 @@ export default function RecurringInvoicesPage() {
                       aria-label="View details"
                       iconOnly
                     >
-                      <Edit className="h-4 w-4" />
+                      <Icon name="edit" size={16} />
                     </Button>
                     <Button
                       variant="danger"
@@ -447,7 +447,7 @@ export default function RecurringInvoicesPage() {
                       aria-label="Delete recurring invoice"
                       iconOnly
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Icon name="trash" size={16} />
                     </Button>
                   </div>
                 </div>

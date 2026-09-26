@@ -1,26 +1,20 @@
 import { redirect } from 'next/navigation'
 import type { VenueSpace } from '@/types/private-bookings'
 
-import { 
-  PlusIcon, 
-  MapPinIcon,
-  CheckIcon,
-  XMarkIcon
-} from '@heroicons/react/24/outline'
 import { createVenueSpace, updateVenueSpace, deleteVenueSpace, getVenueSpacesForManagement } from '@/app/actions/privateBookingActions'
 import { VenueSpaceDeleteButton } from '@/components/features/private-bookings/VenueSpaceDeleteButton'
 import { formatDateFull } from '@/lib/dateUtils'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Checkbox } from '@/ds'
 import { Badge } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { Alert } from '@/ds'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 
@@ -175,17 +169,17 @@ export default async function VenueSpacesPage({
     >
       <div className="space-y-6">
         {errorMessage && (
-          <Alert variant="error" title="Error" description={errorMessage} />
+          <Alert tone="danger" title="Error">{errorMessage}</Alert>
         )}
         {/* Add New Space Form */}
         <Card>
         <Section 
           title="Add New Space"
-          icon={<PlusIcon className="h-5 w-5 text-primary" />}
+          icon={<Icon name="plus" size={20} className="text-primary" />}
         >
           <form action={handleCreateSpace} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
-              <FormGroup label="Space Name" required className="lg:col-span-2">
+              <Field label="Space Name" required className="lg:col-span-2">
                 <Input
                   type="text"
                   id="name"
@@ -193,8 +187,8 @@ export default async function VenueSpacesPage({
                   required
                   placeholder="e.g., Main Dining Room"
                 />
-              </FormGroup>
-              <FormGroup label="Seated Capacity" required>
+              </Field>
+              <Field label="Seated Capacity" required>
                 <Input
                   type="number"
                   id="capacity_seated"
@@ -203,8 +197,8 @@ export default async function VenueSpacesPage({
                   min="1"
                   placeholder="50"
                 />
-              </FormGroup>
-              <FormGroup label="Standing Capacity" required>
+              </Field>
+              <Field label="Standing Capacity" required>
                 <Input
                   type="number"
                   id="capacity_standing"
@@ -213,8 +207,8 @@ export default async function VenueSpacesPage({
                   min="1"
                   placeholder="80"
                 />
-              </FormGroup>
-              <FormGroup label="Hourly Rate (£)" required>
+              </Field>
+              <Field label="Hourly Rate (£)" required>
                 <Input
                   type="number"
                   id="rate_per_hour"
@@ -224,14 +218,14 @@ export default async function VenueSpacesPage({
                   step="0.01"
                   placeholder="50.00"
                 />
-              </FormGroup>
-              <FormGroup label="Status">
+              </Field>
+              <Field label="Status">
                 <Select
                   id="active"
                   name="active"
                   options={statusOptions}
                 />
-              </FormGroup>
+              </Field>
               <div className="flex items-end">
                 <Button type="submit" className="w-full">
                   Add Space
@@ -239,7 +233,7 @@ export default async function VenueSpacesPage({
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <FormGroup label="VAT Rate (%)" help="Stored rates are net; VAT is applied on top">
+              <Field label="VAT Rate (%)" help="Stored rates are net; VAT is applied on top">
                 <Input
                   type="number"
                   id="vat_rate"
@@ -249,8 +243,8 @@ export default async function VenueSpacesPage({
                   defaultValue={20}
                   placeholder="20"
                 />
-              </FormGroup>
-              <FormGroup label="Minimum Hours">
+              </Field>
+              <Field label="Minimum Hours">
                 <Input
                   type="number"
                   id="minimum_hours"
@@ -260,8 +254,8 @@ export default async function VenueSpacesPage({
                   defaultValue={1}
                   placeholder="1"
                 />
-              </FormGroup>
-              <FormGroup label="Setup Fee (£)">
+              </Field>
+              <Field label="Setup Fee (£)">
                 <Input
                   type="number"
                   id="setup_fee"
@@ -271,8 +265,8 @@ export default async function VenueSpacesPage({
                   defaultValue={0}
                   placeholder="0.00"
                 />
-              </FormGroup>
-              <FormGroup label="Display Order">
+              </Field>
+              <Field label="Display Order">
                 <Input
                   type="number"
                   id="display_order"
@@ -281,21 +275,21 @@ export default async function VenueSpacesPage({
                   defaultValue={0}
                   placeholder="0"
                 />
-              </FormGroup>
+              </Field>
             </div>
             <Checkbox
               name="blocks_all_spaces"
               label="Whole-venue space (blocks all other spaces)"
               description="Tick for Entire Pub / exclusive hire — booking this space blocks every other space for the event."
             />
-            <FormGroup label="Description (Optional)">
+            <Field label="Description (Optional)">
               <Textarea
                 id="description"
                 name="description"
                 rows={2}
                 placeholder="Additional details about this space..."
               />
-            </FormGroup>
+            </Field>
           </form>
         </Section>
       </Card>
@@ -304,11 +298,11 @@ export default async function VenueSpacesPage({
       <Card>
         <Section 
           title="Existing Spaces"
-          icon={<MapPinIcon className="h-5 w-5 text-text-muted" />}
+          icon={<Icon name="mapPin" size={20} className="text-text-muted" />}
           description={`${spaces?.length || 0} space${spaces?.length !== 1 ? 's' : ''}`}
         >
           {spaces?.length === 0 ? (
-            <EmptyState icon={<MapPinIcon className="h-12 w-12" />}
+            <Empty icon={<Icon name="mapPin" size={48} />}
               title="No venue spaces configured yet"
               description="Add your first space using the form above."
             />
@@ -327,7 +321,7 @@ export default async function VenueSpacesPage({
                         Seated {space.capacity_seated} · Standing {space.capacity_standing ?? space.capacity_seated} · £{space.rate_per_hour}/hr
                       </p>
                     </div>
-                    <Badge variant={space.active ? 'success' : 'secondary'}>
+                    <Badge tone={space.active ? 'success' : 'neutral'}>
                       {space.active ? 'Active' : 'Inactive'}
                     </Badge>
                   </div>
@@ -335,15 +329,15 @@ export default async function VenueSpacesPage({
                     <input type="hidden" name="spaceId" value={space.id} />
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
-                      <FormGroup label="Space Name" className="lg:col-span-2">
+                      <Field label="Space Name" className="lg:col-span-2">
                         <Input
                           type="text"
                           name="name"
                           defaultValue={space.name}
                           required
                         />
-                      </FormGroup>
-                      <FormGroup 
+                      </Field>
+                      <Field 
                         label="Seated Capacity"
                       >
                         <Input
@@ -353,8 +347,8 @@ export default async function VenueSpacesPage({
                           required
                           min="1"
                         />
-                      </FormGroup>
-                      <FormGroup label="Standing Capacity">
+                      </Field>
+                      <Field label="Standing Capacity">
                         <Input
                           type="number"
                           name="capacity_standing"
@@ -362,8 +356,8 @@ export default async function VenueSpacesPage({
                           required
                           min="1"
                         />
-                      </FormGroup>
-                      <FormGroup 
+                      </Field>
+                      <Field 
                         label="Hourly Rate"
                       >
                         <Input
@@ -374,19 +368,19 @@ export default async function VenueSpacesPage({
                           min="0"
                           step="0.01"
                         />
-                      </FormGroup>
-                      <FormGroup label="Status">
+                      </Field>
+                      <Field label="Status">
                         <Select
                           name="active"
                           defaultValue={space.active ? 'true' : 'false'}
                           options={statusOptions}
                         />
-                      </FormGroup>
+                      </Field>
                       <div className="flex items-end">
                         <Button type="submit"
                           variant="primary"
                           size="sm"
-                          leftIcon={<CheckIcon className="h-4 w-4" />}
+                          leftIcon={<Icon name="check" size={16} />}
                           className="w-full"
                         >
                           Update
@@ -395,7 +389,7 @@ export default async function VenueSpacesPage({
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      <FormGroup label="VAT Rate (%)" help="Stored rates are net; VAT is applied on top">
+                      <Field label="VAT Rate (%)" help="Stored rates are net; VAT is applied on top">
                         <Input
                           type="number"
                           name="vat_rate"
@@ -403,8 +397,8 @@ export default async function VenueSpacesPage({
                           min="0"
                           step="0.01"
                         />
-                      </FormGroup>
-                      <FormGroup label="Minimum Hours">
+                      </Field>
+                      <Field label="Minimum Hours">
                         <Input
                           type="number"
                           name="minimum_hours"
@@ -412,8 +406,8 @@ export default async function VenueSpacesPage({
                           min="0"
                           step="0.5"
                         />
-                      </FormGroup>
-                      <FormGroup label="Setup Fee (£)">
+                      </Field>
+                      <Field label="Setup Fee (£)">
                         <Input
                           type="number"
                           name="setup_fee"
@@ -421,15 +415,15 @@ export default async function VenueSpacesPage({
                           min="0"
                           step="0.01"
                         />
-                      </FormGroup>
-                      <FormGroup label="Display Order">
+                      </Field>
+                      <Field label="Display Order">
                         <Input
                           type="number"
                           name="display_order"
                           defaultValue={space.display_order ?? 0}
                           min="0"
                         />
-                      </FormGroup>
+                      </Field>
                     </div>
 
                     <Checkbox
@@ -439,28 +433,28 @@ export default async function VenueSpacesPage({
                       defaultChecked={space.blocks_all_spaces ?? false}
                     />
 
-                    <FormGroup label="Description">
+                    <Field label="Description">
                       <Textarea
                         name="description"
                         defaultValue={space.description || ''}
                         rows={2}
                       />
-                    </FormGroup>
+                    </Field>
                   </form>
                   
                   <div className="mt-4 flex flex-wrap justify-between items-center gap-2">
                     <div className="flex items-center gap-2">
                       <Badge
-                        variant={space.active ? 'success' : 'secondary'}
+                        tone={space.active ? 'success' : 'neutral'}
                       >
                         {space.active ? (
                           <>
-                            <CheckIcon className="h-3 w-3 mr-1" />
+                            <Icon name="check" size={12} className="mr-1" />
                             Active
                           </>
                         ) : (
                           <>
-                            <XMarkIcon className="h-3 w-3 mr-1" />
+                            <Icon name="x" size={12} className="mr-1" />
                             Inactive
                           </>
                         )}

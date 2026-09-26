@@ -1,8 +1,7 @@
 'use client'
 
 import { useCallback, useState, useTransition } from 'react'
-import toast from 'react-hot-toast'
-import { Alert, Button, Field, Input, Modal } from '@/ds'
+import { Alert, Button, Field, Input, Modal, toast } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { cn } from '@/lib/utils'
 import {
@@ -166,7 +165,7 @@ export function HoursVersionStrip({
       </div>
 
       {selected?.status === 'draft' && (
-        <Alert variant="info" title="Draft, not in use">
+        <Alert tone="info" title="Draft, not in use">
           <p>
             These hours have no effect on anything until you publish them. Nobody is offered them and
             nothing is checked against them.
@@ -185,7 +184,7 @@ export function HoursVersionStrip({
       )}
 
       {selected?.status === 'published' && !selected.isActive && selected.effectiveFrom > today && (
-        <Alert variant="warning" title={`In use for dates from ${longDate(selected.effectiveFrom)}`}>
+        <Alert tone="warning" title={`In use for dates from ${longDate(selected.effectiveFrom)}`}>
           <p>
             These hours already apply to any booking on or after that date, and the website shows them
             for those dates. They are not waiting for the date to arrive.
@@ -201,7 +200,7 @@ export function HoursVersionStrip({
       )}
 
       {selected?.isBaseline && (
-        <Alert variant="info" title="Historic record">
+        <Alert tone="info" title="Historic record">
           <p>
             This is the schedule as it stood when scheduled changes were introduced. It covers every
             date before the first scheduled change. It is not a record of the hours actually worked

@@ -3,9 +3,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import toast from 'react-hot-toast';
-import { CheckIcon, XMarkIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
-import { Badge, Button, Card, CardBody, CardHeader, Empty, Section, Select } from '@/ds';
+import { Badge, Button, Card, CardBody, CardHeader, Empty, Section, Select, toast, Icon } from '@/ds';
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils';
 import {
   approveOpenShiftVolunteer,
@@ -220,7 +218,7 @@ function OpenShiftCard({
                         size="sm"
                         disabled={isPending || !canPublish}
                         onClick={() => handleApprove(volunteer.request_id, volunteer.employee_name)}
-                        icon={<CheckIcon className="h-4 w-4" />}
+                        icon={<Icon name="check" size={16} />}
                       >
                         Give it to them
                       </Button>
@@ -230,7 +228,7 @@ function OpenShiftCard({
                         variant="secondary"
                         disabled={isPending}
                         onClick={() => handleDecline(volunteer.request_id, volunteer.employee_name)}
-                        icon={<XMarkIcon className="h-4 w-4" />}
+                        icon={<Icon name="x" size={16} />}
                       >
                         No
                       </Button>
@@ -268,7 +266,7 @@ function OpenShiftCard({
             className="inline-flex min-h-touch items-center gap-1 px-2 text-sm font-medium text-primary hover:underline"
           >
             Open on rota
-            <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+            <Icon name="externalLink" size={16} />
           </Link>
         </div>
 

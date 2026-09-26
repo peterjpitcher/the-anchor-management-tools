@@ -3,7 +3,6 @@
 import { useMemo, useState } from 'react';
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Check, ChevronDown, Download, Users, X } from 'lucide-react';
 import {
   Bar,
   CartesianGrid,
@@ -14,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Button, Card, CardBody, CardHeader, Input, SearchInput } from '@/ds';
+import { Button, Card, CardBody, CardHeader, Input, SearchInput, Icon } from '@/ds';
 import { cn } from '@/lib/utils';
 import { ROTA_CHART_COLOURS } from '@/lib/rota/status-ui';
 
@@ -335,7 +334,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
               )}
             >
               <span className="flex min-w-0 items-center gap-2">
-                <Users className="h-4 w-4 shrink-0 text-text-subtle" aria-hidden="true" />
+                <Icon name="users" size={16} className="shrink-0 text-text-subtle" />
                 <span className="min-w-0">
                   <span className="block truncate text-ui font-semibold text-text-strong">
                     {selectedSummary}
@@ -343,10 +342,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
                   <span className="block truncate text-xs text-text-muted">{selectedHint}</span>
                 </span>
               </span>
-              <ChevronDown
-                className={cn('h-4 w-4 shrink-0 text-text-subtle transition-transform', open && 'rotate-180')}
-                aria-hidden="true"
-              />
+              <Icon name="chevronDown" size={16} className={cn('shrink-0 text-text-subtle transition-transform', open && 'rotate-180')} />
             </PopoverButton>
 
             <PopoverPanel
@@ -362,7 +358,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
                     type="button"
                     size="xs"
                     variant="ghost"
-                    icon={<Check className="h-3 w-3" />}
+                    icon={<Icon name="check" size={12} />}
                     onClick={() => onChange(sortIds(employees.map(employee => employee.id)))}
                   >
                     Select all
@@ -371,7 +367,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
                     type="button"
                     size="xs"
                     variant="ghost"
-                    icon={<X className="h-3 w-3" />}
+                    icon={<Icon name="x" size={12} />}
                     disabled={selectedEmployeeIds.length === 0}
                     onClick={() => onChange([])}
                   >
@@ -419,7 +415,7 @@ function EmployeeMultiSelect({ employees, selectedEmployeeIds, onChange }: Emplo
                             )}
                             aria-hidden="true"
                           >
-                            <Check className="h-3.5 w-3.5" />
+                            <Icon name="check" size={14} />
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-ui font-medium text-text">{employee.name}</span>
@@ -569,7 +565,7 @@ export default function HoursByEmployeeClient({
                   series.length === 0 && 'pointer-events-none opacity-50'
                 )}
               >
-                <Download className="h-4 w-4" aria-hidden="true" />
+                <Icon name="download" size={16} />
                 Download PDF
               </a>
             </div>

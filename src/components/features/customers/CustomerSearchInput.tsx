@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { MagnifyingGlassIcon, UserIcon, PhoneIcon, CheckIcon } from '@heroicons/react/24/outline'
 import { createClient } from '@/lib/supabase/client'
-import { Input } from '@/ds'
+import { Input, Icon } from '@/ds'
 import { buildCustomerSearchFilter } from './customerSearchFilters'
 
 interface Customer {
@@ -184,9 +183,9 @@ export default function CustomerSearchInput({
             isSearching ? (
               <span className="block h-4 w-4 animate-spin rounded-full border-2 border-border-strong border-t-primary" />
             ) : selectedCustomer ? (
-              <CheckIcon className="text-success" />
+              <Icon name="check" size={16} className="text-success" />
             ) : (
-              <MagnifyingGlassIcon />
+              <Icon name="search" size={16} />
             )
           }
           className="pr-16"
@@ -216,7 +215,7 @@ export default function CustomerSearchInput({
               </p>
               {selectedCustomer.mobile_number && (
                 <p className="text-xs sm:text-sm text-text-muted flex items-center mt-1">
-                  <PhoneIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1 flex-shrink-0" />
+                  <Icon name="phone" size={12} className="sm:h-4 sm:w-4 mr-1 flex-shrink-0" />
                   <span className="truncate">{selectedCustomer.mobile_number}</span>
                 </p>
               )}
@@ -239,7 +238,7 @@ export default function CustomerSearchInput({
               className="w-full text-left px-4 py-3 sm:py-2 hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-hidden focus-visible:shadow-ring-inset border-b border-border last:border-b-0 min-h-[50px] sm:min-h-0"
             >
               <div className="flex items-center">
-                <UserIcon className="h-5 w-5 text-text-subtle mr-3 flex-shrink-0" />
+                <Icon name="user" size={20} className="text-text-subtle mr-3 flex-shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm sm:text-base font-medium text-text">
                     {[customer.first_name, customer.last_name ?? ''].filter(Boolean).join(' ')}
@@ -247,7 +246,7 @@ export default function CustomerSearchInput({
                   <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs sm:text-sm text-text-muted mt-0.5">
                     {customer.mobile_number && (
                       <span className="flex items-center">
-                        <PhoneIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+                        <Icon name="phone" size={12} className="mr-1 flex-shrink-0" />
                         <span className="truncate">{customer.mobile_number}</span>
                       </span>
                     )}

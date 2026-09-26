@@ -1,6 +1,6 @@
-import { Check } from 'lucide-react'
 import { GUEST_H1_CLASS, GUEST_LEAD_CLASS, GuestShell } from '@/components/features/guest'
 import { cn } from '@/lib/utils'
+import { Icon } from '@/ds'
 
 export const metadata = {
   title: 'Thank you - The Anchor',
@@ -16,7 +16,7 @@ export default function FeedbackThanksPage() {
           aria-hidden="true"
           className="flex h-[52px] w-[52px] items-center justify-center rounded-full bg-anchor-success/[0.12] text-anchor-success"
         >
-          <Check className="h-7 w-7" />
+          <Icon name="check" size={28} />
         </span>
 
         {/* `leading-[1.2]` is repeated deliberately: tailwind-merge counts

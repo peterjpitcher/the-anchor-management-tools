@@ -3,8 +3,7 @@
 import { useState, Suspense } from 'react'
 // import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft } from 'lucide-react'
-import { Button, Field, Input, LinkButton, Spinner, toast } from '@/ds'
+import { Button, Field, Input, LinkButton, Spinner, toast, Icon } from '@/ds'
 import { AuthCard } from '../_components/AuthCard'
 
 // ResetPasswordForm component - Client Component
@@ -47,7 +46,7 @@ function ResetPasswordForm() {
     return (
       <AuthCard title="Check your email" lead={`We've sent a password reset link to ${email}`}>
         <LinkButton href="/auth/login" variant="secondary" size="lg" className="w-full">
-          <ArrowLeft className="mr-2 h-4 w-4" />
+          <Icon name="arrowLeft" size={16} className="mr-2" />
           Back to login
         </LinkButton>
       </AuthCard>
@@ -79,7 +78,7 @@ function ResetPasswordForm() {
 
         <div className="text-center">
           <a href="/auth/login" className="auth__link inline-flex items-center text-xs">
-            <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+            <Icon name="arrowLeft" size={14} className="mr-1" />
             Back to login
           </a>
         </div>

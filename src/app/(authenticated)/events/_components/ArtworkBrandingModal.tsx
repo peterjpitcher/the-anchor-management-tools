@@ -53,10 +53,8 @@ import {
   type DragMoveEvent,
 } from '@dnd-kit/core'
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
-import { XMarkIcon } from '@heroicons/react/24/outline'
-import toast from 'react-hot-toast'
 import { z } from 'zod'
-import { Button, ConfirmDialog, IconButton } from '@/ds'
+import { Button, ConfirmDialog, IconButton, toast, Icon } from '@/ds'
 import { cn } from '@/lib/utils'
 import {
   LOGO_DEFAULT_WIDTH_FRAC,
@@ -674,7 +672,7 @@ export function ArtworkBrandingModal({
               type="button"
               variant="secondary"
               onClick={onClose}
-              icon={<XMarkIcon className="h-5 w-5" aria-hidden="true" />}
+              icon={<Icon name="x" size={20} />}
               label="Close branding editor"
               className="min-h-touch min-w-touch shrink-0"
             />

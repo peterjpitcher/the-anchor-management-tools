@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition, useCallback } from 'react'
-import { Alert, Badge, Button, Input, Modal, Select } from '@/ds'
+import { Alert, Badge, Button, Input, Modal, Select, Icon } from '@/ds'
 import {
   createTrip,
   updateTrip,
@@ -24,7 +24,6 @@ import {
   validateAndBuildTripLegs,
   type TripFormStop,
 } from '@/lib/mileage/tripFormModel'
-import { PlusIcon, TrashIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 
 interface TripFormProps {
@@ -316,8 +315,9 @@ export function TripForm({
           <Alert
             tone="warning"
             title="This trip can't be edited here yet"
-            description="It was recorded one way, for example a drive up and a drive home on different days. Saving it in this form would turn it into a round trip, so the form is locked for it."
-          />
+          >
+            It was recorded one way, for example a drive up and a drive home on different days. Saving it in this form would turn it into a round trip, so the form is locked for it.
+          </Alert>
         )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -389,7 +389,7 @@ export function TripForm({
                     {fromName} {'\u2192'} {toName}
                   </div>
                   <div className="flex items-center gap-2">
-                    <ArrowRightIcon className="h-4 w-4 shrink-0 text-text-subtle" />
+                    <Icon name="arrowRight" size={16} className="shrink-0 text-text-subtle" />
                     <div className="min-w-0 flex-1">
                       <Select
                         className="w-full"
@@ -420,7 +420,7 @@ export function TripForm({
                       <Button
                         variant="ghost"
                         size="sm"
-                        icon={<TrashIcon className="h-4 w-4 text-danger" />}
+                        icon={<Icon name="trash" size={16} className="text-danger" />}
                         aria-label={`Remove stop ${index + 1}`}
                         onClick={() => removeStop(index)}
                       />
@@ -440,7 +440,7 @@ export function TripForm({
           </div>
 
           <div className="mt-2">
-            <Button variant="ghost" size="sm" icon={<PlusIcon />} onClick={addStop}>
+            <Button variant="ghost" size="sm" icon={<Icon name="plus" size={16} />} onClick={addStop}>
               Add Stop
             </Button>
           </div>
@@ -451,7 +451,7 @@ export function TripForm({
               {homeBase?.name ?? 'The Anchor'}
             </div>
             <div className="flex items-center gap-2">
-              <ArrowRightIcon className="h-4 w-4 shrink-0 text-text-subtle" />
+              <Icon name="arrowRight" size={16} className="shrink-0 text-text-subtle" />
               <Badge tone="success">Return</Badge>
               <span className="text-sm font-medium text-text-muted">{homeBase?.name ?? 'The Anchor'}</span>
               <Input

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 import {
   Alert,
@@ -17,6 +16,7 @@ import {
   TableHead,
   TableRow,
   TableCell,
+  toast,
 } from '@/ds'
 import {
   setChecklistActive,

@@ -4,7 +4,7 @@ import { Button } from '@/ds';
 import { Select } from '@/ds';
 import { Input } from '@/ds';
 import { Checkbox } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Field } from '@/ds';
 import type { MenuSummary } from './DishExpandedRow';
 
 // ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ export function DishMenusTab({
           return (
             <div key={`assignment-${index}`} className="rounded-lg border border-border bg-surface p-4 shadow-sm space-y-3">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <FormGroup label="Menu" required>
+                <Field label="Menu" required>
                   <Select
                     value={assignment.menu_code}
                     onChange={(e) => {
@@ -112,9 +112,9 @@ export function DishMenusTab({
                       <option key={menu.code} value={menu.code}>{menu.name}</option>
                     ))}
                   </Select>
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Category" required>
+                <Field label="Category" required>
                   <Select
                     value={assignment.category_code}
                     onChange={(e) => updateAssignment(index, { category_code: e.target.value })}
@@ -124,15 +124,15 @@ export function DishMenusTab({
                       <option key={cat.code} value={cat.code}>{cat.name}</option>
                     ))}
                   </Select>
-                </FormGroup>
+                </Field>
 
-                <FormGroup label="Sort Order">
+                <Field label="Sort Order">
                   <Input
                     type="number"
                     value={assignment.sort_order}
                     onChange={(e) => updateAssignment(index, { sort_order: e.target.value })}
                   />
-                </FormGroup>
+                </Field>
               </div>
 
               <div className="flex flex-wrap gap-4">
@@ -151,20 +151,20 @@ export function DishMenusTab({
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <FormGroup label="Available From">
+                <Field label="Available From">
                   <Input
                     type="date"
                     value={assignment.available_from}
                     onChange={(e) => updateAssignment(index, { available_from: e.target.value })}
                   />
-                </FormGroup>
-                <FormGroup label="Available Until">
+                </Field>
+                <Field label="Available Until">
                   <Input
                     type="date"
                     value={assignment.available_until}
                     onChange={(e) => updateAssignment(index, { available_until: e.target.value })}
                   />
-                </FormGroup>
+                </Field>
               </div>
 
               {formAssignments.length > 1 && (

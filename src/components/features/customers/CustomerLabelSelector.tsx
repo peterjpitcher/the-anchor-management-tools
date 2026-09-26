@@ -9,10 +9,7 @@ import {
   type CustomerLabel,
   type CustomerLabelAssignment
 } from '@/app/actions/customer-labels'
-import { TagIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import { Loader2 } from 'lucide-react'
-import toast from 'react-hot-toast'
-import { Button } from '@/ds'
+import { Button, Spinner, toast, Icon } from '@/ds'
 
 interface CustomerLabelSelectorProps {
   customerId: string
@@ -112,7 +109,7 @@ export function CustomerLabelSelector({
   if (loading) {
     return (
       <div className="flex items-center space-x-2">
-        <Loader2 className="h-4 w-4 animate-spin text-text-subtle" />
+        <Spinner size="sm" />
         <span className="text-sm text-text-muted">Loading labels...</span>
       </div>
     )
@@ -135,7 +132,7 @@ export function CustomerLabelSelector({
                 color: label.color
               }}
             >
-              <TagIcon className="h-3 w-3 mr-1" />
+              <Icon name="tag" size={12} className="mr-1" />
               {label.name}
               {assignment.auto_assigned && (
                 <span className="ml-1 text-xs opacity-70">(auto)</span>
@@ -146,7 +143,7 @@ export function CustomerLabelSelector({
                   aria-label={`Remove ${label.name}`}
                   className="ml-1 rounded-full hover:opacity-70 focus-visible:outline-hidden focus-visible:shadow-ring"
                 >
-                  <XMarkIcon className="h-3 w-3" />
+                  <Icon name="x" size={12} className="block" />
                 </button>
               )}
             </span>
@@ -160,7 +157,7 @@ export function CustomerLabelSelector({
             size="sm"
             variant="secondary"
             onClick={() => setShowSelector(!showSelector)}
-            icon={<TagIcon className="h-3 w-3" />}
+            icon={<Icon name="tag" size={12} />}
           >
             Add Label
           </Button>
@@ -187,7 +184,7 @@ export function CustomerLabelSelector({
                     <span>{label.name}</span>
                   </div>
                   {assigningLabel === label.id && (
-                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <Spinner size="sm" />
                   )}
                 </button>
               ))}

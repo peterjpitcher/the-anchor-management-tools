@@ -14,7 +14,7 @@ import {
   getInvoicePortalLink,
   sendInvoicePaymentLink,
 } from '@/app/actions/invoicePayPalActions'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Button } from '@/ds'
 import { Badge } from '@/ds'
@@ -25,7 +25,6 @@ import { ConfirmDialog } from '@/ds'
 import { Modal } from '@/ds'
 import { Input } from '@/ds'
 import { Textarea } from '@/ds'
-import { Download, Mail, Edit, Trash2, Copy, CheckCircle, Clock, RefreshCw, FileMinus, CreditCard, Link as LinkIcon, CalendarDays } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
 const EmailInvoiceModal = dynamic(
@@ -639,7 +638,7 @@ export default function InvoiceDetailClient({
           onClick={() => void handleOpenReissuePreview()}
           disabled={actionLoading || reissueLoading || reissueSubmitting}
           loading={reissueLoading}
-          leftIcon={<RefreshCw className="h-4 w-4" />}
+          leftIcon={<Icon name="refresh" size={16} />}
         >
           Reissue OJ Invoice
         </Button>
@@ -651,7 +650,7 @@ export default function InvoiceDetailClient({
           size="sm"
           onClick={openCreditNoteModal}
           disabled={actionLoading || creditNoteSubmitting}
-          leftIcon={<FileMinus className="h-4 w-4" />}
+          leftIcon={<Icon name="fileMinus" size={16} />}
         >
           Issue Credit Note
         </Button>
@@ -663,7 +662,7 @@ export default function InvoiceDetailClient({
           size="sm"
           onClick={() => handleStatusChange('sent')}
           disabled={actionLoading}
-          leftIcon={<Mail className="h-4 w-4" />}
+          leftIcon={<Icon name="mail" size={16} />}
         >
           Mark as Sent
         </Button>
@@ -674,7 +673,7 @@ export default function InvoiceDetailClient({
           variant="secondary"
           size="sm"
           onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
-          leftIcon={<Edit className="h-4 w-4" />}
+          leftIcon={<Icon name="edit" size={16} />}
         >
           Edit
         </Button>
@@ -686,7 +685,7 @@ export default function InvoiceDetailClient({
           size="sm"
           onClick={() => router.push(`/invoices/${invoice.id}/payment`)}
           disabled={actionLoading}
-          leftIcon={<CheckCircle className="h-4 w-4" />}
+          leftIcon={<Icon name="checkCircle" size={16} />}
         >
           Record Payment
         </Button>
@@ -698,7 +697,7 @@ export default function InvoiceDetailClient({
           size="sm"
           onClick={() => setShowEmailModal(true)}
           disabled={actionLoading}
-          leftIcon={<Mail className="h-4 w-4" />}
+          leftIcon={<Icon name="mail" size={16} />}
         >
           Email
         </Button>
@@ -710,7 +709,7 @@ export default function InvoiceDetailClient({
           size="sm"
           onClick={() => setShowChaseModal(true)}
           disabled={actionLoading}
-          leftIcon={<Clock className="h-4 w-4" />}
+          leftIcon={<Icon name="clock" size={16} />}
         >
           Chase
         </Button>
@@ -721,7 +720,7 @@ export default function InvoiceDetailClient({
         size="sm"
         onClick={() => void handleDownloadPdf()}
         disabled={actionLoading}
-        leftIcon={<Download className="h-4 w-4" />}
+        leftIcon={<Icon name="download" size={16} />}
       >
         PDF
       </Button>
@@ -732,7 +731,7 @@ export default function InvoiceDetailClient({
           size="sm"
           onClick={() => setShowDeleteConfirm(true)}
           disabled={actionLoading}
-          leftIcon={<Trash2 className="h-4 w-4" />}
+          leftIcon={<Icon name="trash" size={16} />}
         >
           Delete
         </Button>
@@ -764,14 +763,15 @@ export default function InvoiceDetailClient({
       </div>
 
       {error && (
-        <Alert variant="error" description={error} className="mb-6" />
+        <Alert tone="danger" className="mb-6">{error}</Alert>
       )}
       {!error && readOnly && (
         <Alert
-          variant="info"
-          description="You have read-only access to invoices. Edit, delete, and payment actions are disabled for your role."
+          tone="info"
           className="mb-6"
-        />
+        >
+          You have read-only access to invoices. Edit, delete, and payment actions are disabled for your role.
+        </Alert>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
@@ -991,7 +991,7 @@ export default function InvoiceDetailClient({
                   navigator.clipboard.writeText(window.location.href)
                   toast.success('Link copied to clipboard!')
                 }}
-                leftIcon={<Copy className="h-4 w-4" />}
+                leftIcon={<Icon name="copy" size={16} />}
               >
                 Copy Link
               </Button>
@@ -1003,7 +1003,7 @@ export default function InvoiceDetailClient({
                   onClick={() => void handleOpenReissuePreview()}
                   disabled={actionLoading || reissueLoading || reissueSubmitting}
                   loading={reissueLoading}
-                  leftIcon={<RefreshCw className="h-4 w-4" />}
+                  leftIcon={<Icon name="refresh" size={16} />}
                 >
                   Reissue OJ Invoice
                 </Button>
@@ -1015,7 +1015,7 @@ export default function InvoiceDetailClient({
                   fullWidth
                   onClick={openDueDateModal}
                   disabled={actionLoading || savingDueDate}
-                  leftIcon={<CalendarDays className="h-4 w-4" />}
+                  leftIcon={<Icon name="calendar" size={16} />}
                 >
                   Change due date
                 </Button>
@@ -1029,7 +1029,7 @@ export default function InvoiceDetailClient({
                     onClick={() => void handleSendPaymentLink()}
                     disabled={actionLoading || sendingPayLink || copyingPayLink}
                     loading={sendingPayLink}
-                    leftIcon={<CreditCard className="h-4 w-4" />}
+                    leftIcon={<Icon name="creditCard" size={16} />}
                   >
                     Email payment link
                   </Button>
@@ -1042,7 +1042,7 @@ export default function InvoiceDetailClient({
                     onClick={() => void handleCopyPaymentLink()}
                     disabled={actionLoading || sendingPayLink || copyingPayLink}
                     loading={copyingPayLink}
-                    leftIcon={<LinkIcon className="h-4 w-4" />}
+                    leftIcon={<Icon name="link" size={16} />}
                   >
                     Copy payment link
                   </Button>
@@ -1055,7 +1055,7 @@ export default function InvoiceDetailClient({
                   fullWidth
                   onClick={openCreditNoteModal}
                   disabled={actionLoading || creditNoteSubmitting}
-                  leftIcon={<FileMinus className="h-4 w-4" />}
+                  leftIcon={<Icon name="fileMinus" size={16} />}
                 >
                   Issue Credit Note
                 </Button>
@@ -1176,9 +1176,9 @@ export default function InvoiceDetailClient({
 
         {!reissueLoading && reissuePreview && !reissuePreview.eligible && (
           <div className="space-y-4">
-            <Alert variant="error" description={reissuePreview.error} />
+            <Alert tone="danger">{reissuePreview.error}</Alert>
             {reissuePreview.warnings && reissuePreview.warnings.length > 0 && (
-              <Alert variant="warning">
+              <Alert tone="warning">
                 <ul className="list-disc space-y-1 pl-4">
                   {reissuePreview.warnings.map((warning) => (
                     <li key={warning}>{warning}</li>
@@ -1215,7 +1215,7 @@ export default function InvoiceDetailClient({
             </div>
 
             {reissuePreview.warnings.length > 0 && (
-              <Alert variant="warning">
+              <Alert tone="warning">
                 <ul className="list-disc space-y-1 pl-4">
                   {reissuePreview.warnings.map((warning) => (
                     <li key={warning}>{warning}</li>
@@ -1224,7 +1224,7 @@ export default function InvoiceDetailClient({
               </Alert>
             )}
 
-            <Alert variant="info" description="Review this preview, then create the draft. The client is not emailed until you send the resulting draft invoice." />
+            <Alert tone="info">Review this preview, then create the draft. The client is not emailed until you send the resulting draft invoice.</Alert>
 
             <PreviewSection title="Included Month Entries" count={reissuePreview.includedEntries.length}>
               <EntryPreviewTable entries={reissuePreview.includedEntries} />
@@ -1305,9 +1305,10 @@ export default function InvoiceDetailClient({
       >
         <div className="space-y-4">
           <Alert
-            variant="info"
-            description="Use a credit note to record a refund or adjustment against a paid invoice."
-          />
+            tone="info"
+          >
+            Use a credit note to record a refund or adjustment against a paid invoice.
+          </Alert>
 
           <div className="rounded-lg border border-border bg-surface-2 p-4 text-sm">
             <div className="flex justify-between gap-4">

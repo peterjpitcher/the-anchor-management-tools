@@ -5,10 +5,9 @@ import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { toast } from '@/ds';
+import { toast, Icon } from '@/ds';
 import type { ActionFormState } from '@/types/actions';
 import type { Employee } from '@/types/database';
-import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { Input } from '@/ds';
 import { Textarea } from '@/ds';
 import { Select } from '@/ds';
@@ -269,7 +268,7 @@ export default function EmployeeForm({
                   onClick={() => setCurrentStep(prev => Math.max(0, prev - 1))}
                   disabled={isFirstStep}
                   className="w-full"
-                  leftIcon={<ChevronLeftIcon className="h-5 w-5" />}
+                  leftIcon={<Icon name="chevronLeft" size={20} />}
                 >
                   Previous
                 </Button>
@@ -279,7 +278,7 @@ export default function EmployeeForm({
                     variant="primary"
                     onClick={() => setCurrentStep(prev => Math.min(totalSteps - 1, prev + 1))}
                     className="w-full"
-                    rightIcon={<ChevronRightIcon className="h-5 w-5" />}
+                    rightIcon={<Icon name="chevronRight" size={20} />}
                   >
                     Next
                   </Button>

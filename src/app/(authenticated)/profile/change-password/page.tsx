@@ -2,10 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import toast from 'react-hot-toast'
-import { Button } from '@/ds'
+import { Button, toast } from '@/ds'
 import { Input } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Section } from '@/ds'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
@@ -64,7 +63,7 @@ export default function ChangePasswordPage() {
         <Section>
           <Card>
             <form onSubmit={handleChangePassword} className="space-y-6">
-            <FormGroup
+            <Field
               label="Current Password"
               required
             >
@@ -77,9 +76,9 @@ export default function ChangePasswordPage() {
                 autoComplete="current-password"
                 placeholder="Enter current password"
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup 
+            <Field 
               label="New Password" 
               required
               help="At least 8 characters, using at least three of uppercase, lowercase, number, and symbol"
@@ -94,9 +93,9 @@ export default function ChangePasswordPage() {
                 autoComplete="new-password"
                 placeholder="Enter new password"
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup 
+            <Field 
               label="Confirm New Password" 
               required
             >
@@ -110,7 +109,7 @@ export default function ChangePasswordPage() {
                 autoComplete="new-password"
                 placeholder="Confirm new password"
               />
-            </FormGroup>
+            </Field>
 
             <div className="flex justify-end gap-3 pt-4 border-t">
               <Button 

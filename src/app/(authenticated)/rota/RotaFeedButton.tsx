@@ -1,9 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { CalendarDaysIcon, ClipboardDocumentIcon, CheckIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
-import toast from 'react-hot-toast';
-import { Button, IconButton } from '@/ds';
+import { Button, IconButton, toast, Icon } from '@/ds';
 
 interface RotaFeedButtonProps {
   feedUrl: string;
@@ -72,7 +70,7 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
           size="sm"
           onClick={handleSync}
           loading={syncing}
-          icon={<ArrowPathIcon className="h-4 w-4" />}
+          icon={<Icon name="refresh" size={16} />}
         >
           {syncing ? 'Syncing…' : 'Sync calendar'}
         </Button>
@@ -83,7 +81,7 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
         variant="secondary"
         size="sm"
         onClick={() => setOpen(v => !v)}
-        icon={<CalendarDaysIcon className="h-4 w-4" />}
+        icon={<Icon name="calendar" size={16} />}
       >
         Subscribe
       </Button>
@@ -105,7 +103,7 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
                 size="sm"
                 onClick={() => setOpen(false)}
                 label="Close calendar feed popover"
-                icon={<XMarkIcon className="h-4 w-4" />}
+                icon={<Icon name="x" size={16} />}
                 className="shrink-0 ml-2"
               />
             </div>
@@ -125,8 +123,8 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
                 onClick={handleCopy}
                 className="shrink-0"
                 icon={copied
-                  ? <CheckIcon className="h-3.5 w-3.5 text-success-fg" />
-                  : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
+                  ? <Icon name="check" size={14} className="text-success-fg" />
+                  : <Icon name="copy" size={14} />}
               >
                 {copied ? 'Copied' : 'Copy'}
               </Button>

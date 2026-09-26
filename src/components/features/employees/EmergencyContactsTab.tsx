@@ -5,8 +5,7 @@ import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import type { EmployeeEmergencyContact } from '@/types/database'
 import { deleteEmergencyContact } from '@/app/actions/employeeActions'
-import { Badge, Button, IconButton, Modal } from '@/ds'
-import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { Badge, Button, IconButton, Modal, Icon } from '@/ds'
 import AddEmergencyContactModal from '@/components/modals/AddEmergencyContactModal'
 import EditEmergencyContactModal from '@/components/modals/EditEmergencyContactModal'
 
@@ -51,7 +50,7 @@ function DeleteContactButton({
         className="text-danger hover:bg-danger-soft hover:text-danger-fg"
         title="Delete contact"
         label={`Delete ${contact.name}`}
-        icon={<TrashIcon className="h-4 w-4" />}
+        icon={<Icon name="trash" size={16} />}
       />
 
       {/* A DS Modal rather than ConfirmDialog: the delete is a server-action form, and the
@@ -154,7 +153,7 @@ export default function EmergencyContactsTab({
                       className="text-text-subtle hover:text-text-muted"
                       title="Edit contact"
                       label={`Edit ${contact.name}`}
-                      icon={<PencilIcon className="h-4 w-4" />}
+                      icon={<Icon name="edit" size={16} />}
                     />
                     <DeleteContactButton
                       contact={contact}

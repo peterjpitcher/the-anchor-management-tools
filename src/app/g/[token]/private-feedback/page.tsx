@@ -1,5 +1,4 @@
 import { headers } from 'next/headers'
-import { Check } from 'lucide-react'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, normalizeGuestFirstName } from '@/lib/guest/names'
@@ -22,6 +21,7 @@ import {
 } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { cn } from '@/lib/utils'
+import { Icon } from '@/ds'
 
 /** Names the flow in the intro block. Carries no facts. */
 // Static and non-personal on purpose: no token, customer name or booking reference may reach
@@ -169,7 +169,7 @@ export default async function PrivateBookingFeedbackPage({
                 aria-hidden="true"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-anchor-success/[0.12]"
               >
-                <Check className="h-4 w-4 text-anchor-success" />
+                <Icon name="check" size={16} className="text-anchor-success" />
               </span>
 
               <p className="font-anchor-body text-guest-lead leading-[1.65] text-guest-text">

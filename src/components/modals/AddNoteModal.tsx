@@ -103,10 +103,11 @@ export default function AddNoteModal({ isOpen, onClose, defaultEmployeeId }: Add
       }
     >
       {formState && formState.message && (
-        <Alert variant={formState.type === 'success' ? 'success' : 'error'} 
-          description={formState.message}
+        <Alert tone={formState.type === 'success' ? 'success' : 'danger'}
           className="mb-4"
-        />
+        >
+          {formState.message}
+        </Alert>
       )}
 
       <form id="add-note-form" onSubmit={handleSubmit} className="space-y-4">

@@ -3,10 +3,9 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { PencilIcon, TrashIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
-import { toast } from '@/ds'
+import { toast, Icon } from '@/ds'
 import { Button } from '@/ds'
 import { IconButton } from '@/ds'
 import { Input } from '@/ds'
@@ -216,7 +215,7 @@ export default function PaymentHistoryTable({
                         disabled={isLocked}
                         aria-label="Save payment"
                       >
-                        <CheckIcon className="h-4 w-4" />
+                        <Icon name="check" size={16} />
                       </Button>
                       <Button
                         variant="secondary"
@@ -226,7 +225,7 @@ export default function PaymentHistoryTable({
                         type="button"
                         aria-label="Cancel edit"
                       >
-                        <XMarkIcon className="h-4 w-4" />
+                        <Icon name="x" size={16} />
                       </Button>
                     </div>
                   </div>
@@ -260,7 +259,7 @@ export default function PaymentHistoryTable({
                         className="text-text-muted"
                         label={`Edit ${entry.type} payment`}
                         disabled={isLocked}
-                        icon={<PencilIcon className="h-3.5 w-3.5" />}
+                        icon={<Icon name="edit" size={14} />}
                       />
                       <IconButton
                         type="button"
@@ -273,7 +272,7 @@ export default function PaymentHistoryTable({
                         className="text-text-muted hover:text-danger"
                         label={`Delete ${entry.type} payment`}
                         disabled={isLocked}
-                        icon={<TrashIcon className="h-3.5 w-3.5" />}
+                        icon={<Icon name="trash" size={14} />}
                       />
                     </div>
                   )}

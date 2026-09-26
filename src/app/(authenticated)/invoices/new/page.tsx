@@ -4,23 +4,22 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createInvoice, getLineItemCatalog } from '@/app/actions/invoices'
 import { getVendors } from '@/app/actions/vendors'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Button } from '@/ds'
-import { FormGroup } from '@/ds'
+import { Field } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
 import { Card } from '@/ds'
 import { Alert } from '@/ds'
 import { toast } from '@/ds'
-import { PlusCircle, Trash2 } from 'lucide-react'
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import type { InvoiceVendor } from '@/types/invoices'
 import type { LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 import { Modal } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 
 type CreateInvoiceActionResult = Awaited<ReturnType<typeof createInvoice>>
@@ -239,7 +238,7 @@ export default function NewInvoicePage() {
         backButton={{ label: 'Back to Invoices', href: '/invoices' }}
       >
         {error && (
-          <Alert variant="error" description={error} className="mb-6" />
+          <Alert tone="danger" className="mb-6">{error}</Alert>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -247,7 +246,7 @@ export default function NewInvoicePage() {
           <h2 className="text-lg font-semibold mb-4">Invoice Details</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormGroup label="Vendor" required>
+            <Field label="Vendor" required>
               <Select
                 value={vendorId}
                 onChange={(e) => {
@@ -266,34 +265,34 @@ export default function NewInvoicePage() {
                   </option>
                 ))}
               </Select>
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Reference">
+            <Field label="Reference">
               <Input
                 type="text"
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
                 placeholder="PO number or reference"
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Invoice Date" required>
+            <Field label="Invoice Date" required>
               <Input
                 type="date"
                 value={invoiceDate}
                 onChange={(e) => setInvoiceDate(e.target.value)}
                 required
               />
-            </FormGroup>
+            </Field>
 
-            <FormGroup label="Due Date" required>
+            <Field label="Due Date" required>
               <Input
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
                 required
               />
-            </FormGroup>
+            </Field>
           </div>
         </Card>
 
@@ -311,7 +310,7 @@ export default function NewInvoicePage() {
                   Add from Catalog
                 </Button>
               )}
-              <Button type="button" onClick={addLineItem} leftIcon={<PlusCircle className="h-4 w-4" />} size="sm">
+              <Button type="button" onClick={addLineItem} leftIcon={<Icon name="plusCircle" size={16} />} size="sm">
                 <span className="hidden sm:inline">Add Line Item</span>
                 <span className="sm:hidden">Add Item</span>
               </Button>
@@ -319,7 +318,7 @@ export default function NewInvoicePage() {
           </div>
 
           {lineItems.length === 0 ? (
-            <EmptyState
+            <Empty
               title="No line items yet"
               description='Click "Add Line Item" to begin.'
             />
@@ -408,7 +407,7 @@ export default function NewInvoicePage() {
                         iconOnly
                         aria-label="Remove line item"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Icon name="trash" size={16} />
                       </Button>
                     </div>
                   </div>
@@ -429,7 +428,7 @@ export default function NewInvoicePage() {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
-              <FormGroup label="Invoice Discount (%)">
+              <Field label="Invoice Discount (%)">
                 <Input
                   type="number"
                   value={invoiceDiscountPercentage}
@@ -438,25 +437,25 @@ export default function NewInvoicePage() {
                   max="100"
                   step="0.01"
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Notes (visible on invoice)">
+              <Field label="Notes (visible on invoice)">
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
                   placeholder="Payment terms, special instructions, etc."
                 />
-              </FormGroup>
+              </Field>
 
-              <FormGroup label="Internal Notes">
+              <Field label="Internal Notes">
                 <Textarea
                   value={internalNotes}
                   onChange={(e) => setInternalNotes(e.target.value)}
                   rows={3}
                   placeholder="Private notes about this invoice"
                 />
-              </FormGroup>
+              </Field>
             </div>
 
             <div className="bg-surface-2 rounded-lg p-4">

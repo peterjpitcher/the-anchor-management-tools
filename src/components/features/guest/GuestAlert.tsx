@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheckBig, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { Icon, type IconName } from '@/ds/icons'
 import { cn } from '@/lib/utils'
 
 type GuestAlertTone = 'success' | 'notice' | 'problem'
@@ -10,7 +10,7 @@ type GuestAlertProps = {
   /** Defaults to `alert` for `problem`, `status` for the other two tones. */
   role?: 'alert' | 'status'
   live?: 'polite' | 'assertive' | 'off'
-  icon?: LucideIcon
+  icon?: IconName
   /** Rendered inside the alert, e.g. the parking retry submit. */
   action?: React.ReactNode
   className?: string
@@ -32,10 +32,10 @@ const BODY_CLASS: Record<GuestAlertTone, string> = {
   problem: 'text-guest-text',
 }
 
-const DEFAULT_ICON: Record<GuestAlertTone, LucideIcon> = {
-  success: CircleCheckBig,
-  notice: TriangleAlert,
-  problem: CircleAlert,
+const DEFAULT_ICON: Record<GuestAlertTone, IconName> = {
+  success: 'checkCircle',
+  notice: 'alertTriangle',
+  problem: 'alertCircle',
 }
 
 /**
@@ -53,7 +53,6 @@ export function GuestAlert({
   action,
   className,
 }: GuestAlertProps): React.JSX.Element {
-  const Icon = icon ?? DEFAULT_ICON[tone]
   const resolvedRole = role ?? (tone === 'problem' ? 'alert' : 'status')
 
   return (
@@ -67,7 +66,7 @@ export function GuestAlert({
         className
       )}
     >
-      <Icon aria-hidden="true" className="mt-[2px] h-4 w-4 shrink-0" />
+      <Icon name={icon ?? DEFAULT_ICON[tone]} size={16} className="mt-[2px] shrink-0" />
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {title ? <p className="text-ui font-bold leading-[1.4]">{title}</p> : null}

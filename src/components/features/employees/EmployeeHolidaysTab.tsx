@@ -1,9 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { CalendarDaysIcon, PlusIcon } from '@heroicons/react/24/outline';
-import { Alert, Badge, Button, FormGroup, Input, ProgressBar, Segmented } from '@/ds';
+import { Alert, Badge, Button, Field, Input, ProgressBar, Segmented, toast, Icon } from '@/ds';
 import { bookApprovedHoliday, type LeaveRequest } from '@/app/actions/leave';
 import type { EmployeePaySettings } from '@/app/actions/pay-bands';
 import type { RotaSettings } from '@/app/actions/rota-settings';
@@ -37,10 +35,10 @@ function yearLabel(year: number) {
   return `${year}/${String(year + 1).slice(2)}`;
 }
 
-function statusVariant(status: LeaveRequest['status']): 'success' | 'warning' | 'error' {
+function statusTone(status: LeaveRequest['status']): 'success' | 'warning' | 'danger' {
   if (status === 'approved') return 'success';
   if (status === 'pending') return 'warning';
-  return 'error';
+  return 'danger';
 }
 
 export default function EmployeeHolidaysTab({
@@ -127,7 +125,7 @@ export default function EmployeeHolidaysTab({
             type="button"
             size="sm"
             variant="secondary"
-            leftIcon={<PlusIcon className="h-4 w-4" />}
+            leftIcon={<Icon name="plus" size={16} />}
             onClick={() => setShowBookForm(true)}
           >
             Book holiday
@@ -139,33 +137,33 @@ export default function EmployeeHolidaysTab({
       {showBookForm && canCreateLeave && (
         <div className="p-4 bg-surface-2 rounded-lg border border-border space-y-4">
           <p className="text-sm font-medium text-text">Book approved holiday</p>
-          {bookError && <Alert variant="error">{bookError}</Alert>}
+          {bookError && <Alert tone="danger">{bookError}</Alert>}
           <div className="grid grid-cols-2 gap-4">
-            <FormGroup label="Start date" htmlFor="book-start" required>
+            <Field label="Start date" htmlFor="book-start" required>
               <Input
                 id="book-start"
                 type="date"
                 value={bookStart}
                 onChange={e => setBookStart(e.target.value)}
               />
-            </FormGroup>
-            <FormGroup label="End date" htmlFor="book-end" required>
+            </Field>
+            <Field label="End date" htmlFor="book-end" required>
               <Input
                 id="book-end"
                 type="date"
                 value={bookEnd}
                 onChange={e => setBookEnd(e.target.value)}
               />
-            </FormGroup>
+            </Field>
           </div>
-          <FormGroup label="Note (optional)" htmlFor="book-note">
+          <Field label="Note (optional)" htmlFor="book-note">
             <Input
               id="book-note"
               placeholder="e.g. Annual leave"
               value={bookNote}
               onChange={e => setBookNote(e.target.value)}
             />
-          </FormGroup>
+          </Field>
           <div className="flex gap-2">
             <Button type="button" variant="primary" onClick={handleBook} disabled={bookIsPending}>
               {bookIsPending ? 'Saving…' : 'Confirm booking'}
@@ -202,7 +200,7 @@ export default function EmployeeHolidaysTab({
       {/* Leave request list */}
       {yearRequests.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-center text-sm text-text-soft">
-          <CalendarDaysIcon className="h-8 w-8 mb-2 text-text-subtle" />
+          <Icon name="calendar" size={32} className="mb-2 text-text-subtle" />
           No leave requests for {yearLabel(selectedYear)}.
         </div>
       ) : (
@@ -221,7 +219,7 @@ export default function EmployeeHolidaysTab({
                     {r.note && ` · ${r.note}`}
                   </p>
                 </div>
-                <Badge variant={statusVariant(r.status)} size="sm">
+                <Badge tone={statusTone(r.status)} size="sm">
                   {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
                 </Badge>
               </div>

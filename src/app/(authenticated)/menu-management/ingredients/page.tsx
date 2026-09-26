@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { PageLayout } from '@/ds';
+import { PageLayout, Icon } from '@/ds';
 import { Section } from '@/ds';
 import { Card } from '@/ds';
 import { Button } from '@/ds';
@@ -11,13 +11,12 @@ import { DataTable, type Column } from '@/ds';
 import { Badge } from '@/ds';
 import { FilterPanel, type FilterDefinition } from '@/ds';
 import { Pagination } from '@/ds';
-import { EmptyState } from '@/ds';
+import { Empty } from '@/ds';
 import { ConfirmDialog } from '@/ds';
 import { toast } from '@/ds';
 import { LinkButton } from '@/ds';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { SmartImportModal } from '@/components/features/menu/SmartImportModal';
-import { ArrowDownTrayIcon } from '@heroicons/react/20/solid';
 import { useTablePipeline } from '../_components/useTablePipeline';
 import { EditableCurrencyCell } from '../_components/EditableCurrencyCell';
 import { StatusToggleCell } from '../_components/StatusToggleCell';
@@ -427,7 +426,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
           return (
-            <Badge variant={ingredient.purchase_department === 'bar' ? 'primary' : 'secondary'}>
+            <Badge tone={ingredient.purchase_department === 'bar' ? 'primary' : 'neutral'}>
               {getMenuPurchaseDepartmentLabel(ingredient.purchase_department)}
             </Badge>
           );
@@ -511,7 +510,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
         },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
-          return <Badge variant="secondary">{ingredient.dishes.length}</Badge>;
+          return <Badge tone="neutral">{ingredient.dishes.length}</Badge>;
         },
       },
       {
@@ -619,7 +618,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
         size="sm"
         onClick={handleDownloadAllergenPdf}
         disabled={loading}
-        leftIcon={<ArrowDownTrayIcon />}
+        leftIcon={<Icon name="download" size={16} />}
       >
         Download Allergens
       </Button>
@@ -675,7 +674,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
         {/* Data table */}
         <Card className="mt-4">
           {!loading && ingredients.length === 0 ? (
-            <EmptyState
+            <Empty
               title="No ingredients yet"
               description="Add your first ingredient or use Smart Import to bulk-add from a supplier list."
               icon="inbox"

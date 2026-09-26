@@ -1,4 +1,4 @@
-import toast from 'react-hot-toast'
+import { toast } from '@/ds'
 
 /** Where the A4 table talker sheet for an event is drawn. */
 export function tableTalkerSheetUrl(eventId: string): string {

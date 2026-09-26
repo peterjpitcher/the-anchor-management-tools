@@ -1,10 +1,10 @@
 'use client';
 
 import { useMemo } from 'react';
-import { ExclamationTriangleIcon, CheckCircleIcon } from '@heroicons/react/20/solid';
 import { computeIngredientCost, computeRecipeCost } from './DishCompositionTab';
 import type { DishIngredientFormRow, DishRecipeFormRow } from './CompositionRow';
 import type { IngredientSummary, RecipeSummary, DishListItem } from './DishExpandedRow';
+import { Icon } from '@/ds';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -517,7 +517,7 @@ export function DishGpAnalysisTab({
             {/* Modifiability summary */}
             {allergenAnalysis.modifiableFor.length > 0 && (
               <div className="flex items-start gap-2 rounded-lg border border-success-border bg-success-soft px-4 py-3 text-sm text-success-fg">
-                <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                <Icon name="checkCircle" size={16} className="mt-0.5 shrink-0 text-success" />
                 <span>
                   This dish can be modified for: <span className="font-semibold">{allergenAnalysis.modifiableFor.join(', ')}</span>
                 </span>
@@ -525,7 +525,7 @@ export function DishGpAnalysisTab({
             )}
             {allergenAnalysis.notModifiable.length > 0 && (
               <div className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-soft px-4 py-3 text-sm text-warning-fg">
-                <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                <Icon name="alertTriangle" size={16} className="mt-0.5 shrink-0 text-warning" />
                 <span>
                   Cannot be modified for:{' '}
                   {allergenAnalysis.notModifiable.map((m, i) => (
@@ -632,7 +632,7 @@ function CombinationsSection({
       {/* Explosion warning */}
       {trimmed && (
         <div className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-soft px-4 py-3 text-sm text-warning-fg">
-          <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <Icon name="alertTriangle" size={16} className="mt-0.5 shrink-0 text-warning" />
           <span>
             {totalCombinations} combinations detected — showing worst {EDGE_COUNT} and best {EDGE_COUNT} only.
           </span>
@@ -667,12 +667,12 @@ function CombinationsSection({
                 <td className="px-3 py-2">
                   {row.belowTarget ? (
                     <span className="inline-flex items-center gap-1 text-danger">
-                      <ExclamationTriangleIcon className="h-4 w-4" />
+                      <Icon name="alertTriangle" size={16} />
                       Below target
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 text-success-fg">
-                      <CheckCircleIcon className="h-4 w-4" />
+                      <Icon name="checkCircle" size={16} />
                       OK
                     </span>
                   )}

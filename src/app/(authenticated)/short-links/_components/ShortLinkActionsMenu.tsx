@@ -1,23 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import {
-  BarChart3,
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  Download,
-  Edit3,
-  Link2,
-  Loader2,
-  MoreHorizontal,
-  Printer,
-  QrCode,
-  Share2,
-  Trash2,
-} from 'lucide-react'
-import toast from 'react-hot-toast'
-import { IconButton } from '@/ds'
+import { IconButton, Spinner, toast, Icon } from '@/ds'
 import { getOrCreateUtmVariant } from '@/app/actions/short-links'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import { DIGITAL_CHANNELS, QR_CHANNELS, type ShortLinkChannel } from '@/lib/short-links/channels'
@@ -143,7 +127,7 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
       return {
         key: itemKey,
         label: channel.label,
-        icon: loading ? <Loader2 className="animate-spin" /> : mode === 'qr' ? <QrCode /> : <Share2 />,
+        icon: loading ? <Spinner size="sm" /> : mode === 'qr' ? <Icon name="qrCode" size={16} /> : <Icon name="share" size={16} />,
         disabled: Boolean(loadingKey),
         onClick: () => handleChannelSelect(channel, mode),
       }
@@ -152,7 +136,7 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
   const backEntry: PortalMenuEntry = {
     key: 'back',
     label: 'Back',
-    icon: <ChevronLeft />,
+    icon: <Icon name="chevronLeft" size={16} />,
     keepOpen: true,
     onClick: () => setExpandedSection(null),
   }
@@ -162,7 +146,7 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
     label: (
       <span className="flex items-center gap-2">
         <span>{label}</span>
-        <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />
+        <Icon name="chevronRight" size={16} className="shrink-0 text-text-muted" />
       </span>
     ),
     icon,
@@ -185,7 +169,7 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
       {
         key: 'qr:all',
         label: 'Download all QRs',
-        icon: loadingKey === 'qr:all' ? <Loader2 className="animate-spin" /> : <Printer />,
+        icon: loadingKey === 'qr:all' ? <Spinner size="sm" /> : <Icon name="printer" size={16} />,
         disabled: Boolean(loadingKey),
         onClick: handleAllQrs,
       },
@@ -196,7 +180,7 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
       {
         key: 'analytics',
         label: 'Analytics',
-        icon: <BarChart3 />,
+        icon: <Icon name="barChart" size={16} />,
         onClick: () => onAnalytics(link),
       },
     ]
@@ -207,13 +191,13 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
         {
           key: 'edit',
           label: 'Edit',
-          icon: <Edit3 />,
+          icon: <Icon name="edit" size={16} />,
           onClick: () => onEdit(link),
         },
         {
           key: 'delete',
           label: 'Delete',
-          icon: <Trash2 />,
+          icon: <Icon name="trash" size={16} />,
           danger: true,
           onClick: () => onDelete(link),
         }
@@ -225,19 +209,19 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
       {
         key: 'copy-short',
         label: 'Copy short URL',
-        icon: <Copy />,
+        icon: <Icon name="copy" size={16} />,
         onClick: () => copyText(shortUrl, 'Short URL copied'),
       },
       {
         key: 'copy-destination',
         label: 'Copy destination URL',
-        icon: <Link2 />,
+        icon: <Icon name="link" size={16} />,
         onClick: () => copyText(link.destination_url, 'Destination URL copied'),
       },
       {
         key: 'download-qr',
         label: 'Download QR',
-        icon: loadingKey === 'base-qr' ? <Loader2 className="animate-spin" /> : <Download />,
+        icon: loadingKey === 'base-qr' ? <Spinner size="sm" /> : <Icon name="download" size={16} />,
         disabled: Boolean(loadingKey),
         onClick: handleBaseQr,
       }
@@ -246,8 +230,8 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
     if (canManage && isParent) {
       entries.push(
         { type: 'section', key: 'campaign-section', label: 'Campaign links' },
-        expandableEntry('digital', `Digital UTM links (${DIGITAL_CHANNELS.length})`, <Share2 />),
-        expandableEntry('qr', `QR codes (${QR_CHANNELS.length})`, <QrCode />)
+        expandableEntry('digital', `Digital UTM links (${DIGITAL_CHANNELS.length})`, <Icon name="share" size={16} />),
+        expandableEntry('qr', `QR codes (${QR_CHANNELS.length})`, <Icon name="qrCode" size={16} />)
       )
     }
   }
@@ -266,7 +250,7 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
           ref={ref}
           variant="secondary"
           size="sm"
-          icon={loadingKey ? <Loader2 size={14} className="animate-spin" /> : <MoreHorizontal size={14} />}
+          icon={loadingKey ? <Spinner size="sm" /> : <Icon name="moreHorizontal" size={14} />}
           label="Short link actions"
           onClick={onClick}
           aria-expanded={expanded}

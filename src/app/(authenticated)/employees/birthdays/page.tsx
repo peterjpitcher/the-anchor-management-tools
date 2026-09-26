@@ -3,17 +3,12 @@ import Link from 'next/link'
 import { getAllBirthdays } from '@/app/actions/employee-birthdays'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { displayName } from '@/lib/employees/display-name'
-import {
-  CakeIcon,
-  ExclamationTriangleIcon,
-  CalendarIcon
-} from '@heroicons/react/24/outline'
 import { formatDateInLondon, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils'
-import { PageLayout } from '@/ds'
+import { PageLayout, Icon } from '@/ds'
 import { Card } from '@/ds'
 import { Badge } from '@/ds'
 import { Alert } from '@/ds'
-import { EmptyState } from '@/ds'
+import { Empty } from '@/ds'
 import SendBirthdayRemindersButton from '@/components/features/employees/SendBirthdayRemindersButton'
 
 export const dynamic = 'force-dynamic'
@@ -71,11 +66,11 @@ export default async function EmployeeBirthdaysPage() {
     return `In ${Math.floor(days / 30)} month${Math.floor(days / 30) !== 1 ? 's' : ''}`;
   };
 
-  const getCountdownBadgeVariant = (days: number) => {
-    if (days === 0) return 'error';
+  const getCountdownBadgeTone = (days: number): 'danger' | 'warning' | 'info' | 'neutral' => {
+    if (days === 0) return 'danger';
     if (days <= 7) return 'warning';
     if (days <= 30) return 'info';
-    return 'default';
+    return 'neutral';
   };
 
   // Group birthdays by month
@@ -117,7 +112,7 @@ export default async function EmployeeBirthdaysPage() {
       headerActions={headerActions}
     >
       <section id="overview" className="space-y-4">
-        <Alert variant="info" icon={<ExclamationTriangleIcon className="h-4 w-4 sm:h-5 sm:w-5" />}>
+        <Alert tone="info" icon={<Icon name="alertTriangle" size={16} className="sm:h-5 sm:w-5" />}>
           <div>
             <h3 className="text-xs sm:text-sm font-medium">Automatic Birthday Reminders</h3>
             <p className="mt-1 sm:mt-2 text-xs sm:text-sm">
@@ -130,8 +125,8 @@ export default async function EmployeeBirthdaysPage() {
       <section id="birthdays">
         {birthdays.length === 0 ? (
           <Card>
-            <EmptyState
-              icon={<CakeIcon className="h-12 w-12" />}
+            <Empty
+              icon={<Icon name="cake" size={48} />}
               title="No birthdays found"
               description="No active employees have birthdays recorded."
             />
@@ -142,7 +137,7 @@ export default async function EmployeeBirthdaysPage() {
               <Card key={monthName}>
                 <div className="bg-surface-2 px-3 sm:px-4 py-2 sm:py-3 border-b border-border -m-6 mb-6">
                   <h2 className="text-base sm:text-lg font-medium text-text flex flex-wrap items-center">
-                    <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-1.5 sm:mr-2 text-text-subtle" />
+                    <Icon name="calendar" size={16} className="sm:h-5 sm:w-5 mr-1.5 sm:mr-2 text-text-subtle" />
                     <span>{monthName}</span>
                     <span className="ml-2 text-xs sm:text-sm text-text-muted">({monthBirthdays.length} birthday{monthBirthdays.length !== 1 ? 's' : ''})</span>
                   </h2>
@@ -171,7 +166,7 @@ export default async function EmployeeBirthdaysPage() {
                               {formatDateInLondon(birthday.date_of_birth, { month: 'short', day: 'numeric' }, 'en-US')}
                             </span>
                             <Badge
-                              variant={getCountdownBadgeVariant(birthday.days_until_birthday) as 'default' | 'info' | 'warning' | 'error'}
+                              tone={getCountdownBadgeTone(birthday.days_until_birthday)}
                               className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1"
                             >
                               {getCountdownText(birthday.days_until_birthday)}

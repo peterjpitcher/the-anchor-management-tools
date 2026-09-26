@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 import {
   Alert,
@@ -12,6 +11,7 @@ import {
   CardBody,
   Input,
   Switch,
+  toast,
 } from '@/ds'
 import {
   updateChecklistFlags,

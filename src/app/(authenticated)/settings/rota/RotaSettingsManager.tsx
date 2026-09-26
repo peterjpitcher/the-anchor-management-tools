@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import toast from 'react-hot-toast';
-import { Button } from '@/ds';
+import { Button, toast } from '@/ds';
 import { Input } from '@/ds';
 import { Select } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Field } from '@/ds';
 import { updateRotaSettings, type RotaSettings } from '@/app/actions/rota-settings';
 
 const MONTHS = [
@@ -62,7 +61,7 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
           holiday year runs with the financial year.
         </p>
         <div className="flex flex-wrap items-end gap-4">
-          <FormGroup label="Start month" htmlFor="holiday-month" className="min-w-[140px]">
+          <Field label="Start month" htmlFor="holiday-month" className="min-w-[140px]">
             <Select
               id="holiday-month"
               value={holidayMonth}
@@ -73,8 +72,8 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
                 <option key={i + 1} value={i + 1}>{name}</option>
               ))}
             </Select>
-          </FormGroup>
-          <FormGroup label="Start day" htmlFor="holiday-day" className="w-24">
+          </Field>
+          <Field label="Start day" htmlFor="holiday-day" className="w-24">
             <Input
               id="holiday-day"
               type="number"
@@ -84,7 +83,7 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
               onChange={e => setHolidayDay(e.target.value)}
               disabled={!canManage}
             />
-          </FormGroup>
+          </Field>
         </div>
       </div>
 
@@ -94,7 +93,7 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
         <p className="text-xs text-text-muted mb-4">
           Used when an employee has no personal allowance set in their pay settings.
         </p>
-        <FormGroup label="Days per year" htmlFor="default-days" className="w-40">
+        <Field label="Days per year" htmlFor="default-days" className="w-40">
           <Input
             id="default-days"
             type="number"
@@ -104,7 +103,7 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
             onChange={e => setDefaultDays(e.target.value)}
             disabled={!canManage}
           />
-        </FormGroup>
+        </Field>
       </div>
 
       {/* Labour planning */}
@@ -113,7 +112,7 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
         <p className="text-xs text-text-muted mb-4">
           Used on the rota to flag days where scheduled wages exceed the target percentage of sales.
         </p>
-        <FormGroup label="Target wage percentage" htmlFor="wage-target-percent" className="w-48">
+        <Field label="Target wage percentage" htmlFor="wage-target-percent" className="w-48">
           <Input
             id="wage-target-percent"
             type="number"
@@ -124,7 +123,7 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
             onChange={e => setWageTargetPercent(e.target.value)}
             disabled={!canManage}
           />
-        </FormGroup>
+        </Field>
       </div>
 
       {/* Email addresses */}
@@ -135,7 +134,7 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
         </p>
         <div className="space-y-4 max-w-md">
           <div>
-            <FormGroup label="Rota manager alert email" htmlFor="manager-email">
+            <Field label="Rota manager alert email" htmlFor="manager-email">
               <Input
                 id="manager-email"
                 type="email"
@@ -144,7 +143,7 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
                 onChange={e => setManagerEmail(e.target.value)}
                 disabled={!canManage}
               />
-            </FormGroup>
+            </Field>
             {/* Spelled out because this address used to drive only the Sunday alert
                 while the other two paths carried a hard-coded copy of the mailbox, so
                 the screen was quietly lying about what it controlled. */}
@@ -158,7 +157,7 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
               Leave it blank to fall back to the ROTA_MANAGER_EMAIL environment variable.
             </p>
           </div>
-          <FormGroup label="Payroll accountant email" htmlFor="accountant-email">
+          <Field label="Payroll accountant email" htmlFor="accountant-email">
             <Input
               id="accountant-email"
               type="email"
@@ -167,7 +166,7 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
               onChange={e => setAccountantEmail(e.target.value)}
               disabled={!canManage}
             />
-          </FormGroup>
+          </Field>
         </div>
       </div>
 

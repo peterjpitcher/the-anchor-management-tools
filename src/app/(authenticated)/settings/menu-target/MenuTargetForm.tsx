@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { Button } from '@/ds';
-import { FormGroup } from '@/ds';
+import { Field } from '@/ds';
 import { Input } from '@/ds';
 import { Alert } from '@/ds';
 import { updateMenuTargetGp } from '@/app/actions/menu-settings';
@@ -45,7 +45,7 @@ export function MenuTargetForm({ initialTarget }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <FormGroup
+      <Field
         label="Standard GP% target"
         help="This percentage is applied to every dish. Enter a value between 1 and 95."
         required
@@ -64,10 +64,10 @@ export function MenuTargetForm({ initialTarget }: Props) {
           }}
           rightElement="%"
         />
-      </FormGroup>
+      </Field>
 
       {message && (
-        <Alert variant={message.type === 'success' ? 'success' : 'error'}>
+        <Alert tone={message.type === 'success' ? 'success' : 'danger'}>
           {message.text}
         </Alert>
       )}

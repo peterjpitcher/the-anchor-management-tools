@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { SparklesIcon, ClockIcon, UsersIcon, BuildingStorefrontIcon, RocketLaunchIcon } from '@heroicons/react/24/outline'
-import { Button, Input, Select, Checkbox, Card, Badge, toast, Spinner } from '@/ds'
+import { Button, Input, Select, Checkbox, Card, Badge, toast, Spinner, Icon } from '@/ds'
 import type { ReceiptBulkReviewData } from '@/app/actions/receipts'
 import {
   applyReceiptGroupClassification,
@@ -426,7 +425,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
       {initialData.groups.length === 0 ? (
         <Card>
           <div className="flex items-center gap-3 text-sm text-text-muted">
-            <ClockIcon className="h-5 w-5 text-text-subtle" />
+            <Icon name="clock" size={20} className="text-text-subtle" />
             Nothing to review with your current filters. Adjust the filters above or import more transactions.
           </div>
         </Card>
@@ -449,10 +448,10 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                   <div className="space-y-1">
                     <h3 className="text-base font-semibold text-text-strong">{group.details}</h3>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
-                      <span className="inline-flex items-center gap-1"><UsersIcon className="h-4 w-4" /> {group.transactionCount} transactions</span>
-                      <span className="inline-flex items-center gap-1"><BuildingStorefrontIcon className="h-4 w-4" /> {group.needsVendorCount} need vendor</span>
-                      <span className="inline-flex items-center gap-1"><BuildingStorefrontIcon className="h-4 w-4" /> {group.needsExpenseCount} need expense</span>
-                      <span className="inline-flex items-center gap-1"><ClockIcon className="h-4 w-4" /> {formatDate(group.firstDate)} → {formatDate(group.lastDate)}</span>
+                      <span className="inline-flex items-center gap-1"><Icon name="users" size={16} /> {group.transactionCount} transactions</span>
+                      <span className="inline-flex items-center gap-1"><Icon name="store" size={16} /> {group.needsVendorCount} need vendor</span>
+                      <span className="inline-flex items-center gap-1"><Icon name="store" size={16} /> {group.needsExpenseCount} need expense</span>
+                      <span className="inline-flex items-center gap-1"><Icon name="clock" size={16} /> {formatDate(group.firstDate)} → {formatDate(group.lastDate)}</span>
                       <span className="inline-flex items-center gap-1">In: {formatCurrency(group.totalIn)}</span>
                       <span className="inline-flex items-center gap-1">Out: {formatCurrency(group.totalOut)}</span>
                     </div>
@@ -487,7 +486,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                         />
                       </div>
                       {suggestion.vendorName && (
-                        <p className="text-xs text-text-muted inline-flex items-center gap-1"><SparklesIcon className="h-4 w-4 text-info" /> {suggestion.vendorName}{suggestion.reasoning ? `: ${suggestion.reasoning}` : ''}</p>
+                        <p className="text-xs text-text-muted inline-flex items-center gap-1"><Icon name="sparkles" size={16} className="text-info" /> {suggestion.vendorName}{suggestion.reasoning ? `: ${suggestion.reasoning}` : ''}</p>
                       )}
                     </div>
                     <div className="space-y-2">
@@ -513,7 +512,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                         />
                       </div>
                       {suggestion.expenseCategory && (
-                        <p className="text-xs text-text-muted inline-flex items-center gap-1"><SparklesIcon className="h-4 w-4 text-info" /> {suggestion.expenseCategory}</p>
+                        <p className="text-xs text-text-muted inline-flex items-center gap-1"><Icon name="sparkles" size={16} className="text-info" /> {suggestion.expenseCategory}</p>
                       )}
                     </div>
                   </div>
@@ -589,7 +588,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                   {activeRuleGroup === group.details && ruleDraft && (
                     <div className="mt-4 space-y-3 rounded-md border border-success-border bg-success-soft p-4">
                       <div className="flex items-center gap-2 text-sm font-medium text-success-fg">
-                        <RocketLaunchIcon className="h-5 w-5" />
+                        <Icon name="rocket" size={20} />
                         Create automation rule
                       </div>
                       <div className="grid gap-3 md:grid-cols-2">

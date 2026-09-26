@@ -1,12 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ChevronDoubleLeftIcon,
-  ChevronDoubleRightIcon,
-} from '@heroicons/react/20/solid'
+import { Icon } from '../icons'
 
 export interface PaginationProps {
   currentPage: number
@@ -79,19 +74,19 @@ export function Pagination({
     sm: {
       button: 'px-2 py-1 text-xs min-h-[32px]',
       iconButton: 'p-1 min-h-[32px] min-w-[32px]',
-      icon: 'h-4 w-4',
+      iconSize: 16,
       text: 'text-xs',
     },
     md: {
       button: 'px-3 py-2 text-sm min-h-[40px]',
       iconButton: 'p-2 min-h-[40px] min-w-[40px]',
-      icon: 'h-5 w-5',
+      iconSize: 20,
       text: 'text-sm',
     },
     lg: {
       button: 'px-4 py-2.5 text-base min-h-touch',
       iconButton: 'p-2.5 min-h-touch min-w-touch',
-      icon: 'h-6 w-6',
+      iconSize: 24,
       text: 'text-base',
     },
   }
@@ -161,7 +156,7 @@ export function Pagination({
         disabled={currentPage === 1}
         className={buttonClasses}
       >
-        <ChevronLeftIcon className={cn(sizeClasses[size].icon, 'mr-1')} />
+        <Icon name="chevronLeft" size={sizeClasses[size].iconSize} className="mr-1" />
         {previous}
       </button>
       <span className={cn(sizeClasses[size].text, 'text-text')}>
@@ -174,7 +169,7 @@ export function Pagination({
         className={buttonClasses}
       >
         {next}
-        <ChevronRightIcon className={cn(sizeClasses[size].icon, 'ml-1')} />
+        <Icon name="chevronRight" size={sizeClasses[size].iconSize} className="ml-1" />
       </button>
     </div>
   )
@@ -245,7 +240,7 @@ export function Pagination({
               className={cn(iconButtonClasses, 'rounded-l-md')}
               aria-label={first}
             >
-              <ChevronDoubleLeftIcon className={sizeClasses[size].icon} />
+              <Icon name="chevronsLeft" size={sizeClasses[size].iconSize} />
             </button>
           )}
 
@@ -256,7 +251,7 @@ export function Pagination({
             className={cn(iconButtonClasses, !showFirstLastButtons && 'rounded-l-md')}
             aria-label={previous}
           >
-            <ChevronLeftIcon className={sizeClasses[size].icon} />
+            <Icon name="chevronLeft" size={sizeClasses[size].iconSize} />
           </button>
 
           {getPageNumbers().map((pageNum, index) => {
@@ -294,7 +289,7 @@ export function Pagination({
             className={cn(iconButtonClasses, !showFirstLastButtons && 'rounded-r-md')}
             aria-label={next}
           >
-            <ChevronRightIcon className={sizeClasses[size].icon} />
+            <Icon name="chevronRight" size={sizeClasses[size].iconSize} />
           </button>
 
           {showFirstLastButtons && (
@@ -305,7 +300,7 @@ export function Pagination({
               className={cn(iconButtonClasses, 'rounded-r-md')}
               aria-label={last}
             >
-              <ChevronDoubleRightIcon className={sizeClasses[size].icon} />
+              <Icon name="chevronsRight" size={sizeClasses[size].iconSize} />
             </button>
           )}
         </nav>

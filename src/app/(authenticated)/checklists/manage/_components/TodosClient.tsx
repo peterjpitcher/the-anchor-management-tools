@@ -2,8 +2,7 @@
 
 import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import toast from 'react-hot-toast'
-import { Alert, Badge, Button, Card, CardBody, Field, Input, Modal, Select, Switch, Textarea } from '@/ds'
+import { Alert, Badge, Button, Card, CardBody, Field, Input, Modal, Select, Switch, Textarea, toast } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { listTodos, createTodo, completeTodo, cancelTodo, type TodoView } from '@/app/actions/checklists-todos'
 
@@ -113,7 +112,7 @@ export function TodosClient({ initial, error }: TodosClientProps) {
 
   if (error) {
     return (
-      <Alert variant="danger" title="Could not load todos">
+      <Alert tone="danger" title="Could not load todos">
         {error}
       </Alert>
     )
@@ -133,7 +132,7 @@ export function TodosClient({ initial, error }: TodosClientProps) {
       </div>
 
       {todos.length === 0 ? (
-        <Alert variant="info" title="No todos">
+        <Alert tone="info" title="No todos">
           There is nothing to do here right now.
         </Alert>
       ) : (

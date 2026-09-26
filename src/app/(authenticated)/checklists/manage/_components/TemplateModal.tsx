@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 import {
   Button,
@@ -12,6 +11,7 @@ import {
   Switch,
   Modal,
   ModalActions,
+  toast,
 } from '@/ds'
 import { createTemplate, updateTemplate } from '@/app/actions/checklists-admin'
 import type { AdminTemplate } from '@/app/actions/checklists-admin'
