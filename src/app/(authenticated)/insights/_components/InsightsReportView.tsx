@@ -124,7 +124,7 @@ function SectionList({ list }: { list: InsightList }): React.JSX.Element | null 
   const rest = list.items.slice(LIST_VISIBLE)
   return (
     <div>
-      <SubHeading className="mb-1">{insightSectionTitle(list.title)}</SubHeading>
+      <SubHeading className="mb-1">{list.titleAsWritten ? list.title : insightSectionTitle(list.title)}</SubHeading>
       {list.items.length === 0 ? (
         <p className="text-sm text-text-muted">{list.emptyText}</p>
       ) : (

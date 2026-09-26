@@ -75,7 +75,10 @@ export default function EventTodosWidget({
                 <li
                   key={`${item.eventId}:${item.key}`}
                   className={cn(
-                    'flex items-start gap-2 border-l-4 pl-3 py-2',
+                    // gap-3.5 (14px): the tick's 44px touch area reaches 14px past its 16px box,
+                    // so the link beside it starts where that area ends. Any closer and a tap on
+                    // the start of the link would complete the todo instead of opening the event.
+                    'flex items-start gap-3.5 border-l-4 pl-3 py-2',
                     eventTodoUrgencyBorderClass(item.status),
                   )}
                 >

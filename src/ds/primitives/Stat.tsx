@@ -88,7 +88,8 @@ export function Stat({ label, value, delta, deltaDirection, deltaGood = 'up', de
         {label}
       </span>
 
-      <span className={cn('text-2xl font-bold tabular-nums', TONE_CLASSES[tone])}>
+      {/* One step smaller on a phone, where StatGrid puts two figures side by side. */}
+      <span className={cn('break-words text-xl font-bold tabular-nums sm:text-2xl', TONE_CLASSES[tone])}>
         {value}
       </span>
 

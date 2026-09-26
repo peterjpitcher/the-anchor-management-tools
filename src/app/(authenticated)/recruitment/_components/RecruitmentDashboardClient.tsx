@@ -1435,7 +1435,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
           <ActionFeedbackForm
             action={() => runRecruitmentRetentionAction()}
             confirmTitle="Run Retention?"
-            confirmMessage="Candidates who were not hired and applied longer ago than the retention period are anonymised: their name, contact details, CV details and notes are removed, and their CV files are permanently deleted. Up to 100 applications are checked each run. This cannot be undone."
+            confirmMessage="Candidates who were not hired and applied longer ago than the retention period are anonymised: their name, contact details, CV details, notes and the text of messages sent to them are removed, and their CV files are permanently deleted. Up to 100 applications are checked each run. This cannot be undone."
             confirmTone="danger"
             successMessage="Recruitment retention cleanup completed."
           >

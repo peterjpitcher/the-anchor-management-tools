@@ -35,7 +35,9 @@ interface CheckboxProps {
    * For a checkbox with no visible label (named by `aria-label`): on touch screens its tap area
    * grows to a 44px square around the box, the touch row a visible label would give it, without
    * moving anything. Use it instead of wrapping the checkbox in a <label> to make it easier to
-   * tap. A checkbox with a visible label already gets its touch row from the label.
+   * tap. A checkbox with a visible label already gets its touch row from the label. The area
+   * reaches 14px past each side of the box and sits above its neighbours, so leave 14px (gap-3.5)
+   * before a link or button beside it, or the checkbox takes that control's first taps.
    */
   touchTarget?: boolean
   /** @deprecated Accepted for backward compatibility */

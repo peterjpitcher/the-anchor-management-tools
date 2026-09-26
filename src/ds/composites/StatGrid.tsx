@@ -5,7 +5,7 @@ import { Card, CardBody } from './Card'
 export interface StatGridProps {
   /** `Stat` elements. Each one is framed in its own card. */
   children: ReactNode
-  /** Columns from the large breakpoint up. Phones show one column, small screens two. */
+  /** Columns from the large breakpoint up. Phones and small screens show two. */
   columns?: 2 | 3 | 4 | 5 | 6
   className?: string
 }
@@ -31,7 +31,9 @@ const columnClasses: Record<NonNullable<StatGridProps['columns']>, string> = {
  */
 export function StatGrid({ children, columns = 4, className }: StatGridProps): React.JSX.Element {
   return (
-    <div className={cn('grid grid-cols-1 gap-4', columnClasses[columns], className)}>
+    // Two across on a phone: four stacked full-width figure cards pushed the page's content
+    // below the fold.
+    <div className={cn('grid grid-cols-2 gap-4', columnClasses[columns], className)}>
       {Children.toArray(children).map((child, index) => (
         <Card key={isValidElement(child) && child.key != null ? child.key : index}>
           <CardBody>{child}</CardBody>

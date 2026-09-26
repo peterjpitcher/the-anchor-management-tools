@@ -138,6 +138,17 @@ describe('EventTodosWidget', () => {
     expect(checkbox.closest('label')).toBeNull()
   })
 
+  it('keeps the link clear of the tick\'s 44px tap area, so a tap on the link opens the event', () => {
+    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Update All Event Details and Publish' })]} canManage todayIso={TODAY} />)
+    const checkbox = screen.getByRole('checkbox', { name: 'Mark "Update All Event Details and Publish" complete' })
+    // The tap area reaches 14px past the 16px box (the DS input sits above the link), so the row
+    // leaves a 14px gap (gap-3.5) before the link. A gap-2 row let the tick take the link's first 6px.
+    const row = checkbox.closest('li')
+    expect(row).toHaveClass('gap-3.5')
+    expect(row).not.toHaveClass('gap-2')
+    expect(row?.querySelector('a[href^="/events/"]')).not.toBeNull()
+  })
+
   it('optimistically removes a todo on successful completion', async () => {
     mockToggle.mockResolvedValue({ success: true })
     const user = userEvent.setup()
