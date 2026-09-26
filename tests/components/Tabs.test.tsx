@@ -32,3 +32,59 @@ describe('Tabs', () => {
     expect(screen.getByText('Details content')).toBeInTheDocument()
   })
 })
+
+describe('Tabs accessibility', () => {
+  const stripTabs = [
+    { id: 'upcoming', label: 'Upcoming' },
+    { id: 'past', label: 'Past' },
+  ]
+
+  it('claims no aria-controls when used as a plain tab strip with no panels', () => {
+    render(<Tabs tabs={stripTabs} activeTab="upcoming" onTabChange={() => {}} />)
+
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(tab).not.toHaveAttribute('aria-controls')
+    }
+    expect(screen.queryByRole('tabpanel')).not.toBeInTheDocument()
+  })
+
+  it('points the active tab at the panel it renders, and only that tab', () => {
+    render(<Tabs items={tabItems} />)
+
+    const active = screen.getByRole('tab', { name: 'Details' })
+    const inactive = screen.getByRole('tab', { name: 'Financial' })
+    const panel = screen.getByRole('tabpanel')
+
+    expect(active).toHaveAttribute('aria-controls', panel.id)
+    expect(inactive).not.toHaveAttribute('aria-controls')
+    expect(panel).toHaveAttribute('aria-labelledby', active.id)
+
+    fireEvent.click(inactive)
+
+    const nextPanel = screen.getByRole('tabpanel')
+    expect(inactive).toHaveAttribute('aria-controls', nextPanel.id)
+    expect(active).not.toHaveAttribute('aria-controls')
+    // Every aria-controls points at an element that exists.
+    for (const tab of screen.getAllByRole('tab')) {
+      const controls = tab.getAttribute('aria-controls')
+      if (controls) expect(document.getElementById(controls)).not.toBeNull()
+    }
+  })
+
+  it('names the tab list from aria-label', () => {
+    render(<Tabs tabs={stripTabs} aria-label="Booking lists" />)
+
+    expect(screen.getByRole('tablist', { name: 'Booking lists' })).toBeInTheDocument()
+  })
+
+  it('names the tab list from a visible heading through aria-labelledby', () => {
+    render(
+      <>
+        <h2 id="lists-heading">Bookings</h2>
+        <Tabs tabs={stripTabs} aria-labelledby="lists-heading" />
+      </>,
+    )
+
+    expect(screen.getByRole('tablist', { name: 'Bookings' })).toBeInTheDocument()
+  })
+})

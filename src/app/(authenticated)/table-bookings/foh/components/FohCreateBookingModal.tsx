@@ -179,7 +179,6 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
       open={open}
       onClose={onClose}
       title={createMode === 'walk_in' ? 'Add walk-in' : 'Add booking'}
-      description="Search existing customer by name or phone first. If not found, enter phone details to create a new customer."
       size="lg"
     >
       <form onSubmit={onSubmit} className="space-y-4">

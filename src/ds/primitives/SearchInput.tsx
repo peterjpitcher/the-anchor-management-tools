@@ -17,6 +17,12 @@ interface SearchInputProps {
   loading?: boolean
   placeholder?: string
   className?: string
+  /** Goes on the text field, so a Field or a <label htmlFor> can name it. */
+  id?: string
+  'aria-label'?: string
+  'aria-describedby'?: string
+  /** Set by a surrounding Field that shows an error. */
+  'aria-invalid'?: boolean | 'true' | 'false'
 }
 
 const SearchIcon = () => (
@@ -42,6 +48,10 @@ export function SearchInput({
   loading: _loading,
   placeholder = 'Search...',
   className,
+  id,
+  'aria-label': ariaLabel,
+  'aria-describedby': ariaDescribedBy,
+  'aria-invalid': ariaInvalid,
 }: SearchInputProps) {
   const emitChange = useCallback(
     (value: string) => {
@@ -79,6 +89,10 @@ export function SearchInput({
   return (
     <div className={cn('relative', className)}>
       <Input
+        id={id}
+        aria-label={ariaLabel}
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
         icon={<SearchIcon />}
         value={value}
         onChange={(e) => handleChange(e.target.value)}

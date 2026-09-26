@@ -63,6 +63,10 @@ export type TeamReliabilitySort =
   | 'couldnt_work'
   | 'late_holidays';
 
+/** Shown by /employees/reliability when the leaderboard cannot be read. */
+export const RELIABILITY_LEADERBOARD_LOAD_ERROR = 'Could not load the reliability leaderboard. Try again in a moment.';
+const RELIABILITY_EVENTS_LOAD_ERROR = 'Could not load the reliability events.';
+
 function getReliabilityWindowStart(days = RELIABILITY_WINDOW_DAYS): string {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - days);
@@ -481,42 +485,56 @@ export async function recordHolidayAuditOnly(input: {
   });
 }
 
-async function fetchReliabilityEvents(params: {
+type ReliabilityEventQuery = {
   employeeIds?: string[];
   employeeId?: string;
   fromDate?: string;
   limit?: number;
-}): Promise<EmployeeReliabilityEvent[]> {
+};
+
+/** Reads reliability events and throws when the read fails, so a caller can tell a failure from no events. */
+async function queryReliabilityEvents(params: ReliabilityEventQuery): Promise<EmployeeReliabilityEvent[]> {
   const supabase = createAdminClient();
 
+  let query = supabase
+    .from('employee_reliability_events')
+    .select('*')
+    .order('event_at', { ascending: false });
+
+  if (params.employeeId) {
+    query = query.eq('employee_id', params.employeeId);
+  }
+  if (params.employeeIds && params.employeeIds.length > 0) {
+    query = query.in('employee_id', params.employeeIds);
+  }
+  if (params.fromDate) {
+    query = query.gte('event_at', params.fromDate);
+  }
+  if (params.limit) {
+    query = query.limit(params.limit);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('[employeeReliability] failed to fetch events', error);
+    throw new Error(RELIABILITY_EVENTS_LOAD_ERROR);
+  }
+
+  return (data ?? []).map(normalizeReliabilityEvent);
+}
+
+/**
+ * The employee page's Reliability tab still treats a failed read as no events (unchanged here);
+ * the team leaderboard uses queryReliabilityEvents and reports the failure instead.
+ */
+async function fetchReliabilityEvents(params: ReliabilityEventQuery): Promise<EmployeeReliabilityEvent[]> {
   try {
-    let query = supabase
-      .from('employee_reliability_events')
-      .select('*')
-      .order('event_at', { ascending: false });
-
-    if (params.employeeId) {
-      query = query.eq('employee_id', params.employeeId);
-    }
-    if (params.employeeIds && params.employeeIds.length > 0) {
-      query = query.in('employee_id', params.employeeIds);
-    }
-    if (params.fromDate) {
-      query = query.gte('event_at', params.fromDate);
-    }
-    if (params.limit) {
-      query = query.limit(params.limit);
-    }
-
-    const { data, error } = await query;
-    if (error) {
-      console.error('[employeeReliability] failed to fetch events', error);
-      return [];
-    }
-
-    return (data ?? []).map(normalizeReliabilityEvent);
+    return await queryReliabilityEvents(params);
   } catch (error) {
-    console.error('[employeeReliability] exception while fetching events', error);
+    // A database error was logged where it happened; anything else is logged here.
+    if (!(error instanceof Error && error.message === RELIABILITY_EVENTS_LOAD_ERROR)) {
+      console.error('[employeeReliability] exception while fetching events', error);
+    }
     return [];
   }
 }
@@ -574,6 +592,12 @@ function sortLeaderboard(rows: TeamReliabilityRow[], sortBy: TeamReliabilitySort
   });
 }
 
+/**
+ * The team leaderboard. Throws (with RELIABILITY_LEADERBOARD_LOAD_ERROR as the message) when
+ * either the employees or their reliability events cannot be read, as the maintenance and P&L
+ * services do for their reads. Before 26 September 2026 a failed read returned an empty list, so
+ * the page said "No employees found" (or scored everyone zero) when the database was down.
+ */
 export async function getTeamReliabilityLeaderboard(input: {
   includeFormer?: boolean;
   sortBy?: TeamReliabilitySort;
@@ -593,17 +617,24 @@ export async function getTeamReliabilityLeaderboard(input: {
 
   if (error) {
     console.error('[employeeReliability] failed to fetch employees for leaderboard', error);
-    return [];
+    throw new Error(RELIABILITY_LEADERBOARD_LOAD_ERROR);
   }
 
   const employeeRows = employees ?? [];
   const employeeIds = employeeRows.map((employee: any) => employee.employee_id as string);
-  const events = employeeIds.length > 0
-    ? await fetchReliabilityEvents({
+  let events: EmployeeReliabilityEvent[] = [];
+  if (employeeIds.length > 0) {
+    try {
+      events = await queryReliabilityEvents({
         employeeIds,
         fromDate: input.fromDate ?? getReliabilityWindowStart(),
-      })
-    : [];
+      });
+    } catch {
+      // Scoring everyone from no events would show a zero for every employee, a failed load
+      // dressed up as data. queryReliabilityEvents has already logged the database error.
+      throw new Error(RELIABILITY_LEADERBOARD_LOAD_ERROR);
+    }
+  }
 
   const eventsByEmployee = new Map<string, EmployeeReliabilityEvent[]>();
   for (const event of events) {

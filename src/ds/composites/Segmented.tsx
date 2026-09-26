@@ -4,7 +4,7 @@ import React from 'react'
 import { cn } from '@/lib/utils'
 
 /* ------------------------------------------------------------------ */
-/*  Segmented — inline button group with active highlight             */
+/*  Segmented: inline button group with active highlight              */
 /* ------------------------------------------------------------------ */
 
 interface SegmentedOption {
@@ -18,9 +18,21 @@ interface SegmentedProps {
   onChange: (id: string) => void
   size?: 'sm' | 'md'
   className?: string
+  /** Names the group for screen readers when no visible heading does. */
+  'aria-label'?: string
+  /** The id of a visible heading or label that names the group. */
+  'aria-labelledby'?: string
 }
 
-export function Segmented({ options, value, onChange, size = 'md', className }: SegmentedProps) {
+export function Segmented({
+  options,
+  value,
+  onChange,
+  size = 'md',
+  className,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledBy,
+}: SegmentedProps) {
   return (
     <div
       className={cn(
@@ -28,6 +40,8 @@ export function Segmented({ options, value, onChange, size = 'md', className }: 
         className,
       )}
       role="radiogroup"
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
     >
       {options.map((option) => {
         const isActive = option.id === value

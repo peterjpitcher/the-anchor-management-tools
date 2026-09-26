@@ -35,6 +35,11 @@ export { LinkButton } from './LinkButton'
 
 export { Accordion } from './Accordion'
 
-export { Pagination } from './Pagination'
-
 export { FormSubmitButton } from './FormSubmitButton'
+
+export { FileButton } from './FileButton'
+export type { FileButtonProps } from './FileButton'
+export { Fieldset } from './Fieldset'
+export type { FieldsetProps } from './Fieldset'
+export { SubHeading } from './SubHeading'
+export type { SubHeadingProps } from './SubHeading'

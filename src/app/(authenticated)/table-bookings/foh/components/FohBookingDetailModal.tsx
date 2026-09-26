@@ -105,7 +105,6 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
       open={Boolean(selectedBookingContext)}
       onClose={onClose}
       title="Booking details"
-      description={`${selectedBooking.booking_reference || selectedBooking.id.slice(0, 8)} · ${getBookingVisualLabel(selectedBooking)}`}
       size="md"
     >
       <div className="space-y-4">

@@ -3,6 +3,17 @@
 import { useId } from 'react'
 import { cn } from '@/lib/utils'
 
+// Touch screens (pointer: coarse): the label grows to the 44px touch target, 13px of padding
+// above and below one 18px line of text-ui, so callers never need their own <label> around
+// the control to make it easier to tap. The box column takes the same padding, so the box
+// stays level with the first line of the label whatever the row's alignment, and the real
+// input stretches over that column too. A mouse sees the compact layout unchanged.
+// Each class is written out in full so Tailwind can find it.
+const TOUCH_LABEL = 'pointer-coarse:py-[calc((var(--spacing-touch)_-_var(--text-ui--line-height))/2)]'
+const TOUCH_BOX_COLUMN = 'pointer-coarse:box-content pointer-coarse:py-[calc((var(--spacing-touch)_-_var(--text-ui--line-height))/2)]'
+const TOUCH_BOX_INPUT = 'pointer-coarse:h-full'
+const TOUCH_BOX_FACE = 'pointer-coarse:inset-y-[calc((var(--spacing-touch)_-_var(--text-ui--line-height))/2)]'
+
 interface RadioProps {
   label: string
   description?: string
@@ -32,7 +43,7 @@ export function Radio({
 
   return (
     <div className={cn('flex gap-3 items-start', className)}>
-      <div className="relative mt-0.5 h-4 w-4 shrink-0">
+      <div className={cn('relative mt-0.5 h-4 w-4 shrink-0', TOUCH_BOX_COLUMN)}>
         <input
           id={id}
           type="radio"
@@ -44,12 +55,16 @@ export function Radio({
           onChange={(event) => {
             if (event.target.checked) onChange?.(value)
           }}
-          className="peer absolute inset-0 z-10 h-4 w-4 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+          className={cn(
+            'peer absolute inset-0 z-10 h-4 w-4 cursor-pointer opacity-0 disabled:cursor-not-allowed',
+            TOUCH_BOX_INPUT
+          )}
         />
         <span
           aria-hidden="true"
           className={cn(
             'absolute inset-0 rounded-full border-2 transition-[background,border-color,box-shadow] duration-[120ms]',
+            TOUCH_BOX_FACE,
             // The real input is invisible, so the focus pattern is drawn on this circle.
             'peer-focus-visible:outline-hidden peer-focus-visible:shadow-ring',
             checked ? 'border-primary' : 'border-border-strong bg-surface',
@@ -69,6 +84,7 @@ export function Radio({
           htmlFor={id}
           className={cn(
             'text-ui text-text cursor-pointer',
+            TOUCH_LABEL,
             disabled && 'cursor-not-allowed opacity-50'
           )}
         >
