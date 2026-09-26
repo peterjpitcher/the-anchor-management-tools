@@ -8,6 +8,7 @@ import { Button, IconButton, Textarea } from '@/ds';
 import { acceptPortalShift, rejectPortalShift, type ShiftAcceptanceStatus } from '@/app/actions/rota';
 import { rotaShiftStatusClasses } from '@/lib/rota/status-ui';
 import { validateShiftRejectionReason } from '@/lib/rota/shift-rejection-validation';
+import { formatDateTimeInLondon } from '@/lib/dateUtils';
 
 type Props = {
   shiftId: string;
@@ -19,7 +20,7 @@ type Props = {
 
 function formatDateTime(value: string | null): string | null {
   if (!value) return null;
-  return new Date(value).toLocaleString('en-GB', {
+  return formatDateTimeInLondon(value, {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',

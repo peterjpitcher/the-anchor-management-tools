@@ -1,4 +1,4 @@
-import { formatDate } from '@/lib/dateUtils'
+import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 import { Event } from '@/types/database'
 
 type EventWithDate = Pick<Event, 'id' | 'name' | 'date'>
@@ -52,7 +52,7 @@ function addDays(dateString: string, offsetDays: number): string {
 export function buildEventChecklist(
   event: EventWithDate,
   statuses: EventChecklistStatusRecord[] = [],
-  todayIso: string = new Date().toISOString().split('T')[0]
+  todayIso: string = getTodayIsoDate()
 ): EventChecklistItem[] {
   const statusMap = new Map<string, EventChecklistStatusRecord>()
   statuses.forEach((status) => {
@@ -98,7 +98,7 @@ export interface ChecklistTodoItem extends EventChecklistItem {
 export function getOutstandingTodos(
   event: EventWithDate,
   statuses: EventChecklistStatusRecord[] = [],
-  todayIso: string = new Date().toISOString().split('T')[0]
+  todayIso: string = getTodayIsoDate()
 ): ChecklistTodoItem[] {
   return buildEventChecklist(event, statuses, todayIso)
     .filter(item => !item.completed)

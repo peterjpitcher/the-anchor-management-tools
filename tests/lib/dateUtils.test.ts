@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDateDdMmmmYyyy, formatDateInLondon } from '@/lib/dateUtils'
+import { formatDateDdMmmmYyyy, formatDateInLondon, formatDateTimeInLondon } from '@/lib/dateUtils'
 
 describe('formatDateInLondon', () => {
   it('returns the London calendar date even when another timezone would shift the day', () => {
@@ -36,5 +36,42 @@ describe('formatDateInLondon', () => {
 describe('formatDateDdMmmmYyyy', () => {
   it('formats dates as dd mmmm yyyy', () => {
     expect(formatDateDdMmmmYyyy('2024-01-05')).toBe('05 January 2024')
+  })
+})
+
+describe('formatDateTimeInLondon', () => {
+  // 23:30 UTC on 1 October 2026 is 00:30 on 2 October in London (BST), so a host-zone
+  // formatter run on the UTC server gets both the day and the hour wrong.
+  const lateNightUtc = '2026-10-01T23:30:00Z'
+
+  it('reads the London clock whatever zone the host is in', () => {
+    expect(
+      formatDateTimeInLondon(lateNightUtc, {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    ).toBe('2 Oct, 00:30')
+  })
+
+  it('takes time-only options and gives only the time', () => {
+    expect(formatDateTimeInLondon(new Date(lateNightUtc), { hour: '2-digit', minute: '2-digit' })).toBe('00:30')
+  })
+
+  it('takes dateStyle and timeStyle, which formatDateInLondon cannot', () => {
+    expect(formatDateTimeInLondon(lateNightUtc, { dateStyle: 'medium', timeStyle: 'short' })).toBe('2 Oct 2026, 00:30')
+  })
+
+  it('never lets a caller override the zone', () => {
+    expect(
+      formatDateTimeInLondon(lateNightUtc, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
+    ).toBe('00:30')
+  })
+
+  it('honours another locale', () => {
+    expect(
+      formatDateTimeInLondon(lateNightUtc, { hour: 'numeric', minute: '2-digit', hour12: true }, 'en-US')
+    ).toBe('12:30 AM')
   })
 })

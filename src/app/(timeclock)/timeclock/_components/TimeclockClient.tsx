@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { clockIn, clockOut } from '@/app/actions/timeclock'
 import { Avatar, Button } from '@/ds'
 import { disambiguatedNames } from '@/lib/employees/display-name'
+import { formatDateInLondon, formatDateTimeInLondon } from '@/lib/dateUtils'
 
 interface Employee {
   employee_id: string
@@ -45,7 +46,7 @@ function buildNameMap(employees: Employee[]): Map<string, string> {
 }
 
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return formatDateTimeInLondon(iso, { hour: '2-digit', minute: '2-digit' })
 }
 
 export default function TimeclockClient({ employees, openSessions: initialSessions }: TimeclockClientProps) {
@@ -67,8 +68,8 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
   useEffect(() => {
     function updateClock() {
       const now = new Date()
-      setCurrentTime(now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
-      setCurrentDate(now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
+      setCurrentTime(formatDateTimeInLondon(now, { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+      setCurrentDate(formatDateInLondon(now, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
     }
     updateClock()
     const interval = setInterval(updateClock, 1000)

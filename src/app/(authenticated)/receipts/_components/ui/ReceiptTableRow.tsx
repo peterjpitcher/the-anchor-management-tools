@@ -27,6 +27,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { formatCurrency, formatDate, statusLabels, statusTone } from '@/app/(authenticated)/receipts/utils'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 import { RECEIPT_UPLOAD_ACCEPT, receiptUploadErrorMessage, uploadReceiptFile } from './receiptUploadClient'
 
 // Re-defined here or imported? Imported `ReceiptWorkspaceData` in parent, but here we just need the type.
@@ -254,7 +255,7 @@ export function ReceiptTableRow({
   async function saveNote() {
     if (!canManageReceipts) return
     const trimmed = noteDraft.trim()
-    const timestamp = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    const timestamp = formatDateTimeInLondon(new Date(), { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
     const formatted = trimmed.length ? `${timestamp} — ${trimmed}` : ''
 
     if ((transaction.notes ?? '') === formatted) {

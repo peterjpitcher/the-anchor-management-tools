@@ -29,7 +29,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { Badge, Button, Card, CardBody, CardHeader } from '@/ds';
-import { formatTime12Hour } from '@/lib/dateUtils';
+import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils';
 import { moveShift, autoPopulateWeekFromTemplates, upsertRotaSalesTargetOverride } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
@@ -1108,7 +1108,7 @@ export default function RotaGrid({
                 <SummaryPill
                   label="Status"
                   value={weekStatusLabel}
-                  detail={week.published_at ? new Date(week.published_at).toLocaleDateString('en-GB') : undefined}
+                  detail={week.published_at ? formatDateInLondon(week.published_at) : undefined}
                   tone={weekStatusTone}
                 />
                 <SummaryPill

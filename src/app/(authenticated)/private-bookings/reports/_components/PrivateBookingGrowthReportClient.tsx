@@ -23,6 +23,7 @@ import {
   resolvePrivateBookingRangeStartYear,
   type PrivateBookingGrowthRange,
 } from '@/lib/analytics/private-booking-growth-model'
+import { formatDateTimeInLondon } from '@/lib/dateUtils'
 
 type Granularity = 'year' | 'month'
 
@@ -153,10 +154,10 @@ export default function PrivateBookingGrowthReportClient({ snapshot }: {
   const busiestYear = [...annualSeries].sort((a, b) => b.bookings - a.bookings || b.year - a.year)[0]
   const hasFilters = range !== 'all' || occasion !== 'all'
 
-  const generatedAt = new Intl.DateTimeFormat('en-GB', {
+  const generatedAt = formatDateTimeInLondon(snapshot.generatedAt, {
     dateStyle: 'medium',
     timeStyle: 'short',
-  }).format(new Date(snapshot.generatedAt))
+  })
 
   return (
     <div className="space-y-5">
