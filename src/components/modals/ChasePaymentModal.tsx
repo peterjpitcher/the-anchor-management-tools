@@ -12,6 +12,7 @@ import { Alert } from '@/ds'
 import { Send, Clock, AlertTriangle } from 'lucide-react'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
+import { formatDateInLondon, formatDateTimeInLondon } from '@/lib/dateUtils'
 
 interface ChasePaymentModalProps {
   invoice: InvoiceWithDetails
@@ -186,7 +187,7 @@ P.S. I've attached a copy of the invoice for your reference.`
           <Alert 
             variant="warning" 
             title="Recent Reminder Sent"
-            description={`A payment reminder was already sent on ${new Date(lastChaseDate).toLocaleDateString('en-GB')} at ${new Date(lastChaseDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}. Sending another one so soon might be aggressive.`}
+            description={`A payment reminder was already sent on ${formatDateInLondon(lastChaseDate)} at ${formatDateTimeInLondon(lastChaseDate, { hour: '2-digit', minute: '2-digit' })}. Sending another one so soon might be aggressive.`}
             className="mb-4"
           />
         )}
