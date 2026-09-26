@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { Card, CardHeader, CardBody, Checkbox, ProgressBar, Badge } from '@/ds'
 import { toggleEventChecklistTask } from '@/app/actions/event-checklist'
 import type { ChecklistTodoItem } from '@/lib/event-checklist'
+import { formatDateInLondon } from '@/lib/dateUtils'
 
 interface TodoClientProps {
   initialTodos: ChecklistTodoItem[]
@@ -78,7 +79,7 @@ export default function TodoClient({ initialTodos }: TodoClientProps) {
               title={group.eventName}
               action={
                 <div className="flex items-center gap-2">
-                  <Badge tone="neutral">{group.eventDate}</Badge>
+                  <Badge tone="neutral">{formatDateInLondon(group.eventDate, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</Badge>
                   <span className="text-xs text-text-muted">
                     {completed}/{total} complete
                   </span>
