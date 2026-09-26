@@ -19,7 +19,7 @@ The FOH manager iPad kiosk (`/table-bookings/foh` signed in as the manager kiosk
 ### Page chrome
 
 - Every page renders `PageLayout` once, as its outermost element. **(guard)** `PageHeader` is retired.
-- `title`: the section name on section pages ("Invoices", "Rota"), the record name on detail pages (the customer, the invoice number). The same title while loading, on error and when loaded: build one `layoutProps` object and spread it into every state. On a detail page with tabs, every tab shows the same title.
+- `title`: a page that has its own sidebar entry is titled with its sidebar label ("Invoices", "Quotes", "Rota"). Every other page in a tab row is titled with the label of the sidebar entry that owns the row ("Rota" on every Rota tab, "Private Bookings" on Calendar and SMS Queue), and its subtitle may name the tab. A detail page is titled with the record's name (the customer, the invoice number); a new or edit page with its action ("New Invoice", "Edit Role"); a page opened from a Settings tile with the tile's label. The same title while loading, on error and when loaded: build one `layoutProps` object and spread it into every state. On a detail page with tabs, every tab shows the same title.
 - Capitalisation on staff screens: Title Case for page, section, card and dialog titles, tab labels, back labels and button labels ("New Invoice", "Back to Roles", "Save Changes"). Sentence case for subtitles, descriptions, help text, messages and table cells. Field labels and table headers are uppercased by the components. Guest pages follow the website's voice rules instead.
 - `subtitle`: optional, one short line, sentence case, no full stop. On a tab page it names the tab or says what the page is for.
 - Never pass spacing classes to `PageLayout` (`className`, `headerClassName`, `contentClassName`) and never wrap it in padding, `max-w-*`, `mx-auto` or `min-h-screen`. **(guard)** The only `<main>` is the app shell's. **(guard)**
@@ -28,7 +28,8 @@ The FOH manager iPad kiosk (`/table-bookings/foh` signed in as the manager kiosk
 ### Navigation
 
 - A section with more than one page has one nav constant in `<section>/_shared/nav.ts` (for example `FINANCE_NAV`, `EMPLOYEES_NAV`), passed as `navItems` on every page in that tab row. Never copy the array into a page. **(guard: no `SectionNav` outside `src/ds`)**
-- The active tab comes from the path (longest matching prefix). A page that sits under a tab but is not itself in the list (a detail page) sets `active: true` on its parent tab.
+- The active tab comes from the path (longest matching prefix). Every page in a tab row shows exactly the same tabs: filter by permission the same way on every page, and show badges on every page or on none.
+- Child pages (detail, new, edit) do not show their section's tab row: they show the back button. A record with several views of its own (a private booking's Overview, Items, Messages and Communications) has its own tab row, shown on each of those views together with the back button. A sub-area with its own tab row (Private Bookings Settings) works the same way.
 - `Tabs` switch panels inside one page. `Segmented` switches the view of the same data (list or calendar, 7 or 30 days). Never use a nav component with `onSelect` to switch panels.
 - A page shows at most one tab row.
 - Back navigation: `backButton` on every page below its section's top level: detail pages and their tabs, new and edit pages, sub-areas with their own tab row (Private Bookings Settings), and the pages you drill into from Settings. It is labelled "Back to <Parent>" and points at the direct parent. No back button on a section's top-level pages, whether or not they have a tab row. No breadcrumbs anywhere. **(guard)**
