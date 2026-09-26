@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Drawer, FormFooter, SHELL_MEDIA_QUERY } from '@/ds';
 import { Card, CardBody, CardHeader } from '@/ds';
-import { Field } from '@/ds';
+import { Field, Fieldset } from '@/ds';
 import { Input } from '@/ds';
 import { Select } from '@/ds';
 import { Textarea } from '@/ds';
@@ -465,6 +465,7 @@ export function IngredientDrawer({
   // ---- Drawer header ----
 
   const drawerTitle = isEditing ? (ingredient?.name ?? 'Edit Ingredient') : 'New Ingredient';
+  const drawerDescription = isEditing ? undefined : 'Add a new ingredient to the catalogue';
 
   // ---- Render ----
 
@@ -475,6 +476,7 @@ export function IngredientDrawer({
         onClose={requestClose}
         size={isMobile ? 'full' : 'lg'}
         title={drawerTitle}
+        description={drawerDescription}
         footer={
           <FormFooter
             className="w-full"
@@ -484,6 +486,7 @@ export function IngredientDrawer({
                   <PriceHistoryPopover
                     ingredientId={ingredient.id}
                     ingredientName={ingredient.name}
+                    placement="top-start"
                     trigger={
                       <Button type="button" variant="ghost" size="sm">
                         Price History
@@ -794,8 +797,8 @@ export function IngredientDrawer({
             <CardHeader title="Allergens & Dietary" subtitle="Tags flow through to every dish that uses the ingredient" />
             <CardBody className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field
-                  label="Allergens"
+                <Fieldset
+                  legend="Allergens"
                   hint="Tick every allergen present in the supplied product."
                 >
                   <div className="space-y-2">
@@ -820,9 +823,9 @@ export function IngredientDrawer({
                       </Alert>
                     )}
                   </div>
-                </Field>
-                <Field
-                  label="Dietary Flags"
+                </Fieldset>
+                <Fieldset
+                  legend="Dietary Flags"
                   hint="Tick how the ingredient should be treated on customer menus."
                 >
                   <div className="space-y-2">
@@ -847,7 +850,7 @@ export function IngredientDrawer({
                       </Alert>
                     )}
                   </div>
-                </Field>
+                </Fieldset>
               </div>
             </CardBody>
           </Card>

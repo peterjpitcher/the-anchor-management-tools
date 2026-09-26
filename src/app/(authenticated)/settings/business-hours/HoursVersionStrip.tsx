@@ -109,13 +109,12 @@ export function HoursVersionStrip({
 
   return (
     <CardBody className="space-y-3 border-b border-border">
-      <div role="group" aria-label="Opening-hours schedules">
-        <Tabs
-          tabs={shownVersions.map(version => ({ id: version.id, label: tabLabel(version) }))}
-          activeTab={selectedId ?? ''}
-          onTabChange={onSelect}
-        />
-      </div>
+      <Tabs
+        aria-label="Opening-hours schedules"
+        tabs={shownVersions.map(version => ({ id: version.id, label: tabLabel(version) }))}
+        activeTab={selectedId ?? ''}
+        onTabChange={onSelect}
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         {canManage && (
@@ -204,7 +203,7 @@ export function HoursVersionStrip({
               onChange={e => setNewDate(e.target.value)}
             />
           </Field>
-          <Field label="Name (optional)" help="Something to recognise it by, for example: autumn hours">
+          <Field label="Name (optional)" hint="Something to recognise it by, for example: autumn hours">
             <Input value={newLabel} onChange={e => setNewLabel(e.target.value)} maxLength={80} />
           </Field>
           <FormFooter>
@@ -226,7 +225,7 @@ export function HoursVersionStrip({
           if (confirming.kind === 'publish') handlePublish(confirming.version)
           else handleWithdraw(confirming.version)
         }}
-        tone={confirming?.kind === 'publish' ? 'warning' : 'danger'}
+        tone={confirming?.kind === 'publish' ? 'primary' : 'danger'}
         title={confirming?.kind === 'publish' ? 'Publish Schedule' : 'Withdraw Schedule'}
         confirmLabel={confirming?.kind === 'publish' ? 'Publish' : 'Withdraw'}
         message={

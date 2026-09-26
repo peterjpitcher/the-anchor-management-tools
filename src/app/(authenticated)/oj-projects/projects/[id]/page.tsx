@@ -20,7 +20,7 @@ export default async function OJProjectDetailPage({ params }: PageProps): Promis
   ])
 
   // Without the project there is no name to show, so the header says "Project" and keeps the
-  // tabs and the way back.
+  // way back.
   if (projectRes.error || !projectRes.project) {
     return (
       <PageLayout {...ojProjectDetailLayout('Project')}>

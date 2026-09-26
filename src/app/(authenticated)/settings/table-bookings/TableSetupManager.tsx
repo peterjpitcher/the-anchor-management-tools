@@ -11,7 +11,7 @@ import {
   Checkbox,
   ConfirmDialog,
   Empty,
-  Field,
+  Fieldset,
   FormFooter,
   Icon,
   Input,
@@ -1039,7 +1039,8 @@ export function TableSetupManager() {
                           placeholder="Main Bar"
                         />
 
-                        {/* Sits level with the fields beside it: bottom of the row, field height. */}
+                        {/* Sits level with the fields beside it: bottom of the row, at least the
+                            field's height. A minimum, so the 44px touch label is never squeezed. */}
                         <div className="flex items-end">
                           <Checkbox
                             label="Bookable"
@@ -1050,7 +1051,7 @@ export function TableSetupManager() {
                                 [table.id]: { ...current[table.id], is_bookable: checked }
                               }))
                             }
-                            className="h-input-h items-center"
+                            className="min-h-input-h items-center"
                           />
                         </div>
                       </div>
@@ -1119,7 +1120,7 @@ export function TableSetupManager() {
                   label="Bookable"
                   checked={newTable.is_bookable}
                   onChange={(checked) => setNewTable((c) => ({ ...c, is_bookable: checked }))}
-                  className="h-input-h items-center"
+                  className="min-h-input-h items-center"
                 />
               </div>
 
@@ -1181,13 +1182,13 @@ export function TableSetupManager() {
                     className="max-w-xs"
                   />
 
-                  <Field label="Tables in this group">
+                  <Fieldset legend="Tables in this group">
                     {loading ? (
                       <PageLoading inline label="Loading tables" />
                     ) : setupLoadError ? (
                       <Alert tone="danger" size="sm">Could not load the tables: {setupLoadError}</Alert>
                     ) : (
-                      <div role="group" aria-label="Tables in this group" className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+                      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
                         {sortedTables.map((table) => {
                           const checked = editingGroup.table_ids.includes(table.id)
                           return (
@@ -1213,7 +1214,7 @@ export function TableSetupManager() {
                         })}
                       </div>
                     )}
-                  </Field>
+                  </Fieldset>
 
                   <FormFooter>
                     <Button
@@ -1338,29 +1339,37 @@ export function TableSetupManager() {
           ) : (
             <div className="divide-y divide-border border-t border-border">
               {sortedVenueSpaces.map((space) => (
+                // The padding sits on a wrapper: a fieldset's legend straddles its top edge, so
+                // padding on the fieldset itself would land under the legend, not above it.
                 <div key={space.id} className="px-pad-card py-3">
-                  <div className="mb-2 flex items-center gap-2">
-                    <p className="text-sm font-medium text-text">{space.name}</p>
-                    {!space.active && (
-                      <Badge tone={activeStateTone(false)} size="sm">
-                        Inactive
-                      </Badge>
-                    )}
-                  </div>
-                  <div role="group" aria-label={`Table areas for ${space.name}`} className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                    {sortedAreas.map((area) => {
-                      const key = spaceAreaKey(space.id, area.id)
-                      return (
-                        <Checkbox
-                          key={key}
-                          label={area.name}
-                          checked={spaceAreaLinkKeys.has(key)}
-                          onChange={() => toggleSpaceAreaLink(space.id, area.id)}
-                          className="rounded-default border border-border bg-surface px-2.5 py-1.5"
-                        />
-                      )
-                    })}
-                  </div>
+                  <Fieldset
+                    legend={
+                      <span className="inline-flex items-center gap-2">
+                        {space.name}
+                        {!space.active && (
+                          // The legend is uppercased like a field label; the badge keeps its own case.
+                          <Badge tone={activeStateTone(false)} size="sm" className="normal-case tracking-normal">
+                            Inactive
+                          </Badge>
+                        )}
+                      </span>
+                    }
+                  >
+                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                      {sortedAreas.map((area) => {
+                        const key = spaceAreaKey(space.id, area.id)
+                        return (
+                          <Checkbox
+                            key={key}
+                            label={area.name}
+                            checked={spaceAreaLinkKeys.has(key)}
+                            onChange={() => toggleSpaceAreaLink(space.id, area.id)}
+                            className="rounded-default border border-border bg-surface px-2.5 py-1.5"
+                          />
+                        )
+                      })}
+                    </div>
+                  </Fieldset>
                 </div>
               ))}
             </div>

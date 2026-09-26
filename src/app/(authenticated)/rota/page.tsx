@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { PageLayout, Icon, LinkButton } from '@/ds';
 import RotaFeedButton from './RotaFeedButton';
-import { DownloadLink } from './_shared/DownloadLink';
 import { PartialLoadAlert } from './_shared/PartialLoadAlert';
 import {
   getOrCreateRotaWeek,
@@ -23,12 +22,10 @@ import { getRotaWeekDayInfo } from '@/app/actions/rota-day-info';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import RotaGrid from './RotaGrid';
 import RotaPublishStatus from './RotaPublishStatus';
-import { buildRotaNavItems } from './nav';
-import { getUnfilledShiftCount } from '@/app/actions/rota-reassign';
+import { getRotaNavItems } from './_shared/nav';
 import { getRotaOpeningExceptions } from '@/lib/rota/opening-exceptions-query';
-import type { PublishedShiftSnapshot, RotaPublishShift } from '@/lib/rota/publish-status';
-import { readinessWeekFromRow, summariseRotaReadiness } from '@/lib/rota/week-readiness';
-import { getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils';
+import type { PublishedShiftSnapshot } from '@/lib/rota/publish-status';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 import { displayName } from '@/lib/employees/display-name';
 
 export const dynamic = 'force-dynamic';
@@ -48,115 +45,6 @@ function getMondayIsoOfWeek(isoDate: string): string {
   const diff = day === 0 ? -6 : 1 - day;
   d.setUTCDate(d.getUTCDate() + diff);
   return d.toISOString().split('T')[0];
-}
-
-/**
- * How far ahead publishing is judged for the section-nav badge. Four weeks is the
- * pub's planning horizon: far enough to catch a week left in draft behind a week
- * that has already gone out, near enough that a rota nobody has started yet does
- * not sit there as permanent noise.
- */
-const READINESS_HORIZON_WEEKS = 4;
-
-const READINESS_LIVE_SHIFT_COLUMNS =
-  'id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, reassignment_reason';
-
-const READINESS_PUBLISHED_SHIFT_COLUMNS =
-  'id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name';
-
-type ReadinessPublishedRow = PublishedShiftSnapshot & { week_id: string };
-
-/**
- * Weeks inside the horizon carrying shifts staff cannot see yet, for the Rota nav
- * badge. It diffs live shifts against the published snapshot through the shared
- * readiness model rather than trusting `has_unpublished_changes`, which is written
- * in a second unchecked call and is blind to a draft or missing week.
- *
- * The badge counts only weeks with unseen or ghost shifts, not every week that is
- * not yet published: an empty future week is not work anybody can clear, and the
- * badge has to mean the same thing as the Reassign one.
- */
-async function countWeeksNeedingPublishing(
-  admin: ReturnType<typeof createAdminClient>,
-  firstWeekStart: string,
-): Promise<number> {
-  const weekStarts = Array.from({ length: READINESS_HORIZON_WEEKS }, (_, index) =>
-    shiftIsoDate(firstWeekStart, index * 7),
-  ).filter((value): value is string => Boolean(value));
-  if (weekStarts.length === 0) return 0;
-
-  const lastWeekStart = weekStarts[weekStarts.length - 1];
-  const horizonEnd = shiftIsoDate(lastWeekStart, 6) ?? lastWeekStart;
-
-  const [weeksQuery, liveShiftsQuery] = await Promise.all([
-    admin
-      .from('rota_weeks')
-      .select('id, week_start, status, published_at')
-      .gte('week_start', weekStarts[0])
-      .lte('week_start', lastWeekStart),
-    admin
-      .from('rota_shifts')
-      .select(READINESS_LIVE_SHIFT_COLUMNS)
-      .gte('shift_date', weekStarts[0])
-      .lte('shift_date', horizonEnd),
-  ]);
-
-  // A badge is not a place to fail visibly, so a broken read shows nothing and
-  // says so in the logs. The Sunday manager alert is what has to shout.
-  if (weeksQuery.error || liveShiftsQuery.error) {
-    console.error(
-      '[rota] Could not work out which weeks still need publishing:',
-      weeksQuery.error?.message ?? liveShiftsQuery.error?.message,
-    );
-    return 0;
-  }
-
-  const weekRows = (weeksQuery.data ?? []) as { id: string; week_start: string; status: string | null; published_at: string | null }[];
-  const weekIds = weekRows.map(row => row.id);
-
-  let publishedRows: ReadinessPublishedRow[] = [];
-  if (weekIds.length > 0) {
-    const publishedQuery = await admin
-      .from('rota_published_shifts')
-      .select(READINESS_PUBLISHED_SHIFT_COLUMNS)
-      .in('week_id', weekIds);
-    if (publishedQuery.error) {
-      console.error('[rota] Could not read the published rota snapshot:', publishedQuery.error.message);
-      return 0;
-    }
-    publishedRows = (publishedQuery.data ?? []) as ReadinessPublishedRow[];
-  }
-
-  const weekRowByStart = new Map(weekRows.map(row => [row.week_start, row]));
-  const weekStartById = new Map(weekRows.map(row => [row.id, row.week_start]));
-
-  const liveByWeek = new Map<string, RotaPublishShift[]>();
-  ((liveShiftsQuery.data ?? []) as RotaPublishShift[]).forEach(shift => {
-    const key = getMondayIsoOfWeek(shift.shift_date);
-    const bucket = liveByWeek.get(key);
-    if (bucket) bucket.push(shift);
-    else liveByWeek.set(key, [shift]);
-  });
-
-  const publishedByWeek = new Map<string, PublishedShiftSnapshot[]>();
-  publishedRows.forEach(({ week_id: weekId, ...snapshot }) => {
-    const key = weekStartById.get(weekId);
-    if (!key) return;
-    const bucket = publishedByWeek.get(key);
-    if (bucket) bucket.push(snapshot);
-    else publishedByWeek.set(key, [snapshot]);
-  });
-
-  const summary = summariseRotaReadiness(
-    weekStarts.map(startDate => ({
-      week: readinessWeekFromRow(startDate, weekRowByStart.get(startDate) ?? null),
-      liveShifts: liveByWeek.get(startDate) ?? [],
-      publishedShifts: publishedByWeek.get(startDate) ?? [],
-    })),
-    READINESS_HORIZON_WEEKS,
-  );
-
-  return summary.byWeek.filter(readiness => readiness.unpublishedCount > 0 || readiness.removedCount > 0).length;
 }
 
 function formatWeekRange(start: string, end: string): string {
@@ -207,8 +95,6 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     canViewLeave,
     canCreateLeave,
     canEditLeave,
-    canViewTimeclock,
-    canViewPayroll,
   ] = await Promise.all([
     checkUserPermission('rota', 'view', user.id),
     checkUserPermission('rota', 'edit', user.id),
@@ -217,14 +103,8 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     checkUserPermission('leave', 'view', user.id),
     checkUserPermission('leave', 'create', user.id),
     checkUserPermission('leave', 'edit', user.id),
-    // Only needed to decide whether those tabs are worth showing: both pages
-    // redirect to `/` without their own permission.
-    checkUserPermission('timeclock', 'view', user.id),
-    checkUserPermission('payroll', 'view', user.id),
   ]);
   if (!canView) redirect('/');
-
-  const navPermissions = { canViewLeave, canViewTimeclock, canViewPayroll, canManageSettings };
 
   const resolvedParams = await Promise.resolve(searchParams ?? {});
   const weekParam = (resolvedParams as { week?: string })?.week;
@@ -254,6 +134,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     dayInfoResult,
     deptResult,
     openingExceptions,
+    navItems,
   ] = await Promise.all([
     getOrCreateRotaWeek(weekStart),
     getActiveEmployeesForRota(weekStart),
@@ -265,19 +146,21 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     // Opening-hours exceptions for the whole displayed week, fetched alongside
     // everything else rather than per day.
     getRotaOpeningExceptions(weekStart, weekEnd),
+    // The section tab row, badged the same on every rota page.
+    getRotaNavItems(),
   ]);
 
-  // One header for every state, so a failed load keeps the page's title and week.
+  // One header for every state, so a failed load keeps the page's title, week and tabs.
   const layoutProps = {
     title: 'Rota',
     subtitle: formatWeekRange(weekStart, weekEnd),
+    navItems,
   };
 
   if (!weekResult.success) {
     return (
       <PageLayout
         {...layoutProps}
-        navItems={buildRotaNavItems(0, navPermissions)}
         error={weekResult.error ?? 'Failed to load rota data. Please try again.'}
       />
     );
@@ -287,7 +170,6 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     return (
       <PageLayout
         {...layoutProps}
-        navItems={buildRotaNavItems(0, navPermissions)}
         error={shiftsResult.error ?? 'Failed to load shifts. Please try again.'}
       />
     );
@@ -436,34 +318,28 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   const feedToken = generateRotaFeedToken(user.id);
   const feedUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/rota/feed?token=${feedToken}&uid=${user.id}`;
 
-  // Both badge counts are section-wide, so they need their own queries rather than
-  // the week currently on screen. Publishing is judged from the current week
-  // forwards, never from the week being viewed.
-  const [unfilledShiftCount, weeksNeedingPublishing] = await Promise.all([
-    getUnfilledShiftCount(),
-    countWeeksNeedingPublishing(admin, getMondayIsoOfWeek(getTodayIsoDate())),
-  ]);
-
   return (
     <PageLayout
       {...layoutProps}
-      navItems={buildRotaNavItems(unfilledShiftCount, { ...navPermissions, weeksNeedingPublishing })}
       headerActions={
         <>
           <RotaFeedButton feedUrl={feedUrl} showCalendarSync={Boolean(process.env.GOOGLE_CALENDAR_ROTA_ID)} />
-          <LinkButton href="/rota/templates" size="sm" variant="secondary" icon={<Icon name="copy" size={16} />}>
-            Templates
-          </LinkButton>
+          {/* Shift Templates and Rota Settings are tabs, so only the settings outside the tab row sit here. */}
           {canManageSettings && (
             <>
-              <LinkButton href="/settings/rota" variant="secondary" size="sm" icon={<Icon name="cog" size={16} />}>Rota Settings</LinkButton>
               <LinkButton href="/settings/pay-bands" variant="secondary" size="sm" icon={<Icon name="cash" size={16} />}>Pay Bands</LinkButton>
               <LinkButton href="/settings/budgets" variant="secondary" size="sm" icon={<Icon name="barChart" size={16} />}>Budgets</LinkButton>
             </>
           )}
-          <DownloadLink href={`/api/rota/pdf?week=${weekStart}`} icon="printer" title="Download rota as PDF">
+          <LinkButton
+            href={`/api/rota/pdf?week=${weekStart}`}
+            download
+            size="sm"
+            variant="secondary"
+            icon={<Icon name="printer" size={16} />}
+          >
             Download PDF
-          </DownloadLink>
+          </LinkButton>
           {/* The week's publish status and, for publishers, the primary Publish action, last. */}
           <RotaPublishStatus week={week} shifts={shifts} publishedShifts={publishedShifts} canPublish={canPublish} />
         </>

@@ -191,8 +191,8 @@ export function WinBackCampaign() {
             ? `This will send an SMS to ${previewCount} opted-in customer${previewCount === 1 ? '' : 's'} who have not booked in the last ${inactiveMonths} months. This action cannot be undone.`
             : `This will send an SMS to all opted-in customers inactive for ${inactiveMonths}+ months. Run a preview first to see the count.`
         }
-        confirmText="Send Campaign"
-        type="warning"
+        confirmLabel="Send Campaign"
+        tone="primary"
       />
     </Card>
   )

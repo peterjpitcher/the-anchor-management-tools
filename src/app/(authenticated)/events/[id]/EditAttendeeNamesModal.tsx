@@ -73,6 +73,7 @@ export function EditAttendeeNamesModal({ booking, onClose, onSaved }: EditAttend
         if (!saving) onClose()
       }}
       title="Edit Ticket Names"
+      description="One name per ticket. Blanks are fine and will simply be left unnamed."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={saving}>
@@ -85,9 +86,6 @@ export function EditAttendeeNamesModal({ booking, onClose, onSaved }: EditAttend
       }
     >
       <div className="space-y-3">
-        <p className="text-sm text-text-muted">
-          One name per ticket. Blanks are fine and will simply be left unnamed.
-        </p>
         <div className="grid gap-2 sm:grid-cols-2">
           {Array.from({ length: seatCount }).map((_, index) => (
             <Input

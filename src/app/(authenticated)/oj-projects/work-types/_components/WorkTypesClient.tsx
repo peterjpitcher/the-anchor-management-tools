@@ -307,7 +307,7 @@ export function WorkTypesClient({ initialWorkTypes, loadError }: WorkTypesClient
         title="Disable Work Type"
         message="This work type will be deactivated. Existing entries will keep their work type label."
         confirmLabel="Disable"
-        tone="danger"
+        tone="primary"
       />
     </PageLayout>
   )

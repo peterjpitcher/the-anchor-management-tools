@@ -64,7 +64,7 @@ export default function RoleCard({ role, onEditPermissions, canManage }: RoleCar
             onClick={onEditPermissions}
             variant="secondary"
             size="sm"
-            leftIcon={<Icon name="shieldCheck" size={16} />}
+            icon={<Icon name="shieldCheck" size={16} />}
           >
             {canManage ? 'Permissions' : 'View Permissions'}
           </Button>

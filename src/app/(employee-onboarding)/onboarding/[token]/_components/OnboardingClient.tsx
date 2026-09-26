@@ -238,16 +238,13 @@ function OnboardingFlow({
 
   return (
     <StandaloneShell label="Employee Onboarding" width="wide">
-      <StandalonePageHeader
-        title={currentStep?.title ?? ''}
-        subtitle={`Step ${currentStepIndex + 1} of ${visibleSteps.length}`}
-      />
+      <StandalonePageHeader title={currentStep?.title ?? ''} />
 
+      {/* The Stepper is the rail of every step beside the form on a wide screen, and one line
+          ("Step 2 of 8" with a bar) above the form on a phone, so it carries the step count at
+          every width and the header does not repeat it. */}
       <div className="grid gap-6 shell:grid-cols-[16rem_minmax(0,1fr)]">
-        {/* The step rail is for a wide screen. A phone has the step count under the title. */}
-        <div className="hidden shell:block">
-          <Stepper steps={stepperSteps} />
-        </div>
+        <Stepper steps={stepperSteps} />
 
         <Card>
           <CardBody>{renderStepContent()}</CardBody>

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import QuotesClient from '@/app/(authenticated)/quotes/_components/QuotesClient'
 
@@ -7,13 +7,14 @@ import QuotesClient from '@/app/(authenticated)/quotes/_components/QuotesClient'
  * empty table card.
  */
 
+const routerPush = vi.hoisted(() => vi.fn())
 const quoteActions = vi.hoisted(() => ({
   getQuotes: vi.fn(),
   getQuoteSummary: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: routerPush }),
   usePathname: () => '/quotes',
 }))
 
@@ -70,5 +71,60 @@ describe('QuotesClient', () => {
     expect(await screen.findByText('No quotes found')).toBeInTheDocument()
     const filterRow = screen.getByPlaceholderText('Search quotes...').closest('.flex-wrap') as HTMLElement
     expect(filterRow.nextElementSibling).toContainElement(screen.getByText('No quotes found'))
+  })
+
+  it('opens a quote from its phone row with the keyboard, but not from the Convert button inside it', async () => {
+    const quote = {
+      id: 'quote-1',
+      quote_number: 'Q-001',
+      vendor_id: 'vendor-1',
+      quote_date: '2026-09-01',
+      valid_until: '2026-10-01',
+      status: 'accepted' as const,
+      quote_discount_percentage: 0,
+      subtotal_amount: 100,
+      discount_amount: 0,
+      vat_amount: 20,
+      total_amount: 120,
+      created_at: '2026-09-01T00:00:00.000Z',
+      updated_at: '2026-09-01T00:00:00.000Z',
+    }
+    quoteActions.getQuotes.mockResolvedValue({ quotes: [quote] })
+
+    render(
+      <QuotesClient
+        initialQuotes={[quote]}
+        initialSummary={summary}
+        initialStatus="all"
+        initialError={null}
+        permissions={permissions}
+      />,
+    )
+
+    const row = (await screen.findAllByRole('button', { name: /Q-001/ }))[0]
+    fireEvent.keyDown(row, { key: 'Enter' })
+    expect(routerPush).toHaveBeenCalledWith('/quotes/quote-1')
+
+    routerPush.mockClear()
+    const convertInRow = Array.from(row.querySelectorAll('button')).find((button) => button.textContent === 'Convert')
+    expect(convertInRow).toBeDefined()
+    fireEvent.keyDown(convertInRow as HTMLElement, { key: 'Enter' })
+    expect(routerPush).not.toHaveBeenCalledWith('/quotes/quote-1')
+  })
+
+  it('names the search box for screen readers', () => {
+    quoteActions.getQuotes.mockResolvedValue({ quotes: [] })
+
+    render(
+      <QuotesClient
+        initialQuotes={[]}
+        initialSummary={summary}
+        initialStatus="all"
+        initialError={null}
+        permissions={permissions}
+      />,
+    )
+
+    expect(screen.getByRole('textbox', { name: 'Search quotes by number, client or reference' })).toBeInTheDocument()
   })
 })

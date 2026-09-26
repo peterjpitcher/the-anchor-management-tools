@@ -86,7 +86,7 @@ export default function NewPrivateBookingPage() {
 
     // A £0 deposit requires the GM waiver to be explicitly confirmed
     if (showDepositWaiver && !depositWaived) {
-      setError('A £0 deposit requires a General Manager waiver — please confirm the waiver')
+      setError('A £0 deposit requires a General Manager waiver: please confirm the waiver')
       setIsSubmitting(false)
       return
     }
@@ -125,7 +125,7 @@ export default function NewPrivateBookingPage() {
 
   return (
     <PageLayout
-      title="New Private Booking"
+      title="New Booking"
       subtitle="Create a new venue hire booking"
       backButton={PB_BACK_TO_LIST}
       containerSize="md"
@@ -409,7 +409,7 @@ export default function NewPrivateBookingPage() {
                   value="true"
                   checked={depositWaived}
                   onChange={(checked) => setDepositWaived(checked)}
-                  label="Deposit waived (GM approved — venue-hosted/internal event)"
+                  label="Deposit waived (GM approved: venue-hosted/internal event)"
                 />
                 <Field label="Reason for waiving the deposit">
                   <Input

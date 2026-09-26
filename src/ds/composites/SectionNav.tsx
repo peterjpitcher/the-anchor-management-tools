@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 /* ------------------------------------------------------------------ */
-/*  SectionNav — horizontal tab strip for sub-page navigation         */
+/*  SectionNav: horizontal tab strip for sub-page navigation          */
 /* ------------------------------------------------------------------ */
 
 interface SectionNavItem {

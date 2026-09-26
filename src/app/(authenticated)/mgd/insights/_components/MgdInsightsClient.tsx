@@ -2,8 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardBody, CardHeader, Empty, PageLayout, Segmented, Stat, StatGrid } from '@/ds'
-import { BarChart } from '@/components/charts/BarChart'
+import { BarChart, Card, CardBody, CardHeader, Empty, PageLayout, Segmented, Stat, StatGrid } from '@/ds'
 import type { MgdInsightsData, MgdGranularity } from '@/app/actions/mgd'
 import { MGD_INSIGHTS_LAYOUT } from '../../_shared/nav'
 
@@ -70,6 +69,7 @@ export function MgdInsightsClient({ initialData }: MgdInsightsClientProps): Reac
           value={granularity}
           onChange={handlePeriodChange}
           size="sm"
+          aria-label="Period"
         />
       }
     >
@@ -98,6 +98,8 @@ export function MgdInsightsClient({ initialData }: MgdInsightsClientProps): Reac
               color="var(--color-chart-1)"
               formatType="shorthandCurrency"
               onBarClick={handleBarClick}
+              seriesLabel="Net takings"
+              ariaLabel="Net takings over time"
             />
           ) : (
             <Empty size="sm" title="No collection data available" />

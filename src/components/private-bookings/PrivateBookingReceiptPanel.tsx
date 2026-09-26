@@ -9,6 +9,7 @@ import {
   CardHeader,
   Modal,
   PageLoading,
+  SubHeading,
   Table,
   TableBody,
   TableCell,
@@ -62,6 +63,7 @@ export function PrivateBookingReceiptPanel({ bookingId, canGenerate }: Props): R
         await load(); setNotice('Document saved. Download the stored version below, or send it to the booking contact.')
       })}>Generate {model?.kind === 'final_receipt' ? 'Final Receipt' : 'Statement'}</Button>}
     </>}>
+      {/* The dialog title is the h2, so the parts of the statement are h3 sub-headings. */}
       <div className="space-y-4">
         {error && <Alert tone="danger">{error}</Alert>}
         {notice && <Alert tone="success">{notice}</Alert>}
@@ -73,8 +75,8 @@ export function PrivateBookingReceiptPanel({ bookingId, canGenerate }: Props): R
             ['Refunds completed', model.totals.refunds], ['Applied to charges', model.totals.applied], ['Balance due', model.totals.balanceDue],
             ['Credit balance', model.totals.creditBalance], ['Deposit still held', model.totals.depositHeld],
           ] as const).map(([label, amount]) => <div className="contents" key={label}><dt>{label}</dt><dd className="text-right">{money(amount)}</dd></div>)}</dl>
-          {model.invoices.map(invoice => <div key={invoice.id} className="rounded-default border border-border p-3"><p className="font-semibold text-text-strong">{invoice.number} · {formatDateFull(invoice.date)}</p><ul className="mt-2 space-y-1 text-sm">{invoice.lines.map((line, index) => <li className="flex justify-between gap-3" key={index}><span>{line.description} × {line.quantity}</span><span>{money(line.gross)}</span></li>)}</ul></div>)}
-          <p className="font-semibold text-text-strong">Payments received</p>
+          {model.invoices.map(invoice => <div key={invoice.id} className="rounded-default border border-border p-3"><SubHeading as="h3">{invoice.number} · {formatDateFull(invoice.date)}</SubHeading><ul className="mt-2 space-y-1 text-sm">{invoice.lines.map((line, index) => <li className="flex justify-between gap-3" key={index}><span>{line.description} × {line.quantity}</span><span>{money(line.gross)}</span></li>)}</ul></div>)}
+          <SubHeading as="h3">Payments Received</SubHeading>
           <Table>
             <TableHeader>
               <TableRow>
@@ -95,9 +97,9 @@ export function PrivateBookingReceiptPanel({ bookingId, canGenerate }: Props): R
               ))}
             </TableBody>
           </Table>
-          {model.refunds.length > 0 && <div><p className="font-semibold text-text-strong">Refunds</p>{model.refunds.map(refund => <p key={refund.id} className="text-sm">{refund.date ? formatDateFull(refund.date) : 'Awaiting completion'} · {refund.purpose} · {money(refund.amount)} · {refund.status}</p>)}</div>}
+          {model.refunds.length > 0 && <div><SubHeading as="h3">Refunds</SubHeading>{model.refunds.map(refund => <p key={refund.id} className="text-sm">{refund.date ? formatDateFull(refund.date) : 'Awaiting completion'} · {refund.purpose} · {money(refund.amount)} · {refund.status}</p>)}</div>}
         </>}
-        {documents.length > 0 && <div className="space-y-2 border-t border-border pt-3"><p className="font-semibold text-text-strong">Stored documents</p>{documents.map(document => <div className="flex flex-wrap items-center justify-between gap-2" key={document.id}><a className="text-sm text-primary underline" href={document.url} target="_blank" rel="noreferrer">{document.kind === 'final_receipt' ? 'Final receipt' : 'Statement'} v{document.version} · {formatDateFull(document.generatedAt)}{document.superseded ? ' (superseded)' : ''}</a>{canGenerate && !document.superseded && <Button size="sm" variant="secondary" disabled={busy} onClick={() => setSendDocument(document)}>Send Document</Button>}</div>)}</div>}
+        {documents.length > 0 && <div className="space-y-2 border-t border-border pt-3"><SubHeading as="h3">Stored Documents</SubHeading>{documents.map(document => <div className="flex flex-wrap items-center justify-between gap-2" key={document.id}><a className="text-sm text-primary underline" href={document.url} target="_blank" rel="noreferrer">{document.kind === 'final_receipt' ? 'Final receipt' : 'Statement'} v{document.version} · {formatDateFull(document.generatedAt)}{document.superseded ? ' (superseded)' : ''}</a>{canGenerate && !document.superseded && <Button size="sm" variant="secondary" disabled={busy} onClick={() => setSendDocument(document)}>Send Document</Button>}</div>)}</div>}
         {sendDocument && <div className="space-y-3 rounded-default border border-border p-3"><p className="text-sm">Send {sendDocument.kind === 'final_receipt' ? 'final receipt' : 'statement'} v{sendDocument.version} to the booking contact?</p><div className="flex gap-2"><Button variant="secondary" disabled={busy} onClick={() => setSendDocument(null)}>Cancel</Button><Button variant="primary" disabled={busy} onClick={() => void act(async () => {
           const result = await sendPrivateBookingReceipt(bookingId, sendDocument.id)
           if (result.error) throw new Error(result.error)

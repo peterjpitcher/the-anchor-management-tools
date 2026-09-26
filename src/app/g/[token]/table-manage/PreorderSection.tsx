@@ -21,7 +21,7 @@ import {
   summariseCoverAddons,
   summariseOrderAddons,
 } from '@/lib/table-bookings/preorder'
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import {
   PREORDER_ADDON_GUEST_NOTE,
   PREORDER_COURSES,
@@ -191,7 +191,7 @@ export function PreorderSection({
 
               return (
                 <fieldset key={ordinal} className={PREORDER_SEAT_BLOCK_CLASS}>
-                  <legend className={clsx('px-1', SEAT_TITLE_CLASS)}>{seatLabel(cover, ordinal)}</legend>
+                  <legend className={cn('px-1', SEAT_TITLE_CLASS)}>{seatLabel(cover, ordinal)}</legend>
 
                   <div className="flex flex-col gap-guest-md">
                     {/* Each seat's controls point `aria-describedby` at these alerts by id. */}
@@ -287,7 +287,7 @@ export function PreorderSection({
                             ))}
                           </ul>
 
-                          <p aria-live="polite" className={clsx('mt-2', SMALL_MUTED_CLASS)}>
+                          <p aria-live="polite" className={cn('mt-2', SMALL_MUTED_CLASS)}>
                             {seatAddons.count === 0
                               ? 'No add-ons saved for this seat yet.'
                               : `Saved for this seat: ${addonCountPhrase(seatAddons.count)}, ${addonMoneyPhrase(seatAddons)}.`}{' '}
@@ -362,7 +362,7 @@ export function PreorderSection({
                 : { count: 0, totalGbp: 0, hasUnpricedAddon: false, items: [] }
 
               return (
-                <li key={ordinal} className={clsx(PREORDER_SEAT_BLOCK_CLASS, GUEST_BODY_CLASS)}>
+                <li key={ordinal} className={cn(PREORDER_SEAT_BLOCK_CLASS, GUEST_BODY_CLASS)}>
                   <p className={SEAT_TITLE_CLASS}>{seatLabel(cover, ordinal)}</p>
                   {chosen.length > 0 ? (
                     <ul className="mt-1">

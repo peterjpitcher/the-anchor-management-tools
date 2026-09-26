@@ -16,6 +16,7 @@ import {
   Input,
   PageLayout,
   Section,
+  SubHeading,
   Table,
   TableBody,
   TableCell,
@@ -146,7 +147,7 @@ function RateHistory({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-text-muted uppercase tracking-wide">Rate History</p>
+        <SubHeading as="h3">Rate History</SubHeading>
         {canManage && (
           <Button
             type="button"

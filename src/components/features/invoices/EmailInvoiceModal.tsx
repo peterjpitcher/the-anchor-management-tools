@@ -117,8 +117,7 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
       open={isOpen}
       onClose={onClose}
       title="Email Invoice"
-      size="lg"
-      mobileFullscreen
+      width="lg"
       footer={
         <>
           <Button

@@ -165,6 +165,7 @@ export function MileageReportDialog({
       open={open}
       onClose={handleClose}
       title="Download Mileage Report"
+      description="The report lists every trip in these dates, OJ Projects trips included. Downloading it does not record a payment."
       footer={
         <>
           <Button variant="secondary" onClick={handleClose} disabled={isDownloading}>
@@ -211,9 +212,6 @@ export function MileageReportDialog({
           onChange={(event) => setDriver(event.target.value)}
           options={[{ value: 'all', label: 'All drivers' }, ...drivers.map((entry) => ({ value: entry.id, label: `${entry.displayName} only` }))]}
         />
-        <p className="text-sm text-text-muted">
-          The report lists every trip in these dates, OJ Projects trips included. Downloading it does not record a payment.
-        </p>
         {ignoredFilters.length > 0 && (
           <Alert tone="info" role="status">
             {`The PDF uses the dates and driver only. It ignores the ${joinWords(ignoredFilters)} ${

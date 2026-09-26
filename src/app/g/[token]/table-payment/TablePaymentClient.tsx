@@ -5,7 +5,7 @@ import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js'
 // Imported file by file rather than through '@/components/features/guest': the
 // barrel re-exports GuestShell, which loads the guest webfonts, and a font
 // loader must not be pulled into a client module graph.
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import { DetailRow } from '@/components/features/guest/DetailRow'
 import { GuestAlert } from '@/components/features/guest/GuestAlert'
 import { GuestAmount } from '@/components/features/guest/GuestAmount'
@@ -119,7 +119,7 @@ export function TablePaymentClient({
           ) : (
             // The pointer-events guard stops a second tap reaching PayPal while
             // the capture is running.
-            <div className={clsx('flex flex-col gap-3', paymentState === 'paying' && 'pointer-events-none')}>
+            <div className={cn('flex flex-col gap-3', paymentState === 'paying' && 'pointer-events-none')}>
               {paymentState === 'error' && (
                 <GuestAlert
                   tone="problem"
@@ -184,7 +184,7 @@ export function TablePaymentClient({
               </PayPalScriptProvider>
 
               {paymentState === 'paying' && (
-                <p className={clsx('text-center', GUEST_NOTE_CLASS)}>Processing payment, please wait…</p>
+                <p className={cn('text-center', GUEST_NOTE_CLASS)}>Processing payment, please wait…</p>
               )}
 
               <TrustLine />

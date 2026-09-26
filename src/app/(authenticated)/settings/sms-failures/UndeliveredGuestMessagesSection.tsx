@@ -1,8 +1,8 @@
 import Link from 'next/link'
-import { Alert, Badge, Card, CardBody, Empty, Section } from '@/ds'
+import { Alert, Badge, Card, CardBody, CustomerLink, Empty, Section } from '@/ds'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
 import type { UndeliveredGuestMessage } from '@/lib/notifications/undelivered'
-import { SMS_FAILURE_TONES } from '../_shared/status-ui'
+import { messageDeliveryStatusLabel, messageDeliveryStatusTone } from '@/lib/messages/status-ui'
 
 function describeAttempts(row: UndeliveredGuestMessage): string {
   if (row.attempts.length === 0) return 'No attempt recorded'
@@ -40,14 +40,8 @@ export function UndeliveredGuestMessagesSection({
               <li key={row.id} className="px-pad-card py-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    {row.customerId ? (
-                      <Link href={`/customers/${row.customerId}`} className="font-medium text-primary hover:underline">
-                        {row.customerName}
-                      </Link>
-                    ) : (
-                      <span className="font-medium">{row.customerName}</span>
-                    )}
-                    <Badge tone={SMS_FAILURE_TONES.undelivered}>Undelivered</Badge>
+                    <CustomerLink customerId={row.customerId} name={row.customerName} className="font-medium" />
+                    <Badge tone={messageDeliveryStatusTone('undelivered')}>{messageDeliveryStatusLabel('undelivered')}</Badge>
                   </div>
                   <time className="text-xs text-text-muted" dateTime={row.failedAt}>
                     {formatDateTime12Hour(row.failedAt)}

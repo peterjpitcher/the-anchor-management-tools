@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import { Icon, type IconName } from '@/ds/icons'
 import { GUEST_MARK_ICON, GUEST_MARK_TONE_CLASS, type GuestMarkTone } from './status-ui'
 
@@ -31,7 +31,7 @@ export function GuestStatusMark({ tone, icon, size = 'md' }: GuestStatusMarkProp
   return (
     <span
       aria-hidden="true"
-      className={clsx(
+      className={cn(
         'flex shrink-0 items-center justify-center rounded-full',
         SIZE[size].box,
         GUEST_MARK_TONE_CLASS[tone]

@@ -70,7 +70,7 @@ export default function GDPRSettingsPage() {
 
   return (
     <PageLayout
-      title="GDPR & Privacy Settings"
+      title="GDPR & Privacy"
       subtitle="Manage your personal data in compliance with GDPR regulations"
       backButton={{ label: 'Back to Settings', href: '/settings' }}
     >

@@ -149,7 +149,7 @@ export function TodayAdminClient({
       </Card>
 
       {!todayError && (
-        <StatGrid columns={3}>
+        <StatGrid columns={6}>
           <Stat label="Outstanding" value={counts.pending} />
           <Stat label="Done" value={counts.done} />
           <Stat label="Missed" value={counts.missed} />

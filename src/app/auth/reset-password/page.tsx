@@ -52,7 +52,7 @@ function ResetPasswordForm() {
           className="w-full"
           icon={<Icon name="arrowLeft" size={16} />}
         >
-          Back to Login
+          Back to Sign In
         </LinkButton>
       </AuthCard>
     )
@@ -84,7 +84,7 @@ function ResetPasswordForm() {
         <div className="text-center">
           <AuthLink href="/auth/login">
             <Icon name="arrowLeft" size={14} />
-            Back to Login
+            Back to Sign In
           </AuthLink>
         </div>
       </form>

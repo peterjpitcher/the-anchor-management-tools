@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useTransition } from 'react';
-import { Badge, Button, Checkbox, FormFooter, Modal, Select, toast, Icon } from '@/ds';
+import { Badge, Button, Checkbox, Fieldset, FormFooter, Modal, Select, toast, Icon } from '@/ds';
 import { addShiftsFromTemplates } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
@@ -56,8 +56,9 @@ function formatPaidHours(start: string, end: string, breakMins: number): string 
 }
 
 function formatDayHeader(isoDate: string): string {
-  const d = new Date(isoDate + 'T00:00:00');
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  // A plain date: read as a UTC midnight and formatted in UTC, so it never moves a day.
+  const d = new Date(isoDate + 'T00:00:00Z');
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
 
 function empName(emp: RotaEmployee): string {
@@ -361,6 +362,7 @@ export default function AddShiftsModal({
       open
       onClose={onClose}
       title="Add Shifts"
+      description={weekSummary || undefined}
       width="lg"
       footer={
         <FormFooter
@@ -387,8 +389,6 @@ export default function AddShiftsModal({
       }
     >
       <div className="space-y-4">
-        {weekSummary && <p className="text-xs text-text-muted">{weekSummary}</p>}
-
         {/* Scheduled templates grouped by day. overflow-clip rounds the corners without
             becoming a scroll box, so the day headers still stick. */}
         <div className="overflow-clip rounded-lg border border-border">
@@ -397,10 +397,7 @@ export default function AddShiftsModal({
 
         {/* Floating templates */}
         {floating.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-              Other templates, no assigned day
-            </p>
+          <Fieldset legend="Other templates, no assigned day">
             <div className="overflow-clip rounded-lg border border-border">
               {floating.map((item, idx) => {
                 const emp = item.template.employee_id ? empMap.get(item.template.employee_id) : undefined;
@@ -447,7 +444,7 @@ export default function AddShiftsModal({
                 );
               })}
             </div>
-          </div>
+          </Fieldset>
         )}
       </div>
     </Modal>

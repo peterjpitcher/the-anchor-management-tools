@@ -6,16 +6,19 @@ export const MGD_NAV: HeaderNavItem[] = [
   { label: 'Insights', href: '/mgd/insights' },
 ]
 
-/** The chrome of the collections page, shared by its loaded and failed states. */
+/**
+ * The chrome of the collections page, shared by its loaded and failed states. Titled with the
+ * sidebar label; the subtitle spells out what MGD stands for.
+ */
 export const MGD_COLLECTIONS_LAYOUT = {
-  title: 'Machine Games Duty',
-  subtitle: 'Track collections and quarterly MGD returns',
+  title: 'MGD',
+  subtitle: 'Machine Games Duty collections and quarterly returns',
   navItems: MGD_NAV,
 }
 
 /** The chrome of the insights page, shared by its loaded and failed states. */
 export const MGD_INSIGHTS_LAYOUT = {
-  title: 'Machine Games Duty',
-  subtitle: 'Net takings and duty over time',
+  title: 'MGD',
+  subtitle: 'Machine Games Duty net takings and duty over time',
   navItems: MGD_NAV,
 }

@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from '@/ds'
 import {
@@ -20,7 +19,7 @@ import { DishDrawer } from '../dishes/_components/DishDrawer'
 import type { DishListItem, IngredientSummary, RecipeSummary, MenuSummary } from '../dishes/_components/DishExpandedRow'
 import { exportDesignerMenuCsv } from '../_lib/menuDesignerExport'
 import { MENU_NAV, MENU_TITLE } from '../_shared/nav'
-import { DISH_COSTING_STATUS_UI, GP_TARGET_UI, MENU_ALLERGEN_TONE, menuGpTone } from '../_shared/status-ui'
+import { DISH_COSTING_STATUS_UI, GP_TARGET_UI, MENU_ALLERGEN_TONE, dishCostingCountTone, menuGpTone } from '../_shared/status-ui'
 
 /* ------------------------------------------------------------------ */
 /*  Data mapping (same as dishes page)                                 */
@@ -115,16 +114,6 @@ function computeAvgGp(items: DishListItem[]): number | null {
   if (withGp.length === 0) return null
   return withGp.reduce((sum, d) => sum + (d.gp_pct as number), 0) / withGp.length
 }
-
-/* ------------------------------------------------------------------ */
-/*  Navigation cards                                                   */
-/* ------------------------------------------------------------------ */
-
-const navigationCards = [
-  { title: 'Ingredients', description: 'Manage packs, costs, allergens, and suppliers.', href: '/menu-management/ingredients', badge: 'Costs' },
-  { title: 'Recipes', description: 'Build prep recipes from ingredients for reuse.', href: '/menu-management/recipes', badge: 'Prep' },
-  { title: 'Dishes', description: 'Set selling prices and assign to menus.', href: '/menu-management/dishes', badge: 'GP%' },
-]
 
 /* ------------------------------------------------------------------ */
 /*  Page Component                                                     */
@@ -365,6 +354,7 @@ export default function MenuManagementClient(): React.ReactElement {
     headerActions: (
       <>
         <Segmented
+          aria-label="Dish view"
           options={[
             { id: 'table', label: 'Table' },
             { id: 'cards', label: 'Cards' },
@@ -401,15 +391,15 @@ export default function MenuManagementClient(): React.ReactElement {
     <PageLayout {...layoutProps}>
       <StatGrid columns={4}>
         <Stat label="Total Dishes" value={stats.totalDishes} hint={showActive === 'active' ? `${stats.activeDishes} active` : undefined} />
-        <Stat label="Below GP Target" value={stats.belowTargetCount} hint={stats.belowTargetCount > 0 ? 'Needs attention' : 'On track'} />
-        <Stat label="Missing Costing" value={stats.missingCostingCount} hint={stats.missingCostingCount > 0 ? 'Needs costing data' : 'All costed'} />
+        <Stat label="Below GP Target" value={stats.belowTargetCount} tone={dishCostingCountTone('alert', stats.belowTargetCount)} hint={stats.belowTargetCount > 0 ? 'Needs attention' : 'On track'} />
+        <Stat label="Missing Costing" value={stats.missingCostingCount} tone={dishCostingCountTone('missing', stats.missingCostingCount)} hint={stats.missingCostingCount > 0 ? 'Needs costing data' : 'All costed'} />
         <Stat label="Avg GP%" value={stats.avgGp !== null ? `${Math.round(stats.avgGp * 100)}%` : '--'} hint={`Target: ${Math.round(targetGpPct * 100)}%`} />
       </StatGrid>
 
       {/* Main content: sidebar + table */}
       <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6">
-        {/* Left sidebar: menu sections */}
-        <div className="space-y-4">
+        {/* Left sidebar: the menus. Its own column wrapper keeps the card to its content height. */}
+        <div>
           <Card>
             <CardHeader title="Menus" />
             <div className="divide-y divide-border">
@@ -453,27 +443,6 @@ export default function MenuManagementClient(): React.ReactElement {
               })}
             </div>
           </Card>
-
-          {/* Quick links */}
-          <div className="space-y-2">
-            {navigationCards.map((card) => (
-              <Link
-                key={card.title}
-                href={card.href}
-                className="block rounded-lg focus-visible:outline-hidden focus-visible:shadow-ring"
-              >
-                <Card padding="sm" className="hover:bg-surface-hover transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-text-strong">{card.title}</p>
-                      <p className="text-xs text-text-muted">{card.description}</p>
-                    </div>
-                    <Badge tone="neutral">{card.badge}</Badge>
-                  </div>
-                </Card>
-              </Link>
-            ))}
-          </div>
         </div>
 
         {/* Right content */}

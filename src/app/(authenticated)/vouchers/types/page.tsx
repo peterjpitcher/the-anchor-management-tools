@@ -16,8 +16,8 @@ export default async function VoucherTypesPage() {
 
   // A top-level tab: no back button.
   const layoutProps = {
-    title: 'Types & Terms',
-    subtitle: 'Read-only reference',
+    title: 'Vouchers',
+    subtitle: 'Voucher types and terms, a read-only reference',
     navItems: VOUCHERS_NAV,
   }
 

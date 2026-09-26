@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Papa from 'papaparse'
-import { Badge, Button, Card, CardBody, CardHeader, DataTable, Empty, FormFooter, Icon, toast } from '@/ds'
+import { Badge, Button, Card, CardBody, CardHeader, DataTable, Empty, FileButton, FormFooter, Icon, toast } from '@/ds'
 import { Customer } from '@/types/database'
 import { cn, formatPhoneForStorage } from '@/lib/utils'
 import {
@@ -141,9 +141,9 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
     }
   }
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const input = event.target
-    const file = input.files?.[0]
+  // FileButton clears its input after every pick, so the same file can be picked again.
+  const handleFileUpload = (files: File[]) => {
+    const file = files[0]
     if (!file) return
 
     // Browsers disagree about the MIME type of a .csv file: Excel on Windows
@@ -151,7 +151,6 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
     // strict text/csv check rejected perfectly valid files. Trust the extension.
     if (!file.name.toLowerCase().endsWith('.csv')) {
       toast.error('Please upload a CSV file')
-      input.value = ''
       return
     }
 
@@ -163,8 +162,6 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
       transformHeader: (header) => header.trim().toLowerCase(),
       transform: (value) => value.trim(),
       complete: (results) => {
-        input.value = ''
-
         // A ragged row is a row-level problem: the preview already flags it as
         // invalid, so only structural failures (unreadable quoting or delimiter)
         // should reject the whole file.
@@ -205,7 +202,6 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
         setIsPreviewMode(true)
       },
       error: (error) => {
-        input.value = ''
         console.error('Error reading CSV file:', error)
         toast.error('Could not read that CSV file')
       },
@@ -293,26 +289,17 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
                 Download Template
               </Button>
               {!isPreviewMode && (
-                // A label rather than a DS Button: clicking it opens the file input inside. The
-                // classes are DS Button primary (sm), so it matches the button beside it. The input
-                // is sr-only, not hidden, so the Tab key still reaches it; the label then draws
-                // the DS focus ring for it. DS FileUpload does not fit here: it is a full-width
-                // drag-and-drop panel rather than a button beside Download Template, and its
-                // file input carries no label, so the control would lose its "Upload CSV" name.
-                <label
-                  htmlFor="csv-upload"
-                  className="relative inline-flex h-btn-h-sm max-shell:min-h-touch items-center justify-center gap-1.5 whitespace-nowrap rounded-sm border border-primary bg-primary px-2.5 text-xs font-semibold text-primary-fg shadow-xs transition-[background,border-color] duration-[120ms] hover:border-primary-hover hover:bg-primary-hover cursor-pointer has-[:focus-visible]:outline-hidden has-[:focus-visible]:shadow-ring"
+                // Primary, as the hand-built upload label it replaces was: picking the file is
+                // this card's main action, with Download Template the secondary one beside it.
+                <FileButton
+                  variant="primary"
+                  size="sm"
+                  accept=".csv"
+                  icon={<Icon name="upload" size={14} />}
+                  onFiles={handleFileUpload}
                 >
-                  <Icon name="upload" size={14} />
-                  <span>Upload CSV</span>
-                  <input
-                    id="csv-upload"
-                    type="file"
-                    accept=".csv"
-                    onChange={handleFileUpload}
-                    className="sr-only"
-                  />
-                </label>
+                  Upload CSV
+                </FileButton>
               )}
             </div>
           }

@@ -392,9 +392,9 @@ export default function BackgroundJobsClient({
 
       <StatGrid columns={4}>
         <Stat label="Total Jobs" value={summary.total} />
-        <Stat label="Pending" value={summary.pending} />
-        <Stat label="Completed" value={summary.completed} />
-        <Stat label="Failed" value={summary.failed} />
+        <Stat label="Pending" value={summary.pending} tone={summary.pending > 0 ? 'warning' : 'default'} />
+        <Stat label="Completed" value={summary.completed} tone="success" />
+        <Stat label="Failed" value={summary.failed} tone={summary.failed > 0 ? 'danger' : 'default'} />
       </StatGrid>
 
       <Card padding="none">

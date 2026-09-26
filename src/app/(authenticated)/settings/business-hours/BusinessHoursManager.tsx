@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { saveHoursVersionDraft, updateBusinessHours } from '@/app/actions/business-hours'
 import { BusinessHours, DAY_NAMES } from '@/types/business-hours'
-import { Button, Card, CardFooter, Checkbox, DataTable, FormFooter, Input, toast } from '@/ds'
+import { Button, Card, CardFooter, Checkbox, DataTable, FormFooter, Input, SubHeading, toast } from '@/ds'
 import { FoodServiceEditor } from './FoodServiceEditor'
 import { validateServiceWindows, readServiceWindows } from '@/lib/business-hours/service-windows'
 
@@ -294,7 +294,7 @@ export function BusinessHoursManager({
         renderMobileCard={(h: any) => (
           <Card padding="sm">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-text-strong">{DAY_NAMES[h.day_of_week]}</p>
+              <SubHeading>{DAY_NAMES[h.day_of_week]}</SubHeading>
               <Checkbox
                 label="Closed"
                 checked={h.is_closed}

@@ -16,7 +16,7 @@ import {
   TableCell,
   toast,
 } from '@/ds'
-import { ConfirmDialog, Empty, Field, FormFooter, Input, Button, Badge, Alert, Stat, Modal, Textarea } from '@/ds'
+import { ConfirmDialog, Empty, Field, Fieldset, FormFooter, Input, Button, Badge, Alert, Stat, Modal, Textarea } from '@/ds'
 import { Icon } from '@/ds/icons'
 import {
   approveSessionAction,
@@ -648,42 +648,41 @@ export function DailyClient({
             subtitle={lastSaved ? `Saved at ${lastSaved}` : 'Cash drawer and payment totals'}
           />
           <CardBody className="space-y-4">
-            <p className="text-xs font-semibold text-text-muted uppercase mb-1">
-              Cash drawer count (total value)
-            </p>
-            <div className="grid grid-cols-2 gap-1">
-              {DENOMINATIONS.map((denom, index) => {
-                const nextDenom = DENOMINATIONS[index + 1]
-                const nextId = nextDenom ? `input-denom-${nextDenom.value}` : 'input-cash-expected'
-                return (
-                  <div
-                    key={denom.value}
-                    className="flex items-center justify-between bg-surface-2 px-1.5 py-0.5 rounded-default border border-border"
-                  >
-                    <span className="text-xs sm:text-meta font-medium text-text-muted w-7 text-center">
-                      {denom.label}
-                    </span>
-                    <div className="flex items-center gap-0.5">
-                      <span className="text-text-soft text-xs" aria-hidden="true">£</span>
-                      <Input
-                        id={`input-denom-${denom.value}`}
-                        aria-label={`${denom.label} total`}
-                        type="number"
-                        inputMode="decimal"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={cashValues[denom.value] || ''}
-                        onChange={(e) => handleCashValueChange(denom.value, e.target.value)}
-                        onKeyDown={(e) => handleKeyDown(e, nextId)}
-                        onWheel={(e) => e.currentTarget.blur()}
-                        className={`${numberInputNoSpinnerClass} h-6 min-h-touch sm:min-h-0 w-16 sm:w-14 px-1 sm:p-0 text-right text-xs bg-transparent border-none font-mono`}
-                        disabled={fieldsDisabled}
-                      />
+            <Fieldset legend="Cash drawer count (total value)">
+              <div className="grid grid-cols-2 gap-1">
+                {DENOMINATIONS.map((denom, index) => {
+                  const nextDenom = DENOMINATIONS[index + 1]
+                  const nextId = nextDenom ? `input-denom-${nextDenom.value}` : 'input-cash-expected'
+                  return (
+                    <div
+                      key={denom.value}
+                      className="flex items-center justify-between bg-surface-2 px-1.5 py-0.5 rounded-default border border-border"
+                    >
+                      <span className="text-xs sm:text-meta font-medium text-text-muted w-7 text-center">
+                        {denom.label}
+                      </span>
+                      <div className="flex items-center gap-0.5">
+                        <span className="text-text-soft text-xs" aria-hidden="true">£</span>
+                        <Input
+                          id={`input-denom-${denom.value}`}
+                          aria-label={`${denom.label} total`}
+                          type="number"
+                          inputMode="decimal"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={cashValues[denom.value] || ''}
+                          onChange={(e) => handleCashValueChange(denom.value, e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, nextId)}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          className={`${numberInputNoSpinnerClass} h-6 min-h-touch sm:min-h-0 w-16 sm:w-14 px-1 sm:p-0 text-right text-xs bg-transparent border-none font-mono`}
+                          disabled={fieldsDisabled}
+                        />
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+            </Fieldset>
 
             {/* Cash totals */}
             <div className="pt-2 border-t border-border space-y-1.5">
@@ -926,7 +925,7 @@ export function DailyClient({
       </div>
 
       {/* Revenue stats */}
-      <StatGrid columns={3} className="xl:grid-cols-5">
+      <StatGrid columns={5}>
         <Stat label="Cash counted" value={`£${fmt(cashCountedTotal)}`} />
         <Stat label="Card" value={`£${fmt(cardNum)}`} />
         <Stat label="Stripe" value={`£${fmt(stripeNum)}`} />
@@ -961,6 +960,7 @@ export function DailyClient({
           }
         }}
         title="Void Cash-Up Session"
+        description="The session stays on record for audit but is excluded from totals and reports."
         width="sm"
         footer={
           <>
@@ -985,20 +985,15 @@ export function DailyClient({
           </>
         }
       >
-        <div className="space-y-4">
-          <p className="text-sm text-text-muted">
-            The session stays on record for audit but is excluded from totals and reports.
-          </p>
-          <Field label="Reason" required>
-            <Textarea
-              value={voidReasonInput}
-              onChange={(e) => setVoidReasonInput(e.target.value)}
-              rows={3}
-              placeholder="Why is this session being voided?"
-              disabled={voiding}
-            />
-          </Field>
-        </div>
+        <Field label="Reason" required>
+          <Textarea
+            value={voidReasonInput}
+            onChange={(e) => setVoidReasonInput(e.target.value)}
+            rows={3}
+            placeholder="Why is this session being voided?"
+            disabled={voiding}
+          />
+        </Field>
       </Modal>
     </PageLayout>
   )

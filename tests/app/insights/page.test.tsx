@@ -89,6 +89,13 @@ describe('InsightsReportView', () => {
     expect(html).toContain('id="actions"')
   })
 
+  it('keeps the sub-list titles inside a card as headings, so screen readers can jump between them', () => {
+    // SubHeading: h4 under the card title (h3).
+    expect(html).toMatch(/<h4[^>]*>Needs attention<\/h4>/)
+    expect(html).toMatch(/<h4[^>]*>Going well<\/h4>/)
+    expect(html).toMatch(/<h4[^>]*>Next 14 days<\/h4>/)
+  })
+
   it('keeps links on this host rather than the configured origin', () => {
     expect(html).toContain('href="/private-bookings/p1"')
     expect(html).not.toContain('href="https://management.example.test')

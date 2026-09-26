@@ -27,6 +27,7 @@ import {
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import type { InvoiceWithDetails, PaymentMethod } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { invoicePageTitle } from '../../_shared/nav'
 
 export default function RecordPaymentPage() {
   const params = useParams()
@@ -148,7 +149,11 @@ export default function RecordPaymentPage() {
   const layoutProps = {
     title: 'Record Payment',
     subtitle: 'Update invoice balances',
-    backButton: { label: 'Back to Invoice', href: invoiceId ? `/invoices/${invoiceId}` : '/invoices' },
+    // Back to the invoice page, named as that page is titled ("Invoice INV-001").
+    backButton: {
+      label: `Back to ${invoicePageTitle(invoice?.invoice_number)}`,
+      href: invoiceId ? `/invoices/${invoiceId}` : '/invoices',
+    },
     containerSize: 'md' as const,
   }
 
@@ -172,11 +177,13 @@ export default function RecordPaymentPage() {
 
       <StatGrid columns={3}>
         <Stat label="Invoice Total" value={`£${invoice.total_amount.toFixed(2)}`} />
-        <Stat label="Already Paid" value={`£${invoice.paid_amount.toFixed(2)}`} />
+        <Stat label="Already Paid" value={`£${invoice.paid_amount.toFixed(2)}`} tone="success" />
+        {/* Red only once the invoice is overdue, the same rule as the invoice list. */}
         <Stat
           label="Outstanding"
           value={`£${outstanding.toFixed(2)}`}
           hint={invoice.status === 'overdue' ? 'Overdue' : undefined}
+          tone={invoice.status === 'overdue' ? 'danger' : 'default'}
         />
       </StatGrid>
 

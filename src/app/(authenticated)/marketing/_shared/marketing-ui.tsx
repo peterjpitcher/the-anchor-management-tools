@@ -1,5 +1,6 @@
 import { Badge } from '@/ds'
 import { formatDateInLondon, formatDateTime12Hour } from '@/lib/dateUtils'
+import { MESSAGE_DELIVERY_STATUS_LABEL, MESSAGE_DELIVERY_STATUS_TONE } from '@/lib/messages/status-ui'
 import type {
   EligibilityStatus,
   MarketingBasis,
@@ -67,26 +68,13 @@ export function ProviderReadyBadge() {
 // Recipient status and skip reasons
 // ---------------------------------------------------------------------------
 
-export const RECIPIENT_STATUS_LABELS: Record<MarketingRecipientStatus, string> = {
-  pending: 'Waiting',
-  sending: 'Sending',
-  sent: 'Sent',
-  failed: 'Failed',
-  skipped: 'Skipped',
-  needs_review: 'Needs review',
-}
-
-const RECIPIENT_STATUS_TONES: Record<MarketingRecipientStatus, BadgeTone> = {
-  pending: 'neutral',
-  sending: 'info',
-  sent: 'success',
-  failed: 'danger',
-  skipped: 'neutral',
-  needs_review: 'warning',
-}
-
+/**
+ * A recipient's send status, in the words and colours every other delivery chip uses (the
+ * shared map in src/lib/messages/status-ui.ts). Every MarketingRecipientStatus is a key of that
+ * map, so the type checker fails here if a new recipient status is added without it.
+ */
 export function RecipientStatusBadge({ status }: { status: MarketingRecipientStatus }) {
-  return <Badge tone={RECIPIENT_STATUS_TONES[status]}>{RECIPIENT_STATUS_LABELS[status]}</Badge>
+  return <Badge tone={MESSAGE_DELIVERY_STATUS_TONE[status]}>{MESSAGE_DELIVERY_STATUS_LABEL[status]}</Badge>
 }
 
 /** A recipient's engagement flags (delivered, opened, clicked): shown only when it happened. */

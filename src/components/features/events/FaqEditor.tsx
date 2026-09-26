@@ -1,6 +1,6 @@
 'use client'
 
-import { Button, Card, Empty, Input, Textarea } from '@/ds'
+import { Button, Card, Empty, Input, SubHeading, Textarea } from '@/ds'
 
 interface FaqItem {
   question: string
@@ -55,9 +55,9 @@ export function FaqEditor({ faqs, onChange, onModified }: FaqEditorProps) {
     <div className="space-y-4">
       {/* Header row */}
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-text">
+        <SubHeading>
           FAQs{faqs.length > 0 ? ` (${faqs.length})` : ''}
-        </span>
+        </SubHeading>
         <Button
           type="button"
           variant="link"

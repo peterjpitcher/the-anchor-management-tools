@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Badge, Button, Card, CardBody, CardHeader, Empty, Section, Select, toast, Icon } from '@/ds';
+import { Badge, Button, Card, CardBody, CardHeader, Empty, Section, Select, SubHeading, toast, Icon } from '@/ds';
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils';
 import {
   approveOpenShiftVolunteer,
@@ -194,9 +194,7 @@ function OpenShiftCard({
         {shift.notes && <p className="text-xs text-text-muted">Shift notes: {shift.notes}</p>}
 
         <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">
-            Asked to pick it up
-          </p>
+          <SubHeading className="mb-2">Volunteers</SubHeading>
           {shift.volunteers.length === 0 ? (
             <p className="text-xs italic text-text-muted">Nobody has volunteered yet.</p>
           ) : (

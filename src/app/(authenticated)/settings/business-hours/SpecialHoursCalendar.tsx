@@ -16,7 +16,7 @@ import {
   startOfMonth,
   startOfWeek,
 } from 'date-fns'
-import { Badge, Button, Card, CardBody, CardHeader, Icon, IconButton, PageLoading, toast } from '@/ds'
+import { Badge, Button, Card, CardBody, CardHeader, Icon, IconButton, PageLoading, SubHeading, toast } from '@/ds'
 import { cn } from '@/lib/utils'
 import { SpecialHoursModal } from './SpecialHoursModal'
 import {
@@ -166,9 +166,7 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
       />
       <CardBody className="space-y-4">
         <div className="flex items-center justify-between">
-          <p className="text-lg font-semibold text-text-strong">
-            {format(currentMonth, 'MMMM yyyy')}
-          </p>
+          <SubHeading>{format(currentMonth, 'MMMM yyyy')}</SubHeading>
           <div className="flex items-center gap-2">
             <IconButton
               type="button"

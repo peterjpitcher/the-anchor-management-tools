@@ -367,8 +367,8 @@ export default function VendorsPage() {
   }
 
   const layoutProps = {
-    title: 'Vendors',
-    subtitle: 'Manage your invoice vendors',
+    title: 'Invoices',
+    subtitle: 'Vendors who receive invoices and quotes',
     navItems: FINANCE_NAV,
   }
 
@@ -499,7 +499,7 @@ export default function VendorsPage() {
         open={showForm}
         onClose={closeForm}
         title={editingVendor ? 'Edit Vendor' : 'Add New Vendor'}
-        size="lg"
+        width="lg"
         footer={
           <>
             <Button
@@ -604,7 +604,7 @@ export default function VendorsPage() {
         open={!!contactsModalVendor}
         onClose={closeContacts}
         title={contactsModalVendor ? `Contacts for ${contactsModalVendor.name}` : 'Contacts'}
-        size="lg"
+        width="lg"
       >
         {contactsLoading ? (
           <PageLoading inline label="Loading contacts" />

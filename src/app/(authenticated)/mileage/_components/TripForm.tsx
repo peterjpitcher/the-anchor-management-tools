@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition, useCallback } from 'react'
-import { Alert, Badge, Button, Card, Field, IconButton, Input, Modal, Select, Icon } from '@/ds'
+import { Alert, Badge, Button, Card, Field, Fieldset, IconButton, Input, Modal, Select, Icon } from '@/ds'
 import {
   createTrip,
   updateTrip,
@@ -359,115 +359,115 @@ export function TripForm({
           </Field>
         </div>
 
-        <fieldset>
-          <legend className="mb-3 text-xs font-medium uppercase tracking-wider text-text-muted">Route</legend>
+        <Fieldset legend="Route">
+          <div>
+            <div className="flex items-center gap-2 mb-3 text-sm text-text-muted">
+              <Badge tone="success">Start</Badge>
+              <span className="font-medium">{homeBase?.name ?? 'The Anchor'}</span>
+            </div>
 
-          <div className="flex items-center gap-2 mb-3 text-sm text-text-muted">
-            <Badge tone="success">Start</Badge>
-            <span className="font-medium">{homeBase?.name ?? 'The Anchor'}</span>
-          </div>
-
-          <div className="space-y-3">
-            {stops.map((stop, index) => {
-              const fromName =
-                index === 0
-                  ? homeBase?.name ?? 'The Anchor'
-                  : getDestinationName(stops[index - 1]?.destinationId) ?? 'Previous stop'
-              const toName = getDestinationName(stop.destinationId) ?? `Stop ${index + 1}`
-              return (
-                <div key={stop.key}>
-                  <div className="mb-1 ml-6 text-xs font-medium text-text-muted">
-                    {fromName} {'\u2192'} {toName}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Icon name="arrowRight" size={16} className="shrink-0 text-text-subtle" />
-                    <div className="min-w-0 flex-1">
-                      <Select
-                        className="w-full"
-                        value={stop.destinationId}
-                        onChange={(e) => handleDestinationChange(index, e.target.value)}
-                        aria-label={`Stop ${index + 1} destination`}
-                        error={stopErrors.has(index)}
-                        placeholder="Select destination..."
-                      >
-                        {nonHomeDestinations.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))}
-                      </Select>
+            <div className="space-y-3">
+              {stops.map((stop, index) => {
+                const fromName =
+                  index === 0
+                    ? homeBase?.name ?? 'The Anchor'
+                    : getDestinationName(stops[index - 1]?.destinationId) ?? 'Previous stop'
+                const toName = getDestinationName(stop.destinationId) ?? `Stop ${index + 1}`
+                return (
+                  <div key={stop.key}>
+                    <div className="mb-1 ml-6 text-xs font-medium text-text-muted">
+                      {fromName} {'\u2192'} {toName}
                     </div>
-                    <Input
-                      className="w-28 shrink-0"
-                      value={stop.miles}
-                      onChange={(e) => handleMilesChange(index, e.target.value)}
-                      placeholder="Miles"
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      aria-label={`Miles from ${fromName} to ${toName}`}
-                    />
-                    {stops.length > 1 && (
-                      <IconButton
-                        size="sm"
-                        icon={<Icon name="trash" size={16} className="text-danger" />}
-                        label={`Remove stop ${index + 1}`}
-                        onClick={() => removeStop(index)}
+                    <div className="flex items-center gap-2">
+                      <Icon name="arrowRight" size={16} className="shrink-0 text-text-subtle" />
+                      <div className="min-w-0 flex-1">
+                        <Select
+                          className="w-full"
+                          value={stop.destinationId}
+                          onChange={(e) => handleDestinationChange(index, e.target.value)}
+                          aria-label={`Stop ${index + 1} destination`}
+                          error={stopErrors.has(index)}
+                          placeholder="Select destination..."
+                        >
+                          {nonHomeDestinations.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <Input
+                        className="w-28 shrink-0"
+                        value={stop.miles}
+                        onChange={(e) => handleMilesChange(index, e.target.value)}
+                        placeholder="Miles"
+                        type="number"
+                        min="0.1"
+                        step="0.1"
+                        aria-label={`Miles from ${fromName} to ${toName}`}
                       />
+                      {stops.length > 1 && (
+                        <IconButton
+                          size="sm"
+                          icon={<Icon name="trash" size={16} className="text-danger" />}
+                          label={`Remove stop ${index + 1}`}
+                          onClick={() => removeStop(index)}
+                        />
+                      )}
+                    </div>
+                    {stop.destinationId && !stop.miles && !stopErrors.has(index) && (
+                      <p className="mt-1 ml-6 text-xs text-text-muted">
+                        Enter miles once; this route pair will be saved for future trips.
+                      </p>
+                    )}
+                    {stopErrors.has(index) && (
+                      <p className="mt-1 ml-6 text-xs text-danger-fg" role="alert">{stopErrors.get(index)}</p>
                     )}
                   </div>
-                  {stop.destinationId && !stop.miles && !stopErrors.has(index) && (
-                    <p className="mt-1 ml-6 text-xs text-text-muted">
-                      Enter miles once; this route pair will be saved for future trips.
-                    </p>
-                  )}
-                  {stopErrors.has(index) && (
-                    <p className="mt-1 ml-6 text-xs text-danger-fg" role="alert">{stopErrors.get(index)}</p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          <div className="mt-2">
-            <Button variant="ghost" size="sm" icon={<Icon name="plus" size={16} />} onClick={addStop}>
-              Add Stop
-            </Button>
-          </div>
-
-          <div className="mt-3">
-            <div className="mb-1 ml-6 text-xs font-medium text-text-muted">
-              {getDestinationName(stops[stops.length - 1]?.destinationId) ?? 'Last stop'} {'\u2192'}{' '}
-              {homeBase?.name ?? 'The Anchor'}
+                )
+              })}
             </div>
-            <div className="flex items-center gap-2">
-              <Icon name="arrowRight" size={16} className="shrink-0 text-text-subtle" />
-              <Badge tone="success">Return</Badge>
-              <span className="text-sm font-medium text-text-muted">{homeBase?.name ?? 'The Anchor'}</span>
-              <Input
-                className="w-28 shrink-0 ml-auto"
-                value={returnMiles}
-                onChange={(e) => {
-                  setReturnMiles(e.target.value)
-                  setReturnMilesError(null)
-                }}
-                placeholder="Miles"
-                type="number"
-                min="0.1"
-                step="0.1"
-                aria-label="Return miles"
-              />
+
+            <div className="mt-2">
+              <Button variant="ghost" size="sm" icon={<Icon name="plus" size={16} />} onClick={addStop}>
+                Add Stop
+              </Button>
             </div>
-            {stops[stops.length - 1]?.destinationId && !returnMiles && !returnMilesError && (
-              <p className="mt-1 ml-6 text-xs text-text-muted">
-                Enter miles once; this route pair will be saved for future trips.
-              </p>
-            )}
-            {returnMilesError && (
-              <p className="mt-1 ml-6 text-xs text-danger-fg" role="alert">{returnMilesError}</p>
-            )}
+
+            <div className="mt-3">
+              <div className="mb-1 ml-6 text-xs font-medium text-text-muted">
+                {getDestinationName(stops[stops.length - 1]?.destinationId) ?? 'Last stop'} {'\u2192'}{' '}
+                {homeBase?.name ?? 'The Anchor'}
+              </div>
+              <div className="flex items-center gap-2">
+                <Icon name="arrowRight" size={16} className="shrink-0 text-text-subtle" />
+                <Badge tone="success">Return</Badge>
+                <span className="text-sm font-medium text-text-muted">{homeBase?.name ?? 'The Anchor'}</span>
+                <Input
+                  className="w-28 shrink-0 ml-auto"
+                  value={returnMiles}
+                  onChange={(e) => {
+                    setReturnMiles(e.target.value)
+                    setReturnMilesError(null)
+                  }}
+                  placeholder="Miles"
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  aria-label="Return miles"
+                />
+              </div>
+              {stops[stops.length - 1]?.destinationId && !returnMiles && !returnMilesError && (
+                <p className="mt-1 ml-6 text-xs text-text-muted">
+                  Enter miles once; this route pair will be saved for future trips.
+                </p>
+              )}
+              {returnMilesError && (
+                <p className="mt-1 ml-6 text-xs text-danger-fg" role="alert">{returnMilesError}</p>
+              )}
+            </div>
           </div>
-        </fieldset>
+        </Fieldset>
 
         <Card variant="secondary">
           <div className="flex items-center justify-between text-sm">

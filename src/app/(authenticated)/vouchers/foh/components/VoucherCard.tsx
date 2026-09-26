@@ -50,7 +50,7 @@ function blockedReason(item: FohVoucherLookupItem, mode: VoucherCardMode): strin
       }.${item.replacementNumber ? ` The new card is ${item.replacementNumber}.` : ''}`
     case 'generated':
       if (mode === 'redeem') {
-        return 'Not handed out yet. Switch to the Hand out tab to issue this voucher first.'
+        return 'Not handed out yet. Switch to the Hand Out tab to issue this voucher first.'
       }
       return 'This batch is not ready to hand out yet (the print file has not finished). Ask a manager.'
     case 'issued':

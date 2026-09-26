@@ -64,7 +64,7 @@ import { addMonthsToIsoDate } from '@/lib/oj-projects/recurring-periods'
 import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 import { OJ_PROJECTS_LAYOUT } from '../../_shared/nav'
-import { OJ_MONEY_TEXT, ojActive, ojBalanceText } from '../../_shared/status-ui'
+import { OJ_MONEY_TEXT, ojActive, ojBalanceText, ojBalanceTone } from '../../_shared/status-ui'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -652,6 +652,7 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
           value={search}
           onChange={setSearch}
           placeholder="Search clients..."
+          aria-label="Search clients"
           className="min-w-[220px] flex-1 sm:max-w-xs"
         />
       </div>
@@ -778,7 +779,11 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
               <StatGrid columns={2}>
                 <Stat label="Unpaid Invoices (inc VAT)" value={formatCurrency(balance.unpaidInvoiceBalance)} />
                 <Stat label="Unbilled Work (inc VAT)" value={formatCurrency(balance.unbilledTotal)} />
-                <Stat label="Total Outstanding (inc VAT)" value={formatCurrency(balance.totalOutstanding)} />
+                <Stat
+                  label="Total Outstanding (inc VAT)"
+                  value={formatCurrency(balance.totalOutstanding)}
+                  tone={ojBalanceTone(balance.totalOutstanding)}
+                />
               </StatGrid>
 
               {/*
@@ -1480,6 +1485,8 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
         </form>
       </Modal>
 
+      {/* Red, not orange: disabling also removes the charge's unbilled months, which can then
+          never be invoiced (disableRecurringCharge, and the toast in handleDisableCharge). */}
       <ConfirmDialog
         open={!!disableChargeId}
         onClose={() => setDisableChargeId(null)}
@@ -1487,7 +1494,7 @@ export function ClientsClient({ initialClients, loadError }: ClientsClientProps)
         title="Disable Recurring Charge"
         message="This recurring charge will stop being included in future billing runs."
         confirmLabel="Disable"
-        tone="warning"
+        tone="danger"
       />
 
       <ConfirmDialog

@@ -39,9 +39,8 @@ export interface OptionButtonsProps<T extends string> {
 }
 
 /**
- * A pick-one row of buttons: the DS Segmented control, which is a radio group of real buttons.
- * Segmented takes no name of its own, so the wrapping group carries it. Inside the DS Modal the
- * buttons get the 44px touch floor on touch screens.
+ * A pick-one row of buttons: the DS Segmented control, a radio group of real buttons named by
+ * `label`. Inside the DS Modal the buttons get the 44px touch floor on touch screens.
  */
 export function OptionButtons<T extends string>({
   label,
@@ -51,14 +50,13 @@ export function OptionButtons<T extends string>({
   className,
 }: OptionButtonsProps<T>): React.JSX.Element {
   return (
-    <div role="group" aria-label={label}>
-      <Segmented
-        options={options.map((option) => ({ id: option.value, label: option.label }))}
-        value={value}
-        onChange={(id) => onChange(id as T)}
-        className={className}
-      />
-    </div>
+    <Segmented
+      aria-label={label}
+      options={options.map((option) => ({ id: option.value, label: option.label }))}
+      value={value}
+      onChange={(id) => onChange(id as T)}
+      className={className}
+    />
   )
 }
 

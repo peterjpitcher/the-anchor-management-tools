@@ -36,6 +36,9 @@ describe('timeclock kiosk', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Staff Timeclock' })).toBeInTheDocument()
     expect(screen.getByText('Active Staff').nextSibling).toHaveTextContent('2')
     expect(screen.getByText('Clocked In').nextSibling).toHaveTextContent('1')
+    // Who is on shift is the one figure drawn in the success colour.
+    expect(screen.getByText('Clocked In').nextSibling).toHaveClass('text-success-fg')
+    expect(screen.getByText('Active Staff').nextSibling).not.toHaveClass('text-success-fg')
     expect(screen.getByRole('button', { name: /Billy/ })).toHaveTextContent('Not clocked in')
   })
 
@@ -45,7 +48,8 @@ describe('timeclock kiosk', () => {
     fireEvent.click(screen.getByRole('button', { name: /Billy/ }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Billy' })
-    expect(dialog).toHaveTextContent('Clock in')
+    // The action is the dialog's description, read with its title.
+    expect(dialog).toHaveAccessibleDescription('Enter your PIN to clock in')
     const pin = screen.getByLabelText('PIN')
     await waitFor(() => expect(pin).toHaveFocus())
 

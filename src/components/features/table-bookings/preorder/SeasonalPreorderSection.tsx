@@ -19,7 +19,23 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Alert, Badge, Button, Card, CardBody, CardFooter, CardHeader, Checkbox, Empty, Input, Select, Textarea, toast } from '@/ds'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardFooter,
+  CardHeader,
+  Checkbox,
+  Empty,
+  Fieldset,
+  Input,
+  Select,
+  SubHeading,
+  Textarea,
+  toast,
+} from '@/ds'
 import { PREORDER_COMPLETENESS_TONE } from './status-ui'
 import {
   saveSeasonalPreorderCovers,
@@ -389,12 +405,12 @@ export default function SeasonalPreorderSection({
     }
   }
 
-  // The description is a full sentence staff need to read, so it opens the body rather than
-  // sitting in CardHeader's one-line subtitle, which truncates.
+  // CardHeader wraps its subtitle, so the full sentence staff need to read sits under the title.
   return (
     <Card>
       <CardHeader
         title={`Seasonal Pre-Order${order.periodName ? ` · ${order.periodName}` : ''}`}
+        subtitle="Every guest needs a main. A starter and a dessert are optional, and add-ons are extras that never make an order complete."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={PREORDER_COMPLETENESS_TONE[completeness.complete ? 'complete' : 'incomplete']}>
@@ -415,10 +431,6 @@ export default function SeasonalPreorderSection({
       />
 
       <CardBody className="space-y-4">
-        <p className="text-xs text-text-muted">
-          Every guest needs a main. A starter and a dessert are optional, and add-ons are extras
-          that never make an order complete.
-        </p>
         <p className="text-sm text-text">{describePreorderGaps(completeness)}</p>
 
         {order.bookingAllergies.length > 0 && (
@@ -484,9 +496,7 @@ export default function SeasonalPreorderSection({
               return (
                 <li key={cover.id} className="space-y-3 py-4 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                      Seat {cover.ordinal}
-                    </span>
+                    <SubHeading>Seat {cover.ordinal}</SubHeading>
                     {missingMain && <Badge tone="warning">Needs a main</Badge>}
                     {withdrawn.length > 0 && (
                       <Badge tone="danger">
@@ -526,12 +536,9 @@ export default function SeasonalPreorderSection({
                   </div>
 
                   {addons && addons.rows.length > 0 && (
-                    <fieldset>
-                      <legend className="mb-1 text-xs font-medium uppercase tracking-wider text-text-muted">
-                        Add-ons (extras, on top of the meal)
-                      </legend>
+                    <Fieldset legend="Add-ons (extras, on top of the meal)">
                       <p className="text-xs text-text">{describeSeatAddons(addons.summary)}</p>
-                      <div className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
+                      <div className="mt-0.5 grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
                         {addons.rows.map((row) => {
                           const ticked = coverDraft.addonMenuItemIds.includes(row.menuItemId)
                           return (
@@ -549,7 +556,7 @@ export default function SeasonalPreorderSection({
                           )
                         })}
                       </div>
-                    </fieldset>
+                    </Fieldset>
                   )}
 
                   <div>
@@ -575,9 +582,7 @@ export default function SeasonalPreorderSection({
 
       {(addonOptions.length > 0 || bookingAddons.count > 0) && order.covers.length > 0 && (
         <CardFooter>
-          <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-            Add-ons to put on the bill
-          </p>
+          <SubHeading>Add-ons to Put on the Bill</SubHeading>
           <p className="mt-1 text-sm font-semibold text-text">
             {bookingAddons.count === 0
               ? 'Nothing ticked yet.'

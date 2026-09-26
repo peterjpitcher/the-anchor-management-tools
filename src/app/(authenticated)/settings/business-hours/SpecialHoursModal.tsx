@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Button, Card, Checkbox, ConfirmDialog, FormFooter, Icon, Input, Modal, toast } from '@/ds'
+import { Button, Card, Checkbox, ConfirmDialog, FormFooter, Icon, Input, Modal, SubHeading, toast } from '@/ds'
 import { createSpecialHours, updateSpecialHours, deleteSpecialHours, getBusinessHoursByDay } from '@/app/actions/business-hours'
 import { SpecialHours, ScheduleConfigItem } from '@/types/business-hours'
 import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
@@ -347,14 +347,14 @@ export function SpecialHoursModal({
       title="Revert to Regular Hours"
       message="Remove this exception and revert to regular hours for this date?"
       confirmLabel="Remove Exception"
-      variant="danger"
+      tone="danger"
       loading={loading}
     />
     <Modal
       open={isOpen}
       onClose={onClose}
       title={`Edit Hours: ${formatDateInLondon(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`}
-      size="lg"
+      width="lg"
       footer={
         <FormFooter
           className="w-full"
@@ -418,7 +418,7 @@ export function SpecialHoursModal({
         {!isClosed && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
              <div>
-                <p className="text-sm font-medium text-text-strong mb-2">Venue Hours</p>
+                <SubHeading as="h3" className="mb-2">Venue Hours</SubHeading>
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Input
@@ -442,7 +442,7 @@ export function SpecialHoursModal({
              </div>
 
              <div>
-                <p className="text-sm font-medium text-text-strong mb-2">Kitchen Hours</p>
+                <SubHeading as="h3" className="mb-2">Kitchen Hours</SubHeading>
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Input
@@ -470,7 +470,7 @@ export function SpecialHoursModal({
         {/* Sunday Lunch Hours (Only show if Sunday) */}
         {!isClosed && isSunday && (
           <Card className="bg-cat-5-soft">
-             <p className="text-sm font-medium text-cat-5-fg mb-2">Sunday Lunch Service</p>
+             <SubHeading as="h3" className="mb-2 text-cat-5-fg">Sunday Lunch Service</SubHeading>
              <div className="flex gap-4 items-end">
                 <div className="flex-1">
                   <Input

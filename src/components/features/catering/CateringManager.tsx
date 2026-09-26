@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import { CateringPackage } from '@/types/private-bookings'
-import { Alert, Badge, Button, Card, DataTable, Empty, Icon, PageLayout, Tabs, type Column } from '@/ds'
+import { Alert, Badge, Button, Card, DataTable, Empty, Icon, PageLayout, Segmented, type Column, type HeaderNavItem } from '@/ds'
 import { CateringPackageModal } from './CateringPackageModal'
 import { useRouter } from 'next/navigation'
-import { PB_BACK_TO_LIST, PB_SETTINGS_NAV } from '@/app/(authenticated)/private-bookings/_shared/nav'
+import { PB_BACK_TO_LIST, PB_SETTINGS_TITLE } from '@/app/(authenticated)/private-bookings/_shared/nav'
 import { settingsActiveLabel, settingsActiveTone } from '@/app/(authenticated)/private-bookings/_shared/status-ui'
 
 interface CateringManagerProps {
@@ -14,14 +14,18 @@ interface CateringManagerProps {
     loadError?: string | null
     /** The error a create, update or delete redirected back with (?error=). */
     errorMessage?: string | null
+    /** The settings tab row, already filtered by permission (privateBookingSettingsNav). */
+    navItems: HeaderNavItem[]
 }
 
-const layoutProps = {
-    title: 'Catering Packages',
-    subtitle: 'Manage food and drink options for private events',
-    backButton: PB_BACK_TO_LIST,
-    navItems: PB_SETTINGS_NAV,
-}
+// The settings tab row is this page's one tab row, so the categories switch with a Segmented.
+const CATEGORY_OPTIONS = [
+    { id: 'food', label: 'Food' },
+    { id: 'drink', label: 'Drinks' },
+    { id: 'addon', label: 'Add-Ons' },
+    { id: 'self_catering', label: 'Self-Catering' },
+    { id: 'other', label: 'Other' },
+]
 
 const formatPrice = (pkg: CateringPackage): string => {
     const amount = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pkg.cost_per_head)
@@ -37,8 +41,15 @@ const formatPrice = (pkg: CateringPackage): string => {
     }
 }
 
-export function CateringManager({ initialPackages, loadError = null, errorMessage = null }: CateringManagerProps) {
+export function CateringManager({ initialPackages, loadError = null, errorMessage = null, navItems }: CateringManagerProps) {
     const router = useRouter()
+    const [category, setCategory] = useState(CATEGORY_OPTIONS[0].id)
+    const layoutProps = {
+        title: PB_SETTINGS_TITLE,
+        subtitle: 'Catering packages for private events',
+        backButton: PB_BACK_TO_LIST,
+        navItems,
+    }
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editingPackage, setEditingPackage] = useState<CateringPackage | null>(null)
 
@@ -87,7 +98,7 @@ export function CateringManager({ initialPackages, loadError = null, errorMessag
             align: 'center',
             hideOnMobile: true,
             cell: (pkg: CateringPackage) => (
-                <span className="text-text">{pkg.minimum_guests ?? '—'}</span>
+                <span className="text-text">{pkg.minimum_guests ?? 'None'}</span>
             )
         },
         {
@@ -181,15 +192,17 @@ export function CateringManager({ initialPackages, loadError = null, errorMessag
                 </Alert>
             )}
 
-            <Tabs
-                tabs={[
-                    { id: 'food', label: 'Food', content: renderTable('food') },
-                    { id: 'drink', label: 'Drinks', content: renderTable('drink') },
-                    { id: 'addon', label: 'Add-Ons', content: renderTable('addon') },
-                    { id: 'self_catering', label: 'Self-Catering', content: renderTable('self_catering') },
-                    { id: 'other', label: 'Other', content: renderTable('other') },
-                ]}
-            />
+            <div className="flex flex-wrap items-end gap-3">
+                <Segmented
+                    aria-label="Package category"
+                    options={CATEGORY_OPTIONS}
+                    value={category}
+                    onChange={setCategory}
+                    className="max-w-full overflow-x-auto"
+                />
+            </div>
+
+            {renderTable(category)}
 
             <CateringPackageModal
                 open={isModalOpen}

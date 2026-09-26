@@ -27,6 +27,8 @@ describe('Undelivered guest messages list', () => {
     expect(screen.getByText('Email bounced; no mobile number to text')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Private booking' })).toHaveAttribute('href', '/private-bookings/booking-1')
     expect(screen.getByText('Email: sent, then undelivered')).toBeInTheDocument()
+    // The shared delivery wording and colour, as on every other list of sends.
+    expect(screen.getByText('Not delivered')).toHaveClass('bg-danger-soft')
   })
 
   it('says so when there is nothing undelivered', () => {

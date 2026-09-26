@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   PageLayout, Segmented,
-  Card, CardHeader, CardBody, RevenueChart, Empty, StatGrid,
+  Card, CardHeader, CardBody, BarChart, Empty, StatGrid,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/ds'
 import { Stat, Badge, Button } from '@/ds'
@@ -105,7 +105,7 @@ export function InsightsClient() {
     })
     return Array.from(dayMap.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([day, amount]) => ({ day: day.substring(5), amount }))
+      .map(([day, clicks]) => ({ label: day.substring(5), value: clicks }))
   }, [analyticsData])
 
   // Top performing links
@@ -155,8 +155,8 @@ export function InsightsClient() {
       navItems={SHORT_LINKS_NAV}
       headerActions={
         <>
-          <Segmented options={VIEW_OPTIONS} value={activeTab} onChange={setActiveTab} />
-          <Segmented options={TIME_OPTIONS} value={days} onChange={setDays} />
+          <Segmented aria-label="View" options={VIEW_OPTIONS} value={activeTab} onChange={setActiveTab} />
+          <Segmented aria-label="Time window" options={TIME_OPTIONS} value={days} onChange={setDays} />
           <Button variant="secondary" size="sm" onClick={loadData} loading={loading}>
             Refresh
           </Button>
@@ -182,7 +182,14 @@ export function InsightsClient() {
             <CardHeader title="Click Volume" subtitle={`Last ${days} days`} />
             <CardBody>
               {chartData.length > 0 ? (
-                <RevenueChart data={chartData} valueFormatter={(value) => value.toLocaleString('en-GB')} />
+                <BarChart
+                  data={chartData}
+                  height={200}
+                  showValues={false}
+                  formatType="number"
+                  seriesLabel="Clicks"
+                  ariaLabel={`Human clicks per day, last ${days} days`}
+                />
               ) : (
                 <Empty size="sm" icon="chart" title="No data for this period" />
               )}

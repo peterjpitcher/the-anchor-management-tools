@@ -15,6 +15,7 @@ import {
   DescriptionList,
   Empty,
   Field,
+  Fieldset,
   FormFooter,
   Input,
   Modal,
@@ -1153,27 +1154,28 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 {/* Pin. Shown next to Move table because the two are the same decision from
                     opposite ends: move it deliberately, then stop anything else moving it. */}
                 {!booking.is_outside_seating && (
-                  <div className="space-y-2 border-t border-border pt-4">
-                    {/* Styled as the field label of Move table below, which it sits beside. */}
-                    <p className="text-xs font-medium uppercase tracking-wider text-text-muted">
-                      Pin to this table
-                    </p>
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm text-text-muted">
-                        {booking.table_pinned
-                          ? 'Pinned. Nothing automatic will move this booking.'
-                          : 'Not pinned. This booking may be moved to make room for another.'}
-                      </p>
-                      <Button
-                        size="sm"
-                        variant={booking.table_pinned ? 'secondary' : 'primary'}
-                        onClick={() => void handleTogglePin(!booking.table_pinned)}
-                        loading={actionLoadingKey === 'pin'}
-                        disabled={Boolean(actionLoadingKey)}
-                      >
-                        {booking.table_pinned ? 'Unpin' : 'Pin'}
-                      </Button>
-                    </div>
+                  // A Fieldset, so its legend matches the Move table label below and names the
+                  // Pin button's group for a screen reader. The rule sits on a wrapper: a legend
+                  // is drawn across its fieldset's own top border.
+                  <div className="border-t border-border pt-4">
+                    <Fieldset legend="Pin to this table">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-text-muted">
+                          {booking.table_pinned
+                            ? 'Pinned. Nothing automatic will move this booking.'
+                            : 'Not pinned. This booking may be moved to make room for another.'}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant={booking.table_pinned ? 'secondary' : 'primary'}
+                          onClick={() => void handleTogglePin(!booking.table_pinned)}
+                          loading={actionLoadingKey === 'pin'}
+                          disabled={Boolean(actionLoadingKey)}
+                        >
+                          {booking.table_pinned ? 'Unpin' : 'Pin'}
+                        </Button>
+                      </div>
+                    </Fieldset>
                   </div>
                 )}
 
@@ -1287,8 +1289,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               {canEdit ? (
                 <div className="space-y-3">
                   {emailOption?.enabled && (
-                    <fieldset className="space-y-2">
-                      <legend className="sr-only">Send by</legend>
+                    <Fieldset legend="Send by">
                       <Radio
                         name="guest-message-channel"
                         value="email"
@@ -1306,7 +1307,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                         onChange={() => setMessageChannel('sms')}
                         disabled={Boolean(actionLoadingKey)}
                       />
-                    </fieldset>
+                    </Fieldset>
                   )}
                   {emailChosen && (
                     <Input
@@ -1447,10 +1448,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           setNoShowConfirmOpen(false)
           await handleStatusAction('no_show')
         }}
-        type="warning"
+        // Primary: a no-show can be put back with Mark Confirmed, so it is not destructive.
+        tone="primary"
         title="Mark as No-Show?"
         message="This will mark the booking as no-show and remove it from active covers."
-        confirmText="Mark No-Show"
+        confirmLabel="Mark No-Show"
         closeOnConfirm={false}
       />
 
@@ -1461,11 +1463,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           setCancelConfirmOpen(false)
           await handleStatusAction('cancelled')
         }}
-        type="warning"
+        tone="danger"
         title="Cancel This Booking?"
         message="The customer will be notified."
-        confirmText="Cancel Booking"
-        confirmVariant="danger"
+        confirmLabel="Cancel Booking"
         closeOnConfirm={false}
       />
 
@@ -1473,11 +1474,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         open={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={() => void handleDeleteBooking()}
-        type="danger"
-        destructive
+        tone="danger"
         title="Delete This Booking?"
         message={`Delete booking ${booking.booking_reference ?? ''} permanently? This cannot be undone.`}
-        confirmText="Delete"
+        confirmLabel="Delete"
       />
 
       {/* The DS Modal panel carries data-touch-targets, so on a touch screen (BOH on the bar iPad)

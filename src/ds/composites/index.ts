@@ -1,6 +1,5 @@
 export { Card, CardHeader, CardBody, CardFooter } from './Card'
-export { PageHeader } from './PageHeader'
-export { SectionNav } from './SectionNav'
+// SectionNav is PageLayout's own tab row (navItems); it is not exported for pages to use.
 export { Tabs } from './Tabs'
 
 export { Segmented } from './Segmented'

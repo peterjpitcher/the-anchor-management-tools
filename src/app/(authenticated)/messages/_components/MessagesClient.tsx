@@ -749,7 +749,7 @@ export function MessagesClient() {
         title="Mark Every Conversation as Read?"
         message="This clears the unread flag on every inbound message for the whole team, including conversations that are not shown here. It cannot be undone in bulk."
         confirmLabel="Mark All Read"
-        tone="warning"
+        tone="primary"
       />
     </PageLayout>
   )

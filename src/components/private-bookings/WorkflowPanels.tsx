@@ -4,7 +4,7 @@
  * Private-booking SOP workflow panels for the detail page.
  *
  * These panels render against the workflow server actions in
- * `@/app/actions/privateBookingWorkflow`. Money never moves here — the
+ * `@/app/actions/privateBookingWorkflow`. Money never moves here: the
  * deductions panel only records the manager's decision; refunds still go
  * through the existing refund flow.
  *
@@ -32,6 +32,7 @@ import {
   Modal,
   PageLoading,
   Select,
+  SubHeading,
   Textarea,
   toast,
 } from '@/ds'
@@ -345,7 +346,7 @@ export function WaiverRiskPanel({
           {waiverApplies && (
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-text-strong">Self-catering waiver</p>
+                <SubHeading>Self-Catering Waiver</SubHeading>
                 <Badge tone={WAIVER_STATUS_TONE[waiver]}>{humanise(waiver)}</Badge>
               </div>
               {canManage && (
@@ -403,7 +404,7 @@ export function WaiverRiskPanel({
 
           <div className="space-y-3 border-t border-border pt-4">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-text-strong">Risk review</p>
+              <SubHeading>Risk Review</SubHeading>
               <Badge tone={RISK_STATUS_TONE[risk]}>{humanise(risk)}</Badge>
             </div>
             {canManage && (
@@ -986,8 +987,8 @@ export function DeductionsPanel({
 
         {canManage && (
           <div className="space-y-3 border-t border-border pt-4">
-            <p className="text-sm font-semibold text-text-strong">Propose a deduction</p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <SubHeading>Propose a Deduction</SubHeading>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field label="Amount (£)">
                 <Input
                   type="number"
@@ -1079,7 +1080,7 @@ function ComplaintRow({
       </div>
 
       <div className="mt-3 space-y-3 border-t border-border pt-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Status">
             <Select
               value={status}
@@ -1187,8 +1188,8 @@ export function ComplaintsPanel({
         )}
 
         <div className="space-y-3 border-t border-border pt-4">
-          <p className="text-sm font-semibold text-text-strong">Log a complaint</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <SubHeading>Log a Complaint</SubHeading>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Field label="Channel">
               <Select value={channel} onChange={(e) => setChannel(e.target.value)} options={COMPLAINT_CHANNEL_OPTIONS} />
             </Field>

@@ -3,7 +3,7 @@ import { verifyBookingToken } from '@/lib/private-bookings/booking-token'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import {
   DetailGrid,
   GuestAlert,
@@ -334,7 +334,7 @@ export default async function BookingPortalPage({
       )}
 
       {/* Contact block */}
-      <div className={clsx(GUEST_SUNK_BOX_CLASS, 'text-center')}>
+      <div className={cn(GUEST_SUNK_BOX_CLASS, 'text-center')}>
         <p className="font-anchor-body text-guest-body font-bold leading-guest-snug text-guest-text-strong">
           Questions about your booking?
         </p>

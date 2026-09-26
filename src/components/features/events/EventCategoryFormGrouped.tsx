@@ -5,7 +5,7 @@ import { EventCategory } from '@/types/event-categories'
 import { KeywordStrategyCard } from './KeywordStrategyCard'
 import { FaqEditor } from './FaqEditor'
 import { parseKeywords, keywordsToDisplay } from '@/lib/keywords'
-import { Accordion, Button, Checkbox, FormFooter, Icon, Input, Select, Switch, Textarea, toast } from '@/ds'
+import { Accordion, Button, Checkbox, Fieldset, FormFooter, Icon, Input, Select, SubHeading, Switch, Textarea, toast } from '@/ds'
 import { cn } from '@/lib/utils'
 import { SquareImageUpload } from '@/components/features/shared/SquareImageUpload'
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '@/types/event-categories'
@@ -37,10 +37,6 @@ function GroupTitle({ title, description }: { title: string; description?: strin
   )
 }
 
-/** A named group of picker buttons, labelled like a DS field. */
-const PICKER_LEGEND = 'mb-1.5 text-xs font-medium uppercase tracking-wider text-text-muted'
-/** A caption over a run of fields inside a group. */
-const SUBGROUP_LABEL = 'text-xs font-semibold uppercase tracking-wider text-text-muted'
 
 export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: EventCategoryFormGroupedProps) {
   // Basic fields
@@ -234,8 +230,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
 
           {/* Appearance. Each picker is a named group and each option says whether it is the
               one chosen, which the ring and border alone only showed to sighted users. */}
-          <fieldset className="min-w-0 sm:col-span-3">
-            <legend className={PICKER_LEGEND}>Color</legend>
+          <Fieldset legend="Color" className="sm:col-span-3">
             <div className="flex flex-wrap gap-2">
               {CATEGORY_COLORS.map((colorOption) => (
                 // A raw button: a swatch filled with the saved colour, which a DS Button cannot
@@ -255,10 +250,9 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 />
               ))}
             </div>
-          </fieldset>
+          </Fieldset>
 
-          <fieldset className="min-w-0 sm:col-span-3">
-            <legend className={PICKER_LEGEND}>Icon</legend>
+          <Fieldset legend="Icon" className="sm:col-span-3">
             <div className="flex flex-wrap gap-2">
               {CATEGORY_ICONS.map((iconOption) => {
                 return (
@@ -281,7 +275,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 )
               })}
             </div>
-          </fieldset>
+          </Fieldset>
 
           <div className="sm:col-span-4">
             <Checkbox
@@ -295,7 +289,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
 
           {/* Preview */}
           <div className="col-span-full">
-            <p className={cn(SUBGROUP_LABEL, 'mb-2')}>Preview</p>
+            <SubHeading as="h3" className="mb-2">Preview</SubHeading>
             <div className="flex items-center space-x-3 p-4 bg-surface-2 rounded-default">
               <div 
                 className="p-2 rounded-lg"
@@ -319,7 +313,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
             content: (
         <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
           <div className="col-span-full">
-            <p className={SUBGROUP_LABEL}>Time</p>
+            <SubHeading as="h3">Time</SubHeading>
           </div>
 
           <div className="sm:col-span-2">
@@ -376,7 +370,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="col-span-full">
-            <p className={cn(SUBGROUP_LABEL, 'mt-6')}>Pricing & Booking</p>
+            <SubHeading as="h3" className="mt-6">Pricing &amp; Booking</SubHeading>
           </div>
 
           <div className="sm:col-span-2">
@@ -477,7 +471,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           </div>
 
           <div className="col-span-full">
-            <p className={cn(SUBGROUP_LABEL, 'mt-6')}>Performers & Reminders</p>
+            <SubHeading as="h3" className="mt-6">Performers &amp; Reminders</SubHeading>
           </div>
 
           <div className="sm:col-span-3">

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { PrivateBookingWithDetails } from '@/types/private-bookings'
 
 /**
@@ -159,6 +159,10 @@ describe('private booking detail page chrome', () => {
       'Messages',
       'Communications',
     ])
+    // Sending a message is the Messages tab, so no button on the page repeats it.
+    expect(
+      screen.queryAllByRole('link').filter((link) => link.getAttribute('href') === '/private-bookings/booking-1/messages'),
+    ).toEqual([])
     // Header actions render in the desktop header and again in the phone nav row.
     const contract = screen.getAllByRole('link', { name: 'Open Contract' })[0]
     expect(contract).toHaveAttribute('href', '/private-bookings/booking-1/contract')
@@ -170,6 +174,30 @@ describe('private booking detail page chrome', () => {
     }
     // The workflow panels finish loading without throwing.
     await waitFor(() => expect(screen.getByRole('heading', { level: 3, name: 'Suppliers' })).toBeInTheDocument())
+  })
+
+  it('keeps the cancellation questions out of the live status alert', async () => {
+    render(
+      <PrivateBookingDetailClient
+        bookingId="booking-1"
+        initialBooking={booking}
+        permissions={permissions}
+        paymentHistory={[]}
+      />,
+    )
+
+    // Header actions render in the desktop header and again in the phone nav row.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Update Status' })[0])
+    const changeTo = await screen.findByRole('group', { name: 'Change To' })
+    fireEvent.click(within(changeTo).getByRole('radio', { name: 'Cancelled' }))
+
+    const channel = await screen.findByLabelText('How was the cancellation received?')
+    const alert = screen.getByRole('status')
+    expect(alert).toHaveTextContent('Cancel This Booking?')
+    // A live region announces its content; the fields that follow it must not sit inside it.
+    expect(alert).not.toContainElement(channel)
+    expect(within(alert).queryByRole('combobox')).not.toBeInTheDocument()
+    expect(within(alert).queryByRole('textbox')).not.toBeInTheDocument()
   })
 
   it('keeps the same title and tab row when the booking cannot be loaded', async () => {
@@ -212,6 +240,20 @@ describe('private bookings list page chrome', () => {
 
     const sectionTabs = screen.getAllByRole('tab').filter((tab) => tab.tagName === 'A').map((tab) => tab.textContent)
     expect(sectionTabs).toEqual(['Bookings', 'Calendar', 'SMS Queue', 'Reports', 'Settings'])
+    // One tab row: the status filter is a Segmented (a radio group), not a second row of tabs.
+    expect(screen.getAllByRole('tab').every((tab) => tab.tagName === 'A')).toBe(true)
+    const statusFilter = screen.getByRole('radiogroup', { name: 'Status' })
+    expect(within(statusFilter).getAllByRole('radio').map((radio) => radio.textContent)).toEqual([
+      'All',
+      'Draft',
+      'Confirmed',
+      'Completed',
+      'Cancelled',
+    ])
+    // No quick links repeating the Settings tab.
+    for (const name of ['Manage Spaces', 'Catering Options', 'Preferred Vendors']) {
+      expect(screen.queryByRole('link', { name })).not.toBeInTheDocument()
+    }
     expect(screen.getAllByRole('link', { name: 'New Booking' })[0]).toHaveAttribute('href', '/private-bookings/new')
     expect(screen.getByText('No bookings found')).toBeInTheDocument()
   })

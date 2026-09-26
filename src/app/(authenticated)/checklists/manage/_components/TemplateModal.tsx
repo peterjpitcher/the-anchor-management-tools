@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Button,
   Field,
+  Fieldset,
   Input,
   Textarea,
   Select,
@@ -336,7 +337,7 @@ export function TemplateModal({
               </div>
 
               {form.freq === 'weekly' && (
-                <Field label="On weekdays" hint="Pick one or more days.">
+                <Fieldset legend="On weekdays" hint="Pick one or more days.">
                   <div className="flex flex-wrap gap-1.5">
                     {WEEKDAYS.map((d) => (
                       <Button
@@ -351,7 +352,7 @@ export function TemplateModal({
                       </Button>
                     ))}
                   </div>
-                </Field>
+                </Fieldset>
               )}
 
               {showAnchorDate && (

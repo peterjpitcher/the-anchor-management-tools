@@ -17,6 +17,7 @@ import {
   DescriptionList,
   Empty,
   Field,
+  Fieldset,
   FormFooter,
   Icon,
   Input,
@@ -40,7 +41,7 @@ interface SmsTemplate {
 }
 
 // Template suggestions for the manual-send UI. Copy style mirrors the
-// automated builders in src/lib/private-bookings/messages.ts — no
+// automated builders in src/lib/private-bookings/messages.ts: no
 // "The Anchor:" opener, first-name-first, em-dash rhythm. These are only
 // prefills: staff can edit before sending.
 const smsTemplates: SmsTemplate[] = [
@@ -330,8 +331,8 @@ export default function PrivateBookingMessagesClient({
                 </Alert>
               )}
 
-              <Field label="Choose a template">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3" role="radiogroup" aria-label="Choose a template">
+              <Fieldset legend="Choose a Template">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {smsTemplates.map((template) => (
                     <Radio
                       key={template.id}
@@ -345,10 +346,10 @@ export default function PrivateBookingMessagesClient({
                     />
                   ))}
                 </div>
-              </Field>
+              </Fieldset>
 
               {emailOption?.enabled && (
-                <Field label="Send by">
+                <Fieldset legend="Send By">
                   <div className="space-y-2">
                     <Radio
                       name="private-booking-message-channel"
@@ -368,7 +369,7 @@ export default function PrivateBookingMessagesClient({
                       disabled={!canSendSms}
                     />
                   </div>
-                </Field>
+                </Fieldset>
               )}
 
               {emailChosen && (

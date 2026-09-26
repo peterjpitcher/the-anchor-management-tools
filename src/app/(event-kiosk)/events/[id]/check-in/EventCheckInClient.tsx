@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { Alert, Button, Card, CardBody, CardHeader, Input } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, Input, SubHeading } from '@/ds'
 import { KioskShell } from '@/components/shells/KioskShell'
 import { cn } from '@/lib/utils'
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils'
@@ -269,7 +269,9 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
       return (
         <div className={cn(CHECK_IN_PANEL_CLASSES.snowball, 'p-5')}>
           <p className="text-sm font-semibold uppercase tracking-[0.16em]">Snowball eligible</p>
-          <p className="mt-2 text-2xl font-bold">Congratulations</p>
+          {/* A real heading (h4 under the card's title), as it was before the redesign, drawn at
+              the panel's display size and in the panel's colour so the news still stands out. */}
+          <SubHeading className="mt-2 text-2xl font-bold text-inherit">Congratulations</SubHeading>
           <p className="mt-3 text-sm leading-6">
             You have been to the last 3 Cash Bingo events, so you are eligible for tonight&apos;s snowball.
           </p>

@@ -46,7 +46,7 @@ export function MenuTargetForm({ initialTarget }: Props) {
     <form onSubmit={handleSubmit} className="space-y-4">
       <Field
         label="Standard GP% target"
-        help="This percentage is applied to every dish. Enter a value between 1 and 95."
+        hint="This percentage is applied to every dish. Enter a value between 1 and 95."
         required
       >
         <Input

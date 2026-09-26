@@ -3,7 +3,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Field, Input, Select } from '@/ds';
 import { cn } from '@/lib/utils';
-import { StepFooter } from './StepParts';
+import { TIME_OFF_ROW_BORDER_CLASSES } from '../../_shared/status-ui';
+import { StepFooter, StepSection } from './StepParts';
 import { saveOnboardingTimeOff } from '@/app/actions/employeeInvite';
 import {
   getTimeOffDateBounds,
@@ -136,67 +137,68 @@ export default function TimeOffStep({
       <div className={nothingBooked ? 'pointer-events-none opacity-50' : undefined}>
         <div className="space-y-4">
           {rows.map((row, index) => (
-            <fieldset
+            // The border and padding sit on a wrapper: a fieldset's legend straddles the
+            // fieldset's own top border, so a border there would run through it. Each set of
+            // dates is a group of fields under its own sub-heading, like the emergency contacts,
+            // not a Fieldset (which is for radios or buttons that answer one question).
+            <div
               key={row.key}
-              disabled={nothingBooked}
-              className={cn('rounded-lg border p-4', errorRow === index ? 'border-danger' : 'border-border')}
+              className={cn('rounded-lg border p-4', TIME_OFF_ROW_BORDER_CLASSES[errorRow === index ? 'rejected' : 'ok'])}
             >
-              <legend className="px-1 text-sm font-medium text-text-strong">
-                Dates {index + 1}
-              </legend>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="First day" htmlFor={`${row.key}-start`} required>
-                  <Input
-                    id={`${row.key}-start`}
-                    type="date"
-                    min={minDate}
-                    max={maxDate}
-                    value={row.startDate}
-                    onChange={e => updateRow(index, { startDate: e.target.value })}
-                  />
-                </Field>
-                <Field label="Last day" htmlFor={`${row.key}-end`} required>
-                  <Input
-                    id={`${row.key}-end`}
-                    type="date"
-                    min={row.startDate || minDate}
-                    max={maxDate}
-                    value={row.endDate}
-                    onChange={e => updateRow(index, { endDate: e.target.value })}
-                  />
-                </Field>
-                <Field label="What is it?" htmlFor={`${row.key}-type`}>
-                  <Select
-                    id={`${row.key}-type`}
-                    value={row.leaveType}
-                    onChange={e => updateRow(index, { leaveType: e.target.value })}
-                    options={LEAVE_TYPE_OPTIONS}
-                  />
-                </Field>
-                <Field
-                  label="Note (optional)"
-                  htmlFor={`${row.key}-note`}
-                  help="Please do not include medical details."
-                >
-                  <Input
-                    id={`${row.key}-note`}
-                    maxLength={MAX_NOTE_LENGTH}
-                    placeholder="e.g. Wedding"
-                    value={row.note}
-                    onChange={e => updateRow(index, { note: e.target.value })}
-                  />
-                </Field>
-              </div>
-
-              {rows.length > 1 && (
-                <div className="mt-3">
-                  <Button type="button" variant="ghost" size="sm" onClick={() => removeRow(index)}>
-                    Remove These Dates
-                  </Button>
+              <StepSection title={`Dates ${index + 1}`} disabled={nothingBooked}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="First day" htmlFor={`${row.key}-start`} required>
+                    <Input
+                      id={`${row.key}-start`}
+                      type="date"
+                      min={minDate}
+                      max={maxDate}
+                      value={row.startDate}
+                      onChange={e => updateRow(index, { startDate: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Last day" htmlFor={`${row.key}-end`} required>
+                    <Input
+                      id={`${row.key}-end`}
+                      type="date"
+                      min={row.startDate || minDate}
+                      max={maxDate}
+                      value={row.endDate}
+                      onChange={e => updateRow(index, { endDate: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="What is it?" htmlFor={`${row.key}-type`}>
+                    <Select
+                      id={`${row.key}-type`}
+                      value={row.leaveType}
+                      onChange={e => updateRow(index, { leaveType: e.target.value })}
+                      options={LEAVE_TYPE_OPTIONS}
+                    />
+                  </Field>
+                  <Field
+                    label="Note (optional)"
+                    htmlFor={`${row.key}-note`}
+                    hint="Please do not include medical details."
+                  >
+                    <Input
+                      id={`${row.key}-note`}
+                      maxLength={MAX_NOTE_LENGTH}
+                      placeholder="e.g. Wedding"
+                      value={row.note}
+                      onChange={e => updateRow(index, { note: e.target.value })}
+                    />
+                  </Field>
                 </div>
-              )}
-            </fieldset>
+
+                {rows.length > 1 && (
+                  <div>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => removeRow(index)}>
+                      Remove These Dates
+                    </Button>
+                  </div>
+                )}
+              </StepSection>
+            </div>
           ))}
         </div>
 

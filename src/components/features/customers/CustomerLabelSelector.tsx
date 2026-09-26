@@ -9,7 +9,7 @@ import {
   type CustomerLabel,
   type CustomerLabelAssignment
 } from '@/app/actions/customer-labels'
-import { Button, PageLoading, toast, Icon } from '@/ds'
+import { Button, Dropdown, DropdownItem, PageLoading, toast, Icon } from '@/ds'
 
 interface CustomerLabelSelectorProps {
   customerId: string
@@ -29,7 +29,6 @@ export function CustomerLabelSelector({
   const [allLabels, setAllLabels] = useState<CustomerLabel[]>(initialLabels ?? [])
   const [customerLabels, setCustomerLabels] = useState<CustomerLabelAssignment[]>(initialAssignments ?? [])
   const [loading, setLoading] = useState(!(initialLabels && initialAssignments))
-  const [showSelector, setShowSelector] = useState(false)
   const [assigningLabel, setAssigningLabel] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
@@ -67,7 +66,6 @@ export function CustomerLabelSelector({
       } else {
         toast.success('Label assigned')
         await loadData()
-        setShowSelector(false)
       }
     } catch (error) {
       toast.error('Failed to assign label')
@@ -134,8 +132,9 @@ export function CustomerLabelSelector({
               )}
               {canEdit && !assignment.auto_assigned && (
                 // A plain button: it is the remove control inside a chip drawn in the label's
-                // saved colour. The DS has no removable Badge, and a DS button carries the 44px
-                // phone touch floor, which would burst the chip.
+                // saved colour. The DS has no removable Badge, and even a small DS IconButton is
+                // a full button height, taller than the chip on desktop. (On phones the global
+                // touch floor in globals.css gives every button 44px, this one included.)
                 <button type="button"
                   onClick={() => handleRemoveLabel(label.id)}
                   aria-label={`Remove ${label.name}`}
@@ -148,47 +147,41 @@ export function CustomerLabelSelector({
           )
         })}
 
-        {/* Add Label Button */}
+        {/* The labels that can be added. The DS Dropdown is portalled, so the Card this sits
+            in cannot clip the menu. */}
         {canEdit && availableLabels.length > 0 && (
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => setShowSelector(!showSelector)}
-            icon={<Icon name="tag" size={12} />}
-            aria-expanded={showSelector}
+          <Dropdown
+            align="left"
+            trigger={
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                icon={<Icon name="tag" size={12} />}
+                loading={assigningLabel !== null}
+              >
+                Add Label
+              </Button>
+            }
           >
-            Add Label
-          </Button>
+            {availableLabels.map((label) => (
+              <DropdownItem
+                key={label.id}
+                onClick={() => void handleAssignLabel(label.id)}
+                icon={
+                  <span
+                    aria-hidden="true"
+                    className="block h-3 w-3 rounded-full"
+                    style={{ backgroundColor: label.color }}
+                  />
+                }
+              >
+                {label.name}
+              </DropdownItem>
+            ))}
+          </Dropdown>
         )}
       </div>
-
-      {/* The labels that can be added, shown in place rather than in a floating menu: the
-          selector sits at the foot of a Card, which clips anything that overflows it. */}
-      {showSelector && canEdit && (
-        <div className="flex flex-wrap gap-2">
-          {availableLabels.map((label) => (
-            <Button
-              key={label.id}
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => handleAssignLabel(label.id)}
-              disabled={assigningLabel !== null}
-              loading={assigningLabel === label.id}
-              icon={
-                <span
-                  aria-hidden="true"
-                  className="h-3 w-3 rounded-full"
-                  style={{ backgroundColor: label.color }}
-                />
-              }
-            >
-              {label.name}
-            </Button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

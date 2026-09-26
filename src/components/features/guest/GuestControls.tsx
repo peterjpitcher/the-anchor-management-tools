@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import { GUEST_INPUT_CLASS, GUEST_INPUT_INVALID_CLASS, GUEST_TEXTAREA_CLASS } from './styles'
 
 /**
@@ -17,15 +17,12 @@ type InvalidProp = {
 }
 
 /**
- * The border colour is chosen here rather than overridden, because these class
- * strings are joined with clsx (see styles.ts) and two border colours would
- * leave the winner to stylesheet order.
+ * `cn()` knows the guest tokens, so the danger border replaces the resting
+ * border colour (keeping the 1.5px width and the gold focus border), and a
+ * caller's `className` wins over the same property in the base.
  */
 function controlClass(invalid: boolean | undefined, ...extra: Array<string | false | undefined>): string {
-  const base = invalid
-    ? GUEST_INPUT_CLASS.replace('border-guest-border-strong', GUEST_INPUT_INVALID_CLASS)
-    : GUEST_INPUT_CLASS
-  return clsx(base, ...extra)
+  return cn(GUEST_INPUT_CLASS, invalid && GUEST_INPUT_INVALID_CLASS, ...extra)
 }
 
 export function GuestInput({

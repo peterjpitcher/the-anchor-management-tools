@@ -11,17 +11,10 @@ export const TABLE_BOOKINGS_NAV: HeaderNavItem[] = [
 ]
 
 /**
- * The tab row for one viewer: Reports shows only to somebody who can open it. A page that sits
- * under a tab without being in the list (a booking's detail page) names that tab as `activeHref`.
+ * The tab row for one viewer: Reports shows only to somebody who can open it. Every page in the
+ * row (Back of House and Reports) builds its tabs here, so they filter the same way. A booking's
+ * detail page is a child page: it shows the back button, not this row.
  */
-export function tableBookingsNav({
-  canViewReports,
-  activeHref,
-}: {
-  canViewReports: boolean
-  activeHref?: string
-}): HeaderNavItem[] {
-  return TABLE_BOOKINGS_NAV
-    .filter((item) => canViewReports || item.href !== '/table-bookings/reports')
-    .map((item) => (activeHref && item.href === activeHref ? { ...item, active: true } : item))
+export function tableBookingsNav({ canViewReports }: { canViewReports: boolean }): HeaderNavItem[] {
+  return TABLE_BOOKINGS_NAV.filter((item) => canViewReports || item.href !== '/table-bookings/reports')
 }

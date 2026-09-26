@@ -10,6 +10,7 @@ import {
   ConfirmDialog,
   Empty,
   Field,
+  Fieldset,
   IconButton,
   Input,
   Modal,
@@ -141,7 +142,7 @@ function TemplateFormModal({ initial, employees, departments, onSave, onCancel }
     <Modal
       open
       onClose={onCancel}
-      title={initial ? 'Edit Template' : 'New Shift Template'}
+      title={initial ? 'Edit Shift Template' : 'New Shift Template'}
       width="xl"
       footer={
         <>
@@ -214,13 +215,11 @@ function TemplateFormModal({ initial, employees, departments, onSave, onCancel }
           )}
         </div>
 
-        <fieldset className="space-y-2 border-t border-border pt-4">
-          <legend className="text-xs font-medium uppercase tracking-wider text-text-muted">
-            Shift colour
-          </legend>
-          <p className="text-xs text-text-soft">
-            Automatic uses the department and start time. Pick a colour below to override it.
-          </p>
+        <Fieldset
+          legend="Shift colour"
+          hint="Automatic uses the department and start time. Pick a colour to override it."
+          className="border-t border-border pt-4"
+        >
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <Button
               id="tmpl-colour-auto"
@@ -277,7 +276,7 @@ function TemplateFormModal({ initial, employees, departments, onSave, onCancel }
             />
             <span className="text-xs text-text-soft">Custom colour</span>
           </div>
-        </fieldset>
+        </Fieldset>
 
         <div className="grid grid-cols-1 gap-4 border-t border-border pt-4 sm:grid-cols-2">
           <Field

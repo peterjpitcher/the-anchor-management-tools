@@ -3,7 +3,7 @@
 // every form renders on DS fields with a FormFooter. Server actions are stubbed; the real DS
 // components render.
 import { describe, expect, it, vi, beforeAll } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('next/navigation', () => ({
@@ -90,12 +90,16 @@ describe('employees pages on the page contract', () => {
 
   it('says the birthdays failed to load rather than showing an empty list', async () => {
     render(await BirthdaysPage())
+    // Titled with the sidebar entry that owns the tab row; the subtitle names the tab.
+    expect(screen.getAllByRole('heading', { level: 1, name: 'Employees' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Birthdays through the year').length).toBeGreaterThan(0)
     expect(screen.getByText('Could not load birthdays')).toBeInTheDocument()
     expect(screen.queryByText('No birthdays found')).not.toBeInTheDocument()
   })
 
   it('shows an empty reliability leaderboard with Empty', async () => {
     render(await ReliabilityPage({ searchParams: Promise.resolve({}) }))
+    expect(screen.getAllByRole('heading', { level: 1, name: 'Employees' }).length).toBeGreaterThan(0)
     expect(screen.getByText('No employees found for this view')).toBeInTheDocument()
   })
 
@@ -129,6 +133,8 @@ describe('employees pages on the page contract', () => {
       <EmployeeEditClient employee={employee} financialDetails={null} healthRecord={null} rightToWork={null} canViewDocuments />,
     )
     expect(screen.getAllByText('Edit Sam').length).toBeGreaterThan(0)
+    // Back to the employee's page, labelled with that page's title (the legal name here).
+    expect(screen.getAllByRole('button', { name: 'Back to Sam Rowe' }).length).toBeGreaterThan(0)
   })
 
   it('labels the add note modal fields', async () => {
@@ -201,9 +207,79 @@ describe('employees pages on the page contract', () => {
         }]}
       />,
     )
+    // The DS FileButton: a real button named by the Field label, over a hidden input.
     const file = screen.getByLabelText(/File/)
-    expect(file).toHaveAttribute('type', 'file')
+    expect(file.tagName).toBe('BUTTON')
     expect(file).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Upload Attachment' })).toBeInTheDocument()
+    const upload = screen.getByRole('button', { name: 'Upload Attachment' })
+    expect(upload).toBeInTheDocument()
+
+    // Nothing picked: the form says so under the field rather than sending nothing.
+    fireEvent.submit(upload.closest('form') as HTMLFormElement)
+    expect(screen.getByText('A file is required.')).toBeInTheDocument()
+  })
+
+  it('shows the current hourly rate in green, as before the page contract', () => {
+    render(
+      <EmployeePayTab
+        employeeId="e1"
+        canEdit
+        initialPaySettings={null}
+        initialOverrides={[]}
+        currentRate={{ rate: 12.21, source: 'age_band' }}
+      />,
+    )
+    expect(screen.getByText('£12.21/hr')).toHaveClass('text-success-fg')
+  })
+
+  it('keeps an invalid edit of a rate row above the table, never beside the add form', async () => {
+    const user = userEvent.setup()
+    render(
+      <EmployeePayTab
+        employeeId="e1"
+        canEdit
+        initialPaySettings={null}
+        initialOverrides={[{
+          id: 'o1', employee_id: 'e1', hourly_rate: 14, effective_from: '2099-01-01',
+          created_at: '2026-01-01T00:00:00Z',
+        }]}
+        currentRate={null}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Add Override' }))
+    const row = within(screen.getByText('£14.00/hr').closest('tr') as HTMLElement)
+    await user.click(row.getByRole('button', { name: 'Edit' }))
+    await user.clear(row.getByRole('spinbutton', { name: 'Hourly rate (£)' }))
+    await user.click(row.getByRole('button', { name: 'Save' }))
+
+    // One message, and not in the add form, which has nothing wrong with it.
+    expect(screen.getAllByText('Enter a valid hourly rate')).toHaveLength(1)
+    const addForm = screen.getByRole('heading', { name: 'New Rate Override' }).parentElement as HTMLElement
+    expect(addForm).not.toHaveTextContent('Enter a valid hourly rate')
+
+    // The add form's own mistake shows in the add form, even while a row is being edited.
+    await user.click(screen.getByRole('button', { name: 'Save Override' }))
+    expect(addForm).toHaveTextContent('Enter a valid hourly rate')
+    expect(screen.getAllByText('Enter a valid hourly rate')).toHaveLength(2)
+
+    // Cancelling the row edit clears only the row's message.
+    await user.click(row.getByRole('button', { name: 'Cancel' }))
+    expect(screen.getAllByText('Enter a valid hourly rate')).toHaveLength(1)
+    expect(addForm).toHaveTextContent('Enter a valid hourly rate')
+  })
+
+  it('heads each emergency contact with its name', () => {
+    render(
+      <EmergencyContactsTab
+        employeeId="e1"
+        canEdit={false}
+        contacts={[{
+          id: 'c1', employee_id: 'e1', name: 'Pat Rowe', relationship: 'Parent', priority: 'Primary',
+          created_at: '2026-01-01T00:00:00Z',
+        }]}
+      />,
+    )
+    expect(screen.getByRole('heading', { level: 4, name: 'Pat Rowe' })).toBeInTheDocument()
   })
 })

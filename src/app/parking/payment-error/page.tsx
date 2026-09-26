@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import {
   GuestButton,
   GuestCard,
@@ -58,7 +58,7 @@ export default async function ParkingPaymentErrorPage({ searchParams }: ParkingP
           )}
 
           {/* The number is a tap-to-call link, as on the parking booking page and every other guest page. */}
-          <p className={clsx('border-t border-guest-border pt-4', GUEST_MUTED_CLASS)}>
+          <p className={cn('border-t border-guest-border pt-4', GUEST_MUTED_CLASS)}>
             Please try the payment link again, or call <GuestPhoneLink />.
           </p>
         </div>

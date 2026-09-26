@@ -24,6 +24,7 @@ import {
   PageLayout,
   PageLoading,
   Select,
+  SubHeading,
   Textarea,
   toast,
 } from '@/ds'
@@ -339,7 +340,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="font-medium text-text">{template.name}</p>
+                      <SubHeading as="h3">{template.name}</SubHeading>
                       <Badge tone={activeStateTone(template.is_active)} size="sm">
                         {template.is_active ? 'Active' : 'Inactive'}
                       </Badge>
@@ -413,8 +414,8 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
         onConfirm={confirmDelete}
         title="Delete Template"
         message={`Are you sure you want to delete the "${deleteConfirm?.name}" template?`}
-        confirmText="Delete"
-        type="danger"
+        confirmLabel="Delete"
+        tone="danger"
       />
 
       <Modal
@@ -425,7 +426,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
           resetForm()
         }}
         title={editingTemplate ? 'Edit Template' : 'New Template'}
-        size="lg"
+        width="lg"
       >
         <form
           className="space-y-4"
@@ -480,7 +481,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
           </Field>
 
           {formData.send_timing === 'custom' && (
-            <Field label="Hours before event" help="Maximum 30 days (720 hours)">
+            <Field label="Hours before event" hint="Maximum 30 days (720 hours)">
               <Input
                 type="number"
                 min="1"
@@ -500,7 +501,7 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
           <Field
             label="Template Content"
             htmlFor="template-content"
-            help={`${formData.content.length} chars, ~${Math.ceil(Math.max(formData.content.length, 1) / 160)} segments`}
+            hint={`${formData.content.length} chars, ~${Math.ceil(Math.max(formData.content.length, 1) / 160)} segments`}
             required
           >
             <div className="mb-2 flex flex-wrap gap-1.5">

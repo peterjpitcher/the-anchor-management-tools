@@ -11,7 +11,10 @@ import {
   CardBody,
   CardHeader,
   Field,
+  Fieldset,
+  FileButton,
   FormFooter,
+  Icon,
   Input,
   PageLayout,
   PageLoading,
@@ -28,7 +31,7 @@ import { previewMarketingAudience } from '@/app/actions/marketing-contacts'
 import { londonLocalInputToUtcIso } from '@/lib/dateUtils'
 import type { AudiencePreview, MarketingTagCount } from '@/types/marketing'
 
-import { MARKETING_BACK_TO_CAMPAIGNS, MARKETING_NAV } from '../../_shared/nav'
+import { MARKETING_BACK } from '../../_shared/nav'
 
 interface NewCampaignClientProps {
   tags: MarketingTagCount[]
@@ -246,8 +249,7 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
     <PageLayout
       title="New Campaign"
       subtitle="Paste the content, choose who it goes to, then save or schedule"
-      navItems={MARKETING_NAV}
-      backButton={MARKETING_BACK_TO_CAMPAIGNS}
+      backButton={MARKETING_BACK}
       containerSize="md"
     >
         <Card>
@@ -288,19 +290,15 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
           />
           <CardBody>
             <div className="space-y-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="min-w-0 flex-1">
-                  <Input
-                    type="file"
-                    accept=".json,application/json"
-                    label="Upload a .json file"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0]
-                      if (file) void handleJsonFile(file)
-                    }}
-                    fullWidth
-                  />
-                </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <FileButton
+                  variant="secondary"
+                  accept=".json,application/json"
+                  icon={<Icon name="upload" size={14} />}
+                  onFiles={(files) => void handleJsonFile(files[0])}
+                >
+                  Upload a JSON File
+                </FileButton>
                 <Button
                   variant="secondary"
                   onClick={handleCheckContent}
@@ -372,7 +370,7 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
           />
           <CardBody>
             <div className="space-y-4">
-              <Field label="Include these tags">
+              <Fieldset legend="Include these tags">
                 {tags.length === 0 ? (
                   <p className="text-sm text-text-muted">
                     No tags yet. Add tags to contacts first, or leave this empty to reach
@@ -394,10 +392,10 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
                     ))}
                   </div>
                 )}
-              </Field>
+              </Fieldset>
 
-              <Field
-                label="Leave out these tags"
+              <Fieldset
+                legend="Leave out these tags"
                 hint="Anyone with one of these tags is removed, even if an include tag matched."
               >
                 {tags.length === 0 ? (
@@ -418,7 +416,7 @@ export function NewCampaignClient({ tags, canSend }: NewCampaignClientProps) {
                     ))}
                   </div>
                 )}
-              </Field>
+              </Fieldset>
 
               <Card variant="secondary">
                 {previewLoading ? (

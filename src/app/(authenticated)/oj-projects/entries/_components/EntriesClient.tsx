@@ -28,10 +28,10 @@ import {
   ConfirmDialog,
   RowActions,
   Checkbox,
+  Segmented,
   toast,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
-import { Segmented } from '@/ds'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { getEntries, updateEntry, deleteEntry, createTimeEntry, createMileageEntry, createOneOffCharge } from '@/app/actions/oj-projects/entries'
 import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
@@ -459,6 +459,7 @@ export function EntriesClient({
           value={search}
           onChange={setSearch}
           placeholder="Search descriptions..."
+          aria-label="Search descriptions"
           className="min-w-[220px] flex-1 sm:max-w-xs"
         />
         <Select
@@ -709,6 +710,7 @@ export function EntriesClient({
             value={createType}
             onChange={(id) => setCreateType(id as 'time' | 'mileage' | 'one_off')}
             size="sm"
+            aria-label="Entry type"
           />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

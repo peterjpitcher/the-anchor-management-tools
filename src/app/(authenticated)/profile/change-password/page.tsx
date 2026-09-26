@@ -52,7 +52,7 @@ export default function ChangePasswordPage() {
     <PageLayout
       title="Change Password"
       subtitle="Update your account password"
-      backButton={{ label: 'Back to Profile', href: '/profile' }}
+      backButton={{ label: 'Back to My Profile', href: '/profile' }}
       containerSize="md"
     >
       <form onSubmit={handleChangePassword} className="space-y-6">

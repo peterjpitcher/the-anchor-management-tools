@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Fragment, useCallback, useMemo, useState, useTransition } from 'react'
 
@@ -21,6 +20,7 @@ import {
   PageLoading,
   SearchInput,
   Select,
+  SubHeading,
   Table,
   TableBody,
   TableCell,
@@ -76,6 +76,8 @@ interface ContactsClientProps {
   pendingReviewCount: number
   canEdit: boolean
   canCreate: boolean
+  /** Whether the Settings tab shows (marketing:manage, the permission its page checks). */
+  canManageSettings: boolean
 }
 
 /** Loaded on demand when a row is opened, so the list itself stays one query per page. */
@@ -125,6 +127,7 @@ export function ContactsClient({
   pendingReviewCount,
   canEdit,
   canCreate,
+  canManageSettings,
 }: ContactsClientProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -298,7 +301,7 @@ export function ContactsClient({
 
   return (
     <PageLayout
-      {...marketingLayout('contacts')}
+      {...marketingLayout('contacts', { canManageSettings })}
       headerActions={
         canCreate ? (
           <Button variant="secondary" size="sm" onClick={() => setImportOpen(true)}>
@@ -336,6 +339,7 @@ export function ContactsClient({
               debounceDelay={400}
               onChange={(value) => applyFilters({ ...filters, search: value })}
               placeholder="Search name, email or company"
+              aria-label="Search contacts"
               className="w-full sm:w-72"
             />
             <div className="w-full sm:w-48">
@@ -622,11 +626,13 @@ export function ContactsClient({
 
         {isPending && <PageLoading inline label="Loading contacts" className="py-4" />}
 
+        {/* No link to Settings: it is a tab in the row above. That tab only shows with
+            marketing:manage, so only those users are pointed at it (as on the Campaigns tab). */}
         <p className="text-sm text-text-muted">
           Contacts are business addresses only.{' '}
-          <Link href="/marketing/settings" className="underline underline-offset-2">
-            Sending is controlled in Settings.
-          </Link>
+          {canManageSettings
+            ? 'Sending is controlled in the Settings tab.'
+            : 'Sending is controlled by whoever manages marketing settings.'}
         </p>
 
       {eligibilityTarget && eligibilityTarget.length > 0 && (
@@ -685,7 +691,7 @@ export function ContactsClient({
           </span>
         }
         confirmLabel="Resubscribe"
-        tone="warning"
+        tone="primary"
       />
 
       {importOpen && (
@@ -701,14 +707,18 @@ export function ContactsClient({
   )
 }
 
-/** One short researched fact. Renders nothing at all when there is nothing to say. */
-function DetailFact({ label, value }: { label: string; value: string | null }) {
+/**
+ * One researched fact, as a label and its value inside a <dl>. Renders nothing at all when
+ * there is nothing to say. `note` adds a line of help under the value.
+ */
+function DetailFact({ label, value, note }: { label: string; value: string | null; note?: string }) {
   if (!value) return null
 
   return (
     <div className="min-w-0">
       <dt className="text-xs uppercase tracking-wide text-text-muted">{label}</dt>
       <dd className="mt-1 text-sm text-text break-words">{value}</dd>
+      {note && <dd className="mt-1 text-xs text-text-muted">{note}</dd>}
     </div>
   )
 }
@@ -745,25 +755,14 @@ function ContactDetailPanel({
     <div className="space-y-5 py-2">
       {hasResearch ? (
         <>
-          <div className="grid gap-4 md:grid-cols-2">
-            {contact.angle && (
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-wide text-text-muted">
-                  Why they should care
-                </p>
-                <p className="mt-1 text-sm text-text break-words">{contact.angle}</p>
-              </div>
-            )}
-            {contact.openingLine && (
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-wide text-text-muted">Opening line</p>
-                <p className="mt-1 text-sm text-text break-words">{contact.openingLine}</p>
-                <p className="mt-1 text-xs text-text-muted">
-                  Written for a one-to-one approach. It is never merged into a campaign email.
-                </p>
-              </div>
-            )}
-          </div>
+          <dl className="grid gap-4 md:grid-cols-2">
+            <DetailFact label="Why they should care" value={contact.angle} />
+            <DetailFact
+              label="Opening line"
+              value={contact.openingLine}
+              note="Written for a one-to-one approach. It is never merged into a campaign email."
+            />
+          </dl>
 
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             <DetailFact label="Fits our room" value={roomFit || null} />
@@ -774,10 +773,9 @@ function ContactDetailPanel({
           </dl>
 
           {contact.notes && (
-            <div className="min-w-0">
-              <p className="text-xs uppercase tracking-wide text-text-muted">Notes</p>
-              <p className="mt-1 text-sm text-text break-words">{contact.notes}</p>
-            </div>
+            <dl>
+              <DetailFact label="Notes" value={contact.notes} />
+            </dl>
           )}
         </>
       ) : (
@@ -787,11 +785,14 @@ function ContactDetailPanel({
       )}
 
       <div className="border-t border-border pt-4">
-        <p className="text-xs uppercase tracking-wide text-text-muted">Engagement</p>
+        {/* h3: the contacts table sits in a Card with no CardHeader. */}
+        <SubHeading as="h3">Engagement</SubHeading>
         {engagement === undefined || engagement.status === 'loading' ? (
           <PageLoading inline label="Loading engagement" className="py-4" />
         ) : engagement.status === 'error' ? (
-          <p className="mt-2 text-sm text-danger-fg break-words">{engagement.message}</p>
+          <Alert tone="danger" size="sm" title="Could not load engagement" className="mt-2">
+            <span className="break-words">{engagement.message}</span>
+          </Alert>
         ) : (
           <>
             <dl className="mt-2 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">

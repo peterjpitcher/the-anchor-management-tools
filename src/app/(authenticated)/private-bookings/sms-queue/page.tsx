@@ -148,8 +148,8 @@ export default async function SmsQueuePage() {
 
   return (
     <PageLayout
-      title="SMS Queue"
-      subtitle="Review and approve SMS messages for private bookings"
+      title="Private Bookings"
+      subtitle="SMS queue: review and approve texts before they go"
       navItems={privateBookingsNav({ canViewSmsQueue: true, canViewReports })}
     >
       {!canApproveSms && !canSendSms && (

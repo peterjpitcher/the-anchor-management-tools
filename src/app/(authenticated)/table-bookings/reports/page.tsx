@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import {
+  BarChart,
   Card,
   CardBody,
   CardHeader,
@@ -16,14 +17,13 @@ import {
   TableHeader,
   TableRow
 } from '@/ds'
-import { BarChart } from '@/components/charts/BarChart'
 import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
 import {
   loadTableBookingReportsSnapshot,
   resolveTableBookingReportsWindow
 } from '@/lib/analytics/table-booking-reports'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
-import { TABLE_BOOKINGS_NAV } from '../_shared/nav'
+import { tableBookingsNav } from '../_shared/nav'
 import { ReportsWindowSwitch } from './ReportsWindowSwitch'
 
 function formatNumber(value: number): string {
@@ -100,9 +100,9 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
 
   return (
     <PageLayout
-      title="Table Bookings Reports"
-      subtitle="Guest analytics, conversion tracking, and engagement performance"
-      navItems={TABLE_BOOKINGS_NAV}
+      title="Table Bookings"
+      subtitle="Reports"
+      navItems={tableBookingsNav({ canViewReports })}
       headerActions={
         <ReportsWindowSwitch options={WINDOW_OPTIONS} value={snapshot.selected_window.key} />
       }
@@ -145,11 +145,12 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
           <BarChart
             data={snapshot.covers_trend.buckets.map((bucket) => ({
               label: bucket.label,
-              value: bucket.covers,
-              color: 'var(--color-chart-1)'
+              value: bucket.covers
             }))}
             height={300}
             formatType="number"
+            seriesLabel="Covers"
+            ariaLabel={`Covers trend: ${describeCoverTrend(snapshot.covers_trend.granularity)}`}
           />
         </CardBody>
       </Card>

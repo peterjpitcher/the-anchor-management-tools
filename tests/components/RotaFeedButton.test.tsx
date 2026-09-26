@@ -35,6 +35,18 @@ describe('RotaFeedButton', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument())
   })
 
+  it('closes the calendar feed panel from its own Close button', async () => {
+    render(<RotaFeedButton feedUrl={FEED_URL} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Subscribe' }))
+    expect(await screen.findByLabelText('Calendar feed address')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Calendar Feed' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    await waitFor(() => expect(screen.queryByLabelText('Calendar feed address')).not.toBeInTheDocument())
+  })
+
   it('only offers the calendar sync when the shared calendar is configured', () => {
     const { rerender } = render(<RotaFeedButton feedUrl={FEED_URL} />)
     expect(screen.queryByRole('button', { name: 'Sync Calendar' })).not.toBeInTheDocument()

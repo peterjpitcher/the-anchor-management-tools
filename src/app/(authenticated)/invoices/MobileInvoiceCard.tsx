@@ -39,6 +39,18 @@ export function MobileInvoiceCard({
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick ? () => onClick(invoice) : undefined}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              // Only the row itself: Enter on the download button inside must not open the invoice.
+              if (event.target !== event.currentTarget) return
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onClick(invoice)
+              }
+            }
+          : undefined
+      }
       className={
         onClick
           ? 'cursor-pointer p-pad-card transition-colors hover:bg-surface-hover'

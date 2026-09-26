@@ -186,8 +186,8 @@ export default function LineItemCatalogPage() {
   }
 
   const layoutProps = {
-    title: 'Line Item Catalog',
-    subtitle: 'Manage reusable line items for invoices and quotes',
+    title: 'Invoices',
+    subtitle: 'Catalog of reusable line items for invoices and quotes',
     navItems: FINANCE_NAV,
   }
 
@@ -285,7 +285,7 @@ export default function LineItemCatalogPage() {
         open={showForm}
         onClose={closeForm}
         title={editingItem ? 'Edit Catalog Item' : 'Add Catalog Item'}
-        size="sm"
+        width="sm"
         footer={
           <>
             <Button

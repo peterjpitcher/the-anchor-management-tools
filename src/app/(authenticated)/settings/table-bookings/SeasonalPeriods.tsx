@@ -16,6 +16,7 @@ import {
   PageLoading,
   Section,
   Select,
+  SubHeading,
   Textarea,
   toast,
 } from '@/ds'
@@ -360,7 +361,7 @@ export function SeasonalPeriods() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-semibold text-text-strong">{period.name}</p>
+                          <SubHeading as="h3">{period.name}</SubHeading>
                           <Badge tone={status.tone}>{status.label}</Badge>
                           <Badge>{PERIOD_KIND_LABELS[period.periodKind]}</Badge>
                         </div>
@@ -424,7 +425,7 @@ export function SeasonalPeriods() {
 
                     {isOpen && (
                       <div className="mt-4 border-t border-border pt-4">
-                        <p className="text-sm font-medium text-text-strong">Pre-order menu</p>
+                        <SubHeading>Pre-order Menu</SubHeading>
                         {/* Verbatim from the shared constant. Four separate wordings for this
                             eventually produce one that implies the guest has already paid. */}
                         {period.menuItems.some((item) => item.course === MENU_COURSE_ADDON) && (

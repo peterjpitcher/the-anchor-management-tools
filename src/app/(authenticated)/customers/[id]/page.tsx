@@ -41,7 +41,7 @@ import { CustomerForm } from '@/components/features/customers/CustomerForm'
 import { CustomerLabelSelector } from '@/components/features/customers/CustomerLabelSelector'
 import { getTableBookingStatusBadgeClasses } from '@/lib/table-bookings/ui'
 import { privateBookingStatusTone } from '@/app/(authenticated)/private-bookings/_shared/status-ui'
-import { CUSTOMERS_BACK_LABEL, CUSTOMERS_NAV } from '../_shared/nav'
+import { CUSTOMERS_BACK_LABEL } from '../_shared/nav'
 import { CONTACT_CHANNEL_TONE } from '../_shared/status-ui'
 
 export const dynamic = 'force-dynamic'
@@ -1164,10 +1164,10 @@ export default function CustomerViewPage() {
 
   const customerName = customer ? `${customer.first_name} ${customer.last_name || ''}`.trim() : ''
 
-  // One header for every state, so the page does not jump when the customer arrives.
+  // One header for every state, so the page does not jump when the customer arrives. A
+  // customer's page is a child page: the back button, not the Customers tab row.
   const layoutProps = {
     title: customerName || 'Customer',
-    navItems: CUSTOMERS_NAV,
     backButton: { label: CUSTOMERS_BACK_LABEL, href: '/customers' },
   }
 
@@ -1664,6 +1664,7 @@ export default function CustomerViewPage() {
                 value={bookingSearch}
                 onSearch={setBookingSearch}
                 placeholder="Search booking type, status, reference..."
+                aria-label="Search bookings"
                 debounceDelay={150}
                 className="w-full sm:w-72"
               />

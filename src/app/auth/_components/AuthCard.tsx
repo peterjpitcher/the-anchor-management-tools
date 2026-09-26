@@ -75,7 +75,7 @@ export function AuthCard({ title, lead, icon, footer, children }: AuthCardProps)
   )
 }
 
-/** A text link on the sign-in screens ("Forgot password?", "Back to Login"). */
+/** A text link on the sign-in screens ("Forgot password?", "Back to Sign In"). */
 export function AuthLink({
   href,
   children,

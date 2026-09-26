@@ -17,8 +17,6 @@ vi.mock('@/app/actions/expenses', () => ({
   deleteExpenseFile: vi.fn(),
   getExpenseInsights: vi.fn(),
 }))
-// The chart draws nothing these tests need, so it is kept out of jsdom.
-vi.mock('@/components/charts/BarChart', () => ({ BarChart: () => null }))
 
 import { ExpensesClient } from '@/app/(authenticated)/expenses/_components/ExpensesClient'
 import { ExpensesInsightsClient } from '@/app/(authenticated)/expenses/insights/_components/ExpensesInsightsClient'

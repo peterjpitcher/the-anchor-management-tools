@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { toLocalIsoDate } from '@/lib/dateUtils'
 import { getReplyEligibility } from '@/lib/messages/replyEligibility'
 import type { CustomerCommunication } from '@/types/communications'
+import { MESSAGE_DELIVERY_STATUS_LABEL, MESSAGE_DELIVERY_STATUS_TONE } from '@/lib/messages/status-ui'
 import { MESSAGE_CHANNEL_BADGE_TONE, REPLY_BLOCK_TONE } from '../_shared/status-ui'
 
 import {
@@ -470,7 +471,9 @@ export function ConversationThread({
                             {getMessageTime(lastMessage.created_at)}
                           </span>
                           {runFailed ? (
-                            <Badge tone="danger">Not delivered</Badge>
+                            <Badge tone={MESSAGE_DELIVERY_STATUS_TONE.undelivered}>
+                              {MESSAGE_DELIVERY_STATUS_LABEL.undelivered}
+                            </Badge>
                           ) : (
                             statusText && <span className="text-meta text-text-muted">{statusText}</span>
                           )}

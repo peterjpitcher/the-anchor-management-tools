@@ -1,12 +1,12 @@
 import { notFound, redirect } from 'next/navigation'
 import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 import { calculateAge, calculateLengthOfService } from '@/lib/employeeUtils'
-import { displayNameWithLegal } from '@/lib/employees/display-name'
 import { Alert, Badge, Card, CardBody, CardHeader, DescriptionList, PageLayout, Stat } from '@/ds'
 import { EmployeeDetailTabs } from './_components/EmployeeDetailTabs'
 import { EmployeeHeaderActions } from './_components/EmployeeHeaderActions'
 import { QuickAddNoteSheet } from './_components/QuickAddNoteSheet'
 import { EMPLOYEES_BACK_TO_LIST } from '../_shared/nav'
+import { employeePageTitle } from '../_shared/employee-title'
 import { employmentStatusTone } from '../_shared/status-ui'
 import EmployeeNotesList from '@/components/features/employees/EmployeeNotesList'
 import AddEmployeeNoteForm from '@/components/features/employees/AddEmployeeNoteForm'
@@ -114,13 +114,8 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
   }, {})
 
   const isOnboarding = employee.status === 'Onboarding'
-  // Preferred name first, legal name in brackets after it, so whoever is looking at
-  // the record can still match it to a contract or payslip. Onboarding rows have no
-  // name yet, so the email address stays the fallback.
-  const hasNameToShow = Boolean((employee.first_name && employee.last_name) || employee.preferred_name)
-  const headerName = hasNameToShow
-    ? displayNameWithLegal(employee, employee.email_address)
-    : employee.email_address
+  // The record's name (preferred, then legal in brackets), or the email address before onboarding.
+  const headerName = employeePageTitle(employee)
   const age = calculateAge(employee.date_of_birth ?? null)
 
   // Missing values fall back to the DS dash; the rest keep their own "N/A" or "No".
@@ -342,9 +337,9 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
 
           <Card>
             <CardHeader title="Notes" subtitle="Track key updates and conversations related to this employee" />
-            <CardBody className="space-y-6">
+            <CardBody className="space-y-4">
               {permissions.canEdit && (
-                <div className="border-b border-border pb-6">
+                <div className="border-b border-border pb-4">
                   <AddEmployeeNoteForm employeeId={employee.employee_id} />
                 </div>
               )}
@@ -362,7 +357,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                   : 'You do not have permission to view employee documents'
               }
             />
-            <CardBody className="space-y-6">
+            <CardBody className="space-y-4">
               {permissions.canViewDocuments ? (
                 <EmployeeAttachmentsList
                   employeeId={employee.employee_id}
@@ -377,7 +372,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
               )}
 
               {permissions.canUploadDocuments && (
-                <div className="border-t border-border pt-6">
+                <div className="border-t border-border pt-4">
                   <AddEmployeeAttachmentForm
                     employeeId={employee.employee_id}
                     categories={attachmentCategories}

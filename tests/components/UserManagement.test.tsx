@@ -82,4 +82,21 @@ describe('User management UI gating', () => {
     expect(screen.getByRole('button', { name: 'Save Roles' })).toBeDisabled()
     expect(mockGetUserRoles).not.toHaveBeenCalled()
   })
+
+  it('names the user under the dialog title, as its description, once', async () => {
+    render(
+      <UserRolesModal
+        isOpen
+        onClose={() => {}}
+        user={sampleUser}
+        allRoles={sampleRoles}
+        canManageRoles={false}
+      />,
+    )
+
+    const dialog = await screen.findByRole('dialog', { name: 'Manage User Roles' })
+    expect(dialog).toHaveAccessibleDescription('user@example.com')
+    // The Modal renders its description, so the body no longer repeats the address.
+    expect(screen.getAllByText('user@example.com')).toHaveLength(1)
+  })
 })

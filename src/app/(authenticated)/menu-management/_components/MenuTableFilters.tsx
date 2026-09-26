@@ -34,6 +34,8 @@ interface MenuTableFiltersProps {
   searchValue: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder: string;
+  /** The search box's accessible name ("Search dishes"): it has no visible label. */
+  searchLabel: string;
 }
 
 function isActive(value: unknown): boolean {
@@ -49,6 +51,7 @@ export function MenuTableFilters({
   searchValue,
   onSearchChange,
   searchPlaceholder,
+  searchLabel,
 }: MenuTableFiltersProps): React.ReactElement {
   const activeCount = Object.values(values).filter(isActive).length;
 
@@ -62,6 +65,7 @@ export function MenuTableFilters({
         value={searchValue}
         onChange={onSearchChange}
         placeholder={searchPlaceholder}
+        aria-label={searchLabel}
         className="w-full sm:w-72"
       />
 

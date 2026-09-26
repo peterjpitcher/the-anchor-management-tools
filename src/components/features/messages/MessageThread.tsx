@@ -8,6 +8,7 @@ import {
   MESSAGE_ATTACHMENT_BADGE_TONE,
   MESSAGE_CHANNEL_BADGE_TONE,
 } from '@/app/(authenticated)/messages/_shared/status-ui'
+import { MESSAGE_DELIVERY_STATUS_LABEL, MESSAGE_DELIVERY_STATUS_TONE } from '@/lib/messages/status-ui'
 
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
 
@@ -194,8 +195,8 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                         </span>
                         {showStatus && message.status && (
                           isFailed ? (
-                            <Badge tone="danger" className="ml-2">
-                              {getStatusText(message.status) || message.status}
+                            <Badge tone={MESSAGE_DELIVERY_STATUS_TONE.undelivered} className="ml-2">
+                              {MESSAGE_DELIVERY_STATUS_LABEL.undelivered}
                             </Badge>
                           ) : (
                             <span className="ml-2 text-xs sm:text-sm text-text-muted">

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { getLeaveRequestById, deleteLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave';
 import type { LeaveRequest } from '@/app/actions/leave';
 import { Alert, Badge, Button, ConfirmDialog, DescriptionList, Input, Modal, PageLoading, toast } from '@/ds';
+import { rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
 
 interface HolidayDetailModalProps {
   requestId: string;
@@ -15,26 +16,18 @@ interface HolidayDetailModalProps {
 }
 
 function formatDateRange(start: string, end: string): string {
+  // Both dates are UTC midnights, so they are formatted in UTC and never move a day with the zone.
   const s = new Date(start + 'T00:00:00Z');
   const e = new Date(end + 'T00:00:00Z');
-  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' };
   if (start === end) return s.toLocaleDateString('en-GB', opts);
-  return `${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })} – ${e.toLocaleDateString('en-GB', opts)}`;
+  return `${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' })} – ${e.toLocaleDateString('en-GB', opts)}`;
 }
 
 function dayCount(start: string, end: string): number {
   const diff = new Date(end + 'T00:00:00Z').getTime() - new Date(start + 'T00:00:00Z').getTime();
   return Math.round(diff / 86400000) + 1;
 }
-
-const STATUS_LABELS: Record<LeaveRequest['status'], string> = { pending: 'Pending approval', approved: 'Approved', declined: 'Declined' };
-// The same tones as the leave manager (LeaveManagerClient STATUS_BADGE), keyed and typed the same
-// way: approved success, waiting warning, declined danger.
-const STATUS_TONES: Record<LeaveRequest['status'], 'warning' | 'success' | 'danger'> = {
-  pending: 'warning',
-  approved: 'success',
-  declined: 'danger',
-};
 
 export default function HolidayDetailModal({
   requestId,
@@ -103,6 +96,7 @@ export default function HolidayDetailModal({
       open
       onClose={onClose}
       title="Holiday Request"
+      description={employeeName}
       width="md"
       footer={
         <>
@@ -155,7 +149,6 @@ export default function HolidayDetailModal({
       }
     >
       <div className="space-y-4">
-        <p className="text-sm text-text-muted">{employeeName}</p>
         {loading && <PageLoading inline label="Loading the holiday request" />}
         {fetchError && <Alert tone="danger">{fetchError}</Alert>}
 
@@ -177,8 +170,8 @@ export default function HolidayDetailModal({
                 key: 'status',
                 label: 'Status',
                 value: (
-                  <Badge tone={STATUS_TONES[request.status] ?? 'neutral'}>
-                    {STATUS_LABELS[request.status] ?? request.status}
+                  <Badge tone={rotaLeaveStatusTone(request.status)}>
+                    {rotaLeaveStatusLabel(request.status)}
                   </Badge>
                 ),
               },

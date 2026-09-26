@@ -17,9 +17,10 @@ interface CreateShiftModalProps {
   onCreated: (shift: RotaShift) => void;
 }
 
+// A shift date is a plain day: read as a UTC midnight and formatted in UTC, so it never moves.
 function formatDate(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long',
+  return new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
   });
 }
 
@@ -68,7 +69,8 @@ export default function CreateShiftModal({
     <Modal
       open
       onClose={onClose}
-      title={employeeName}
+      title={isOpenShift ? 'New Open Shift' : 'New Shift'}
+      description={isOpenShift ? formatDate(shiftDate) : `${employeeName}, ${formatDate(shiftDate)}`}
       width="md"
       footer={
         <>
@@ -82,7 +84,6 @@ export default function CreateShiftModal({
       }
     >
       <div className="space-y-3">
-        <p className="text-sm text-text-muted">{formatDate(shiftDate)}</p>
         {error && <Alert tone="danger">{error}</Alert>}
 
         <Field label="Shift name (optional)" htmlFor="cs-name">

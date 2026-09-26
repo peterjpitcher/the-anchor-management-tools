@@ -19,18 +19,12 @@ import {
   Input,
   PageLayout,
   Select,
+  SubHeading,
   Textarea,
 } from '@/ds'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
-import { PB_BACK_TO_LIST, PB_SETTINGS_NAV } from '../../_shared/nav'
+import { PB_BACK_TO_LIST, PB_SETTINGS_TITLE, privateBookingSettingsNav } from '../../_shared/nav'
 import { settingsActiveLabel, settingsActiveTone } from '../../_shared/status-ui'
-
-const layoutProps = {
-  title: 'Venue Spaces',
-  subtitle: 'Manage available spaces for private hire',
-  backButton: PB_BACK_TO_LIST,
-  navItems: PB_SETTINGS_NAV,
-}
 
 const WHOLE_VENUE_HINT =
   'Tick for Entire Pub / exclusive hire: booking this space blocks every other space for the event.'
@@ -137,6 +131,13 @@ export default async function VenueSpacesPage({
 
   if (!canManageSpaces) {
     redirect('/unauthorized')
+  }
+
+  const layoutProps = {
+    title: PB_SETTINGS_TITLE,
+    subtitle: 'Venue spaces available for private hire',
+    backButton: PB_BACK_TO_LIST,
+    navItems: privateBookingSettingsNav(actions),
   }
 
   const spacesResult = await getVenueSpacesForManagement()
@@ -304,7 +305,7 @@ export default async function VenueSpacesPage({
                   {/* Phone-only summary so each space reads as a distinct block */}
                   <div className="md:hidden flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-text-strong">{space.name}</p>
+                      <SubHeading className="truncate">{space.name}</SubHeading>
                       <p className="mt-0.5 text-xs text-text-muted">
                         Seated {space.capacity_seated} · Standing {space.capacity_standing ?? space.capacity_seated} · £{space.rate_per_hour}/hr
                       </p>

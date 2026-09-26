@@ -4,6 +4,8 @@
  * ask this file, so a status looks the same wherever it shows.
  */
 
+import { messageDeliveryStatusLabel, messageDeliveryStatusTone } from '@/lib/messages/status-ui'
+
 export type SettingsBadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
 
 // Maps rather than object literals, so a value such as "constructor" can never resolve to an
@@ -89,15 +91,39 @@ export const PAY_RATE_STATUS_BADGE: Record<PayRateStatus, { tone: SettingsBadgeT
 }
 
 /**
- * SMS failures and undelivered guest messages. A Twilio error code is a failure (red); a message
- * that never left our side ("not sent") is a warning. Message delivery status is shared with other
- * sections; this map is only the settings screen's view of it.
+ * The SMS failures log. A Twilio error code is a failure (red); a message that never left our side
+ * ("Not sent") is a warning. A delivery status itself, such as an undelivered guest message, takes
+ * the shared map in src/lib/messages/status-ui.ts instead.
  */
 export const SMS_FAILURE_TONES = {
   errorCode: 'danger',
   notSent: 'warning',
-  undelivered: 'danger',
 } as const satisfies Record<string, SettingsBadgeTone>
+
+/**
+ * The error badge on one row of the SMS failures log: Twilio's error code when it gave one,
+ * otherwise the delivery status Twilio reported, worded and coloured by the shared delivery map
+ * like every other list of sends (so "undelivered" reads "Not delivered", never the raw value).
+ *
+ * Every row in this log failed (messages.status is 'failed'), so it always reads as a failure. A
+ * Twilio status the shared map does not class as one, such as "not_found" from the reconcile job
+ * when Twilio has no record of the send, keeps its words but takes the shared colour for 'failed'
+ * rather than the grey the map gives an unknown status.
+ */
+export function smsFailureBadge(
+  errorCode: string | null,
+  twilioStatus: string | null,
+): { label: string; tone: SettingsBadgeTone } | null {
+  if (errorCode) return { label: errorCode, tone: SMS_FAILURE_TONES.errorCode }
+  if (twilioStatus) {
+    const tone = messageDeliveryStatusTone(twilioStatus)
+    return {
+      label: messageDeliveryStatusLabel(twilioStatus),
+      tone: tone === 'danger' ? tone : messageDeliveryStatusTone('failed'),
+    }
+  }
+  return null
+}
 
 /** A seasonal booking period (Christmas, Mother's Day and the rest). */
 export type SeasonalPeriodState = 'archived' | 'off' | 'liveMenuMissing' | 'live'

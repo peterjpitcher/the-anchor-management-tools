@@ -12,6 +12,7 @@ import {
   CardHeader,
   Checkbox,
   Field,
+  Fieldset,
   FormFooter,
   Icon,
   Input,
@@ -48,6 +49,8 @@ type FormField = {
   hint?: string;
   /** Takes both columns of the field grid (long text). */
   wide?: boolean;
+  /** A checkbox's own label, beside the box; `label` heads the group. */
+  checkboxLabel?: string;
 }
 
 function SubmitButton({ text = 'Save Employee' }: { text?: string }) {
@@ -140,7 +143,7 @@ export default function EmployeeForm({
       title: 'Additional',
       fields: [
         { name: 'uniform_preference', label: 'Uniform Preference', type: 'text', defaultValue: employee?.uniform_preference },
-        { name: 'keyholder_status', label: 'Keyholder Status', type: 'checkbox', defaultChecked: employee?.keyholder_status ?? false },
+        { name: 'keyholder_status', label: 'Keyholder Status', type: 'checkbox', checkboxLabel: 'Employee is a keyholder', defaultChecked: employee?.keyholder_status ?? false },
       ]
     }
   ];
@@ -170,8 +173,7 @@ export default function EmployeeForm({
         <Checkbox
           id={field.name}
           name={field.name}
-          // The Field label above names it too; this keeps the name on the control itself.
-          aria-label={field.label}
+          label={field.checkboxLabel ?? field.label}
           defaultChecked={field.defaultChecked}
           value="true"
         />
@@ -237,14 +239,28 @@ export default function EmployeeForm({
             <CardBody className="grid gap-4 sm:grid-cols-2">
               {step.fields.map((field) => {
                 const error = fieldError(field.name);
+                // A checkbox answers its own question under a group legend styled like a Field
+                // label; it has no error of its own, so the Fieldset shows it.
+                if (field.type === 'checkbox') {
+                  return (
+                    <Fieldset
+                      key={field.name}
+                      legend={field.label}
+                      required={field.required}
+                      hint={error ? undefined : field.hint}
+                      error={error}
+                      className={field.wide ? 'sm:col-span-2' : undefined}
+                    >
+                      {renderControl(field)}
+                    </Fieldset>
+                  );
+                }
                 return (
                   <Field
                     key={field.name}
                     label={field.label}
                     required={field.required}
                     hint={error ? undefined : field.hint}
-                    // Text fields show their own error; a checkbox has none, so the Field shows it.
-                    error={field.type === 'checkbox' ? error : undefined}
                     className={field.wide ? 'sm:col-span-2' : undefined}
                   >
                     {renderControl(field)}

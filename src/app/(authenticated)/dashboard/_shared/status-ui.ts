@@ -30,3 +30,19 @@ export const ACTION_ITEM_SEVERITY_CLASSES: Record<ActionItemSeverity, { row: str
   medium: { row: 'bg-warning-soft border-warning-border', text: 'text-warning-fg' },
   low: { row: 'bg-warning-soft border-warning-border', text: 'text-warning-fg' },
 }
+
+export type DashboardStatTone = 'default' | 'success' | 'warning' | 'danger'
+
+/**
+ * "Week vs last" and "Last year same week": a rise is green, a fall red, and "--" (nothing to
+ * compare) stays plain. The value is the signed percentage the page prints ("+4.2%", "-3.0%").
+ */
+export function revenueChangeTone(change: string): DashboardStatTone {
+  if (change === '--') return 'default'
+  return change.startsWith('-') ? 'danger' : 'success'
+}
+
+/** A count that needs someone (SMS failures, unread messages): amber once it is above zero. */
+export function attentionCountTone(count: number): DashboardStatTone {
+  return count > 0 ? 'warning' : 'default'
+}

@@ -7,7 +7,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { cn } from '@/lib/utils'
-import { Alert, Modal, Button, Field, FormFooter, Input, Textarea, toast, Icon } from '@/ds'
+import { Alert, ConfirmDialog, Modal, Button, Field, Fieldset, FormFooter, Input, Textarea, toast, Icon } from '@/ds'
 import { createCalendarNote, updateCalendarNote, deleteCalendarNote } from '@/app/actions/calendar-notes'
 import { ScheduleCalendar } from './ScheduleCalendar'
 import {
@@ -789,14 +789,16 @@ export function VenueCalendar({
           open
           onClose={closeNoteModal}
           title={noteEditor.mode === 'edit' ? 'Edit Calendar Note' : 'Add Calendar Note'}
+          description={
+            noteEditor.mode === 'edit'
+              ? 'Changes also update the shared Pub Ops calendar.'
+              : noteEditor.note_date
+                ? `Adding a note for ${formatDateInLondon(noteEditor.note_date, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}`
+                : // The start date can be cleared while typing; never format an empty date.
+                  'Adding a note'
+          }
         >
           <form onSubmit={handleNoteSubmit} className="space-y-4">
-            {/* The DS Modal shows no description of its own, so the line sits at the top of the form. */}
-            <p className="text-sm text-text-muted">
-              {noteEditor.mode === 'edit'
-                ? 'Changes also update the shared Pub Ops calendar.'
-                : `Adding a note for ${format(new Date(noteEditor.note_date + 'T00:00:00'), 'EEE d MMM yyyy')}`}
-            </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Start date" required>
                 <Input
@@ -837,7 +839,7 @@ export function VenueCalendar({
                 autoFocus
               />
             </Field>
-            <Field label="Colour">
+            <Fieldset legend="Colour">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {CALENDAR_COLOUR_OPTIONS.map((option) => {
                   const selected = noteEditor.color.toUpperCase() === option.value
@@ -849,7 +851,7 @@ export function VenueCalendar({
                       variant={selected ? 'primary' : 'secondary'}
                       aria-pressed={selected}
                       onClick={() => setNoteEditor((f) => (f ? { ...f, color: option.value } : f))}
-                      className="min-h-11 justify-start"
+                      className="min-h-touch justify-start"
                       icon={
                         <span
                           className="h-5 w-5 shrink-0 rounded-sm border border-border-strong"
@@ -866,11 +868,11 @@ export function VenueCalendar({
               {!CALENDAR_COLOUR_OPTIONS.some(
                 (option) => option.value === noteEditor.color.toUpperCase(),
               ) && (
-                <p className="mt-2 text-xs text-text-muted">
+                <p className="text-xs text-text-muted">
                   This note uses a colour outside the palette. It is kept unless you pick a new one.
                 </p>
               )}
-            </Field>
+            </Fieldset>
             <Field label="Notes">
               <Textarea
                 rows={3}
@@ -881,38 +883,9 @@ export function VenueCalendar({
               />
             </Field>
 
-            {confirmingDelete && (
-              <Alert tone="danger" size="sm" title="Delete this note permanently?">
-                <p>
-                  This cannot be undone, and it also removes the entry from the shared Pub Ops
-                  calendar.
-                </p>
-                <div className="mt-2 flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={isDeletingNote}
-                    onClick={() => setConfirmingDelete(false)}
-                  >
-                    Keep It
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="danger"
-                    loading={isDeletingNote}
-                    onClick={handleNoteDelete}
-                  >
-                    Delete Permanently
-                  </Button>
-                </div>
-              </Alert>
-            )}
-
             <FormFooter
               start={
-                noteEditor.mode === 'edit' && !confirmingDelete ? (
+                noteEditor.mode === 'edit' ? (
                   <Button
                     variant="ghost"
                     type="button"
@@ -944,6 +917,21 @@ export function VenueCalendar({
               </Button>
             </FormFooter>
           </form>
+
+          {/* Rendered inside the note dialog so it stacks above it as a nested dialog. It stays
+              open while the delete runs, and after a failed one, so the note is never lost. */}
+          <ConfirmDialog
+            open={confirmingDelete}
+            onClose={() => setConfirmingDelete(false)}
+            onConfirm={handleNoteDelete}
+            title="Delete Calendar Note"
+            message="This cannot be undone, and it also removes the entry from the shared Pub Ops calendar."
+            confirmLabel="Delete Permanently"
+            cancelLabel="Keep It"
+            tone="danger"
+            closeOnConfirm={false}
+            loading={isDeletingNote}
+          />
         </Modal>
       )}
     </div>

@@ -66,8 +66,11 @@ function expectFailureShown(): void {
   const alert = screen.getByRole('alert')
   expect(within(alert).getByText('Could not load the leaderboard')).toBeInTheDocument()
   expect(within(alert).getByText(/Could not load the reliability leaderboard/)).toBeInTheDocument()
-  // The header and the Employees tab row stay, exactly as on a good load.
-  expect(screen.getAllByText('Reliability').length).toBeGreaterThan(0)
+  // The header and the Employees tab row stay, exactly as on a good load: the page is titled
+  // with the sidebar entry that owns the row, and the subtitle names the tab.
+  expect(screen.getAllByRole('heading', { level: 1, name: 'Employees' }).length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Reliability over the last 90 days').length).toBeGreaterThan(0)
+  expect(screen.getAllByRole('tab', { name: 'Reliability' }).length).toBeGreaterThan(0)
   expect(screen.getAllByRole('link', { name: 'Include Former' }).length).toBeGreaterThan(0)
   // Never shown as an empty list, and never as a table of zero scores.
   expect(screen.queryByText('No employees found for this view')).not.toBeInTheDocument()

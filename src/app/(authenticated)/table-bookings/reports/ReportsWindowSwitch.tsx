@@ -22,6 +22,7 @@ export function ReportsWindowSwitch({ options, value }: ReportsWindowSwitchProps
 
   return (
     <Segmented
+      aria-label="Report period"
       options={options.map((option) => ({ id: option.key, label: option.label }))}
       value={value}
       size="sm"

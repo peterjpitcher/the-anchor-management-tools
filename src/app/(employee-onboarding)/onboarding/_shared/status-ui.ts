@@ -20,3 +20,11 @@ export const ONBOARDING_SECTION_ICON: Record<OnboardingSectionState, { name: Ico
   complete: { name: 'checkCircle', className: 'text-success' },
   incomplete: { name: 'alertCircle', className: 'text-warning' },
 }
+
+/** A set of dates on the time-off step. The set the server turned down is edged in danger. */
+export type TimeOffRowState = 'ok' | 'rejected'
+
+export const TIME_OFF_ROW_BORDER_CLASSES: Record<TimeOffRowState, string> = {
+  ok: 'border-border',
+  rejected: 'border-danger',
+}

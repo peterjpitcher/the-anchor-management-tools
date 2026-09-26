@@ -47,6 +47,7 @@ export function EventFilterPanel({
           value={filters.searchTerm}
           onChange={(v) => update({ searchTerm: v })}
           placeholder="Search events..."
+          aria-label="Search events"
         />
       </div>
 

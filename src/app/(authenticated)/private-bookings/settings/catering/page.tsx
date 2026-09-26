@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCateringPackagesForManagement } from '@/app/actions/privateBookingActions'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { CateringManager } from '@/components/features/catering/CateringManager'
+import { privateBookingSettingsNav } from '../../_shared/nav'
 
 export default async function CateringPackagesPage({
   searchParams,
@@ -24,10 +25,11 @@ export default async function CateringPackagesPage({
     redirect('/unauthorized')
   }
 
+  const navItems = privateBookingSettingsNav(actions)
   const packagesResult = await getCateringPackagesForManagement()
 
   if ('error' in packagesResult) {
-    return <CateringManager initialPackages={[]} loadError={packagesResult.error} />
+    return <CateringManager initialPackages={[]} loadError={packagesResult.error} navItems={navItems} />
   }
 
   const packages = packagesResult.data ?? []
@@ -35,5 +37,5 @@ export default async function CateringPackagesPage({
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const errorMessage = typeof resolvedSearchParams?.error === 'string' ? resolvedSearchParams.error : null
 
-  return <CateringManager initialPackages={packages} errorMessage={errorMessage} />
+  return <CateringManager initialPackages={packages} errorMessage={errorMessage} navItems={navItems} />
 }

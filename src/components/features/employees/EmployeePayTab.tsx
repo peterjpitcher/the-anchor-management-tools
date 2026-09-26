@@ -16,6 +16,7 @@ import {
   Input,
   Select,
   Stat,
+  SubHeading,
   Table,
   TableBody,
   TableCell,
@@ -87,6 +88,8 @@ export default function EmployeePayTab({
   const [editOverrideRate, setEditOverrideRate] = useState('');
   const [editOverrideEffectiveFrom, setEditOverrideEffectiveFrom] = useState('');
   const [overrideError, setOverrideError] = useState('');
+  // A row being edited in the table has its own message, so it never shows beside the add form.
+  const [editOverrideError, setEditOverrideError] = useState('');
   const [overrideIsPending, startOverrideTransition] = useTransition();
 
   const handleSaveSettings = () => {
@@ -140,15 +143,15 @@ export default function EmployeePayTab({
     setEditingOverrideId(override.id);
     setEditOverrideRate(String(override.hourly_rate));
     setEditOverrideEffectiveFrom(override.effective_from);
-    setOverrideError('');
+    setEditOverrideError('');
   };
 
   const handleUpdateOverride = () => {
     if (!editingOverrideId) return;
     const rate = parseFloat(editOverrideRate);
-    if (!rate || rate <= 0) { setOverrideError('Enter a valid hourly rate'); return; }
-    if (!editOverrideEffectiveFrom) { setOverrideError('Choose an effective-from date'); return; }
-    setOverrideError('');
+    if (!rate || rate <= 0) { setEditOverrideError('Enter a valid hourly rate'); return; }
+    if (!editOverrideEffectiveFrom) { setEditOverrideError('Choose an effective-from date'); return; }
+    setEditOverrideError('');
 
     startOverrideTransition(async () => {
       const result = await updateEmployeeRateOverride({
@@ -205,7 +208,8 @@ export default function EmployeePayTab({
         <CardBody className="space-y-4">
           {currentRate && (
             <div className="flex items-center justify-between gap-4">
-              <Stat label="Current hourly rate" value={formatRate(currentRate.rate)} />
+              {/* Green, as it was before the page contract: the rate in force today. */}
+              <Stat label="Current hourly rate" value={formatRate(currentRate.rate)} tone="success" />
               <Badge size="sm">
                 {currentRate.source === 'override' ? 'Individual override' : 'Age band'}
               </Badge>
@@ -288,7 +292,7 @@ export default function EmployeePayTab({
 
           {showOverrideForm && canEdit && (
             <CardBody className="space-y-4 border-b border-border">
-              <p className="text-xs font-medium text-text-muted">New effective-dated rate override</p>
+              <SubHeading>New Rate Override</SubHeading>
               {overrideError && <Alert tone="danger" size="sm">{overrideError}</Alert>}
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Hourly rate (£)">
@@ -312,13 +316,20 @@ export default function EmployeePayTab({
                 </Field>
               </div>
               <FormFooter>
-                <Button type="button" variant="secondary" onClick={() => setShowOverrideForm(false)}>
+                <Button type="button" variant="secondary" onClick={() => { setShowOverrideForm(false); setOverrideError(''); }}>
                   Cancel
                 </Button>
                 <Button type="button" variant="primary" onClick={handleAddOverride} disabled={overrideIsPending}>
                   {overrideIsPending ? 'Saving…' : 'Save Override'}
                 </Button>
               </FormFooter>
+            </CardBody>
+          )}
+
+          {/* A row being edited in the table says why it cannot be saved, above the table. */}
+          {editingOverrideId && editOverrideError && (
+            <CardBody>
+              <Alert tone="danger" size="sm">{editOverrideError}</Alert>
             </CardBody>
           )}
 
@@ -377,7 +388,7 @@ export default function EmployeePayTab({
                         <TableCell align="right">
                           {editingOverrideId === ov.id ? (
                             <div className="flex justify-end gap-2">
-                              <Button type="button" size="sm" variant="ghost" onClick={() => setEditingOverrideId(null)}>
+                              <Button type="button" size="sm" variant="ghost" onClick={() => { setEditingOverrideId(null); setEditOverrideError(''); }}>
                                 Cancel
                               </Button>
                               <Button type="button" size="sm" variant="primary" onClick={handleUpdateOverride} disabled={overrideIsPending}>

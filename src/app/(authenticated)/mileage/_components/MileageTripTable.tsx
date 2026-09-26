@@ -43,22 +43,13 @@ interface SortHeaderProps {
 
 /**
  * The database sorts every matching trip and the order lives in the address, so DataTable (which
- * sorts the rows it is given, in memory) cannot do this: the DS Table's sortable header is used.
- *
- * The design-system header only listens for clicks on the cell, which a keyboard cannot reach.
- * The raw button inside gives it a tab stop: Enter or Space clicks the button, and that click
- * bubbles to the cell's handler, so the button needs no handler of its own and a press sorts only
- * once. A DS Button would add its own height and padding to the header row.
+ * sorts the rows it is given, in memory) cannot do this: the DS Table's sortable header is used,
+ * and the caller picks the next direction.
  */
 function SortHeader({ column, label, sort, dir, onSort, align }: SortHeaderProps): React.JSX.Element {
   return (
     <TableHead sortable sortDirection={sort === column ? dir : null} onSort={() => onSort(column)} align={align}>
-      <button
-        type="button"
-        className="rounded-sm uppercase tracking-wider focus-visible:outline-hidden focus-visible:shadow-ring-inset"
-      >
-        {label}
-      </button>
+      {label}
     </TableHead>
   )
 }

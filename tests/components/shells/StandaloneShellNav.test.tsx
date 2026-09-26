@@ -15,15 +15,23 @@ describe('staff portal tab row', () => {
     render(<StandaloneShellNav items={PORTAL_NAV} label="Staff Portal" />)
 
     expect(screen.getByRole('link', { name: 'My Shifts' })).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByRole('link', { name: 'Holiday' })).not.toHaveAttribute('aria-current')
+    expect(screen.getByRole('link', { name: 'My Holiday' })).not.toHaveAttribute('aria-current')
   })
 
-  it('keeps the parent tab lit on a page below it', () => {
+  it('lights the other tab on its own page', () => {
+    pathname = '/portal/leave'
+    render(<StandaloneShellNav items={PORTAL_NAV} label="Staff Portal" />)
+
+    expect(screen.getByRole('link', { name: 'My Holiday' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'My Shifts' })).not.toHaveAttribute('aria-current')
+  })
+
+  it('shows no tab row on a child page, which has its back button instead', () => {
     pathname = '/portal/leave/new'
     render(<StandaloneShellNav items={PORTAL_NAV} label="Staff Portal" />)
 
-    expect(screen.getByRole('link', { name: 'Holiday' })).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByRole('link', { name: 'My Shifts' })).not.toHaveAttribute('aria-current')
+    expect(screen.queryByRole('navigation', { name: 'Staff Portal' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 
   it('uses real links, not full page reloads from bare anchors', () => {
@@ -31,6 +39,6 @@ describe('staff portal tab row', () => {
     render(<StandaloneShellNav items={PORTAL_NAV} label="Staff Portal" />)
 
     expect(screen.getByRole('navigation', { name: 'Staff Portal' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Holiday' })).toHaveAttribute('href', '/portal/leave')
+    expect(screen.getByRole('link', { name: 'My Holiday' })).toHaveAttribute('href', '/portal/leave')
   })
 })

@@ -42,6 +42,7 @@ import {
   ojEntryStatus,
   ojEntryType,
   ojProjectStatus,
+  ojReceivedTone,
 } from '../../../_shared/status-ui'
 
 function formatCurrency(value: number): string {
@@ -245,7 +246,7 @@ export function ProjectDetailClient({
           <StatGrid columns={3}>
             <Stat label="Unbilled" value={formatCurrency(totals.unbilled)} />
             <Stat label="Billed" value={formatCurrency(totals.billed)} />
-            <Stat label="Paid" value={formatCurrency(totals.paid)} />
+            <Stat label="Paid" value={formatCurrency(totals.paid)} tone={ojReceivedTone(totals.paid)} />
           </StatGrid>
 
           {/* Entries Table */}

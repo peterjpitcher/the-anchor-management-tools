@@ -11,12 +11,13 @@ import {
   Checkbox,
   ConfirmDialog,
   DataTable,
-  Field,
+  Fieldset,
   FormFooter,
   Icon,
   IconButton,
   Input,
   PageLayout,
+  SubHeading,
   toast,
 } from '@/ds';
 import { deleteApiKey, generateApiKey, revokeApiKey, updateApiKey } from './actions';
@@ -116,18 +117,16 @@ function KeyForm({
         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
       />
 
-      <Field label="Permissions">
-        <div role="group" aria-label="Permissions" className="space-y-2">
-          {PERMISSION_OPTIONS.map(option => (
-            <Checkbox
-              key={option.value}
-              label={option.label}
-              checked={formData.permissions.includes(option.value)}
-              onChange={() => handleTogglePermission(option.value)}
-            />
-          ))}
-        </div>
-      </Field>
+      <Fieldset legend="Permissions">
+        {PERMISSION_OPTIONS.map(option => (
+          <Checkbox
+            key={option.value}
+            label={option.label}
+            checked={formData.permissions.includes(option.value)}
+            onChange={() => handleTogglePermission(option.value)}
+          />
+        ))}
+      </Fieldset>
 
       <Input
         label="Rate Limit (requests per hour)"
@@ -399,11 +398,10 @@ export default function ApiKeysManager({ initialKeys, canManage, loadError = nul
         open={Boolean(revokeTarget)}
         onClose={() => setRevokeTarget(null)}
         onConfirm={handleRevokeKey}
-        type="warning"
+        tone="danger"
         title="Revoke API Key"
         message={revokeTarget ? `Revoke ${revokeTarget.name}? Existing integrations using it will stop working.` : 'Revoke this API key?'}
-        confirmText="Revoke"
-        confirmVariant="danger"
+        confirmLabel="Revoke"
         loading={isMutatingKey}
         loadingText="Revoking..."
         closeOnConfirm={false}
@@ -413,11 +411,10 @@ export default function ApiKeysManager({ initialKeys, canManage, loadError = nul
         open={Boolean(deleteTarget)}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDeleteKey}
-        type="danger"
-        destructive
+        tone="danger"
         title="Delete API Key"
         message={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone.` : 'Delete this API key?'}
-        confirmText="Delete"
+        confirmLabel="Delete"
         loading={isMutatingKey}
         loadingText="Deleting..."
         closeOnConfirm={false}
@@ -428,7 +425,7 @@ export default function ApiKeysManager({ initialKeys, canManage, loadError = nul
         <CardHeader title="API Usage" />
         <CardBody className="space-y-4">
           <div>
-            <p className="mb-1 text-sm font-medium text-text-strong">Authentication</p>
+            <SubHeading className="mb-1">Authentication</SubHeading>
             <p className="text-sm text-text-muted mb-2">
               Include your API key in the Authorization header:
             </p>
@@ -438,7 +435,7 @@ export default function ApiKeysManager({ initialKeys, canManage, loadError = nul
           </div>
 
           <div>
-            <p className="mb-1 text-sm font-medium text-text-strong">Example Request</p>
+            <SubHeading className="mb-1">Example Request</SubHeading>
             <code className="block overflow-x-auto whitespace-pre rounded-sm border border-border bg-surface p-3 font-mono text-sm text-text">
 {`curl -H "Authorization: Bearer YOUR_API_KEY" \\
   ${process.env.NEXT_PUBLIC_APP_URL}/api/events`}
@@ -446,7 +443,7 @@ export default function ApiKeysManager({ initialKeys, canManage, loadError = nul
           </div>
 
           <div>
-            <p className="mb-1 text-sm font-medium text-text-strong">Available Endpoints</p>
+            <SubHeading className="mb-1">Available Endpoints</SubHeading>
             <ul className="text-sm text-text-muted space-y-1">
               <li>• GET /api/events - List all events</li>
               <li>• GET /api/events/today - Today&apos;s events</li>

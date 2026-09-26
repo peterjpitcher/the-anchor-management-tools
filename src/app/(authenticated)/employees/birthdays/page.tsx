@@ -92,8 +92,8 @@ export default async function EmployeeBirthdaysPage() {
 
   return (
     <PageLayout
-      title="Birthdays"
-      subtitle="All employee birthdays throughout the year"
+      title="Employees"
+      subtitle="Birthdays through the year"
       navItems={EMPLOYEES_NAV}
       headerActions={headerActions}
     >

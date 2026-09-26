@@ -181,7 +181,7 @@ export default function EventCategoriesPage() {
   }
 
   if (showForm) {
-    const formTitle = editingCategory ? 'Edit Event Category' : 'Create Event Category'
+    const formTitle = editingCategory ? 'Edit Event Category' : 'New Event Category'
 
     return (
       <PageLayout
@@ -349,8 +349,8 @@ export default function EventCategoriesPage() {
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
         title="Delete Category"
         message={`Are you sure you want to delete "${deleteConfirm?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
-        type="danger"
+        confirmLabel="Delete"
+        tone="danger"
       />
 
       <ConfirmDialog
@@ -359,8 +359,8 @@ export default function EventCategoriesPage() {
         onConfirm={handleAnalyzeHistory}
         title="Analyse Historical Data"
         message="This will analyse all historical events and categorise them based on their names. Continue?"
-        confirmText="Analyse"
-        type="info"
+        confirmLabel="Analyse"
+        tone="primary"
       />
 
       {loadError && categories.length === 0 ? (

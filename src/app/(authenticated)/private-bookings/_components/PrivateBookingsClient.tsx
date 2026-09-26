@@ -39,7 +39,7 @@ import {
 import {
   PageLayout,
   FormFooter,
-  Tabs,
+  Segmented,
   Card,
   CardHeader,
   Table,
@@ -167,7 +167,7 @@ export default function PrivateBookingsClient({
   const [cancelling, setCancelling] = useState(false)
   const cancelPreviewRequestRef = useRef<string | null>(null)
   const [extendingHoldId, setExtendingHoldId] = useState<string | null>(null)
-  // Extending a hold requires a recorded reason (SOP) — collected in a modal
+  // Extending a hold requires a recorded reason (SOP), collected in a modal
   const [extendHoldTarget, setExtendHoldTarget] = useState<{ bookingId: string; days: 7 | 14 | 30 } | null>(null)
   const [extendHoldReason, setExtendHoldReason] = useState('')
   const [extendingHold, setExtendingHold] = useState(false)
@@ -358,8 +358,8 @@ export default function PrivateBookingsClient({
     fetchWithState({ includeCancelled: next, page: 1 })
   }
 
-  /* --- Tab config --- */
-  const tabs = [
+  /* --- Status filter: a Segmented, because the section tab row is this page's one tab row --- */
+  const statusOptions = [
     { id: 'all', label: 'All' },
     { id: 'draft', label: 'Draft' },
     { id: 'confirmed', label: 'Confirmed' },
@@ -541,18 +541,39 @@ export default function PrivateBookingsClient({
         </Alert>
       )}
 
-      {/* Tabs for status filter */}
-      <Tabs
-        tabs={tabs}
-        activeTab={statusFilter}
-        onTabChange={handleStatusChange}
-      />
+      {/* Filters, directly above the list they filter. Search and date sit in a drawer on phones. */}
+      <div className="flex flex-wrap items-end gap-3">
+        <Segmented
+          aria-label="Status"
+          options={statusOptions}
+          value={statusFilter}
+          onChange={handleStatusChange}
+          className="max-w-full overflow-x-auto"
+        />
 
-      {/* Mobile filter button */}
-      <div className="block sm:hidden">
+        <Field label="Search" className="hidden sm:flex w-72">
+          <SearchInput
+            value={searchDraft}
+            onChange={setSearchDraft}
+            placeholder="Search customer name..."
+          />
+        </Field>
+
+        <Field label="Date" className="hidden sm:flex w-48">
+          <Select
+            value={dateFilter}
+            onChange={(e) => handleDateFilterChange(e.target.value)}
+            options={DATE_FILTER_OPTIONS}
+          />
+        </Field>
+
+        <Button onClick={handleClearFilters} variant="secondary" className="hidden sm:inline-flex">
+          Clear Filters
+        </Button>
+
         <Button
           variant="secondary"
-          className="w-full"
+          className="w-full sm:hidden"
           icon={<Icon name="filter" size={16} />}
           onClick={() => setMobileFiltersOpen(true)}
         >
@@ -604,29 +625,6 @@ export default function PrivateBookingsClient({
           </FormFooter>
         </div>
       </Drawer>
-
-      {/* Desktop filter row, directly above the list it filters */}
-      <div className="hidden sm:flex flex-wrap items-end gap-3">
-        <Field label="Search" className="w-full sm:w-72">
-          <SearchInput
-            value={searchDraft}
-            onChange={setSearchDraft}
-            placeholder="Search customer name..."
-          />
-        </Field>
-
-        <Field label="Date" className="w-48">
-          <Select
-            value={dateFilter}
-            onChange={(e) => handleDateFilterChange(e.target.value)}
-            options={DATE_FILTER_OPTIONS}
-          />
-        </Field>
-
-        <Button onClick={handleClearFilters} variant="secondary">
-          Clear Filters
-        </Button>
-      </div>
 
       {/* Bookings table. A failed load shows the error above, never an empty list. */}
       {!loadError && (
@@ -946,33 +944,6 @@ export default function PrivateBookingsClient({
       </Card>
       )}
 
-      {/* Quick links to the settings the list is set up from */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <LinkButton
-          href="/private-bookings/settings/spaces"
-          variant="secondary"
-          size="lg"
-          icon={<Icon name="mapPin" size={20} />}
-        >
-          Manage Spaces
-        </LinkButton>
-        <LinkButton
-          href="/private-bookings/settings/catering"
-          variant="secondary"
-          size="lg"
-          icon={<Icon name="sparkles" size={20} />}
-        >
-          Catering Options
-        </LinkButton>
-        <LinkButton
-          href="/private-bookings/settings/vendors"
-          variant="secondary"
-          size="lg"
-          icon={<Icon name="users" size={20} />}
-        >
-          Preferred Vendors
-        </LinkButton>
-      </div>
     </PageLayout>
   )
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js'
 // Imported file by file rather than through '@/components/features/guest': the
 // barrel re-exports GuestShell, which loads the guest webfonts, and a client
@@ -61,7 +61,7 @@ export function EventPayPalPaymentClient({
     // The pointer-events guard stays: it stops a second tap reaching PayPal
     // while an order is being created or captured.
     <div
-      className={clsx(
+      className={cn(
         'flex flex-col gap-3',
         (paymentState === 'creating' || paymentState === 'paying') && 'pointer-events-none'
       )}
@@ -160,12 +160,12 @@ export function EventPayPalPaymentClient({
       </PayPalScriptProvider>
 
       {(paymentState === 'creating' || paymentState === 'paying') && (
-        <p className={clsx('text-center', GUEST_NOTE_CLASS)}>Processing payment, please wait.</p>
+        <p className={cn('text-center', GUEST_NOTE_CLASS)}>Processing payment, please wait.</p>
       )}
 
       <TrustLine />
 
-      <p className={clsx('text-center', GUEST_NOTE_CLASS)}>
+      <p className={cn('text-center', GUEST_NOTE_CLASS)}>
         If PayPal does not load, <GuestLink href={fallbackUrl}>refresh this payment page</GuestLink>.
       </p>
     </div>

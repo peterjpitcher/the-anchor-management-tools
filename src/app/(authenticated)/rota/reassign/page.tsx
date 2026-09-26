@@ -3,7 +3,7 @@ import { PageLayout } from '@/ds';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { getReassignmentQueue } from '@/app/actions/rota-reassign';
 import { getActiveEmployeesForRota } from '@/app/actions/rota';
-import { buildRotaNavItems } from '../nav';
+import { getRotaNavItems } from '../_shared/nav';
 import ReassignQueueClient from './ReassignQueueClient';
 import { PartialLoadAlert } from '../_shared/PartialLoadAlert';
 import { displayName } from '@/lib/employees/display-name';
@@ -18,20 +18,21 @@ export default async function RotaReassignPage() {
   ]);
   if (!canView) redirect('/');
 
-  const [queueResult, employeesResult] = await Promise.all([
+  const [queueResult, employeesResult, navItems] = await Promise.all([
     getReassignmentQueue(),
     getActiveEmployeesForRota(),
+    getRotaNavItems(),
   ]);
 
-  // One header for every state. The subtitle and the tab badge follow the queue once it loads.
-  const layoutProps = { title: 'Reassign' };
+  // One title and tab row for every state. The subtitle names the tab and follows the queue once
+  // it loads.
+  const layoutProps = { title: 'Rota', navItems };
 
   if (!queueResult.success) {
     return (
       <PageLayout
         {...layoutProps}
-        subtitle="Shifts that still need somebody"
-        navItems={buildRotaNavItems(0)}
+        subtitle="Reassign: shifts that still need somebody"
         error={queueResult.error}
       />
     );
@@ -52,10 +53,9 @@ export default async function RotaReassignPage() {
       {...layoutProps}
       subtitle={
         outstanding === 0
-          ? 'Every shift is covered'
-          : `${outstanding} shift${outstanding === 1 ? '' : 's'} still needs somebody`
+          ? 'Reassign: every shift is covered'
+          : `Reassign: ${outstanding} shift${outstanding === 1 ? '' : 's'} still ${outstanding === 1 ? 'needs' : 'need'} somebody`
       }
-      navItems={buildRotaNavItems(outstanding)}
     >
       {/* The staff list only feeds the assign picker, which only editors see. */}
       <PartialLoadAlert

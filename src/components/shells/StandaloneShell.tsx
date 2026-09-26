@@ -13,7 +13,10 @@ const STANDALONE_WIDTH: Record<StandaloneWidth, string> = {
 export interface StandaloneShellProps {
   /** Which tool this is, shown under the logo ("Staff Portal", "Employee Onboarding"). */
   label: string
-  /** Tabs under the header. The current one is lit from the path. */
+  /**
+   * Tabs under the header, on each tab's own page with the current one lit. A child page below
+   * a tab (a new or edit page) shows no tab row: its StandalonePageHeader carries the back button.
+   */
   navItems?: StandaloneNavItem[]
   /** Controls at the right of the header, such as Sign Out. */
   actions?: React.ReactNode

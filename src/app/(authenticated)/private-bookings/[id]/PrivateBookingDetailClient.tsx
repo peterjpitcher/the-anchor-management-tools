@@ -73,6 +73,7 @@ import {
   DescriptionList,
   Empty,
   Field,
+  Fieldset,
   FormFooter,
   Icon,
   IconButton,
@@ -347,54 +348,47 @@ function PaymentModal({
       title={type === "deposit" ? "Record Deposit Payment" : "Record Payment"}
     >
       <form onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
-        <Field label="Payment Amount (£)">
-          {type === "deposit" ? (
-            <>
-              <input type="hidden" name="amount" value={customAmount} />
-              <p className="text-lg font-semibold">£{Number(customAmount).toFixed(2)}</p>
-              <p className="mt-1 text-xs text-text-muted">
-                Deposit amount is fixed and cannot be changed.
-              </p>
-            </>
-          ) : (
-            <>
-              <Input
-                type="number"
-                value={customAmount}
-                onChange={handleAmountChange}
-                step="0.01"
-                min="0.01"
-                max={maxAmount !== undefined ? maxAmount.toFixed(2) : undefined}
-                required
-              />
-              {amountError && (
-                <p className="mt-1 text-xs text-danger-fg" role="alert">{amountError}</p>
-              )}
-              {maxAmount !== undefined && (
-                <p className="mt-2 text-xs text-text-muted">
-                  Remaining balance: £{maxAmount.toFixed(2)}. You may record a partial payment.
-                </p>
-              )}
-            </>
-          )}
-        </Field>
+        {type === "deposit" ? (
+          // The deposit is fixed, so the amount is shown in a read-only field rather than typed.
+          <Input
+            label="Payment Amount (£)"
+            value={Number(customAmount).toFixed(2)}
+            readOnly
+            hint="Deposit amount is fixed and cannot be changed."
+          />
+        ) : (
+          <Input
+            label="Payment Amount (£)"
+            type="number"
+            value={customAmount}
+            onChange={handleAmountChange}
+            step="0.01"
+            min="0.01"
+            max={maxAmount !== undefined ? maxAmount.toFixed(2) : undefined}
+            required
+            error={amountError ?? undefined}
+            hint={
+              maxAmount !== undefined
+                ? `Remaining balance: £${maxAmount.toFixed(2)}. You may record a partial payment.`
+                : undefined
+            }
+          />
+        )}
 
-        <Field label="Payment Method">
-          <div className="space-y-2" role="radiogroup" aria-label="Payment method">
-            {PAYMENT_METHODS.map((method) => (
-              <Radio
-                key={method.value}
-                name={`payment-method-${type}`}
-                value={method.value}
-                label={method.label}
-                checked={paymentMethod === method.value}
-                onChange={(value) =>
-                  setPaymentMethod(value as "cash" | "card" | "invoice")
-                }
-              />
-            ))}
-          </div>
-        </Field>
+        <Fieldset legend="Payment Method">
+          {PAYMENT_METHODS.map((method) => (
+            <Radio
+              key={method.value}
+              name={`payment-method-${type}`}
+              value={method.value}
+              label={method.label}
+              checked={paymentMethod === method.value}
+              onChange={(value) =>
+                setPaymentMethod(value as "cash" | "card" | "invoice")
+              }
+            />
+          ))}
+        </Fieldset>
 
         <FormFooter>
           <Button type="button" onClick={onClose} variant="secondary">
@@ -552,14 +546,14 @@ const CANCELLATION_OUTCOME_LABEL: Record<
   no_money: 'No money changed hands',
   refundable: 'Balance refundable (deposit retained)',
   deposit_partial_refund: 'Deposit refundable less 5% admin deduction',
-  gm_review_required: "Less than 30 days' notice — manager decides deposit retention",
+  gm_review_required: "Less than 30 days' notice: manager decides deposit retention",
   manual_review: 'Manual review',
 };
 
 const getCancellationOutcomeLabel = (preview: CancellationPreview): string => {
   if (!preview.outcome) return '';
   if (preview.outcome === 'gm_review_required') {
-    return `Less than 30 days' notice — manager decides deposit retention (up to ${formatCurrency(preview.max_retainable)})`;
+    return `Less than 30 days' notice: manager decides deposit retention (up to ${formatCurrency(preview.max_retainable)})`;
   }
   return CANCELLATION_OUTCOME_LABEL[preview.outcome];
 };
@@ -577,7 +571,7 @@ function StatusModal({
     useState<CancellationPreview | null>(null);
   const [completePreview, setCompletePreview] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  // SOP §14: <30 days with a paid deposit — the manager decides how much of
+  // SOP §14: <30 days with a paid deposit, the manager decides how much of
   // the deposit (0..max_retainable) to retain, with a recorded reason.
   const [retainedAmountStr, setRetainedAmountStr] = useState('');
   const [retentionReason, setRetentionReason] = useState('');
@@ -744,53 +738,78 @@ function StatusModal({
 
         {availableStatuses.length > 0 ? (
           <>
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-text">Change to:</p>
-              <div className="space-y-2" role="radiogroup" aria-label="Change to">
-                {availableStatuses.map((status) => (
-                  <Radio
-                    key={status}
-                    name="new-booking-status"
-                    value={status}
-                    label={statusConfig[status].label}
-                    description={
-                      status === "confirmed"
-                        ? "Customer will receive confirmation SMS"
-                        : undefined
-                    }
-                    checked={newStatus === status}
-                    onChange={(value) => setNewStatus(value as BookingStatus)}
-                    className="rounded-default border border-border p-3"
-                  />
-                ))}
-              </div>
-            </div>
+            <Fieldset legend="Change To">
+              {availableStatuses.map((status) => (
+                <Radio
+                  key={status}
+                  name="new-booking-status"
+                  value={status}
+                  label={statusConfig[status].label}
+                  description={
+                    status === "confirmed"
+                      ? "Customer will receive confirmation SMS"
+                      : undefined
+                  }
+                  checked={newStatus === status}
+                  onChange={(value) => setNewStatus(value as BookingStatus)}
+                  className="rounded-default border border-border p-3"
+                />
+              ))}
+            </Fieldset>
 
             {showCancelPreview && (
-              <Alert tone="danger" title="Cancel This Booking?" role="status">
-                <div className="space-y-3">
-                {previewLoading ? (
-                  <div className="flex items-center gap-2">
-                    <Spinner size="sm" />
-                    Computing outcome...
-                  </div>
-                ) : cancelPreview?.error ? (
-                  <p>{cancelPreview.error}</p>
-                ) : cancelPreview ? (
+              <>
+                {/* The alert only reports the outcome; the questions it raises sit below it, so no
+                    form field is inside a live region. */}
+                <Alert tone="danger" title="Cancel This Booking?" role="status">
+                  {previewLoading ? (
+                    <div className="flex items-center gap-2">
+                      <Spinner size="sm" />
+                      Computing outcome...
+                    </div>
+                  ) : cancelPreview?.error ? (
+                    <p>{cancelPreview.error}</p>
+                  ) : cancelPreview ? (
+                    <div className="space-y-3">
+                      {cancelPreview.outcome && (
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            tone={
+                              CANCELLATION_OUTCOME_TONE[cancelPreview.outcome]
+                            }
+                          >
+                            {getCancellationOutcomeLabel(cancelPreview)}
+                          </Badge>
+                        </div>
+                      )}
+                      {cancelPreview.refund_amount > 0 && (
+                        <p className="text-sm text-text">
+                          Refund:{' '}
+                          <strong>
+                            {formatCurrency(cancelPreview.refund_amount)}
+                          </strong>{' '}
+                          within 10 working days
+                        </p>
+                      )}
+                      {cancelPreview.retained_amount > 0 && (
+                        <p className="text-sm text-text">
+                          Retained:{' '}
+                          <strong>
+                            {formatCurrency(cancelPreview.retained_amount)}
+                          </strong>
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </Alert>
+
+                {!previewLoading && cancelPreview && !cancelPreview.error && (
                   <>
-                    {cancelPreview.outcome && (
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          tone={
-                            CANCELLATION_OUTCOME_TONE[cancelPreview.outcome]
-                          }
-                        >
-                          {getCancellationOutcomeLabel(cancelPreview)}
-                        </Badge>
-                      </div>
-                    )}
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <Field label="How was the cancellation received?">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <Field
+                        label="How was the cancellation received?"
+                        hint="A phone call on its own is not a written cancellation: ask the customer to confirm in writing where you can."
+                      >
                         <Select
                           value={cancelChannel}
                           onChange={(e) =>
@@ -823,12 +842,9 @@ function StatusModal({
                           disabled={isSubmitting}
                         />
                       </Field>
-                      <p className="text-xs text-text-muted sm:col-span-2">
-                        A phone call on its own is not a written cancellation — ask the customer to confirm in writing where you can.
-                      </p>
                     </div>
                     {cancelPreview.outcome === 'gm_review_required' && (
-                      <div className="space-y-3">
+                      <>
                         <Field
                           label="Deposit to retain (£)"
                           hint={`Manager decision: up to ${formatCurrency(cancelPreview.max_retainable)} of the paid deposit. Retaining anything requires manager permission.`}
@@ -855,24 +871,7 @@ function StatusModal({
                             />
                           </Field>
                         )}
-                      </div>
-                    )}
-                    {cancelPreview.refund_amount > 0 && (
-                      <p className="text-sm text-text">
-                        Refund:{' '}
-                        <strong>
-                          {formatCurrency(cancelPreview.refund_amount)}
-                        </strong>{' '}
-                        within 10 working days
-                      </p>
-                    )}
-                    {cancelPreview.retained_amount > 0 && (
-                      <p className="text-sm text-text">
-                        Retained:{' '}
-                        <strong>
-                          {formatCurrency(cancelPreview.retained_amount)}
-                        </strong>
-                      </p>
+                      </>
                     )}
                     {cancelPreview.preview_body && (
                       <div>
@@ -885,9 +884,8 @@ function StatusModal({
                       </div>
                     )}
                   </>
-                ) : null}
-                </div>
-              </Alert>
+                )}
+              </>
             )}
 
             {showCompletePreview && (
@@ -1126,8 +1124,9 @@ function AddItemModal({
     >
       <form onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
         {/* Item Type Selection */}
-        <Field label="Item Type">
+        <Fieldset legend="Item Type">
           <Segmented
+            aria-label="Item type"
             options={ITEM_TYPE_OPTIONS}
             value={itemType}
             onChange={(id) =>
@@ -1135,7 +1134,7 @@ function AddItemModal({
             }
             className="flex-wrap"
           />
-        </Field>
+        </Fieldset>
 
         {/* Item Selection */}
         {itemType !== "other" && itemType !== "electricity" && (
@@ -1263,7 +1262,7 @@ function AddItemModal({
         )}
 
         {/* Discount */}
-        <Field label="Discount (optional)">
+        <Fieldset legend="Discount (optional)">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               type="number"
@@ -1285,7 +1284,7 @@ function AddItemModal({
               <option value="fixed">Fixed Amount (£)</option>
             </Select>
           </div>
-        </Field>
+        </Fieldset>
 
         {/* Notes */}
         <Field label="Notes (optional)">
@@ -1365,13 +1364,14 @@ function DiscountModal({
   return (
     <Modal open={isOpen} onClose={onClose} title="Apply Booking Discount" mobileFullscreen>
       <form onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
-        <Field label="Discount Type">
+        <Fieldset legend="Discount Type">
           <Segmented
+            aria-label="Discount type"
             options={DISCOUNT_TYPE_OPTIONS}
             value={discountType}
             onChange={(id) => setDiscountType(id as "percent" | "fixed")}
           />
-        </Field>
+        </Fieldset>
 
         <Field
           label={discountType === "percent" ? "Percentage (%)" : "Amount (£)"}
@@ -1521,11 +1521,7 @@ function EditItemModal({
   return (
     <Modal open={isOpen} onClose={onClose} title="Edit Item" mobileFullscreen>
       <form onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
-        <Field label="Description">
-          <p className="text-sm text-text bg-surface-2 px-3 py-2 rounded-sm">
-            {item.description}
-          </p>
-        </Field>
+        <Input label="Description" value={item.description} readOnly />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Quantity">
@@ -1551,7 +1547,7 @@ function EditItemModal({
           </Field>
         </div>
 
-        <Field label="Discount (optional)">
+        <Fieldset legend="Discount (optional)">
           <div className="flex gap-2">
             <Input
               type="number"
@@ -1576,7 +1572,7 @@ function EditItemModal({
               <option value="fixed">£</option>
             </Select>
           </div>
-        </Field>
+        </Fieldset>
 
         <Field label="Notes (optional)">
           <Textarea
@@ -1669,7 +1665,7 @@ export default function PrivateBookingDetailClient({
   const [depositWaiveConfirmed, setDepositWaiveConfirmed] = useState(false);
   // Share portal link state
   const [isCopyingLink, setIsCopyingLink] = useState(false);
-  // SOP workflow panels — bump to force suppliers/deductions/complaints reloads
+  // SOP workflow panels: bump to force suppliers/deductions/complaints reloads
   const [workflowRefreshKey, setWorkflowRefreshKey] = useState(0);
   const refreshWorkflow = useCallback(() => {
     setWorkflowRefreshKey((key) => key + 1);
@@ -1699,7 +1695,6 @@ export default function PrivateBookingDetailClient({
     canEdit,
     canDelete,
     canManageDeposits,
-    canSendSms,
     canManageSpaces,
     canManageCatering,
     canManageVendors,
@@ -1776,7 +1771,7 @@ export default function PrivateBookingDetailClient({
     loadBooking(bookingId);
   }, [bookingId, loadBooking, router]);
 
-  // Handle PayPal return URL — capture the payment when PayPal redirects back
+  // Handle PayPal return URL: capture the payment when PayPal redirects back
   useEffect(() => {
     const paypalReturn = searchParams.get('paypal_return');
     // PayPal returns the order ID in the 'token' query parameter
@@ -1805,7 +1800,7 @@ export default function PrivateBookingDetailClient({
         toast.error('An unexpected error occurred confirming your payment. Please contact support.');
       }
     })();
-  }, [searchParams]); // intentionally depends only on searchParams — runs once on return from PayPal
+  }, [searchParams]); // intentionally depends only on searchParams: runs once on return from PayPal
 
   const handlePaypalDeposit = useCallback(async () => {
     if (paypalDepositLoading) return;
@@ -2105,7 +2100,7 @@ export default function PrivateBookingDetailClient({
       const result = await getBookingPortalLink(bookingId);
       if (result.success && result.url) {
         await navigator.clipboard.writeText(result.url);
-        toast.success('Secure booking link copied — ready to paste into WhatsApp');
+        toast.success('Secure booking link copied, ready to paste into WhatsApp');
       } else {
         toast.error(result.error || 'Failed to generate link');
       }
@@ -2269,7 +2264,7 @@ export default function PrivateBookingDetailClient({
         ? 'deposit_to_be_confirmed'
         : 'deposit_due';
 
-  // Stored prices are NET (SOP 2026-07) — customer-payable figures are gross.
+  // Stored prices are NET (SOP 2026-07); customer-payable figures are gross.
   // Computed locally from items so the summary stays live during edits.
   const bookingMoney = computeBookingMoney(
     items,
@@ -2963,7 +2958,7 @@ export default function PrivateBookingDetailClient({
                         {showDepositWaiver && (
                           <div className="space-y-2 text-left">
                             <Checkbox
-                              label="Deposit waived (GM approved — venue-hosted/internal event)"
+                              label="Deposit waived (GM approved: venue-hosted/internal event)"
                               checked={depositWaiveConfirmed}
                               onChange={(checked) => setDepositWaiveConfirmed(checked)}
                               disabled={savingDeposit}
@@ -3082,15 +3077,6 @@ export default function PrivateBookingDetailClient({
                       </Button>
                     </div>
                   )}
-                  {/* Refund history */}
-                  {booking.deposit_paid_date && (
-                    <div className="mt-3">
-                      <RefundHistoryTable
-                        sourceType="private_booking"
-                        sourceId={booking.id}
-                      />
-                    </div>
-                  )}
                 </div>
 
                 {/* Only a separately held deposit is additional to the event price. */}
@@ -3189,23 +3175,19 @@ export default function PrivateBookingDetailClient({
             </CardBody>
           </Card>
 
-          {/* Quick Actions Card */}
+          {/* Refund history draws its own card, and nothing when there are no refunds. */}
+          {booking.deposit_paid_date && (
+            <RefundHistoryTable
+              sourceType="private_booking"
+              sourceId={booking.id}
+            />
+          )}
+
+          {/* Quick Actions Card. Sending a message is the Messages tab, so it has no button here. */}
           <Card>
             <CardHeader title="Quick Actions" />
             <CardBody>
               <div className="space-y-3">
-                {canSendSms && (
-                  <LinkButton
-                    href={`/private-bookings/${bookingId}/messages`}
-                    variant="secondary"
-                    className="w-full"
-                    icon={<Icon name="message" size={16} />}
-                    iconRight={<Icon name="chevronRight" size={16} />}
-                  >
-                    <span className="flex-1 text-left">Send SMS Message</span>
-                  </LinkButton>
-                )}
-
                 <Button
                   type="button"
                   variant="secondary"
@@ -3251,7 +3233,7 @@ export default function PrivateBookingDetailClient({
                   </p>
                 ) : (
                   <p className="text-xs text-warning-fg px-1">
-                    Contract not yet sent — terms must reach the customer before the deposit is paid.
+                    Contract not yet sent: terms must reach the customer before the deposit is paid.
                   </p>
                 )}
 
@@ -3560,7 +3542,7 @@ export default function PrivateBookingDetailClient({
           <p className="text-sm text-text">
             The deposit stays on the booking and is applied again to the
             replacement invoice. Change the items first, then use{' '}
-            <span className="font-medium">Generate and send invoice</span>.
+            <span className="font-medium">Generate and Send Invoice</span>.
           </p>
           <Textarea
             label="Reason"

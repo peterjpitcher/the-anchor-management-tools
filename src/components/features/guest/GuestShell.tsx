@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import { guestFontClassName } from '@/lib/fonts/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 
@@ -48,7 +48,7 @@ export function GuestShell({
 }: GuestShellProps): React.JSX.Element {
   return (
     <div
-      className={clsx(
+      className={cn(
         'guest-theme flex min-h-screen flex-col bg-guest-bg font-anchor-body text-guest-text',
         guestFontClassName
       )}
@@ -70,7 +70,7 @@ export function GuestShell({
       </header>
 
       <main
-        className={clsx(
+        className={cn(
           'mx-auto flex w-full flex-1 flex-col gap-guest-lg px-guest-lg pt-guest-2xl pb-guest-3xl sm:px-6 sm:pt-10 sm:pb-12',
           WIDTH_CLASS[width],
           centred && 'items-center text-center'

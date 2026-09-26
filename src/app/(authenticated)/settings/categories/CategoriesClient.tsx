@@ -172,9 +172,10 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                   disabled={!canManage || isMutating}
                 />
               </Field>
-              {/* Level with the field beside it: bottom of the row, field height. */}
+              {/* Level with the field beside it: bottom of the row, at least the field's height.
+                  A minimum, not a fixed height: on a touch screen the label grows to 44px. */}
               <Checkbox
-                className="h-input-h items-center"
+                className="min-h-input-h items-center"
                 label="Email on upload"
                 checked={newCategoryEmailOnUpload}
                 onChange={(checked) => setNewCategoryEmailOnUpload(checked)}

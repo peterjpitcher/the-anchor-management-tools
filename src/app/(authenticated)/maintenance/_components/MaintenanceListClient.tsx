@@ -56,6 +56,7 @@ import {
   MAINTENANCE_PRIORITY_TONES,
   MAINTENANCE_RESPONSIBILITY_TONES,
   MAINTENANCE_STATUS_TONES,
+  maintenanceOverdueCountTone,
 } from '../_shared/status-ui'
 
 const ROW_LINK =
@@ -274,6 +275,7 @@ export function MaintenanceListClient({
             <Stat
               label="Overdue"
               value={String(costs.overdueCount)}
+              tone={maintenanceOverdueCountTone(costs.overdueCount)}
               hint="Target date already passed"
             />
             <Stat

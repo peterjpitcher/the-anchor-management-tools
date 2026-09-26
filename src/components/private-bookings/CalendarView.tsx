@@ -55,7 +55,7 @@ export default function CalendarView({ bookings, layoutProps }: CalendarViewProp
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'all'>('all')
   const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'past'>('all')
   
-  // On first mount, default mobile users to the agenda (list) view — the month
+  // On first mount, default mobile users to the agenda (list) view: the month
   // grid's day-cell booking pills are too small to tap reliably at phone widths.
   // Runs once; the user can still switch back to the calendar view.
   useEffect(() => {
@@ -160,6 +160,7 @@ export default function CalendarView({ bookings, layoutProps }: CalendarViewProp
       headerActions={
         // The view switch is phones only: from the shell breakpoint up the month grid always shows.
         <Segmented
+          aria-label="View"
           className="shell:hidden"
           size="sm"
           options={[

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 import {
   Avatar,
@@ -10,10 +10,12 @@ import {
   CardHeader,
   ConfirmDialog,
   Field,
+  FileButton,
   FormFooter,
   Input,
   LinkButton,
   PageLayout,
+  SubHeading,
   Switch,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
@@ -64,7 +66,6 @@ export function ProfileClient(): React.JSX.Element {
   const [fullName, setFullName] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showRemoveAvatarConfirm, setShowRemoveAvatarConfirm] = useState(false)
-  const avatarInputRef = useRef<HTMLInputElement | null>(null)
 
   const fetchProfile = useCallback(async () => {
     setLoading(true)
@@ -105,11 +106,11 @@ export function ProfileClient(): React.JSX.Element {
     }
   }
 
-  async function handleUploadAvatar(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleUploadAvatar(files: File[]) {
+    const file = files[0]
+    if (!file) return
     try {
       setUploading(true)
-      if (!event.target.files || event.target.files.length === 0) return
-      const file = event.target.files[0]
       const formData = new FormData()
       formData.append('avatar', file)
       const result = await uploadAvatar(formData)
@@ -122,7 +123,6 @@ export function ProfileClient(): React.JSX.Element {
     } catch {
       toast.error('Failed to upload avatar')
     } finally {
-      event.target.value = ''
       setUploading(false)
     }
   }
@@ -376,22 +376,22 @@ export function ProfileClient(): React.JSX.Element {
                 </div>
 
                 <div>
-                  <p className="text-sm font-semibold text-text-strong">
-                    {profile.full_name || profile.email}
-                  </p>
+                  {/* The card has no CardHeader, so the name is its heading (h3). */}
+                  <SubHeading as="h3">{profile.full_name || profile.email}</SubHeading>
                   <p className="text-xs text-text-muted">{profile.email}</p>
                 </div>
 
                 {/* Upload controls */}
                 <div className="flex flex-wrap items-center justify-center gap-2">
-                  <Button
+                  <FileButton
                     variant="secondary"
                     size="sm"
+                    accept="image/*"
                     loading={uploading}
-                    onClick={() => avatarInputRef.current?.click()}
+                    onFiles={(files) => void handleUploadAvatar(files)}
                   >
                     Change Photo
-                  </Button>
+                  </FileButton>
                   {profile.avatar_url ? (
                     <Button
                       variant="danger"
@@ -402,20 +402,6 @@ export function ProfileClient(): React.JSX.Element {
                       Remove Photo
                     </Button>
                   ) : null}
-                  {/* The file picker behind "Change Photo". The DS FileUpload is a drop zone, not a
-                      button, so a visually hidden native input stays here, out of the tab order
-                      and hidden from screen readers: the button above is the control. */}
-                  <input
-                    ref={avatarInputRef}
-                    id="avatar-upload-ds"
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    tabIndex={-1}
-                    aria-hidden="true"
-                    onChange={(e) => void handleUploadAvatar(e)}
-                    disabled={uploading}
-                  />
                 </div>
 
                 {/* Account stats */}

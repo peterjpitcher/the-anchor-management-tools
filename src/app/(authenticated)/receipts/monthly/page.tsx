@@ -6,7 +6,6 @@ import {
   CardBody,
   CardHeader,
   Empty,
-  LinkButton,
   Section,
   Stat,
   StatGrid,
@@ -24,7 +23,10 @@ import {
   RECEIPT_FLOW_TONE,
   RECEIPT_INSIGHT_LABEL,
   RECEIPT_INSIGHT_TONE,
+  automationCoverageTone,
   netAmountTextClass,
+  netAmountTone,
+  spendMovementTone,
   type ReceiptInsightKind,
 } from '../_shared/status-ui'
 
@@ -70,10 +72,6 @@ type VarianceItem = {
 
 const RECEIPT_STATUSES = ['pending', 'completed', 'auto_completed', 'no_receipt_required', 'cant_find'] as const
 
-// Chart series tokens. Each breakdown is its own chart, so both use the full categorical set:
-// six shades of one hue were hard to tell apart.
-const BREAKDOWN_PALETTE = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5', 'bg-chart-6']
-
 function formatCurrency(value: number) {
   return currencyFormatter.format(value ?? 0)
 }
@@ -102,17 +100,14 @@ function diffLabel(delta: number) {
   return delta >= 0 ? `+${formatted}` : `-${formatted}`
 }
 
-/** "+£120 · +5%", the change a figure made, or "No change". */
-function changeText(delta?: number, percent?: number): string {
-  const parts: string[] = []
-  if (delta !== undefined && delta !== 0) {
-    parts.push(diffLabel(delta))
-  }
-  if (percent !== undefined && percent !== 0) {
-    const formatted = percentFormatter.format(Math.abs(percent))
-    parts.push(`${percent > 0 ? '+' : '-'}${formatted}`)
-  }
-  return parts.length ? parts.join(' \u00b7 ') : 'No change'
+/** "+£120", the change a sum of money made, or "No change". */
+function changeText(delta: number): string {
+  return delta !== 0 ? diffLabel(delta) : 'No change'
+}
+
+/** A fraction (0.052) as the percentage a Stat delta shows (5.2), to one decimal place. */
+function toPercentDelta(fraction: number): number {
+  return Math.round(fraction * 1000) / 10
 }
 
 const MONTHLY_SUBTITLE = 'Income and spending trends across recent months'
@@ -132,15 +127,11 @@ export default async function ReceiptsMonthlyPage() {
     return (
       <ReceiptsPageChrome subtitle={MONTHLY_SUBTITLE} navState={{ view: 'monthly' }} canManage={canManage}>
         <Card>
+          {/* No link to the Workspace here: it is the first tab in the row above. */}
           <Empty
             size="sm"
             title="No receipt data yet"
-            description="Upload a bank statement to start tracking monthly trends."
-            action={
-              <LinkButton href="/receipts" variant="secondary" size="sm">
-                Go to Receipts Workspace
-              </LinkButton>
-            }
+            description="Upload a bank statement on the Workspace tab to start tracking monthly trends."
           />
         </Card>
       </ReceiptsPageChrome>
@@ -251,26 +242,32 @@ export default async function ReceiptsMonthlyPage() {
   return (
     <ReceiptsPageChrome subtitle={MONTHLY_SUBTITLE} navState={{ view: 'monthly' }} canManage={canManage}>
       <StatGrid columns={3}>
+        {/* The value is green or red for good or bad news; the arrow shows the change in percent
+            (a fall in spending is the good direction), and the hint carries the change in pounds. */}
         <Stat
           label={`Net cash \u00b7 ${formatMonthLabel(current.monthStart)}`}
           value={formatCurrency(netCash)}
+          tone={netAmountTone(netCash)}
+          delta={netDeltaPercent !== null ? toPercentDelta(netDeltaPercent) : undefined}
           hint={[
-            changeText(netDelta, netDeltaPercent ?? undefined),
+            changeText(netDelta),
             previous ? `Previous month ${formatCurrency(previous.netCash)}` : null,
           ].filter(Boolean).join('. ')}
         />
         <Stat
           label="Spending vs rolling average"
           value={formatCurrency(current.totalOutgoing)}
-          hint={`${changeText(outgoingDelta, outgoingDeltaPercent ?? undefined)}. Avg of prior months ${formatCurrency(avgOutgoing)}`}
+          tone={spendMovementTone(outgoingDelta)}
+          delta={outgoingDeltaPercent !== null ? toPercentDelta(outgoingDeltaPercent) : undefined}
+          deltaGood="down"
+          hint={`${changeText(outgoingDelta)}. Avg of prior months ${formatCurrency(avgOutgoing)}`}
         />
         <Stat
           label="Automation coverage"
           value={percentFormatter.format(automationCoverage)}
-          hint={[
-            previousAutomationCoverage !== null ? changeText(automationCoverage - previousAutomationCoverage) : null,
-            `${automatedTransactions} / ${totalTransactions} receipts auto matched`,
-          ].filter(Boolean).join('. ')}
+          tone={automationCoverageTone(automationCoverage)}
+          delta={previousAutomationCoverage !== null ? toPercentDelta(automationCoverage - previousAutomationCoverage) : undefined}
+          hint={`${automatedTransactions} / ${totalTransactions} receipts auto matched`}
         />
       </StatGrid>
 
@@ -280,13 +277,11 @@ export default async function ReceiptsMonthlyPage() {
         <StackedBreakdownChart
           title="Where Spending Went"
           data={spendingStack}
-          palette={BREAKDOWN_PALETTE}
           emptyDescription="No spending recorded for the selected period."
         />
         <StackedBreakdownChart
           title="Income Sources"
           data={incomeStack}
-          palette={BREAKDOWN_PALETTE}
           emptyDescription="No income recorded for the selected period."
         />
         <InsightsFeed items={insightItems} />

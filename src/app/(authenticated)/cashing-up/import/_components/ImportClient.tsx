@@ -178,7 +178,7 @@ export function ImportClient() {
           <FileUpload
             accept=".csv"
             onFiles={handleFiles}
-            hint="CSV files only. Drag and drop or click to browse."
+            hint="CSV files only"
           />
 
           {error && (
@@ -193,7 +193,7 @@ export function ImportClient() {
                 <span>Importing...</span>
                 <span>{Math.round((progress.processed / progress.total) * 100)}%</span>
               </div>
-              <ProgressBar value={(progress.processed / progress.total) * 100} tone="primary" size="md" />
+              <ProgressBar value={(progress.processed / progress.total) * 100} tone="primary" size="md" label="Import progress" />
               <p className="text-xs text-text-soft text-center">
                 Processed {progress.processed} of {progress.total} rows
               </p>

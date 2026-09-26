@@ -45,7 +45,7 @@ describe('Customer phone handling', () => {
     const onImportComplete = vi.fn().mockResolvedValue(undefined)
     const onCancel = vi.fn()
 
-    render(
+    const { container } = render(
       <CustomerImport
         onImportComplete={onImportComplete}
         onCancel={onCancel}
@@ -59,7 +59,9 @@ describe('Customer phone handling', () => {
       { type: 'text/csv' }
     )
 
-    const uploadInput = screen.getByLabelText('Upload CSV') as HTMLInputElement
+    // The "Upload CSV" button (a DS FileButton) opens this hidden input.
+    expect(screen.getByRole('button', { name: 'Upload CSV' })).toBeInTheDocument()
+    const uploadInput = container.querySelector('input[type="file"]') as HTMLInputElement
     fireEvent.change(uploadInput, { target: { files: [file] } })
 
     await waitFor(() => {

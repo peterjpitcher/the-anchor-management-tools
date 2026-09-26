@@ -23,6 +23,7 @@ import {
   ConfirmDialog,
   Empty,
   Field,
+  Fieldset,
   FormFooter,
   Icon,
   IconButton,
@@ -187,7 +188,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
       return
     }
 
-    // Only hydrate if customPrice is still empty — don't overwrite user input.
+    // Only hydrate if customPrice is still empty: don't overwrite user input.
     // The onChange handler above sets customPrice synchronously from the vendor's
     // typical_rate. This effect is a fallback for cases where the inline rate
     // was empty but a remote lookup might find one.
@@ -362,14 +363,15 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Item Type Selection */}
-        <Field label="Item Type">
+        <Fieldset legend="Item Type">
           <Segmented
+            aria-label="Item type"
             options={ITEM_TYPE_OPTIONS}
             value={itemType}
             onChange={(id) => setItemType(id as ItemType)}
             className="flex-wrap"
           />
-        </Field>
+        </Fieldset>
 
         {/* Item Selection */}
         {itemType !== 'other' && (
@@ -485,7 +487,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
         )}
 
         {/* Discount */}
-        <Field label="Discount (optional)">
+        <Fieldset legend="Discount (optional)">
           <div className="grid grid-cols-2 gap-4">
             <Input
               type="number"
@@ -506,7 +508,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               ]}
             />
           </div>
-        </Field>
+        </Fieldset>
 
         {/* Notes */}
         <Field label="Notes (optional)">
@@ -606,9 +608,7 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
       size="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Field label="Item">
-          <p className="text-sm text-text">{item.description}</p>
-        </Field>
+        <Input label="Item" value={item.description} readOnly />
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Quantity" required>
@@ -633,7 +633,7 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
           </Field>
         </div>
 
-        <Field label="Discount">
+        <Fieldset legend="Discount">
           <div className="grid grid-cols-2 gap-4">
             <Input
               type="number"
@@ -654,7 +654,7 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
               ]}
             />
           </div>
-        </Field>
+        </Fieldset>
 
         <Field label="Notes">
           <Textarea
@@ -781,7 +781,7 @@ export default function ItemsPage() {
     return <PageLayout {...layoutProps} error={loadError} onRetry={refreshData} />
   }
 
-  // Stored prices are net — show VAT and the VAT-inclusive total (SOP 2026-07)
+  // Stored prices are net: show VAT and the VAT-inclusive total (SOP 2026-07)
   const bookingMoney = computeBookingMoney(items, booking?.discount_type, booking?.discount_amount)
 
   return (

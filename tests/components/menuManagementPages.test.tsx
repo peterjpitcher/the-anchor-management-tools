@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 /**
- * The four Menu tabs follow the page contract: one title ("Menu") with the tab named in the
- * subtitle, the MENU_NAV tab row, no back button (the tabs are the section's top level), header
+ * The four Menu tabs follow the page contract: one title (the sidebar label, "Menu Management")
+ * with the tab named in the subtitle, the MENU_NAV tab row, no back button (the tabs are the section's top level), header
  * actions in the header, and a failed load shown as an error rather than an empty list.
  */
 
@@ -107,7 +107,7 @@ const recipe = {
 }
 
 function expectMenuChrome(subtitle: RegExp): void {
-  expect(screen.getAllByRole('heading', { level: 1, name: 'Menu' }).length).toBeGreaterThan(0)
+  expect(screen.getAllByRole('heading', { level: 1, name: 'Menu Management' }).length).toBeGreaterThan(0)
   expect(screen.getAllByText(subtitle).length).toBeGreaterThan(0)
   for (const tab of ['Overview', 'Dishes', 'Recipes', 'Ingredients']) {
     expect(screen.getAllByRole('tab', { name: tab }).length).toBeGreaterThan(0)
@@ -138,6 +138,28 @@ beforeEach(() => {
   )
 })
 
+/** The value line of the DS Stat with this label. */
+function statValue(label: string): HTMLElement {
+  // A span: the Overview's GP Status filter has an option with the same words.
+  const value = screen.getByText(label, { selector: 'span' }).nextElementSibling
+  if (!(value instanceof HTMLElement)) throw new Error(`No value for stat ${label}`)
+  return value
+}
+
+/** Thirty dishes whose GP falls as the name rises, so loading (lowest GP first) reverses the names. */
+function thirtyDishes() {
+  return Array.from({ length: 30 }, (_, i) => {
+    const n = String(i + 1).padStart(2, '0')
+    return {
+      ...dish,
+      id: `dish-${n}`,
+      name: `Dish ${n}`,
+      description: null,
+      gp_pct: 0.9 - i * 0.01,
+    }
+  })
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -155,6 +177,29 @@ describe('Menu tabs follow the page contract', () => {
     expect(screen.getAllByRole('button', { name: 'Refresh' }).length).toBeGreaterThan(0)
     expect(screen.getByText('Total Dishes')).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Active status' })).toBeInTheDocument()
+  })
+
+  it('Overview: no quick-link cards repeating the tabs', async () => {
+    pathnameMock.current = '/menu-management'
+    render(<MenuManagementClient />)
+
+    expect(await screen.findAllByText('Fish and Chips')).not.toHaveLength(0)
+    for (const href of ['/menu-management/dishes', '/menu-management/recipes', '/menu-management/ingredients']) {
+      const links = Array.from(document.querySelectorAll(`a[href="${href}"]`))
+      expect(links.length).toBeGreaterThan(0)
+      for (const link of links) expect(link).toHaveAttribute('role', 'tab')
+    }
+    expect(screen.queryByText('Set selling prices and assign to menus.')).not.toBeInTheDocument()
+  })
+
+  it('Overview: the costing figures carry their colour', async () => {
+    pathnameMock.current = '/menu-management'
+    render(<MenuManagementClient />)
+
+    expect(await screen.findAllByText('Fish and Chips')).not.toHaveLength(0)
+    // No dish below target is good news; a dish with no costing needs attention.
+    expect(statValue('Below GP Target')).toHaveClass('text-success-fg')
+    expect(statValue('Missing Costing')).toHaveClass('text-warning-fg')
   })
 
   it('Overview: a failed first load is an error with a retry, never an empty menu', async () => {
@@ -180,6 +225,69 @@ describe('Menu tabs follow the page contract', () => {
     expect(screen.queryByLabelText('Allergen report category')).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /download allergens/i }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: 'Add Dish' }).length).toBeGreaterThan(0)
+  })
+
+  it('Dishes: the costing figures carry their colour', async () => {
+    pathnameMock.current = '/menu-management/dishes'
+    listMenuDishesMock.mockResolvedValue({
+      data: [{ ...dish, is_gp_alert: true, ingredients: [{ ingredient_id: 'ing-1', ingredient_name: 'Cod fillet', quantity: 1 }] }],
+      target_gp_pct: 0.7,
+    })
+    render(<MenuDishesPage />)
+
+    expect(await screen.findAllByText('Fish and Chips')).not.toHaveLength(0)
+    expect(statValue('Below GP Target')).toHaveClass('text-danger-fg')
+    expect(statValue('Missing Costing')).toHaveClass('text-success-fg')
+  })
+
+  it('Dishes: a column sort orders the whole list, not just the page on screen', async () => {
+    pathnameMock.current = '/menu-management/dishes'
+    listMenuDishesMock.mockResolvedValue({ data: thirtyDishes(), target_gp_pct: 0.7 })
+    render(<MenuDishesPage />)
+
+    // Loaded lowest GP first: Dish 30 leads and Dish 01 is on page 2.
+    expect(await screen.findByText('Dish 30')).toBeInTheDocument()
+    expect(screen.queryByText('Dish 01')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dish' }))
+
+    expect(screen.getByText('Dish 01')).toBeInTheDocument()
+    expect(screen.queryByText('Dish 30')).not.toBeInTheDocument()
+    const header = screen.getByRole('button', { name: 'Dish' }).closest('th')
+    expect(header).toHaveAttribute('aria-sort', 'ascending')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dish' }))
+    expect(screen.getByText('Dish 30')).toBeInTheDocument()
+    expect(screen.queryByText('Dish 01')).not.toBeInTheDocument()
+    expect(header).toHaveAttribute('aria-sort', 'descending')
+  })
+
+  it('Ingredients: a worked-out column sort (dish count) orders the whole list, not just the page', async () => {
+    pathnameMock.current = '/menu-management/ingredients'
+    // Thirty ingredients: Ing 01 is in the most dishes, Ing 30 in the fewest.
+    listMenuIngredientsMock.mockResolvedValue({
+      data: Array.from({ length: 30 }, (_, i) => {
+        const n = String(i + 1).padStart(2, '0')
+        return {
+          ...ingredient,
+          id: `ing-${n}`,
+          name: `Ing ${n}`,
+          dishes: Array.from({ length: 30 - i }, (_, d) => ({ dish_id: `d-${n}-${d}`, dish_name: `Dish ${d}` })),
+        }
+      }),
+    })
+    render(<MenuIngredientsPage />)
+
+    // Sorted by name: Ing 01 leads and Ing 30 is on page 2.
+    expect(await screen.findByText('Ing 01')).toBeInTheDocument()
+    expect(screen.queryByText('Ing 30')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dishes' }))
+
+    // Fewest dishes first across all thirty: Ing 30 comes onto page 1 and Ing 01 leaves it.
+    expect(screen.getByText('Ing 30')).toBeInTheDocument()
+    expect(screen.queryByText('Ing 01')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dishes' }).closest('th')).toHaveAttribute('aria-sort', 'ascending')
   })
 
   it('Dishes: the allergen report menu downloads the chosen PDF', async () => {
@@ -296,8 +404,32 @@ describe('Menu tabs follow the page contract', () => {
 
     fireEvent.click((await screen.findAllByRole('button', { name: 'Add Dish' }))[0])
     const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveAccessibleDescription(
+      'Cost a dish from its recipes and ingredients, then place it on menus',
+    )
     expect(within(dialog).getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
     expect(within(dialog).getByRole('heading', { name: 'Dish Details' })).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Create Dish' })).toBeInTheDocument()
+  })
+
+  it('Ingredients: the new ingredient drawer says what it is for', async () => {
+    pathnameMock.current = '/menu-management/ingredients'
+    render(<MenuIngredientsPage />)
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Add Ingredient' }))[0])
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveAccessibleDescription('Add a new ingredient to the catalogue')
+    // The allergen and dietary ticks are groups named by their legend, not a label on nothing.
+    expect(within(dialog).getByRole('group', { name: 'Allergens' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('group', { name: 'Dietary Flags' })).toBeInTheDocument()
+  })
+
+  it('Recipes: the new recipe drawer says what it is for', async () => {
+    pathnameMock.current = '/menu-management/recipes'
+    render(<MenuRecipesPage />)
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Add Recipe' }))[0])
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveAccessibleDescription('Create a reusable prep recipe from ingredients')
   })
 })

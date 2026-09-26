@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
+  Fieldset,
   Input,
   Modal,
   PageLoading,
@@ -134,7 +135,7 @@ export function InvoiceBookingModal({
       )}
 
       {preview && !loading && (
-        <div className="space-y-5">
+        <div className="space-y-4">
           <p className="text-sm text-text-muted">
             Going to <span className="font-medium text-text">{preview.recipientEmail}</span>
           </p>
@@ -195,11 +196,7 @@ export function InvoiceBookingModal({
           </dl>
 
           {askAboutDeposit && deposit ? (
-            <fieldset className="space-y-3">
-              <legend className="mb-2 text-sm font-medium text-text">
-                How should the {money(deposit.amount)} deposit be treated?
-              </legend>
-
+            <Fieldset legend={`How should the ${money(deposit.amount)} deposit be treated?`}>
               <Radio
                 name="deposit-treatment"
                 value="held_separately"
@@ -223,7 +220,7 @@ export function InvoiceBookingModal({
                 onChange={() => setTreatment('deducted')}
                 disabled={sending || preview.depositWouldOverpay}
               />
-            </fieldset>
+            </Fieldset>
           ) : (
             <Alert tone="info" size="sm" role="status">
               {deposit?.waived

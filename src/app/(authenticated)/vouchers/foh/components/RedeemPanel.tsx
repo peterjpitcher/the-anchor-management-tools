@@ -289,7 +289,7 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
         onConfirm={confirmRedeem}
         title="Mark This Voucher as Used?"
         confirmLabel="Yes, Mark as Used"
-        tone="warning"
+        tone="primary"
         message={
           selected ? (
             <>

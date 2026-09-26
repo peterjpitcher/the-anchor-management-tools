@@ -110,6 +110,22 @@ export const DISH_COSTING_STATUS_UI: Record<DishCostingStatus, { tone: MenuBadge
   ok: { tone: 'success', label: 'OK' },
 }
 
+export type MenuStatTone = 'success' | 'warning' | 'danger'
+
+const DISH_COSTING_COUNT_TONE: Record<Exclude<DishCostingStatus, 'ok'>, MenuStatTone> = {
+  alert: 'danger',
+  missing: 'warning',
+}
+
+/**
+ * The colour of a "Below GP Target" or "Missing Costing" figure (a DS Stat `tone`) on the
+ * Overview and Dishes tabs: any dish in that state is bad news in its badge colour (red below
+ * target, amber missing costing), and none at all is green.
+ */
+export function dishCostingCountTone(status: Exclude<DishCostingStatus, 'ok'>, count: number): MenuStatTone {
+  return count > 0 ? DISH_COSTING_COUNT_TONE[status] : 'success'
+}
+
 /* ------------------------------------------------------------------ */
 /*  Allergen removability (GP analysis)                               */
 /* ------------------------------------------------------------------ */

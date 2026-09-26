@@ -26,8 +26,9 @@ interface DocumentLink {
 
 /**
  * Employee page header actions. Desktop shows every action in one row, secondary first and Edit
- * Employee last. Phones show a "More" menu (the DS Dropdown) and Edit Employee, so the header is
- * one tidy row instead of a block of full-size buttons.
+ * Employee last. Phones show one "More" menu (the DS Dropdown) and Edit Employee, so the header
+ * is one tidy row instead of a block of full-size buttons. The menu is portalled and anchored to
+ * its trigger, and moves and flips to stay on screen, so the same menu works at every phone width.
  *
  * The status and delete actions open dialogs. A menu unmounts its items when it closes, which is
  * the same click that chose the item, so the dialogs live here, outside the menu, and the menu
@@ -65,9 +66,8 @@ export function EmployeeHeaderActions({
 
   const hasMenu = documents.length > 0 || actions.length > 0
 
-  const menu = (align: 'left' | 'right') => (
+  const menu = (
     <Dropdown
-      align={align}
       trigger={
         <Button type="button" size="sm" variant="secondary" iconRight={<Icon name="chevronDown" size={14} />}>
           More
@@ -99,18 +99,9 @@ export function EmployeeHeaderActions({
 
   return (
     <>
-      {/* Phones: More, then Edit Employee. The menu hangs from the More button, so it opens
-          towards the middle of the screen: below 640px the row starts at the left gutter and the
-          menu opens rightwards; from 640px up to the shell switch the page puts this row at the
-          right-hand side, so the menu opens leftwards. Either way it stays on screen, with or
-          without Edit Employee beside it. */}
+      {/* Phones: More, then Edit Employee. */}
       <div className="flex items-center gap-2 shell:hidden">
-        {hasMenu && (
-          <>
-            <div className="sm:hidden">{menu('left')}</div>
-            <div className="hidden sm:block">{menu('right')}</div>
-          </>
-        )}
+        {hasMenu && menu}
         {editLink}
       </div>
 

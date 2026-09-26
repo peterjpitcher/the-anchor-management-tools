@@ -9,21 +9,25 @@ export interface StandaloneNavItem {
   href: string
 }
 
-/** The longest link that is the current path or a parent of it, so /portal/leave/new keeps Holiday lit. */
-function activeHref(items: StandaloneNavItem[], pathname: string): string | undefined {
-  return items
-    .map((item) => item.href)
-    .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
-    .sort((a, b) => b.length - a.length)[0]
+/**
+ * The tab for the current page. Only a tab's own page has one: a page below a tab (a new,
+ * edit or detail page, such as /portal/leave/new) is a child page, which shows its back button
+ * instead of the tab row (docs/standards/UI_UX.md, Navigation).
+ */
+function currentTabHref(items: StandaloneNavItem[], pathname: string): string | undefined {
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  return items.find((item) => item.href === path)?.href
 }
 
 /**
  * The tab row under a standalone header, drawn like the staff app's section tabs so the portal
  * reads as part of the same product. Real links, so each one is a normal client navigation.
+ * Nothing is drawn on a child page.
  */
-export function StandaloneShellNav({ items, label }: { items: StandaloneNavItem[]; label: string }): React.JSX.Element {
+export function StandaloneShellNav({ items, label }: { items: StandaloneNavItem[]; label: string }): React.JSX.Element | null {
   const pathname = usePathname() ?? ''
-  const current = activeHref(items, pathname)
+  const current = currentTabHref(items, pathname)
+  if (!current) return null
 
   return (
     <nav aria-label={label} className="-mb-px flex items-end gap-1 overflow-x-auto scrollbar-hide">

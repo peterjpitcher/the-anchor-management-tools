@@ -19,6 +19,7 @@ import {
   Select,
   Stat,
   StatGrid,
+  SubHeading,
   Table,
   TableBody,
   TableCell,
@@ -33,7 +34,6 @@ import { FohCreateBookingModal } from '../foh/components/FohCreateBookingModal'
 import { useFohCreateBooking } from '../foh/hooks/useFohCreateBooking'
 import { buildTimelineRange } from '../foh/utils'
 import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
-import { cn } from '@/lib/utils'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -196,12 +196,7 @@ const VIEW_OPTIONS: Array<{ id: BohViewMode; label: string }> = [
   { id: 'month', label: 'Month' },
 ]
 
-// The sort buttons sit in the DS table header, restyled to read as header text. The header is
-// sticky inside the scrolling table, so the focus ring is drawn inset where the scroll cannot
-// clip it.
-const SORT_BUTTON_CLASS =
-  'h-auto gap-1 p-0 text-xs font-medium uppercase tracking-wider text-text-muted hover:text-text hover:no-underline focus-visible:shadow-ring-inset'
-
+/** A sortable column header: the DS TableHead draws the button, the arrow and aria-sort. */
 function SortHead({
   column,
   label,
@@ -219,35 +214,15 @@ function SortHead({
   align?: 'left' | 'right'
   className?: string
 }): React.JSX.Element {
-  const active = sortColumn === column
   return (
-    <TableHead align={align} className={className}>
-      <Button
-        type="button"
-        variant="link"
-        size="xs"
-        className={SORT_BUTTON_CLASS}
-        onClick={() => onSort(column)}
-        iconRight={
-          <span className="flex flex-col" aria-hidden="true">
-            <Icon
-              name="chevronUp"
-              size={12}
-              className={cn('-mb-1', active && sortDirection === 'asc' ? 'text-text' : 'text-text-subtle')}
-            />
-            <Icon
-              name="chevronDown"
-              size={12}
-              className={cn('-mt-1', active && sortDirection === 'desc' ? 'text-text' : 'text-text-subtle')}
-            />
-          </span>
-        }
-      >
-        {label}
-        {active && (
-          <span className="sr-only">{sortDirection === 'asc' ? ', sorted ascending' : ', sorted descending'}</span>
-        )}
-      </Button>
+    <TableHead
+      align={align}
+      className={className}
+      sortable
+      sortDirection={sortColumn === column ? sortDirection : null}
+      onSort={() => onSort(column)}
+    >
+      {label}
     </TableHead>
   )
 }
@@ -445,24 +420,21 @@ function formatMetricValue(value: number, decimals = 0): string {
 }
 
 /**
- * The change against the previous period, as "+3 (+12.5%)". It is shown as the figure's hint:
- * DS Stat colours a delta green when it rises, which would paint a rise in no-shows as good news,
- * so the sign carries the direction instead.
+ * The change against the previous period as a percentage, for the Stat's coloured delta. None
+ * when the previous period had nothing, because a rise from zero has no percentage. A change too
+ * small to show at the figure's own precision (average party size 4.02 against 4.0, shown as
+ * "0.0") reads as no change, so the arrow never contradicts the hint beneath it.
  */
-function getDeltaLabel(current: number, previous: number, decimals = 0): string {
-  const rawDelta = current - previous
-  const delta = Number(rawDelta.toFixed(decimals))
-  const deltaSign = delta > 0 ? '+' : ''
-  const deltaText = `${deltaSign}${formatMetricValue(delta, decimals)}`
+function getDeltaPercent(current: number, previous: number, decimals = 0): number | undefined {
+  if (previous === 0) return undefined
+  if (Number((current - previous).toFixed(decimals)) === 0) return 0
+  return Number((((current - previous) / previous) * 100).toFixed(1))
+}
 
-  let percentText = 'vs previous 0'
-  if (previous !== 0) {
-    const percent = Number(((rawDelta / previous) * 100).toFixed(1))
-    const percentSign = percent > 0 ? '+' : ''
-    percentText = `${percentSign}${percent.toFixed(1)}%`
-  }
-
-  return `${deltaText} (${percentText})`
+/** The change against the previous period in the figure's own units, as "+3" or "-0.5". */
+function getDeltaText(current: number, previous: number, decimals = 0): string {
+  const delta = Number((current - previous).toFixed(decimals))
+  return `${delta > 0 ? '+' : ''}${formatMetricValue(delta, decimals)}`
 }
 
 export function BohBookingsClient({
@@ -763,42 +735,55 @@ export function BohBookingsClient({
     return formatRangeLabel(previousRangeStartDate, previousRangeEndDate)
   }, [previousRangeStartDate, previousRangeEndDate])
 
-  const metricsCards = useMemo(() => {
+  // deltaGood: which way is good news. Only no-shows and cancellations are better when they fall.
+  const metricsCards = useMemo((): Array<{
+    key: string
+    title: string
+    value: number
+    previous: number
+    decimals: number
+    deltaGood: 'up' | 'down'
+  }> => {
     return [
       {
         key: 'bookings',
         title: 'Total bookings',
         value: currentMetrics.totalBookings,
         previous: previousMetrics.totalBookings,
-        decimals: 0
+        decimals: 0,
+        deltaGood: 'up'
       },
       {
         key: 'covers',
         title: 'Total covers',
         value: currentMetrics.totalCovers,
         previous: previousMetrics.totalCovers,
-        decimals: 0
+        decimals: 0,
+        deltaGood: 'up'
       },
       {
         key: 'arrived',
         title: 'Arrived bookings',
         value: currentMetrics.arrivedBookings,
         previous: previousMetrics.arrivedBookings,
-        decimals: 0
+        decimals: 0,
+        deltaGood: 'up'
       },
       {
         key: 'lost',
         title: 'No-shows + cancellations',
         value: currentMetrics.lostBookings,
         previous: previousMetrics.lostBookings,
-        decimals: 0
+        decimals: 0,
+        deltaGood: 'down'
       },
       {
         key: 'avg-party',
         title: 'Avg party size',
         value: currentMetrics.averagePartySize,
         previous: previousMetrics.averagePartySize,
-        decimals: 1
+        decimals: 1,
+        deltaGood: 'up'
       }
     ]
   }, [currentMetrics, previousMetrics])
@@ -875,12 +860,19 @@ export function BohBookingsClient({
 
   const sortHeadProps = { sortColumn, sortDirection, onSort: handleSort }
 
+  // Until the first load settles, the page shows one loading state rather than figures and a list
+  // of zeros. Later reloads keep what is on screen and load the list in place. The page body (and
+  // the dialogs in it) is not mounted during that first load, so the buttons that open a dialog
+  // wait for it rather than opening one late.
+  const initialLoading = loading && !lastLoadedAt && !error
+
   const headerActions = (
     // display: contents keeps the buttons as items of the header's own row; the attribute gives
     // them the same 44px touch floor on the iPad as the page body below.
     <div className="contents" data-touch-targets>
       <Segmented
         size="sm"
+        aria-label="View"
         options={VIEW_OPTIONS}
         value={view}
         onChange={(id) => setView(id as BohViewMode)}
@@ -910,6 +902,7 @@ export function BohBookingsClient({
           size="sm"
           icon={<Icon name="message" size={16} />}
           onClick={() => setIsMessageModalOpen(true)}
+          disabled={initialLoading}
         >
           Message Guests
         </Button>
@@ -925,6 +918,7 @@ export function BohBookingsClient({
           size="sm"
           icon={<Icon name="plus" size={16} />}
           onClick={() => createBooking.openCreateModal({ mode: 'booking', prefill: { booking_date: focusDate } })}
+          disabled={initialLoading}
         >
           Book Table
         </Button>
@@ -934,10 +928,12 @@ export function BohBookingsClient({
 
   return (
     <PageLayout
-      title="Back of House Table Bookings"
-      subtitle="Manage table bookings across day, week, and month views"
+      title="Table Bookings"
+      subtitle="Back of House"
       navItems={tableBookingsNav({ canViewReports })}
       headerActions={headerActions}
+      loading={initialLoading}
+      loadingLabel="Loading bookings"
     >
       {/* data-touch-targets: BOH is also used on a tablet, and the 44px floor in globals.css
           only applies below 821px. See the note in FohScheduleClient. This wrapper carries the
@@ -1001,13 +997,15 @@ export function BohBookingsClient({
             </div>
           </Alert>
         ) : (
-          <StatGrid columns={4} className="xl:grid-cols-5">
+          <StatGrid columns={5}>
             {metricsCards.map((card) => (
               <Stat
                 key={card.key}
                 label={card.title}
                 value={formatMetricValue(card.value, card.decimals)}
-                hint={`${getDeltaLabel(card.value, card.previous, card.decimals)} compared with ${previousPeriodLabel}`}
+                delta={getDeltaPercent(card.value, card.previous, card.decimals)}
+                deltaGood={card.deltaGood}
+                hint={`${getDeltaText(card.value, card.previous, card.decimals)} compared with ${previousPeriodLabel}`}
               />
             ))}
           </StatGrid>
@@ -1017,20 +1015,16 @@ export function BohBookingsClient({
           <Card>
             <CardHeader
               title="Kitchen Pre-Orders"
-              subtitle={`${dishTotals.coverCount} cover${dishTotals.coverCount === 1 ? '' : 's'} across ${dishTotals.bookingCount} booking${dishTotals.bookingCount === 1 ? '' : 's'}`}
+              // CardHeader wraps its subtitle, so the sentence sits under the counts as it did before.
+              subtitle={`${dishTotals.coverCount} cover${dishTotals.coverCount === 1 ? '' : 's'} across ${dishTotals.bookingCount} booking${dishTotals.bookingCount === 1 ? '' : 's'}. Dietary notes and allergies are on the booking sheet.`}
             />
-            <CardBody className="space-y-4">
-              <p className="text-xs text-text-muted">
-                Dietary notes and allergies are on the booking sheet.
-              </p>
+            <CardBody>
               <div className="grid gap-4 sm:grid-cols-3">
                 {PREORDER_COURSES.map((course) => {
                   const dishes = dishTotals.byCourse[course] ?? []
                   return (
                     <div key={course}>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                        {PREORDER_COURSE_LABELS[course]}
-                      </p>
+                      <SubHeading>{PREORDER_COURSE_LABELS[course]}</SubHeading>
                       {dishes.length === 0 ? (
                         <p className="mt-2 text-sm text-text-muted">None chosen</p>
                       ) : (
@@ -1055,9 +1049,7 @@ export function BohBookingsClient({
             {(dishTotals.addons ?? []).length > 0 && (
               <CardBody className="border-t border-border">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                    Add-ons, extra to the courses
-                  </p>
+                  <SubHeading>Add-ons, Extra to the Courses</SubHeading>
                   <p className="text-sm font-semibold tabular-nums text-text">
                     {formatAddonLineMoney(
                       dishTotals.addonTotalGbp ?? 0,

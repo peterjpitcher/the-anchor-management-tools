@@ -27,8 +27,8 @@ export default async function PrivateBookingsCalendarPage() {
 
   const canViewSmsQueue = actions.has('view_sms_queue') || actions.has('manage')
   const layoutProps = {
-    title: 'Private Bookings Calendar',
-    subtitle: 'View all bookings in calendar format',
+    title: 'Private Bookings',
+    subtitle: 'Calendar of every booking',
     navItems: privateBookingsNav({ canViewSmsQueue, canViewReports }),
   }
 

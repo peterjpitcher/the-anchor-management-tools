@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import { Icon, type IconName } from '@/ds/icons'
 import {
   GUEST_ALERT_BODY_CLASS,
@@ -49,7 +49,7 @@ export function GuestAlert({
       id={id}
       role={resolvedRole}
       aria-live={live}
-      className={clsx(
+      className={cn(
         'flex gap-2.5 rounded-guest-card border',
         action ? 'p-4' : 'px-guest-md py-3',
         GUEST_ALERT_TONE_CLASS[tone],
@@ -60,7 +60,7 @@ export function GuestAlert({
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {title ? <p className="text-guest-small font-bold leading-guest-snug">{title}</p> : null}
-        <div className={clsx('text-guest-body', GUEST_ALERT_BODY_CLASS[tone])}>{children}</div>
+        <div className={cn('text-guest-body', GUEST_ALERT_BODY_CLASS[tone])}>{children}</div>
         {action ? <div className="pt-1">{action}</div> : null}
       </div>
     </div>

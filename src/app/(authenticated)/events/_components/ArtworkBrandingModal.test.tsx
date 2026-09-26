@@ -101,37 +101,48 @@ vi.mock('@/ds', async () => {
       size?: string
     }) =>
       React.createElement('button', { type: 'button', onClick, disabled, 'aria-label': label }),
-    // The editor is a DS Modal: a named dialog with its body and its footer of buttons.
+    // The editor is a DS Modal: a named dialog with its description, body and footer of buttons.
     Modal: ({
       open,
       title,
+      description,
       children,
       footer,
     }: {
       open: boolean
       title?: string
+      description?: React.ReactNode
       children: React.ReactNode
       footer?: React.ReactNode
       onClose: () => void
       width?: string
     }) =>
       open
-        ? React.createElement('div', { role: 'dialog', 'aria-label': title }, children, footer)
+        ? React.createElement(
+            'div',
+            { role: 'dialog', 'aria-label': title },
+            description ? React.createElement('p', null, description) : null,
+            children,
+            footer
+          )
         : null,
-    // The pick-one rows are the DS Segmented control: a radio group of buttons.
+    // The pick-one rows are the DS Segmented control: a radio group of buttons, named as the
+    // real one is.
     Segmented: ({
       options,
       value,
       onChange,
+      'aria-label': ariaLabel,
     }: {
       options: { id: string; label: string }[]
       value: string
       onChange: (id: string) => void
       className?: string
+      'aria-label'?: string
     }) =>
       React.createElement(
         'div',
-        { role: 'radiogroup' },
+        { role: 'radiogroup', 'aria-label': ariaLabel },
         options.map((option) =>
           React.createElement(
             'button',
@@ -181,9 +192,50 @@ vi.mock('@/ds', async () => {
         label ? React.createElement('label', { htmlFor: id }, label) : null,
         React.createElement('input', { id, ...rest })
       ),
-    Alert: ({ children }: { children: React.ReactNode; tone?: string }) =>
-      React.createElement('div', { role: 'alert' }, children),
+    Alert: ({ children, tone, actions }: { children: React.ReactNode; tone?: string; actions?: React.ReactNode }) =>
+      React.createElement('div', { role: 'alert', 'data-tone': tone }, children, actions),
     Badge: ({ children }: { children: React.ReactNode }) => React.createElement('span', null, children),
+    SubHeading: ({ as, children }: { as?: 'h3' | 'h4'; children: React.ReactNode }) =>
+      React.createElement(as ?? 'h4', null, children),
+    // The image tiles' pickers: a DS Button over a hidden file input, as the real FileButton is.
+    FileButton: ({
+      children,
+      onFiles,
+      disabled,
+      accept,
+    }: {
+      children: React.ReactNode
+      onFiles: (files: File[]) => void
+      disabled?: boolean
+      accept?: string
+    }) =>
+      React.createElement(
+        React.Fragment,
+        null,
+        React.createElement('input', {
+          type: 'file',
+          hidden: true,
+          accept,
+          disabled,
+          onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
+            onFiles(Array.from(event.target.files ?? [])),
+        }),
+        React.createElement('button', { type: 'button', disabled }, children)
+      ),
+    LinkButton: ({
+      href,
+      download,
+      children,
+    }: {
+      href: string
+      download?: boolean | string
+      children: React.ReactNode
+    }) =>
+      React.createElement(
+        'a',
+        { href, download: typeof download === 'string' ? download : download ? '' : undefined },
+        children
+      ),
     Card: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
     PageLoading: ({ label }: { label?: string }) => React.createElement('div', { role: 'status' }, label),
     Spinner: () => null,
@@ -332,6 +384,19 @@ afterEach(() => {
 })
 
 describe('ArtworkBrandingModal, logo placement', () => {
+  it('names each pick-one row, and describes the artwork under the title', () => {
+    renderModal()
+
+    expect(screen.getByRole('radiogroup', { name: 'Logo placement mode' })).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Logo corner' })).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Logo colour' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Logo' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Booking QR Code' })).toBeInTheDocument()
+    expect(
+      screen.getByText(`${POSTER_W} x ${POSTER_H} px. The logo is stamped on the saved file.`)
+    ).toBeInTheDocument()
+  })
+
   it('sets the placement from the corner picker and previews the geometry rect', async () => {
     const user = userEvent.setup()
     renderModal()
@@ -779,6 +844,26 @@ describe('ArtworkBrandingModal, revert', () => {
   })
 })
 
+describe('EventImagePanel failed load', () => {
+  it('reports the failure, never an empty set of tiles, and loads again on Try Again', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getEventImageVariants).mockResolvedValueOnce({ error: 'Network error' })
+    render(<EventImagePanel eventId={EVENT_ID} />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-tone', 'danger')
+    expect(alert).toHaveTextContent('The images for this event could not be loaded.')
+    expect(screen.queryByRole('button', { name: /^Add / })).toBeNull()
+
+    vi.mocked(getEventImageVariants).mockResolvedValueOnce({ data: [] })
+    await user.click(screen.getByRole('button', { name: 'Try Again' }))
+
+    await waitFor(() => expect(getEventImageVariants).toHaveBeenCalledTimes(2))
+    expect(await screen.findByRole('heading', { name: 'Event Artwork' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
 describe('EventImagePanel upload copy', () => {
   it('says artwork uploads on save, and not that it uploads immediately, for a new event', async () => {
     render(<EventImagePanel eventId={null} />)
@@ -954,7 +1039,7 @@ describe('EventImagePanel branded indicator', () => {
 
     render(<EventImagePanel eventId={EVENT_ID} />)
 
-    expect(await screen.findByText('Event artwork')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Event Artwork' })).toBeInTheDocument()
     expect(screen.queryByText('Branded')).toBeNull()
   })
 })

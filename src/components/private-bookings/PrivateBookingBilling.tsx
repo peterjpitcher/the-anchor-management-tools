@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Alert, Button, Card, CardBody, CardHeader, Checkbox, Input, Modal, PageLoading, Select } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, Checkbox, Fieldset, Input, Modal, PageLoading, Select } from '@/ds'
 import {
   cancelPrivateBookingExtraInvoice, deletePrivateBookingExtras, getPrivateBookingBilling,
   issuePrivateBookingExtras, previewPrivateBookingExtras, recordPrivateBookingInvoicePayment,
@@ -186,8 +186,8 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
           </> : <>
             <p className="text-sm text-text-muted">Unit prices exclude VAT. The original booking discount does not apply to these extras.</p>
             <div className="grid gap-3 sm:grid-cols-2"><Input label="Payment due date" type="date" value={dueDate} required onChange={event => setDueDate(event.target.value)} /><Input label="Invoice reference (optional)" value={reference} onChange={event => setReference(event.target.value)} maxLength={500} /></div>
-            {lines.map((line, index) => <fieldset key={index} className="space-y-3 rounded-default border border-border p-3">
-              <legend className="px-1 text-sm font-medium">Extra charge {index + 1}</legend>
+            {/* The box is a wrapper, so the legend reads like a field label inside it rather than sitting in the border. */}
+            {lines.map((line, index) => <div key={index} className="rounded-default border border-border p-3"><Fieldset legend={`Extra Charge ${index + 1}`}><div className="space-y-3">
               {catalogue.length > 0 && <Select label={`Catalogue item ${index + 1}`} value={line.catalog_item_id ?? ''} onChange={event => {
                 const item = catalogue.find(row => row.id === event.target.value)
                 changeLine(index, item ? { catalog_item_id: item.id, description: item.description || item.name, unit_price: Number(item.default_price), vat_rate: Number(item.default_vat_rate) } : { catalog_item_id: null })
@@ -200,7 +200,7 @@ export function PrivateBookingBilling({ bookingId, canIssue, canRecordPayments, 
                 <Input label={`VAT % ${index + 1}`} type="number" step="0.01" min="0" max="100" value={line.vat_rate} onChange={event => changeLine(index, { vat_rate: Number(event.target.value) })} />
               </div>
               {lines.length > 1 && <Button variant="secondary" size="sm" onClick={() => setLines(current => current.filter((_, row) => row !== index))}>Remove Charge {index + 1}</Button>}
-            </fieldset>)}
+            </div></Fieldset></div>)}
             <Button variant="secondary" disabled={lines.length >= 100} onClick={() => setLines(current => [...current, emptyLine()])}>Add Another Line</Button>
           </>}
           <dl className="grid grid-cols-2 gap-2 border-t border-border pt-3 text-sm"><dt>Net after discounts</dt><dd className="text-right">{money((preview?.totals ?? totals).subtotalBeforeInvoiceDiscount)}</dd><dt>VAT</dt><dd className="text-right">{money((preview?.totals ?? totals).vatAmount)}</dd><dt className="font-semibold">Additional invoice total</dt><dd className="text-right font-semibold">{money((preview?.totals ?? totals).totalAmount)}</dd></dl>

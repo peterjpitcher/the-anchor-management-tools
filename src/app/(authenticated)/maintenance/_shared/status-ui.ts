@@ -48,6 +48,11 @@ export const MAINTENANCE_KIND_TONES: Record<MaintenanceKind, MaintenanceBadgeTon
 /** The "Overdue" flag beside a target date that has passed. */
 export const MAINTENANCE_OVERDUE_TONE: MaintenanceBadgeTone = 'danger'
 
+/** The list's "Overdue" figure: red once anything is overdue, the same meaning as the flag. */
+export function maintenanceOverdueCountTone(count: number): 'default' | 'danger' {
+  return count > 0 ? 'danger' : 'default'
+}
+
 /** A photo event in the timeline: a redacted photo is flagged, any other state is neutral. */
 export const MAINTENANCE_PHOTO_EVENT_TONES: Record<'redacted' | 'kept', MaintenanceBadgeTone> = {
   redacted: 'warning',

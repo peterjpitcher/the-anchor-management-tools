@@ -26,7 +26,6 @@ import ts from 'typescript'
 const ROOT = process.cwd()
 const SRC = join(ROOT, 'src')
 const BASELINE_PATH = join(ROOT, 'tests/guards/page-contract.baseline.json')
-const COMPAT_INDEX = join(SRC, 'ds/compat/index.ts')
 const AUTHENTICATED = 'src/app/(authenticated)/'
 
 /**
@@ -333,20 +332,11 @@ function tagLines(facts: FileFacts, names: string[], skip: (tag: Tag) => boolean
   return facts.tags.filter((tag) => names.includes(tag.name) && !skip(tag)).map((tag) => tag.line)
 }
 
-/** The value exports of src/ds/compat/index.ts: the legacy components that are being removed. */
-function compatComponents(): Set<string> {
-  if (!existsSync(COMPAT_INDEX)) return new Set()
-  const source = ts.createSourceFile(COMPAT_INDEX, readFileSync(COMPAT_INDEX, 'utf8'), ts.ScriptTarget.Latest, true)
-  const names = new Set<string>()
-  for (const statement of source.statements) {
-    if (!ts.isExportDeclaration(statement) || statement.isTypeOnly) continue
-    const clause = statement.exportClause
-    if (!clause || !ts.isNamedExports(clause)) continue
-    for (const element of clause.elements) if (!element.isTypeOnly) names.add(element.name.text)
-  }
-  return names
-}
-const COMPAT = compatComponents()
+/**
+ * The legacy components left in src/ds/compat. The '@/ds' barrel stopped re-exporting them on
+ * 26 September 2026, so the last callers import them from '@/ds/compat' (or one of its files).
+ */
+const isCompatModule = (module: string): boolean => module === '@/ds/compat' || module.startsWith('@/ds/compat/')
 
 const SPACING_PROPS = new Set(['className', 'headerClassName', 'contentClassName'])
 const HAND_OVERLAY_CLASSES = ['fixed', 'inset-0']
@@ -365,14 +355,28 @@ const FILE_RULES: FileRule[] = [
   {
     id: 'page-header',
     applies: outsideDs,
-    why: 'PageHeader is retired. Pass title, subtitle, navItems and headerActions to PageLayout.',
+    // PageHeader was deleted from the design system on 26 Sep 2026, so a use no longer compiles;
+    // the rule stays so the failure says what to do instead.
+    why: 'PageHeader was removed from @/ds. Pass title, subtitle, navItems, backButton and headerActions to PageLayout.',
     find: (facts) => facts.references.get('PageHeader') ?? [],
   },
   {
     id: 'breadcrumbs',
     applies: outsideDs,
-    why: 'No breadcrumbs anywhere. A child page uses backButton, labelled "Back to <Parent>".',
-    find: (facts) => facts.tags.flatMap((tag) => tag.attributes.filter((a) => a.name === 'breadcrumbs').map((a) => a.line)),
+    why: 'No breadcrumbs anywhere: PageLayout no longer takes them. A child page uses backButton, labelled "Back to <the parent page\'s title>".',
+    find: (facts) => {
+      // A breadcrumbs attribute on any tag, or a breadcrumbs key in props spread into PageLayout.
+      // A spread object is not checked for extra keys, so that one would compile and vanish.
+      const lines = facts.tags.flatMap((tag) => tag.attributes.filter((a) => a.name === 'breadcrumbs').map((a) => a.line))
+      const names = dsNames(facts, 'PageLayout')
+      for (const tag of facts.tags) {
+        if (!names.has(tag.name)) continue
+        for (const name of tag.spreads) {
+          for (const { key, line } of facts.objects.get(name) ?? []) if (key === 'breadcrumbs') lines.push(line)
+        }
+      }
+      return [...new Set(lines)]
+    },
   },
   {
     id: 'nested-main',
@@ -383,17 +387,19 @@ const FILE_RULES: FileRule[] = [
   {
     id: 'section-nav',
     applies: outsideDs,
-    why: 'SectionNav is retired. Pass the section nav constant (<section>/_shared/nav.ts) to PageLayout as navItems.',
+    // SectionNav is PageLayout's own tab row and left the composites barrel on 26 Sep 2026; its
+    // file stays for PageLayout, so a deep import would still compile without this rule.
+    why: 'SectionNav is PageLayout\'s own tab row, not for pages. Pass the section nav constant (<section>/_shared/nav.ts) to PageLayout as navItems.',
     find: (facts) => facts.references.get('SectionNav') ?? [],
   },
   {
     id: 'compat-import',
     applies: outsideDs,
-    why: 'src/ds/compat is being removed. Use the current DS component instead.',
+    why: 'src/ds/compat is being removed: nothing new imports from @/ds/compat. Use the current DS component instead (ModalActions: the Modal footer prop).',
     find: (facts) =>
       facts.modules
-        .filter((ref) => ref.kind !== 'dynamic' && (ref.module === '@/ds' || ref.module === '@/ds/compat' || ref.module.startsWith('@/ds/compat/')))
-        .flatMap((ref) => ref.bindings.filter((b) => !b.typeOnly && COMPAT.has(b.imported)).map((b) => b.line)),
+        .filter((ref) => isCompatModule(ref.module))
+        .flatMap((ref) => ref.bindings.filter((b) => !b.typeOnly).map((b) => b.line)),
   },
   {
     id: 'pagelayout-spacing',
@@ -464,7 +470,7 @@ const FILE_RULES: FileRule[] = [
   {
     id: 'raw-heading',
     applies: staff,
-    why: 'Headings come from PageLayout (h1), Section (h2) and CardHeader (h3). No other heading styles in page code.',
+    why: 'Headings come from PageLayout (h1), Section (h2), CardHeader (h3) and SubHeading (h4, or h3 in a card with no CardHeader). No other heading styles in page code.',
     find: (facts) => tagLines(facts, ['h1', 'h2', 'h3', 'h4']),
   },
   {

@@ -15,7 +15,7 @@ import {
   Card,
   ConfirmDialog,
   Empty,
-  Field,
+  Fieldset,
   FormFooter,
   Icon,
   IconButton,
@@ -325,7 +325,7 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
         <Modal
           open={showForm}
           onClose={resetForm}
-          title={editingLabel ? 'Edit Customer Label' : 'Create Customer Label'}
+          title={editingLabel ? 'Edit Customer Label' : 'New Customer Label'}
         >
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
@@ -342,8 +342,8 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
               disabled={!canManageUI}
             />
 
-            <Field label="Colour">
-              <div role="group" aria-label="Colour" className="grid grid-cols-4 gap-2">
+            <Fieldset legend="Colour">
+              <div className="grid grid-cols-4 gap-2">
                 {PRESET_COLORS.map((color) => {
                   const selected = formData.color === color.value;
                   return (
@@ -370,10 +370,10 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
                   );
                 })}
               </div>
-            </Field>
+            </Fieldset>
 
-            <Field label="Icon">
-              <div role="group" aria-label="Icon" className="grid grid-cols-3 gap-2">
+            <Fieldset legend="Icon">
+              <div className="grid grid-cols-3 gap-2">
                 {PRESET_ICONS.map((icon) => {
                   const selected = formData.icon === icon.value;
                   return (
@@ -398,14 +398,14 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
                   );
                 })}
               </div>
-            </Field>
+            </Fieldset>
 
             <FormFooter>
               <Button type="button" variant="secondary" onClick={resetForm}>
                 Cancel
               </Button>
               <Button type="submit" variant="primary" disabled={!canManageUI}>
-                {editingLabel ? 'Update Label' : 'Create Label'}
+                {editingLabel ? 'Save Changes' : 'Create Label'}
               </Button>
             </FormFooter>
           </form>
@@ -417,10 +417,8 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
           open
           title="Delete Label"
           message={`Are you sure you want to delete "${deleteConfirm.name}"? This action cannot be undone.`}
-          confirmText="Delete"
-          confirmVariant="danger"
-          type="danger"
-          destructive
+          confirmLabel="Delete"
+          tone="danger"
           onClose={() => setDeleteConfirm(null)}
           onConfirm={() => void handleDelete(deleteConfirm)}
         />
@@ -431,8 +429,8 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
           open
           title="Apply Labels Retroactively"
           message="This scans customer activity and applies labels where the rules match. It also removes the New Customer label from anyone who is no longer new, so some customers will lose that label. Continue?"
-          confirmText="Apply and Tidy Labels"
-          confirmVariant="primary"
+          confirmLabel="Apply and Tidy Labels"
+          tone="primary"
           onClose={() => setRetroactiveConfirm(false)}
           onConfirm={() => void handleApplyRetroactively()}
         />

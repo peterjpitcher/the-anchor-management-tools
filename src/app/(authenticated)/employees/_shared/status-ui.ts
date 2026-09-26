@@ -28,19 +28,8 @@ export function employmentStatusTone(status: string): EmployeeBadgeTone {
   return EMPLOYMENT_STATUS_TONES.get(status) ?? 'neutral'
 }
 
-/**
- * Holiday (leave request) status on the employee's Holidays tab. The rota, the staff portal and
- * this tab still carry their own copies; the cross-section leave map replaces all of them.
- */
-const LEAVE_STATUS_TONES = new Map<string, EmployeeBadgeTone>([
-  ['approved', 'success'],
-  ['pending', 'warning'],
-  ['declined', 'danger'],
-])
-
-export function leaveStatusTone(status: string): EmployeeBadgeTone {
-  return LEAVE_STATUS_TONES.get(status) ?? 'danger'
-}
+// Holiday (leave request) status: ROTA_LEAVE_STATUS_TONE and ROTA_LEAVE_STATUS_LABEL in
+// src/lib/rota/status-ui.ts, the one map every leave list uses (the Holidays tab included).
 
 /** Holiday allowance used this year: over (or at) the allowance is red, otherwise green. */
 export function holidayAllowanceTone(overAllowance: boolean): 'danger' | 'success' {
@@ -110,10 +99,8 @@ export function reliabilityEventTone(eventType: ReliabilityEventType): EmployeeB
   return RELIABILITY_EVENT_TONES.get(eventType) ?? 'neutral'
 }
 
-/** A rota week in the separation preview: published or still a draft. */
-export function rotaWeekStatusTone(weekStatus: string): EmployeeBadgeTone {
-  return weekStatus === 'published' ? 'success' : 'neutral'
-}
+// A rota week in the separation preview (published or draft): ROTA_WEEK_PUBLISH_TONE and
+// ROTA_WEEK_PUBLISH_LABEL in rota/_shared/status-ui.ts, as on the rota's own screens.
 
 /** What a separation does to a remaining shift: it stays assigned or becomes open. */
 export const SEPARATION_SHIFT_DECISION_TONES: Readonly<Record<'retained' | 'released', EmployeeBadgeTone>> = {

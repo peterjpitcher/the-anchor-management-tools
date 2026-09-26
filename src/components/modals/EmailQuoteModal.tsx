@@ -117,8 +117,7 @@ export function EmailQuoteModal({ quote, isOpen, onClose, onSuccess }: EmailQuot
       open={isOpen}
       onClose={onClose}
       title="Email Quote"
-      size="lg"
-      mobileFullscreen
+      width="lg"
       footer={
         <>
           <Button

@@ -56,6 +56,13 @@ export function signedAmountTextClass(amount: number): string {
   return ''
 }
 
+/** The same rule as a Stat tone, for the weekly totals and the dashboard's total variance. */
+export function signedAmountTone(amount: number): 'danger' | 'success' | 'default' {
+  if (amount < 0) return 'danger'
+  if (amount > 0) return 'success'
+  return 'default'
+}
+
 /** The import result banner: every row in is a success, any failed row needs a look. */
 export function cashupImportResultTone(failedRows: number): 'success' | 'warning' {
   return failedRows === 0 ? 'success' : 'warning'

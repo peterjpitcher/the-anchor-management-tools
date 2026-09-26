@@ -26,8 +26,14 @@ import {
   getTodayIsoDate,
   shiftIsoDate,
 } from '@/lib/dateUtils';
-import { rotaNavItems } from '../nav';
-import { BUDGET_HOURS_TEXT_CLASSES, LABOUR_SHARE_LABEL, LABOUR_SHARE_TONE, budgetUsageTone } from '../_shared/status-ui';
+import { getRotaNavItems } from '../_shared/nav';
+import {
+  BUDGET_HOURS_TEXT_CLASSES,
+  LABOUR_SHARE_LABEL,
+  LABOUR_SHARE_TONE,
+  ROTA_STAT_TONE,
+  budgetUsageTone,
+} from '../_shared/status-ui';
 
 const gbpFormatter = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 });
 
@@ -284,7 +290,7 @@ export default async function RotaDashboardPage() {
 
   const supabase = await createClient();
 
-  const [shiftsResult, budgetsResult, settings] = await Promise.all([
+  const [shiftsResult, budgetsResult, settings, navItems] = await Promise.all([
     supabase
       .from('rota_shifts')
       .select('employee_id, shift_date, start_time, end_time, unpaid_break_minutes, is_overnight, is_open_shift, status, department, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time')
@@ -294,14 +300,15 @@ export default async function RotaDashboardPage() {
     // The wage target threshold is configuration, not pay data, but it is only
     // ever displayed alongside cost, so it is only fetched alongside cost.
     canViewSpend ? getRotaSettings() : Promise.resolve(null),
+    getRotaNavItems(),
   ]);
 
   // One header for every state, so a failed load keeps the page's title and tabs.
   const weekStartLabel = formatDateInLondon(`${weekStart}T12:00:00Z`, { day: 'numeric', month: 'long' });
   const layoutProps = {
-    title: 'Labour Cost Dashboard',
-    subtitle: `Week beginning ${weekStartLabel}, and the whole of ${monthLabel}`,
-    navItems: rotaNavItems,
+    title: 'Rota',
+    subtitle: `Labour costs: week beginning ${weekStartLabel} and the whole of ${monthLabel}`,
+    navItems,
   };
 
   if (shiftsResult.error) {
@@ -538,6 +545,7 @@ export default async function RotaDashboardPage() {
             <Stat
               label="Labour as a share of takings"
               value={wagePercent === null ? 'No revenue data' : `${wagePercent.toFixed(0)}%`}
+              tone={wagePercent === null ? 'default' : ROTA_STAT_TONE[LABOUR_SHARE_TONE[labourShareState]]}
               hint={
                 wagePercent === null
                   ? 'Needs takings or a sales target before a ratio means anything'
@@ -586,13 +594,6 @@ export default async function RotaDashboardPage() {
           ) : null}
         </div>
       </Section>
-
-      <Card variant="secondary">
-        <p className="text-sm text-text-muted">
-          For individual rates and planned against actual hours,{' '}
-          <Link href="/rota/payroll" className="text-primary font-medium hover:underline">open the Payroll page.</Link>
-        </p>
-      </Card>
     </PageLayout>
   );
 }

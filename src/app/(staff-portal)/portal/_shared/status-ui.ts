@@ -2,20 +2,8 @@ import type { Badge } from '@/ds'
 
 type BadgeTone = NonNullable<React.ComponentProps<typeof Badge>['tone']>
 
-/**
- * A holiday request's status on the staff portal. The same colours as the manager's leave
- * screens: pending waits on a manager, approved is done, declined is the one to notice.
- * Wave 3 folds this into the shared leave tone map beside ROTA_HOLIDAY_CLASSES.
- */
-export const PORTAL_LEAVE_STATUS_TONE: Record<string, BadgeTone> = {
-  pending: 'warning',
-  approved: 'success',
-  declined: 'danger',
-}
-
-export function portalLeaveStatusTone(status: string): BadgeTone {
-  return PORTAL_LEAVE_STATUS_TONE[status] ?? 'neutral'
-}
+// A holiday request's status is the shared leave map (ROTA_LEAVE_STATUS_TONE and
+// ROTA_LEAVE_STATUS_LABEL in src/lib/rota/status-ui.ts), so the portal matches the manager screens.
 
 /** An open shift this person has already asked for, waiting on a manager. */
 export const OPEN_SHIFT_REQUESTED_TONE: BadgeTone = 'warning'

@@ -18,7 +18,7 @@ import {
   Stat,
   StatGrid,
 } from '@/ds'
-import { ACTION_ITEM_SEVERITY_CLASSES } from '../_shared/status-ui'
+import { ACTION_ITEM_SEVERITY_CLASSES, revenueChangeTone, type DashboardStatTone } from '../_shared/status-ui'
 
 /* ---------- Types ---------- */
 
@@ -45,6 +45,8 @@ interface ActivityItem {
 interface MetricMini {
   label: string
   value: string
+  /** Colours the figure when it needs attention (see attentionCountTone). */
+  tone?: DashboardStatTone
 }
 
 interface TodayItem {
@@ -339,8 +341,12 @@ export default function DashboardClient({
           <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 md:grid-cols-4">
             <Stat label="Average daily" value={revenueSummary.avgDaily} />
             <Stat label="Completed through" value={revenueSummary.completedThrough} />
-            <Stat label="Week vs last" value={revenueSummary.vsLastWeek} />
-            <Stat label="Last year same week" value={revenueSummary.lastYearSameWeek} />
+            <Stat label="Week vs last" value={revenueSummary.vsLastWeek} tone={revenueChangeTone(revenueSummary.vsLastWeek)} />
+            <Stat
+              label="Last year same week"
+              value={revenueSummary.lastYearSameWeek}
+              tone={revenueChangeTone(revenueSummary.lastYearSameWeek)}
+            />
           </div>
         </CardBody>
       </Card>
@@ -348,7 +354,7 @@ export default function DashboardClient({
       {/* Mini metrics */}
       <StatGrid columns={4}>
         {miniMetrics.map((m) => (
-          <Stat key={m.label} label={m.label} value={m.value} />
+          <Stat key={m.label} label={m.label} value={m.value} tone={m.tone} />
         ))}
       </StatGrid>
     </PageLayout>

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 
 type GuestButtonVariant =
   | 'primary'
@@ -56,9 +56,9 @@ export type GuestButtonProps =
  * `guest-motion-lift` is the hook the reduced-motion block in globals.css uses to drop the hover
  * lift. Keep it on anything that translates on hover.
  *
- * Classes are joined with `clsx`, never `cn()`: tailwind-merge does not know the guest type sizes
- * yet and would drop them (see styles.ts). So no two strings below may set the same property; the
- * border colour, for one, lives only in the variant.
+ * Classes are joined with `cn()`, which knows the guest tokens, so a caller's `className` wins
+ * over the same property here (a `w-auto` beats `fullWidth`'s `w-full`). The border colour still
+ * lives only in the variant: the base sets the border width and nothing else.
  */
 const PILL_BASE_CLASS =
   'guest-btn guest-motion-lift inline-flex items-center justify-center rounded-full border-2 text-center font-anchor-body font-semibold no-underline transition duration-200 ease-out active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none'
@@ -118,14 +118,14 @@ function classesFor(props: GuestButtonProps): string {
   const { variant = 'primary', size = 'md', fullWidth = false, className } = props
   const width = fullWidth === 'mobile' ? FULL_WIDTH_CLASS.mobile : fullWidth ? FULL_WIDTH_CLASS.always : null
 
-  if (variant === 'link') return clsx(LINK_VARIANT_CLASS, className)
+  if (variant === 'link') return cn(LINK_VARIANT_CLASS, className)
 
   if (variant === 'choice') {
     const pressed = props.as === undefined || props.as === 'button' ? props.pressed : false
-    return clsx(CHOICE_BASE_CLASS, pressed ? CHOICE_STATE_CLASS.pressed : CHOICE_STATE_CLASS.idle, className)
+    return cn(CHOICE_BASE_CLASS, pressed ? CHOICE_STATE_CLASS.pressed : CHOICE_STATE_CLASS.idle, className)
   }
 
-  return clsx(PILL_BASE_CLASS, SIZE_CLASS[size], PILL_VARIANT_CLASS[variant], width, className)
+  return cn(PILL_BASE_CLASS, SIZE_CLASS[size], PILL_VARIANT_CLASS[variant], width, className)
 }
 
 /**

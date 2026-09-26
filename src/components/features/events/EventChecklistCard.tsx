@@ -1,9 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Badge, Button, Card, CardBody, CardHeader, Checkbox, Empty, PageLoading, toast } from '@/ds'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Checkbox, Empty, PageLoading, SubHeading, toast } from '@/ds'
 import { eventChecklistStatusTextClass } from '@/app/(authenticated)/events/_shared/status-ui'
-import { getTodayIsoDate, formatDate } from '@/lib/dateUtils'
+import { getTodayIsoDate, formatDateInLondon } from '@/lib/dateUtils'
 import type { EventChecklistItem } from '@/lib/event-checklist'
 import { getEventChecklist, toggleEventChecklistTask } from '@/app/actions/event-checklist'
 
@@ -170,7 +170,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
       ) : (
         <div className="space-y-6">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Outstanding Tasks</p>
+            <SubHeading>Outstanding Tasks</SubHeading>
             <div className="mt-3 space-y-3">
               {outstandingItems.length === 0 ? (
                 <Empty
@@ -217,7 +217,7 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
           </div>
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Completed Tasks</p>
+            <SubHeading>Completed Tasks</SubHeading>
             <div className="mt-3 space-y-2">
               {completedItems.length === 0 ? (
                 <Empty size="sm" variant="minimal" centered={false} title="No Tasks Completed Yet" />
@@ -234,7 +234,9 @@ export function EventChecklistCard({ eventId, eventName, className }: EventCheck
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-xs text-text-muted">
-                        {item.completedAt ? `Completed ${formatDate(item.completedAt)}` : 'Completed'}
+                        {item.completedAt
+                          ? `Completed ${formatDateInLondon(item.completedAt, { day: 'numeric', month: 'short', year: 'numeric' })}`
+                          : 'Completed'}
                       </div>
                       <Button
                         size="xs"

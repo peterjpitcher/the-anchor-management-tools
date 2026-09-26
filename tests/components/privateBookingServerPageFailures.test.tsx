@@ -56,6 +56,8 @@ describe('SMS queue page', () => {
 
     const html = renderToStaticMarkup(await SmsQueuePage())
 
+    // Titled with the section's sidebar label; the tab row still carries the SMS Queue tab.
+    expect(html).toMatch(/<h1[^>]*>Private Bookings<\/h1>/)
     expect(html).toContain('SMS Queue')
     expect(html).toContain('We could not load the SMS queue.')
     expect(html).not.toContain('No messages pending approval')
@@ -81,7 +83,8 @@ describe('Private booking growth report page', () => {
 
     const html = renderToStaticMarkup(await ReportsPage())
 
-    expect(html).toContain('Private Booking Growth')
+    expect(html).toMatch(/<h1[^>]*>Private Bookings<\/h1>/)
+    expect(html).toContain('Growth report')
     expect(html).toContain('We could not load the growth report.')
     expect(html).toContain('href="/private-bookings/reports"')
     expect(html).not.toContain('Growth report body')

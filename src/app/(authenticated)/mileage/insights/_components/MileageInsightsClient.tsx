@@ -4,6 +4,7 @@ import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Alert,
+  BarChart,
   Card,
   CardBody,
   CardHeader,
@@ -16,7 +17,6 @@ import {
   StatGrid,
   type Column,
 } from '@/ds'
-import { BarChart } from '@/components/charts/BarChart'
 import {
   getMileageInsights,
   type MileageInsightsData,
@@ -153,6 +153,7 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
           value={granularity}
           onChange={handlePeriodChange}
           size="sm"
+          aria-label="Period"
         />
       }
     >
@@ -178,6 +179,8 @@ export function MileageInsightsClient({ initialData }: MileageInsightsClientProp
                   color="var(--color-chart-1)"
                   formatType="number"
                   onBarClick={handleBarClick}
+                  seriesLabel="Miles"
+                  ariaLabel="Miles over time"
                 />
               ) : (
                 <Empty size="sm" title="No mileage data available" />

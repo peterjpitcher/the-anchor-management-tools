@@ -82,6 +82,48 @@ function formatRoundedCost(value: number | null | undefined): string {
 }
 
 // ---------------------------------------------------------------------------
+// Sorting
+// ---------------------------------------------------------------------------
+
+type IngredientRow = Record<string, unknown>;
+
+function asIngredient(row: IngredientRow): Ingredient {
+  return row as unknown as Ingredient;
+}
+
+function getIngredientRowKey(row: IngredientRow): string {
+  return asIngredient(row).id;
+}
+
+/**
+ * Column sorts the pipeline applies to the whole filtered list before it is cut into pages (the
+ * table is sorted under control, so a header click never sorts just the 25 rows on screen). Name
+ * compares its own field; the other columns are worked out from the ingredient.
+ */
+const INGREDIENT_SORT_FNS: Record<string, (a: IngredientRow, b: IngredientRow) => number> = {
+  supplier: (a, b) => (asIngredient(a).supplier_name || '').localeCompare(asIngredient(b).supplier_name || ''),
+  purchase_department: (a, b) =>
+    getMenuPurchaseDepartmentLabel(asIngredient(a).purchase_department).localeCompare(
+      getMenuPurchaseDepartmentLabel(asIngredient(b).purchase_department)
+    ),
+  costs: (a, b) => {
+    const ia = asIngredient(a);
+    const ib = asIngredient(b);
+    return Number(ia.latest_pack_cost ?? ia.pack_cost) - Number(ib.latest_pack_cost ?? ib.pack_cost);
+  },
+  // An ingredient with no portion cost sorts as the cheapest.
+  portionCost: (a, b) =>
+    (calculatePortionCost(asIngredient(a)) ?? -1) - (calculatePortionCost(asIngredient(b)) ?? -1),
+  usage: (a, b) => asIngredient(a).dishes.length - asIngredient(b).dishes.length,
+  // Active ingredients first.
+  status: (a, b) => {
+    const activeA = asIngredient(a).is_active;
+    const activeB = asIngredient(b).is_active;
+    return activeA === activeB ? 0 : activeA ? -1 : 1;
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Filter definitions
 // ---------------------------------------------------------------------------
 
@@ -317,6 +359,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
     defaultSortDirection: 'asc',
     itemsPerPage: 25,
     filterFn: ingredientFilterFn,
+    sortFns: INGREDIENT_SORT_FNS,
   });
 
   // ---- Actions ----
@@ -393,11 +436,6 @@ export default function MenuIngredientsPage(): React.ReactElement {
         key: 'supplier',
         header: 'Supplier',
         sortable: true,
-        sortFn: (a, b) => {
-          const ia = a as unknown as Ingredient;
-          const ib = b as unknown as Ingredient;
-          return (ia.supplier_name || '').localeCompare(ib.supplier_name || '');
-        },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
           return ingredient.supplier_name ? (
@@ -416,13 +454,6 @@ export default function MenuIngredientsPage(): React.ReactElement {
         key: 'purchase_department',
         header: 'Dept',
         sortable: true,
-        sortFn: (a, b) => {
-          const ia = a as unknown as Ingredient;
-          const ib = b as unknown as Ingredient;
-          return getMenuPurchaseDepartmentLabel(ia.purchase_department).localeCompare(
-            getMenuPurchaseDepartmentLabel(ib.purchase_department)
-          );
-        },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
           return (
@@ -455,11 +486,6 @@ export default function MenuIngredientsPage(): React.ReactElement {
         key: 'costs',
         header: 'Pack Cost',
         sortable: true,
-        sortFn: (a, b) => {
-          const ia = a as unknown as Ingredient;
-          const ib = b as unknown as Ingredient;
-          return Number(ia.latest_pack_cost ?? ia.pack_cost) - Number(ib.latest_pack_cost ?? ib.pack_cost);
-        },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
           return canManage ? (
@@ -489,11 +515,6 @@ export default function MenuIngredientsPage(): React.ReactElement {
         key: 'portionCost',
         header: 'Portion Cost',
         sortable: true,
-        sortFn: (a, b) => {
-          const costA = calculatePortionCost(a as unknown as Ingredient) ?? -1;
-          const costB = calculatePortionCost(b as unknown as Ingredient) ?? -1;
-          return costA - costB;
-        },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
           return <span className="text-sm">{formatRoundedCost(calculatePortionCost(ingredient))}</span>;
@@ -503,11 +524,6 @@ export default function MenuIngredientsPage(): React.ReactElement {
         key: 'usage',
         header: 'Dishes',
         sortable: true,
-        sortFn: (a, b) => {
-          const ia = a as unknown as Ingredient;
-          const ib = b as unknown as Ingredient;
-          return ia.dishes.length - ib.dishes.length;
-        },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
           return <Badge tone="neutral">{ingredient.dishes.length}</Badge>;
@@ -534,11 +550,6 @@ export default function MenuIngredientsPage(): React.ReactElement {
         key: 'status',
         header: 'Status',
         sortable: true,
-        sortFn: (a, b) => {
-          const ia = a as unknown as Ingredient;
-          const ib = b as unknown as Ingredient;
-          return ia.is_active === ib.is_active ? 0 : ia.is_active ? -1 : 1;
-        },
         cell: (row) => {
           const ingredient = row as unknown as Ingredient;
           return canManage ? (
@@ -665,6 +676,7 @@ export default function MenuIngredientsPage(): React.ReactElement {
         searchValue={pipeline.searchQuery}
         onSearchChange={pipeline.setSearchQuery}
         searchPlaceholder="Search name, supplier, allergens or dietary..."
+        searchLabel="Search ingredients"
         onClear={pipeline.clearFilters}
       />
 
@@ -690,7 +702,10 @@ export default function MenuIngredientsPage(): React.ReactElement {
           <DataTable
             data={pipeline.pageData}
             columns={columns}
-            getRowKey={(row) => (row as unknown as Ingredient).id}
+            getRowKey={getIngredientRowKey}
+            sortKey={pipeline.sortKey || null}
+            sortDirection={pipeline.sortDirection}
+            onSortChange={pipeline.setSort}
             bordered={false}
             emptyMessage={
               pipeline.searchQuery || Object.keys(pipeline.filters).length > 0

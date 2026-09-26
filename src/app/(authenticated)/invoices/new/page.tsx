@@ -243,7 +243,7 @@ export default function NewInvoicePage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card className="overflow-visible">
+        <Card>
           <CardHeader title="Invoice Details" />
           <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Vendor" required>
@@ -503,7 +503,7 @@ export default function NewInvoicePage() {
         open={isCatalogModalOpen}
         onClose={() => setIsCatalogModalOpen(false)}
         title="Add from Catalog"
-        size="lg"
+        width="lg"
       >
         {catalogItems.length > 0 ? (
           <Card padding="none">

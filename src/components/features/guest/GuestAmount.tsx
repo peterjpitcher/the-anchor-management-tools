@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import { GUEST_LABEL_CLASS } from './styles'
 
 type GuestAmountSize = 'page' | 'title' | 'inline'
@@ -31,10 +31,10 @@ export function GuestAmount({ label, value, sub, size = 'page' }: GuestAmountPro
   const inline = size === 'inline'
 
   return (
-    <div className={clsx('flex min-w-0 flex-col gap-guest-2xs', inline && 'items-end text-right')}>
+    <div className={cn('flex min-w-0 flex-col gap-guest-2xs', inline && 'items-end text-right')}>
       <span className={GUEST_LABEL_CLASS}>{label}</span>
 
-      <span className={clsx('font-anchor-display font-normal text-guest-text-strong', VALUE_CLASS[size])}>
+      <span className={cn('font-anchor-display font-normal text-guest-text-strong', VALUE_CLASS[size])}>
         {value}
       </span>
 

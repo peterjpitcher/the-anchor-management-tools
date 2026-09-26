@@ -6,12 +6,15 @@ export const metadata = { title: 'Page not found - The Anchor' }
 /**
  * The site-wide 404, in the guest brand.
  *
- * Nearly every URL that reaches this is a guest's: an old or mistyped link from
- * a text or an email, or a `notFound()` on a public page such as the invoice
- * portal. Staff pages call `notFound()` too, and with no `not-found.tsx` of
- * their own inside `(authenticated)` they land here as well, outside the app
- * shell. The words work for both, and the way out is the pub's website.
- * `/parking` keeps its own, more specific, not-found page.
+ * It answers any URL that matches no route: nearly always a guest's old or
+ * mistyped link from a text or an email. Next 15 treats an unmatched URL as
+ * belonging to no route group, so a typo under a staff path (/dashboard/typo)
+ * lands here too. It also catches `notFound()` from a page outside
+ * `(authenticated)` with no boundary of its own, such as the event check-in
+ * kiosk. A staff page that calls `notFound()` does not come here: it gets
+ * `src/app/(authenticated)/not-found.tsx`, inside the app shell. The words work
+ * for anyone, and the way out is the pub's website. `/parking` and
+ * `/invoice-portal` keep their own, more specific, not-found pages.
  */
 export default function NotFound(): React.JSX.Element {
   return (

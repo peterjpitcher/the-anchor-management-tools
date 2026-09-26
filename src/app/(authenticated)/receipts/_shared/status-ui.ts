@@ -30,6 +30,15 @@ export const RECEIPT_FLOW_TONE: Record<'income' | 'spend', 'success' | 'danger'>
   spend: 'danger',
 }
 
+/**
+ * The same rule as a chart series colour (a DS chart takes a colour, not a class), for the monthly
+ * income and spending bars.
+ */
+export const RECEIPT_FLOW_CHART_COLOUR: Record<'income' | 'spend', string> = {
+  income: 'var(--color-success)',
+  spend: 'var(--color-danger)',
+}
+
 /** The same rule for an amount shown as text, such as a "Total out" or "Total in" column. */
 export const RECEIPT_FLOW_TEXT_CLASS: Record<'income' | 'spend', string> = {
   income: 'text-success-fg',
@@ -39,6 +48,21 @@ export const RECEIPT_FLOW_TEXT_CLASS: Record<'income' | 'spend', string> = {
 /** A signed amount where more is better (net cash): below zero is red, zero and above green. */
 export function netAmountTextClass(amount: number): string {
   return amount >= 0 ? 'text-success-fg' : 'text-danger-fg'
+}
+
+/** The same rule as a Stat tone, for a net cash figure. */
+export function netAmountTone(amount: number): 'success' | 'danger' {
+  return amount >= 0 ? 'success' : 'danger'
+}
+
+/**
+ * Share of a month's transactions that rules or "no receipt needed" closed without a person:
+ * 80% or more is healthy, below 60% needs attention, in between is unremarkable.
+ */
+export function automationCoverageTone(coverage: number): 'success' | 'default' | 'danger' {
+  if (coverage >= 0.8) return 'success'
+  if (coverage >= 0.6) return 'default'
+  return 'danger'
 }
 
 /** The monthly overview's "what changed" feed: a saving, a cost rising, or something to watch. */
@@ -104,9 +128,16 @@ export function spendMovementTextClass(delta: number): string {
   return 'text-text-muted'
 }
 
-/** The bar colour for the same rule in the movement chart. */
-export function spendMovementBarClass(delta: number): string {
-  return delta > 0 ? 'bg-danger' : 'bg-success'
+/** The same rule as a Stat tone, for a figure that is a change in spend. */
+export function spendMovementTone(delta: number): 'danger' | 'success' | 'default' {
+  if (delta > 0) return 'danger'
+  if (delta < 0) return 'success'
+  return 'default'
+}
+
+/** The bar colour for the same rule in the movement chart (a DS chart takes a colour, not a class). */
+export function spendMovementBarColour(delta: number): string {
+  return delta > 0 ? 'var(--color-danger)' : 'var(--color-success)'
 }
 
 /** Business health for the P&L page, from buildPnlReportViewModel's healthStatus. */

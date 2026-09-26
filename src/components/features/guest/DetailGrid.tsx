@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { cn } from '@/lib/utils'
 import { GUEST_LABEL_CLASS } from './styles'
 
 type DetailGridItem = {
@@ -25,7 +25,7 @@ const COLUMNS_CLASS: Record<NonNullable<DetailGridProps['columns']>, string> = {
  */
 export function DetailGrid({ items, columns = 'auto' }: DetailGridProps): React.JSX.Element {
   return (
-    <div className={clsx('grid gap-guest-md', COLUMNS_CLASS[columns])}>
+    <div className={cn('grid gap-guest-md', COLUMNS_CLASS[columns])}>
       {items.map((item, index) => (
         <div key={index} className="flex min-w-0 flex-col gap-guest-3xs">
           <span className={GUEST_LABEL_CLASS}>{item.label}</span>

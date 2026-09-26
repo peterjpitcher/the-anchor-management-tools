@@ -297,51 +297,20 @@ function isMissingCosting(dish: DishDisplayItem): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Sortable column header
+// Sorting
 // ---------------------------------------------------------------------------
 
 /**
- * A sortable header that sorts the whole list, not just the page on screen. DataTable sorts only
- * the rows it is given and reports no sort back, so with this table's pagination it would sort
- * one page of 25 at a time; the DS Table header drives the pipeline's sort instead. The DS
- * TableHead `sortable` mode puts the click on the <th>, which a keyboard cannot reach, so the
- * label is a DS Button inside a plain TableHead.
+ * The sortable columns, keyed by the CombinationRow field they sort. The pipeline sorts the whole
+ * list by that field before it is cut into pages (a row with no GP last), so a header click never
+ * sorts just the 25 rows on screen.
  */
-function SortableHead({
-  label,
-  sortKey,
-  activeKey,
-  direction,
-  onSort,
-}: {
-  label: string;
-  sortKey: string;
-  activeKey: string;
-  direction: 'asc' | 'desc';
-  onSort: (key: string) => void;
-}): React.ReactElement {
-  const isActive = activeKey === sortKey;
-  return (
-    <TableHead>
-      <Button
-        variant="ghost"
-        size="xs"
-        onClick={() => onSort(sortKey)}
-        iconRight={
-          isActive ? (
-            <Icon name={direction === 'asc' ? 'chevronUp' : 'chevronDown'} size={12} />
-          ) : undefined
-        }
-        className={cn(
-          '-mx-1.5 text-xs font-medium uppercase tracking-wider',
-          isActive ? 'text-text' : 'text-text-muted',
-        )}
-      >
-        {label}
-      </Button>
-    </TableHead>
-  );
-}
+const MENU_HEALTH_SORT_COLUMNS: Array<{ key: string; label: string }> = [
+  { key: 'dishName', label: 'Dish' },
+  { key: 'sellingPrice', label: 'Price' },
+  { key: 'portionCost', label: 'Portion Cost' },
+  { key: 'gpPct', label: 'GP%' },
+];
 
 // ---------------------------------------------------------------------------
 // Component
@@ -407,45 +376,7 @@ export function MenuDishesTable({
     itemsPerPage: 25,
   });
 
-  // Custom sort comparators for the pipeline data
-  const sorted = useMemo(() => {
-    const data = pipeline.pageData as unknown as CombinationRow[];
-    if (!pipeline.sortKey) return data;
-
-    return [...data].sort((a, b) => {
-      let comparison = 0;
-      switch (pipeline.sortKey) {
-        case 'name':
-        case 'dishName':
-          comparison = a.dishName.localeCompare(b.dishName);
-          break;
-        case 'selling_price':
-        case 'sellingPrice':
-          comparison = a.sellingPrice - b.sellingPrice;
-          break;
-        case 'portion_cost':
-        case 'portionCost':
-          comparison = a.portionCost - b.portionCost;
-          break;
-        case 'gp_pct':
-        case 'gpPct': {
-          const aGp = typeof a.gpPct === 'number' ? a.gpPct : -Infinity;
-          const bGp = typeof b.gpPct === 'number' ? b.gpPct : -Infinity;
-          comparison = aGp - bGp;
-          break;
-        }
-        default:
-          return 0;
-      }
-      return pipeline.sortDirection === 'asc' ? comparison : -comparison;
-    });
-  }, [pipeline.pageData, pipeline.sortKey, pipeline.sortDirection]);
-
-  const sortProps = {
-    activeKey: pipeline.sortKey,
-    direction: pipeline.sortDirection,
-    onSort: pipeline.handleSort,
-  };
+  const sorted = pipeline.pageData as unknown as CombinationRow[];
 
   const emptyTitle =
     filter === 'below-target'
@@ -464,6 +395,7 @@ export function MenuDishesTable({
           <div className="max-w-sm flex-1">
             <SearchInput
               placeholder="Search dishes..."
+              aria-label="Search dishes"
               value={pipeline.searchQuery}
               onChange={pipeline.setSearchQuery}
             />
@@ -505,10 +437,16 @@ export function MenuDishesTable({
         <Table className="border-t border-border">
           <TableHeader>
             <TableRow>
-              <SortableHead label="Dish" sortKey="dishName" {...sortProps} />
-              <SortableHead label="Price" sortKey="sellingPrice" {...sortProps} />
-              <SortableHead label="Portion Cost" sortKey="portionCost" {...sortProps} />
-              <SortableHead label="GP%" sortKey="gpPct" {...sortProps} />
+              {MENU_HEALTH_SORT_COLUMNS.map((column) => (
+                <TableHead
+                  key={column.key}
+                  sortable
+                  sortDirection={pipeline.sortKey === column.key ? pipeline.sortDirection : null}
+                  onSort={() => pipeline.handleSort(column.key)}
+                >
+                  {column.label}
+                </TableHead>
+              ))}
               <TableHead>Target</TableHead>
               <TableHead>Active status</TableHead>
               <TableHead>Costing status</TableHead>

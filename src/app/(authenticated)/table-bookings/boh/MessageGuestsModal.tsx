@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Alert, Modal, Button, Textarea, Select, Input, Radio, Spinner, toast } from '@/ds'
+import { Alert, Fieldset, Modal, Button, Textarea, Select, Input, Radio, Spinner, toast } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import {
   previewTableBookingGuests,
@@ -140,6 +140,15 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
       open={open}
       onClose={onClose}
       title="Message Guests"
+      description={
+        <>
+          {emailOption ? 'Send a message' : 'Send a text'} to guests booked on{' '}
+          <span className="font-medium text-text">
+            {formatDateInLondon(bookingDate, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </span>
+          . Only confirmed bookings are included.
+        </>
+      }
       width="md"
       // The DS Modal panel carries data-touch-targets, so on a touch screen (the bar iPad) these
       // controls get the 44px floor (owner decision D6).
@@ -155,14 +164,6 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
       }
     >
       <div className="space-y-4">
-        <p className="text-sm text-text-muted">
-          {emailOption ? 'Send a message' : 'Send a text'} to guests booked on{' '}
-          <span className="font-medium text-text">
-            {formatDateInLondon(bookingDate, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-          </span>
-          . Only confirmed bookings are included.
-        </p>
-
         <Select
           label="Time"
           value={time}
@@ -178,8 +179,7 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
         </Select>
 
         {emailOption && (
-          <fieldset className="space-y-2">
-            <legend className="mb-1 text-xs font-medium uppercase tracking-wider text-text-muted">Send by</legend>
+          <Fieldset legend="Send by">
             <Radio
               name="message-guests-channel"
               value="email_first"
@@ -196,7 +196,7 @@ export function MessageGuestsModal({ open, onClose, bookingDate }: MessageGuests
               onChange={() => setChannel('sms')}
               disabled={isSending}
             />
-          </fieldset>
+          </Fieldset>
         )}
 
         {emailFirst && (

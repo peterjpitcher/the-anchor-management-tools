@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
-import { Alert, Button, ConfirmDialog, Empty, Icon, IconButton, Input, Select, toast } from '@/ds'
+import { Alert, Button, ConfirmDialog, Empty, Icon, IconButton, Input, Select, SubHeading, toast } from '@/ds'
 import { editPrivateBookingPayment, deletePrivateBookingPayment } from '@/app/actions/privateBookingActions'
 import type { PaymentHistoryEntry } from '@/types/private-bookings'
 
@@ -26,7 +26,7 @@ export default function PaymentHistoryTable({
 }: PaymentHistoryTableProps): React.ReactElement {
   const router = useRouter()
 
-  // Spec-mandated state shape — no `date` field in editValues
+  // Spec-mandated state shape: no `date` field in editValues
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<{ amount: string; method: string }>({ amount: '', method: '' })
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -76,7 +76,7 @@ export default function PaymentHistoryTable({
       formData.set('type', entry.type)
       formData.set('amount', editValues.amount)
       formData.set('method', editValues.method)
-      // No `date` field — editing the payment date is out of scope
+      // No `date` field: editing the payment date is out of scope
       const result = await editPrivateBookingPayment(formData)
       if (result.success) {
         toast.success('Payment updated')
@@ -125,7 +125,7 @@ export default function PaymentHistoryTable({
 
   return (
     <>
-      {/* Summary section — always rendered regardless of payments.length */}
+      {/* Summary section: always rendered regardless of payments.length */}
       <div className="rounded-default border border-border bg-surface-2 p-3 mb-3 text-xs">
         <div className="flex justify-between text-text-muted">
           <span>Total</span>
@@ -141,7 +141,7 @@ export default function PaymentHistoryTable({
         </div>
       </div>
 
-      <p className="text-xs font-medium text-text-muted mb-2">Payment history</p>
+      <SubHeading className="mb-2">Payment History</SubHeading>
 
       {error && (
         <Alert tone="danger" size="sm" className="mb-2">{error}</Alert>

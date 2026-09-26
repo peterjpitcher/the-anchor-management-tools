@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { PageLayout } from '@/ds';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { getRotaSettings } from '@/app/actions/rota-settings';
-import { buildRotaNavItems } from '@/app/(authenticated)/rota/nav';
+import { getRotaNavItems } from '@/app/(authenticated)/rota/_shared/nav';
 import RotaSettingsManager from './RotaSettingsManager';
 
 export const dynamic = 'force-dynamic';
@@ -11,33 +11,25 @@ export default async function RotaSettingsPage() {
   const canManage = await checkUserPermission('settings', 'manage');
   if (!canManage) redirect('/settings');
 
-  // This page belongs to the rota section even though it lives under /settings, so
-  // it carries the same navigation. The badges are deliberately left off: they are
-  // a "what needs doing now" signal for the working pages, and every other rota
-  // page renders the nav unbadged too.
-  const [canViewRota, canViewLeave, canViewTimeclock, canViewPayroll, settings] = await Promise.all([
-    checkUserPermission('rota', 'view'),
-    checkUserPermission('leave', 'view'),
-    checkUserPermission('timeclock', 'view'),
-    checkUserPermission('payroll', 'view'),
-    getRotaSettings(),
-  ]);
+  // This page belongs to the rota section even though it lives under /settings, so it carries
+  // the rota tab row: the same tabs, filtered and badged the same way, as every other rota page.
+  const [rotaNavItems, settings] = await Promise.all([getRotaNavItems(), getRotaSettings()]);
 
-  const navItems = canViewRota
-    ? buildRotaNavItems(0, {
-        canViewLeave,
-        canViewTimeclock,
-        canViewPayroll,
-        canManageSettings: canManage,
-      })
-    : undefined;
+  // A tab row needs somewhere else to go. Somebody who can manage settings but may open none of
+  // the rota pages would get a row holding only this page, so they get no row at all: for them
+  // it is simply the page behind the Settings tile, titled with its label and with a way back.
+  const navItems = rotaNavItems.some(item => item.href !== '/settings/rota') ? rotaNavItems : undefined;
 
-  // In the Rota tab row, so no back button. Somebody who can manage settings but cannot see the
-  // rota gets no tab row, and without a back button would have no way out: they keep one.
+  // In the tab row it is titled "Rota" like every other page in that row, with no back button, and
+  // its subtitle names the tab the way the other rota pages do ("Payroll: ...", "Timeclock: ...").
   return (
     <PageLayout
-      title="Rota Settings"
-      subtitle="Configure holiday year, allowances, and notification emails"
+      title={navItems ? 'Rota' : 'Rota Settings'}
+      subtitle={
+        navItems
+          ? 'Rota settings: holiday year, allowances, wage target and notification emails'
+          : 'Holiday year, allowances, wage target and notification emails'
+      }
       navItems={navItems}
       backButton={navItems ? undefined : { label: 'Back to Settings', href: '/settings' }}
       containerSize="md"

@@ -25,6 +25,7 @@ import {
 import type { InvoiceVendor, InvoiceWithDetails, LineItemCatalogItem, InvoiceLineItemInput } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
+import { invoicePageTitle } from '../../_shared/nav'
 
 export default function EditInvoicePage() {
   const params = useParams()
@@ -215,7 +216,8 @@ export default function EditInvoicePage() {
   const layoutProps = {
     title: 'Edit Invoice',
     subtitle: 'Update invoice details',
-    backButton: { label: 'Back to Invoice', href: backHref },
+    // Back to the invoice page, named as that page is titled ("Invoice INV-001").
+    backButton: { label: `Back to ${invoicePageTitle(invoice?.invoice_number)}`, href: backHref },
   }
 
   if (permissionsLoading || loading) {

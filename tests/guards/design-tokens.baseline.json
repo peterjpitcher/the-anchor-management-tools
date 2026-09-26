@@ -16,20 +16,11 @@
     "sidebar-outside-shell": 1,
     "status-opacity": 1
   },
-  "src/app/(authenticated)/events/_components/ArtworkBrandingModal.tsx": {
-    "status-opacity": 1
-  },
   "src/app/(authenticated)/private-bookings/_shared/status-ui.ts": {
-    "status-opacity": 1
-  },
-  "src/app/(authenticated)/rota/RotaGrid.tsx": {
     "status-opacity": 1
   },
   "src/app/(authenticated)/settings/customer-labels/CustomerLabelsClient.tsx": {
     "hex-colour": 8
-  },
-  "src/app/(authenticated)/settings/design-system/page.tsx": {
-    "rounded-md": 1
   },
   "src/app/(authenticated)/table-bookings/foh/FohClockWidget.tsx": {
     "brand-ramp-outside-shell": 1,

@@ -315,3 +315,50 @@ describe('InvoicesClient', () => {
     expect(downloadBlobMock).toHaveBeenCalledWith(blob, 'invoices-export.zip')
   })
 })
+
+describe('InvoicesClient page chrome', () => {
+  const renderList = (summary: typeof mockSummary) =>
+    render(
+      <InvoicesClient
+        initialInvoices={[]}
+        initialTotal={0}
+        initialSummary={summary}
+        initialStatus="unpaid"
+        initialPage={1}
+        initialSearch=""
+        initialVendorSearch=""
+        initialStartDate=""
+        initialEndDate=""
+        initialLimit={20}
+        initialError={null}
+        permissions={mockPermissions}
+      />
+    )
+
+  it('reaches the export page only through its tab, with no duplicate Export header button', () => {
+    renderList(mockSummary)
+
+    expect(screen.getAllByRole('tab', { name: 'Export' }).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('link', { name: 'Export' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'New Invoice' })[0]).toHaveAttribute('href', '/invoices/new')
+  })
+
+  it('shows the overdue figure in red only when something is overdue', () => {
+    const { unmount } = renderList({ ...mockSummary, total_overdue: 50 })
+    expect(screen.getByText('£50.00')).toHaveClass('text-danger-fg')
+    unmount()
+
+    // Nothing overdue: the Overdue figure is the only £0.00 on the page, and it stays plain.
+    renderList({ ...mockSummary, total_outstanding: 10, total_this_month: 75 })
+    expect(screen.getByText('£0.00')).not.toHaveClass('text-danger-fg')
+    expect(screen.getByText('£0.00')).toHaveClass('text-text')
+  })
+
+  it('names the filters for screen readers', () => {
+    renderList(mockSummary)
+
+    expect(screen.getByRole('radiogroup', { name: 'Quick status filter' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Search invoices by number or reference' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Filter invoices by vendor' })).toBeInTheDocument()
+  })
+})

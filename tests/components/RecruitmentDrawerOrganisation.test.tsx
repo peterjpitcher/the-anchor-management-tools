@@ -183,6 +183,8 @@ describe('recruitment candidate drawer organisation', () => {
 
     expect(screen.getByText('Come and meet us at The Anchor')).toBeInTheDocument()
     expect(screen.getByText('Hi Rowan, we would love to meet you on Tuesday.')).toBeInTheDocument()
+    // The delivery status is the shared delivery badge (src/lib/messages/status-ui.ts), not the raw value.
+    expect(screen.getByText('Sent')).toHaveClass('text-success-fg')
   })
 
   it('leads the Notes tab with what people wrote and hides the machine trail', async () => {

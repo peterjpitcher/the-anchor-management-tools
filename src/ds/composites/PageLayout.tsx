@@ -10,7 +10,7 @@ import { SectionNav } from './SectionNav'
 import { PageLoading } from './PageLoading'
 
 /* ------------------------------------------------------------------ */
-/*  HeaderNav — PageLayout adapter for the standard SectionNav        */
+/*  HeaderNav: PageLayout adapter for the standard SectionNav         */
 /* ------------------------------------------------------------------ */
 
 export interface HeaderNavItem {
@@ -117,7 +117,7 @@ function HeaderNav({
 export interface PageLayoutProps {
   title: string
   subtitle?: string
-  breadcrumbs?: Array<{ label: string; href?: string }>
+  /** A child page's way back: "Back to <the parent page's title>", pointing at that parent. No breadcrumbs. */
   backButton?: { label: string; href?: string; onBack?: () => void }
   headerActions?: React.ReactNode
   showHeaderActionsOnMobile?: boolean
@@ -196,7 +196,6 @@ const RESPONSIVE = {
 export function PageLayout({
   title,
   subtitle,
-  breadcrumbs,
   backButton,
   headerActions,
   navItems,
@@ -288,43 +287,6 @@ export function PageLayout({
     return children
   })()
 
-  const breadcrumbsNode =
-    breadcrumbs && breadcrumbs.length > 0 ? (
-      <nav
-        aria-label="Breadcrumbs"
-        className={cn('mb-2 flex items-center gap-1 text-sm', subtitleColour)}
-      >
-        {breadcrumbs.map((crumb, i) => {
-          const isLast = i === breadcrumbs.length - 1
-          return (
-            <React.Fragment key={crumb.label}>
-              {i > 0 && (
-                <Icon
-                  name="chevronRight"
-                  size={14}
-                  className={cn('flex-shrink-0', dark ? 'text-on-dark-subtle' : 'text-text-subtle')}
-                />
-              )}
-              {isLast ? (
-                <span className={cn('truncate font-medium', dark ? 'text-on-dark' : 'text-text')}>
-                  {crumb.label}
-                </span>
-              ) : crumb.href ? (
-                <a
-                  href={crumb.href}
-                  className={cn('truncate transition-colors', dark ? 'hover:text-on-dark' : 'hover:text-text')}
-                >
-                  {crumb.label}
-                </a>
-              ) : (
-                <span className="truncate">{crumb.label}</span>
-              )}
-            </React.Fragment>
-          )
-        })}
-      </nav>
-    ) : null
-
   /* Mobile header */
   const mobileHeader = (
     <div className={cn('flex items-center', compactHeader ? 'gap-1.5' : 'gap-2', responsive.mobileOnly)}>
@@ -377,7 +339,7 @@ export function PageLayout({
     </div>
   )
 
-  /* Desktop header: the same title, subtitle and action row as PageHeader */
+  /* Desktop header: title and subtitle on the left, header actions and the back button on the right */
   const desktopHeader = (
     <div className={responsive.desktopOnly}>
       <div className="min-w-0 flex-1">
@@ -436,7 +398,6 @@ export function PageLayout({
             compactHeader ? 'pt-2 pb-2 shell:pt-3 shell:pb-3' : 'pt-3 pb-4 shell:pt-shell-pad-top',
           )}
         >
-          {breadcrumbsNode}
           {mobileHeader}
           {desktopHeader}
         </div>
