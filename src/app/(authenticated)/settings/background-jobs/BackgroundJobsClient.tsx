@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import type { BackgroundJob, BackgroundJobFilters, BackgroundJobSummary } from '@/app/actions/backgroundJobs'
 import { listBackgroundJobs, retryBackgroundJob, deleteBackgroundJob } from '@/app/actions/backgroundJobs'
 import { runCronJob } from '@/app/actions/cronJobs'
-import { formatDate } from '@/lib/dateUtils'
+import { formatDate, formatDateTimeInLondon } from '@/lib/dateUtils'
 import toast from 'react-hot-toast'
 import {
   ClockIcon,
@@ -527,14 +527,14 @@ export default function BackgroundJobsClient({
                     ? [{
                         key: 'started_at',
                         label: 'Started At',
-                        value: new Date(selectedJobDetails.started_at).toLocaleString(),
+                        value: formatDateTimeInLondon(selectedJobDetails.started_at),
                       }]
                     : []),
                   ...(selectedJobDetails.completed_at
                     ? [{
                         key: 'completed_at',
                         label: 'Completed At',
-                        value: new Date(selectedJobDetails.completed_at).toLocaleString(),
+                        value: formatDateTimeInLondon(selectedJobDetails.completed_at),
                       }]
                     : []),
                   ...(selectedJobDetails.error_message
